@@ -90,7 +90,7 @@ impl Default for FieldPannerConfig {
             velocity_fov_bias_max: 10.0,
             ball_frame_margin_deg: 3.0,
             ball_max_dist_from_cluster: 0.85,
-            ball_weight: 0.0,
+            ball_weight: 0.5,
         }
     }
 }

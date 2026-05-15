@@ -427,6 +427,17 @@ pub trait FrameSource: Send {
     fn is_exhausted(&self) -> bool {
         false
     }
+
+    /// Begin data flow (spawn decode threads, start capture, etc.).
+    ///
+    /// After `open()`, all metadata is available but no frames are
+    /// produced yet. Call this to start the decode pipeline. If not
+    /// called explicitly, `next_frame()` must auto-start.
+    ///
+    /// This exists so callers can initialize GPU resources (ORT/DML,
+    /// Metal compute, etc.) between probe and decode without contending
+    /// for the GPU device with decode threads.
+    fn start_decoding(&mut self) {}
 }
 
 // ---------------------------------------------------------------------------

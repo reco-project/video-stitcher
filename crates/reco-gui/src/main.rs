@@ -1190,7 +1190,16 @@ fn main() -> anyhow::Result<()> {
                 && let Some(tag) = json["tag_name"].as_str()
             {
                 let latest = tag.trim_start_matches('v');
-                if latest != current && latest > current {
+                let parse_ver = |s: &str| -> Option<Vec<u64>> {
+                    s.split(&['.', '-'][..])
+                        .take(3)
+                        .map(|p| p.parse().ok())
+                        .collect()
+                };
+                let is_newer = parse_ver(latest)
+                    .zip(parse_ver(current))
+                    .is_some_and(|(l, c)| l > c);
+                if is_newer {
                     log::info!("Update available: {current} -> {latest}");
                     *result.lock().unwrap() = Some(tag.to_string());
                 }
@@ -1670,10 +1679,10 @@ fn main() -> anyhow::Result<()> {
                 1.0
             }
         };
-        let seek_str = format!("{:.2}", current_secs);
+        let _seek_str = format!("{:.2}", current_secs);
         let frame_index = {
             let s = state_ref.borrow();
-            s.playback.frame_index() as u64
+            s.playback.frame_index()
         };
         let extract_frame = |video: &std::path::Path, out: &std::path::Path, idx: u64| {
             match reco_io::ffmpeg::calibration_io::extract_frames(video, &[idx]) {
@@ -1760,11 +1769,7 @@ fn main() -> anyhow::Result<()> {
             out_html.display()
         );
 
-        let open_result = std::process::Command::new("xdg-open")
-            .arg(&out_html)
-            .spawn()
-            .map(|_| ())
-            .or_else(|_| open::that(out_html.as_os_str()));
+        let open_result = open::that(out_html.as_os_str());
         if let Err(e) = open_result {
             log::error!("Failed to open ROI editor: {e}");
             let mut s = state_ref.borrow_mut();
@@ -2837,6 +2842,9 @@ fn main() -> anyhow::Result<()> {
                 0.0
             };
             app.set_clip_duration_secs(clip_secs);
+            if app.get_export_end_secs() == 0.0 {
+                app.set_export_end_secs(clip_secs);
+            }
             app.set_export_dialog_open(true);
         }
     });
@@ -2943,11 +2951,7 @@ fn main() -> anyhow::Result<()> {
         let blend = app.get_blend_width();
         let start_secs = app.get_export_start_secs();
         let end_secs = app.get_export_end_secs();
-        let clip_dur = app.get_clip_duration_secs();
-        let duration = if end_secs > start_secs { end_secs - start_secs } else { 0.0 };
-        log::info!(
-            "Export range: start={start_secs:.1}s, end={end_secs:.1}s (duration={duration:.1}s, clip={clip_dur:.1}s)"
-        );
+        log::info!("Export range: start={start_secs:.1}s, end={end_secs:.1}s");
         let autocam_enabled = app.get_export_autocam_enabled();
         let model_path = app.get_export_model_path().to_string();
         let tracking_mode = app.get_export_tracking_mode().to_string();
@@ -3004,7 +3008,7 @@ fn main() -> anyhow::Result<()> {
                 quality_str,
                 blend,
                 start_secs,
-                duration,
+                end_secs,
                 autocam_enabled,
                 model_path,
                 tracking_mode,
@@ -3155,13 +3159,18 @@ fn main() -> anyhow::Result<()> {
                 && let Some(tag) = guard.take()
                 && let Some(app) = app_weak.upgrade()
             {
+                        let url = format!(
+                            "https://github.com/reco-project/video-stitcher/releases/tag/{tag}"
+                        );
                         s.toasts.push_with_ttl(
                             Severity::Info,
                             format!("Update available: {tag}"),
-                            "Visit the website to download the latest version.",
-                            Duration::from_secs(15),
+                            "Opening download page in your browser.",
+                            Duration::from_secs(30),
                         );
+                        log::info!("Toast pushed for update {tag}");
                         crate::toast::sync_to_ui(&s.toasts, &app);
+                        let _ = open::that(&url);
             }
 
             // Poll for calibration results from the background thread.

@@ -32,7 +32,7 @@ pub struct CameraRunConfig<'a> {
     pub encoder_name: Option<String>,
     pub codec: &'a str,
     pub quality: &'a str,
-    pub duration: Option<f64>,
+    pub end_time: Option<f64>,
     pub max_frames: Option<u64>,
     pub capture_fps: u32,
     pub model_path: Option<&'a str>,
@@ -82,7 +82,7 @@ pub fn run_camera(
         encoder_name,
         codec,
         quality,
-        duration,
+        end_time,
         max_frames,
         capture_fps,
         model_path,
@@ -349,7 +349,7 @@ pub fn run_camera(
     session.set_encoder(Box::new(encoder), 2);
 
     let frame_limit =
-        reco_core::session::types::compute_frame_limit(duration, max_frames, capture_fps as f64);
+        reco_core::session::types::compute_frame_limit(end_time, max_frames, capture_fps as f64);
 
     if frame_limit < u64::MAX {
         println!("Capturing up to {frame_limit} frames");

@@ -127,11 +127,15 @@ enum Commands {
         #[arg(long, default_value_t = 1080)]
         height: u32,
 
-        /// Maximum number of seconds to process.
+        /// Start processing at this time offset (seconds).
         #[arg(long)]
-        duration: Option<f64>,
+        start_time: Option<f64>,
 
-        /// Maximum number of frames to process.
+        /// Stop processing at this time offset (seconds).
+        #[arg(long)]
+        end_time: Option<f64>,
+
+        /// Hard cap on the number of output frames.
         #[arg(long)]
         max_frames: Option<u64>,
 
@@ -327,9 +331,9 @@ enum Commands {
         #[arg(long)]
         max_frames: Option<u64>,
 
-        /// Duration in seconds to capture.
+        /// Stop after this many seconds.
         #[arg(long)]
-        duration: Option<f64>,
+        end_time: Option<f64>,
 
         /// Path to a YOLO ONNX model for ball detection and auto-tracking.
         #[arg(long)]
@@ -481,9 +485,9 @@ enum Commands {
         #[arg(long)]
         max_frames: Option<u64>,
 
-        /// Duration in seconds to capture.
+        /// Stop after this many seconds.
         #[arg(long)]
-        duration: Option<f64>,
+        end_time: Option<f64>,
 
         /// Path to a YOLO model for ball detection and auto-tracking.
         #[arg(long)]
@@ -706,7 +710,8 @@ fn main() -> anyhow::Result<()> {
             output,
             width,
             height,
-            duration,
+            start_time,
+            end_time,
             max_frames,
             encoder,
             codec,
@@ -734,7 +739,8 @@ fn main() -> anyhow::Result<()> {
                 width,
                 height,
                 blend,
-                duration,
+                start_time,
+                end_time,
                 max_frames,
                 encoder_name: encoder,
                 codec: &codec,
@@ -804,7 +810,7 @@ fn main() -> anyhow::Result<()> {
             quality,
             blend,
             max_frames,
-            duration,
+            end_time,
             model,
             detection_interval,
             crf,
@@ -866,7 +872,7 @@ fn main() -> anyhow::Result<()> {
                     encoder_name: encoder,
                     codec: &codec,
                     quality: &quality,
-                    duration,
+                    end_time,
                     max_frames,
                     capture_fps,
                     model_path: model.as_deref(),
@@ -913,7 +919,7 @@ fn main() -> anyhow::Result<()> {
             quality,
             blend,
             max_frames,
-            duration,
+            end_time,
             model,
             detection_interval,
             crf,
@@ -950,7 +956,7 @@ fn main() -> anyhow::Result<()> {
                     encoder_name: encoder,
                     codec: &codec,
                     quality: &quality,
-                    duration,
+                    end_time,
                     max_frames,
                     capture_fps,
                     model_path: model.as_deref(),

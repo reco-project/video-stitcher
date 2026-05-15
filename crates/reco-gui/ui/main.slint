@@ -289,7 +289,7 @@ export component RecoApp inherits Window {
     in-out property <string> export-quality: "balanced";
     in-out property <float> export-blend-width: 0.05;
     in-out property <float> export-start-secs: 0.0;
-    in-out property <float> export-end-secs: 0.0; // 0 = end of clip
+    in-out property <float> export-end-secs: 0.0;
     in-out property <float> clip-duration-secs: 0.0;
     in-out property <string> export-model-path: "";
     in-out property <string> export-tracking-mode: "field";
@@ -1362,11 +1362,11 @@ export component RecoApp inherits Window {
                     height: 24px;
 
                     // Export range indicator (green tint behind the slider)
-                    if root.export-start-secs > 0 || root.export-end-secs > 0: Rectangle {
+                    if root.export-start-secs > 0 || root.export-end-secs < root.clip-duration-secs: Rectangle {
                         property <float> start-frac: root.clip-duration-secs > 0
                             ? root.export-start-secs / root.clip-duration-secs : 0;
                         property <float> end-frac: root.clip-duration-secs > 0
-                            ? (root.export-end-secs > 0 ? root.export-end-secs / root.clip-duration-secs : 1.0) : 1.0;
+                            ? root.export-end-secs / root.clip-duration-secs : 1.0;
 
                         x: parent.width * start-frac;
                         width: parent.width * (end-frac - start-frac);
@@ -2153,36 +2153,55 @@ export component RecoApp inherits Window {
                         VerticalLayout {
                             spacing: 3px;
                             horizontal-stretch: 1;
-                            Text { text: "Start"; color: #888; font-size: 11px; }
+                            Text { text: "Start (s)"; color: #888; font-size: 11px; }
                             Slider {
                                 minimum: 0;
                                 maximum: max(1, root.clip-duration-secs);
                                 value <=> root.export-start-secs;
                                 enabled: root.clip-duration-secs > 0;
+                                changed(v) => {
+                                    if v > root.export-end-secs { root.export-start-secs = root.export-end-secs; }
+                                }
                             }
                             LineEdit {
                                 text: root.export-start-secs == 0 ? "" : root.export-start-secs;
                                 placeholder-text: "0:00";
-                                edited(v) => { root.export-start-secs = max(0, v.to-float()); }
+                                edited(v) => {
+                                    root.export-start-secs = Math.min(max(0, v.to-float()), root.export-end-secs);
+                                }
                             }
                         }
 
                         VerticalLayout {
                             spacing: 3px;
                             horizontal-stretch: 1;
-                            Text { text: "End"; color: #888; font-size: 11px; }
+                            Text { text: "End (s)"; color: #888; font-size: 11px; }
                             Slider {
                                 minimum: 0;
                                 maximum: max(1, root.clip-duration-secs);
                                 value <=> root.export-end-secs;
                                 enabled: root.clip-duration-secs > 0;
+                                changed(v) => {
+                                    if v < root.export-start-secs { root.export-end-secs = root.export-start-secs; }
+                                }
                             }
                             LineEdit {
-                                text: root.export-end-secs == 0 ? "" : root.export-end-secs;
-                                placeholder-text: "full clip";
-                                edited(v) => { root.export-end-secs = max(0, v.to-float()); }
+                                text: root.export-end-secs;
+                                placeholder-text: "";
+                                edited(v) => {
+                                    root.export-end-secs = Math.max(Math.min(v.to-float(), root.clip-duration-secs), root.export-start-secs);
+                                }
                             }
                         }
+                    }
+
+                    Text {
+                        property <float> range-dur: root.export-end-secs - root.export-start-secs;
+                        text: range-dur <= 0
+                            ? "Duration: 0s (nothing to export)"
+                            : "Duration: " + round(range-dur * 10) / 10 + "s";
+                        color: range-dur <= 0 ? #ff6666 : #888;
+                        font-size: 11px;
                     }
 
                     CheckBox {

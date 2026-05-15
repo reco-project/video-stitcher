@@ -198,6 +198,15 @@ impl StitchSession {
                 right_texture,
                 right_slice,
             } => {
+                // Ensure the previous wgpu render finished reading the
+                // staging texture before we overwrite it with the next
+                // D3D11 CopySubresourceRegion. Without this, Intel and
+                // NVIDIA drivers can return stale data (frame reordering).
+                let _ = self
+                    .core
+                    .gpu()
+                    .device()
+                    .poll(wgpu::PollType::wait_indefinitely());
                 let staging_t0 = std::time::Instant::now();
                 let first = self.stage_d3d11_frames(
                     *left_texture,

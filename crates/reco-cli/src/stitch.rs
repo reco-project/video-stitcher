@@ -24,7 +24,8 @@ pub struct StitchArgs<'a> {
     pub width: u32,
     pub height: u32,
     pub blend: f32,
-    pub duration: Option<f64>,
+    pub start_time: Option<f64>,
+    pub end_time: Option<f64>,
     pub max_frames: Option<u64>,
     pub encoder_name: Option<String>,
     pub codec: &'a str,
@@ -94,8 +95,11 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
             progress.report_with_elapsed(p.frames_completed, p.elapsed);
         });
 
-    if let Some(d) = args.duration {
-        job = job.duration(d);
+    if let Some(t) = args.start_time {
+        job = job.start_time(t);
+    }
+    if let Some(t) = args.end_time {
+        job = job.end_time(t);
     }
     if let Some(n) = args.max_frames {
         job = job.max_frames(n);
