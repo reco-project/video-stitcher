@@ -24,13 +24,25 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
+      - name: Cache FFmpeg
+        id: cache-ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: C:\ffmpeg
+          key: ffmpeg-n7.1.4-win64-gpl-shared
+
       - name: Install FFmpeg
+        if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-05-12-13-59/ffmpeg-n7.1.4-win64-gpl-shared-7.1.zip"
           Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\ffmpeg.zip"
-          Expand-Archive -Path "$env:RUNNER_TEMP\ffmpeg.zip" -DestinationPath "$env:RUNNER_TEMP\ffmpeg"
-          $dir = (Get-ChildItem "$env:RUNNER_TEMP\ffmpeg" -Directory | Select-Object -First 1).FullName
+          Expand-Archive -Path "$env:RUNNER_TEMP\ffmpeg.zip" -DestinationPath C:\ffmpeg
+
+      - name: Set FFmpeg env
+        shell: pwsh
+        run: |
+          $dir = (Get-ChildItem "C:\ffmpeg" -Directory | Select-Object -First 1).FullName
           echo "FFMPEG_DIR=$dir" >> $env:GITHUB_ENV
           echo "FFMPEG_DLL_DIR=$dir\bin" >> $env:GITHUB_ENV
 
