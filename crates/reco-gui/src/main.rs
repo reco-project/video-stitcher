@@ -1769,11 +1769,7 @@ fn main() -> anyhow::Result<()> {
             out_html.display()
         );
 
-        let open_result = std::process::Command::new("xdg-open")
-            .arg(&out_html)
-            .spawn()
-            .map(|_| ())
-            .or_else(|_| open::that(out_html.as_os_str()));
+        let open_result = open::that(out_html.as_os_str());
         if let Err(e) = open_result {
             log::error!("Failed to open ROI editor: {e}");
             let mut s = state_ref.borrow_mut();
