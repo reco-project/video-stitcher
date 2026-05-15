@@ -2842,6 +2842,9 @@ fn main() -> anyhow::Result<()> {
                 0.0
             };
             app.set_clip_duration_secs(clip_secs);
+            if app.get_export_end_secs() == 0.0 {
+                app.set_export_end_secs(clip_secs);
+            }
             app.set_export_dialog_open(true);
         }
     });
