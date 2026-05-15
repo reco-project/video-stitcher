@@ -587,6 +587,9 @@ impl StitchJob {
             hook(&mut session, &source);
         }
 
+        // Start decode threads now that hooks (ORT/DML init) have completed.
+        source.start_decoding();
+
         // Attach JSONL event sink if requested.
         if let Some(ref events_path) = self.events_path {
             match crate::jsonl_sink::JsonlSink::create(events_path) {
