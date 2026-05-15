@@ -3633,6 +3633,7 @@ fn handle_calibration_result(
                 Ok(true) => {
                     let fps = state.playback.fps();
                     let total = state.playback.total_frames().unwrap_or(0);
+                    state.reset_view();
                     state.clamp_targets();
                     let clamped_fov = state.pose.current_fov_deg();
                     if let Some(bridge) = state.bridge.as_mut() {
