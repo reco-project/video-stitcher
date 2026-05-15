@@ -49,10 +49,15 @@ jobs:
       - name: Build CLI
         run: cargo build --release -p reco-cli --features load-dynamic
 
-      - name: Upload binary + FFmpeg DLLs
+      - name: Bundle binary + DLLs
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact
+          Copy-Item target/release/reco.exe artifact/
+          Copy-Item "$env:FFMPEG_DLL_DIR\*.dll" artifact/
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: reco-cli-windows-test
-          path: |
-            target/release/reco.exe
-            ${{ env.FFMPEG_DLL_DIR }}/*.dll
+          path: artifact/
