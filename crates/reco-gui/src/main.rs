@@ -1190,7 +1190,16 @@ fn main() -> anyhow::Result<()> {
                 && let Some(tag) = json["tag_name"].as_str()
             {
                 let latest = tag.trim_start_matches('v');
-                if latest != current && latest > current {
+                let parse_ver = |s: &str| -> Option<Vec<u64>> {
+                    s.split(&['.', '-'][..])
+                        .take(3)
+                        .map(|p| p.parse().ok())
+                        .collect()
+                };
+                let is_newer = parse_ver(latest)
+                    .zip(parse_ver(current))
+                    .is_some_and(|(l, c)| l > c);
+                if is_newer {
                     log::info!("Update available: {current} -> {latest}");
                     *result.lock().unwrap() = Some(tag.to_string());
                 }
