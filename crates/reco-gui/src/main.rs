@@ -1679,10 +1679,10 @@ fn main() -> anyhow::Result<()> {
                 1.0
             }
         };
-        let seek_str = format!("{:.2}", current_secs);
+        let _seek_str = format!("{:.2}", current_secs);
         let frame_index = {
             let s = state_ref.borrow();
-            s.playback.frame_index() as u64
+            s.playback.frame_index()
         };
         let extract_frame = |video: &std::path::Path, out: &std::path::Path, idx: u64| {
             match reco_io::ffmpeg::calibration_io::extract_frames(video, &[idx]) {
@@ -2948,11 +2948,7 @@ fn main() -> anyhow::Result<()> {
         let blend = app.get_blend_width();
         let start_secs = app.get_export_start_secs();
         let end_secs = app.get_export_end_secs();
-        let clip_dur = app.get_clip_duration_secs();
-        let duration = if end_secs > start_secs { end_secs - start_secs } else { 0.0 };
-        log::info!(
-            "Export range: start={start_secs:.1}s, end={end_secs:.1}s (duration={duration:.1}s, clip={clip_dur:.1}s)"
-        );
+        log::info!("Export range: start={start_secs:.1}s, end={end_secs:.1}s");
         let autocam_enabled = app.get_export_autocam_enabled();
         let model_path = app.get_export_model_path().to_string();
         let tracking_mode = app.get_export_tracking_mode().to_string();
@@ -3009,7 +3005,7 @@ fn main() -> anyhow::Result<()> {
                 quality_str,
                 blend,
                 start_secs,
-                duration,
+                end_secs,
                 autocam_enabled,
                 model_path,
                 tracking_mode,

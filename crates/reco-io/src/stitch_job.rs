@@ -48,11 +48,10 @@ pub struct StitchJob {
     crf: Option<u8>,
     preset: Option<String>,
 
-    // Processing settings
-    max_frames: Option<u64>,
-    duration: Option<f64>,
-    start_frame: u64,
+    // Processing window
     start_time: Option<f64>,
+    end_time: Option<f64>,
+    max_frames: Option<u64>,
     sync_offset: Option<i64>,
     blend_width: f32,
 
@@ -230,10 +229,9 @@ impl StitchJob {
             encoder_name: None,
             crf: None,
             preset: None,
-            max_frames: None,
-            duration: None,
-            start_frame: 0,
             start_time: None,
+            end_time: None,
+            max_frames: None,
             sync_offset: None,
             blend_width: 0.15,
             on_progress: None,
@@ -313,42 +311,31 @@ impl StitchJob {
         self
     }
 
-    // ── Processing settings ──
+    // ── Processing window ──
 
-    /// Limit the number of frames to process.
-    pub fn max_frames(mut self, n: u64) -> Self {
-        self.max_frames = Some(n);
-        self
-    }
-
-    /// Limit processing to a duration in seconds.
-    pub fn duration(mut self, secs: f64) -> Self {
-        self.duration = Some(secs);
-        self
-    }
-
-    /// Skip `n` frames from each input before the first output frame.
+    /// Start processing at a time offset (seconds). Default: beginning.
     ///
-    /// For frame-exact positioning (e.g. scripting, automation).
-    /// Takes precedence over [`start_time`](Self::start_time) if both are set.
-    ///
-    /// Skipped frames are decoded and dropped (no seek), so latency is
-    /// proportional to decode rate. Default: `0`.
-    pub fn start_frame(mut self, n: u64) -> Self {
-        self.start_frame = n;
-        self
-    }
-
-    /// Start at a time offset in seconds.
-    ///
-    /// Converted to a frame index internally using the source's frame rate
-    /// (rounded to the nearest frame). For frame-exact positioning, use
-    /// [`start_frame`](Self::start_frame) instead.
-    ///
-    /// Combine with [`duration`](Self::duration) to select a time window,
-    /// e.g. export "0:15 - 0:30" as `.start_time(15.0).duration(15.0)`.
+    /// Converted to a frame index internally using the source's frame
+    /// rate (rounded to the nearest frame).
     pub fn start_time(mut self, secs: f64) -> Self {
         self.start_time = Some(secs);
+        self
+    }
+
+    /// Stop processing at a time offset (seconds). Default: end of source.
+    ///
+    /// Must be greater than `start_time` when both are set.
+    pub fn end_time(mut self, secs: f64) -> Self {
+        self.end_time = Some(secs);
+        self
+    }
+
+    /// Hard cap on the number of output frames. Default: no limit.
+    ///
+    /// Applied after the time window: if `end_time` implies 900 frames
+    /// but `max_frames` is 300, only 300 are produced.
+    pub fn max_frames(mut self, n: u64) -> Self {
+        self.max_frames = Some(n);
         self
     }
 
@@ -665,45 +652,67 @@ impl StitchJob {
                     .map(String::from);
         }
 
-        // Resolve start_time to start_frame (start_frame takes precedence).
-        if self.start_frame == 0 {
-            if let Some(secs) = self.start_time {
-                self.start_frame = (secs * info.fps as f64).round() as u64;
-            }
+        // Resolve processing window (start_time / end_time / max_frames).
+        let fps = if info.fps > 0.0 { info.fps as f64 } else { 30.0 };
+        let start_secs = self.start_time.unwrap_or(0.0);
+        let skip_frames = (start_secs * fps).round() as u64;
+
+        if let Some(end) = self.end_time
+            && end <= start_secs
+        {
+            return Err(StitchError::Other(format!(
+                "end_time ({end:.2}s) must be greater than start_time ({start_secs:.2}s)"
+            )));
         }
 
-        // Drain-and-discard frames up to start_frame.
-        // Done here (before session.run) so the session's frame counter
-        // and progress callback reflect the exported window, not the skip.
-        if self.start_frame > 0 {
-            log::info!("skipping first {} frames before export", self.start_frame);
-            use reco_core::source::FrameSource as _;
-            for skipped in 0..self.start_frame {
+        use reco_core::source::FrameSource as _;
+        if let Some(total) = source.total_frames()
+            && skip_frames >= total
+        {
+            return Err(StitchError::Other(format!(
+                "start_time ({start_secs:.2}s = frame {skip_frames}) \
+                 is past the end of the source ({total} frames)"
+            )));
+        }
+
+        // Skip frames to reach start position.
+        if skip_frames > 0 {
+            log::info!("skipping {skip_frames} frames (start_time={start_secs:.2}s)");
+            for skipped in 0..skip_frames {
                 if interrupted.load(Ordering::Relaxed) {
                     return Err(StitchError::Other(
-                        "cancelled during start_frame skip".into(),
+                        "cancelled during start skip".into(),
                     ));
                 }
-                match source.next_frame()? {
-                    Some(_) => {} // drop the frame
-                    None => {
-                        log::warn!(
-                            "start_frame={} exceeded source length (stopped at {})",
-                            self.start_frame,
-                            skipped,
-                        );
-                        break;
-                    }
+                if source.next_frame()?.is_none() {
+                    log::warn!("source ended during skip at frame {skipped}/{skip_frames}");
+                    break;
                 }
             }
         }
 
-        // Compute frame limit
-        let frame_limit = reco_core::session::types::compute_frame_limit(
-            self.duration,
-            self.max_frames,
-            info.fps,
-        );
+        // Compute frame limit from end_time and max_frames.
+        let end_limit = self.end_time.map(|end| ((end - start_secs) * fps).round() as u64);
+        let frame_limit = match (end_limit, self.max_frames) {
+            (Some(el), Some(mf)) => {
+                let limit = el.min(mf);
+                if limit == mf {
+                    log::info!("frame limit: {limit} (from max_frames)");
+                } else {
+                    log::info!("frame limit: {limit} (from end_time {:.2}s)", self.end_time.unwrap());
+                }
+                limit
+            }
+            (Some(el), None) => {
+                log::info!("frame limit: {el} (from end_time {:.2}s)", self.end_time.unwrap());
+                el
+            }
+            (None, Some(mf)) => {
+                log::info!("frame limit: {mf} (from max_frames)");
+                mf
+            }
+            (None, None) => u64::MAX,
+        };
 
         // Optional replay recording: wrap the source with a
         // decorator that writes pre-stitch frames to a stacked-video

@@ -73,7 +73,7 @@ pub fn run_export(
     quality_str: String,
     blend: f32,
     start_secs: f32,
-    duration_secs: f32,
+    end_secs: f32,
     autocam_enabled: bool,
     model_path: String,
     tracking_mode: String,
@@ -114,11 +114,12 @@ pub fn run_export(
         } else {
             0
         };
-        let range_total = if duration_secs > 0.0 {
-            (duration_secs as f64 * fps) as u64
+        let end_frames = if end_secs > 0.0 {
+            (end_secs as f64 * fps) as u64
         } else {
-            full_total.saturating_sub(start_frames)
+            full_total
         };
+        let range_total = end_frames.saturating_sub(start_frames);
         let weak = app_weak.clone();
         let _ = slint::invoke_from_event_loop(move || {
             if let Some(app) = weak.upgrade() {
@@ -187,8 +188,8 @@ pub fn run_export(
     if start_secs > 0.0 {
         job = job.start_time(start_secs as f64);
     }
-    if duration_secs > 0.0 {
-        job = job.duration(duration_secs as f64);
+    if end_secs > 0.0 {
+        job = job.end_time(end_secs as f64);
     }
 
     if replay_enabled {
