@@ -111,7 +111,12 @@ impl D3d11StagingPool {
     /// This only validates the wgpu backend and stores the dimensions.
     /// The actual D3D11 device, staging textures, and wgpu imports are
     /// created on the first `stage_frame` call.
-    pub fn new(gpu: &GpuContext, width: u32, height: u32, enable_cuda: bool) -> Result<Self, D3d11InteropError> {
+    pub fn new(
+        gpu: &GpuContext,
+        width: u32,
+        height: u32,
+        enable_cuda: bool,
+    ) -> Result<Self, D3d11InteropError> {
         if !gpu.is_dx12() {
             return Err(D3d11InteropError::NotDx12);
         }
