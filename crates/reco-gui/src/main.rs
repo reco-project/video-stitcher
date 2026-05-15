@@ -3159,13 +3159,18 @@ fn main() -> anyhow::Result<()> {
                 && let Some(tag) = guard.take()
                 && let Some(app) = app_weak.upgrade()
             {
+                        let url = format!(
+                            "https://github.com/reco-project/video-stitcher/releases/tag/{tag}"
+                        );
                         s.toasts.push_with_ttl(
                             Severity::Info,
                             format!("Update available: {tag}"),
-                            "Visit the website to download the latest version.",
-                            Duration::from_secs(15),
+                            "Opening download page in your browser.",
+                            Duration::from_secs(30),
                         );
+                        log::info!("Toast pushed for update {tag}");
                         crate::toast::sync_to_ui(&s.toasts, &app);
+                        let _ = open::that(&url);
             }
 
             // Poll for calibration results from the background thread.

@@ -656,7 +656,11 @@ impl StitchJob {
         }
 
         // Resolve processing window (start_time / end_time / max_frames).
-        let fps = if info.fps > 0.0 { info.fps as f64 } else { 30.0 };
+        let fps = if info.fps > 0.0 {
+            info.fps as f64
+        } else {
+            30.0
+        };
         let start_secs = self.start_time.unwrap_or(0.0);
         let skip_frames = (start_secs * fps).round() as u64;
 
@@ -684,9 +688,7 @@ impl StitchJob {
             log::info!("skipping {skip_frames} frames (start_time={start_secs:.2}s)");
             for skipped in 0..skip_frames {
                 if interrupted.load(Ordering::Relaxed) {
-                    return Err(StitchError::Other(
-                        "cancelled during start skip".into(),
-                    ));
+                    return Err(StitchError::Other("cancelled during start skip".into()));
                 }
                 if source.next_frame()?.is_none() {
                     log::warn!("source ended during skip at frame {skipped}/{skip_frames}");
@@ -696,19 +698,27 @@ impl StitchJob {
         }
 
         // Compute frame limit from end_time and max_frames.
-        let end_limit = self.end_time.map(|end| ((end - start_secs) * fps).round() as u64);
+        let end_limit = self
+            .end_time
+            .map(|end| ((end - start_secs) * fps).round() as u64);
         let frame_limit = match (end_limit, self.max_frames) {
             (Some(el), Some(mf)) => {
                 let limit = el.min(mf);
                 if limit == mf {
                     log::info!("frame limit: {limit} (from max_frames)");
                 } else {
-                    log::info!("frame limit: {limit} (from end_time {:.2}s)", self.end_time.unwrap());
+                    log::info!(
+                        "frame limit: {limit} (from end_time {:.2}s)",
+                        self.end_time.unwrap()
+                    );
                 }
                 limit
             }
             (Some(el), None) => {
-                log::info!("frame limit: {el} (from end_time {:.2}s)", self.end_time.unwrap());
+                log::info!(
+                    "frame limit: {el} (from end_time {:.2}s)",
+                    self.end_time.unwrap()
+                );
                 el
             }
             (None, Some(mf)) => {
