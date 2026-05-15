@@ -352,7 +352,7 @@ impl PoseControl {
     /// `StitchCore::safe_clamp` returns it).
     pub fn clamp_via_coverage(&mut self, coverage: &CoverageBoundary, aspect: f32, rig_tilt: f32) {
         let max_fov = coverage.max_fov_degrees();
-        self.config.fov_max_degrees = self.config.fov_max_degrees.min(max_fov);
+        self.config.fov_max_degrees = max_fov.min(150.0);
         self.target_fov_deg = self.target_fov_deg.min(self.config.fov_max_degrees);
         self.current_fov_deg = self.current_fov_deg.min(self.config.fov_max_degrees);
 
