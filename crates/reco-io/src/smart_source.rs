@@ -77,19 +77,35 @@ enum WindowsDecodeState {
 #[cfg(target_os = "windows")]
 struct WindowsZeroCopyState {
     decode: WindowsDecodeState,
+    /// Holds the D3d11Frame pair from the most recent `next_frame()` call.
+    ///
+    /// The `_frame_ref` inside each D3d11Frame pins the decode pool slice
+    /// in FFmpeg's surface allocator. Without this, the slice is recycled
+    /// as soon as the raw pointers are extracted into `StereoFrame::D3d11Resident`,
+    /// and the decoder thread can overwrite the surface before `stage_frame`
+    /// copies it - causing frame reordering glitches on Intel and NVIDIA.
+    ///
+    /// Dropped when the next pair arrives (or the source is dropped),
+    /// which is always after `stage_frame` has completed for this pair.
+    live_frame_guard: Option<(
+        crate::ffmpeg::decoder::D3d11Frame,
+        crate::ffmpeg::decoder::D3d11Frame,
+    )>,
 }
 
 #[cfg(target_os = "windows")]
 impl WindowsZeroCopyState {
     fn ensure_running(&mut self) {
-        if let WindowsDecodeState::Pending { left, right, sync_offset } =
-            &self.decode
+        if let WindowsDecodeState::Pending {
+            left,
+            right,
+            sync_offset,
+        } = &self.decode
         {
             let left = left.clone();
             let right = right.clone();
             let sync_offset = *sync_offset;
-            let pair_rx =
-                crate::zero_copy::spawn_d3d11_decode_pair(&left, &right, sync_offset);
+            let pair_rx = crate::zero_copy::spawn_d3d11_decode_pair(&left, &right, sync_offset);
             self.decode = WindowsDecodeState::Running {
                 pair_rx,
                 join_handles: Vec::new(),
@@ -469,6 +485,7 @@ impl SmartFileSource {
                     right: right.clone(),
                     sync_offset,
                 },
+                live_frame_guard: None,
             })),
             info,
             pixel_format,
@@ -616,12 +633,21 @@ impl FrameSource for SmartFileSource {
                     _ => unreachable!(),
                 };
                 match pair_rx.recv() {
-                    Ok((left, right)) => Ok(Some(StereoFrame::D3d11Resident {
-                        left_texture: left.texture,
-                        left_slice: left.array_slice,
-                        right_texture: right.texture,
-                        right_slice: right.array_slice,
-                    })),
+                    Ok((left, right)) => {
+                        let stereo = StereoFrame::D3d11Resident {
+                            left_texture: left.texture,
+                            left_slice: left.array_slice,
+                            right_texture: right.texture,
+                            right_slice: right.array_slice,
+                        };
+                        // Keep the D3d11Frame pair alive so FFmpeg doesn't
+                        // recycle the decode pool slices before stage_frame
+                        // copies them. The previous guard is dropped here,
+                        // which is safe because its staging copy already
+                        // completed in the previous loop iteration.
+                        state.live_frame_guard = Some((left, right));
+                        Ok(Some(stereo))
+                    }
                     Err(_) => {
                         self.exhausted = true;
                         Ok(None)
