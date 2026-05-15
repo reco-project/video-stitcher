@@ -52,6 +52,7 @@ pub struct StitchJob {
     max_frames: Option<u64>,
     duration: Option<f64>,
     start_frame: u64,
+    start_time: Option<f64>,
     sync_offset: Option<i64>,
     blend_width: f32,
 
@@ -232,6 +233,7 @@ impl StitchJob {
             max_frames: None,
             duration: None,
             start_frame: 0,
+            start_time: None,
             sync_offset: None,
             blend_width: 0.15,
             on_progress: None,
@@ -327,14 +329,26 @@ impl StitchJob {
 
     /// Skip `n` frames from each input before the first output frame.
     ///
-    /// Combine with [`max_frames`](Self::max_frames) or
-    /// [`duration`](Self::duration) to select a time window, e.g. export
-    /// "0:15 - 0:30" as `.start_frame(450).duration(15.0)` at 30fps.
+    /// For frame-exact positioning (e.g. scripting, automation).
+    /// Takes precedence over [`start_time`](Self::start_time) if both are set.
     ///
     /// Skipped frames are decoded and dropped (no seek), so latency is
     /// proportional to decode rate. Default: `0`.
     pub fn start_frame(mut self, n: u64) -> Self {
         self.start_frame = n;
+        self
+    }
+
+    /// Start at a time offset in seconds.
+    ///
+    /// Converted to a frame index internally using the source's frame rate
+    /// (rounded to the nearest frame). For frame-exact positioning, use
+    /// [`start_frame`](Self::start_frame) instead.
+    ///
+    /// Combine with [`duration`](Self::duration) to select a time window,
+    /// e.g. export "0:15 - 0:30" as `.start_time(15.0).duration(15.0)`.
+    pub fn start_time(mut self, secs: f64) -> Self {
+        self.start_time = Some(secs);
         self
     }
 
@@ -649,6 +663,13 @@ impl StitchJob {
             cfg.encoder_config.inner.encoder_name =
                 crate::ffmpeg::encoder::VideoEncoder::replay_encoder_name(&enc_name)
                     .map(String::from);
+        }
+
+        // Resolve start_time to start_frame (start_frame takes precedence).
+        if self.start_frame == 0 {
+            if let Some(secs) = self.start_time {
+                self.start_frame = (secs * info.fps as f64).round() as u64;
+            }
         }
 
         // Drain-and-discard frames up to start_frame.

@@ -105,8 +105,7 @@ pub fn run_export(
     if let Ok(source) = reco_io::adapters::FfmpegFileSource::open_from_inputs(&left, &right, 0)
         && let Some(full_total) = source.total_frames()
     {
-        let left_path = left.first_path();
-        let fps = reco_io::adapters::FfmpegFileSource::frame_rate(left_path)
+        let fps = reco_io::adapters::FfmpegFileSource::frame_rate(left.first_path())
             .map(|(n, d)| if d != 0 { n as f64 / d as f64 } else { 30.0 })
             .unwrap_or(30.0);
 
@@ -186,8 +185,7 @@ pub fn run_export(
     });
 
     if start_secs > 0.0 {
-        let fps = 30.0; // TODO: probe source FPS
-        job = job.start_frame((start_secs as f64 * fps) as u64);
+        job = job.start_time(start_secs as f64);
     }
     if duration_secs > 0.0 {
         job = job.duration(duration_secs as f64);
