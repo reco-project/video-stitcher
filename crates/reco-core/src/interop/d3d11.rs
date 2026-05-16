@@ -32,7 +32,7 @@ use windows::Win32::Graphics::Direct3D11::{
     ID3D11Texture2D,
 };
 use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
-use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_NV12, DXGI_SAMPLE_DESC};
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_NV12, DXGI_FORMAT_P010, DXGI_SAMPLE_DESC};
 use windows::Win32::Graphics::Dxgi::IDXGIResource1;
 use windows::core::Interface;
 
@@ -97,6 +97,8 @@ pub struct D3d11StagingPool {
     wgpu_device: wgpu::Device,
     width: u32,
     height: u32,
+    /// Pixel format (NV12 8-bit or P010 10-bit).
+    pixel_format: crate::render::renderer::GpuPixelFormat,
     /// Import D3D11 textures into CUDA for GPU-resident detection.
     /// Only needed when the detector uses CUDA EP (OrtGpuDetector).
     /// CUDA imports lock D3D11 textures which blocks wgpu compute access.
@@ -116,6 +118,7 @@ impl D3d11StagingPool {
         width: u32,
         height: u32,
         enable_cuda: bool,
+        pixel_format: crate::render::renderer::GpuPixelFormat,
     ) -> Result<Self, D3d11InteropError> {
         if !gpu.is_dx12() {
             return Err(D3d11InteropError::NotDx12);
@@ -125,6 +128,7 @@ impl D3d11StagingPool {
             wgpu_device: gpu.device().clone(),
             width,
             height,
+            pixel_format,
             enable_cuda,
             state: None,
         })
@@ -173,13 +177,17 @@ impl D3d11StagingPool {
             query.ok_or_else(|| D3d11InteropError::D3d11("CreateQuery returned None".into()))?
         };
 
-        // Create 4 NV12 staging textures with shared handles on FFmpeg's device.
+        // Create 4 staging textures with shared handles on FFmpeg's device.
+        let dxgi_format = match self.pixel_format {
+            crate::render::renderer::GpuPixelFormat::P010 => DXGI_FORMAT_P010,
+            _ => DXGI_FORMAT_NV12,
+        };
         let desc = D3D11_TEXTURE2D_DESC {
             Width: self.width,
             Height: self.height,
             MipLevels: 1,
             ArraySize: 1,
-            Format: DXGI_FORMAT_NV12,
+            Format: dxgi_format,
             SampleDesc: DXGI_SAMPLE_DESC {
                 Count: 1,
                 Quality: 0,
@@ -212,7 +220,13 @@ impl D3d11StagingPool {
 
             // Import into wgpu via DX12 HAL.
             let wgpu_texture = unsafe {
-                import_d3d11_shared_handle(&self.wgpu_device, handle, self.width, self.height)?
+                import_d3d11_shared_handle(
+                    &self.wgpu_device,
+                    handle,
+                    self.width,
+                    self.height,
+                    self.pixel_format.wgpu_format(),
+                )?
             };
 
             // Import into CUDA for AI detection (NVIDIA only, non-fatal).
@@ -237,10 +251,10 @@ impl D3d11StagingPool {
                 let _ = CloseHandle(handle);
             }
 
-            // Create NV12 plane views.
+            // Create Y/UV plane views (R8/Rg8 for NV12, R16/Rg16 for P010).
             let y_view = wgpu_texture.create_view(&wgpu::TextureViewDescriptor {
                 label: Some(&format!("d3d11_y_{i}")),
-                format: Some(wgpu::TextureFormat::R8Unorm),
+                format: Some(self.pixel_format.y_format()),
                 dimension: None,
                 aspect: wgpu::TextureAspect::Plane0,
                 base_mip_level: 0,
@@ -251,7 +265,7 @@ impl D3d11StagingPool {
             });
             let uv_view = wgpu_texture.create_view(&wgpu::TextureViewDescriptor {
                 label: Some(&format!("d3d11_uv_{i}")),
-                format: Some(wgpu::TextureFormat::Rg8Unorm),
+                format: Some(self.pixel_format.uv_format()),
                 dimension: None,
                 aspect: wgpu::TextureAspect::Plane1,
                 base_mip_level: 0,
@@ -268,9 +282,10 @@ impl D3d11StagingPool {
         }
 
         log::info!(
-            "D3D11VA staging pool ready: {}x{} NV12, 4 slots (same-device)",
+            "D3D11VA staging pool ready: {}x{} {:?}, 4 slots (same-device)",
             self.width,
-            self.height
+            self.height,
+            self.pixel_format
         );
 
         // CUDA imports lock D3D11 textures, blocking wgpu compute access.
@@ -449,6 +464,7 @@ unsafe fn import_d3d11_shared_handle(
     handle: HANDLE,
     width: u32,
     height: u32,
+    format: wgpu::TextureFormat,
 ) -> Result<wgpu::Texture, D3d11InteropError> {
     use wgpu::hal::api::Dx12;
 
@@ -468,7 +484,7 @@ unsafe fn import_d3d11_shared_handle(
     let hal_texture = unsafe {
         wgpu::hal::dx12::Device::texture_from_raw(
             d3d12_resource,
-            wgpu::TextureFormat::NV12,
+            format,
             wgpu::TextureDimension::D2,
             wgpu::Extent3d {
                 width,
@@ -481,7 +497,7 @@ unsafe fn import_d3d11_shared_handle(
     };
 
     let desc = wgpu::TextureDescriptor {
-        label: Some("d3d11_staging_nv12"),
+        label: Some("d3d11_staging"),
         size: wgpu::Extent3d {
             width,
             height,
@@ -490,7 +506,7 @@ unsafe fn import_d3d11_shared_handle(
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::NV12,
+        format,
         usage: wgpu::TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
     };

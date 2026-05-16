@@ -209,6 +209,14 @@ impl GpuPixelFormat {
             Self::P010 => 2,
         }
     }
+
+    /// wgpu texture format for the full NV12/P010 texture (used for D3D11 import).
+    pub fn wgpu_format(self) -> wgpu::TextureFormat {
+        match self {
+            Self::Nv12 => wgpu::TextureFormat::NV12,
+            Self::P010 => wgpu::TextureFormat::P010,
+        }
+    }
 }
 
 /// The GPU renderer for panoramic stitching.

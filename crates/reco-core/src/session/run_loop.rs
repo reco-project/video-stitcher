@@ -15,6 +15,7 @@ impl StitchSession {
     /// Called at the start of [`run`](Self::run). Applies rotation from
     /// the source's metadata.
     fn configure_from_source(&mut self, source: &dyn FrameSource) {
+        self.gpu_pixel_format = source.gpu_pixel_format();
         // Apply rotation via shader UV flip ONLY for GPU-resident sources.
         // CPU sources handle rotation via buffer reversal in the decoder,
         // so applying the shader flip too would rotate 360 degrees (no-op but wrong).
