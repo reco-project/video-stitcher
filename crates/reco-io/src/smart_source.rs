@@ -35,6 +35,7 @@ pub struct SmartFileSource {
     mode: SourceMode,
     info: SourceInfo,
     pixel_format: GpuPixelFormat,
+    full_range: bool,
     left_rotation: i32,
     right_rotation: i32,
     /// Human-readable description of the active decode path.
@@ -163,6 +164,7 @@ impl SmartFileSource {
             total_frames: None,
         };
         let pixel_format = probe.pixel_format();
+        let full_range = probe.is_full_range();
         let left_rotation = probe.rotation();
         let decode_backend = probe.backend();
         drop(probe);
@@ -198,6 +200,7 @@ impl SmartFileSource {
                 sync_offset,
                 info,
                 pixel_format,
+                full_range,
                 left_rotation,
                 right_rotation,
             )
@@ -208,6 +211,7 @@ impl SmartFileSource {
                 sync_offset,
                 info,
                 pixel_format,
+                full_range,
                 left_rotation,
                 right_rotation,
             )
@@ -236,6 +240,7 @@ impl SmartFileSource {
             total_frames: None,
         };
         let pixel_format = probe.pixel_format();
+        let full_range = probe.is_full_range();
         let left_rotation = probe.rotation();
         drop(probe);
 
@@ -252,6 +257,7 @@ impl SmartFileSource {
             sync_offset,
             info,
             pixel_format,
+            full_range,
             left_rotation,
             right_rotation,
         )
@@ -263,19 +269,22 @@ impl SmartFileSource {
         sync_offset: i64,
         info: SourceInfo,
         pixel_format: GpuPixelFormat,
+        full_range: bool,
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
         let source = crate::adapters::FfmpegFileSource::open_from_inputs(left, right, sync_offset)?;
         log::info!(
-            "SmartFileSource: CPU decode ({}x{}, {pixel_format:?})",
+            "SmartFileSource: CPU decode ({}x{}, {pixel_format:?}{})",
             info.width,
-            info.height
+            info.height,
+            if full_range { ", full-range" } else { "" }
         );
         Ok(Self {
             mode: SourceMode::Cpu(source),
             info,
             pixel_format,
+            full_range,
             left_rotation,
             right_rotation,
             decode_mode: "CPU upload",
@@ -292,6 +301,7 @@ impl SmartFileSource {
         sync_offset: i64,
         info: SourceInfo,
         pixel_format: GpuPixelFormat,
+        full_range: bool,
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
@@ -426,6 +436,7 @@ impl SmartFileSource {
             })),
             info,
             pixel_format,
+            full_range,
             left_rotation,
             right_rotation,
             decode_mode: "GPU zero-copy (CUDA/Vulkan)",
@@ -663,6 +674,10 @@ impl FrameSource for SmartFileSource {
 
     fn gpu_pixel_format(&self) -> GpuPixelFormat {
         self.pixel_format
+    }
+
+    fn is_full_range(&self) -> bool {
+        self.full_range
     }
 
     fn left_rotation(&self) -> i32 {

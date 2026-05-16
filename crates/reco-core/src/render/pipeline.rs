@@ -726,6 +726,10 @@ impl StitchPipeline {
         self.renderer.set_flip_180(left, right);
     }
 
+    pub fn set_full_range(&mut self, full_range: bool) {
+        self.renderer.set_full_range(full_range);
+    }
+
     /// Access the rendered RGBA texture for NV12 conversion.
     pub fn render_target(&self) -> &wgpu::Texture {
         self.renderer.render_target()

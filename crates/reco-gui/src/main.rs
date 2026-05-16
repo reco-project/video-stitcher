@@ -1087,7 +1087,11 @@ fn init_tracing() {
         }
         // Truncate if over 2 MB to prevent unbounded growth, otherwise append
         // so crash logs survive a restart.
-        if log_path.metadata().map(|m| m.len() > 2_000_000).unwrap_or(false) {
+        if log_path
+            .metadata()
+            .map(|m| m.len() > 2_000_000)
+            .unwrap_or(false)
+        {
             let _ = std::fs::remove_file(&log_path);
         }
         let file_result = std::fs::File::options()
@@ -1095,7 +1099,10 @@ fn init_tracing() {
             .append(true)
             .open(&log_path);
         if let Err(ref e) = file_result {
-            eprintln!("Warning: could not open log file {}: {e}", log_path.display());
+            eprintln!(
+                "Warning: could not open log file {}: {e}",
+                log_path.display()
+            );
         }
         if let Ok(file) = file_result {
             // Windows: file only (stderr is detached by windows_subsystem="windows").

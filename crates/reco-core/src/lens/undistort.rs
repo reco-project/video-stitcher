@@ -329,7 +329,8 @@ impl GpuUndistort {
         let ortho = Orthographic3::new(-0.5, 0.5, -hh, hh, -1.0, 1.0);
         let mvp = opengl_to_wgpu_matrix() * ortho.to_homogeneous();
 
-        let uniforms = build_gpu_uniforms(&mvp, params, false, 0.0, InputFormat::Yuv420p, false);
+        let uniforms =
+            build_gpu_uniforms(&mvp, params, false, 0.0, InputFormat::Yuv420p, false, false);
         gpu.queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
 

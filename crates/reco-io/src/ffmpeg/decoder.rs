@@ -214,6 +214,7 @@ pub struct VideoDecoder {
     backend: DecodeBackend,
     rotation: i32,
     is_10bit: bool,
+    is_full_range: bool,
     decoded_frame: VideoFrame,
     sw_frame: VideoFrame,
     converted_frame: VideoFrame,
@@ -384,6 +385,20 @@ impl VideoDecoder {
             }
         };
 
+        let is_full_range = {
+            let raw_codecpar = unsafe { &*stream.parameters().as_ptr() };
+            let format = Pixel::from(raw_i32_to_pix_fmt(raw_codecpar.format));
+            let yuvj = matches!(format, Pixel::YUVJ420P | Pixel::YUVJ422P | Pixel::YUVJ444P);
+            let range_jpeg = raw_codecpar.color_range == ffi::AVColorRange::AVCOL_RANGE_JPEG;
+            if yuvj || range_jpeg {
+                log::info!(
+                    "Source is full-range YUV (format={format:?}, color_range={:?})",
+                    raw_codecpar.color_range
+                );
+            }
+            yuvj || range_jpeg
+        };
+
         log::debug!(
             "Decoder: {}x{} {:?}, time_base={}/{}, backend={}",
             width,
@@ -410,6 +425,7 @@ impl VideoDecoder {
             backend,
             rotation,
             is_10bit,
+            is_full_range,
             decoded_frame: VideoFrame::empty(),
             sw_frame: VideoFrame::empty(),
             converted_frame: VideoFrame::empty(),
@@ -504,6 +520,11 @@ impl VideoDecoder {
         } else {
             reco_core::render::renderer::GpuPixelFormat::Nv12
         }
+    }
+
+    /// Whether the source uses full-range YUV (0-255) rather than limited range (16-235).
+    pub fn is_full_range(&self) -> bool {
+        self.is_full_range
     }
 
     /// Rotation from stream metadata (0, 90, 180, 270 degrees).
