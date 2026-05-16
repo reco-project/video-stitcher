@@ -3303,7 +3303,10 @@ fn main() -> anyhow::Result<()> {
                             );
                             app.set_last_output_path(path.display().to_string().into());
                             if let Some(ref t) = s.telemetry {
-                                t.export_complete(frames, 0.0, "");
+                                let fps = s.playback.fps();
+                                let dur = if fps > 0.0 { frames as f64 / fps } else { 0.0 };
+                                let codec = app.get_export_codec().to_string();
+                                t.export_complete(frames, dur, &codec);
                             }
                             s.toasts.push(
                                 Severity::Info,
@@ -3654,6 +3657,20 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                             .unwrap_or_else(|| "reco".into())
                     ));
                     app.set_export_output_path(suggested.to_string_lossy().to_string().into());
+                }
+
+                if let Some(ref t) = s.telemetry {
+                    let gpu = s
+                        .bridge
+                        .as_ref()
+                        .map(|b| {
+                            let g = b.renderer().gpu();
+                            format!("{} ({:?})", g.gpu_name(), g.backend_name())
+                        })
+                        .unwrap_or_else(|| "unknown".into());
+                    let os = format!("{} {}", std::env::consts::OS, std::env::consts::ARCH);
+                    let (ai_status, _) = ai_capability_summary();
+                    t.context(&gpu, &os, &ai_status);
                 }
             }
         }
