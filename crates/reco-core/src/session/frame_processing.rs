@@ -355,7 +355,7 @@ impl StitchSession {
             )?);
             log::info!("Metal zero-copy: texture cache initialized");
         }
-        let cache = self.metal_texture_cache.as_ref().unwrap();
+        let cache = self.metal_texture_cache.as_mut().unwrap();
 
         // SAFETY: RetainedCVPixelBuffer guarantees the pointer is valid.
         let (left_y, left_uv) = unsafe { cache.import_nv12(left.as_ptr(), self.core.gpu())? };

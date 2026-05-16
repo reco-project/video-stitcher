@@ -210,6 +210,7 @@ unsafe impl Send for RetainedCVPixelBuffer {}
 /// Create one per `GpuContext` and reuse across frames.
 pub struct MetalTextureCache {
     cv_cache: CVMetalTextureCacheRef,
+    logged_format: bool,
 }
 
 // CVMetalTextureCacheRef is thread-safe per Apple docs.
@@ -251,7 +252,10 @@ impl MetalTextureCache {
             return Err(MetalInteropError::CacheCreationFailed(ret));
         }
 
-        Ok(Self { cv_cache: cache })
+        Ok(Self {
+            cv_cache: cache,
+            logged_format: false,
+        })
     }
 
     /// Flush stale entries from the texture cache.
@@ -337,7 +341,7 @@ impl MetalTextureCache {
     ///
     /// `cv_pixel_buffer` must be a valid, non-null `CVPixelBufferRef`.
     pub unsafe fn import_nv12(
-        &self,
+        &mut self,
         cv_pixel_buffer: CVPixelBufferRef,
         gpu: &GpuContext,
     ) -> Result<(ImportedPlaneTexture, ImportedPlaneTexture), MetalInteropError> {
@@ -349,6 +353,19 @@ impl MetalTextureCache {
             | K_CV_PIXEL_FORMAT_420_YP_CB_CR_10_BI_PLANAR_FULL_RANGE => true,
             _ => return Err(MetalInteropError::UnsupportedFormat(format)),
         };
+
+        if !self.logged_format {
+            let w = unsafe { CVPixelBufferGetWidthOfPlane(cv_pixel_buffer, 0) };
+            let h = unsafe { CVPixelBufferGetHeightOfPlane(cv_pixel_buffer, 0) };
+            log::info!(
+                "Metal import: {}x{} {} (FourCC 0x{:08x})",
+                w,
+                h,
+                if is_10bit { "P010 10-bit" } else { "NV12 8-bit" },
+                format
+            );
+            self.logged_format = true;
+        }
 
         let y = unsafe { self.import_plane(cv_pixel_buffer, 0, is_10bit, gpu)? };
         let uv = unsafe { self.import_plane(cv_pixel_buffer, 1, is_10bit, gpu)? };
