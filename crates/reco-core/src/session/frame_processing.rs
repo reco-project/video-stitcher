@@ -107,20 +107,57 @@ impl StitchSession {
                 left_slot,
                 right_slot,
             } => {
-                if let Some((left_buf, right_buf)) = &ctx.gpu_buf_info {
-                    self.detect_and_update_director_gpu(
-                        left_buf,
-                        right_buf,
-                        *left_slot,
-                        *right_slot,
-                        elapsed,
-                    )?;
+                if self.detection.needs_cuda_frames() {
+                    if self.frame_count == 0 {
+                        log::info!("GpuResident detection: CUDA path (TensorRT/ORT-CUDA)");
+                    }
+                    if let Some((left_buf, right_buf)) = &ctx.gpu_buf_info {
+                        self.detect_and_update_director_gpu(
+                            left_buf,
+                            right_buf,
+                            *left_slot,
+                            *right_slot,
+                            elapsed,
+                        )?;
+                        scheduled_detection
+                    } else {
+                        if self.frame_count == 0 {
+                            log::warn!(
+                                "GpuResident frame but no gpu_buf_info - detection disabled, \
+                                 director advancing without detections"
+                            );
+                        }
+                        self.update_director(elapsed)?;
+                        false
+                    }
+                } else if let Some(ref views) = self.gpu_shared_views {
+                    if self.frame_count == 0 {
+                        log::info!("GpuResident detection: wgpu shared texture views (ORT/wgpu preprocess)");
+                    }
+                    let ls = *left_slot as usize;
+                    let rs = *right_slot as usize;
+                    let (w, h) = self.core.pipeline().source_info();
+                    let lr = self.left_rotation;
+                    let rr = self.right_rotation;
+                    if scheduled_detection {
+                        let detections = self.detection.run_detection_wgpu_nv12(
+                            &views[ls * 2],
+                            &views[ls * 2 + 1],
+                            &views[4 + rs * 2],
+                            &views[4 + rs * 2 + 1],
+                            w,
+                            h,
+                            lr,
+                            rr,
+                        );
+                        self.detection.last_detections = self.map_detections(detections);
+                    }
+                    self.fire_sink_and_update_director(elapsed, scheduled_detection)?;
                     scheduled_detection
                 } else {
                     if self.frame_count == 0 {
                         log::warn!(
-                            "GpuResident frame but no gpu_buf_info - detection disabled, \
-                             director advancing without detections"
+                            "GpuResident frame but no shared views - detection disabled"
                         );
                     }
                     self.update_director(elapsed)?;
