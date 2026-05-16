@@ -190,6 +190,9 @@ impl GpuContext {
         {
             features |= wgpu::Features::TEXTURE_FORMAT_NV12;
         }
+        // P010 is only needed on Windows (D3D11VA imports 10-bit as a single
+        // P010 texture). Metal uses per-plane R16Unorm/Rg16Unorm instead.
+        #[cfg(target_os = "windows")]
         if adapter
             .features()
             .contains(wgpu::Features::TEXTURE_FORMAT_P010)
