@@ -1085,7 +1085,19 @@ fn init_tracing() {
         if let Some(parent) = log_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        if let Ok(file) = std::fs::File::create(&log_path) {
+        // Truncate if over 2 MB to prevent unbounded growth, otherwise append
+        // so crash logs survive a restart.
+        if log_path.metadata().map(|m| m.len() > 2_000_000).unwrap_or(false) {
+            let _ = std::fs::remove_file(&log_path);
+        }
+        let file_result = std::fs::File::options()
+            .create(true)
+            .append(true)
+            .open(&log_path);
+        if let Err(ref e) = file_result {
+            eprintln!("Warning: could not open log file {}: {e}", log_path.display());
+        }
+        if let Ok(file) = file_result {
             // Windows: file only (stderr is detached by windows_subsystem="windows").
             // Mac/Linux: file + stderr (user may launch from terminal).
             #[cfg(target_os = "windows")]
@@ -1138,7 +1150,7 @@ fn init_tracing() {
 ///
 /// - Windows: next to executable (`reco-gui.log`)
 /// - macOS: `~/Library/Logs/reco-gui.log`
-/// - Linux: `~/.config/reco/reco-gui.log`
+/// - Linux: `~/.local/state/reco/reco-gui.log` (XDG_STATE_HOME)
 fn log_file_path() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "windows")]
     {
@@ -1154,13 +1166,13 @@ fn log_file_path() -> Option<std::path::PathBuf> {
     }
     #[cfg(target_os = "linux")]
     {
-        std::env::var("XDG_CONFIG_HOME")
+        std::env::var("XDG_STATE_HOME")
             .ok()
             .map(std::path::PathBuf::from)
             .or_else(|| {
                 std::env::var("HOME")
                     .ok()
-                    .map(|h| std::path::PathBuf::from(h).join(".config"))
+                    .map(|h| std::path::PathBuf::from(h).join(".local/state"))
             })
             .map(|d| d.join("reco/reco-gui.log"))
     }
