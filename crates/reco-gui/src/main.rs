@@ -810,6 +810,23 @@ impl AppState {
         self.clamp_targets();
     }
 
+    fn set_sync_offset(&mut self, frames: i32) {
+        let offset = frames as i64;
+        if let Some(cal) = self.calibration.as_mut() {
+            cal.sync_offset = offset;
+        }
+        if let (Some(left), Some(right)) = (&self.left_path, &self.right_path) {
+            let left = left.clone();
+            let right = right.clone();
+            if let Err(e) = self.playback.open(&left, &right, offset) {
+                log::error!("Failed to reopen playback with sync offset {offset}: {e}");
+                return;
+            }
+            log::info!("Sync offset changed to {offset} frames");
+            self.preview_dirty = true;
+        }
+    }
+
     fn set_rig_roll(&mut self, deg: f32) {
         if let Some(cal) = self.calibration.as_mut() {
             cal.rig_roll = deg as f64;
@@ -2421,6 +2438,15 @@ fn main() -> anyhow::Result<()> {
     });
 
     let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
+    app.on_changed_sync_offset(move |frames| {
+        state_ref.borrow_mut().set_sync_offset(frames);
+        if let Some(app) = app_weak.upgrade() {
+            app.set_cal_dirty(true);
+        }
+    });
+
+    let state_ref = Rc::clone(&state);
     app.on_changed_fov(move |deg| {
         state_ref.borrow_mut().set_fov(deg);
     });
@@ -3600,6 +3626,9 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 if let Some(bw) = blend_width {
                     app.set_blend_width(bw);
                 }
+                if let Some(cal) = s.calibration.as_ref() {
+                    app.set_sync_offset(cal.sync_offset as i32);
+                }
                 app.set_fov(clamped_fov);
                 // Manual calibration JSON does not embed lens-profile info,
                 // so clear the display (hide the lens card) and just show
@@ -3814,6 +3843,9 @@ fn handle_calibration_result(
                         }
                         if let Some(bw) = blend_width {
                             app.set_blend_width(bw);
+                        }
+                        if let Some(cal) = state.calibration.as_ref() {
+                            app.set_sync_offset(cal.sync_offset as i32);
                         }
                         app.set_fov(clamped_fov);
                         set_lens_profile_props(&app, left_profile, right_profile, in_w, in_h);

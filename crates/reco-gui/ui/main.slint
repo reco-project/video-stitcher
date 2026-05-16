@@ -267,6 +267,7 @@ export component RecoApp inherits Window {
     in-out property <float> blend-width: 0.05;
     in-out property <float> rig-tilt: 0.0; // degrees
     in-out property <float> rig-roll: 0.0; // degrees
+    in-out property <int> sync-offset: 0;  // frames
 
     // Live calibration adjustments (PlaneLayout fields on MatchCalibration).
     // Updating these re-runs StitchPipeline::update_layout() so the user
@@ -441,6 +442,7 @@ export component RecoApp inherits Window {
     callback changed-blend-width(float);
     callback changed-rig-tilt(float);
     callback changed-rig-roll(float);
+    callback changed-sync-offset(int);
     callback changed-fov(float);
     // Live calibration editing.
     callback changed-cal-intersect(float);
@@ -905,6 +907,16 @@ export component RecoApp inherits Window {
                             suffix: "°";
                             decimals: 1;
                             changed(v) => { root.changed-rig-roll(v); }
+                        }
+
+                        if root.files-loaded: LabeledSlider {
+                            label: "Sync offset";
+                            minimum: -300;
+                            maximum: 300;
+                            value: root.sync-offset;
+                            suffix: " frames";
+                            decimals: 0;
+                            changed(v) => { root.sync-offset = round(v); root.changed-sync-offset(round(v)); }
                         }
 
                         if root.files-loaded && (root.cal-dirty || root.lens-dirty): Button {
