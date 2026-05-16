@@ -3915,6 +3915,9 @@ fn handle_calibration_result(
         }
         Err(e) => {
             log::error!("Auto-calibration failed: {e}");
+            if let Some(ref t) = state.telemetry {
+                t.calibration_error(&e.to_string());
+            }
             // Critical: unload the live pipeline so the preview stops
             // rendering whatever it was showing before. Otherwise the
             // preview keeps playing the OLD right/left video while the

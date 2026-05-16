@@ -78,6 +78,10 @@ impl TelemetryClient {
 
         thread::spawn(move || {
             let version = env!("CARGO_PKG_VERSION").to_string();
+            let agent = ureq::Agent::config_builder()
+                .timeout_global(Some(std::time::Duration::from_secs(5)))
+                .build()
+                .new_agent();
             while let Ok(event) = rx.recv() {
                 let batch = Batch {
                     schema_version: 1,
@@ -99,7 +103,8 @@ impl TelemetryClient {
                     }
                 };
 
-                match ureq::post(ENDPOINT)
+                match agent
+                    .post(ENDPOINT)
                     .header("Content-Type", "application/json")
                     .send(json.as_str())
                 {
@@ -174,6 +179,15 @@ impl TelemetryClient {
             Some(serde_json::json!({
                 "confidence": confidence,
                 "matches": matches,
+            })),
+        );
+    }
+
+    pub fn calibration_error(&self, error: &str) {
+        self.send(
+            "calibration_error",
+            Some(serde_json::json!({
+                "error_message": &error[..error.len().min(500)],
             })),
         );
     }
