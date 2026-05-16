@@ -327,6 +327,23 @@ fn build_bug_report(state: &AppState, app_weak: &slint::Weak<RecoApp>) -> String
          <!-- 1. ... 2. ... 3. ... -->\n",
     );
 
+    if let Some(log_path) = log_file_path()
+        && let Ok(contents) = std::fs::read_to_string(&log_path)
+    {
+        let lines: Vec<&str> = contents.lines().collect();
+        let tail = if lines.len() > 200 {
+            &lines[lines.len() - 200..]
+        } else {
+            &lines
+        };
+        report.push_str("\n## Log (last 200 lines)\n```\n");
+        for line in tail {
+            report.push_str(line);
+            report.push('\n');
+        }
+        report.push_str("```\n");
+    }
+
     report
 }
 
@@ -1044,27 +1061,53 @@ fn init_tracing() {
     let _ = tracing_log::LogTracer::init();
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
-    // On Windows release builds, windows_subsystem="windows" detaches
-    // stderr so tracing output is lost. Write to a log file alongside
-    // the executable so we can always diagnose startup failures.
-    #[cfg(all(target_os = "windows", not(debug_assertions)))]
-    {
-        let log_path = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.join("reco-gui.log")))
-            .unwrap_or_else(|| std::path::PathBuf::from("reco-gui.log"));
+    // In release builds, write logs to a file so bug reports have context.
+    // Debug builds just use stderr.
+    #[cfg(not(debug_assertions))]
+    if let Some(log_path) = log_file_path() {
+        if let Some(parent) = log_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
         if let Ok(file) = std::fs::File::create(&log_path) {
-            let _ = tracing_subscriber::registry()
-                .with(filter)
-                .with(
-                    fmt::layer()
-                        .with_target(true)
-                        .with_level(true)
-                        .with_ansi(false)
-                        .with_writer(file),
-                )
-                .try_init();
-            return;
+            // Windows: file only (stderr is detached by windows_subsystem="windows").
+            // Mac/Linux: file + stderr (user may launch from terminal).
+            #[cfg(target_os = "windows")]
+            {
+                let _ = tracing_subscriber::registry()
+                    .with(filter)
+                    .with(
+                        fmt::layer()
+                            .with_target(true)
+                            .with_level(true)
+                            .with_ansi(false)
+                            .with_writer(file),
+                    )
+                    .try_init();
+                eprintln!("Log file: {}", log_path.display());
+                return;
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let file = std::sync::Mutex::new(file);
+                let _ = tracing_subscriber::registry()
+                    .with(filter)
+                    .with(
+                        fmt::layer()
+                            .with_target(true)
+                            .with_level(true)
+                            .with_ansi(false)
+                            .with_writer(file),
+                    )
+                    .with(
+                        fmt::layer()
+                            .with_target(true)
+                            .with_level(true)
+                            .with_writer(std::io::stderr),
+                    )
+                    .try_init();
+                eprintln!("Log file: {}", log_path.display());
+                return;
+            }
         }
     }
 
@@ -1072,6 +1115,38 @@ fn init_tracing() {
         .with(filter)
         .with(fmt::layer().with_target(true).with_level(true))
         .try_init();
+}
+
+/// Platform-appropriate log file path.
+///
+/// - Windows: next to executable (`reco-gui.log`)
+/// - macOS: `~/Library/Logs/reco-gui.log`
+/// - Linux: `~/.config/reco/reco-gui.log`
+fn log_file_path() -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("reco-gui.log")))
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::env::var("HOME")
+            .ok()
+            .map(|h| std::path::PathBuf::from(h).join("Library/Logs/reco-gui.log"))
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::env::var("XDG_CONFIG_HOME")
+            .ok()
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                std::env::var("HOME")
+                    .ok()
+                    .map(|h| std::path::PathBuf::from(h).join(".config"))
+            })
+            .map(|d| d.join("reco/reco-gui.log"))
+    }
 }
 
 /// Panic hook: emit panic location + payload as a `tracing::error!`
