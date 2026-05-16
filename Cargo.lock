@@ -950,9 +950,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.60"
+version = "1.2.62"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43c5703da9466b66a946814e1adf53ea2c90f10063b86290cc9eb67ce3478a20"
+checksum = "a1dce859f0832a7d088c4f1119888ab94ef4b5d6795d1ce05afb7fe159d79f98"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -5385,7 +5385,7 @@ dependencies = [
 
 [[package]]
 name = "reco-autocam"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "log",
  "reco-core",
@@ -5396,7 +5396,7 @@ dependencies = [
 
 [[package]]
 name = "reco-calibrate"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "approx",
  "argmin",
@@ -5425,7 +5425,7 @@ dependencies = [
 
 [[package]]
 name = "reco-cli"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -5448,7 +5448,7 @@ dependencies = [
 
 [[package]]
 name = "reco-control"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "log",
  "reco-core",
@@ -5461,7 +5461,7 @@ dependencies = [
 
 [[package]]
 name = "reco-core"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "approx",
  "ash",
@@ -5490,7 +5490,7 @@ dependencies = [
 
 [[package]]
 name = "reco-detect"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "block2 0.6.2",
  "bytemuck",
@@ -5513,7 +5513,7 @@ dependencies = [
 
 [[package]]
 name = "reco-gui"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "arboard",
@@ -5541,7 +5541,7 @@ dependencies = [
 
 [[package]]
 name = "reco-io"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "directories",
  "ffmpeg-next",
@@ -5559,7 +5559,7 @@ dependencies = [
 
 [[package]]
 name = "reco-obs"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "bindgen",
  "cc",
