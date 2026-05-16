@@ -190,6 +190,9 @@ impl GpuContext {
         {
             features |= wgpu::Features::TEXTURE_FORMAT_NV12;
         }
+        // P010 is only needed on Windows (D3D11VA imports 10-bit as a single
+        // P010 texture). Metal uses per-plane R16Unorm/Rg16Unorm instead.
+        #[cfg(target_os = "windows")]
         if adapter
             .features()
             .contains(wgpu::Features::TEXTURE_FORMAT_P010)
@@ -197,7 +200,9 @@ impl GpuContext {
             features |= wgpu::Features::TEXTURE_FORMAT_P010;
         }
 
+        log::info!("Requesting device with features: {:?}", features);
         let (device, queue) = Self::request_device_with_fallback(&adapter, features).await?;
+        log::info!("Device created successfully");
 
         Ok(Self {
             device,
@@ -331,7 +336,9 @@ impl GpuContext {
             features |= wgpu::Features::TEXTURE_FORMAT_NV12;
         }
 
+        log::info!("Requesting device with features: {:?}", features);
         let (device, queue) = Self::request_device_with_fallback(&adapter, features).await?;
+        log::info!("Device created successfully");
 
         let ctx = Self {
             device,

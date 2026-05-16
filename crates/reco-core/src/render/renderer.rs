@@ -234,6 +234,8 @@ pub(crate) struct Renderer {
     output_height: u32,
     /// Input pixel format (YUV420P or NV12).
     input_format: InputFormat,
+    /// Full-range YUV (0-255) instead of limited (16-235).
+    is_full_range: bool,
     /// Stored for creating bind groups from external textures (zero-copy).
     texture_layout: wgpu::BindGroupLayout,
     /// Shared sampler, stored for bind group creation.
@@ -425,6 +427,7 @@ impl Renderer {
             output_width,
             output_height,
             input_format,
+            is_full_range: false,
             texture_layout,
             sampler,
             device: device.clone(),
@@ -760,6 +763,11 @@ impl Renderer {
         self.flip_180 = [left, right];
     }
 
+    /// Set full-range YUV mode for the shader.
+    pub fn set_full_range(&mut self, full_range: bool) {
+        self.is_full_range = full_range;
+    }
+
     /// Create fresh `TextureView`s for the left plane's Y/U/V
     /// textures. Needed by [`crate::gpu::yuv_stack_packer::YuvStackPacker`]
     /// when replay recording is enabled: the packer samples the same
@@ -846,6 +854,7 @@ impl Renderer {
             blend_width,
             self.input_format,
             self.flip_180[0],
+            self.is_full_range,
         );
         left_uniforms.lens_preview[0] = correction;
 
@@ -857,6 +866,7 @@ impl Renderer {
             blend_width,
             self.input_format,
             self.flip_180[1],
+            self.is_full_range,
         );
         right_uniforms.lens_preview[0] = correction;
 
@@ -1231,6 +1241,7 @@ pub(crate) fn build_gpu_uniforms(
     blend_width: f32,
     input_format: InputFormat,
     flip_180: bool,
+    is_full_range: bool,
 ) -> GpuUniforms {
     let w = camera.width as f32;
     let h = camera.height as f32;
@@ -1258,7 +1269,7 @@ pub(crate) fn build_gpu_uniforms(
                 InputFormat::Bgra => 2,
             },
             flip_180 as u32,
-            0,
+            is_full_range as u32,
         ],
         // Full correction for normal stitching. LensPreviewRenderer
         // overrides this field for the single-camera preview mode.
@@ -1307,7 +1318,15 @@ mod tests {
             d: [0.0342, 0.0677, -0.0741, 0.0299],
         };
         let mvp = Matrix4::identity();
-        let u = build_gpu_uniforms(&mvp, &camera, false, 0.0, InputFormat::Yuv420p, false);
+        let u = build_gpu_uniforms(
+            &mvp,
+            &camera,
+            false,
+            0.0,
+            InputFormat::Yuv420p,
+            false,
+            false,
+        );
 
         // fx/width ≈ 0.4678
         assert!((u.intrinsics[0] - 1796.32 / 3840.0).abs() < 1e-4);

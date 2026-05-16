@@ -379,6 +379,11 @@ pub trait FrameSource: Send {
         crate::render::renderer::GpuPixelFormat::Nv12
     }
 
+    /// Whether the source uses full-range YUV (0-255) rather than limited (16-235).
+    fn is_full_range(&self) -> bool {
+        false
+    }
+
     /// Left camera rotation from stream metadata (degrees: 0, 90, 180, 270).
     ///
     /// The session applies rotation automatically: the CPU path handles it

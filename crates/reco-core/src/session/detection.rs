@@ -473,7 +473,8 @@ impl DetectionPipeline {
     /// Dispatches `DetectorFrame::WgpuNv12` to the detector. The detector
     /// (typically `WgpuPreprocessingDetector` from reco-autocam) handles
     /// the compute shader preprocessing internally.
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn run_detection_wgpu_nv12(
         &mut self,
         left_y: &wgpu::TextureView,

@@ -159,6 +159,8 @@ pub struct StitchSession {
     pub(crate) right_rotation: i32,
     /// GPU pixel format (NV12 or P010) for D3D11VA staging pool creation.
     pub(crate) gpu_pixel_format: crate::render::renderer::GpuPixelFormat,
+    /// Full-range YUV (0-255) vs limited range (16-235).
+    pub(crate) is_full_range: bool,
 }
 
 impl StitchSession {
@@ -261,6 +263,7 @@ impl StitchSession {
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             right_rotation: 0,
             gpu_pixel_format: crate::render::renderer::GpuPixelFormat::Nv12,
+            is_full_range: false,
         })
     }
 

@@ -51,9 +51,24 @@ fn now_iso() -> String {
     let h = (secs / 3600) % 24;
     let m = (secs / 60) % 60;
     let s = secs % 60;
-    let days = secs / 86400;
-    let y = 1970 + days / 365;
-    format!("{y}-01-01T{h:02}:{m:02}:{s:02}.000Z")
+    let (y, mo, day) = civil_from_days((secs / 86400) as i64);
+    format!("{y}-{mo:02}-{day:02}T{h:02}:{m:02}:{s:02}.000Z")
+}
+
+/// Convert days since Unix epoch to (year, month, day).
+/// Algorithm from Howard Hinnant (public domain, used in chrono/date.h).
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
 }
 
 impl TelemetryClient {
@@ -63,6 +78,10 @@ impl TelemetryClient {
 
         thread::spawn(move || {
             let version = env!("CARGO_PKG_VERSION").to_string();
+            let agent = ureq::Agent::config_builder()
+                .timeout_global(Some(std::time::Duration::from_secs(5)))
+                .build()
+                .new_agent();
             while let Ok(event) = rx.recv() {
                 let batch = Batch {
                     schema_version: 1,
@@ -84,7 +103,8 @@ impl TelemetryClient {
                     }
                 };
 
-                match ureq::post(ENDPOINT)
+                match agent
+                    .post(ENDPOINT)
                     .header("Content-Type", "application/json")
                     .send(json.as_str())
                 {
@@ -159,6 +179,15 @@ impl TelemetryClient {
             Some(serde_json::json!({
                 "confidence": confidence,
                 "matches": matches,
+            })),
+        );
+    }
+
+    pub fn calibration_error(&self, error: &str) {
+        self.send(
+            "calibration_error",
+            Some(serde_json::json!({
+                "error_message": &error[..error.len().min(500)],
             })),
         );
     }

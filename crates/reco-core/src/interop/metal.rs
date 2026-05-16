@@ -84,14 +84,21 @@ unsafe extern "C" {
 // MTLPixelFormat constants (matching objc2-metal values)
 // ---------------------------------------------------------------------------
 
-/// `MTLPixelFormat::R8Unorm` - single-channel 8-bit, used for Y plane.
+/// `MTLPixelFormat::R8Unorm` - single-channel 8-bit, used for NV12 Y plane.
 const MTL_PIXEL_FORMAT_R8_UNORM: u64 = 10;
-/// `MTLPixelFormat::RG8Unorm` - two-channel 8-bit, used for interleaved UV plane.
+/// `MTLPixelFormat::RG8Unorm` - two-channel 8-bit, used for NV12 UV plane.
 const MTL_PIXEL_FORMAT_RG8_UNORM: u64 = 30;
+/// `MTLPixelFormat::R16Unorm` - single-channel 16-bit, used for P010 Y plane.
+const MTL_PIXEL_FORMAT_R16_UNORM: u64 = 20;
+/// `MTLPixelFormat::RG16Unorm` - two-channel 16-bit, used for P010 UV plane.
+const MTL_PIXEL_FORMAT_RG16_UNORM: u64 = 60;
 
-// NV12 FourCC values from VideoToolbox
+// NV12 (8-bit) FourCC values from VideoToolbox
 const K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_VIDEO_RANGE: u32 = 0x34323076; // '420v'
 const K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_FULL_RANGE: u32 = 0x34323066; // '420f'
+// P010 (10-bit) FourCC values from VideoToolbox
+const K_CV_PIXEL_FORMAT_420_YP_CB_CR_10_BI_PLANAR_VIDEO_RANGE: u32 = 0x78343230; // 'x420'
+const K_CV_PIXEL_FORMAT_420_YP_CB_CR_10_BI_PLANAR_FULL_RANGE: u32 = 0x78663230; // 'xf20'
 
 /// Read the pixel format FourCC from a CVPixelBuffer.
 ///
@@ -203,6 +210,7 @@ unsafe impl Send for RetainedCVPixelBuffer {}
 /// Create one per `GpuContext` and reuse across frames.
 pub struct MetalTextureCache {
     cv_cache: CVMetalTextureCacheRef,
+    logged_format: bool,
 }
 
 // CVMetalTextureCacheRef is thread-safe per Apple docs.
@@ -244,7 +252,10 @@ impl MetalTextureCache {
             return Err(MetalInteropError::CacheCreationFailed(ret));
         }
 
-        Ok(Self { cv_cache: cache })
+        Ok(Self {
+            cv_cache: cache,
+            logged_format: false,
+        })
     }
 
     /// Flush stale entries from the texture cache.
@@ -255,9 +266,10 @@ impl MetalTextureCache {
         unsafe { CVMetalTextureCacheFlush(self.cv_cache, 0) };
     }
 
-    /// Import a single NV12 plane from a `CVPixelBuffer` as a wgpu texture.
+    /// Import a single plane from a `CVPixelBuffer` as a wgpu texture.
     ///
-    /// - `plane_index` 0 = Y plane (`R8Unorm`), 1 = UV plane (`Rg8Unorm`)
+    /// For 8-bit NV12: plane 0 = Y (`R8Unorm`), plane 1 = UV (`Rg8Unorm`).
+    /// For 10-bit P010: plane 0 = Y (`R16Unorm`), plane 1 = UV (`Rg16Unorm`).
     ///
     /// The returned `ImportedPlaneTexture` keeps the underlying
     /// `CVMetalTextureRef` alive. Drop it when the GPU is done reading.
@@ -269,15 +281,18 @@ impl MetalTextureCache {
         &self,
         cv_pixel_buffer: CVPixelBufferRef,
         plane_index: u64,
+        is_10bit: bool,
         gpu: &GpuContext,
     ) -> Result<ImportedPlaneTexture, MetalInteropError> {
         let width = unsafe { CVPixelBufferGetWidthOfPlane(cv_pixel_buffer, plane_index) } as u32;
         let height = unsafe { CVPixelBufferGetHeightOfPlane(cv_pixel_buffer, plane_index) } as u32;
 
-        let (mtl_format, wgpu_format) = match plane_index {
-            0 => (MTL_PIXEL_FORMAT_R8_UNORM, wgpu::TextureFormat::R8Unorm),
-            1 => (MTL_PIXEL_FORMAT_RG8_UNORM, wgpu::TextureFormat::Rg8Unorm),
-            _ => unreachable!("NV12 only has planes 0 and 1"),
+        let (mtl_format, wgpu_format) = match (plane_index, is_10bit) {
+            (0, false) => (MTL_PIXEL_FORMAT_R8_UNORM, wgpu::TextureFormat::R8Unorm),
+            (1, false) => (MTL_PIXEL_FORMAT_RG8_UNORM, wgpu::TextureFormat::Rg8Unorm),
+            (0, true) => (MTL_PIXEL_FORMAT_R16_UNORM, wgpu::TextureFormat::R16Unorm),
+            (1, true) => (MTL_PIXEL_FORMAT_RG16_UNORM, wgpu::TextureFormat::Rg16Unorm),
+            _ => unreachable!("NV12/P010 only has planes 0 and 1"),
         };
 
         // Create a Metal texture view of this CVPixelBuffer plane
@@ -317,29 +332,47 @@ impl MetalTextureCache {
         })
     }
 
-    /// Import both NV12 planes (Y + UV) from a `CVPixelBuffer`.
+    /// Import both Y + UV planes from a `CVPixelBuffer` (NV12 or P010).
     ///
     /// Returns `(y_texture, uv_texture)` ready for use in shader bind groups.
+    /// Automatically detects 8-bit (NV12) vs 10-bit (P010) from the pixel format.
     ///
     /// # Safety
     ///
     /// `cv_pixel_buffer` must be a valid, non-null `CVPixelBufferRef`.
     pub unsafe fn import_nv12(
-        &self,
+        &mut self,
         cv_pixel_buffer: CVPixelBufferRef,
         gpu: &GpuContext,
     ) -> Result<(ImportedPlaneTexture, ImportedPlaneTexture), MetalInteropError> {
-        // Validate pixel format
         let format = unsafe { CVPixelBufferGetPixelFormatType(cv_pixel_buffer) };
-        if format != K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_VIDEO_RANGE
-            && format != K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_FULL_RANGE
-        {
-            return Err(MetalInteropError::UnsupportedFormat(format));
+        let is_10bit = match format {
+            K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_VIDEO_RANGE
+            | K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_FULL_RANGE => false,
+            K_CV_PIXEL_FORMAT_420_YP_CB_CR_10_BI_PLANAR_VIDEO_RANGE
+            | K_CV_PIXEL_FORMAT_420_YP_CB_CR_10_BI_PLANAR_FULL_RANGE => true,
+            _ => return Err(MetalInteropError::UnsupportedFormat(format)),
+        };
+
+        if !self.logged_format {
+            let w = unsafe { CVPixelBufferGetWidthOfPlane(cv_pixel_buffer, 0) };
+            let h = unsafe { CVPixelBufferGetHeightOfPlane(cv_pixel_buffer, 0) };
+            log::info!(
+                "Metal import: {}x{} {} (FourCC 0x{:08x})",
+                w,
+                h,
+                if is_10bit {
+                    "P010 10-bit"
+                } else {
+                    "NV12 8-bit"
+                },
+                format
+            );
+            self.logged_format = true;
         }
 
-        // SAFETY: caller guarantees cv_pixel_buffer is valid
-        let y = unsafe { self.import_plane(cv_pixel_buffer, 0, gpu)? };
-        let uv = unsafe { self.import_plane(cv_pixel_buffer, 1, gpu)? };
+        let y = unsafe { self.import_plane(cv_pixel_buffer, 0, is_10bit, gpu)? };
+        let uv = unsafe { self.import_plane(cv_pixel_buffer, 1, is_10bit, gpu)? };
         Ok((y, uv))
     }
 
@@ -441,15 +474,20 @@ impl Drop for ImportedPlaneTexture {
     }
 }
 
-/// Validate that a `CVPixelBuffer` has a supported NV12 pixel format.
+/// Validate that a `CVPixelBuffer` has a supported pixel format.
 ///
-/// Returns `true` for `420v` (video range) and `420f` (full range) NV12 formats.
+/// Returns `true` for NV12 (`420v`/`420f`) and P010 (`x420`/`xf20`) formats.
 ///
 /// # Safety
 ///
 /// `cv_pixel_buffer` must be a valid, non-null `CVPixelBufferRef`.
 pub unsafe fn is_supported_format(cv_pixel_buffer: CVPixelBufferRef) -> bool {
     let format = unsafe { CVPixelBufferGetPixelFormatType(cv_pixel_buffer) };
-    format == K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_VIDEO_RANGE
-        || format == K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_FULL_RANGE
+    matches!(
+        format,
+        K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_VIDEO_RANGE
+            | K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_FULL_RANGE
+            | K_CV_PIXEL_FORMAT_420_YP_CB_CR_10_BI_PLANAR_VIDEO_RANGE
+            | K_CV_PIXEL_FORMAT_420_YP_CB_CR_10_BI_PLANAR_FULL_RANGE
+    )
 }

@@ -327,6 +327,23 @@ fn build_bug_report(state: &AppState, app_weak: &slint::Weak<RecoApp>) -> String
          <!-- 1. ... 2. ... 3. ... -->\n",
     );
 
+    if let Some(log_path) = log_file_path()
+        && let Ok(contents) = std::fs::read_to_string(&log_path)
+    {
+        let lines: Vec<&str> = contents.lines().collect();
+        let tail = if lines.len() > 200 {
+            &lines[lines.len() - 200..]
+        } else {
+            &lines
+        };
+        report.push_str("\n## Log (last 200 lines)\n```\n");
+        for line in tail {
+            report.push_str(line);
+            report.push('\n');
+        }
+        report.push_str("```\n");
+    }
+
     report
 }
 
@@ -793,6 +810,23 @@ impl AppState {
         self.clamp_targets();
     }
 
+    fn set_sync_offset(&mut self, frames: i32) {
+        let offset = frames as i64;
+        if let Some(cal) = self.calibration.as_mut() {
+            cal.sync_offset = offset;
+        }
+        if let (Some(left), Some(right)) = (&self.left_path, &self.right_path) {
+            let left = left.clone();
+            let right = right.clone();
+            if let Err(e) = self.playback.open(&left, &right, offset) {
+                log::error!("Failed to reopen playback with sync offset {offset}: {e}");
+                return;
+            }
+            log::info!("Sync offset changed to {offset} frames");
+            self.preview_dirty = true;
+        }
+    }
+
     fn set_rig_roll(&mut self, deg: f32) {
         if let Some(cal) = self.calibration.as_mut() {
             cal.rig_roll = deg as f64;
@@ -1044,27 +1078,72 @@ fn init_tracing() {
     let _ = tracing_log::LogTracer::init();
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
-    // On Windows release builds, windows_subsystem="windows" detaches
-    // stderr so tracing output is lost. Write to a log file alongside
-    // the executable so we can always diagnose startup failures.
-    #[cfg(all(target_os = "windows", not(debug_assertions)))]
-    {
-        let log_path = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.join("reco-gui.log")))
-            .unwrap_or_else(|| std::path::PathBuf::from("reco-gui.log"));
-        if let Ok(file) = std::fs::File::create(&log_path) {
-            let _ = tracing_subscriber::registry()
-                .with(filter)
-                .with(
-                    fmt::layer()
-                        .with_target(true)
-                        .with_level(true)
-                        .with_ansi(false)
-                        .with_writer(file),
-                )
-                .try_init();
-            return;
+    // In release builds, write logs to a file so bug reports have context.
+    // Debug builds just use stderr.
+    #[cfg(not(debug_assertions))]
+    if let Some(log_path) = log_file_path() {
+        if let Some(parent) = log_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        // Truncate if over 2 MB to prevent unbounded growth, otherwise append
+        // so crash logs survive a restart.
+        if log_path
+            .metadata()
+            .map(|m| m.len() > 2_000_000)
+            .unwrap_or(false)
+        {
+            let _ = std::fs::remove_file(&log_path);
+        }
+        let file_result = std::fs::File::options()
+            .create(true)
+            .append(true)
+            .open(&log_path);
+        if let Err(ref e) = file_result {
+            eprintln!(
+                "Warning: could not open log file {}: {e}",
+                log_path.display()
+            );
+        }
+        if let Ok(file) = file_result {
+            // Windows: file only (stderr is detached by windows_subsystem="windows").
+            // Mac/Linux: file + stderr (user may launch from terminal).
+            #[cfg(target_os = "windows")]
+            {
+                let _ = tracing_subscriber::registry()
+                    .with(filter)
+                    .with(
+                        fmt::layer()
+                            .with_target(true)
+                            .with_level(true)
+                            .with_ansi(false)
+                            .with_writer(file),
+                    )
+                    .try_init();
+                eprintln!("Log file: {}", log_path.display());
+                return;
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let file = std::sync::Mutex::new(file);
+                let _ = tracing_subscriber::registry()
+                    .with(filter)
+                    .with(
+                        fmt::layer()
+                            .with_target(true)
+                            .with_level(true)
+                            .with_ansi(false)
+                            .with_writer(file),
+                    )
+                    .with(
+                        fmt::layer()
+                            .with_target(true)
+                            .with_level(true)
+                            .with_writer(std::io::stderr),
+                    )
+                    .try_init();
+                eprintln!("Log file: {}", log_path.display());
+                return;
+            }
         }
     }
 
@@ -1072,6 +1151,38 @@ fn init_tracing() {
         .with(filter)
         .with(fmt::layer().with_target(true).with_level(true))
         .try_init();
+}
+
+/// Platform-appropriate log file path.
+///
+/// - Windows: next to executable (`reco-gui.log`)
+/// - macOS: `~/Library/Logs/reco-gui.log`
+/// - Linux: `~/.local/state/reco/reco-gui.log` (XDG_STATE_HOME)
+fn log_file_path() -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("reco-gui.log")))
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::env::var("HOME")
+            .ok()
+            .map(|h| std::path::PathBuf::from(h).join("Library/Logs/reco-gui.log"))
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::env::var("XDG_STATE_HOME")
+            .ok()
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                std::env::var("HOME")
+                    .ok()
+                    .map(|h| std::path::PathBuf::from(h).join(".local/state"))
+            })
+            .map(|d| d.join("reco/reco-gui.log"))
+    }
 }
 
 /// Panic hook: emit panic location + payload as a `tracing::error!`
@@ -2346,6 +2457,15 @@ fn main() -> anyhow::Result<()> {
     });
 
     let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
+    app.on_changed_sync_offset(move |frames| {
+        state_ref.borrow_mut().set_sync_offset(frames);
+        if let Some(app) = app_weak.upgrade() {
+            app.set_cal_dirty(true);
+        }
+    });
+
+    let state_ref = Rc::clone(&state);
     app.on_changed_fov(move |deg| {
         state_ref.borrow_mut().set_fov(deg);
     });
@@ -3202,7 +3322,10 @@ fn main() -> anyhow::Result<()> {
                             );
                             app.set_last_output_path(path.display().to_string().into());
                             if let Some(ref t) = s.telemetry {
-                                t.export_complete(frames, 0.0, "");
+                                let fps = s.playback.fps();
+                                let dur = if fps > 0.0 { frames as f64 / fps } else { 0.0 };
+                                let codec = app.get_export_codec().to_string();
+                                t.export_complete(frames, dur, &codec);
                             }
                             s.toasts.push(
                                 Severity::Info,
@@ -3525,6 +3648,9 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 if let Some(bw) = blend_width {
                     app.set_blend_width(bw);
                 }
+                if let Some(cal) = s.calibration.as_ref() {
+                    app.set_sync_offset(cal.sync_offset as i32);
+                }
                 app.set_fov(clamped_fov);
                 // Manual calibration JSON does not embed lens-profile info,
                 // so clear the display (hide the lens card) and just show
@@ -3550,6 +3676,20 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                             .unwrap_or_else(|| "reco".into())
                     ));
                     app.set_export_output_path(suggested.to_string_lossy().to_string().into());
+                }
+
+                if let Some(ref t) = s.telemetry {
+                    let gpu = s
+                        .bridge
+                        .as_ref()
+                        .map(|b| {
+                            let g = b.renderer().gpu();
+                            format!("{} ({:?})", g.gpu_name(), g.backend_name())
+                        })
+                        .unwrap_or_else(|| "unknown".into());
+                    let os = format!("{} {}", std::env::consts::OS, std::env::consts::ARCH);
+                    let (ai_status, _) = ai_capability_summary();
+                    t.context(&gpu, &os, &ai_status);
                 }
             }
         }
@@ -3740,6 +3880,9 @@ fn handle_calibration_result(
                         if let Some(bw) = blend_width {
                             app.set_blend_width(bw);
                         }
+                        if let Some(cal) = state.calibration.as_ref() {
+                            app.set_sync_offset(cal.sync_offset as i32);
+                        }
                         app.set_fov(clamped_fov);
                         set_lens_profile_props(&app, left_profile, right_profile, in_w, in_h);
                         if let Some((l, r)) = lens_baseline.as_ref() {
@@ -3779,6 +3922,9 @@ fn handle_calibration_result(
         }
         Err(e) => {
             log::error!("Auto-calibration failed: {e}");
+            if let Some(ref t) = state.telemetry {
+                t.calibration_error(&e.to_string());
+            }
             // Critical: unload the live pipeline so the preview stops
             // rendering whatever it was showing before. Otherwise the
             // preview keeps playing the OLD right/left video while the
