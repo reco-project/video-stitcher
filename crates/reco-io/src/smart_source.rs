@@ -453,21 +453,24 @@ impl SmartFileSource {
         sync_offset: i64,
         info: SourceInfo,
         pixel_format: GpuPixelFormat,
+        full_range: bool,
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
         let pair_rx = crate::zero_copy::spawn_vt_decode_pair(left, right, sync_offset);
 
         log::info!(
-            "SmartFileSource: Metal zero-copy ({}x{}, VideoToolbox decode)",
+            "SmartFileSource: Metal zero-copy ({}x{}, VideoToolbox decode{})",
             info.width,
-            info.height
+            info.height,
+            if full_range { ", full-range" } else { "" }
         );
 
         Ok(Self {
             mode: SourceMode::MetalZeroCopy(pair_rx),
             info,
             pixel_format,
+            full_range,
             left_rotation,
             right_rotation,
             decode_mode: "Metal zero-copy (VideoToolbox)",
@@ -484,6 +487,7 @@ impl SmartFileSource {
         sync_offset: i64,
         info: SourceInfo,
         pixel_format: GpuPixelFormat,
+        full_range: bool,
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
@@ -500,6 +504,7 @@ impl SmartFileSource {
             })),
             info,
             pixel_format,
+            full_range,
             left_rotation,
             right_rotation,
             decode_mode: "D3D11VA zero-copy",
@@ -516,6 +521,7 @@ impl SmartFileSource {
         sync_offset: i64,
         info: SourceInfo,
         pixel_format: GpuPixelFormat,
+        full_range: bool,
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
@@ -526,6 +532,7 @@ impl SmartFileSource {
             sync_offset,
             info,
             pixel_format,
+            full_range,
             left_rotation,
             right_rotation,
         )
