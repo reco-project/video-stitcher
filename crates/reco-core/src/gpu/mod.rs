@@ -190,6 +190,12 @@ impl GpuContext {
         {
             features |= wgpu::Features::TEXTURE_FORMAT_NV12;
         }
+        if adapter
+            .features()
+            .contains(wgpu::Features::TEXTURE_FORMAT_P010)
+        {
+            features |= wgpu::Features::TEXTURE_FORMAT_P010;
+        }
 
         let (device, queue) = Self::request_device_with_fallback(&adapter, features).await?;
 

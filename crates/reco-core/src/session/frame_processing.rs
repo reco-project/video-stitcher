@@ -454,9 +454,20 @@ impl StitchSession {
         if first_frame {
             let (w, h) = self.core.pipeline().source_info();
             let needs_cuda = self.detection.needs_cuda_frames();
-            match crate::interop::d3d11::D3d11StagingPool::new(self.core.gpu(), w, h, needs_cuda) {
+            match crate::interop::d3d11::D3d11StagingPool::new(
+                self.core.gpu(),
+                w,
+                h,
+                needs_cuda,
+                self.gpu_pixel_format,
+            ) {
                 Ok(pool) => {
-                    log::info!("D3D11VA staging pool created: {}x{}, 4 NV12 slots", w, h);
+                    log::info!(
+                        "D3D11VA staging pool created: {}x{}, 4 {:?} slots",
+                        w,
+                        h,
+                        self.gpu_pixel_format
+                    );
                     self.d3d11_staging_pool = Some(pool);
                 }
                 Err(e) => {
