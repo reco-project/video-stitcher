@@ -361,7 +361,11 @@ impl MetalTextureCache {
                 "Metal import: {}x{} {} (FourCC 0x{:08x})",
                 w,
                 h,
-                if is_10bit { "P010 10-bit" } else { "NV12 8-bit" },
+                if is_10bit {
+                    "P010 10-bit"
+                } else {
+                    "NV12 8-bit"
+                },
                 format
             );
             self.logged_format = true;

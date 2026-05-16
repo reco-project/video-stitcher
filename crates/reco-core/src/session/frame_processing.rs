@@ -132,7 +132,9 @@ impl StitchSession {
                     }
                 } else if let Some(ref views) = self.gpu_shared_views {
                     if self.frame_count == 0 {
-                        log::info!("GpuResident detection: wgpu shared texture views (ORT/wgpu preprocess)");
+                        log::info!(
+                            "GpuResident detection: wgpu shared texture views (ORT/wgpu preprocess)"
+                        );
                     }
                     let ls = *left_slot as usize;
                     let rs = *right_slot as usize;
@@ -156,9 +158,7 @@ impl StitchSession {
                     scheduled_detection
                 } else {
                     if self.frame_count == 0 {
-                        log::warn!(
-                            "GpuResident frame but no shared views - detection disabled"
-                        );
+                        log::warn!("GpuResident frame but no shared views - detection disabled");
                     }
                     self.update_director(elapsed)?;
                     false

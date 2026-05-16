@@ -293,10 +293,14 @@ impl MetalPreprocessPipeline {
         let is_10bit = format == 0x78343230 || format == 0x78663230; // 'x420' or 'xf20'
 
         // Import Y and UV planes as Metal textures (zero-copy via IOSurface).
-        let y_plane =
-            unsafe { self.texture_cache.import_plane(cv_pixel_buffer, 0, is_10bit, gpu)? };
-        let uv_plane =
-            unsafe { self.texture_cache.import_plane(cv_pixel_buffer, 1, is_10bit, gpu)? };
+        let y_plane = unsafe {
+            self.texture_cache
+                .import_plane(cv_pixel_buffer, 0, is_10bit, gpu)?
+        };
+        let uv_plane = unsafe {
+            self.texture_cache
+                .import_plane(cv_pixel_buffer, 1, is_10bit, gpu)?
+        };
 
         // Write preprocessing parameters to the shared params buffer.
         let (fw, fh) = (self.frame_width as f32, self.frame_height as f32);
