@@ -1469,15 +1469,35 @@ fn main() -> anyhow::Result<()> {
             return;
         }
         paths.sort();
-        let first = paths[0].clone();
-        let input = if paths.len() == 1 {
-            reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
-        } else {
-            log::info!(
-                "Left: {} segments selected, chaining via concat demuxer",
-                paths.len()
-            );
-            reco_io::stitch_job::InputPath::Chained(paths)
+        let input = {
+            let s = state_ref.borrow();
+            match &s.left_input {
+                Some(existing) => {
+                    let mut all = match existing {
+                        reco_io::stitch_job::InputPath::Single(p) => vec![p.clone()],
+                        reco_io::stitch_job::InputPath::Chained(ps) => ps.clone(),
+                    };
+                    all.extend(paths);
+                    all.sort();
+                    log::info!("Left: appended to {} total segments", all.len());
+                    reco_io::stitch_job::InputPath::Chained(all)
+                }
+                None => {
+                    if paths.len() == 1 {
+                        reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
+                    } else {
+                        log::info!(
+                            "Left: {} segments selected, chaining via concat demuxer",
+                            paths.len()
+                        );
+                        reco_io::stitch_job::InputPath::Chained(paths)
+                    }
+                }
+            }
+        };
+        let first = match &input {
+            reco_io::stitch_job::InputPath::Single(p) => p.clone(),
+            reco_io::stitch_job::InputPath::Chained(ps) => ps[0].clone(),
         };
         {
             let mut s = state_ref.borrow_mut();
@@ -1523,15 +1543,35 @@ fn main() -> anyhow::Result<()> {
             return;
         }
         paths.sort();
-        let first = paths[0].clone();
-        let input = if paths.len() == 1 {
-            reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
-        } else {
-            log::info!(
-                "Right: {} segments selected, chaining via concat demuxer",
-                paths.len()
-            );
-            reco_io::stitch_job::InputPath::Chained(paths)
+        let input = {
+            let s = state_ref.borrow();
+            match &s.right_input {
+                Some(existing) => {
+                    let mut all = match existing {
+                        reco_io::stitch_job::InputPath::Single(p) => vec![p.clone()],
+                        reco_io::stitch_job::InputPath::Chained(ps) => ps.clone(),
+                    };
+                    all.extend(paths);
+                    all.sort();
+                    log::info!("Right: appended to {} total segments", all.len());
+                    reco_io::stitch_job::InputPath::Chained(all)
+                }
+                None => {
+                    if paths.len() == 1 {
+                        reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
+                    } else {
+                        log::info!(
+                            "Right: {} segments selected, chaining via concat demuxer",
+                            paths.len()
+                        );
+                        reco_io::stitch_job::InputPath::Chained(paths)
+                    }
+                }
+            }
+        };
+        let first = match &input {
+            reco_io::stitch_job::InputPath::Single(p) => p.clone(),
+            reco_io::stitch_job::InputPath::Chained(ps) => ps[0].clone(),
         };
         {
             let mut s = state_ref.borrow_mut();
