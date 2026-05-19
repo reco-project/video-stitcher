@@ -300,6 +300,7 @@ export component RecoApp inherits Window {
     in-out property <int> export-detection-interval: 3;
     in-out property <bool> export-autocam-enabled: false;
     in-out property <bool> export-replay-enabled: false;
+    in-out property <bool> export-events-enabled: false;
 
     // Export progress (also used by the main status bar).
     in-out property <bool> export-in-progress: false;
@@ -2217,6 +2218,11 @@ export component RecoApp inherits Window {
                     CheckBox {
                         text: "Record replay (stacked raw input for re-stitching)";
                         checked <=> root.export-replay-enabled;
+                    }
+
+                    CheckBox {
+                        text: "Save AI debug events (.jsonl for visualize_detections.py)";
+                        checked <=> root.export-events-enabled;
                     }
 
                     Rectangle { height: 1px; background: root.border-subtle; }

@@ -67,6 +67,7 @@ pub fn run_export(
     output: PathBuf,
     stream_url: Option<String>,
     replay_enabled: bool,
+    events_path: Option<PathBuf>,
     width: u32,
     height: u32,
     codec_str: String,
@@ -200,6 +201,11 @@ pub fn run_export(
         let replay_path = effective_output.with_extension("replay.mkv");
         log::info!("Replay recording: {}", replay_path.display());
         job = job.with_replay_recording(&replay_path);
+    }
+
+    if let Some(ref ep) = events_path {
+        log::info!("Pipeline events: {}", ep.display());
+        job = job.events(ep);
     }
 
     let finalizing_weak = app_weak.clone();

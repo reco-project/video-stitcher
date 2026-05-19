@@ -3142,6 +3142,12 @@ fn main() -> anyhow::Result<()> {
 
         let detection_interval = app.get_export_detection_interval() as u32;
         let replay_enabled = app.get_export_replay_enabled();
+        let events_enabled = app.get_export_events_enabled();
+        let events_path = if events_enabled {
+            Some(output_path.with_extension("events.jsonl"))
+        } else {
+            None
+        };
 
         // Persist the user's codec / quality / blend choices as the
         // defaults for next session. Model path is saved in the
@@ -3188,6 +3194,7 @@ fn main() -> anyhow::Result<()> {
                 output_for_thread,
                 None, // stream URL (Phase 6 GUI wiring)
                 replay_enabled,
+                events_path,
                 width,
                 height,
                 codec_str,
