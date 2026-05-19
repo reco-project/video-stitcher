@@ -801,7 +801,7 @@ impl AppState {
 
     fn set_rig_tilt(&mut self, deg: f32) {
         if let Some(cal) = self.calibration.as_mut() {
-            cal.rig_tilt = deg as f64;
+            cal.rig_tilt = (deg as f64).to_radians();
         }
         if let Some(bridge) = self.bridge.as_mut() {
             bridge.renderer_mut().set_rig_tilt(deg.to_radians());
@@ -829,7 +829,7 @@ impl AppState {
 
     fn set_rig_roll(&mut self, deg: f32) {
         if let Some(cal) = self.calibration.as_mut() {
-            cal.rig_roll = deg as f64;
+            cal.rig_roll = (deg as f64).to_radians();
         }
         if let Some(bridge) = self.bridge.as_mut() {
             bridge.renderer_mut().set_rig_roll(deg.to_radians());
