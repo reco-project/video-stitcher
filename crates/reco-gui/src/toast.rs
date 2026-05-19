@@ -131,6 +131,13 @@ impl ToastManager {
         self.entries.len() != before
     }
 
+    /// Most recent toast's severity and title (for status bar fallback).
+    pub fn latest(&self) -> Option<(&str, &str)> {
+        self.entries
+            .last()
+            .map(|e| (e.severity.as_str(), e.title.as_str()))
+    }
+
     /// Build a fresh Slint model reflecting current state. Cheap - we
     /// only call this when the list actually changed (see `expire` and
     /// the push/dismiss callers).
@@ -165,6 +172,16 @@ impl ToastManager {
 /// after any operation that changed the list.
 pub fn sync_to_ui(manager: &ToastManager, app: &crate::RecoApp) {
     app.set_toasts(manager.to_model());
+    // Fallback: show the most recent toast in the status bar since the
+    // floating overlay isn't rendering reliably.
+    if let Some(latest) = manager.latest() {
+        let prefix = match latest.0 {
+            "error" => "[ERROR] ",
+            "warn" => "[WARN] ",
+            _ => "",
+        };
+        app.set_status_text(format!("{prefix}{}", latest.1).into());
+    }
 }
 
 #[cfg(test)]
