@@ -1985,38 +1985,51 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_remove_left_segment(move |idx| {
         let mut s = state_ref.borrow_mut();
-        if let Some(reco_io::stitch_job::InputPath::Chained(ref mut paths)) = s.left_input {
-            let idx = idx as usize;
-            if idx < paths.len() {
-                paths.remove(idx);
-                if paths.is_empty() {
-                    s.left_input = None;
-                    s.left_path = None;
-                } else if paths.len() == 1 {
-                    let p = paths[0].clone();
-                    s.left_path = Some(p.clone());
-                    s.left_input = Some(reco_io::stitch_job::InputPath::Single(p));
+        let removed = match s.left_input {
+            Some(reco_io::stitch_job::InputPath::Single(_)) if idx == 0 => {
+                s.left_input = None;
+                s.left_path = None;
+                true
+            }
+            Some(reco_io::stitch_job::InputPath::Chained(ref mut paths)) => {
+                let idx = idx as usize;
+                if idx < paths.len() {
+                    paths.remove(idx);
+                    if paths.is_empty() {
+                        s.left_input = None;
+                        s.left_path = None;
+                    } else if paths.len() == 1 {
+                        let p = paths[0].clone();
+                        s.left_path = Some(p.clone());
+                        s.left_input = Some(reco_io::stitch_job::InputPath::Single(p));
+                    } else {
+                        s.left_path = Some(paths[0].clone());
+                    }
+                    true
                 } else {
-                    s.left_path = Some(paths[0].clone());
+                    false
                 }
-                if s.bridge.is_some() {
-                    s.unload_pipeline();
-                }
-                if let Some(app) = app_weak.upgrade() {
-                    let label = s
-                        .left_input
-                        .as_ref()
-                        .map(|i| match i {
-                            reco_io::stitch_job::InputPath::Single(p) => display_name(p),
-                            reco_io::stitch_job::InputPath::Chained(ps) => {
-                                format!("{} ({} segments)", display_name(&ps[0]), ps.len())
-                            }
-                        })
-                        .unwrap_or_default();
-                    app.set_left_path(label.into());
-                    app.set_files_loaded(false);
-                    sync_segments(&s, &app);
-                }
+            }
+            _ => false,
+        };
+        if removed {
+            if s.bridge.is_some() {
+                s.unload_pipeline();
+            }
+            if let Some(app) = app_weak.upgrade() {
+                let label = s
+                    .left_input
+                    .as_ref()
+                    .map(|i| match i {
+                        reco_io::stitch_job::InputPath::Single(p) => display_name(p),
+                        reco_io::stitch_job::InputPath::Chained(ps) => {
+                            format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                        }
+                    })
+                    .unwrap_or_default();
+                app.set_left_path(label.into());
+                app.set_files_loaded(false);
+                sync_segments(&s, &app);
             }
         }
     });
@@ -2025,38 +2038,51 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_remove_right_segment(move |idx| {
         let mut s = state_ref.borrow_mut();
-        if let Some(reco_io::stitch_job::InputPath::Chained(ref mut paths)) = s.right_input {
-            let idx = idx as usize;
-            if idx < paths.len() {
-                paths.remove(idx);
-                if paths.is_empty() {
-                    s.right_input = None;
-                    s.right_path = None;
-                } else if paths.len() == 1 {
-                    let p = paths[0].clone();
-                    s.right_path = Some(p.clone());
-                    s.right_input = Some(reco_io::stitch_job::InputPath::Single(p));
+        let removed = match s.right_input {
+            Some(reco_io::stitch_job::InputPath::Single(_)) if idx == 0 => {
+                s.right_input = None;
+                s.right_path = None;
+                true
+            }
+            Some(reco_io::stitch_job::InputPath::Chained(ref mut paths)) => {
+                let idx = idx as usize;
+                if idx < paths.len() {
+                    paths.remove(idx);
+                    if paths.is_empty() {
+                        s.right_input = None;
+                        s.right_path = None;
+                    } else if paths.len() == 1 {
+                        let p = paths[0].clone();
+                        s.right_path = Some(p.clone());
+                        s.right_input = Some(reco_io::stitch_job::InputPath::Single(p));
+                    } else {
+                        s.right_path = Some(paths[0].clone());
+                    }
+                    true
                 } else {
-                    s.right_path = Some(paths[0].clone());
+                    false
                 }
-                if s.bridge.is_some() {
-                    s.unload_pipeline();
-                }
-                if let Some(app) = app_weak.upgrade() {
-                    let label = s
-                        .right_input
-                        .as_ref()
-                        .map(|i| match i {
-                            reco_io::stitch_job::InputPath::Single(p) => display_name(p),
-                            reco_io::stitch_job::InputPath::Chained(ps) => {
-                                format!("{} ({} segments)", display_name(&ps[0]), ps.len())
-                            }
-                        })
-                        .unwrap_or_default();
-                    app.set_right_path(label.into());
-                    app.set_files_loaded(false);
-                    sync_segments(&s, &app);
-                }
+            }
+            _ => false,
+        };
+        if removed {
+            if s.bridge.is_some() {
+                s.unload_pipeline();
+            }
+            if let Some(app) = app_weak.upgrade() {
+                let label = s
+                    .right_input
+                    .as_ref()
+                    .map(|i| match i {
+                        reco_io::stitch_job::InputPath::Single(p) => display_name(p),
+                        reco_io::stitch_job::InputPath::Chained(ps) => {
+                            format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                        }
+                    })
+                    .unwrap_or_default();
+                app.set_right_path(label.into());
+                app.set_files_loaded(false);
+                sync_segments(&s, &app);
             }
         }
     });
@@ -3100,9 +3126,10 @@ fn main() -> anyhow::Result<()> {
         let (tx, rx) = std::sync::mpsc::channel();
         s.export_rx = Some(rx);
 
-        // Seed the last-progress timestamp so the Finalizing detector
-        // has a starting point. Cloned for the worker below.
-        *s.export_last_progress_at.lock().unwrap() = Some(Instant::now());
+        // Don't seed the timestamp - wait for the first real progress update.
+        // Seeding with now() would trigger "Finalizing" if the first frame
+        // takes > 1.5s (common on slow GPUs or large videos).
+        *s.export_last_progress_at.lock().unwrap() = None;
         let last_progress_at = Arc::clone(&s.export_last_progress_at);
 
         // Pause preview playback to avoid GPU contention with the
