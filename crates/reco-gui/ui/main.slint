@@ -911,11 +911,10 @@ export component RecoApp inherits Window {
 
                         if root.files-loaded: HorizontalLayout {
                             spacing: 4px;
-                            alignment: stretch;
-                            Text { text: "Sync offset"; color: #aaa; font-size: 11px; vertical-alignment: center; width: 80px; }
+                            Text { text: "Sync offset"; color: #aaa; font-size: 11px; vertical-alignment: center; }
                             sync-input := LineEdit {
                                 text: root.sync-offset;
-                                horizontal-stretch: 1;
+                                width: 70px;
                                 accepted => { root.sync-offset = self.text.to-float(); root.changed-sync-offset(self.text.to-float()); }
                             }
                             Text { text: "frames"; color: #777; font-size: 10px; vertical-alignment: center; }

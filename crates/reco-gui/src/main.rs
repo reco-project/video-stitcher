@@ -3019,8 +3019,10 @@ fn main() -> anyhow::Result<()> {
         };
         let output_str = app.get_export_output_path().to_string();
         if output_str.is_empty() {
+            log::warn!("Export: no output path set, ignoring");
             return;
         }
+        log::info!("Export requested: output={output_str}");
         let mut s = state_ref.borrow_mut();
         if s.export_thread.is_some() {
             log::warn!("Export already running, ignoring start request");
@@ -3029,6 +3031,7 @@ fn main() -> anyhow::Result<()> {
         let output_path = PathBuf::from(&output_str);
         if let Some(parent) = output_path.parent() {
             if !parent.exists() {
+                log::warn!("Export: output directory does not exist: {}", parent.display());
                 s.toasts.push(
                     Severity::Error,
                     "Output directory does not exist",
@@ -3041,6 +3044,7 @@ fn main() -> anyhow::Result<()> {
                 .metadata()
                 .map_or(true, |m| m.permissions().readonly())
             {
+                log::warn!("Export: output directory is not writable: {}", parent.display());
                 s.toasts.push(
                     Severity::Error,
                     "Output directory is not writable",
