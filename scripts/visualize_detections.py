@@ -2,24 +2,23 @@
 """Visualize AI detections from a reco pipeline events JSONL file.
 
 Two modes:
-  --export: Render an annotated video with detection boxes, tracking info,
-            frame counter, and timestamp overlay. Output is 1080p h264.
-  --browse: Interactive frame-by-frame browser. Arrow keys to step,
-            click to seek, 'q' to quit.
+  export: Render an annotated side-by-side video (left + right cameras)
+          with detection boxes, tracking info, frame counter, and timestamp.
+  browse: Interactive frame-by-frame browser with keyboard navigation.
 
 Usage:
   # Generate the events file with reco CLI:
   reco stitch left.mp4 right.mp4 -c cal.json --model yolo26n.onnx \
       --events detections.jsonl -o output.mp4
 
-  # Export annotated video:
-  python3 visualize_detections.py --export detections.jsonl left.mp4
+  # Export annotated side-by-side video:
+  python3 visualize_detections.py export detections.jsonl left.mp4 right.mp4
+
+  # Single camera only:
+  python3 visualize_detections.py export detections.jsonl left.mp4 --camera left
 
   # Browse frame by frame:
-  python3 visualize_detections.py --browse detections.jsonl left.mp4
-
-  # Use right camera instead:
-  python3 visualize_detections.py --export detections.jsonl right.mp4 --camera right
+  python3 visualize_detections.py browse detections.jsonl left.mp4 right.mp4
 """
 
 import argparse
@@ -43,6 +42,31 @@ CLASS_COLORS = {
 DEFAULT_COLOR = (200, 200, 200)
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
+
+
+def load_calibration_roi(cal_path):
+    """Load ROI polygons from a calibration JSON. Returns (left, right) as numpy arrays or None."""
+    if not cal_path:
+        return None, None
+    try:
+        with open(cal_path) as f:
+            cal = json.load(f)
+        roi = cal.get("field_roi", {})
+        left = np.array(roi["left"], dtype=np.float32) if roi.get("left") else None
+        right = np.array(roi["right"], dtype=np.float32) if roi.get("right") else None
+        return left, right
+    except (json.JSONDecodeError, FileNotFoundError, KeyError):
+        return None, None
+
+
+def draw_roi(img, roi_points, h, w):
+    """Draw ROI polygon boundary on the image."""
+    if roi_points is None:
+        return
+    pts = (roi_points * np.array([w, h])).astype(np.int32)
+    cv2.polylines(img, [pts], isClosed=True, color=(255, 200, 0), thickness=2)
+    cv2.putText(img, "ROI", (pts[0][0], pts[0][1] - 8),
+                FONT, 0.4, (255, 200, 0), 1, cv2.LINE_AA)
 
 
 def load_events(path):
@@ -86,7 +110,7 @@ def load_events(path):
 
 
 def draw_detections(img, detections, camera_filter, h, w):
-    """Draw bounding boxes from DetectionsRaw."""
+    """Draw bounding boxes from DetectionsRaw. Returns detection count."""
     count = 0
     for det in detections:
         cam = det.get("camera", "").lower()
@@ -139,8 +163,16 @@ def draw_filter_removed(img, filter_events, camera_filter, h, w):
                         FONT, 0.35, (100, 100, 100), 1, cv2.LINE_AA)
 
 
-def draw_overlay(img, frame_idx, frame_data, total_frames, fps):
-    """Draw frame counter, timestamp, and tracking info."""
+def draw_camera_label(img, label, h, w):
+    """Draw camera label (L/R) in the top corner."""
+    cv2.putText(img, label, (w - 40, 30), FONT, 0.8,
+                (255, 255, 255), 3, cv2.LINE_AA)
+    cv2.putText(img, label, (w - 40, 30), FONT, 0.8,
+                (0, 200, 255), 2, cv2.LINE_AA)
+
+
+def draw_shared_overlay(img, frame_idx, frame_data, total_frames, fps):
+    """Draw frame counter, timestamp, tracking, and pan info on combined image."""
     h, w = img.shape[:2]
     ts_ms = frame_data["timestamp_ms"]
     ts_sec = ts_ms / 1000.0
@@ -152,18 +184,23 @@ def draw_overlay(img, frame_idx, frame_data, total_frames, fps):
     cv2.putText(img, text, (10, 28), FONT, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
     cv2.putText(img, text, (10, 28), FONT, 0.7, (0, 0, 0), 1, cv2.LINE_AA)
 
-    # Tracking state (top right)
+    # Detection count vs track count (top center)
+    n_dets = len(frame_data["detections_raw"])
     ws = frame_data.get("world_state")
-    if ws:
-        n_players = len(ws.get("players", []))
-        ball = ws.get("ball")
-        ball_text = f"ball: ({ball['yaw']:.2f}, {ball['pitch']:.2f})" if ball else "ball: -"
-        info = f"players: {n_players}  {ball_text}"
-        tw = cv2.getTextSize(info, FONT, 0.5, 1)[0][0]
-        cv2.putText(img, info, (w - tw - 10, 28),
-                    FONT, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
-        cv2.putText(img, info, (w - tw - 10, 28),
-                    FONT, 0.5, (0, 200, 200), 1, cv2.LINE_AA)
+    n_tracks = len(ws.get("players", [])) if ws else 0
+    ball = ws.get("ball") if ws else None
+    ball_state = ""
+    if ball:
+        state = ball.get("state", "")
+        ball_state = f"ball: {state} ({ball['yaw']:.2f}, {ball['pitch']:.2f})"
+    else:
+        ball_state = "ball: -"
+
+    info = f"det: {n_dets}  tracks: {n_tracks}  {ball_state}"
+    tw = cv2.getTextSize(info, FONT, 0.5, 1)[0][0]
+    cx = (w - tw) // 2
+    cv2.putText(img, info, (cx, 28), FONT, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+    cv2.putText(img, info, (cx, 28), FONT, 0.5, (0, 200, 200), 1, cv2.LINE_AA)
 
     # Pan decision (bottom left)
     pose = frame_data.get("pose_presented")
@@ -192,92 +229,179 @@ def draw_overlay(img, frame_idx, frame_data, total_frames, fps):
                     FONT, 0.45, (180, 180, 180), 1, cv2.LINE_AA)
 
 
-def export_mode(events_path, video_path, output_path, camera, max_frames):
-    """Export an annotated video."""
+def draw_stale_detections(img, detections, camera_filter, h, w):
+    """Draw last-known detections dimmed (for non-detection interval frames)."""
+    for det in detections:
+        cam = det.get("camera", "").lower()
+        if cam != camera_filter:
+            continue
+        cx, cy = det["camera_center"]
+        sw, sh = det["camera_size"]
+        x1 = int((cx - sw / 2) * w)
+        y1 = int((cy - sh / 2) * h)
+        x2 = int((cx + sw / 2) * w)
+        y2 = int((cy + sh / 2) * h)
+        cv2.rectangle(img, (x1, y1), (x2, y2), (80, 80, 80), 1)
+
+
+def annotate_frame(left_img, right_img, frame_idx, frame_data, last_detections,
+                   total, fps, panel_h, panel_w, roi_left, roi_right):
+    """Annotate and combine left+right into a single frame."""
+    left = cv2.resize(left_img, (panel_w, panel_h))
+    fresh = len(frame_data["detections_raw"]) > 0
+    if fresh:
+        draw_detections(left, frame_data["detections_raw"], "left", panel_h, panel_w)
+    elif last_detections:
+        draw_stale_detections(left, last_detections, "left", panel_h, panel_w)
+    draw_filter_removed(left, frame_data["detection_filter"], "left", panel_h, panel_w)
+    draw_roi(left, roi_left, panel_h, panel_w)
+    draw_camera_label(left, "L", panel_h, panel_w)
+
+    if right_img is not None:
+        right = cv2.resize(right_img, (panel_w, panel_h))
+        if fresh:
+            draw_detections(right, frame_data["detections_raw"], "right", panel_h, panel_w)
+        elif last_detections:
+            draw_stale_detections(right, last_detections, "right", panel_h, panel_w)
+        draw_filter_removed(right, frame_data["detection_filter"], "right", panel_h, panel_w)
+        draw_roi(right, roi_right, panel_h, panel_w)
+        draw_camera_label(right, "R", panel_h, panel_w)
+        combined = np.hstack([left, right])
+    else:
+        combined = left
+
+    draw_shared_overlay(combined, frame_idx, frame_data, total, fps)
+
+    # Detection freshness indicator
+    h, w = combined.shape[:2]
+    status = "DETECT" if fresh else "coast"
+    color = (0, 255, 0) if fresh else (100, 100, 100)
+    cv2.putText(combined, status, (10, 50), FONT, 0.45, color, 1, cv2.LINE_AA)
+
+    return combined
+
+
+def export_mode(events_path, left_path, right_path, output_path, max_frames, cal_path):
+    """Export an annotated side-by-side video."""
     frames, total = load_events(events_path)
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        print(f"Error: cannot open {video_path}", file=sys.stderr)
+    roi_left, roi_right = load_calibration_roi(cal_path)
+    if roi_left is not None:
+        print(f"ROI: left={len(roi_left)} pts, right={len(roi_right) if roi_right is not None else 0} pts")
+
+    cap_l = cv2.VideoCapture(str(left_path))
+    if not cap_l.isOpened():
+        print(f"Error: cannot open {left_path}", file=sys.stderr)
         return 1
 
-    src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    src_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    cap_r = None
+    if right_path:
+        cap_r = cv2.VideoCapture(str(right_path))
+        if not cap_r.isOpened():
+            print(f"Warning: cannot open {right_path}, single camera mode", file=sys.stderr)
+            cap_r = None
 
-    out_w, out_h = 1920, 1080
+    fps = cap_l.get(cv2.CAP_PROP_FPS) or 30.0
+    panel_w, panel_h = 960, 540
+    out_w = panel_w * 2 if cap_r else panel_w
+    out_h = panel_h
+
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     out = cv2.VideoWriter(str(output_path), fourcc, fps, (out_w, out_h))
 
-    print(f"Source: {src_w}x{src_h} @ {fps:.1f} fps")
     print(f"Events: {total + 1} frames")
     print(f"Output: {output_path} ({out_w}x{out_h})")
 
     frame_idx = 0
+    last_detections = []
     limit = max_frames if max_frames else total + 1
     while frame_idx <= min(total, limit - 1):
-        ret, raw = cap.read()
-        if not ret:
+        ret_l, raw_l = cap_l.read()
+        if not ret_l:
             break
 
-        img = cv2.resize(raw, (out_w, out_h))
+        raw_r = None
+        if cap_r:
+            ret_r, raw_r = cap_r.read()
+            if not ret_r:
+                raw_r = None
+
         fd = frames[frame_idx]
+        if fd["detections_raw"]:
+            last_detections = fd["detections_raw"]
 
-        n = draw_detections(img, fd["detections_raw"], camera, out_h, out_w)
-        draw_filter_removed(img, fd["detection_filter"], camera, out_h, out_w)
-        draw_overlay(img, frame_idx, fd, total, fps)
-
-        out.write(img)
+        combined = annotate_frame(raw_l, raw_r, frame_idx, fd, last_detections,
+                                  total, fps, panel_h, panel_w, roi_left, roi_right)
+        out.write(combined)
         frame_idx += 1
         if frame_idx % 100 == 0:
             print(f"  {frame_idx}/{total + 1} frames...", flush=True)
 
     out.release()
-    cap.release()
+    cap_l.release()
+    if cap_r:
+        cap_r.release()
     print(f"Done: {frame_idx} frames written to {output_path}")
     return 0
 
 
-def browse_mode(events_path, video_path, camera):
+def browse_mode(events_path, left_path, right_path, cal_path):
     """Interactive frame-by-frame browser."""
     frames, total = load_events(events_path)
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        print(f"Error: cannot open {video_path}", file=sys.stderr)
+    roi_left, roi_right = load_calibration_roi(cal_path)
+
+    cap_l = cv2.VideoCapture(str(left_path))
+    if not cap_l.isOpened():
+        print(f"Error: cannot open {left_path}", file=sys.stderr)
         return 1
 
-    src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    src_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    cap_r = None
+    if right_path:
+        cap_r = cv2.VideoCapture(str(right_path))
+        if not cap_r.isOpened():
+            cap_r = None
 
-    disp_w, disp_h = 1920, 1080
-    current = 0
-    needs_redraw = True
+    fps = cap_l.get(cv2.CAP_PROP_FPS) or 30.0
+    panel_w, panel_h = 960, 540
 
-    print(f"Source: {src_w}x{src_h} @ {fps:.1f} fps, {total + 1} event frames")
+    print(f"{total + 1} event frames")
     print("Controls: Right/D = next, Left/A = prev, PgDn = +30, PgUp = -30")
     print("          Home = first, End = last, Q = quit")
 
-    cv2.namedWindow("Reco Detection Browser", cv2.WINDOW_NORMAL)
-    cv2.resizeWindow("Reco Detection Browser", disp_w, disp_h)
+    win = "Reco Detection Browser"
+    cv2.namedWindow(win, cv2.WINDOW_NORMAL)
+    out_w = panel_w * 2 if cap_r else panel_w
+    cv2.resizeWindow(win, out_w, panel_h)
 
-    def seek_and_draw(idx):
+    current = 0
+    needs_redraw = True
+    last_det = []
+
+    def seek_and_draw(idx, last_detections):
         idx = max(0, min(idx, total))
-        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-        ret, raw = cap.read()
-        if not ret:
-            return None, idx
-        img = cv2.resize(raw, (disp_w, disp_h))
+        cap_l.set(cv2.CAP_PROP_POS_FRAMES, idx)
+        ret_l, raw_l = cap_l.read()
+        if not ret_l:
+            return None, idx, last_detections
+
+        raw_r = None
+        if cap_r:
+            cap_r.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ret_r, raw_r = cap_r.read()
+            if not ret_r:
+                raw_r = None
+
         fd = frames[idx]
-        draw_detections(img, fd["detections_raw"], camera, disp_h, disp_w)
-        draw_filter_removed(img, fd["detection_filter"], camera, disp_h, disp_w)
-        draw_overlay(img, idx, fd, total, fps)
-        return img, idx
+        if fd["detections_raw"]:
+            last_detections = fd["detections_raw"]
+        combined = annotate_frame(raw_l, raw_r, idx, fd, last_detections,
+                                  total, fps, panel_h, panel_w, roi_left, roi_right)
+        return combined, idx, last_detections
 
     while True:
         if needs_redraw:
-            img, current = seek_and_draw(current)
+            img, current, last_det = seek_and_draw(current, last_det)
             if img is not None:
-                cv2.imshow("Reco Detection Browser", img)
+                cv2.imshow(win, img)
             needs_redraw = False
 
         key = cv2.waitKey(0) & 0xFF
@@ -303,7 +427,9 @@ def browse_mode(events_path, video_path, camera):
             needs_redraw = True
 
     cv2.destroyAllWindows()
-    cap.release()
+    cap_l.release()
+    if cap_r:
+        cap_r.release()
     return 0
 
 
@@ -313,29 +439,34 @@ def main():
     )
     sub = parser.add_subparsers(dest="mode", required=True)
 
-    exp = sub.add_parser("export", help="Export annotated video")
+    exp = sub.add_parser("export", help="Export annotated side-by-side video")
     exp.add_argument("events", type=Path, help="Pipeline events JSONL file")
-    exp.add_argument("video", type=Path, help="Source video (left or right)")
+    exp.add_argument("left_video", type=Path, help="Left camera video")
+    exp.add_argument("right_video", type=Path, nargs="?", default=None,
+                     help="Right camera video (omit for single camera)")
     exp.add_argument("-o", "--output", type=Path, default=Path("annotated.mp4"),
-                     help="Output video path (default: annotated.mp4)")
-    exp.add_argument("--camera", choices=["left", "right"], default="left",
-                     help="Which camera's detections to show (default: left)")
+                     help="Output path (default: annotated.mp4)")
     exp.add_argument("--max-frames", type=int, default=0,
-                     help="Limit frames to process (0 = all)")
+                     help="Limit frames (0 = all)")
+    exp.add_argument("-c", "--calibration", type=Path, default=None,
+                     help="Calibration JSON (for ROI polygon overlay)")
 
     brw = sub.add_parser("browse", help="Interactive frame browser")
     brw.add_argument("events", type=Path, help="Pipeline events JSONL file")
-    brw.add_argument("video", type=Path, help="Source video (left or right)")
-    brw.add_argument("--camera", choices=["left", "right"], default="left",
-                     help="Which camera's detections to show (default: left)")
+    brw.add_argument("left_video", type=Path, help="Left camera video")
+    brw.add_argument("right_video", type=Path, nargs="?", default=None,
+                     help="Right camera video (omit for single camera)")
+    brw.add_argument("-c", "--calibration", type=Path, default=None,
+                     help="Calibration JSON (for ROI polygon overlay)")
 
     args = parser.parse_args()
 
     if args.mode == "export":
-        return export_mode(args.events, args.video, args.output,
-                           args.camera, args.max_frames)
+        return export_mode(args.events, args.left_video, args.right_video,
+                           args.output, args.max_frames, args.calibration)
     elif args.mode == "browse":
-        return browse_mode(args.events, args.video, args.camera)
+        return browse_mode(args.events, args.left_video, args.right_video,
+                           args.calibration)
 
 
 if __name__ == "__main__":
