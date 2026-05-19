@@ -180,6 +180,9 @@ component ToastStack inherits Rectangle {
     in property <length> right-inset: 0px;
     callback dismissed(int);
 
+    width: 100%;
+    height: 100%;
+
     VerticalLayout {
         x: parent.width - self.preferred-width - 16px - root.right-inset;
         y: parent.height - self.preferred-height - 16px;
