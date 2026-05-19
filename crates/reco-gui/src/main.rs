@@ -3362,7 +3362,8 @@ fn main() -> anyhow::Result<()> {
                             };
                             let msg = format!("{err}");
                             if let Some(ref t) = s.telemetry {
-                                t.export_error(&msg);
+                                let codec = app.get_export_codec().to_string();
+                                t.export_error(&msg, &codec);
                             }
                             s.toasts.push(Severity::Error, title, body);
                             crate::toast::sync_to_ui(&s.toasts, &app);
@@ -3691,6 +3692,15 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                     let os = format!("{} {}", std::env::consts::OS, std::env::consts::ARCH);
                     let (ai_status, _) = ai_capability_summary();
                     t.context(&gpu, &os, &ai_status);
+                    let (w, h) = s.playback.input_dimensions().unwrap_or((0, 0));
+                    let fps = s.playback.fps();
+                    let decoder = s
+                        .bridge
+                        .as_ref()
+                        .map(|_| "D3D11VA/NVDEC/VT")
+                        .unwrap_or("unknown");
+                    let sync = s.calibration.as_ref().map(|c| c.sync_offset).unwrap_or(0);
+                    t.source_info(w, h, fps, decoder, sync);
                 }
             }
         }

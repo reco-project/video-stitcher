@@ -4,7 +4,12 @@
 
 Download the latest **GUI** release for your platform from the [Releases page](https://github.com/reco-project/video-stitcher/releases). Also download `yolo26n.onnx` from the same release (needed for AI tracking).
 
-Extract and run `reco-gui`. On Mac, right-click > Open the first time (unsigned app).
+Extract and run `reco-gui`.
+
+- **Windows**: If SmartScreen blocks the app, right-click the exe > Properties > check "Unblock" > OK, then run again.
+- **Mac**: Right-click > Open the first time (unsigned app).
+
+For AI tracking, also download `yolo26n.onnx` (1280, higher accuracy) or `yolo26n_640.onnx` (640, faster on integrated GPUs) from the same release.
 
 ## 2. Import & Calibrate
 
@@ -40,9 +45,25 @@ If the image looks warped (curved lines that should be straight):
   - Set mode to **Field** and detection interval to **15**
 - Click **Start**
 
+## 6. Debug AI Tracking (optional)
+
+To see what the AI detected, export pipeline events and visualize them:
+
+```bash
+reco stitch left.mp4 right.mp4 -c cal.json --model yolo26n.onnx \
+    --tracking field --detection-interval 15 --events detections.jsonl -o output.mp4
+
+python3 scripts/visualize_detections.py export detections.jsonl left.mp4 right.mp4 \
+    -c cal.json -o annotated.mp4
+```
+
+This produces a side-by-side video with detection boxes, ROI boundaries, tracking state, and panner decisions overlaid.
+
 ## Tips
 
 - Try a short clip first (set start/end times) before exporting the full video
-- 10-bit footage (e.g. DJI Action 4) may show green on Windows - use CPU Decode in settings as a workaround
+- For football, use **Field** tracking mode with detection interval **10-15** for smooth panning
+- Use the **Sync offset** slider in Stitching to fine-tune camera alignment after calibration
 - Share your calibration file with us if something looks wrong
 - Can't find a lens profile for your camera? Let us know
+- Join the community at [forum.reco-project.org](https://forum.reco-project.org)
