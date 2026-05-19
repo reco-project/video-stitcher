@@ -96,7 +96,27 @@ impl FfmpegFileSource {
         })?;
         let fps_r = probe.frame_rate();
         let fps = probe.fps();
-        let total_frame_count = probe.duration_secs().map(|dur| (dur * fps) as u64);
+        let total_frame_count = if let crate::stitch_job::InputPath::Chained(paths) = left {
+            let mut total_dur = 0.0f64;
+            for p in paths {
+                match crate::ffmpeg::decoder::VideoDecoder::open(p) {
+                    Ok(d) => {
+                        if let Some(dur) = d.duration_secs() {
+                            total_dur += dur;
+                        }
+                    }
+                    Err(e) => log::warn!("Could not probe segment {}: {e}", p.display()),
+                }
+            }
+            if total_dur > 0.0 {
+                log::info!("Chained source: {:.1}s total across {} segments", total_dur, paths.len());
+                Some((total_dur * fps) as u64)
+            } else {
+                probe.duration_secs().map(|dur| (dur * fps) as u64)
+            }
+        } else {
+            probe.duration_secs().map(|dur| (dur * fps) as u64)
+        };
         let info = SourceInfo {
             width: probe.width(),
             height: probe.height(),
