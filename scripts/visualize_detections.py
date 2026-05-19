@@ -244,10 +244,18 @@ def draw_stale_detections(img, detections, camera_filter, h, w):
         cv2.rectangle(img, (x1, y1), (x2, y2), (80, 80, 80), 1)
 
 
+def resize_keep_aspect(img, target_w):
+    """Resize to target width, preserving aspect ratio."""
+    h, w = img.shape[:2]
+    scale = target_w / w
+    return cv2.resize(img, (target_w, int(h * scale)))
+
+
 def annotate_frame(left_img, right_img, frame_idx, frame_data, last_detections,
-                   total, fps, panel_h, panel_w, roi_left, roi_right):
+                   total, fps, panel_w, roi_left, roi_right, hstack):
     """Annotate and combine left+right into a single frame."""
-    left = cv2.resize(left_img, (panel_w, panel_h))
+    left = resize_keep_aspect(left_img, panel_w)
+    panel_h = left.shape[0]
     fresh = len(frame_data["detections_raw"]) > 0
     if fresh:
         draw_detections(left, frame_data["detections_raw"], "left", panel_h, panel_w)
@@ -258,15 +266,16 @@ def annotate_frame(left_img, right_img, frame_idx, frame_data, last_detections,
     draw_camera_label(left, "L", panel_h, panel_w)
 
     if right_img is not None:
-        right = cv2.resize(right_img, (panel_w, panel_h))
+        right = resize_keep_aspect(right_img, panel_w)
+        rh = right.shape[0]
         if fresh:
-            draw_detections(right, frame_data["detections_raw"], "right", panel_h, panel_w)
+            draw_detections(right, frame_data["detections_raw"], "right", rh, panel_w)
         elif last_detections:
-            draw_stale_detections(right, last_detections, "right", panel_h, panel_w)
-        draw_filter_removed(right, frame_data["detection_filter"], "right", panel_h, panel_w)
-        draw_roi(right, roi_right, panel_h, panel_w)
-        draw_camera_label(right, "R", panel_h, panel_w)
-        combined = np.vstack([left, right])
+            draw_stale_detections(right, last_detections, "right", rh, panel_w)
+        draw_filter_removed(right, frame_data["detection_filter"], "right", rh, panel_w)
+        draw_roi(right, roi_right, rh, panel_w)
+        draw_camera_label(right, "R", rh, panel_w)
+        combined = np.hstack([left, right]) if hstack else np.vstack([left, right])
     else:
         combined = left
 
@@ -281,8 +290,9 @@ def annotate_frame(left_img, right_img, frame_idx, frame_data, last_detections,
     return combined
 
 
-def export_mode(events_path, left_path, right_path, output_path, max_frames, cal_path):
-    """Export an annotated side-by-side video."""
+def export_mode(events_path, left_path, right_path, output_path, max_frames,
+                cal_path, hstack):
+    """Export an annotated video (vstack by default, hstack with --hstack)."""
     frames, total = load_events(events_path)
     roi_left, roi_right = load_calibration_roi(cal_path)
     if roi_left is not None:
@@ -301,9 +311,21 @@ def export_mode(events_path, left_path, right_path, output_path, max_frames, cal
             cap_r = None
 
     fps = cap_l.get(cv2.CAP_PROP_FPS) or 30.0
-    panel_w, panel_h = 1920, 540
-    out_w = panel_w
-    out_h = panel_h * 2 if cap_r else panel_h
+    src_w = int(cap_l.get(cv2.CAP_PROP_FRAME_WIDTH))
+    src_h = int(cap_l.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    if hstack:
+        panel_w = 960
+    else:
+        panel_w = min(1920, src_w)
+    panel_h = int(src_h * panel_w / src_w)
+    if not hstack and cap_r and panel_h * 2 > 1080:
+        panel_h = 540
+        panel_w = int(src_w * panel_h / src_h)
+    if cap_r:
+        out_w = panel_w * 2 if hstack else panel_w
+        out_h = panel_h if hstack else panel_h * 2
+    else:
+        out_w, out_h = panel_w, panel_h
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     out = cv2.VideoWriter(str(output_path), fourcc, fps, (out_w, out_h))
@@ -330,7 +352,7 @@ def export_mode(events_path, left_path, right_path, output_path, max_frames, cal
             last_detections = fd["detections_raw"]
 
         combined = annotate_frame(raw_l, raw_r, frame_idx, fd, last_detections,
-                                  total, fps, panel_h, panel_w, roi_left, roi_right)
+                                  total, fps, panel_w, roi_left, roi_right, hstack)
         out.write(combined)
         frame_idx += 1
         if frame_idx % 100 == 0:
@@ -344,7 +366,7 @@ def export_mode(events_path, left_path, right_path, output_path, max_frames, cal
     return 0
 
 
-def browse_mode(events_path, left_path, right_path, cal_path):
+def browse_mode(events_path, left_path, right_path, cal_path, hstack):
     """Interactive frame-by-frame browser."""
     frames, total = load_events(events_path)
     roi_left, roi_right = load_calibration_roi(cal_path)
@@ -361,7 +383,15 @@ def browse_mode(events_path, left_path, right_path, cal_path):
             cap_r = None
 
     fps = cap_l.get(cv2.CAP_PROP_FPS) or 30.0
-    panel_w, panel_h = 960, 540
+    src_w = int(cap_l.get(cv2.CAP_PROP_FRAME_WIDTH))
+    src_h = int(cap_l.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    panel_w = 960 if hstack else 1920
+    panel_h = int(src_h * panel_w / src_w)
+    if cap_r:
+        out_w = panel_w * 2 if hstack else panel_w
+        out_h = panel_h if hstack else panel_h * 2
+    else:
+        out_w, out_h = panel_w, panel_h
 
     print(f"{total + 1} event frames")
     print("Controls: Right/D = next, Left/A = prev, PgDn = +30, PgUp = -30")
@@ -369,8 +399,7 @@ def browse_mode(events_path, left_path, right_path, cal_path):
 
     win = "Reco Detection Browser"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
-    out_h = panel_h * 2 if cap_r else panel_h
-    cv2.resizeWindow(win, panel_w, out_h)
+    cv2.resizeWindow(win, out_w, out_h)
 
     current = 0
     needs_redraw = True
@@ -394,7 +423,7 @@ def browse_mode(events_path, left_path, right_path, cal_path):
         if fd["detections_raw"]:
             last_detections = fd["detections_raw"]
         combined = annotate_frame(raw_l, raw_r, idx, fd, last_detections,
-                                  total, fps, panel_h, panel_w, roi_left, roi_right)
+                                  total, fps, panel_w, roi_left, roi_right, hstack)
         return combined, idx, last_detections
 
     while True:
@@ -450,6 +479,8 @@ def main():
                      help="Limit frames (0 = all)")
     exp.add_argument("-c", "--calibration", type=Path, default=None,
                      help="Calibration JSON (for ROI polygon overlay)")
+    exp.add_argument("--hstack", action="store_true",
+                     help="Side-by-side layout instead of vertical stack")
 
     brw = sub.add_parser("browse", help="Interactive frame browser")
     brw.add_argument("events", type=Path, help="Pipeline events JSONL file")
@@ -458,15 +489,18 @@ def main():
                      help="Right camera video (omit for single camera)")
     brw.add_argument("-c", "--calibration", type=Path, default=None,
                      help="Calibration JSON (for ROI polygon overlay)")
+    brw.add_argument("--hstack", action="store_true",
+                     help="Side-by-side layout instead of vertical stack")
 
     args = parser.parse_args()
 
     if args.mode == "export":
         return export_mode(args.events, args.left_video, args.right_video,
-                           args.output, args.max_frames, args.calibration)
+                           args.output, args.max_frames, args.calibration,
+                           args.hstack)
     elif args.mode == "browse":
         return browse_mode(args.events, args.left_video, args.right_video,
-                           args.calibration)
+                           args.calibration, args.hstack)
 
 
 if __name__ == "__main__":
