@@ -1386,13 +1386,22 @@ fn build_encoder_opts(
 ) -> ffmpeg::Dictionary<'static> {
     let mut opts = ffmpeg::Dictionary::new();
 
+    // When a quality override is set, derive the effective preset from
+    // the quality value so NVENC preset/maxrate scale with the CQ.
+    let effective_preset = match quality_override {
+        Some(q) if q >= 75 => Quality::High,
+        Some(q) if q >= 40 => Quality::Balanced,
+        Some(_) => Quality::Fast,
+        None => quality_preset,
+    };
+
     match name {
         "h264_nvenc" => {
             // NVENC VBR with per-quality bitrate ceiling. Prior defaults
             // (10M / 15M across all quality presets) artificially capped
             // High output at ~15 Mbps even with cq=19. Scale the ceilings
             // with quality so "high" actually delivers the visual bump.
-            let (preset, cq, bv, maxrate) = match quality_preset {
+            let (preset, cq, bv, maxrate) = match effective_preset {
                 Quality::Fast => ("p3", "28", "8M", "12M"),
                 Quality::Balanced => ("p4", "23", "12M", "18M"),
                 Quality::High => ("p5", "19", "20M", "30M"),
@@ -1409,7 +1418,7 @@ fn build_encoder_opts(
         }
         "hevc_nvenc" => {
             // HEVC ~30% more efficient than H264, so ceilings scale down.
-            let (preset, cq, bv, maxrate) = match quality_preset {
+            let (preset, cq, bv, maxrate) = match effective_preset {
                 Quality::Fast => ("p3", "28", "6M", "10M"),
                 Quality::Balanced => ("p4", "23", "9M", "14M"),
                 Quality::High => ("p5", "19", "15M", "22M"),
@@ -1426,7 +1435,7 @@ fn build_encoder_opts(
         }
         "av1_nvenc" => {
             // AV1 another ~20% tighter than HEVC.
-            let (preset, cq, bv, maxrate) = match quality_preset {
+            let (preset, cq, bv, maxrate) = match effective_preset {
                 Quality::Fast => ("p3", "32", "5M", "8M"),
                 Quality::Balanced => ("p4", "27", "7M", "11M"),
                 Quality::High => ("p5", "22", "12M", "18M"),
@@ -1439,7 +1448,7 @@ fn build_encoder_opts(
             opts.set("maxrate", maxrate);
         }
         "h264_qsv" => {
-            let gq = match quality_preset {
+            let gq = match effective_preset {
                 Quality::Fast => "28",
                 Quality::Balanced => "23",
                 Quality::High => "19",
@@ -1451,7 +1460,7 @@ fn build_encoder_opts(
         "h264_videotoolbox" => {
             // global_quality maps to VTCompressionPropertyKey_Quality (0-100).
             // "q:v" doesn't work through the C API dictionary (colon is CLI syntax).
-            let q = match quality_preset {
+            let q = match effective_preset {
                 Quality::Fast => "55",
                 Quality::Balanced => "65",
                 Quality::High => "80",
@@ -1460,7 +1469,7 @@ fn build_encoder_opts(
             opts.set("profile", "high");
         }
         "hevc_videotoolbox" => {
-            let q = match quality_preset {
+            let q = match effective_preset {
                 Quality::Fast => "55",
                 Quality::Balanced => "65",
                 Quality::High => "80",
@@ -1469,7 +1478,7 @@ fn build_encoder_opts(
             opts.set("profile", "main");
         }
         "h264_vaapi" | "hevc_vaapi" | "av1_vaapi" => {
-            let qp = match quality_preset {
+            let qp = match effective_preset {
                 Quality::Fast => "28",
                 Quality::Balanced => "23",
                 Quality::High => "19",
@@ -1480,7 +1489,7 @@ fn build_encoder_opts(
             }
         }
         "h264_v4l2m2m" | "hevc_v4l2m2m" => {
-            let qp = match quality_preset {
+            let qp = match effective_preset {
                 Quality::Fast => "28",
                 Quality::Balanced => "23",
                 Quality::High => "19",
@@ -1489,7 +1498,7 @@ fn build_encoder_opts(
             // Don't set profile - v4l2m2m drivers pick appropriate defaults.
         }
         "h264_amf" | "hevc_amf" | "av1_amf" => {
-            let q = match quality_preset {
+            let q = match effective_preset {
                 Quality::Fast => "22",
                 Quality::Balanced => "18",
                 Quality::High => "14",
@@ -1500,7 +1509,7 @@ fn build_encoder_opts(
             opts.set("rc", "cqp");
         }
         "libx265" => {
-            let (preset, crf_val) = match quality_preset {
+            let (preset, crf_val) = match effective_preset {
                 Quality::Fast => ("veryfast", "28"),
                 Quality::Balanced => ("fast", "25"),
                 Quality::High => ("medium", "21"),
@@ -1510,7 +1519,7 @@ fn build_encoder_opts(
             opts.set("profile", "main");
         }
         "libsvtav1" => {
-            let (preset, crf_val) = match quality_preset {
+            let (preset, crf_val) = match effective_preset {
                 Quality::Fast => ("10", "35"),
                 Quality::Balanced => ("7", "30"),
                 Quality::High => ("4", "25"),
@@ -1519,7 +1528,7 @@ fn build_encoder_opts(
             opts.set("crf", crf_val);
         }
         "libaom-av1" => {
-            let (crf_val, cpu_used) = match quality_preset {
+            let (crf_val, cpu_used) = match effective_preset {
                 Quality::Fast => ("35", "8"),
                 Quality::Balanced => ("30", "6"),
                 Quality::High => ("25", "4"),
@@ -1529,7 +1538,7 @@ fn build_encoder_opts(
             opts.set("row-mt", "1");
         }
         "libx264" => {
-            let (preset, crf_val) = match quality_preset {
+            let (preset, crf_val) = match effective_preset {
                 Quality::Fast => ("ultrafast", "32"),
                 Quality::Balanced => ("veryfast", "28"),
                 Quality::High => ("fast", "23"),
