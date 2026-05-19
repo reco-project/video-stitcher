@@ -33,7 +33,7 @@ pub struct LibcameraRunConfig<'a> {
     pub capture_fps: u32,
     pub model_path: Option<&'a str>,
     pub detection_interval: u64,
-    pub crf: Option<u8>,
+    pub quality_value: Option<u8>,
     pub preset: Option<String>,
 }
 
@@ -56,7 +56,7 @@ pub fn run_libcamera(
         capture_fps,
         model_path,
         detection_interval,
-        crf,
+        quality_value,
         preset,
     } = config;
     anyhow::ensure!(
@@ -131,8 +131,8 @@ pub fn run_libcamera(
     let enc_config = reco_io::ffmpeg::encoder::EncoderConfig {
         encoder_name,
         codec: out_codec.into(),
-        quality: out_quality.into(),
-        crf,
+        quality_preset: out_quality.into(),
+        quality: quality_value,
         preset,
         ..Default::default()
     };

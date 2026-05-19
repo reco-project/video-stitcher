@@ -71,7 +71,7 @@ fn encoder_config(container: Container) -> StackedEncoderConfig {
     StackedEncoderConfig {
         inner: reco_io::ffmpeg::encoder::EncoderConfig {
             container,
-            quality: Quality::Fast,
+            quality_preset: Quality::Fast,
             gop_size: Some(10),
             ..base.inner
         },

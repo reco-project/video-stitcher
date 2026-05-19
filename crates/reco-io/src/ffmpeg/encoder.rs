@@ -348,10 +348,15 @@ pub struct EncoderConfig {
     pub encoder_name: Option<String>,
     /// Output video codec (H.264, HEVC, AV1). Default: H.264.
     pub codec: VideoCodec,
-    /// Quality preset.
-    pub quality: Quality,
-    /// Override the CRF/quality value (passed through to the encoder).
-    pub crf: Option<u8>,
+    /// Quality preset (Fast / Balanced / High). Controls default encoder
+    /// tuning when no explicit [`quality`](Self::quality) override is set.
+    pub quality_preset: Quality,
+    /// Normalized quality override (0-100, higher = better). When set,
+    /// replaces the encoder's default quality parameter with a value
+    /// derived from this scale. The conversion is per-encoder:
+    /// CRF-style encoders use `crf = 40.0 - (quality / 100.0) * 28.0`,
+    /// VideoToolbox passes `global_quality = quality` directly.
+    pub quality: Option<u8>,
     /// Override the encoder preset string (passed through to the encoder).
     pub preset: Option<String>,
     /// Path to a source file to copy audio from (stream copy, no re-encoding).
@@ -694,8 +699,12 @@ impl VideoEncoder {
         // canonical ffmpeg-next transcode example follows the same
         // pattern: set params, open, re-set params.
         ost.set_parameters(&enc);
-        let mut opts =
-            build_encoder_opts(name, config.quality, config.crf, config.preset.as_deref());
+        let mut opts = build_encoder_opts(
+            name,
+            config.quality_preset,
+            config.quality,
+            config.preset.as_deref(),
+        );
         // B-frames cause negative initial PTS offsets and frame reordering
         // in the encoded output. For real-time stitching they add latency
         // with no visual benefit, so disable unconditionally.
@@ -1371,8 +1380,8 @@ impl SilentAudio {
 /// Build encoder-specific FFmpeg options.
 fn build_encoder_opts(
     name: &str,
-    quality: Quality,
-    crf_override: Option<u8>,
+    quality_preset: Quality,
+    quality_override: Option<u8>,
     preset_override: Option<&str>,
 ) -> ffmpeg::Dictionary<'static> {
     let mut opts = ffmpeg::Dictionary::new();
@@ -1383,7 +1392,7 @@ fn build_encoder_opts(
             // (10M / 15M across all quality presets) artificially capped
             // High output at ~15 Mbps even with cq=19. Scale the ceilings
             // with quality so "high" actually delivers the visual bump.
-            let (preset, cq, bv, maxrate) = match quality {
+            let (preset, cq, bv, maxrate) = match quality_preset {
                 Quality::Fast => ("p3", "28", "8M", "12M"),
                 Quality::Balanced => ("p4", "23", "12M", "18M"),
                 Quality::High => ("p5", "19", "20M", "30M"),
@@ -1400,7 +1409,7 @@ fn build_encoder_opts(
         }
         "hevc_nvenc" => {
             // HEVC ~30% more efficient than H264, so ceilings scale down.
-            let (preset, cq, bv, maxrate) = match quality {
+            let (preset, cq, bv, maxrate) = match quality_preset {
                 Quality::Fast => ("p3", "28", "6M", "10M"),
                 Quality::Balanced => ("p4", "23", "9M", "14M"),
                 Quality::High => ("p5", "19", "15M", "22M"),
@@ -1417,7 +1426,7 @@ fn build_encoder_opts(
         }
         "av1_nvenc" => {
             // AV1 another ~20% tighter than HEVC.
-            let (preset, cq, bv, maxrate) = match quality {
+            let (preset, cq, bv, maxrate) = match quality_preset {
                 Quality::Fast => ("p3", "32", "5M", "8M"),
                 Quality::Balanced => ("p4", "27", "7M", "11M"),
                 Quality::High => ("p5", "22", "12M", "18M"),
@@ -1430,7 +1439,7 @@ fn build_encoder_opts(
             opts.set("maxrate", maxrate);
         }
         "h264_qsv" => {
-            let gq = match quality {
+            let gq = match quality_preset {
                 Quality::Fast => "28",
                 Quality::Balanced => "23",
                 Quality::High => "19",
@@ -1442,7 +1451,7 @@ fn build_encoder_opts(
         "h264_videotoolbox" => {
             // global_quality maps to VTCompressionPropertyKey_Quality (0-100).
             // "q:v" doesn't work through the C API dictionary (colon is CLI syntax).
-            let q = match quality {
+            let q = match quality_preset {
                 Quality::Fast => "55",
                 Quality::Balanced => "65",
                 Quality::High => "80",
@@ -1451,7 +1460,7 @@ fn build_encoder_opts(
             opts.set("profile", "high");
         }
         "hevc_videotoolbox" => {
-            let q = match quality {
+            let q = match quality_preset {
                 Quality::Fast => "55",
                 Quality::Balanced => "65",
                 Quality::High => "80",
@@ -1460,7 +1469,7 @@ fn build_encoder_opts(
             opts.set("profile", "main");
         }
         "h264_vaapi" | "hevc_vaapi" | "av1_vaapi" => {
-            let qp = match quality {
+            let qp = match quality_preset {
                 Quality::Fast => "28",
                 Quality::Balanced => "23",
                 Quality::High => "19",
@@ -1471,7 +1480,7 @@ fn build_encoder_opts(
             }
         }
         "h264_v4l2m2m" | "hevc_v4l2m2m" => {
-            let qp = match quality {
+            let qp = match quality_preset {
                 Quality::Fast => "28",
                 Quality::Balanced => "23",
                 Quality::High => "19",
@@ -1480,7 +1489,7 @@ fn build_encoder_opts(
             // Don't set profile - v4l2m2m drivers pick appropriate defaults.
         }
         "h264_amf" | "hevc_amf" | "av1_amf" => {
-            let q = match quality {
+            let q = match quality_preset {
                 Quality::Fast => "22",
                 Quality::Balanced => "18",
                 Quality::High => "14",
@@ -1491,42 +1500,42 @@ fn build_encoder_opts(
             opts.set("rc", "cqp");
         }
         "libx265" => {
-            let (preset, crf) = match quality {
+            let (preset, crf_val) = match quality_preset {
                 Quality::Fast => ("veryfast", "28"),
                 Quality::Balanced => ("fast", "25"),
                 Quality::High => ("medium", "21"),
             };
             opts.set("preset", preset);
-            opts.set("crf", crf);
+            opts.set("crf", crf_val);
             opts.set("profile", "main");
         }
         "libsvtav1" => {
-            let (preset, crf) = match quality {
+            let (preset, crf_val) = match quality_preset {
                 Quality::Fast => ("10", "35"),
                 Quality::Balanced => ("7", "30"),
                 Quality::High => ("4", "25"),
             };
             opts.set("preset", preset);
-            opts.set("crf", crf);
+            opts.set("crf", crf_val);
         }
         "libaom-av1" => {
-            let (crf, cpu_used) = match quality {
+            let (crf_val, cpu_used) = match quality_preset {
                 Quality::Fast => ("35", "8"),
                 Quality::Balanced => ("30", "6"),
                 Quality::High => ("25", "4"),
             };
-            opts.set("crf", crf);
+            opts.set("crf", crf_val);
             opts.set("cpu-used", cpu_used);
             opts.set("row-mt", "1");
         }
         "libx264" => {
-            let (preset, crf) = match quality {
+            let (preset, crf_val) = match quality_preset {
                 Quality::Fast => ("ultrafast", "32"),
                 Quality::Balanced => ("veryfast", "28"),
                 Quality::High => ("fast", "23"),
             };
             opts.set("preset", preset);
-            opts.set("crf", crf);
+            opts.set("crf", crf_val);
             opts.set("profile", "high");
             // On Tegra (Jetson), limit threads to avoid starving other
             // pipeline stages (capture + pairing threads need CPU too).
@@ -1545,26 +1554,39 @@ fn build_encoder_opts(
         }
     }
 
-    // Apply CRF override: detect which quality key the encoder uses and replace it.
-    if let Some(crf_val) = crf_override {
-        let val = crf_val.to_string();
-        // Check known quality keys in priority order.
-        let quality_keys: &[&str] = &["crf", "cq", "global_quality", "qp", "qp_i", "q:v"];
-        let mut found = false;
-        for &key in quality_keys {
-            if opts.get(key).is_some() {
-                opts.set(key, &val);
-                // Also override qp_p when qp_i is present (AMF uses paired keys).
-                if key == "qp_i" && opts.get("qp_p").is_some() {
-                    opts.set("qp_p", &val);
+    // Apply normalized quality override (0-100, higher = better).
+    // Converts from the consumer-facing scale to encoder-specific parameters.
+    if let Some(q) = quality_override {
+        let is_videotoolbox = name.contains("videotoolbox");
+        if is_videotoolbox {
+            // VideoToolbox: global_quality is already 0-100, pass through.
+            let val = q.to_string();
+            opts.set("global_quality", &val);
+            log::info!("Encoder quality: {q} -> {name} global_quality={q}");
+        } else {
+            // CRF-style encoders: crf = 40.0 - (quality / 100.0) * 28.0
+            let crf = 40.0 - (q as f64 / 100.0) * 28.0;
+            let crf_str = format!("{crf:.2}");
+            // Detect which quality key the encoder uses and replace it.
+            let quality_keys: &[&str] = &["crf", "cq", "global_quality", "qp", "qp_i"];
+            let mut found = false;
+            for &key in quality_keys {
+                if opts.get(key).is_some() {
+                    opts.set(key, &crf_str);
+                    // Also override qp_p when qp_i is present (AMF uses paired keys).
+                    if key == "qp_i" && opts.get("qp_p").is_some() {
+                        opts.set("qp_p", &crf_str);
+                    }
+                    log::info!("Encoder quality: {q} -> {name} {key}={crf_str}");
+                    found = true;
+                    break;
                 }
-                found = true;
-                break;
             }
-        }
-        if !found {
-            // Fallback: set "crf" for unknown encoders.
-            opts.set("crf", &val);
+            if !found {
+                // Fallback: set "crf" for unknown encoders.
+                opts.set("crf", &crf_str);
+                log::info!("Encoder quality: {q} -> {name} crf={crf_str}");
+            }
         }
     }
 

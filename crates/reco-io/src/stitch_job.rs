@@ -45,7 +45,7 @@ pub struct StitchJob {
     audio: AudioMode,
     resolution: Option<(u32, u32)>,
     encoder_name: Option<String>,
-    crf: Option<u8>,
+    quality_value: Option<u8>,
     preset: Option<String>,
 
     // Processing window
@@ -227,7 +227,7 @@ impl StitchJob {
             audio: AudioMode::default(),
             resolution: None,
             encoder_name: None,
-            crf: None,
+            quality_value: None,
             preset: None,
             start_time: None,
             end_time: None,
@@ -299,9 +299,11 @@ impl StitchJob {
         self
     }
 
-    /// Override the CRF/quality value (passed through to the encoder).
-    pub fn crf(mut self, crf: u8) -> Self {
-        self.crf = Some(crf);
+    /// Override encoder quality on a normalized 0-100 scale (higher = better).
+    /// Converted to encoder-specific parameters (CRF, CQ, global_quality)
+    /// internally. See [`crate::ffmpeg::encoder::EncoderConfig::quality`].
+    pub fn quality_value(mut self, quality: u8) -> Self {
+        self.quality_value = Some(quality);
         self
     }
 
@@ -627,8 +629,8 @@ impl StitchJob {
         let enc_config = crate::ffmpeg::encoder::EncoderConfig {
             encoder_name: self.encoder_name.clone(),
             codec: self.codec.into(),
-            quality,
-            crf: self.crf,
+            quality_preset: quality,
+            quality: self.quality_value,
             preset: self.preset.clone(),
             audio_source,
             container: self.format.into(),

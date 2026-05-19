@@ -37,7 +37,7 @@ pub struct CameraRunConfig<'a> {
     pub capture_fps: u32,
     pub model_path: Option<&'a str>,
     pub detection_interval: u64,
-    pub crf: Option<u8>,
+    pub quality_value: Option<u8>,
     pub preset: Option<String>,
     /// Output container (`mp4` / `fmp4` / `mkv`). None -> `mp4`.
     /// `mkv` recommended for live recording (crash-safe, streamable).
@@ -87,7 +87,7 @@ pub fn run_camera(
         capture_fps,
         model_path,
         detection_interval,
-        crf,
+        quality_value,
         preset,
         container,
         tracking,
@@ -328,8 +328,8 @@ pub fn run_camera(
     let enc_config = reco_io::ffmpeg::encoder::EncoderConfig {
         encoder_name,
         codec: out_codec.into(),
-        quality: out_quality.into(),
-        crf,
+        quality_preset: out_quality.into(),
+        quality: quality_value,
         preset,
         container: out_format.into(),
         gop_size: Some(60),

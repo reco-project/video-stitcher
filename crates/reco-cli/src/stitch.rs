@@ -35,7 +35,7 @@ pub struct StitchArgs<'a> {
     pub detection_interval: u64,
     pub lead_time: f64,
     pub tracking_mode: &'a str,
-    pub crf: Option<u8>,
+    pub quality_value: Option<u8>,
     pub preset: Option<String>,
     /// Output container selector (`mp4` / `fmp4` / `mkv`). None
     /// means default (plain MP4, finalized at close). `mkv` or
@@ -116,8 +116,8 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     if let Some(ref enc) = args.encoder_name {
         job = job.encoder_name(enc);
     }
-    if let Some(crf) = args.crf {
-        job = job.crf(crf);
+    if let Some(qv) = args.quality_value {
+        job = job.quality_value(qv);
     }
     if let Some(ref preset) = args.preset {
         job = job.preset(preset);

@@ -68,9 +68,9 @@ impl Default for StackedEncoderConfig {
                 // hit it.
                 container: Container::Matroska,
                 codec: VideoCodec::H264,
-                quality: Quality::Fast,
+                quality_preset: Quality::Fast,
                 encoder_name: None,
-                crf: None,
+                quality: None,
                 preset: None,
                 audio_source: None,
                 // Short GOP so replay readers see recent
