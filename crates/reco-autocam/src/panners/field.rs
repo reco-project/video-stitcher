@@ -62,6 +62,8 @@ pub struct FieldPannerConfig {
     pub ball_frame_margin_deg: f32,
     pub ball_max_dist_from_cluster: f32,
     pub ball_weight: f32,
+    /// Lock pitch and FOV to their initial values; only yaw tracks.
+    pub horizontal_only: bool,
 }
 
 impl Default for FieldPannerConfig {
@@ -91,6 +93,7 @@ impl Default for FieldPannerConfig {
             ball_frame_margin_deg: 3.0,
             ball_max_dist_from_cluster: 0.85,
             ball_weight: 0.5,
+            horizontal_only: false,
         }
     }
 }
@@ -503,10 +506,16 @@ impl Panner for FieldPanner {
             );
         }
 
+        let (out_pitch, out_fov) = if self.config.horizontal_only {
+            (self.config.pitch_bias, self.config.fov_default)
+        } else {
+            (self.pitch, self.current_fov)
+        };
+
         ViewportPosition {
             yaw: self.yaw,
-            pitch: self.pitch,
-            fov_degrees: Some(self.current_fov),
+            pitch: out_pitch,
+            fov_degrees: Some(out_fov),
         }
     }
 

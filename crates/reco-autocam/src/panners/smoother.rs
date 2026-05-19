@@ -204,6 +204,13 @@ impl Smoother {
 }
 
 impl Panner for Smoother {
+    fn debug_event(
+        &self,
+        frame_index: u64,
+    ) -> Option<reco_core::detect::pipeline_event::PipelineEvent> {
+        self.inner.debug_event(frame_index)
+    }
+
     fn decide(&mut self, world: &WorldState, ctx: &PanContext<'_>) -> ViewportPosition {
         // Drop the oldest entry once we reach capacity.
         if self.buffer.len() >= self.capacity {

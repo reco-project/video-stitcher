@@ -160,6 +160,12 @@ impl AutocamConfig {
         self.is_10bit = is_10bit;
         self
     }
+
+    /// Override field panner tuning parameters.
+    pub fn with_field_panner_config(mut self, config: crate::panners::FieldPannerConfig) -> Self {
+        self.field_panner_config = Some(config);
+        self
+    }
 }
 
 /// Set up the autocam pipeline from a config struct.
@@ -478,10 +484,6 @@ pub fn setup_autocam(
                 let player_tracker = crate::trackers::PlayerTracker::new(person_id);
                 let ball_tracker =
                     crate::trackers::BallTracker::new(ball_id).with_max_jump_rad(0.8);
-                log::info!(
-                    "Tracking mode: field (PlayerTracker + BallTracker + FieldPanner, \
-                     player_class={person_id}, ball_class={ball_id})"
-                );
 
                 let fp_config = config.field_panner_config.clone().unwrap_or(
                     crate::panners::FieldPannerConfig {
@@ -489,11 +491,24 @@ pub fn setup_autocam(
                         ..Default::default()
                     },
                 );
+                let horizontal = fp_config.horizontal_only;
                 let field_panner = crate::panners::FieldPanner::with_config(fps, fp_config);
+
+                let lookahead = (fps * 0.5) as usize;
+                let smoothed =
+                    crate::panners::Smoother::new(Box::new(field_panner), fps, lookahead);
+                let panner = crate::panners::DeadZone::new(Box::new(smoothed));
+
+                log::info!(
+                    "Tracking mode: field (PlayerTracker + BallTracker + \
+                     FieldPanner -> Smoother(lookahead={lookahead}) -> DeadZone, \
+                     player_class={person_id}, ball_class={ball_id}, \
+                     horizontal_only={horizontal})"
+                );
 
                 target.set_ball_tracker(Box::new(ball_tracker));
                 target.set_player_tracker(Box::new(player_tracker));
-                target.set_panner(Box::new(field_panner));
+                target.set_panner(Box::new(panner));
             }
             TrackingMode::Sweep => unreachable!("handled before detection block"),
         }

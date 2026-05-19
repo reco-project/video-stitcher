@@ -157,7 +157,9 @@ fn write_snapshot(job: &SnapshotJob, snapshot_path: &Path, tmp_path: &Path) -> a
     // Encode JPEG and write atomically (tmp + rename).
     let img = image::RgbImage::from_raw(job.width, job.height, rgb)
         .ok_or_else(|| anyhow::anyhow!("failed to create image buffer ({}x{})", job.width, job.height))?;
-    img.save(tmp_path)?;
+    let mut out = std::io::BufWriter::new(std::fs::File::create(tmp_path)?);
+    img.write_to(&mut out, image::ImageFormat::Jpeg)?;
+    drop(out);
     std::fs::rename(tmp_path, snapshot_path)?;
 
     Ok(())
