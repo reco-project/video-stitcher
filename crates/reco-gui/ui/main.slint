@@ -2015,15 +2015,7 @@ export component RecoApp inherits Window {
             }
         }
 
-        // ── Toast stack (floating overlay, bottom-right) ──
-        // Rendered LAST so it sits on top of all modals. Does not
-        // block input outside the cards because ToastStack has no
-        // TouchArea - only the dismiss × inside each card.
-        ToastStack {
-            toasts: root.toasts;
-            right-inset: root.controls-open ? root.right-panel-width : 0px;
-            dismissed(id) => { root.toast-dismissed(id); }
-        }
+        // Toast stack moved outside VerticalLayout (see below).
 
         // ── Export dialog (modal overlay) ──
         //
@@ -2443,4 +2435,13 @@ export component RecoApp inherits Window {
             }
         }
     }  // close FocusScope key-scope
+
+    // ── Toast stack (floating overlay, bottom-right) ──
+    // Placed as a direct child of the Window (outside FocusScope and
+    // VerticalLayout) so it overlays everything without affecting layout.
+    ToastStack {
+        toasts: root.toasts;
+        right-inset: root.controls-open ? root.right-panel-width : 0px;
+        dismissed(id) => { root.toast-dismissed(id); }
+    }
 }
