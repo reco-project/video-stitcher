@@ -3042,16 +3042,12 @@ fn main() -> anyhow::Result<()> {
             }
             if parent
                 .metadata()
-                .map_or(true, |m| m.permissions().readonly())
+                .map_or(false, |m| m.permissions().readonly())
             {
-                log::warn!("Export: output directory is not writable: {}", parent.display());
-                s.toasts.push(
-                    Severity::Error,
-                    "Output directory is not writable",
-                    parent.display().to_string(),
+                log::warn!(
+                    "Export: output directory has read-only attribute: {} (may be normal on Windows)",
+                    parent.display()
                 );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-                return;
             }
         }
         let (Some(left_path), Some(right_path), Some(cal)) = (
