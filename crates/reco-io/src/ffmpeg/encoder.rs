@@ -355,7 +355,8 @@ pub struct EncoderConfig {
     /// replaces the encoder's default quality parameter with a value
     /// derived from this scale. The conversion is per-encoder:
     /// CRF-style encoders use `crf = 40.0 - (quality / 100.0) * 28.0`,
-    /// VideoToolbox passes `global_quality = quality` directly.
+    /// VideoToolbox compresses to `global_quality = 40 + quality * 0.35`
+    /// (range 40-75) with a maxrate cap to tame exponential bitrate growth.
     pub quality: Option<u8>,
     /// Override the encoder preset string (passed through to the encoder).
     pub preset: Option<String>,
@@ -1458,23 +1459,32 @@ fn build_encoder_opts(
             opts.set("profile", "high");
         }
         "h264_videotoolbox" => {
-            // global_quality maps to VTCompressionPropertyKey_Quality (0-100).
-            // "q:v" doesn't work through the C API dictionary (colon is CLI syntax).
-            let q = match effective_preset {
-                Quality::Fast => "55",
-                Quality::Balanced => "65",
-                Quality::High => "80",
+            // VideoToolbox quality maps to kVTCompressionPropertyKey_Quality
+            // (0.0-1.0 float, FFmpeg divides global_quality by 100). The
+            // relationship between VT quality and bitrate is exponential:
+            // 0.80 -> ~104 Mbps, 1.0 -> ~297 Mbps (near-lossless). To keep
+            // bitrates comparable with NVENC / software CRF at the same
+            // --quality-value, we cap values at 75 (Apple's "high" tier)
+            // and enforce a maxrate ceiling via kVTCompressionPropertyKey_DataRateLimits.
+            let (q, maxrate) = match effective_preset {
+                Quality::Fast => ("50", "12000000"),
+                Quality::Balanced => ("60", "18000000"),
+                Quality::High => ("70", "30000000"),
             };
             opts.set("global_quality", q);
+            opts.set("maxrate", maxrate);
             opts.set("profile", "high");
         }
         "hevc_videotoolbox" => {
-            let q = match effective_preset {
-                Quality::Fast => "55",
-                Quality::Balanced => "65",
-                Quality::High => "80",
+            // Same VT quality model as H.264; HEVC is ~30% more efficient
+            // so we use slightly lower ceilings.
+            let (q, maxrate) = match effective_preset {
+                Quality::Fast => ("50", "10000000"),
+                Quality::Balanced => ("60", "14000000"),
+                Quality::High => ("70", "22000000"),
             };
             opts.set("global_quality", q);
+            opts.set("maxrate", maxrate);
             opts.set("profile", "main");
         }
         "h264_vaapi" | "hevc_vaapi" | "av1_vaapi" => {
@@ -1568,10 +1578,28 @@ fn build_encoder_opts(
     if let Some(q) = quality_override {
         let is_videotoolbox = name.contains("videotoolbox");
         if is_videotoolbox {
-            // VideoToolbox: global_quality is already 0-100, pass through.
-            let val = q.to_string();
+            // VideoToolbox quality is exponential: VT 0.80 -> ~104 Mbps,
+            // VT 1.0 -> ~297 Mbps (near-lossless). To produce bitrates
+            // comparable with NVENC at the same --quality-value, compress
+            // the consumer 0-100 range into VT 40-75 and enforce a maxrate
+            // ceiling via DataRateLimits. VT 0.75 is Apple's "high" tier;
+            // anything above produces diminishing-returns bitrate inflation.
+            let vt_q = 40.0 + (q as f64 / 100.0) * 35.0;
+            let val = format!("{:.0}", vt_q);
             opts.set("global_quality", &val);
-            log::info!("Encoder quality: {q} -> {name} global_quality={q}");
+            // Tiered maxrate matches NVENC ceilings (in bits/sec).
+            let maxrate = if q >= 75 {
+                "30000000"
+            } else if q >= 40 {
+                "18000000"
+            } else {
+                "12000000"
+            };
+            opts.set("maxrate", maxrate);
+            log::info!(
+                "Encoder quality: {q} -> {name} global_quality={val} (VT {:.2}), maxrate={maxrate}",
+                vt_q / 100.0
+            );
         } else {
             // CRF-style encoders: crf = 40.0 - (quality / 100.0) * 28.0
             let crf = 40.0 - (q as f64 / 100.0) * 28.0;
