@@ -307,6 +307,7 @@ export component RecoApp inherits Window {
     in-out property <int> export-frames-done: 0;
     in-out property <int> export-frames-total: 0;
     in-out property <string> export-status-text: "";
+    in-out property <string> export-error-text: "";
 
     // Compile-time AI capability summary. Seeded by Rust at startup
     // so the user can tell at-a-glance whether ball tracking will
@@ -2311,9 +2312,17 @@ export component RecoApp inherits Window {
 
                         Rectangle { horizontal-stretch: 1; }
 
+                        if root.export-error-text != "": Text {
+                            text: root.export-error-text;
+                            color: #e06060;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
+
                         Button {
                             text: "Cancel";
-                            clicked => { root.export-dialog-open = false; }
+                            clicked => { root.export-dialog-open = false; root.export-error-text = ""; }
                         }
 
                         Button {

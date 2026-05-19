@@ -3103,12 +3103,9 @@ fn main() -> anyhow::Result<()> {
         if let Some(parent) = output_path.parent() {
             if !parent.exists() {
                 log::warn!("Export: output directory does not exist: {}", parent.display());
-                s.toasts.push(
-                    Severity::Error,
-                    "Output directory does not exist",
-                    parent.display().to_string(),
+                app.set_export_error_text(
+                    format!("Output directory does not exist: {}", parent.display()).into(),
                 );
-                crate::toast::sync_to_ui(&s.toasts, &app);
                 return;
             }
             if parent
@@ -3183,6 +3180,7 @@ fn main() -> anyhow::Result<()> {
         s.playback.pause();
         app.set_playing(false);
 
+        app.set_export_error_text("".into());
         app.set_export_in_progress(true);
         app.set_export_progress(0.0);
         app.set_export_frames_done(0);
