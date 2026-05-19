@@ -191,6 +191,14 @@ jobs:
           echo "ORT_DLL=$dll" >> $env:GITHUB_ENV
           echo "Bundled ONNX Runtime 1.24.4 DirectML ($('{0:N1}' -f ((Get-Item $dll).Length / 1MB)) MB)"
 
+          # DirectML.dll is in a separate NuGet package (not bundled in ORT DirectML).
+          $dmlPkg = "$env:RUNNER_TEMP\directml.nupkg"
+          Invoke-WebRequest -Uri "https://api.nuget.org/v3-flatcontainer/microsoft.ai.directml/1.15.4/microsoft.ai.directml.1.15.4.nupkg" -OutFile $dmlPkg
+          Expand-Archive -Path $dmlPkg -DestinationPath "$env:RUNNER_TEMP\directml"
+          $dml = "$env:RUNNER_TEMP\directml\bin\x64-win\DirectML.dll"
+          echo "DML_DLL=$dml" >> $env:GITHUB_ENV
+          echo "Bundled DirectML.dll 1.15.4 ($('{0:N1}' -f ((Get-Item $dml).Length / 1MB)) MB)"
+
       - name: Download ONNX Runtime (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -248,6 +256,12 @@ jobs:
           if (Test-Path "$env:FFMPEG_DLL_DIR") {
             Copy-Item "$env:FFMPEG_DLL_DIR\*.dll" "$staging\"
           }
+          if (Test-Path "$env:ORT_DLL") {
+            Copy-Item "$env:ORT_DLL" "$staging\"
+          }
+          if (Test-Path "$env:DML_DLL") {
+            Copy-Item "$env:DML_DLL" "$staging\"
+          }
           Compress-Archive -Path $staging -DestinationPath "$staging.zip"
 
       - name: Package GUI (Windows)
@@ -263,9 +277,12 @@ jobs:
             if (Test-Path "$env:FFMPEG_DLL_DIR") {
               Copy-Item "$env:FFMPEG_DLL_DIR\*.dll" "$staging\"
             }
-            # Bundle ONNX Runtime DirectML for AI detection
+            # Bundle ONNX Runtime + DirectML for AI detection
             if (Test-Path "$env:ORT_DLL") {
               Copy-Item "$env:ORT_DLL" "$staging\"
+            }
+            if (Test-Path "$env:DML_DLL") {
+              Copy-Item "$env:DML_DLL" "$staging\"
             }
             Compress-Archive -Path $staging -DestinationPath "$staging.zip"
           }
