@@ -109,7 +109,11 @@ impl FfmpegFileSource {
                 }
             }
             if total_dur > 0.0 {
-                log::info!("Chained source: {:.1}s total across {} segments", total_dur, paths.len());
+                log::info!(
+                    "Chained source: {:.1}s total across {} segments",
+                    total_dur,
+                    paths.len()
+                );
                 Some((total_dur * fps) as u64)
             } else {
                 probe.duration_secs().map(|dur| (dur * fps) as u64)

@@ -165,7 +165,8 @@ pub fn extract_audio_pcm(
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
 
-    let output = cmd.output()
+    let output = cmd
+        .output()
         .map_err(|e| CalibrationIoError::AudioExtraction(format!("failed to run ffmpeg: {e}")))?;
 
     if !output.status.success() {
