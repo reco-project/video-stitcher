@@ -13,6 +13,41 @@ use crate::ffmpeg;
 
 // -- FFmpeg File Source --
 
+/// Compute total duration in seconds for an input (single or chained segments).
+#[cfg(feature = "ffmpeg")]
+fn input_duration_secs(input: &crate::stitch_job::InputPath) -> Option<f64> {
+    match input {
+        crate::stitch_job::InputPath::Single(p) => ffmpeg::decoder::VideoDecoder::open(p)
+            .ok()
+            .and_then(|d| d.duration_secs()),
+        crate::stitch_job::InputPath::Chained(paths) => {
+            let mut total = 0.0f64;
+            let mut any = false;
+            for p in paths {
+                match ffmpeg::decoder::VideoDecoder::open(p) {
+                    Ok(d) => {
+                        if let Some(dur) = d.duration_secs() {
+                            total += dur;
+                            any = true;
+                        }
+                    }
+                    Err(e) => log::warn!("Could not probe segment {}: {e}", p.display()),
+                }
+            }
+            if any {
+                log::info!(
+                    "Chained source: {:.1}s total across {} segments",
+                    total,
+                    paths.len()
+                );
+                Some(total)
+            } else {
+                None
+            }
+        }
+    }
+}
+
 /// Stereo file source backed by two FFmpeg decoders.
 ///
 /// Opens two video files (left + right camera) and delivers synchronized
@@ -96,31 +131,22 @@ impl FfmpegFileSource {
         })?;
         let fps_r = probe.frame_rate();
         let fps = probe.fps();
-        let total_frame_count = if let crate::stitch_job::InputPath::Chained(paths) = left {
-            let mut total_dur = 0.0f64;
-            for p in paths {
-                match crate::ffmpeg::decoder::VideoDecoder::open(p) {
-                    Ok(d) => {
-                        if let Some(dur) = d.duration_secs() {
-                            total_dur += dur;
-                        }
-                    }
-                    Err(e) => log::warn!("Could not probe segment {}: {e}", p.display()),
+        let left_dur = input_duration_secs(left);
+        let right_dur = input_duration_secs(right);
+        let effective_dur = match (left_dur, right_dur) {
+            (Some(l), Some(r)) => {
+                if (l - r).abs() > 1.0 {
+                    log::info!(
+                        "Duration mismatch: left={l:.1}s, right={r:.1}s, using shorter ({:.1}s)",
+                        l.min(r)
+                    );
                 }
+                Some(l.min(r))
             }
-            if total_dur > 0.0 {
-                log::info!(
-                    "Chained source: {:.1}s total across {} segments",
-                    total_dur,
-                    paths.len()
-                );
-                Some((total_dur * fps) as u64)
-            } else {
-                probe.duration_secs().map(|dur| (dur * fps) as u64)
-            }
-        } else {
-            probe.duration_secs().map(|dur| (dur * fps) as u64)
+            (Some(d), None) | (None, Some(d)) => Some(d),
+            (None, None) => None,
         };
+        let total_frame_count = effective_dur.map(|dur| (dur * fps) as u64);
         let info = SourceInfo {
             width: probe.width(),
             height: probe.height(),
