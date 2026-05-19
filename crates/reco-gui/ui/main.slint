@@ -909,14 +909,17 @@ export component RecoApp inherits Window {
                             changed(v) => { root.changed-rig-roll(v); }
                         }
 
-                        if root.files-loaded: LabeledSlider {
-                            label: "Sync offset";
-                            minimum: -300;
-                            maximum: 300;
-                            value: root.sync-offset;
-                            suffix: " frames";
-                            decimals: 0;
-                            changed(v) => { root.sync-offset = round(v); root.changed-sync-offset(round(v)); }
+                        if root.files-loaded: HorizontalLayout {
+                            spacing: 4px;
+                            alignment: stretch;
+                            Text { text: "Sync offset"; color: #aaa; font-size: 11px; vertical-alignment: center; width: 80px; }
+                            sync-input := LineEdit {
+                                text: root.sync-offset;
+                                horizontal-stretch: 1;
+                                accepted => { root.sync-offset = self.text.to-float(); root.changed-sync-offset(self.text.to-float()); }
+                            }
+                            Text { text: "frames"; color: #777; font-size: 10px; vertical-alignment: center; }
+                            Button { text: "Apply"; clicked => { root.sync-offset = sync-input.text.to-float(); root.changed-sync-offset(sync-input.text.to-float()); } }
                         }
 
                         if root.files-loaded && (root.cal-dirty || root.lens-dirty): Button {
