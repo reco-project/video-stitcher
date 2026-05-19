@@ -266,7 +266,7 @@ def annotate_frame(left_img, right_img, frame_idx, frame_data, last_detections,
         draw_filter_removed(right, frame_data["detection_filter"], "right", panel_h, panel_w)
         draw_roi(right, roi_right, panel_h, panel_w)
         draw_camera_label(right, "R", panel_h, panel_w)
-        combined = np.hstack([left, right])
+        combined = np.vstack([left, right])
     else:
         combined = left
 
@@ -301,9 +301,9 @@ def export_mode(events_path, left_path, right_path, output_path, max_frames, cal
             cap_r = None
 
     fps = cap_l.get(cv2.CAP_PROP_FPS) or 30.0
-    panel_w, panel_h = 960, 540
-    out_w = panel_w * 2 if cap_r else panel_w
-    out_h = panel_h
+    panel_w, panel_h = 1920, 540
+    out_w = panel_w
+    out_h = panel_h * 2 if cap_r else panel_h
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     out = cv2.VideoWriter(str(output_path), fourcc, fps, (out_w, out_h))
@@ -369,8 +369,8 @@ def browse_mode(events_path, left_path, right_path, cal_path):
 
     win = "Reco Detection Browser"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
-    out_w = panel_w * 2 if cap_r else panel_w
-    cv2.resizeWindow(win, out_w, panel_h)
+    out_h = panel_h * 2 if cap_r else panel_h
+    cv2.resizeWindow(win, panel_w, out_h)
 
     current = 0
     needs_redraw = True
