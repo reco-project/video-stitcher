@@ -1370,12 +1370,17 @@ fn main() -> anyhow::Result<()> {
     // in settings but using them as physical is close enough at 1.0
     // scale (the common case) - if the user moves to a HiDPI display
     // the next resize will correct.
-    if let Some((w, h)) = state.borrow().user_settings.window_size
-        && w > 0
-        && h > 0
     {
-        app.window()
-            .set_size(slint::LogicalSize::new(w as f32, h as f32));
+        let settings = &state.borrow().user_settings;
+        if settings.window_maximized {
+            app.window().set_maximized(true);
+        } else if let Some((w, h)) = settings.window_size
+            && w > 0
+            && h > 0
+        {
+            app.window()
+                .set_size(slint::LogicalSize::new(w as f32, h as f32));
+        }
     }
 
     // Capture Slint's wgpu device and queue on RenderingSetup. These
@@ -3395,11 +3400,15 @@ fn main() -> anyhow::Result<()> {
             if let Some(app) = app_weak.upgrade() {
                 let size = app.window().size();
                 let cur = (size.width, size.height);
+                let maximized = app.window().is_maximized();
+                s.user_settings.window_maximized = maximized;
                 let last = s.last_persisted_window_size.unwrap_or((0, 0));
                 if cur != last {
                     s.last_window_size_save_at = Some(Instant::now());
                     s.last_persisted_window_size = Some(cur);
-                    s.user_settings.window_size = Some(cur);
+                    if !maximized {
+                        s.user_settings.window_size = Some(cur);
+                    }
                 } else if let Some(since) = s.last_window_size_save_at
                     && since.elapsed() > Duration::from_secs(2)
                 {

@@ -53,6 +53,10 @@ pub struct GuiSettings {
     #[serde(default)]
     pub window_size: Option<(u32, u32)>,
 
+    /// Whether the window was maximized when last closed.
+    #[serde(default)]
+    pub window_maximized: bool,
+
     /// Recording codec preference (h264, hevc, av1).
     #[serde(default = "default_codec")]
     pub recording_codec: String,
@@ -113,6 +117,7 @@ impl Default for GuiSettings {
             default_blend_width: default_blend_width(),
             ai_model_path: None,
             window_size: None,
+            window_maximized: false,
             recording_codec: default_codec(),
             recording_quality: default_quality(),
             recording_folder: None,
