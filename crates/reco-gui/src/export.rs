@@ -186,6 +186,10 @@ pub fn run_export(
     });
 
     if start_secs > 0.0 {
+        let skip_frames = (start_secs as f64 * 30.0) as u64;
+        post_status(format!(
+            "Seeking to {start_secs:.0}s (skipping ~{skip_frames} frames)..."
+        ));
         job = job.start_time(start_secs as f64);
     }
     if end_secs > 0.0 {
