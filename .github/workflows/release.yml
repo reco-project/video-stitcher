@@ -326,5 +326,6 @@ jobs:
             --repo "${{ github.repository }}" \
             --title "Reco ${{ github.ref_name }}" \
             --generate-notes \
+            --draft \
             $prerelease_flag \
             artifacts/*
