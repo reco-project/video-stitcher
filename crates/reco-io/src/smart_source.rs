@@ -704,6 +704,11 @@ impl FrameSource for SmartFileSource {
                 log::info!("GPU zero-copy: skipped {count} frames for start_time");
                 Ok(count)
             }
+            SourceMode::Cpu(source) => {
+                source.seek(count)?;
+                log::info!("CPU seek: jumped to frame {count}");
+                Ok(count)
+            }
             _ => {
                 for i in 0..count {
                     if self.next_frame()?.is_none() {

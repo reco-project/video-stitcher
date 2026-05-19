@@ -1375,18 +1375,8 @@ fn main() -> anyhow::Result<()> {
     // in settings but using them as physical is close enough at 1.0
     // scale (the common case) - if the user moves to a HiDPI display
     // the next resize will correct.
-    {
-        let settings = &state.borrow().user_settings;
-        if settings.window_maximized {
-            app.window().set_maximized(true);
-        } else if let Some((w, h)) = settings.window_size
-            && w > 0
-            && h > 0
-        {
-            app.window()
-                .set_size(slint::LogicalSize::new(w as f32, h as f32));
-        }
-    }
+    // Window size restore disabled - Slint's preferred size (1280x820)
+    // is a safe default across all displays. Users can maximize manually.
 
     // Capture Slint's wgpu device and queue on RenderingSetup. These
     // are reused by PreviewBridge so reco-core's stitch output lands
