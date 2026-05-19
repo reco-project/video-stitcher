@@ -47,7 +47,8 @@ fn init_tracing() {
     // errors so tests that construct multiple CLIs don't panic.
     let _ = tracing_log::LogTracer::init();
 
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info,ort::logging=warn"));
     let fmt_layer = fmt::layer().with_target(true).with_level(true);
 
     let _ = tracing_subscriber::registry()

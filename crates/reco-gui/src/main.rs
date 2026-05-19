@@ -1076,7 +1076,8 @@ fn init_tracing() {
     use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
     let _ = tracing_log::LogTracer::init();
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info,ort::logging=warn"));
 
     // In release builds, write logs to a file so bug reports have context.
     // Debug builds just use stderr.
