@@ -73,6 +73,11 @@ pub struct PanContext<'a> {
 pub trait Panner: Send {
     /// Decide where the virtual camera should look this frame.
     fn decide(&mut self, world: &WorldState, ctx: &PanContext<'_>) -> ViewportPosition;
+
+    /// Optional debug snapshot from the last `decide()` call.
+    fn debug_event(&self, _frame_index: u64) -> Option<PipelineEvent> {
+        None
+    }
 }
 
 /// Scalar inputs to [`dispatch`] bundled so the function stays under
@@ -183,6 +188,9 @@ pub(crate) fn dispatch(
             frame_index: ctx.frame_index,
             pose,
         });
+        if let Some(debug) = panner.debug_event(ctx.frame_index) {
+            sink.emit(debug);
+        }
     }
 
     Some(DispatchResult {
