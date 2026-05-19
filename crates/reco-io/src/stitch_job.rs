@@ -19,7 +19,7 @@
 //! ```
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use crate::output::{AudioMode, Bitrate, Codec, Format, Quality};
@@ -686,14 +686,9 @@ impl StitchJob {
         // Skip frames to reach start position.
         if skip_frames > 0 {
             log::info!("skipping {skip_frames} frames (start_time={start_secs:.2}s)");
-            for skipped in 0..skip_frames {
-                if interrupted.load(Ordering::Relaxed) {
-                    return Err(StitchError::Other("cancelled during start skip".into()));
-                }
-                if source.next_frame()?.is_none() {
-                    log::warn!("source ended during skip at frame {skipped}/{skip_frames}");
-                    break;
-                }
+            let skipped = source.skip_frames(skip_frames)?;
+            if skipped < skip_frames {
+                log::warn!("source ended during skip at frame {skipped}/{skip_frames}");
             }
         }
 

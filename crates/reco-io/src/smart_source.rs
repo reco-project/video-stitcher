@@ -679,6 +679,42 @@ impl FrameSource for SmartFileSource {
         !matches!(self.mode, SourceMode::Cpu(_))
     }
 
+    fn skip_frames(&mut self, count: u64) -> Result<u64, SourceError> {
+        match &mut self.mode {
+            #[cfg(target_os = "linux")]
+            SourceMode::GpuZeroCopy(state) => {
+                let rx = state
+                    .frame_rx
+                    .as_ref()
+                    .expect("frame_rx taken during shutdown");
+                let left_tx = &state.shared.left_slot_free_tx;
+                let right_tx = &state.shared.right_slot_free_tx;
+                for i in 0..count {
+                    match rx.recv() {
+                        Ok(signal) => {
+                            let _ = left_tx.send(signal.left_slot);
+                            let _ = right_tx.send(signal.right_slot);
+                        }
+                        Err(_) => {
+                            self.exhausted = true;
+                            return Ok(i);
+                        }
+                    }
+                }
+                log::info!("GPU zero-copy: skipped {count} frames for start_time");
+                Ok(count)
+            }
+            _ => {
+                for i in 0..count {
+                    if self.next_frame()?.is_none() {
+                        return Ok(i);
+                    }
+                }
+                Ok(count)
+            }
+        }
+    }
+
     fn gpu_pixel_format(&self) -> GpuPixelFormat {
         self.pixel_format
     }
