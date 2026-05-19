@@ -812,6 +812,11 @@ impl AppState {
 
     fn set_sync_offset(&mut self, frames: i32) {
         let offset = frames as i64;
+        let total = self.playback.total_frames().unwrap_or(u64::MAX) as i64;
+        if offset.unsigned_abs() as i64 >= total {
+            log::warn!("Sync offset {offset} exceeds video length ({total} frames), ignoring");
+            return;
+        }
         if let Some(cal) = self.calibration.as_mut() {
             cal.sync_offset = offset;
         }
