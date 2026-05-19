@@ -141,24 +141,31 @@ pub fn extract_audio_pcm(
         }
     }
 
-    let output = std::process::Command::new("ffmpeg")
-        .args([
-            "-i",
-            path_str,
-            "-t",
-            "60",
-            "-vn",
-            "-ac",
-            "1",
-            "-ar",
-            &sample_rate.to_string(),
-            "-f",
-            "s16le",
-            "-",
-        ])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
+    let mut cmd = std::process::Command::new("ffmpeg");
+    cmd.args([
+        "-i",
+        path_str,
+        "-t",
+        "60",
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        &sample_rate.to_string(),
+        "-f",
+        "s16le",
+        "-",
+    ])
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::null());
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let output = cmd.output()
         .map_err(|e| CalibrationIoError::AudioExtraction(format!("failed to run ffmpeg: {e}")))?;
 
     if !output.status.success() {
