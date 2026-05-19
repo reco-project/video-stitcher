@@ -109,13 +109,6 @@ impl Anticipator {
 }
 
 impl Panner for Anticipator {
-    fn debug_event(
-        &self,
-        frame_index: u64,
-    ) -> Option<reco_core::detect::pipeline_event::PipelineEvent> {
-        self.inner.debug_event(frame_index)
-    }
-
     fn decide(&mut self, world: &WorldState, ctx: &PanContext<'_>) -> ViewportPosition {
         let raw = self.inner.decide(world, ctx);
         self.history.push_back(Sample {

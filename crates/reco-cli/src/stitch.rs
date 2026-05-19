@@ -193,13 +193,10 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
             };
             let is_10bit =
                 source.gpu_pixel_format() == reco_core::render::renderer::GpuPixelFormat::P010;
-
-            let fp_config = reco_autocam::panners::FieldPannerConfig::default();
             let autocam_config = reco_autocam::AutocamConfig::new(&model_path)
                 .with_tracking_mode(mode)
                 .with_detection_interval(interval)
-                .with_10bit(is_10bit)
-                .with_field_panner_config(fp_config);
+                .with_10bit(is_10bit);
             let autocam_config = if let Some(roi) = field_roi {
                 autocam_config.with_field_roi(roi)
             } else {

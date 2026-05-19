@@ -14,8 +14,8 @@ use reco_core::detect::director::ViewportPosition;
 use reco_core::detect::panner::{PanContext, Panner};
 use reco_core::detect::tracker::WorldState;
 
-const DEFAULT_MAX_RADIUS_RAD: f32 = 0.035;
-const DEFAULT_VELOCITY_THRESHOLD: f32 = 0.50;
+const DEFAULT_MAX_RADIUS_RAD: f32 = 0.006;
+const DEFAULT_VELOCITY_THRESHOLD: f32 = 0.30;
 const VELOCITY_SMOOTH_ALPHA: f32 = 0.3;
 
 /// Wrap a [`Panner`] with an adaptive dead-zone.
@@ -58,13 +58,6 @@ impl DeadZone {
 }
 
 impl Panner for DeadZone {
-    fn debug_event(
-        &self,
-        frame_index: u64,
-    ) -> Option<reco_core::detect::pipeline_event::PipelineEvent> {
-        self.inner.debug_event(frame_index)
-    }
-
     fn decide(&mut self, world: &WorldState, ctx: &PanContext<'_>) -> ViewportPosition {
         let target = self.inner.decide(world, ctx);
 
