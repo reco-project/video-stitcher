@@ -709,7 +709,17 @@ impl FrameSource for SmartFileSource {
                 log::info!("CPU seek: jumped to frame {count}");
                 Ok(count)
             }
-            _ => {
+            #[cfg(target_os = "macos")]
+            SourceMode::MetalZeroCopy(_) => {
+                for i in 0..count {
+                    if self.next_frame()?.is_none() {
+                        return Ok(i);
+                    }
+                }
+                Ok(count)
+            }
+            #[cfg(target_os = "windows")]
+            SourceMode::D3d11ZeroCopy(_) => {
                 for i in 0..count {
                     if self.next_frame()?.is_none() {
                         return Ok(i);
