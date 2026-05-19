@@ -143,14 +143,7 @@ impl TelemetryClient {
         );
     }
 
-    pub fn source_info(
-        &self,
-        width: u32,
-        height: u32,
-        fps: f64,
-        decoder: &str,
-        sync_offset: i64,
-    ) {
+    pub fn source_info(&self, width: u32, height: u32, fps: f64, decoder: &str, sync_offset: i64) {
         self.send(
             "source_info",
             Some(serde_json::json!({
