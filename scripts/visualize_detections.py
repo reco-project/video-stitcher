@@ -77,6 +77,7 @@ def load_events(path):
         "detection_filter": [],
         "world_state": None,
         "pan_decision": None,
+        "panner_debug": None,
         "pose_presented": None,
         "frame_complete": None,
         "timestamp_ms": 0.0,
@@ -101,6 +102,8 @@ def load_events(path):
                 frames[idx]["detection_filter"].append(ev)
             elif kind == "world_state":
                 frames[idx]["world_state"] = ev
+            elif kind == "panner_debug":
+                frames[idx]["panner_debug"] = ev
             elif kind == "pan_decision":
                 frames[idx]["pan_decision"] = ev
             elif kind == "pose_presented":
@@ -202,6 +205,23 @@ def draw_shared_overlay(img, frame_idx, frame_data, total_frames, fps):
     cx = (w - tw) // 2
     cv2.putText(img, info, (cx, 28), FONT, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
     cv2.putText(img, info, (cx, 28), FONT, 0.5, (0, 200, 200), 1, cv2.LINE_AA)
+
+    # Panner debug (second line from top)
+    pd = frame_data.get("panner_debug")
+    if pd:
+        ball_near = "NEAR" if pd.get("ball_near_cluster") else "far"
+        eff_w = pd.get("effective_ball_weight", 0)
+        bp = pd.get("ball_presence", 0)
+        spread = pd.get("cluster_spread", 0)
+        fov_t = pd.get("fov_target", 0)
+        n_p = pd.get("n_players", 0)
+        debug_text = (f"cluster: {n_p}p spread={spread:.2f}  "
+                      f"ball: {ball_near} presence={bp:.2f} weight={eff_w:.2f}  "
+                      f"fov_target={fov_t:.0f}")
+        cv2.putText(img, debug_text, (10, 48), FONT, 0.4,
+                    (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(img, debug_text, (10, 48), FONT, 0.4,
+                    (255, 150, 50), 1, cv2.LINE_AA)
 
     # Pan decision (bottom left)
     pose = frame_data.get("pose_presented")
