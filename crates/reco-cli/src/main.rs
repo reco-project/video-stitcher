@@ -47,7 +47,8 @@ fn init_tracing() {
     // errors so tests that construct multiple CLIs don't panic.
     let _ = tracing_log::LogTracer::init();
 
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info,ort::logging=warn"));
     let fmt_layer = fmt::layer().with_target(true).with_level(true);
 
     let _ = tracing_subscriber::registry()
@@ -184,9 +185,13 @@ enum Commands {
         #[arg(long, default_value = "ball")]
         tracking: String,
 
-        /// Override encoder CRF/quality value (lower = better, typical 18-28).
-        #[arg(long)]
-        crf: Option<u8>,
+        /// Encoder quality on a 0-100 scale (higher = better). Overrides the
+        /// quality preset with a precise value. Converted per encoder:
+        /// CRF-style encoders map to `crf = 40 - (quality/100)*28`,
+        /// VideoToolbox passes through as `global_quality`. Examples:
+        /// 80 = high quality, 65 = balanced, 50 = smaller files.
+        #[arg(long = "quality-value")]
+        quality_value: Option<u8>,
 
         /// Override encoder preset (e.g. ultrafast, veryfast, fast for x264; p1-p7 for NVENC).
         #[arg(long)]
@@ -343,9 +348,10 @@ enum Commands {
         #[arg(long, default_value_t = 1)]
         detection_interval: u64,
 
-        /// Override encoder CRF/quality value (lower = better, typical 18-28).
-        #[arg(long)]
-        crf: Option<u8>,
+        /// Encoder quality on a 0-100 scale (higher = better). Overrides the
+        /// quality preset. See `stitch --help` for the full mapping table.
+        #[arg(long = "quality-value")]
+        quality_value: Option<u8>,
 
         /// Override encoder preset (e.g. ultrafast, veryfast, fast for x264; p1-p7 for NVENC).
         #[arg(long)]
@@ -497,9 +503,10 @@ enum Commands {
         #[arg(long, default_value_t = 1)]
         detection_interval: u64,
 
-        /// Override encoder CRF/quality value (lower = better, typical 18-28).
-        #[arg(long)]
-        crf: Option<u8>,
+        /// Encoder quality on a 0-100 scale (higher = better). Overrides the
+        /// quality preset. See `stitch --help` for the full mapping table.
+        #[arg(long = "quality-value")]
+        quality_value: Option<u8>,
 
         /// Override encoder preset (e.g. ultrafast, veryfast, fast for x264).
         #[arg(long)]
@@ -722,7 +729,7 @@ fn main() -> anyhow::Result<()> {
             detection_interval,
             lead_time,
             tracking,
-            crf,
+            quality_value,
             preset,
             container,
             replay,
@@ -750,7 +757,7 @@ fn main() -> anyhow::Result<()> {
                 detection_interval,
                 lead_time,
                 tracking_mode: &tracking,
-                crf,
+                quality_value,
                 preset,
                 container: container.as_deref(),
                 replay_path: replay.as_deref(),
@@ -813,7 +820,7 @@ fn main() -> anyhow::Result<()> {
             end_time,
             model,
             detection_interval,
-            crf,
+            quality_value,
             preset,
             container,
             stream_url,
@@ -877,7 +884,7 @@ fn main() -> anyhow::Result<()> {
                     capture_fps,
                     model_path: model.as_deref(),
                     detection_interval,
-                    crf,
+                    quality_value,
                     preset,
                     container: container.as_deref(),
                     tracking: &tracking,
@@ -922,7 +929,7 @@ fn main() -> anyhow::Result<()> {
             end_time,
             model,
             detection_interval,
-            crf,
+            quality_value,
             preset,
         } => {
             use reco_io::libcamera::LibcameraConfig;
@@ -961,7 +968,7 @@ fn main() -> anyhow::Result<()> {
                     capture_fps,
                     model_path: model.as_deref(),
                     detection_interval,
-                    crf,
+                    quality_value,
                     preset,
                 },
                 &interrupted,

@@ -94,6 +94,21 @@ pub enum PipelineEvent {
         pose: ViewportPosition,
     },
 
+    /// Panner internal state for debugging camera movement decisions.
+    PannerDebug {
+        frame_index: u64,
+        cluster_yaw: f32,
+        cluster_pitch: f32,
+        cluster_spread: f32,
+        n_players: u32,
+        ball_near_cluster: bool,
+        ball_presence: f32,
+        effective_ball_weight: f32,
+        target_yaw: f32,
+        target_pitch: f32,
+        fov_target: f32,
+    },
+
     /// Final pose the renderer received this frame (post-clamp).
     PosePresented {
         frame_index: u64,
@@ -148,6 +163,7 @@ impl PipelineEvent {
             | PipelineEvent::DetectionFilter { frame_index, .. }
             | PipelineEvent::WorldState { frame_index, .. }
             | PipelineEvent::PanDecision { frame_index, .. }
+            | PipelineEvent::PannerDebug { frame_index, .. }
             | PipelineEvent::PosePresented { frame_index, .. }
             | PipelineEvent::FrameComplete { frame_index, .. } => *frame_index,
         }

@@ -120,6 +120,20 @@ pub struct FieldPanner {
     last_ball_yaw: f32,
     last_ball_pitch: f32,
     frame_index: u64,
+    last_debug: Option<FieldPannerDebug>,
+}
+
+struct FieldPannerDebug {
+    cluster_yaw: f32,
+    cluster_pitch: f32,
+    cluster_spread: f32,
+    n_players: u32,
+    ball_near_cluster: bool,
+    ball_presence: f32,
+    effective_ball_weight: f32,
+    target_yaw: f32,
+    target_pitch: f32,
+    fov_target: f32,
 }
 
 impl FieldPanner {
@@ -146,6 +160,7 @@ impl FieldPanner {
             last_ball_yaw: 0.0,
             last_ball_pitch: 0.0,
             frame_index: 0,
+            last_debug: None,
         }
     }
 
@@ -452,7 +467,21 @@ impl Panner for FieldPanner {
                     self.current_fov,
                 );
             }
+
+            self.last_debug = Some(FieldPannerDebug {
+                cluster_yaw: c.yaw,
+                cluster_pitch: c.pitch,
+                cluster_spread: c.spread,
+                n_players: c.count as u32,
+                ball_near_cluster,
+                ball_presence: self.ball_presence,
+                effective_ball_weight: effective_w,
+                target_yaw,
+                target_pitch,
+                fov_target: target_fov,
+            });
         } else {
+            self.last_debug = None;
             log::trace!(
                 "FieldPanner: no cluster this frame (players={}, min={})",
                 world.players.len(),
@@ -479,6 +508,28 @@ impl Panner for FieldPanner {
             pitch: self.pitch,
             fov_degrees: Some(self.current_fov),
         }
+    }
+
+    fn debug_event(
+        &self,
+        frame_index: u64,
+    ) -> Option<reco_core::detect::pipeline_event::PipelineEvent> {
+        let d = self.last_debug.as_ref()?;
+        Some(
+            reco_core::detect::pipeline_event::PipelineEvent::PannerDebug {
+                frame_index,
+                cluster_yaw: d.cluster_yaw,
+                cluster_pitch: d.cluster_pitch,
+                cluster_spread: d.cluster_spread,
+                n_players: d.n_players,
+                ball_near_cluster: d.ball_near_cluster,
+                ball_presence: d.ball_presence,
+                effective_ball_weight: d.effective_ball_weight,
+                target_yaw: d.target_yaw,
+                target_pitch: d.target_pitch,
+                fov_target: d.fov_target,
+            },
+        )
     }
 }
 

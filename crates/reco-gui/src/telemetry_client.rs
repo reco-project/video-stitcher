@@ -143,6 +143,19 @@ impl TelemetryClient {
         );
     }
 
+    pub fn source_info(&self, width: u32, height: u32, fps: f64, decoder: &str, sync_offset: i64) {
+        self.send(
+            "source_info",
+            Some(serde_json::json!({
+                "width": width,
+                "height": height,
+                "fps": fps,
+                "decoder": decoder,
+                "sync_offset": sync_offset,
+            })),
+        );
+    }
+
     pub fn bug_report(&self, report: &str) {
         self.send(
             "bug_report",
@@ -163,12 +176,13 @@ impl TelemetryClient {
         );
     }
 
-    pub fn export_error(&self, error: &str) {
+    pub fn export_error(&self, error: &str, codec: &str) {
         self.send(
             "export_error",
             Some(serde_json::json!({
                 "error_type": "export_failed",
                 "error_message": &error[..error.len().min(500)],
+                "codec": codec,
             })),
         );
     }

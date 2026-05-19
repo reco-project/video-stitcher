@@ -398,6 +398,21 @@ pub trait FrameSource: Send {
         0
     }
 
+    /// Skip N frames without processing them.
+    ///
+    /// The default implementation calls `next_frame()` in a loop, which
+    /// works for CPU and D3D11VA sources. GPU zero-copy sources override
+    /// this to receive and immediately release decode slots, avoiding
+    /// deadlock from the bounded slot channel.
+    fn skip_frames(&mut self, count: u64) -> Result<u64, SourceError> {
+        for i in 0..count {
+            if self.next_frame()?.is_none() {
+                return Ok(i);
+            }
+        }
+        Ok(count)
+    }
+
     /// Seek to a specific frame number.
     ///
     /// File-based sources should implement this for interactive scrubbing.

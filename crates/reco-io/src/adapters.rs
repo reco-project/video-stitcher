@@ -462,7 +462,7 @@ pub fn detect_zero_copy(source: &FfmpegFileSource, gpu: &reco_core::gpu::GpuCont
 /// * `codec` - Codec name: `"h264"`, `"hevc"`, or `"av1"`.
 /// * `quality` - Quality preset: `"fast"`, `"balanced"`, or `"high"`.
 /// * `encoder_name` - Force a specific encoder by name, or `None` for auto-detection.
-/// * `crf` - Override the CRF/quality value, or `None` to use the quality tier default.
+/// * `quality_value` - Normalized quality override (0-100, higher = better), or `None` to use preset default.
 /// * `preset` - Override the encoder preset string, or `None` to use the quality tier default.
 #[cfg(feature = "ffmpeg")]
 #[allow(clippy::too_many_arguments)]
@@ -474,7 +474,7 @@ pub fn create_encoder(
     codec: &str,
     quality: &str,
     encoder_name: Option<String>,
-    crf: Option<u8>,
+    quality_value: Option<u8>,
     preset: Option<String>,
 ) -> Result<(FfmpegFileEncoder, String), reco_core::encoder::EncodeError> {
     use crate::output;
@@ -490,8 +490,8 @@ pub fn create_encoder(
     let enc_config = ffmpeg::encoder::EncoderConfig {
         encoder_name,
         codec: out_codec.into(),
-        quality: out_quality.into(),
-        crf,
+        quality_preset: out_quality.into(),
+        quality: quality_value,
         preset,
         audio_source: None,
         container: ffmpeg::encoder::Container::default(),
