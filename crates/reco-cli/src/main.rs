@@ -187,15 +187,6 @@ enum Commands {
         #[arg(long, default_value = "ball")]
         tracking: String,
 
-        /// Ball influence weight (0.0 = players only, 1.0 = ball only).
-        /// Default 0.20 blends ball position into the player cluster.
-        #[arg(long)]
-        ball_weight: Option<f32>,
-
-        /// Lock pitch and FOV, track only yaw (horizontal panning).
-        #[arg(long, default_value_t = false)]
-        horizontal_only: bool,
-
         /// Encoder quality on a 0-100 scale (higher = better). Overrides the
         /// quality preset with a precise value. Converted per encoder:
         /// CRF-style encoders map to `crf = 40 - (quality/100)*28`,
@@ -754,8 +745,6 @@ fn main() -> anyhow::Result<()> {
             detection_interval,
             lead_time,
             tracking,
-            ball_weight,
-            horizontal_only,
             quality_value,
             preset,
             container,
@@ -784,8 +773,6 @@ fn main() -> anyhow::Result<()> {
                 detection_interval,
                 lead_time,
                 tracking_mode: &tracking,
-                ball_weight,
-                horizontal_only,
                 quality_value,
                 preset,
                 container: container.as_deref(),
