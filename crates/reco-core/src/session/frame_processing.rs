@@ -568,6 +568,8 @@ impl StitchSession {
         &mut self,
         render_commands: wgpu::CommandBuffer,
     ) -> Result<(), SessionError> {
+        let nv12_width = self.nv12_converter.width();
+        let nv12_height = self.nv12_converter.height();
         let readback_t0 = std::time::Instant::now();
         let nv12_data = self.nv12_converter.convert_and_readback(
             self.core.gpu(),
@@ -585,6 +587,10 @@ impl StitchSession {
             }
             for enc in &self.extra_encoders {
                 enc.submit(data, self.frame_count as i64)?;
+            }
+            // NV12 tap for snapshot / preview hooks.
+            if let Some(ref mut tap) = self.nv12_tap {
+                tap(data, nv12_width, nv12_height);
             }
         }
         self.last_encode_time = encode_t0.elapsed();

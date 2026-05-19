@@ -257,4 +257,19 @@ impl StitchSession {
     pub fn update_calibration(&mut self, calibration: crate::calibration::MatchCalibration) {
         self.core.update_calibration(calibration);
     }
+
+    /// Set an NV12 tap callback invoked after each frame's NV12
+    /// readback. The callback receives `(nv12_data, width, height)`.
+    ///
+    /// Used by reco-cli's snapshot writer for periodic JPEG output.
+    /// The callback should return quickly (e.g. `try_send` on a
+    /// channel) to avoid blocking the frame loop.
+    pub fn set_nv12_tap(&mut self, tap: super::Nv12TapFn) {
+        self.nv12_tap = Some(tap);
+    }
+
+    /// Remove the NV12 tap callback.
+    pub fn clear_nv12_tap(&mut self) {
+        self.nv12_tap = None;
+    }
 }

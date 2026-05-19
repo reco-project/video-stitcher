@@ -12,6 +12,7 @@ use reco_core::source::StereoFrame;
 use reco_io::gstreamer::camera::CameraConfig;
 
 use crate::helpers;
+use crate::snapshot::SnapshotWriter;
 
 /// Run live camera stitching.
 ///
@@ -60,6 +61,10 @@ pub struct CameraRunConfig<'a> {
     /// Use NVMM zero-copy capture (DMA-buf + NvBufSurfTransform).
     /// Auto-enabled on Tegra when NvBufSurfTransform is available.
     pub use_nvmm: bool,
+    /// Directory for periodic JPEG snapshots (live preview).
+    pub snapshot_dir: Option<&'a str>,
+    /// Snapshot interval: write a snapshot every N frames.
+    pub snapshot_interval: u64,
     /// Use V4L2 direct capture with raw Bayer + GPU demosaic.
     pub v4l2_direct: bool,
     /// Sensor exposure in microseconds (V4L2 direct only).
@@ -95,6 +100,8 @@ pub fn run_camera(
         replay_path,
         replay_scale,
         stream_url,
+        snapshot_dir,
+        snapshot_interval,
         use_nvmm,
         v4l2_direct,
         exposure: _exposure,
@@ -347,6 +354,15 @@ pub fn run_camera(
     println!("Encoder: {}", encoder.encoder_name());
 
     session.set_encoder(Box::new(encoder), 2);
+
+    // Snapshot writer for live preview (gameday control panel).
+    let mut _snapshot_writer: Option<SnapshotWriter> = None;
+    if let Some(dir) = snapshot_dir {
+        let (writer, tap) = SnapshotWriter::new(Path::new(dir), snapshot_interval)?;
+        session.set_nv12_tap(tap);
+        println!("Snapshots: {dir}/snapshot.jpg (every {snapshot_interval} frames)");
+        _snapshot_writer = Some(writer);
+    }
 
     let frame_limit =
         reco_core::session::types::compute_frame_limit(end_time, max_frames, capture_fps as f64);

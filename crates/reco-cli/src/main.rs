@@ -11,6 +11,8 @@ mod helpers;
 #[cfg(feature = "libcamera")]
 mod libcamera_cmd;
 mod preview;
+#[cfg(feature = "gstreamer")]
+mod snapshot;
 mod stitch;
 
 use clap::{Parser, Subcommand};
@@ -184,6 +186,15 @@ enum Commands {
         /// Use "field" with a COCO model for robust football tracking.
         #[arg(long, default_value = "ball")]
         tracking: String,
+
+        /// Ball influence weight (0.0 = players only, 1.0 = ball only).
+        /// Default 0.20 blends ball position into the player cluster.
+        #[arg(long)]
+        ball_weight: Option<f32>,
+
+        /// Lock pitch and FOV, track only yaw (horizontal panning).
+        #[arg(long, default_value_t = false)]
+        horizontal_only: bool,
 
         /// Encoder quality on a 0-100 scale (higher = better). Overrides the
         /// quality preset with a precise value. Converted per encoder:
@@ -415,6 +426,20 @@ enum Commands {
         /// Higher = brighter but noisier.
         #[arg(long, default_value_t = 16)]
         sensor_gain: u32,
+
+        /// Directory to write periodic JPEG snapshots of the stitched
+        /// output. The web UI reads `<dir>/snapshot.jpg` for a live
+        /// preview while the pipeline runs. Snapshots are written
+        /// atomically (via a temp file + rename) so readers never
+        /// see a partial image.
+        #[arg(long)]
+        snapshot_dir: Option<String>,
+
+        /// Write a snapshot every N frames (default: 30, roughly
+        /// once per second at 30fps). Only effective when
+        /// --snapshot-dir is set.
+        #[arg(long, default_value_t = 30)]
+        snapshot_interval: u64,
 
         /// Run live calibration instead of stitching. Captures frame
         /// pairs from the cameras, runs AKAZE feature matching, and
@@ -729,6 +754,8 @@ fn main() -> anyhow::Result<()> {
             detection_interval,
             lead_time,
             tracking,
+            ball_weight,
+            horizontal_only,
             quality_value,
             preset,
             container,
@@ -757,6 +784,8 @@ fn main() -> anyhow::Result<()> {
                 detection_interval,
                 lead_time,
                 tracking_mode: &tracking,
+                ball_weight,
+                horizontal_only,
                 quality_value,
                 preset,
                 container: container.as_deref(),
@@ -828,6 +857,8 @@ fn main() -> anyhow::Result<()> {
             unconstrained,
             replay,
             replay_scale,
+            snapshot_dir,
+            snapshot_interval,
             v4l2_direct,
             exposure,
             sensor_gain,
@@ -891,6 +922,8 @@ fn main() -> anyhow::Result<()> {
                     unconstrained,
                     replay_path: replay.as_deref(),
                     replay_scale,
+                    snapshot_dir: snapshot_dir.as_deref(),
+                    snapshot_interval,
                     stream_url: stream_url.as_deref(),
                     use_nvmm: !v4l2_direct && helpers::is_tegra() && {
                         #[cfg(target_os = "linux")]
