@@ -57,6 +57,7 @@ pub struct StitchJob {
 
     // Callbacks
     on_progress: Option<ProgressCallback>,
+    on_finalizing: Option<Box<dyn FnOnce() + Send>>,
     // Vec so multiple consumers can hook the session (telemetry, autocam,
     // future dual-output). A trait-based hook system would be cleaner for
     // complex composition but Vec<FnOnce> is sufficient for now.
@@ -235,6 +236,7 @@ impl StitchJob {
             sync_offset: None,
             blend_width: 0.15,
             on_progress: None,
+            on_finalizing: None,
             session_hooks: Vec::new(),
             #[cfg(feature = "stacked-output")]
             replay_recording: None,
@@ -477,6 +479,12 @@ impl StitchJob {
     /// Set a progress callback. Called periodically during processing.
     pub fn on_progress(mut self, cb: impl FnMut(&FrameProgress) + Send + 'static) -> Self {
         self.on_progress = Some(Box::new(cb));
+        self
+    }
+
+    /// Hook called after frame processing ends and before encoder finalization.
+    pub fn on_finalizing(mut self, cb: impl FnOnce() + Send + 'static) -> Self {
+        self.on_finalizing = Some(Box::new(cb));
         self
     }
 
@@ -871,6 +879,10 @@ impl StitchJob {
                 interrupted,
                 self.on_progress.take(),
             )?;
+        }
+
+        if let Some(cb) = self.on_finalizing.take() {
+            cb();
         }
 
         // GPU-path finalize: drop the atlas recorder (its `finish`

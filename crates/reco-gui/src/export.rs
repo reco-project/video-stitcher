@@ -198,6 +198,16 @@ pub fn run_export(
         job = job.with_replay_recording(&replay_path);
     }
 
+    let finalizing_weak = app_weak.clone();
+    job = job.on_finalizing(move || {
+        let weak = finalizing_weak;
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(app) = weak.upgrade() {
+                app.set_export_status_text("Finalizing output file...".into());
+            }
+        });
+    });
+
     let telem_weak = app_weak.clone();
     job = job.on_session(move |session, _source| {
         let sink = ExportTelemetrySink { window: telem_weak };

@@ -3068,7 +3068,7 @@ fn main() -> anyhow::Result<()> {
             }
             if parent
                 .metadata()
-                .map_or(false, |m| m.permissions().readonly())
+                .is_ok_and(|m| m.permissions().readonly())
             {
                 log::warn!(
                     "Export: output directory has read-only attribute: {} (may be normal on Windows)",
@@ -3405,23 +3405,8 @@ fn main() -> anyhow::Result<()> {
                 return;
             }
 
-            // If an export is running and we haven't seen a progress
-            // update in > 1.5 seconds, the encoder is in its tail phase
-            // (av_write_trailer + index flush can take up to ~15s on
-            // H.264/AV1). Switch the status text to "Finalizing..." so
-            // the progress bar doesn't look hung. Time-based detection
-            // is robust to whatever the probe-reported total-frames is;
-            // no frame-count heuristic needed.
-            if let Some(app) = app_weak.upgrade()
-                && app.get_export_in_progress()
-                && let Some(last) = *s.export_last_progress_at.lock().unwrap()
-                && last.elapsed() > Duration::from_millis(1500)
-            {
-                let status = app.get_export_status_text();
-                if !status.starts_with("Finalizing") {
-                    app.set_export_status_text("Finalizing output file…".into());
-                }
-            }
+            // Finalizing is now signaled explicitly by the export thread
+            // via StitchJob::on_finalizing(), no timer heuristic needed.
 
             // Persist window size, debounced (Tier 3d).
             if let Some(app) = app_weak.upgrade() {
