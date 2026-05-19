@@ -44,19 +44,20 @@ DEFAULT_COLOR = (200, 200, 200)
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 
-def load_calibration_roi(cal_path):
-    """Load ROI polygons from a calibration JSON. Returns (left, right) as numpy arrays or None."""
+def load_calibration(cal_path):
+    """Load ROI polygons and sync_offset from a calibration JSON."""
     if not cal_path:
-        return None, None
+        return None, None, 0
     try:
         with open(cal_path) as f:
             cal = json.load(f)
         roi = cal.get("field_roi", {})
         left = np.array(roi["left"], dtype=np.float32) if roi.get("left") else None
         right = np.array(roi["right"], dtype=np.float32) if roi.get("right") else None
-        return left, right
+        sync_offset = cal.get("sync_offset", 0)
+        return left, right, sync_offset
     except (json.JSONDecodeError, FileNotFoundError, KeyError):
-        return None, None
+        return None, None, 0
 
 
 def draw_roi(img, roi_points, h, w):
@@ -294,9 +295,11 @@ def export_mode(events_path, left_path, right_path, output_path, max_frames,
                 cal_path, hstack):
     """Export an annotated video (vstack by default, hstack with --hstack)."""
     frames, total = load_events(events_path)
-    roi_left, roi_right = load_calibration_roi(cal_path)
+    roi_left, roi_right, sync_offset = load_calibration(cal_path)
     if roi_left is not None:
         print(f"ROI: left={len(roi_left)} pts, right={len(roi_right) if roi_right is not None else 0} pts")
+    if sync_offset != 0:
+        print(f"Sync offset: {sync_offset} frames (positive = skip right)")
 
     cap_l = cv2.VideoCapture(str(left_path))
     if not cap_l.isOpened():
@@ -309,6 +312,12 @@ def export_mode(events_path, left_path, right_path, output_path, max_frames,
         if not cap_r.isOpened():
             print(f"Warning: cannot open {right_path}, single camera mode", file=sys.stderr)
             cap_r = None
+
+    # Apply sync offset: skip frames on the appropriate camera
+    if sync_offset > 0 and cap_r:
+        cap_r.set(cv2.CAP_PROP_POS_FRAMES, sync_offset)
+    elif sync_offset < 0:
+        cap_l.set(cv2.CAP_PROP_POS_FRAMES, abs(sync_offset))
 
     fps = cap_l.get(cv2.CAP_PROP_FPS) or 30.0
     src_w = int(cap_l.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -369,7 +378,7 @@ def export_mode(events_path, left_path, right_path, output_path, max_frames,
 def browse_mode(events_path, left_path, right_path, cal_path, hstack):
     """Interactive frame-by-frame browser."""
     frames, total = load_events(events_path)
-    roi_left, roi_right = load_calibration_roi(cal_path)
+    roi_left, roi_right, sync_offset = load_calibration(cal_path)
 
     cap_l = cv2.VideoCapture(str(left_path))
     if not cap_l.isOpened():
@@ -405,16 +414,20 @@ def browse_mode(events_path, left_path, right_path, cal_path, hstack):
     needs_redraw = True
     last_det = []
 
+    # Compute per-camera frame offsets
+    left_offset = abs(sync_offset) if sync_offset < 0 else 0
+    right_offset = sync_offset if sync_offset > 0 else 0
+
     def seek_and_draw(idx, last_detections):
         idx = max(0, min(idx, total))
-        cap_l.set(cv2.CAP_PROP_POS_FRAMES, idx)
+        cap_l.set(cv2.CAP_PROP_POS_FRAMES, idx + left_offset)
         ret_l, raw_l = cap_l.read()
         if not ret_l:
             return None, idx, last_detections
 
         raw_r = None
         if cap_r:
-            cap_r.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            cap_r.set(cv2.CAP_PROP_POS_FRAMES, idx + right_offset)
             ret_r, raw_r = cap_r.read()
             if not ret_r:
                 raw_r = None
