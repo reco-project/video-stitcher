@@ -97,6 +97,13 @@ pub struct StitchSession {
     /// Future WorldStates from the lookahead buffer, passed to the
     /// panner via `decide_with_lookahead`. Empty when lookahead is off.
     pub(crate) lookahead_world_states: Vec<crate::detect::tracker::WorldState>,
+    /// Last WorldState produced by dispatch, captured for the buffer.
+    pub(crate) last_world_state: crate::detect::tracker::WorldState,
+    /// When true, `process_frame_any` skips detection (the produce phase
+    /// already ran it and stored the WorldState in the buffer).
+    pub(crate) skip_detection: bool,
+    /// Number of lookahead frames (0 = disabled).
+    pub(crate) lookahead_frames: usize,
     pub(crate) frame_count: u64,
     /// Session start time for metrics computation.
     session_start: Option<std::time::Instant>,
@@ -242,6 +249,9 @@ impl StitchSession {
             panner: None,
             previous_panner_pose: ViewportPosition::default(),
             lookahead_world_states: Vec::new(),
+            last_world_state: crate::detect::tracker::WorldState::default(),
+            skip_detection: false,
+            lookahead_frames: 0,
             frame_count: 0,
             extra_encoders: Vec::new(),
             session_start: None,

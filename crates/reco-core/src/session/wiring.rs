@@ -149,6 +149,11 @@ impl StitchSession {
         self.panner = None;
     }
 
+    /// Set the lookahead buffer depth in frames.
+    pub fn set_lookahead(&mut self, frames: usize) {
+        self.lookahead_frames = frames;
+    }
+
     /// Attach a stacked-video replay recorder.
     ///
     /// Forwards to `StitchCore::set_stacked_recorder` on the

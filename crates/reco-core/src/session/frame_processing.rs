@@ -96,122 +96,130 @@ impl StitchSession {
         ctx: &FrameLoopContext,
     ) -> Result<(), SessionError> {
         let _ = &ctx;
-        let scheduled_detection =
-            self.detection.has_detector() && self.detection.should_detect(self.frame_count);
 
-        // ── 1. Detect ──────────────────────────────────────────────
-        let detect_t0 = std::time::Instant::now();
-        let ran_detection = match frame {
-            #[cfg(target_os = "linux")]
-            StereoFrame::GpuResident {
-                left_slot,
-                right_slot,
-            } => {
-                if self.detection.needs_cuda_frames() {
-                    if self.frame_count == 0 {
-                        log::info!("GpuResident detection: CUDA path (TensorRT/ORT-CUDA)");
-                    }
-                    if let Some((left_buf, right_buf)) = &ctx.gpu_buf_info {
-                        self.detect_and_update_director_gpu(
-                            left_buf,
-                            right_buf,
-                            *left_slot,
-                            *right_slot,
-                            elapsed,
-                        )?;
+        // In the buffered lookahead path, detection already ran during
+        // the produce phase. Skip it here and go straight to pose.
+        let (ran_detection, detect_time) = if self.skip_detection {
+            (false, std::time::Duration::ZERO)
+        } else {
+            let scheduled_detection =
+                self.detection.has_detector() && self.detection.should_detect(self.frame_count);
+            let detect_t0 = std::time::Instant::now();
+            let ran_detection = match frame {
+                #[cfg(target_os = "linux")]
+                StereoFrame::GpuResident {
+                    left_slot,
+                    right_slot,
+                } => {
+                    if self.detection.needs_cuda_frames() {
+                        if self.frame_count == 0 {
+                            log::info!("GpuResident detection: CUDA path (TensorRT/ORT-CUDA)");
+                        }
+                        if let Some((left_buf, right_buf)) = &ctx.gpu_buf_info {
+                            self.detect_and_update_director_gpu(
+                                left_buf,
+                                right_buf,
+                                *left_slot,
+                                *right_slot,
+                                elapsed,
+                            )?;
+                            scheduled_detection
+                        } else {
+                            if self.frame_count == 0 {
+                                log::warn!(
+                                    "GpuResident frame but no gpu_buf_info - detection disabled, \
+                                 director advancing without detections"
+                                );
+                            }
+                            self.update_director(elapsed)?;
+                            false
+                        }
+                    } else if let Some(ref views) = self.gpu_shared_views {
+                        if self.frame_count == 0 {
+                            log::info!(
+                                "GpuResident detection: wgpu shared texture views (ORT/wgpu preprocess)"
+                            );
+                        }
+                        let ls = *left_slot as usize;
+                        let rs = *right_slot as usize;
+                        let (w, h) = self.core.pipeline().source_info();
+                        let lr = self.left_rotation;
+                        let rr = self.right_rotation;
+                        if scheduled_detection {
+                            let detections = self.detection.run_detection_wgpu_nv12(
+                                &views[ls * 2],
+                                &views[ls * 2 + 1],
+                                &views[4 + rs * 2],
+                                &views[4 + rs * 2 + 1],
+                                w,
+                                h,
+                                lr,
+                                rr,
+                            );
+                            self.detection.last_detections = self.map_detections(detections);
+                        }
+                        self.fire_sink_and_update_director(elapsed, scheduled_detection)?;
                         scheduled_detection
                     } else {
                         if self.frame_count == 0 {
                             log::warn!(
-                                "GpuResident frame but no gpu_buf_info - detection disabled, \
-                                 director advancing without detections"
+                                "GpuResident frame but no shared views - detection disabled"
                             );
                         }
                         self.update_director(elapsed)?;
                         false
                     }
-                } else if let Some(ref views) = self.gpu_shared_views {
-                    if self.frame_count == 0 {
-                        log::info!(
-                            "GpuResident detection: wgpu shared texture views (ORT/wgpu preprocess)"
-                        );
-                    }
-                    let ls = *left_slot as usize;
-                    let rs = *right_slot as usize;
-                    let (w, h) = self.core.pipeline().source_info();
-                    let lr = self.left_rotation;
-                    let rr = self.right_rotation;
-                    if scheduled_detection {
-                        let detections = self.detection.run_detection_wgpu_nv12(
-                            &views[ls * 2],
-                            &views[ls * 2 + 1],
-                            &views[4 + rs * 2],
-                            &views[4 + rs * 2 + 1],
-                            w,
-                            h,
-                            lr,
-                            rr,
-                        );
-                        self.detection.last_detections = self.map_detections(detections);
-                    }
-                    self.fire_sink_and_update_director(elapsed, scheduled_detection)?;
-                    scheduled_detection
-                } else {
-                    if self.frame_count == 0 {
-                        log::warn!("GpuResident frame but no shared views - detection disabled");
-                    }
-                    self.update_director(elapsed)?;
-                    false
                 }
-            }
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
-            StereoFrame::MetalResident { left, right } => {
-                self.detect_and_update_director_metal(
-                    left.as_ptr(),
-                    right.as_ptr(),
-                    left.width(),
-                    left.height(),
-                    elapsed,
-                )?;
-                scheduled_detection
-            }
-            #[cfg(target_os = "windows")]
-            StereoFrame::D3d11Resident { .. } => {
-                if self.d3d11_staging_pool.is_some() {
-                    let left_slot = self.frame_count as usize % 2;
-                    let right_slot = left_slot + 2;
-                    let (w, h) = self.core.pipeline().source_info();
-                    let lr = self.left_rotation;
-                    let rr = self.right_rotation;
-                    let should_detect = self.detection.has_detector()
-                        && self.detection.should_detect(self.frame_count);
-                    if should_detect {
-                        let pool = self.d3d11_staging_pool.as_ref().unwrap();
-                        let detections = self.detection.run_detection_wgpu_nv12(
-                            pool.y_view(left_slot),
-                            pool.uv_view(left_slot),
-                            pool.y_view(right_slot),
-                            pool.uv_view(right_slot),
-                            w,
-                            h,
-                            lr,
-                            rr,
-                        );
-                        self.detection.last_detections = self.map_detections(detections);
-                    }
-                    self.fire_sink_and_update_director(elapsed, should_detect)?;
+                #[cfg(any(target_os = "macos", target_os = "ios"))]
+                StereoFrame::MetalResident { left, right } => {
+                    self.detect_and_update_director_metal(
+                        left.as_ptr(),
+                        right.as_ptr(),
+                        left.width(),
+                        left.height(),
+                        elapsed,
+                    )?;
                     scheduled_detection
-                } else {
-                    self.update_director(elapsed)?;
-                    false
                 }
-            }
-            _ => {
-                self.detect_and_update_director(frame, elapsed)?;
-                scheduled_detection
-            }
+                #[cfg(target_os = "windows")]
+                StereoFrame::D3d11Resident { .. } => {
+                    if self.d3d11_staging_pool.is_some() {
+                        let left_slot = self.frame_count as usize % 2;
+                        let right_slot = left_slot + 2;
+                        let (w, h) = self.core.pipeline().source_info();
+                        let lr = self.left_rotation;
+                        let rr = self.right_rotation;
+                        let should_detect = self.detection.has_detector()
+                            && self.detection.should_detect(self.frame_count);
+                        if should_detect {
+                            let pool = self.d3d11_staging_pool.as_ref().unwrap();
+                            let detections = self.detection.run_detection_wgpu_nv12(
+                                pool.y_view(left_slot),
+                                pool.uv_view(left_slot),
+                                pool.y_view(right_slot),
+                                pool.uv_view(right_slot),
+                                w,
+                                h,
+                                lr,
+                                rr,
+                            );
+                            self.detection.last_detections = self.map_detections(detections);
+                        }
+                        self.fire_sink_and_update_director(elapsed, should_detect)?;
+                        scheduled_detection
+                    } else {
+                        self.update_director(elapsed)?;
+                        false
+                    }
+                }
+                _ => {
+                    self.detect_and_update_director(frame, elapsed)?;
+                    scheduled_detection
+                }
+            };
+            let detect_time = detect_t0.elapsed();
+            (ran_detection, detect_time)
         };
-        let detect_time = detect_t0.elapsed();
 
         // ── 2. Pose ────────────────────────────────────────────────
         let pos = self.director_position();

@@ -107,7 +107,23 @@ impl StitchSession {
     ) -> Result<u64, SessionError> {
         self.configure_from_source(source);
 
-        let result = self.run_immediate(source, frame_limit, interrupted, &mut on_progress);
+        let result = if self.lookahead_frames > 0 {
+            if source.is_gpu_resident() {
+                log::error!(
+                    "Lookahead requires CPU decode (--no-zero-copy). \
+                     GPU-resident frame buffering is not yet supported."
+                );
+                return Err(SessionError::Config("lookahead requires CPU decode".into()));
+            }
+            log::info!(
+                "Lookahead: {} frames ({:.1}s at source fps)",
+                self.lookahead_frames,
+                self.lookahead_frames as f64 / 30.0,
+            );
+            self.run_buffered(source, frame_limit, interrupted, &mut on_progress)
+        } else {
+            self.run_immediate(source, frame_limit, interrupted, &mut on_progress)
+        };
 
         // Drop GPU slot senders so decode threads can exit gracefully.
         // Without this, SmartFileSource::drop() deadlocks because the
@@ -118,6 +134,172 @@ impl StitchSession {
         }
 
         result
+    }
+
+    /// Buffered frame loop with lookahead.
+    ///
+    /// Three phases: pre-fill the buffer with N frames (decode + detect),
+    /// then steady-state (produce one, consume one), then drain remaining
+    /// frames at EOF. The panner sees future WorldStates via
+    /// `decide_with_lookahead`.
+    fn run_buffered(
+        &mut self,
+        source: &mut dyn FrameSource,
+        frame_limit: u64,
+        interrupted: &AtomicBool,
+        on_progress: &mut Option<ProgressCallback>,
+    ) -> Result<u64, SessionError> {
+        use super::frame_buffer::{BufferedFrame, FrameBuffer};
+
+        let start = std::time::Instant::now();
+        let ctx = crate::session::types::FrameLoopContext {
+            #[cfg(target_os = "linux")]
+            gpu_buf_info: self.gpu_buf_info.clone(),
+        };
+        let n = self.lookahead_frames;
+        let mut buffer = FrameBuffer::new(n + 1);
+        let mut produce_count: u64 = 0;
+
+        // Helper: decode one frame, run detection, capture WorldState,
+        // push into buffer. Returns false on EOF.
+        let produce_one = |session: &mut StitchSession,
+                           source: &mut dyn FrameSource,
+                           buffer: &mut FrameBuffer,
+                           produce_count: &mut u64,
+                           start: std::time::Instant,
+                           _ctx: &crate::session::types::FrameLoopContext|
+         -> Result<bool, SessionError> {
+            let frame_t0 = std::time::Instant::now();
+            let frame = match source.next_frame()? {
+                Some(f) => f,
+                None => return Ok(false),
+            };
+            let decode_time = frame_t0.elapsed();
+            let elapsed = start.elapsed();
+
+            if let Some(sink) = session.event_sink.as_deref_mut() {
+                sink.emit(crate::detect::pipeline_event::PipelineEvent::FrameStart {
+                    frame_index: *produce_count,
+                    timestamp_ms: elapsed.as_secs_f64() * 1000.0,
+                });
+            }
+
+            // Run detection + tracker update on this frame.
+            session.skip_detection = false;
+            if session.detection.has_detector()
+                && session.detection.should_detect(session.frame_count)
+            {
+                session.detect_and_update_director(&frame, elapsed)?;
+            } else {
+                session.update_director(elapsed)?;
+            }
+
+            // Capture the WorldState the tracker just produced.
+            let world_state = session.last_world_state();
+
+            buffer.push(BufferedFrame {
+                frame,
+                world_state,
+                frame_index: *produce_count,
+                elapsed_ms: elapsed.as_secs_f64() * 1000.0,
+                decode_time,
+            });
+
+            // Advance the session frame count so tracker state
+            // (detection interval, frame indices) stays correct.
+            session.frame_count += 1;
+            *produce_count += 1;
+            Ok(true)
+        };
+
+        // ── Pre-fill: decode + detect N frames, no rendering ──────
+        log::info!("Lookahead: pre-filling {} frames...", n);
+        for _ in 0..n {
+            if interrupted.load(Ordering::Relaxed) {
+                break;
+            }
+            if !produce_one(self, source, &mut buffer, &mut produce_count, start, &ctx)? {
+                break;
+            }
+        }
+        log::info!(
+            "Lookahead: pre-filled {} frames, starting render",
+            buffer.len()
+        );
+
+        // Reset frame_count to 0 for the render phase - the produce
+        // phase advanced it, but rendered output counts from 0.
+        let _detect_frame_count = self.frame_count;
+        self.frame_count = 0;
+
+        // ── Steady state: produce one, consume one ────────────────
+        let mut eof = buffer.len() < n;
+
+        while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+            // Produce: decode + detect next frame (unless EOF)
+            if !eof
+                && !buffer.is_full()
+                && !produce_one(self, source, &mut buffer, &mut produce_count, start, &ctx)?
+            {
+                eof = true;
+            }
+
+            // Consume: render oldest frame with lookahead window
+            if let Some(oldest) = buffer.pop() {
+                // Set the future WorldStates for the panner
+                self.lookahead_world_states = buffer.future_world_states();
+
+                // Skip detection (already ran during produce)
+                self.skip_detection = true;
+
+                let frame_t0 = std::time::Instant::now();
+                self.process_frame_any(
+                    &oldest.frame,
+                    start.elapsed(),
+                    oldest.decode_time,
+                    frame_t0,
+                    &ctx,
+                )?;
+
+                if let Some(cb) = on_progress.as_mut() {
+                    cb(&FrameProgress {
+                        frames_completed: self.frame_count,
+                        elapsed: start.elapsed(),
+                    });
+                }
+            } else {
+                break; // Buffer empty and EOF
+            }
+        }
+
+        // ── Drain: render remaining buffered frames ───────────────
+        while let Some(oldest) = buffer.pop() {
+            if self.frame_count >= frame_limit || interrupted.load(Ordering::Relaxed) {
+                break;
+            }
+            self.lookahead_world_states = buffer.future_world_states();
+            self.skip_detection = true;
+
+            let frame_t0 = std::time::Instant::now();
+            self.process_frame_any(
+                &oldest.frame,
+                start.elapsed(),
+                oldest.decode_time,
+                frame_t0,
+                &ctx,
+            )?;
+
+            if let Some(cb) = on_progress.as_mut() {
+                cb(&FrameProgress {
+                    frames_completed: self.frame_count,
+                    elapsed: start.elapsed(),
+                });
+            }
+        }
+
+        self.skip_detection = false;
+        self.lookahead_world_states.clear();
+        Ok(self.frame_count)
     }
 
     /// Standard frame loop. Handles CPU-resident and GPU-resident

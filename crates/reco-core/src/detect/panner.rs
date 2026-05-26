@@ -138,6 +138,7 @@ pub(crate) struct DispatchContext<'a> {
 /// of the Step 6 trace vocabulary.
 pub(crate) struct DispatchResult {
     pub pose: ViewportPosition,
+    pub world_state: WorldState,
     pub active_tracks: u32,
     pub ball_present: bool,
 }
@@ -211,6 +212,7 @@ pub(crate) fn dispatch(
 
     Some(DispatchResult {
         pose,
+        world_state: world,
         active_tracks,
         ball_present,
     })

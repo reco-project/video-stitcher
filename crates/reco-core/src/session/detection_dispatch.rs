@@ -231,6 +231,10 @@ impl StitchSession {
             },
         );
 
+        if let Some(ref result) = dispatch_result {
+            self.last_world_state = result.world_state.clone();
+        }
+
         self.telemetry.record_detections(
             self.detection.last_detections.len() as u32,
             dispatch_result.as_ref().map_or(0, |r| r.active_tracks),
@@ -238,6 +242,11 @@ impl StitchSession {
         );
 
         Ok(())
+    }
+
+    /// The WorldState from the most recent dispatch call.
+    pub(crate) fn last_world_state(&self) -> crate::detect::tracker::WorldState {
+        self.last_world_state.clone()
     }
 
     /// Map raw detections to panorama coordinates.
