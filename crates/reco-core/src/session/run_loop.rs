@@ -184,17 +184,15 @@ impl StitchSession {
                 });
             }
 
-            // Run detection + tracker update on this frame.
+            // Run detection using produce_count for interval check
+            // (frame_count is reserved for rendered output counting).
             session.skip_detection = false;
-            if session.detection.has_detector()
-                && session.detection.should_detect(session.frame_count)
-            {
+            if session.detection.has_detector() && session.detection.should_detect(*produce_count) {
                 session.detect_and_update_director(&frame, elapsed)?;
             } else {
                 session.update_director(elapsed)?;
             }
 
-            // Capture the WorldState the tracker just produced.
             let world_state = session.last_world_state();
 
             buffer.push(BufferedFrame {
@@ -205,9 +203,6 @@ impl StitchSession {
                 decode_time,
             });
 
-            // Advance the session frame count so tracker state
-            // (detection interval, frame indices) stays correct.
-            session.frame_count += 1;
             *produce_count += 1;
             Ok(true)
         };
@@ -227,10 +222,8 @@ impl StitchSession {
             buffer.len()
         );
 
-        // Reset frame_count to 0 for the render phase - the produce
-        // phase advanced it, but rendered output counts from 0.
-        let _detect_frame_count = self.frame_count;
-        self.frame_count = 0;
+        // frame_count stays at 0 - produce_count drives detection
+        // interval, frame_count counts rendered output.
 
         // ── Steady state: produce one, consume one ────────────────
         let mut eof = buffer.len() < n;

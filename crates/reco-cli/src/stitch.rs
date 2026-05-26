@@ -10,7 +10,7 @@ use std::sync::atomic::AtomicBool;
 
 /// Arguments for the stitch subcommand, collected from CLI parsing.
 ///
-/// `detection_interval`, `lead_time`, and `tracking_mode` are only
+/// `detection_interval`, `lookahead`, and `tracking_mode` are only
 /// consumed inside `#[cfg(feature = "autocam")]` blocks below, so
 /// `--no-default-features` builds see them as dead. Silence the lint
 /// here instead of per-field gating to keep the struct shape stable
@@ -33,7 +33,7 @@ pub struct StitchArgs<'a> {
     pub sync_offset: i64,
     pub model_path: Option<&'a str>,
     pub detection_interval: u64,
-    pub lead_time: f64,
+    pub lookahead: f64,
     pub tracking_mode: &'a str,
     pub quality_value: Option<u8>,
     pub preset: Option<String>,
@@ -111,6 +111,9 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     }
     if args.no_zero_copy {
         job = job.force_cpu_decode();
+    }
+    if args.lookahead > 0.0 {
+        job = job.lookahead(args.lookahead);
     }
     if let Some(path) = args.events_path {
         job = job.events(path);
