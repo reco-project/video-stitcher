@@ -278,10 +278,6 @@ impl StitchSession {
         Ok(())
     }
 
-    /// The WorldState from the most recent dispatch call.
-    pub(crate) fn last_world_state(&self) -> crate::detect::tracker::WorldState {
-        self.last_world_state.clone()
-    }
 
     /// Map raw detections to panorama coordinates.
     pub(crate) fn map_detections(&self, detections: Vec<Detection>) -> Vec<MappedDetection> {

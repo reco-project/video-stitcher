@@ -210,6 +210,7 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         let interval = args.detection_interval;
         let mode_str = args.tracking_mode.to_owned();
         let allow_fallback = args.allow_no_tracking;
+        let use_lookahead = args.lookahead > 0.0;
         let tracking_failed = Arc::clone(&tracking_failed);
         job = job.on_session(move |session, source| {
             let info = source.info();
@@ -219,10 +220,11 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
             };
             let is_10bit =
                 source.gpu_pixel_format() == reco_core::render::renderer::GpuPixelFormat::P010;
-            let autocam_config = reco_autocam::AutocamConfig::new(&model_path)
+            let mut autocam_config = reco_autocam::AutocamConfig::new(&model_path)
                 .with_tracking_mode(mode)
                 .with_detection_interval(interval)
                 .with_10bit(is_10bit);
+            autocam_config.use_lookahead_panner = use_lookahead;
             let autocam_config = if let Some(roi) = field_roi {
                 autocam_config.with_field_roi(roi)
             } else {

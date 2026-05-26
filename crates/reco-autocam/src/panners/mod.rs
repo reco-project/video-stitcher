@@ -26,6 +26,7 @@ pub mod anticipator;
 pub mod deadzone;
 pub mod field;
 pub mod file_panner;
+pub mod lookahead;
 pub mod smoother;
 pub mod sweep;
 
@@ -33,5 +34,6 @@ pub use anticipator::Anticipator;
 pub use deadzone::DeadZone;
 pub use field::{FieldPanner, FieldPannerConfig};
 pub use file_panner::FilePanner;
+pub use lookahead::{LookaheadPanner, LookaheadPannerConfig};
 pub use smoother::Smoother;
 pub use sweep::SweepPanner;

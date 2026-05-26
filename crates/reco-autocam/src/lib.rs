@@ -119,6 +119,8 @@ pub struct AutocamConfig {
     pub is_10bit: bool,
     /// Field panner tuning. Only used when tracking_mode is Field.
     pub field_panner_config: Option<crate::panners::FieldPannerConfig>,
+    /// Use lookahead-aware panner (requires buffered run loop).
+    pub use_lookahead_panner: bool,
 }
 
 impl AutocamConfig {
@@ -131,6 +133,7 @@ impl AutocamConfig {
             field_roi: None,
             is_10bit: false,
             field_panner_config: None,
+            use_lookahead_panner: false,
         }
     }
 
@@ -483,17 +486,30 @@ pub fn setup_autocam(
                      player_class={person_id}, ball_class={ball_id})"
                 );
 
-                let fp_config = config.field_panner_config.clone().unwrap_or(
-                    crate::panners::FieldPannerConfig {
-                        ball_weight: 0.20,
-                        ..Default::default()
-                    },
-                );
-                let field_panner = crate::panners::FieldPanner::with_config(fps, fp_config);
-
                 target.set_ball_tracker(Box::new(ball_tracker));
                 target.set_player_tracker(Box::new(player_tracker));
-                target.set_panner(Box::new(field_panner));
+
+                if config.use_lookahead_panner {
+                    let panner = crate::panners::LookaheadPanner::new();
+                    log::info!(
+                        "Tracking mode: field + lookahead (LookaheadPanner, \
+                         player_class={person_id}, ball_class={ball_id})"
+                    );
+                    target.set_panner(Box::new(panner));
+                } else {
+                    let fp_config = config.field_panner_config.clone().unwrap_or(
+                        crate::panners::FieldPannerConfig {
+                            ball_weight: 0.20,
+                            ..Default::default()
+                        },
+                    );
+                    let field_panner = crate::panners::FieldPanner::with_config(fps, fp_config);
+                    log::info!(
+                        "Tracking mode: field (FieldPanner, \
+                         player_class={person_id}, ball_class={ball_id})"
+                    );
+                    target.set_panner(Box::new(field_panner));
+                }
             }
             TrackingMode::Sweep => unreachable!("handled before detection block"),
         }
