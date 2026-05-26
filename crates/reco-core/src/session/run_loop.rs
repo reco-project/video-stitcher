@@ -162,6 +162,10 @@ impl StitchSession {
 
         // Helper: decode one frame, run detection, capture WorldState,
         // push into buffer. Returns false on EOF.
+        //
+        // Suppresses event emission during produce: the JSONL sink
+        // should only record events at render time when the final
+        // pose (with lookahead context) is decided.
         let produce_one = |session: &mut StitchSession,
                            source: &mut dyn FrameSource,
                            buffer: &mut FrameBuffer,
@@ -177,12 +181,8 @@ impl StitchSession {
             let decode_time = frame_t0.elapsed();
             let elapsed = start.elapsed();
 
-            if let Some(sink) = session.event_sink.as_deref_mut() {
-                sink.emit(crate::detect::pipeline_event::PipelineEvent::FrameStart {
-                    frame_index: *produce_count,
-                    timestamp_ms: elapsed.as_secs_f64() * 1000.0,
-                });
-            }
+            // Suppress events during produce phase.
+            let held_sink = session.event_sink.take();
 
             // Run detection using produce_count for interval check
             // (frame_count is reserved for rendered output counting).
@@ -192,6 +192,9 @@ impl StitchSession {
             } else {
                 session.update_director(elapsed)?;
             }
+
+            // Restore event sink.
+            session.event_sink = held_sink;
 
             let world_state = session.last_world_state();
 
@@ -242,7 +245,51 @@ impl StitchSession {
                 // Set the future WorldStates for the panner
                 self.lookahead_world_states = buffer.future_world_states();
 
-                // Skip detection (already ran during produce)
+                // Emit buffered events at render time.
+                if let Some(sink) = self.event_sink.as_deref_mut() {
+                    sink.emit(crate::detect::pipeline_event::PipelineEvent::FrameStart {
+                        frame_index: self.frame_count,
+                        timestamp_ms: start.elapsed().as_secs_f64() * 1000.0,
+                    });
+                    sink.emit(crate::detect::pipeline_event::PipelineEvent::WorldState {
+                        frame_index: self.frame_count,
+                        timestamp_ms: oldest.elapsed_ms,
+                        players: oldest.world_state.players.clone(),
+                        ball: oldest.world_state.ball,
+                    });
+                }
+
+                // Set the stored WorldState so director_position uses it
+                // via dispatch. Then call process_frame_any with detection
+                // skipped.
+                self.previous_panner_pose = if self.panner.is_some() {
+                    let pan_ctx = crate::detect::panner::PanContext {
+                        frame_index: self.frame_count,
+                        timestamp_ms: oldest.elapsed_ms,
+                        previous_position: self.previous_panner_pose,
+                        calibration: self.core.pipeline().calibration(),
+                    };
+                    let pose = self.panner.as_mut().unwrap().decide_with_lookahead(
+                        &oldest.world_state,
+                        &self.lookahead_world_states,
+                        &pan_ctx,
+                    );
+                    if let Some(sink) = self.event_sink.as_deref_mut() {
+                        sink.emit(crate::detect::pipeline_event::PipelineEvent::PanDecision {
+                            frame_index: self.frame_count,
+                            pose,
+                        });
+                        if let Some(debug) =
+                            self.panner.as_ref().unwrap().debug_event(self.frame_count)
+                        {
+                            sink.emit(debug);
+                        }
+                    }
+                    pose
+                } else {
+                    self.previous_panner_pose
+                };
+
                 self.skip_detection = true;
 
                 let frame_t0 = std::time::Instant::now();
@@ -271,6 +318,47 @@ impl StitchSession {
                 break;
             }
             self.lookahead_world_states = buffer.future_world_states();
+
+            if let Some(sink) = self.event_sink.as_deref_mut() {
+                sink.emit(crate::detect::pipeline_event::PipelineEvent::FrameStart {
+                    frame_index: self.frame_count,
+                    timestamp_ms: start.elapsed().as_secs_f64() * 1000.0,
+                });
+                sink.emit(crate::detect::pipeline_event::PipelineEvent::WorldState {
+                    frame_index: self.frame_count,
+                    timestamp_ms: oldest.elapsed_ms,
+                    players: oldest.world_state.players.clone(),
+                    ball: oldest.world_state.ball,
+                });
+            }
+
+            self.previous_panner_pose = if self.panner.is_some() {
+                let pan_ctx = crate::detect::panner::PanContext {
+                    frame_index: self.frame_count,
+                    timestamp_ms: oldest.elapsed_ms,
+                    previous_position: self.previous_panner_pose,
+                    calibration: self.core.pipeline().calibration(),
+                };
+                let pose = self.panner.as_mut().unwrap().decide_with_lookahead(
+                    &oldest.world_state,
+                    &self.lookahead_world_states,
+                    &pan_ctx,
+                );
+                if let Some(sink) = self.event_sink.as_deref_mut() {
+                    sink.emit(crate::detect::pipeline_event::PipelineEvent::PanDecision {
+                        frame_index: self.frame_count,
+                        pose,
+                    });
+                    if let Some(debug) = self.panner.as_ref().unwrap().debug_event(self.frame_count)
+                    {
+                        sink.emit(debug);
+                    }
+                }
+                pose
+            } else {
+                self.previous_panner_pose
+            };
+
             self.skip_detection = true;
 
             let frame_t0 = std::time::Instant::now();
