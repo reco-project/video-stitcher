@@ -25,11 +25,13 @@
 pub mod anticipator;
 pub mod deadzone;
 pub mod field;
+pub mod file_panner;
 pub mod smoother;
 pub mod sweep;
 
 pub use anticipator::Anticipator;
 pub use deadzone::DeadZone;
 pub use field::{FieldPanner, FieldPannerConfig};
+pub use file_panner::FilePanner;
 pub use smoother::Smoother;
 pub use sweep::SweepPanner;

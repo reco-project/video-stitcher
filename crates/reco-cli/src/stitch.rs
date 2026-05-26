@@ -61,6 +61,8 @@ pub struct StitchArgs<'a> {
     pub no_zero_copy: bool,
     /// Path for pipeline event JSONL output.
     pub events_path: Option<&'a str>,
+    /// Precomputed trajectory CSV (overrides AI panner).
+    pub trajectory_path: Option<&'a str>,
 }
 
 /// Run the stitch subcommand.
@@ -154,9 +156,29 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         );
     }
 
+    // Precomputed trajectory file overrides all AI tracking.
+    #[cfg(feature = "autocam")]
+    if let Some(traj_path) = args.trajectory_path {
+        let traj_path = traj_path.to_owned();
+        job =
+            job.on_session(
+                move |session, _source| match reco_autocam::panners::FilePanner::from_csv(
+                    std::path::Path::new(&traj_path),
+                ) {
+                    Ok(panner) => {
+                        session.set_panner(Box::new(panner));
+                        log::info!("Tracking mode: precomputed trajectory from {traj_path}");
+                    }
+                    Err(e) => {
+                        log::error!("Failed to load trajectory {traj_path}: {e}");
+                    }
+                },
+            );
+    }
+
     // Sweep panner needs no model - attach it directly.
     #[cfg(feature = "autocam")]
-    if args.tracking_mode == "sweep" {
+    if args.trajectory_path.is_none() && args.tracking_mode == "sweep" {
         job = job.on_session(|session, _source| {
             // Use 80% of coverage max FOV so the viewport fits comfortably.
             let max_fov = session.coverage().map_or(50.0, |c| c.max_fov_degrees());
@@ -177,7 +199,8 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
 
     // Wire up autocam via the on_session callback if a model is provided.
     #[cfg(feature = "autocam")]
-    if args.tracking_mode != "sweep"
+    if args.trajectory_path.is_none()
+        && args.tracking_mode != "sweep"
         && let Some(model_path) = args.model_path
     {
         let model_path = model_path.to_owned();

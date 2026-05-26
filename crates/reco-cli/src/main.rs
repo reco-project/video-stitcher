@@ -239,6 +239,11 @@ enum Commands {
         /// decisions) to a JSONL file for offline analysis.
         #[arg(long)]
         events: Option<String>,
+
+        /// Precomputed trajectory CSV (frame,yaw,pitch,fov). Overrides
+        /// AI tracking with poses read from the file.
+        #[arg(long)]
+        trajectory: Option<String>,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -737,6 +742,7 @@ fn main() -> anyhow::Result<()> {
             allow_no_tracking,
             no_zero_copy,
             events,
+            trajectory,
         } => stitch::run_stitch(
             stitch::StitchArgs {
                 left: &left,
@@ -765,6 +771,7 @@ fn main() -> anyhow::Result<()> {
                 allow_no_tracking,
                 no_zero_copy,
                 events_path: events.as_deref(),
+                trajectory_path: trajectory.as_deref(),
             },
             &interrupted,
         ),
