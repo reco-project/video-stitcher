@@ -74,6 +74,21 @@ pub trait Panner: Send {
     /// Decide where the virtual camera should look this frame.
     fn decide(&mut self, world: &WorldState, ctx: &PanContext<'_>) -> ViewportPosition;
 
+    /// Decide with access to future WorldStates from the lookahead buffer.
+    ///
+    /// `future` contains WorldStates for frames after the current one,
+    /// ordered nearest-to-farthest. Empty when lookahead is disabled.
+    /// Default delegates to [`decide`](Self::decide), ignoring the future.
+    fn decide_with_lookahead(
+        &mut self,
+        world: &WorldState,
+        future: &[WorldState],
+        ctx: &PanContext<'_>,
+    ) -> ViewportPosition {
+        let _ = future;
+        self.decide(world, ctx)
+    }
+
     /// Optional debug snapshot from the last `decide()` call.
     fn debug_event(&self, _frame_index: u64) -> Option<PipelineEvent> {
         None
@@ -133,6 +148,7 @@ pub(crate) fn dispatch(
     ball_tracker: Option<&mut Box<dyn Tracker>>,
     previous_panner_pose: &mut ViewportPosition,
     mut event_sink: Option<&mut (dyn PipelineEventSink + '_)>,
+    future_world_states: &[WorldState],
     ctx: DispatchContext<'_>,
 ) -> Option<DispatchResult> {
     let panner = panner?;
@@ -180,7 +196,7 @@ pub(crate) fn dispatch(
         .as_ref()
         .is_some_and(|b| !matches!(b.state, super::tracker::TrackState::Lost));
 
-    let pose = panner.decide(&world, &pan_ctx);
+    let pose = panner.decide_with_lookahead(&world, future_world_states, &pan_ctx);
     *previous_panner_pose = pose;
 
     if let Some(sink) = event_sink.as_mut() {

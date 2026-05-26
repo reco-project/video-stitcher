@@ -92,6 +92,9 @@ pub struct StitchSession {
     /// Previous frame's resolved pose (post-clamping), handed to the
     /// panner via [`PanContext::previous_position`](crate::detect::panner::PanContext::previous_position).
     pub(crate) previous_panner_pose: ViewportPosition,
+    /// Future WorldStates from the lookahead buffer, passed to the
+    /// panner via `decide_with_lookahead`. Empty when lookahead is off.
+    pub(crate) lookahead_world_states: Vec<crate::detect::tracker::WorldState>,
     pub(crate) frame_count: u64,
     /// Session start time for metrics computation.
     session_start: Option<std::time::Instant>,
@@ -236,6 +239,7 @@ impl StitchSession {
             player_tracker: None,
             panner: None,
             previous_panner_pose: ViewportPosition::default(),
+            lookahead_world_states: Vec::new(),
             frame_count: 0,
             extra_encoders: Vec::new(),
             session_start: None,

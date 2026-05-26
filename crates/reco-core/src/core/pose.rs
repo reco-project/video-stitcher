@@ -46,6 +46,7 @@ impl super::StitchCore {
             // StitchCore does not own an event sink. StitchSession
             // does the tracing when it is the active entry point.
             None,
+            &[],
             crate::detect::panner::DispatchContext {
                 detections: &self.last_detections,
                 calibration: &self.pipeline.calibration,

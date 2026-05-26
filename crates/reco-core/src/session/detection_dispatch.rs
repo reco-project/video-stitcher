@@ -221,6 +221,7 @@ impl StitchSession {
             self.ball_tracker.as_mut(),
             &mut self.previous_panner_pose,
             self.event_sink.as_deref_mut(),
+            &self.lookahead_world_states,
             crate::detect::panner::DispatchContext {
                 detections: &self.detection.last_detections,
                 calibration,
