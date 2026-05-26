@@ -34,6 +34,40 @@ impl StitchSession {
         self.fire_sink_and_update_director(elapsed, should_detect)
     }
 
+    /// Run detection + trackers only (no panner). For the lookahead
+    /// produce phase where we want the WorldState but don't want to
+    /// advance the panner.
+    pub(crate) fn detect_and_track_only(
+        &mut self,
+        frame: &StereoFrame,
+        elapsed: std::time::Duration,
+        produce_index: u64,
+    ) -> Result<crate::detect::tracker::WorldState, SessionError> {
+        let should_detect = self.detection.should_detect(produce_index);
+        if should_detect {
+            let (w, h) = self.core.pipeline().source_info();
+            let detections = self.detection.run_detection(frame, w, h);
+            self.detection.last_detections = self.map_detections(detections);
+        }
+
+        let calibration = self.core.pipeline().calibration();
+        let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
+
+        let world = crate::detect::panner::dispatch_detect_only(
+            self.player_tracker.as_mut(),
+            self.ball_tracker.as_mut(),
+            crate::detect::panner::DispatchContext {
+                detections: &self.detection.last_detections,
+                calibration,
+                frame_index: produce_index,
+                timestamp_ms,
+                caller: "lookahead_produce",
+            },
+        );
+
+        Ok(world)
+    }
+
     /// Run detection on a CPU-resident stereo frame (YUV420P / NV12).
     pub fn detect_and_update_director(
         &mut self,

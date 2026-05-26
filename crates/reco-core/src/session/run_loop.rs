@@ -181,22 +181,9 @@ impl StitchSession {
             let decode_time = frame_t0.elapsed();
             let elapsed = start.elapsed();
 
-            // Suppress events during produce phase.
-            let held_sink = session.event_sink.take();
-
-            // Run detection using produce_count for interval check
-            // (frame_count is reserved for rendered output counting).
-            session.skip_detection = false;
-            if session.detection.has_detector() && session.detection.should_detect(*produce_count) {
-                session.detect_and_update_director(&frame, elapsed)?;
-            } else {
-                session.update_director(elapsed)?;
-            }
-
-            // Restore event sink.
-            session.event_sink = held_sink;
-
-            let world_state = session.last_world_state();
+            // Run detection + trackers only (no panner, no events).
+            // The panner runs at render time with the full lookahead window.
+            let world_state = session.detect_and_track_only(&frame, elapsed, *produce_count)?;
 
             buffer.push(BufferedFrame {
                 frame,

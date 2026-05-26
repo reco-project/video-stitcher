@@ -143,6 +143,33 @@ pub(crate) struct DispatchResult {
     pub ball_present: bool,
 }
 
+/// Run trackers only (no panner). Returns the WorldState for buffering.
+pub(crate) fn dispatch_detect_only(
+    player_tracker: Option<&mut Box<dyn Tracker>>,
+    ball_tracker: Option<&mut Box<dyn Tracker>>,
+    ctx: DispatchContext<'_>,
+) -> WorldState {
+    let mut world = WorldState::default();
+
+    if let Some(t) = player_tracker {
+        world.players = t.update(ctx.detections, ctx.timestamp_ms);
+    }
+    if let Some(t) = ball_tracker {
+        t.observe_world(&world);
+        let ents = t.update(ctx.detections, ctx.timestamp_ms);
+        if ents.len() > 1 {
+            log::warn!(
+                "{}: ball_tracker returned {} entities (expected <=1); taking first",
+                ctx.caller,
+                ents.len()
+            );
+        }
+        world.ball = ents.into_iter().next();
+    }
+
+    world
+}
+
 pub(crate) fn dispatch(
     panner: Option<&mut Box<dyn Panner>>,
     player_tracker: Option<&mut Box<dyn Tracker>>,
