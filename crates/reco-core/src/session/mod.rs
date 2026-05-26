@@ -23,6 +23,8 @@ pub mod types;
 pub mod detection;
 /// Detection dispatch entry points (detect_and_update_director_* variants).
 mod detection_dispatch;
+/// Lookahead frame buffer for temporal-aware processing.
+pub(crate) mod frame_buffer;
 /// Per-frame render and encode methods (step, process_frame, submit_render_output).
 mod frame_processing;
 /// Batch processing entry points (run, run_immediate, setup_gpu_source).
