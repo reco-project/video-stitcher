@@ -278,7 +278,6 @@ impl StitchSession {
         Ok(())
     }
 
-
     /// Map raw detections to panorama coordinates.
     pub(crate) fn map_detections(&self, detections: Vec<Detection>) -> Vec<MappedDetection> {
         let calibration = self.core.pipeline().calibration();

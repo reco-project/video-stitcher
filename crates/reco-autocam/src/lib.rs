@@ -119,6 +119,9 @@ pub struct AutocamConfig {
     pub is_10bit: bool,
     /// Field panner tuning. Only used when tracking_mode is Field.
     pub field_panner_config: Option<crate::panners::FieldPannerConfig>,
+    /// Detector confidence threshold override. When set, replaces
+    /// the default 0.10 threshold. Ball-only models need 0.25+.
+    pub confidence_threshold: Option<f32>,
     /// Use lookahead-aware panner (requires buffered run loop).
     pub use_lookahead_panner: bool,
 }
@@ -133,6 +136,7 @@ impl AutocamConfig {
             field_roi: None,
             is_10bit: false,
             field_panner_config: None,
+            confidence_threshold: None,
             use_lookahead_panner: false,
         }
     }
@@ -428,7 +432,8 @@ pub fn setup_autocam(
     // ORT CPU fallback for .onnx files.
     #[cfg(feature = "ort")]
     if !detection_active && !use_zero_copy {
-        let yolo = CpuYoloDetector::from_file(model_path)?;
+        let conf = config.confidence_threshold.unwrap_or(0.10);
+        let yolo = CpuYoloDetector::with_config(model_path, conf, Vec::new())?;
         let detector: Box<dyn reco_core::detect::detector::UnifiedDetector> =
             if let Some(roi) = effective_roi {
                 wrap_with_roi(Box::new(yolo), roi)
@@ -510,6 +515,27 @@ pub fn setup_autocam(
                     );
                     target.set_panner(Box::new(field_panner));
                 }
+            }
+            TrackingMode::Ball => {
+                let ball_tracker =
+                    crate::trackers::BallTracker::new(ball_id).with_max_jump_rad(0.5);
+                // No PlayerTracker - ball-only mode for single-class detectors.
+                target.set_ball_tracker(Box::new(ball_tracker));
+
+                let la_config = crate::panners::LookaheadPannerConfig {
+                    ball_weight: 1.0,
+                    dead_zone_rad: 0.10,
+                    yaw_alpha: 0.03,
+                    pitch_alpha: 0.01,
+                    ..Default::default()
+                };
+                let panner = crate::panners::LookaheadPanner::with_config(la_config);
+
+                log::info!(
+                    "Tracking mode: ball-only (BallTracker + LookaheadPanner, \
+                     ball_class={ball_id})"
+                );
+                target.set_panner(Box::new(panner));
             }
             TrackingMode::Sweep => unreachable!("handled before detection block"),
         }

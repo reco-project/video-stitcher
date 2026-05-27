@@ -216,6 +216,7 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
             let info = source.info();
             let mode = match mode_str.as_str() {
                 "sweep" => reco_autocam::TrackingMode::Sweep,
+                "ball" => reco_autocam::TrackingMode::Ball,
                 _ => reco_autocam::TrackingMode::Field,
             };
             let is_10bit =
@@ -225,6 +226,9 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
                 .with_detection_interval(interval)
                 .with_10bit(is_10bit);
             autocam_config.use_lookahead_panner = use_lookahead;
+            if mode == reco_autocam::TrackingMode::Ball {
+                autocam_config.confidence_threshold = Some(0.25);
+            }
             let autocam_config = if let Some(roi) = field_roi {
                 autocam_config.with_field_roi(roi)
             } else {
