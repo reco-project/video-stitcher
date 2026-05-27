@@ -524,9 +524,6 @@ pub fn setup_autocam(
 
                 let la_config = crate::panners::LookaheadPannerConfig {
                     ball_weight: 1.0,
-                    dead_zone_rad: 0.10,
-                    yaw_alpha: 0.03,
-                    pitch_alpha: 0.01,
                     ..Default::default()
                 };
                 let panner = crate::panners::LookaheadPanner::with_config(la_config);

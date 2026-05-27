@@ -11,6 +11,7 @@
 
 use std::collections::VecDeque;
 
+use crate::detect::director::MappedDetection;
 use crate::detect::tracker::WorldState;
 use crate::source::StereoFrame;
 
@@ -18,6 +19,7 @@ use crate::source::StereoFrame;
 pub(crate) struct BufferedFrame {
     pub frame: StereoFrame,
     pub world_state: WorldState,
+    pub detections: Vec<MappedDetection>,
     pub frame_index: u64,
     pub elapsed_ms: f64,
     pub decode_time: std::time::Duration,

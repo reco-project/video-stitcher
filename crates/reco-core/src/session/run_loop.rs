@@ -184,10 +184,12 @@ impl StitchSession {
             // Run detection + trackers only (no panner, no events).
             // The panner runs at render time with the full lookahead window.
             let world_state = session.detect_and_track_only(&frame, elapsed, *produce_count)?;
+            let detections = session.detection.last_detections.clone();
 
             buffer.push(BufferedFrame {
                 frame,
                 world_state,
+                detections,
                 frame_index: *produce_count,
                 elapsed_ms: elapsed.as_secs_f64() * 1000.0,
                 decode_time,
@@ -212,14 +214,78 @@ impl StitchSession {
             buffer.len()
         );
 
+        // Centered post-smooth: the panner runs AHEAD of rendering
+        // so we can average past + future poses symmetrically.
+        let post_smooth_half: usize = (n / 2).max(1);
+
         // frame_count stays at 0 - produce_count drives detection
         // interval, frame_count counts rendered output.
 
-        // ── Steady state: produce one, consume one ────────────────
-        let mut eof = buffer.len() < n;
+        // Queue of (frame, raw_pose) pairs. The panner fills this
+        // ahead of rendering. Rendering consumes from the front,
+        // using the centered average of past + current + future poses.
+        let mut pose_queue: std::collections::VecDeque<(
+            BufferedFrame,
+            crate::detect::director::ViewportPosition,
+        )> = std::collections::VecDeque::new();
+        let mut past_poses: std::collections::VecDeque<crate::detect::director::ViewportPosition> =
+            std::collections::VecDeque::new();
+        let mut panner_frame_idx: u64 = 0;
 
+        // Helper: run the panner on the oldest buffered frame, push
+        // the (frame, pose) pair into the pose queue.
+        let run_panner_once = |session: &mut StitchSession,
+                               buffer: &mut FrameBuffer,
+                               pose_queue: &mut std::collections::VecDeque<(
+            BufferedFrame,
+            crate::detect::director::ViewportPosition,
+        )>,
+                               panner_frame_idx: &mut u64| {
+            if let Some(frame) = buffer.pop() {
+                session.lookahead_world_states = buffer.future_world_states();
+                let pose = if let Some(panner) = session.panner.as_mut() {
+                    let pan_ctx = crate::detect::panner::PanContext {
+                        frame_index: *panner_frame_idx,
+                        timestamp_ms: frame.elapsed_ms,
+                        previous_position: session.previous_panner_pose,
+                        calibration: session.core.pipeline().calibration(),
+                    };
+                    let p = panner.decide_with_lookahead(
+                        &frame.world_state,
+                        &session.lookahead_world_states,
+                        &pan_ctx,
+                    );
+                    session.previous_panner_pose = p;
+                    p
+                } else {
+                    session.previous_panner_pose
+                };
+                *panner_frame_idx += 1;
+                pose_queue.push_back((frame, pose));
+                true
+            } else {
+                false
+            }
+        };
+
+        // ── Panner warm-up: run panner post_smooth_half frames ahead ──
+        let mut eof = buffer.len() < n;
+        for _ in 0..post_smooth_half {
+            if buffer.is_empty() {
+                break;
+            }
+            if !eof
+                && !buffer.is_full()
+                && !produce_one(self, source, &mut buffer, &mut produce_count, start, &ctx)?
+            {
+                eof = true;
+            }
+            run_panner_once(self, &mut buffer, &mut pose_queue, &mut panner_frame_idx);
+        }
+
+        // ── Steady state: produce, run panner ahead, render with centered smooth ──
         while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
-            // Produce: decode + detect next frame (unless EOF)
+            // Produce: decode + detect next frame
             if !eof
                 && !buffer.is_full()
                 && !produce_one(self, source, &mut buffer, &mut produce_count, start, &ctx)?
@@ -227,56 +293,64 @@ impl StitchSession {
                 eof = true;
             }
 
-            // Consume: render oldest frame with lookahead window
-            if let Some(oldest) = buffer.pop() {
-                // Set the future WorldStates for the panner
-                self.lookahead_world_states = buffer.future_world_states();
+            // Run panner on next buffered frame (stays ahead of rendering)
+            if !buffer.is_empty() {
+                run_panner_once(self, &mut buffer, &mut pose_queue, &mut panner_frame_idx);
+            }
 
-                // Emit buffered events at render time.
+            // Render: consume from pose queue when we have enough context
+            if pose_queue.len() > post_smooth_half || (eof && !pose_queue.is_empty()) {
+                let (oldest, raw_pose) = pose_queue.pop_front().unwrap();
+
+                // Centered post-smooth: average past + current + future poses.
+                let ahead = pose_queue.len().min(post_smooth_half);
+                let behind = past_poses.len().min(post_smooth_half);
+                let total = behind + 1 + ahead;
+                let mut sum_yaw = raw_pose.yaw;
+                let mut sum_pitch = raw_pose.pitch;
+                for (_, p) in pose_queue.iter().take(ahead) {
+                    sum_yaw += p.yaw;
+                    sum_pitch += p.pitch;
+                }
+                for p in past_poses.iter() {
+                    sum_yaw += p.yaw;
+                    sum_pitch += p.pitch;
+                }
+                let smoothed_pose = crate::detect::director::ViewportPosition {
+                    yaw: sum_yaw / total as f32,
+                    pitch: sum_pitch / total as f32,
+                    fov_degrees: raw_pose.fov_degrees,
+                };
+                past_poses.push_back(raw_pose);
+                if past_poses.len() > post_smooth_half {
+                    past_poses.pop_front();
+                }
+
+                // Emit events.
                 if let Some(sink) = self.event_sink.as_deref_mut() {
                     sink.emit(crate::detect::pipeline_event::PipelineEvent::FrameStart {
                         frame_index: self.frame_count,
                         timestamp_ms: start.elapsed().as_secs_f64() * 1000.0,
                     });
+                    sink.emit(
+                        crate::detect::pipeline_event::PipelineEvent::DetectionsRaw {
+                            frame_index: self.frame_count,
+                            detections: oldest.detections.clone(),
+                        },
+                    );
                     sink.emit(crate::detect::pipeline_event::PipelineEvent::WorldState {
                         frame_index: self.frame_count,
                         timestamp_ms: oldest.elapsed_ms,
                         players: oldest.world_state.players.clone(),
                         ball: oldest.world_state.ball,
                     });
+                    sink.emit(crate::detect::pipeline_event::PipelineEvent::PanDecision {
+                        frame_index: self.frame_count,
+                        pose: smoothed_pose,
+                    });
                 }
 
-                // Set the stored WorldState so director_position uses it
-                // via dispatch. Then call process_frame_any with detection
-                // skipped.
-                self.previous_panner_pose = if self.panner.is_some() {
-                    let pan_ctx = crate::detect::panner::PanContext {
-                        frame_index: self.frame_count,
-                        timestamp_ms: oldest.elapsed_ms,
-                        previous_position: self.previous_panner_pose,
-                        calibration: self.core.pipeline().calibration(),
-                    };
-                    let pose = self.panner.as_mut().unwrap().decide_with_lookahead(
-                        &oldest.world_state,
-                        &self.lookahead_world_states,
-                        &pan_ctx,
-                    );
-                    if let Some(sink) = self.event_sink.as_deref_mut() {
-                        sink.emit(crate::detect::pipeline_event::PipelineEvent::PanDecision {
-                            frame_index: self.frame_count,
-                            pose,
-                        });
-                        if let Some(debug) =
-                            self.panner.as_ref().unwrap().debug_event(self.frame_count)
-                        {
-                            sink.emit(debug);
-                        }
-                    }
-                    pose
-                } else {
-                    self.previous_panner_pose
-                };
-
+                self.previous_panner_pose = smoothed_pose;
                 self.skip_detection = true;
 
                 let frame_t0 = std::time::Instant::now();
@@ -294,58 +368,63 @@ impl StitchSession {
                         elapsed: start.elapsed(),
                     });
                 }
-            } else {
-                break; // Buffer empty and EOF
+            } else if eof && buffer.is_empty() && pose_queue.is_empty() {
+                break;
             }
         }
 
-        // ── Drain: render remaining buffered frames ───────────────
-        while let Some(oldest) = buffer.pop() {
+        // ── Drain: render remaining pose queue entries ────────────
+        while let Some((oldest, raw_pose)) = pose_queue.pop_front() {
             if self.frame_count >= frame_limit || interrupted.load(Ordering::Relaxed) {
                 break;
             }
-            self.lookahead_world_states = buffer.future_world_states();
+            let ahead = pose_queue.len().min(post_smooth_half);
+            let behind = past_poses.len().min(post_smooth_half);
+            let total = behind + 1 + ahead;
+            let mut sum_yaw = raw_pose.yaw;
+            let mut sum_pitch = raw_pose.pitch;
+            for (_, p) in pose_queue.iter().take(ahead) {
+                sum_yaw += p.yaw;
+                sum_pitch += p.pitch;
+            }
+            for p in past_poses.iter() {
+                sum_yaw += p.yaw;
+                sum_pitch += p.pitch;
+            }
+            let smoothed_pose = crate::detect::director::ViewportPosition {
+                yaw: sum_yaw / total as f32,
+                pitch: sum_pitch / total as f32,
+                fov_degrees: raw_pose.fov_degrees,
+            };
+            past_poses.push_back(raw_pose);
+            if past_poses.len() > post_smooth_half {
+                past_poses.pop_front();
+            }
 
             if let Some(sink) = self.event_sink.as_deref_mut() {
                 sink.emit(crate::detect::pipeline_event::PipelineEvent::FrameStart {
                     frame_index: self.frame_count,
                     timestamp_ms: start.elapsed().as_secs_f64() * 1000.0,
                 });
+                sink.emit(
+                    crate::detect::pipeline_event::PipelineEvent::DetectionsRaw {
+                        frame_index: self.frame_count,
+                        detections: oldest.detections.clone(),
+                    },
+                );
                 sink.emit(crate::detect::pipeline_event::PipelineEvent::WorldState {
                     frame_index: self.frame_count,
                     timestamp_ms: oldest.elapsed_ms,
                     players: oldest.world_state.players.clone(),
                     ball: oldest.world_state.ball,
                 });
+                sink.emit(crate::detect::pipeline_event::PipelineEvent::PanDecision {
+                    frame_index: self.frame_count,
+                    pose: smoothed_pose,
+                });
             }
 
-            self.previous_panner_pose = if self.panner.is_some() {
-                let pan_ctx = crate::detect::panner::PanContext {
-                    frame_index: self.frame_count,
-                    timestamp_ms: oldest.elapsed_ms,
-                    previous_position: self.previous_panner_pose,
-                    calibration: self.core.pipeline().calibration(),
-                };
-                let pose = self.panner.as_mut().unwrap().decide_with_lookahead(
-                    &oldest.world_state,
-                    &self.lookahead_world_states,
-                    &pan_ctx,
-                );
-                if let Some(sink) = self.event_sink.as_deref_mut() {
-                    sink.emit(crate::detect::pipeline_event::PipelineEvent::PanDecision {
-                        frame_index: self.frame_count,
-                        pose,
-                    });
-                    if let Some(debug) = self.panner.as_ref().unwrap().debug_event(self.frame_count)
-                    {
-                        sink.emit(debug);
-                    }
-                }
-                pose
-            } else {
-                self.previous_panner_pose
-            };
-
+            self.previous_panner_pose = smoothed_pose;
             self.skip_detection = true;
 
             let frame_t0 = std::time::Instant::now();
