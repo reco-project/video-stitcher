@@ -29,6 +29,8 @@ pub(crate) mod frame_buffer;
 mod frame_processing;
 /// Batch processing entry points (run, run_immediate, setup_gpu_source).
 mod run_loop;
+/// VRAM texture pool for GPU-resident frame buffering.
+pub(crate) mod vram_pool;
 /// Configuration wiring (set/clear/attach methods).
 mod wiring;
 
@@ -150,6 +152,15 @@ pub struct StitchSession {
     /// still bound to the SharedTextureSet the source owns.
     #[cfg(target_os = "linux")]
     pub(crate) gpu_shared_views: Option<[wgpu::TextureView; 8]>,
+    /// The 8 shared textures (2 slots x 2 cameras x Y/UV), cloned for
+    /// `copy_texture_to_texture` in the VRAM pool path. Cheap (Arc inside).
+    #[cfg(target_os = "linux")]
+    pub(crate) gpu_shared_textures: Option<[wgpu::Texture; 8]>,
+
+    /// VRAM buffer pool for GPU-resident lookahead.
+    pub(crate) vram_pool: Option<vram_pool::VramPool>,
+    /// VRAM pool slot for the frame currently being rendered.
+    pub(crate) current_vram_slot: Option<usize>,
 
     /// Metal texture cache for importing CVPixelBuffers as wgpu textures.
     /// Created lazily on the first MetalResident frame.
@@ -270,6 +281,10 @@ impl StitchSession {
             gpu_buf_info: None,
             #[cfg(target_os = "linux")]
             gpu_shared_views: None,
+            #[cfg(target_os = "linux")]
+            gpu_shared_textures: None,
+            vram_pool: None,
+            current_vram_slot: None,
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_texture_cache: None,
             #[cfg(target_os = "windows")]

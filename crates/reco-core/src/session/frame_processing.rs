@@ -440,6 +440,24 @@ impl StitchSession {
         yaw: f32,
         pitch: f32,
     ) -> Result<(), SessionError> {
+        // VRAM pool path: render from pool bind groups.
+        // Decode slots were already freed during produce.
+        if let Some(vram_idx) = self.current_vram_slot {
+            let pool = self
+                .vram_pool
+                .as_ref()
+                .expect("vram_pool must exist when current_vram_slot is set");
+            let left_bg = pool.left_bind_group(vram_idx);
+            let right_bg = pool.right_bind_group(vram_idx);
+            let render_buf = self
+                .core
+                .pipeline_mut()
+                .render_with_bind_groups(left_bg, right_bg, yaw, pitch);
+            self.submit_render_output(render_buf)?;
+            return Ok(());
+        }
+
+        // Shared texture path (non-buffered / immediate mode).
         let bind_groups = self.gpu_bind_groups.as_ref().ok_or_else(|| {
             SessionError::ZeroCopy(
                 "GPU bind groups not configured - call setup_gpu_source() before run()".into(),

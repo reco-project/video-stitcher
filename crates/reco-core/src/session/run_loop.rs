@@ -79,6 +79,16 @@ impl StitchSession {
             t[6].texture.create_view(&desc),
             t[7].texture.create_view(&desc),
         ]);
+        self.gpu_shared_textures = Some([
+            t[0].texture.clone(),
+            t[1].texture.clone(),
+            t[2].texture.clone(),
+            t[3].texture.clone(),
+            t[4].texture.clone(),
+            t[5].texture.clone(),
+            t[6].texture.clone(),
+            t[7].texture.clone(),
+        ]);
         log::info!("Session configured for GPU-resident source");
     }
 
@@ -108,13 +118,6 @@ impl StitchSession {
         self.configure_from_source(source);
 
         let result = if self.lookahead_frames > 0 {
-            if source.is_gpu_resident() {
-                log::error!(
-                    "Lookahead requires CPU decode (--no-zero-copy). \
-                     GPU-resident frame buffering is not yet supported."
-                );
-                return Err(SessionError::Config("lookahead requires CPU decode".into()));
-            }
             log::info!(
                 "Lookahead: {} frames ({:.1}s at source fps)",
                 self.lookahead_frames,
@@ -160,12 +163,22 @@ impl StitchSession {
         let mut buffer = FrameBuffer::new(n + 1);
         let mut produce_count: u64 = 0;
 
-        // Helper: decode one frame, run detection, capture WorldState,
-        // push into buffer. Returns false on EOF.
-        //
-        // Suppresses event emission during produce: the JSONL sink
-        // should only record events at render time when the final
-        // pose (with lookahead context) is decided.
+        // Create VRAM pool if the source is GPU-resident.
+        if source.is_gpu_resident() && self.vram_pool.is_none() {
+            let post_smooth_half = (n / 2).max(1);
+            let pool_size = n + post_smooth_half + 2;
+            let (w, h) = self.core.pipeline().source_info();
+            let pool = super::vram_pool::VramPool::new(
+                self.core.pipeline().gpu(),
+                self.core.pipeline(),
+                w,
+                h,
+                pool_size,
+                self.gpu_pixel_format,
+            );
+            self.vram_pool = Some(pool);
+        }
+
         let produce_one = |session: &mut StitchSession,
                            source: &mut dyn FrameSource,
                            buffer: &mut FrameBuffer,
@@ -181,10 +194,45 @@ impl StitchSession {
             let decode_time = frame_t0.elapsed();
             let elapsed = start.elapsed();
 
-            // Run detection + trackers only (no panner, no events).
-            // The panner runs at render time with the full lookahead window.
             let world_state = session.detect_and_track_only(&frame, elapsed, *produce_count)?;
             let detections = session.detection.last_detections.clone();
+
+            // For GPU-resident frames: copy to VRAM pool, free decode slot.
+            #[cfg(target_os = "linux")]
+            let vram_slot = if let crate::source::StereoFrame::GpuResident {
+                left_slot,
+                right_slot,
+            } = &frame
+            {
+                if let (Some(pool), Some(shared_tex)) = (
+                    session.vram_pool.as_mut(),
+                    session.gpu_shared_textures.as_ref(),
+                ) {
+                    let slot = pool.acquire().expect("VRAM pool exhausted");
+                    let ls = *left_slot as usize;
+                    let rs = *right_slot as usize;
+                    pool.copy_from_textures(
+                        session.core.pipeline().gpu(),
+                        slot,
+                        &shared_tex[ls * 2],
+                        &shared_tex[ls * 2 + 1],
+                        &shared_tex[4 + rs * 2],
+                        &shared_tex[4 + rs * 2 + 1],
+                    );
+                    // Free decode slots immediately - data is now in the pool.
+                    if let Some((ref left_tx, ref right_tx)) = session.gpu_slot_free_tx {
+                        let _ = left_tx.send(*left_slot);
+                        let _ = right_tx.send(*right_slot);
+                    }
+                    Some(slot)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            #[cfg(not(target_os = "linux"))]
+            let vram_slot: Option<usize> = None;
 
             buffer.push(BufferedFrame {
                 frame,
@@ -193,6 +241,7 @@ impl StitchSession {
                 frame_index: *produce_count,
                 elapsed_ms: elapsed.as_secs_f64() * 1000.0,
                 decode_time,
+                vram_slot,
             });
 
             *produce_count += 1;
@@ -352,6 +401,7 @@ impl StitchSession {
 
                 self.previous_panner_pose = smoothed_pose;
                 self.skip_detection = true;
+                self.current_vram_slot = oldest.vram_slot;
 
                 let frame_t0 = std::time::Instant::now();
                 self.process_frame_any(
@@ -361,6 +411,13 @@ impl StitchSession {
                     frame_t0,
                     &ctx,
                 )?;
+
+                if let (Some(slot), Some(ref mut pool)) =
+                    (oldest.vram_slot, self.vram_pool.as_mut())
+                {
+                    pool.release(slot);
+                }
+                self.current_vram_slot = None;
 
                 if let Some(cb) = on_progress.as_mut() {
                     cb(&FrameProgress {
@@ -426,6 +483,7 @@ impl StitchSession {
 
             self.previous_panner_pose = smoothed_pose;
             self.skip_detection = true;
+            self.current_vram_slot = oldest.vram_slot;
 
             let frame_t0 = std::time::Instant::now();
             self.process_frame_any(
@@ -435,6 +493,11 @@ impl StitchSession {
                 frame_t0,
                 &ctx,
             )?;
+
+            if let (Some(slot), Some(ref mut pool)) = (oldest.vram_slot, self.vram_pool.as_mut()) {
+                pool.release(slot);
+            }
+            self.current_vram_slot = None;
 
             if let Some(cb) = on_progress.as_mut() {
                 cb(&FrameProgress {

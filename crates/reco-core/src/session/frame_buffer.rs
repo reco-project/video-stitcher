@@ -15,6 +15,7 @@ use crate::detect::tracker::WorldState;
 use crate::source::StereoFrame;
 
 /// A single buffered frame: decoded pixels + detection metadata.
+#[allow(dead_code)]
 pub(crate) struct BufferedFrame {
     pub frame: StereoFrame,
     pub world_state: WorldState,
@@ -22,6 +23,9 @@ pub(crate) struct BufferedFrame {
     pub frame_index: u64,
     pub elapsed_ms: f64,
     pub decode_time: std::time::Duration,
+    /// VRAM pool slot index (Some when GPU-resident, None for CPU frames).
+    /// The pool slot is released after rendering.
+    pub vram_slot: Option<usize>,
 }
 
 /// Fixed-capacity ring buffer of decoded frames.
@@ -34,6 +38,7 @@ pub(crate) struct FrameBuffer {
     capacity: usize,
 }
 
+#[allow(dead_code)]
 impl FrameBuffer {
     pub fn new(capacity: usize) -> Self {
         Self {
@@ -120,6 +125,7 @@ mod tests {
             frame_index: index,
             elapsed_ms: index as f64 * 33.3,
             decode_time: std::time::Duration::from_millis(3),
+            vram_slot: None,
         }
     }
 
