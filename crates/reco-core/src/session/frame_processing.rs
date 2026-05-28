@@ -749,11 +749,16 @@ impl StitchSession {
             right_slice,
         } = frame
         {
-            // Stage to a dedicated slot pair in the expanded staging pool.
-            self.stage_d3d11_frames(*left_texture, *left_slice, *right_texture, *right_slice)?;
-            let pool = self.d3d11_staging_pool.as_ref().unwrap();
+            // Ensure the D3D11 staging pool is initialized (lazy init
+            // needs the first source texture to extract the D3D11 device).
+            if self.d3d11_staging_pool.is_none() {
+                self.stage_d3d11_frames(*left_texture, *left_slice, *right_texture, *right_slice)?;
+            }
+            let pool = self.d3d11_staging_pool.as_mut().unwrap();
             let left_slot = (self.frame_count as usize * 2) % pool.n_slots();
             let right_slot = (self.frame_count as usize * 2 + 1) % pool.n_slots();
+            pool.stage_frame(*left_texture, *left_slice, left_slot)?;
+            pool.stage_frame(*right_texture, *right_slice, right_slot)?;
             return Ok(Some(left_slot));
         }
         Ok(None)
