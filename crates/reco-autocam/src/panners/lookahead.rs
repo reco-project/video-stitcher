@@ -291,3 +291,239 @@ impl Panner for LookaheadPanner {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reco_core::calibration::{CameraParams, MatchCalibration, PlaneLayout};
+    use reco_core::detect::detector::CameraId;
+
+    fn test_cal() -> MatchCalibration {
+        MatchCalibration {
+            left: CameraParams {
+                width: 1920,
+                height: 1080,
+                fx: 900.0,
+                fy: 900.0,
+                cx: 960.0,
+                cy: 540.0,
+                d: [0.0; 4],
+            },
+            right: CameraParams {
+                width: 1920,
+                height: 1080,
+                fx: 900.0,
+                fy: 900.0,
+                cx: 960.0,
+                cy: 540.0,
+                d: [0.0; 4],
+            },
+            layout: PlaneLayout {
+                camera_axis_offset: 0.24,
+                intersect: 0.54,
+                x_ty: 0.0,
+                x_rz: 0.0,
+                z_rx: 0.0,
+                x_rx: 0.0,
+                z_rz: 0.0,
+            },
+            rig_tilt: 0.0,
+            rig_roll: 0.0,
+            sync_offset: 0,
+            field_roi: None,
+        }
+    }
+
+    fn ctx(cal: &MatchCalibration, i: u64) -> PanContext<'_> {
+        PanContext {
+            frame_index: i,
+            timestamp_ms: i as f64 * 1000.0 / 30.0,
+            previous_position: ViewportPosition::default(),
+            calibration: cal,
+        }
+    }
+
+    fn player(yaw: f32, pitch: f32, id: u64) -> TrackedEntity {
+        TrackedEntity {
+            id,
+            class_id: 0,
+            yaw,
+            pitch,
+            confidence: 0.9,
+            state: TrackState::Tracking,
+            age_frames: 5,
+            origin: CameraId::Left,
+        }
+    }
+
+    fn ball(yaw: f32, pitch: f32) -> TrackedEntity {
+        TrackedEntity {
+            id: 0,
+            class_id: 32,
+            yaw,
+            pitch,
+            confidence: 0.8,
+            state: TrackState::Tracking,
+            age_frames: 1,
+            origin: CameraId::Left,
+        }
+    }
+
+    #[test]
+    fn ball_only_returns_ball_position() {
+        let p = LookaheadPanner::new();
+        let w = WorldState {
+            ball: Some(ball(0.5, 0.1)),
+            players: vec![],
+        };
+        let (y, p) = p.target_from_world(&w).unwrap();
+        assert!((y - 0.5).abs() < 1e-6);
+        assert!((p - 0.1).abs() < 1e-6);
+    }
+
+    #[test]
+    fn no_ball_no_players_returns_none() {
+        let p = LookaheadPanner::new();
+        let w = WorldState {
+            ball: None,
+            players: vec![],
+        };
+        assert!(p.target_from_world(&w).is_none());
+    }
+
+    #[test]
+    fn cluster_plus_ball_blends() {
+        let p = LookaheadPanner::with_config(LookaheadPannerConfig {
+            ball_weight: 0.5,
+            edge_push: 0.0,
+            pitch_bias: 0.0,
+            ..Default::default()
+        });
+        let w = WorldState {
+            ball: Some(ball(1.0, 0.0)),
+            players: vec![player(0.0, 0.0, 1), player(0.0, 0.0, 2)],
+        };
+        let (y, _) = p.target_from_world(&w).unwrap();
+        assert!((y - 0.5).abs() < 1e-6, "expected 0.5, got {y}");
+    }
+
+    #[test]
+    fn one_player_falls_back_to_ball() {
+        let p = LookaheadPanner::new();
+        let w = WorldState {
+            ball: Some(ball(0.7, 0.2)),
+            players: vec![player(0.0, 0.0, 1)],
+        };
+        let (y, _) = p.target_from_world(&w).unwrap();
+        assert!((y - 0.7).abs() < 1e-6);
+    }
+
+    #[test]
+    fn ema_converges_toward_target() {
+        let cal = test_cal();
+        let mut p = LookaheadPanner::with_config(LookaheadPannerConfig {
+            dead_zone_rad: 0.0,
+            ..Default::default()
+        });
+        let w = WorldState {
+            ball: Some(ball(0.5, 0.1)),
+            players: vec![],
+        };
+        let mut last_yaw = 0.0;
+        for i in 0..200 {
+            let pos = p.decide_with_lookahead(&w, &[], &ctx(&cal, i));
+            last_yaw = pos.yaw;
+        }
+        assert!(
+            (last_yaw - 0.5).abs() < 0.05,
+            "expected convergence near 0.5, got {last_yaw}"
+        );
+    }
+
+    #[test]
+    fn dead_zone_holds_position() {
+        let cal = test_cal();
+        let mut p = LookaheadPanner::with_config(LookaheadPannerConfig {
+            dead_zone_rad: 1.0, // huge dead zone
+            ..Default::default()
+        });
+        let w = WorldState {
+            ball: Some(ball(0.01, 0.01)),
+            players: vec![],
+        };
+        for i in 0..10 {
+            p.decide_with_lookahead(&w, &[], &ctx(&cal, i));
+        }
+        assert!(
+            p.yaw.abs() < 1e-6,
+            "dead zone should hold at origin, got {}",
+            p.yaw
+        );
+    }
+
+    #[test]
+    fn blend_with_future_empty_is_passthrough() {
+        let p = LookaheadPanner::new();
+        let (y, pi) = p.blend_with_future((0.3, 0.1), &[]);
+        assert!((y - 0.3).abs() < 1e-6);
+        assert!((pi - 0.1).abs() < 1e-6);
+    }
+
+    #[test]
+    fn blend_with_future_biases_toward_future() {
+        let p = LookaheadPanner::with_config(LookaheadPannerConfig {
+            lead_multiplier: 0.0, // disable velocity lead for this test
+            ..Default::default()
+        });
+        let current = (0.0, 0.0);
+        let future: Vec<WorldState> = (0..10)
+            .map(|_| WorldState {
+                ball: Some(ball(0.5, 0.1)),
+                players: vec![],
+            })
+            .collect();
+        let (y, _) = p.blend_with_future(current, &future);
+        assert!(y > 0.0, "future blend should pull yaw positive, got {y}");
+        assert!(y < 0.5, "should not overshoot future, got {y}");
+    }
+
+    #[test]
+    fn smooth_buffer_averages() {
+        let mut sb = SmoothBuffer::new(3);
+        assert!((sb.push_and_average(3.0) - 3.0).abs() < 1e-6);
+        assert!((sb.push_and_average(6.0) - 4.5).abs() < 1e-6);
+        assert!((sb.push_and_average(9.0) - 6.0).abs() < 1e-6);
+        // Window full, oldest (3.0) drops
+        assert!((sb.push_and_average(12.0) - 9.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn ball_memory_decays_toward_cluster() {
+        let cal = test_cal();
+        let mut p = LookaheadPanner::with_config(LookaheadPannerConfig {
+            ball_weight: 0.5,
+            ball_memory_decay: 0.5, // fast decay for test
+            edge_push: 0.0,
+            pitch_bias: 0.0,
+            dead_zone_rad: 0.0,
+            ..Default::default()
+        });
+        // First frame: ball at 1.0 with players at 0.0
+        let w_ball = WorldState {
+            ball: Some(ball(1.0, 0.0)),
+            players: vec![player(0.0, 0.0, 1), player(0.0, 0.0, 2)],
+        };
+        p.decide_with_lookahead(&w_ball, &[], &ctx(&cal, 0));
+        assert!(p.ball_decay == 1.0);
+
+        // Ball lost, cluster at 0.0
+        let w_lost = WorldState {
+            ball: None,
+            players: vec![player(0.0, 0.0, 1), player(0.0, 0.0, 2)],
+        };
+        p.decide_with_lookahead(&w_lost, &[], &ctx(&cal, 1));
+        assert!(p.ball_decay < 1.0, "decay should reduce");
+        p.decide_with_lookahead(&w_lost, &[], &ctx(&cal, 2));
+        assert!(p.ball_decay < 0.5, "decay should continue");
+    }
+}

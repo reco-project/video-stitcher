@@ -1,4 +1,3 @@
-#![allow(dead_code)] // Wired in the next step (run_buffered).
 //! Lookahead frame buffer for temporal-aware processing.
 //!
 //! Holds N decoded frames with their detection metadata so the
@@ -84,5 +83,112 @@ impl FrameBuffer {
 
     pub fn is_empty(&self) -> bool {
         self.frames.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::detect::tracker::{TrackState, TrackedEntity, WorldState};
+
+    fn make_frame(index: u64, ball_yaw: f32) -> BufferedFrame {
+        BufferedFrame {
+            frame: StereoFrame::Nv12(crate::source::Nv12FramePair {
+                left: crate::source::Nv12Data {
+                    y: vec![128; 4],
+                    uv: vec![128; 2],
+                },
+                right: crate::source::Nv12Data {
+                    y: vec![128; 4],
+                    uv: vec![128; 2],
+                },
+            }),
+            world_state: WorldState {
+                ball: Some(TrackedEntity {
+                    id: 0,
+                    class_id: 0,
+                    yaw: ball_yaw,
+                    pitch: 0.1,
+                    confidence: 0.9,
+                    state: TrackState::Tracking,
+                    age_frames: 1,
+                    origin: crate::detect::detector::CameraId::Left,
+                }),
+                players: vec![],
+            },
+            detections: vec![],
+            frame_index: index,
+            elapsed_ms: index as f64 * 33.3,
+            decode_time: std::time::Duration::from_millis(3),
+        }
+    }
+
+    #[test]
+    fn push_pop_fifo_order() {
+        let mut buf = FrameBuffer::new(3);
+        buf.push(make_frame(0, 0.1));
+        buf.push(make_frame(1, 0.2));
+        buf.push(make_frame(2, 0.3));
+
+        let f0 = buf.pop().unwrap();
+        assert_eq!(f0.frame_index, 0);
+        let f1 = buf.pop().unwrap();
+        assert_eq!(f1.frame_index, 1);
+        let f2 = buf.pop().unwrap();
+        assert_eq!(f2.frame_index, 2);
+        assert!(buf.pop().is_none());
+    }
+
+    #[test]
+    fn capacity_and_fullness() {
+        let mut buf = FrameBuffer::new(2);
+        assert_eq!(buf.capacity(), 2);
+        assert!(buf.is_empty());
+        assert!(!buf.is_full());
+
+        buf.push(make_frame(0, 0.0));
+        assert_eq!(buf.len(), 1);
+        assert!(!buf.is_full());
+
+        buf.push(make_frame(1, 0.0));
+        assert_eq!(buf.len(), 2);
+        assert!(buf.is_full());
+    }
+
+    #[test]
+    fn future_world_states_returns_remaining() {
+        let mut buf = FrameBuffer::new(5);
+        for i in 0..4 {
+            buf.push(make_frame(i, i as f32 * 0.1));
+        }
+        buf.pop(); // remove frame 0
+
+        let futures = buf.future_world_states();
+        assert_eq!(futures.len(), 3);
+        let yaws: Vec<f32> = futures
+            .iter()
+            .map(|ws| ws.ball.as_ref().unwrap().yaw)
+            .collect();
+        assert!((yaws[0] - 0.1).abs() < 1e-6);
+        assert!((yaws[1] - 0.2).abs() < 1e-6);
+        assert!((yaws[2] - 0.3).abs() < 1e-6);
+    }
+
+    #[test]
+    fn drain_empties_buffer() {
+        let mut buf = FrameBuffer::new(3);
+        buf.push(make_frame(0, 0.0));
+        buf.push(make_frame(1, 0.0));
+        let drained: Vec<_> = buf.drain().collect();
+        assert_eq!(drained.len(), 2);
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    #[should_panic(expected = "push called on full buffer")]
+    fn push_on_full_panics() {
+        let mut buf = FrameBuffer::new(1);
+        buf.push(make_frame(0, 0.0));
+        buf.push(make_frame(1, 0.0));
     }
 }
