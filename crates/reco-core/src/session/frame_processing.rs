@@ -243,29 +243,35 @@ impl StitchSession {
                 right_texture,
                 right_slice,
             } => {
-                // Ensure the previous wgpu render finished reading the
-                // staging texture before we overwrite it with the next
-                // D3D11 CopySubresourceRegion. Without this, Intel and
-                // NVIDIA drivers can return stale data (frame reordering).
-                let _ = self
-                    .core
-                    .gpu()
-                    .device()
-                    .poll(wgpu::PollType::wait_indefinitely());
-                let staging_t0 = std::time::Instant::now();
-                let first = self.stage_d3d11_frames(
-                    *left_texture,
-                    *left_slice,
-                    *right_texture,
-                    *right_slice,
-                )?;
-                upload_time = staging_t0.elapsed();
-                if first {
-                    // First D3D11VA frame has cross-API initialization artifacts.
-                    // Skip rendering it - the next frame will be the first output.
-                    return Ok(());
+                if let Some(staging_slot) = self.current_vram_slot {
+                    // Buffered path: staging was done during produce.
+                    // Render from the pre-staged slot.
+                    self.render_d3d11_from_slot(
+                        staging_slot,
+                        staging_slot + 1,
+                        pos.yaw,
+                        pos.pitch,
+                    )?;
+                } else {
+                    // Immediate path: stage and render now.
+                    let _ = self
+                        .core
+                        .gpu()
+                        .device()
+                        .poll(wgpu::PollType::wait_indefinitely());
+                    let staging_t0 = std::time::Instant::now();
+                    let first = self.stage_d3d11_frames(
+                        *left_texture,
+                        *left_slice,
+                        *right_texture,
+                        *right_slice,
+                    )?;
+                    upload_time = staging_t0.elapsed();
+                    if first {
+                        return Ok(());
+                    }
+                    self.render_d3d11_staged(pos.yaw, pos.pitch)?;
                 }
-                self.render_d3d11_staged(pos.yaw, pos.pitch)?;
             }
             _ => {
                 self.process_frame(frame, pos.yaw, pos.pitch)?;
@@ -517,16 +523,25 @@ impl StitchSession {
         if first_frame {
             let (w, h) = self.core.pipeline().source_info();
             let needs_cuda = self.detection.needs_cuda_frames();
+            // For lookahead, use 2x buffer depth slots (left+right per frame).
+            // Without lookahead, 4 slots (double-buffered stereo) suffice.
+            let n_slots = if self.lookahead_frames > 0 {
+                let post_smooth_half = (self.lookahead_frames / 2).max(1);
+                (self.lookahead_frames + post_smooth_half + 2) * 2
+            } else {
+                4
+            };
             match crate::interop::d3d11::D3d11StagingPool::new(
                 self.core.gpu(),
                 w,
                 h,
+                n_slots,
                 needs_cuda,
                 self.gpu_pixel_format,
             ) {
                 Ok(pool) => {
                     log::info!(
-                        "D3D11VA staging pool created: {}x{}, 4 {:?} slots",
+                        "D3D11VA staging pool created: {}x{}, {n_slots} {:?} slots",
                         w,
                         h,
                         self.gpu_pixel_format
@@ -547,7 +562,28 @@ impl StitchSession {
         Ok(first_frame)
     }
 
-    /// Render from already-staged D3D11VA views.
+    /// Render from specific D3D11 staging slots (buffered lookahead path).
+    #[cfg(target_os = "windows")]
+    fn render_d3d11_from_slot(
+        &mut self,
+        left_slot: usize,
+        right_slot: usize,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<(), SessionError> {
+        let pool = self.d3d11_staging_pool.as_ref().unwrap();
+        let render_buf = self.core.render_imported_views_at_pose(
+            pool.y_view(left_slot),
+            pool.uv_view(left_slot),
+            pool.y_view(right_slot),
+            pool.uv_view(right_slot),
+            yaw,
+            pitch,
+        );
+        self.submit_render_output(render_buf)
+    }
+
+    /// Render from already-staged D3D11VA views (immediate path).
     #[cfg(target_os = "windows")]
     fn render_d3d11_staged(&mut self, yaw: f32, pitch: f32) -> Result<(), SessionError> {
         let left_pool_slot = self.frame_count as usize % 2;
@@ -639,5 +675,95 @@ impl StitchSession {
         )?;
         self.frame_count += 1;
         Ok(nv12_data)
+    }
+
+    /// Copy a GPU-resident frame to the VRAM pool if available.
+    ///
+    /// Returns `Some(slot)` if the frame was copied to the pool (the
+    /// decode surface can be freed). Returns `None` for CPU frames
+    /// or when no pool is configured.
+    /// Copy a GPU-resident frame to a persistent buffer slot.
+    ///
+    /// On Linux: copies from shared CUDA/Vulkan textures to VramPool.
+    /// On Windows: stages D3D11 frame to an expanded staging pool slot.
+    /// Returns the slot index for rendering, or None for CPU frames.
+    pub(crate) fn copy_to_vram_pool(
+        &mut self,
+        frame: &StereoFrame,
+    ) -> Result<Option<usize>, SessionError> {
+        self.copy_to_vram_pool_platform(frame)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn copy_to_vram_pool_platform(
+        &mut self,
+        frame: &StereoFrame,
+    ) -> Result<Option<usize>, SessionError> {
+        let (ls, rs) = match frame {
+            StereoFrame::GpuResident {
+                left_slot,
+                right_slot,
+            } => (*left_slot as usize, *right_slot as usize),
+            _ => return Ok(None),
+        };
+        {
+            if let (Some(pool), Some(shared_tex)) =
+                (self.vram_pool.as_mut(), self.gpu_shared_textures.as_ref())
+            {
+                let slot = pool.acquire().ok_or_else(|| {
+                    SessionError::Config(format!(
+                        "VRAM pool exhausted ({} slots, {} available)",
+                        pool.capacity(),
+                        pool.available()
+                    ))
+                })?;
+                let gpu = self.core.pipeline().gpu();
+                pool.copy_from_textures(
+                    gpu,
+                    slot,
+                    &shared_tex[ls * 2],
+                    &shared_tex[ls * 2 + 1],
+                    &shared_tex[4 + rs * 2],
+                    &shared_tex[4 + rs * 2 + 1],
+                );
+                let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
+                if let Some((ref left_tx, ref right_tx)) = self.gpu_slot_free_tx {
+                    let _ = left_tx.send(ls as u8);
+                    let _ = right_tx.send(rs as u8);
+                }
+                return Ok(Some(slot));
+            }
+        }
+        Ok(None)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn copy_to_vram_pool_platform(
+        &mut self,
+        frame: &StereoFrame,
+    ) -> Result<Option<usize>, SessionError> {
+        if let StereoFrame::D3d11Resident {
+            left_texture,
+            left_slice,
+            right_texture,
+            right_slice,
+        } = frame
+        {
+            // Stage to a dedicated slot pair in the expanded staging pool.
+            self.stage_d3d11_frames(*left_texture, *left_slice, *right_texture, *right_slice)?;
+            let pool = self.d3d11_staging_pool.as_ref().unwrap();
+            let left_slot = (self.frame_count as usize * 2) % pool.n_slots();
+            let right_slot = (self.frame_count as usize * 2 + 1) % pool.n_slots();
+            return Ok(Some(left_slot));
+        }
+        Ok(None)
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    fn copy_to_vram_pool_platform(
+        &mut self,
+        _frame: &StereoFrame,
+    ) -> Result<Option<usize>, SessionError> {
+        Ok(None)
     }
 }

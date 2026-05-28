@@ -199,50 +199,9 @@ impl StitchSession {
             let detections = session.detection.last_detections.clone();
 
             // For GPU-resident frames: copy to VRAM pool, free decode slot.
-            #[cfg(target_os = "linux")]
-            let vram_slot = if let crate::source::StereoFrame::GpuResident {
-                left_slot,
-                right_slot,
-            } = &frame
-            {
-                if let (Some(pool), Some(shared_tex)) = (
-                    session.vram_pool.as_mut(),
-                    session.gpu_shared_textures.as_ref(),
-                ) {
-                    let slot = pool.acquire().ok_or_else(|| {
-                        SessionError::Config(format!(
-                            "VRAM pool exhausted ({} slots, {} available)",
-                            pool.capacity(),
-                            pool.available()
-                        ))
-                    })?;
-                    let ls = *left_slot as usize;
-                    let rs = *right_slot as usize;
-                    let gpu = session.core.pipeline().gpu();
-                    pool.copy_from_textures(
-                        gpu,
-                        slot,
-                        &shared_tex[ls * 2],
-                        &shared_tex[ls * 2 + 1],
-                        &shared_tex[4 + rs * 2],
-                        &shared_tex[4 + rs * 2 + 1],
-                    );
-                    // Wait for the copy to complete before freeing the
-                    // decode slot - the decode thread will overwrite it.
-                    let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
-                    if let Some((ref left_tx, ref right_tx)) = session.gpu_slot_free_tx {
-                        let _ = left_tx.send(*left_slot);
-                        let _ = right_tx.send(*right_slot);
-                    }
-                    Some(slot)
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-            #[cfg(not(target_os = "linux"))]
-            let vram_slot: Option<usize> = None;
+            // The decode surface will be overwritten by the next frame,
+            // so we must copy the data to a pool texture now.
+            let vram_slot = session.copy_to_vram_pool(&frame)?;
 
             buffer.push(BufferedFrame {
                 frame,
