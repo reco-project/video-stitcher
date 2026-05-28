@@ -44,57 +44,65 @@ impl VramPool {
         let vram_bytes = estimate_vram(width, height, n_slots);
         let vram_mb = vram_bytes as f64 / (1024.0 * 1024.0);
 
-        // Reject obviously excessive allocations upfront.
-        let max_mb = 8192.0; // 8 GB hard cap
-        if vram_mb > max_mb {
-            return Err(format!(
-                "VramPool would use ~{vram_mb:.0} MB (>{max_mb:.0} MB cap). \
-                 Reduce --lookahead or use --no-zero-copy for CPU buffering."
-            ));
-        }
         let y_format = pixel_format.y_format();
         let uv_format = pixel_format.uv_format();
 
         let mut slots = Vec::with_capacity(n_slots);
         let mut free = VecDeque::with_capacity(n_slots);
 
+        // wgpu panics on OOM in create_texture. We use catch_unwind
+        // to convert the panic into a clean error. Error scopes deadlock
+        // when the driver is in a bad state from failed allocations.
         for i in 0..n_slots {
-            let create_tex = |label: &str, fmt, w, h| {
-                gpu.device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some(label),
-                    size: wgpu::Extent3d {
-                        width: w,
-                        height: h,
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: fmt,
-                    usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
-                    view_formats: &[],
-                })
-            };
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let create_tex = |label: &str, fmt, w, h| {
+                    gpu.device.create_texture(&wgpu::TextureDescriptor {
+                        label: Some(label),
+                        size: wgpu::Extent3d {
+                            width: w,
+                            height: h,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: fmt,
+                        usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+                        view_formats: &[],
+                    })
+                };
+                let left_y = create_tex(&format!("vram_L_Y_{i}"), y_format, width, height);
+                let left_uv =
+                    create_tex(&format!("vram_L_UV_{i}"), uv_format, width / 2, height / 2);
+                let right_y = create_tex(&format!("vram_R_Y_{i}"), y_format, width, height);
+                let right_uv =
+                    create_tex(&format!("vram_R_UV_{i}"), uv_format, width / 2, height / 2);
+                let left_bind_group =
+                    pipeline.create_texture_bind_group(&left_y, &left_uv, &format!("vram_L_{i}"));
+                let right_bind_group =
+                    pipeline.create_texture_bind_group(&right_y, &right_uv, &format!("vram_R_{i}"));
+                VramSlot {
+                    left_y,
+                    left_uv,
+                    right_y,
+                    right_uv,
+                    left_bind_group,
+                    right_bind_group,
+                }
+            }));
 
-            let left_y = create_tex(&format!("vram_L_Y_{i}"), y_format, width, height);
-            let left_uv = create_tex(&format!("vram_L_UV_{i}"), uv_format, width / 2, height / 2);
-            let right_y = create_tex(&format!("vram_R_Y_{i}"), y_format, width, height);
-            let right_uv = create_tex(&format!("vram_R_UV_{i}"), uv_format, width / 2, height / 2);
-
-            let left_bind_group =
-                pipeline.create_texture_bind_group(&left_y, &left_uv, &format!("vram_L_{i}"));
-            let right_bind_group =
-                pipeline.create_texture_bind_group(&right_y, &right_uv, &format!("vram_R_{i}"));
-
-            slots.push(VramSlot {
-                left_y,
-                left_uv,
-                right_y,
-                right_uv,
-                left_bind_group,
-                right_bind_group,
-            });
-            free.push_back(i);
+            match result {
+                Ok(slot) => {
+                    slots.push(slot);
+                    free.push_back(i);
+                }
+                Err(_) => {
+                    return Err(format!(
+                        "VRAM allocation failed at slot {i}/{n_slots} (~{vram_mb:.0} MB). \
+                         Reduce --lookahead or use --no-zero-copy."
+                    ));
+                }
+            }
         }
 
         log::info!(

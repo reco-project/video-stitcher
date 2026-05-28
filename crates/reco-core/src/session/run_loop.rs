@@ -176,7 +176,7 @@ impl StitchSession {
                 pool_size,
                 self.gpu_pixel_format,
             )
-            .map_err(|e| SessionError::Config(e))?;
+            .map_err(SessionError::Config)?;
             self.vram_pool = Some(pool);
         }
 
@@ -218,15 +218,18 @@ impl StitchSession {
                     })?;
                     let ls = *left_slot as usize;
                     let rs = *right_slot as usize;
+                    let gpu = session.core.pipeline().gpu();
                     pool.copy_from_textures(
-                        session.core.pipeline().gpu(),
+                        gpu,
                         slot,
                         &shared_tex[ls * 2],
                         &shared_tex[ls * 2 + 1],
                         &shared_tex[4 + rs * 2],
                         &shared_tex[4 + rs * 2 + 1],
                     );
-                    // Free decode slots immediately - data is now in the pool.
+                    // Wait for the copy to complete before freeing the
+                    // decode slot - the decode thread will overwrite it.
+                    let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
                     if let Some((ref left_tx, ref right_tx)) = session.gpu_slot_free_tx {
                         let _ = left_tx.send(*left_slot);
                         let _ = right_tx.send(*right_slot);
