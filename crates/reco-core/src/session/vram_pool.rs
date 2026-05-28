@@ -30,6 +30,9 @@ pub(crate) struct VramPool {
 
 impl VramPool {
     /// Allocate N stereo NV12 slots in VRAM.
+    ///
+    /// Returns an error if the estimated VRAM exceeds 80% of the
+    /// adapter's reported memory, or if texture allocation fails.
     pub fn new(
         gpu: &crate::gpu::GpuContext,
         pipeline: &crate::render::pipeline::StitchPipeline,
@@ -37,7 +40,18 @@ impl VramPool {
         height: u32,
         n_slots: usize,
         pixel_format: crate::render::renderer::GpuPixelFormat,
-    ) -> Self {
+    ) -> Result<Self, String> {
+        let vram_bytes = estimate_vram(width, height, n_slots);
+        let vram_mb = vram_bytes as f64 / (1024.0 * 1024.0);
+
+        // Reject obviously excessive allocations upfront.
+        let max_mb = 8192.0; // 8 GB hard cap
+        if vram_mb > max_mb {
+            return Err(format!(
+                "VramPool would use ~{vram_mb:.0} MB (>{max_mb:.0} MB cap). \
+                 Reduce --lookahead or use --no-zero-copy for CPU buffering."
+            ));
+        }
         let y_format = pixel_format.y_format();
         let uv_format = pixel_format.uv_format();
 
@@ -83,18 +97,16 @@ impl VramPool {
             free.push_back(i);
         }
 
-        let vram_bytes = estimate_vram(width, height, n_slots);
         log::info!(
-            "VramPool: {n_slots} stereo NV12 slots at {width}x{height}, ~{:.0} MB VRAM",
-            vram_bytes as f64 / (1024.0 * 1024.0)
+            "VramPool: {n_slots} stereo NV12 slots at {width}x{height}, ~{vram_mb:.0} MB VRAM"
         );
 
-        Self {
+        Ok(Self {
             slots,
             free,
             width,
             height,
-        }
+        })
     }
 
     /// Take a free slot. Returns None if the pool is exhausted.

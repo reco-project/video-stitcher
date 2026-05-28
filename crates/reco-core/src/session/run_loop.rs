@@ -175,7 +175,8 @@ impl StitchSession {
                 h,
                 pool_size,
                 self.gpu_pixel_format,
-            );
+            )
+            .map_err(|e| SessionError::Config(e))?;
             self.vram_pool = Some(pool);
         }
 
@@ -208,7 +209,13 @@ impl StitchSession {
                     session.vram_pool.as_mut(),
                     session.gpu_shared_textures.as_ref(),
                 ) {
-                    let slot = pool.acquire().expect("VRAM pool exhausted");
+                    let slot = pool.acquire().ok_or_else(|| {
+                        SessionError::Config(format!(
+                            "VRAM pool exhausted ({} slots, {} available)",
+                            pool.capacity(),
+                            pool.available()
+                        ))
+                    })?;
                     let ls = *left_slot as usize;
                     let rs = *right_slot as usize;
                     pool.copy_from_textures(
