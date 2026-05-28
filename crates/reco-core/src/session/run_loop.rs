@@ -195,13 +195,12 @@ impl StitchSession {
             let decode_time = frame_t0.elapsed();
             let elapsed = start.elapsed();
 
+            // Stage GPU frames to persistent slots BEFORE detection,
+            // so detection can use the staged textures.
+            let vram_slot = session.copy_to_vram_pool(&frame, *produce_count)?;
+
             let world_state = session.detect_and_track_only(&frame, elapsed, *produce_count)?;
             let detections = session.detection.last_detections.clone();
-
-            // For GPU-resident frames: copy to VRAM pool, free decode slot.
-            // The decode surface will be overwritten by the next frame,
-            // so we must copy the data to a pool texture now.
-            let vram_slot = session.copy_to_vram_pool(&frame, *produce_count)?;
 
             buffer.push(BufferedFrame {
                 frame,

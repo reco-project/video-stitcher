@@ -82,6 +82,26 @@ impl StitchSession {
                         vec![]
                     }
                 }
+                #[cfg(target_os = "windows")]
+                StereoFrame::D3d11Resident { .. } => {
+                    if let Some(ref pool) = self.d3d11_staging_pool {
+                        let left_slot = (produce_index as usize * 2) % pool.n_slots();
+                        let right_slot = (produce_index as usize * 2 + 1) % pool.n_slots();
+                        let (w, h) = self.core.pipeline().source_info();
+                        self.detection.run_detection_wgpu_nv12(
+                            pool.y_view(left_slot),
+                            pool.uv_view(left_slot),
+                            pool.y_view(right_slot),
+                            pool.uv_view(right_slot),
+                            w,
+                            h,
+                            self.left_rotation,
+                            self.right_rotation,
+                        )
+                    } else {
+                        vec![]
+                    }
+                }
                 _ => {
                     let (w, h) = self.core.pipeline().source_info();
                     self.detection.run_detection(frame, w, h)
