@@ -73,6 +73,7 @@ impl Default for StackedEncoderConfig {
                 quality: None,
                 preset: None,
                 audio_source: None,
+                audio_start_time: 0.0,
                 // Short GOP so replay readers see recent
                 // frames within ~1 second. For Matroska the
                 // GOP controls cluster cadence; for fMP4 it

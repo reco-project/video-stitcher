@@ -622,6 +622,15 @@ impl StitchJob {
             Bitrate::Quality(q) => crate::ffmpeg::encoder::Quality::from(*q),
             Bitrate::Crf(_) => crate::ffmpeg::encoder::Quality::Balanced,
         };
+        let fps = if info.fps > 0.0 {
+            info.fps as f64
+        } else {
+            30.0
+        };
+        let start_secs = self
+            .start_time
+            .filter(|secs| secs.is_finite() && *secs > 0.0)
+            .unwrap_or(0.0);
 
         // Resolve audio source path from AudioMode.
         let audio_source = match &self.audio {
@@ -641,6 +650,7 @@ impl StitchJob {
             quality: self.quality_value,
             preset: self.preset.clone(),
             audio_source,
+            audio_start_time: start_secs,
             container: self.format.into(),
             gop_size: None,
             stream_url: None,
@@ -666,12 +676,6 @@ impl StitchJob {
         }
 
         // Resolve processing window (start_time / end_time / max_frames).
-        let fps = if info.fps > 0.0 {
-            info.fps as f64
-        } else {
-            30.0
-        };
-        let start_secs = self.start_time.unwrap_or(0.0);
         let skip_frames = (start_secs * fps).round() as u64;
 
         if let Some(end) = self.end_time {

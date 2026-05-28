@@ -544,6 +544,7 @@ pub fn create_encoder(
         quality: quality_value,
         preset,
         audio_source: None,
+        audio_start_time: 0.0,
         container: ffmpeg::encoder::Container::default(),
         gop_size: None,
         stream_url: None,

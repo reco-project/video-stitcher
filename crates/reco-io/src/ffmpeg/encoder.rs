@@ -363,6 +363,12 @@ pub struct EncoderConfig {
     /// Path to a source file to copy audio from (stream copy, no re-encoding).
     /// The first audio stream found will be muxed into the output.
     pub audio_source: Option<std::path::PathBuf>,
+    /// Start copying audio at this source timestamp, in seconds.
+    ///
+    /// Used when the video export starts from a later processing window
+    /// (`--start-time`, GUI export start). Copied audio packets are
+    /// rebased so the selected timestamp lands at output time zero.
+    pub audio_start_time: f64,
     /// Output container format. Defaults to plain MP4 to match the
     /// existing stitch-output behavior; opt in to fragmented MP4 or
     /// Matroska for streamable / write-while-read workflows (e.g.,
@@ -448,6 +454,8 @@ struct AudioPassthrough {
     input_time_base: Rational,
     /// Output audio stream time base.
     output_time_base: Rational,
+    /// Source timestamp where audio passthrough starts, in seconds.
+    start_time_secs: f64,
     /// Whether all audio packets have been read.
     exhausted: bool,
 }
@@ -560,7 +568,7 @@ impl VideoEncoder {
 
                     // Set up audio passthrough before writing the header.
                     let audio = if let Some(ref audio_path) = config.audio_source {
-                        Self::setup_audio_stream(&mut octx, audio_path)?
+                        Self::setup_audio_stream(&mut octx, audio_path, config.audio_start_time)?
                     } else {
                         None
                     };
@@ -764,8 +772,10 @@ impl VideoEncoder {
     fn setup_audio_stream(
         octx: &mut format::context::Output,
         source_path: &Path,
+        start_time_secs: f64,
     ) -> Result<Option<AudioPassthrough>, EncodeError> {
-        let ictx = format::input(source_path)?;
+        let mut ictx = format::input(source_path)?;
+        let start_time_secs = sanitize_audio_start_time(start_time_secs);
 
         let audio_stream = ictx.streams().best(ffmpeg::media::Type::Audio);
 
@@ -790,6 +800,25 @@ impl VideoEncoder {
         let output_stream_index = ost.index();
         let output_time_base = ost.time_base();
 
+        if start_time_secs > 0.0 {
+            let seek_ts = (start_time_secs * f64::from(ffmpeg::ffi::AV_TIME_BASE)).round() as i64;
+            match ictx.seek(seek_ts, ..seek_ts) {
+                Ok(()) => {
+                    log::info!(
+                        "Audio passthrough: seeking {} to {start_time_secs:.3}s",
+                        source_path.display()
+                    );
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Audio passthrough seek to {start_time_secs:.3}s failed for {} ({e}); \
+                         falling back to packet filtering from the beginning",
+                        source_path.display()
+                    );
+                }
+            }
+        }
+
         log::info!(
             "Audio passthrough from {} (stream {}, codec: {:?})",
             source_path.display(),
@@ -805,6 +834,7 @@ impl VideoEncoder {
             output_stream_index,
             input_time_base,
             output_time_base,
+            start_time_secs,
             exhausted: false,
         }))
     }
@@ -892,6 +922,7 @@ impl VideoEncoder {
         if audio.exhausted {
             return Ok(());
         }
+        let start_pts = seconds_to_pts(audio.start_time_secs, audio.output_time_base);
 
         loop {
             let mut packet = ffmpeg::Packet::empty();
@@ -902,6 +933,24 @@ impl VideoEncoder {
                     }
                     packet.set_stream(audio.output_stream_index);
                     packet.rescale_ts(audio.input_time_base, audio.output_time_base);
+
+                    if start_pts > 0 {
+                        let packet_start = match (packet.pts(), packet.dts()) {
+                            (Some(pts), Some(dts)) => Some(pts.min(dts)),
+                            (Some(pts), None) => Some(pts),
+                            (None, Some(dts)) => Some(dts),
+                            (None, None) => None,
+                        };
+                        if packet_start.is_some_and(|ts| ts < start_pts) {
+                            continue;
+                        }
+                        if let Some(pts) = packet.pts() {
+                            packet.set_pts(Some(pts - start_pts));
+                        }
+                        if let Some(dts) = packet.dts() {
+                            packet.set_dts(Some(dts - start_pts));
+                        }
+                    }
 
                     // Stop if this audio packet is beyond the video duration.
                     if packet.pts().is_some_and(|pts| pts > max_pts) {
@@ -1283,6 +1332,30 @@ impl VideoEncoder {
             packet.write_interleaved(&mut self.octx)?;
         }
         Ok(())
+    }
+}
+
+fn sanitize_audio_start_time(secs: f64) -> f64 {
+    if secs.is_finite() && secs > 0.0 {
+        secs
+    } else {
+        0.0
+    }
+}
+
+fn seconds_to_pts(secs: f64, time_base: Rational) -> i64 {
+    let secs = sanitize_audio_start_time(secs);
+    if secs == 0.0 {
+        return 0;
+    }
+
+    let ts = (secs * f64::from(ffmpeg::ffi::AV_TIME_BASE)).round() as i64;
+    unsafe {
+        ffmpeg::sys::av_rescale_q(
+            ts,
+            Rational(1, ffmpeg::ffi::AV_TIME_BASE).into(),
+            time_base.into(),
+        )
     }
 }
 
