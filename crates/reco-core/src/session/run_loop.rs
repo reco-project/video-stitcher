@@ -201,7 +201,7 @@ impl StitchSession {
             // For GPU-resident frames: copy to VRAM pool, free decode slot.
             // The decode surface will be overwritten by the next frame,
             // so we must copy the data to a pool texture now.
-            let vram_slot = session.copy_to_vram_pool(&frame)?;
+            let vram_slot = session.copy_to_vram_pool(&frame, *produce_count)?;
 
             buffer.push(BufferedFrame {
                 frame,

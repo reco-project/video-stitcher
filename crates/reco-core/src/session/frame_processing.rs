@@ -690,14 +690,16 @@ impl StitchSession {
     pub(crate) fn copy_to_vram_pool(
         &mut self,
         frame: &StereoFrame,
+        produce_index: u64,
     ) -> Result<Option<usize>, SessionError> {
-        self.copy_to_vram_pool_platform(frame)
+        self.copy_to_vram_pool_platform(frame, produce_index)
     }
 
     #[cfg(target_os = "linux")]
     fn copy_to_vram_pool_platform(
         &mut self,
         frame: &StereoFrame,
+        _produce_index: u64,
     ) -> Result<Option<usize>, SessionError> {
         let (ls, rs) = match frame {
             StereoFrame::GpuResident {
@@ -741,6 +743,7 @@ impl StitchSession {
     fn copy_to_vram_pool_platform(
         &mut self,
         frame: &StereoFrame,
+        produce_index: u64,
     ) -> Result<Option<usize>, SessionError> {
         if let StereoFrame::D3d11Resident {
             left_texture,
@@ -755,8 +758,8 @@ impl StitchSession {
                 self.stage_d3d11_frames(*left_texture, *left_slice, *right_texture, *right_slice)?;
             }
             let pool = self.d3d11_staging_pool.as_mut().unwrap();
-            let left_slot = (self.frame_count as usize * 2) % pool.n_slots();
-            let right_slot = (self.frame_count as usize * 2 + 1) % pool.n_slots();
+            let left_slot = (produce_index as usize * 2) % pool.n_slots();
+            let right_slot = (produce_index as usize * 2 + 1) % pool.n_slots();
             pool.stage_frame(*left_texture, *left_slice, left_slot)?;
             pool.stage_frame(*right_texture, *right_slice, right_slot)?;
             return Ok(Some(left_slot));
@@ -768,6 +771,7 @@ impl StitchSession {
     fn copy_to_vram_pool_platform(
         &mut self,
         _frame: &StereoFrame,
+        _produce_index: u64,
     ) -> Result<Option<usize>, SessionError> {
         Ok(None)
     }
