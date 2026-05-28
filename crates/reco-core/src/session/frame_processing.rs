@@ -767,7 +767,54 @@ impl StitchSession {
         Ok(None)
     }
 
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    fn copy_to_vram_pool_platform(
+        &mut self,
+        frame: &StereoFrame,
+        _produce_index: u64,
+    ) -> Result<Option<usize>, SessionError> {
+        if let StereoFrame::MetalResident { left, right } = frame {
+            // Import CVPixelBuffers as wgpu textures (separate Y + UV).
+            if self.metal_texture_cache.is_none() {
+                self.metal_texture_cache = Some(crate::interop::metal::MetalTextureCache::new(
+                    self.core.gpu(),
+                )?);
+            }
+            let cache = self.metal_texture_cache.as_mut().unwrap();
+            let (left_y, left_uv) = unsafe { cache.import_nv12(left.as_ptr(), self.core.gpu())? };
+            let (right_y, right_uv) =
+                unsafe { cache.import_nv12(right.as_ptr(), self.core.gpu())? };
+
+            if let Some(pool) = self.vram_pool.as_mut() {
+                let slot = pool.acquire().ok_or_else(|| {
+                    SessionError::Config(format!(
+                        "VRAM pool exhausted ({} slots, {} available)",
+                        pool.capacity(),
+                        pool.available()
+                    ))
+                })?;
+                let gpu = self.core.pipeline().gpu();
+                pool.copy_from_textures(
+                    gpu,
+                    slot,
+                    &left_y.texture,
+                    &left_uv.texture,
+                    &right_y.texture,
+                    &right_uv.texture,
+                );
+                let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
+                return Ok(Some(slot));
+            }
+        }
+        Ok(None)
+    }
+
+    #[cfg(not(any(
+        target_os = "linux",
+        target_os = "windows",
+        target_os = "macos",
+        target_os = "ios"
+    )))]
     fn copy_to_vram_pool_platform(
         &mut self,
         _frame: &StereoFrame,
