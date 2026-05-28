@@ -45,8 +45,48 @@ impl StitchSession {
     ) -> Result<crate::detect::tracker::WorldState, SessionError> {
         let should_detect = self.detection.should_detect(produce_index);
         if should_detect {
-            let (w, h) = self.core.pipeline().source_info();
-            let detections = self.detection.run_detection(frame, w, h);
+            let detections = match frame {
+                #[cfg(target_os = "linux")]
+                StereoFrame::GpuResident {
+                    left_slot,
+                    right_slot,
+                } => {
+                    if self.detection.needs_cuda_frames() {
+                        if let Some((ref left_buf, ref right_buf)) = self.gpu_buf_info {
+                            self.detection.run_gpu_detection(
+                                left_buf,
+                                right_buf,
+                                *left_slot,
+                                *right_slot,
+                                self.left_rotation,
+                                self.right_rotation,
+                            )
+                        } else {
+                            vec![]
+                        }
+                    } else if let Some(ref views) = self.gpu_shared_views {
+                        let ls = *left_slot as usize;
+                        let rs = *right_slot as usize;
+                        let (w, h) = self.core.pipeline().source_info();
+                        self.detection.run_detection_wgpu_nv12(
+                            &views[ls * 2],
+                            &views[ls * 2 + 1],
+                            &views[4 + rs * 2],
+                            &views[4 + rs * 2 + 1],
+                            w,
+                            h,
+                            self.left_rotation,
+                            self.right_rotation,
+                        )
+                    } else {
+                        vec![]
+                    }
+                }
+                _ => {
+                    let (w, h) = self.core.pipeline().source_info();
+                    self.detection.run_detection(frame, w, h)
+                }
+            };
             self.detection.last_detections = self.map_detections(detections);
         }
 
