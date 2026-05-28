@@ -102,6 +102,13 @@ impl StitchSession {
                         vec![]
                     }
                 }
+                #[cfg(any(target_os = "macos", target_os = "ios"))]
+                StereoFrame::MetalResident { left, right } => self.detection.run_detection_metal(
+                    left.as_ptr(),
+                    right.as_ptr(),
+                    left.width(),
+                    left.height(),
+                ),
                 _ => {
                     let (w, h) = self.core.pipeline().source_info();
                     self.detection.run_detection(frame, w, h)
