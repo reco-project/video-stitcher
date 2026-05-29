@@ -168,6 +168,53 @@ impl StitchSession {
             let post_smooth_half = (n / 2).max(1);
             let pool_size = n + post_smooth_half + 2;
             let (w, h) = self.core.pipeline().source_info();
+            let per_slot =
+                super::vram_pool::estimate_vram(w, h, 1, self.gpu_pixel_format.bytes_per_sample());
+            let required = per_slot * pool_size;
+
+            // Pre-flight VRAM budget check: fail fast with a fit suggestion.
+            // available_vram() is None on backends with no budget API; there
+            // we skip the check and rely on the allocation-time catch in
+            // VramPool::new plus graceful teardown for any slip-through.
+            match self.core.pipeline().gpu().available_vram() {
+                Some((free, total)) => {
+                    const BUDGET_FRACTION: f64 = 0.80;
+                    let budget = (free as f64 * BUDGET_FRACTION) as usize;
+                    log::info!(
+                        "VRAM budget: {:.2} GB free / {:.2} GB total; lookahead pool needs \
+                         {:.2} GB ({pool_size} slots @ {w}x{h}), keeping {:.0}% headroom",
+                        free as f64 / 1e9,
+                        total as f64 / 1e9,
+                        required as f64 / 1e9,
+                        (1.0 - BUDGET_FRACTION) * 100.0,
+                    );
+                    if required > budget {
+                        let fps = source.info().fps.max(1.0);
+                        let max_slots = budget / per_slot.max(1);
+                        // pool_size = n + (n/2).max(1) + 2 ~= 1.5n + 2; invert for n.
+                        let max_n = max_slots.saturating_sub(2) * 2 / 3;
+                        let max_secs = max_n as f64 / fps;
+                        let req_secs = n as f64 / fps;
+                        return Err(SessionError::Config(format!(
+                            "--lookahead {req_secs:.1}s needs ~{:.1} GB VRAM for the frame pool \
+                             ({pool_size} slots @ {w}x{h}) but only ~{:.1} GB is free. Reduce \
+                             --lookahead to <= {max_secs:.1}s, lower the output resolution, or \
+                             free GPU memory, then retry.",
+                            required as f64 / 1e9,
+                            free as f64 / 1e9,
+                        )));
+                    }
+                }
+                None => {
+                    log::info!(
+                        "VRAM budget query unavailable on this backend; relying on \
+                         allocation-time OOM handling for the {pool_size}-slot lookahead pool \
+                         (~{:.2} GB @ {w}x{h})",
+                        required as f64 / 1e9,
+                    );
+                }
+            }
+
             let pool = super::vram_pool::VramPool::new(
                 self.core.pipeline().gpu(),
                 self.core.pipeline(),

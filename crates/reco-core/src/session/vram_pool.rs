@@ -29,10 +29,18 @@ pub(crate) struct VramPool {
 }
 
 impl VramPool {
-    /// Allocate N stereo NV12 slots in VRAM.
+    /// Allocate N stereo NV12/P010 slots in VRAM.
     ///
-    /// Returns an error if the estimated VRAM exceeds 80% of the
-    /// adapter's reported memory, or if texture allocation fails.
+    /// Allocation is the LAST line of defense: callers should run a
+    /// pre-flight budget check first (see [`crate::gpu::GpuContext::available_vram`]),
+    /// which fails fast with a clear message when the requested lookahead
+    /// would not fit. This still guards the slip-through cases the
+    /// pre-flight check cannot prevent - a budget that shifts between the
+    /// check and allocation, or a backend where `available_vram` returns
+    /// `None` and the check is skipped. A per-slot `catch_unwind` converts
+    /// the wgpu OOM panic into a descriptive error. (Error scopes are
+    /// avoided here: they deadlock once the driver is in a bad post-OOM
+    /// state.)
     pub fn new(
         gpu: &crate::gpu::GpuContext,
         pipeline: &crate::render::pipeline::StitchPipeline,
@@ -41,7 +49,7 @@ impl VramPool {
         n_slots: usize,
         pixel_format: crate::render::renderer::GpuPixelFormat,
     ) -> Result<Self, String> {
-        let vram_bytes = estimate_vram(width, height, n_slots);
+        let vram_bytes = estimate_vram(width, height, n_slots, pixel_format.bytes_per_sample());
         let vram_mb = vram_bytes as f64 / (1024.0 * 1024.0);
 
         let y_format = pixel_format.y_format();
@@ -224,9 +232,12 @@ impl VramPool {
     }
 }
 
-/// Estimate VRAM usage for N stereo NV12 slots.
-pub fn estimate_vram(width: u32, height: u32, n_slots: usize) -> usize {
-    let y_bytes = width as usize * height as usize;
+/// Estimate VRAM usage for N stereo slots.
+///
+/// `bytes_per_sample` is 1 for 8-bit NV12, 2 for 10-bit P010, so the
+/// estimate is correct for both pixel formats (P010 is twice NV12).
+pub fn estimate_vram(width: u32, height: u32, n_slots: usize, bytes_per_sample: usize) -> usize {
+    let y_bytes = width as usize * height as usize * bytes_per_sample;
     let uv_bytes = y_bytes / 2;
     let per_frame = (y_bytes + uv_bytes) * 2; // 2 cameras
     per_frame * n_slots

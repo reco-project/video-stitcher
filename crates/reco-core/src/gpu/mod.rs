@@ -389,6 +389,27 @@ impl GpuContext {
         &self.adapter_info.name
     }
 
+    /// Best-effort query of (free, total) VRAM in bytes for the selected
+    /// adapter, or `None` if this backend exposes no budget API.
+    ///
+    /// On Linux NVIDIA this uses the CUDA driver (`cuMemGetInfo`), whose
+    /// `free` figure is device-wide and therefore counts the decode pool
+    /// and TensorRT engine alongside the wgpu allocations - the honest
+    /// number for sizing the lookahead VRAM pool. Other backends return
+    /// `None` for now; callers must fall back to allocation-time OOM
+    /// handling when this returns `None`. The figure is a snapshot: it
+    /// can shift as other processes allocate, so it is a sizing aid, not
+    /// a guarantee.
+    pub fn available_vram(&self) -> Option<(u64, u64)> {
+        #[cfg(target_os = "linux")]
+        {
+            if let Ok((free, total)) = crate::interop::cuda::cuda_mem_get_info() {
+                return Some((free as u64, total as u64));
+            }
+        }
+        None
+    }
+
     /// The GPU backend name (e.g. "Vulkan", "Dx12", "Metal").
     pub fn backend_name(&self) -> &str {
         match self.adapter_info.backend {
