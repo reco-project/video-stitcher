@@ -202,6 +202,11 @@ impl StitchSession {
             let world_state = session.detect_and_track_only(&frame, elapsed, *produce_count)?;
             let detections = session.detection.last_detections.clone();
 
+            // Detection has now read the decode slot; it is safe to hand
+            // it back to the decode thread for reuse. Releasing earlier
+            // (inside copy_to_vram_pool) raced detection's read.
+            session.release_gpu_decode_slot(&frame);
+
             buffer.push(BufferedFrame {
                 frame,
                 world_state,

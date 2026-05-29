@@ -695,6 +695,36 @@ impl StitchSession {
         self.copy_to_vram_pool_platform(frame, produce_index)
     }
 
+    /// Release decode-pool slots back to the decode thread.
+    ///
+    /// Must be called only AFTER detection has finished reading the
+    /// decode slot. In the buffered produce path the frame is copied
+    /// into the VramPool, then detection reads the original decode
+    /// slot; releasing it earlier lets the decode thread overwrite the
+    /// slot mid-read (use-after-free on the shared GPU memory).
+    ///
+    /// No-op on platforms that do not use the GPU decode slot-free
+    /// channel (Windows D3D11 stages into a persistent pool; macOS
+    /// imports CVPixelBuffers).
+    pub(crate) fn release_gpu_decode_slot(&self, frame: &StereoFrame) {
+        #[cfg(target_os = "linux")]
+        {
+            if let StereoFrame::GpuResident {
+                left_slot,
+                right_slot,
+            } = frame
+                && let Some((ref left_tx, ref right_tx)) = self.gpu_slot_free_tx
+            {
+                let _ = left_tx.send(*left_slot);
+                let _ = right_tx.send(*right_slot);
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = frame;
+        }
+    }
+
     #[cfg(target_os = "linux")]
     fn copy_to_vram_pool_platform(
         &mut self,
@@ -729,10 +759,11 @@ impl StitchSession {
                     &shared_tex[4 + rs * 2 + 1],
                 );
                 let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
-                if let Some((ref left_tx, ref right_tx)) = self.gpu_slot_free_tx {
-                    let _ = left_tx.send(ls as u8);
-                    let _ = right_tx.send(rs as u8);
-                }
+                // NOTE: the decode slot is NOT released here. Detection
+                // reads it after this copy (see `produce_one`), so the
+                // slot must stay held until `release_gpu_decode_slot` is
+                // called post-detection. Releasing it now would let the
+                // decode thread overwrite the slot mid-detection.
                 return Ok(Some(slot));
             }
         }
