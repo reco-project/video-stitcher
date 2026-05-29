@@ -14,8 +14,8 @@
 
 - [ ] Code follows project style guidelines
 - [ ] Self-reviewed my own code
-- [ ] Tests pass locally (`npm test`)
-- [ ] Lint/format checks pass (`npm run lint && npm run format:check`)
+- [ ] Tests pass locally (`cargo test`)
+- [ ] Lint/format checks pass (`cargo clippy --all-targets -- -D warnings && cargo fmt --all -- --check`)
 
 ## Screenshots (if applicable)
 
