@@ -175,8 +175,9 @@ enum Commands {
         detection_interval: u64,
 
         /// Lookahead buffer in seconds. Decodes N frames ahead so the
-        /// panner can see future ball/player positions. Requires CPU
-        /// decode (--no-zero-copy). 0 = disabled. Typical: 1.0-2.0.
+        /// panner can see future ball/player positions. Works with GPU
+        /// zero-copy decode: frames are held in a VRAM pool, not the
+        /// decode slots. 0 = disabled. Typical: 1.0-2.0.
         #[arg(long, default_value_t = 0.0)]
         lookahead: f64,
 
