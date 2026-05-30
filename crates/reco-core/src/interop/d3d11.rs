@@ -211,11 +211,28 @@ impl D3d11StagingPool {
         let mut cuda_imports: Vec<Option<crate::interop::cuda::CudaImportedNv12>> =
             Vec::with_capacity(n);
 
+        // VRAM sizing for descriptive OOM errors (mirrors VramPool::new).
+        // Each slot is one NV12/P010 texture: Y (full res) + UV (half res).
+        let per_slot_bytes = (self.width as usize * self.height as usize * 3 / 2)
+            * self.pixel_format.bytes_per_sample();
+        let per_slot_mb = per_slot_bytes as f64 / (1024.0 * 1024.0);
+        let total_mb = (per_slot_bytes * n) as f64 / (1024.0 * 1024.0);
+
         for i in 0..n {
             let staging: ID3D11Texture2D = unsafe {
                 let mut tex = None;
-                device.CreateTexture2D(&desc, None, Some(&mut tex))?;
-                tex.ok_or_else(|| D3d11InteropError::D3d11("CreateTexture2D returned None".into()))?
+                device
+                    .CreateTexture2D(&desc, None, Some(&mut tex))
+                    .map_err(|e| {
+                        D3d11InteropError::D3d11(format!(
+                            "staging VRAM allocation failed at slot {i}/{n} \
+                             (~{per_slot_mb:.0} MB/slot, ~{total_mb:.0} MB total). \
+                             Reduce --lookahead or use --no-zero-copy. ({e})"
+                        ))
+                    })?;
+                tex.ok_or_else(|| {
+                    D3d11InteropError::D3d11(format!("CreateTexture2D returned None at slot {i}/{n}"))
+                })?
             };
 
             // Get shared NT handle (kept open for both DX12 and CUDA import).
@@ -223,15 +240,31 @@ impl D3d11StagingPool {
             let handle: HANDLE =
                 unsafe { dxgi_resource.CreateSharedHandle(None, GENERIC_ALL.0, None)? };
 
-            // Import into wgpu via DX12 HAL.
-            let wgpu_texture = unsafe {
+            // Import into wgpu via DX12 HAL. create_texture_from_hal can panic
+            // through wgpu's uncaptured-error handler on a bad/post-OOM device
+            // state, so guard it with catch_unwind (mirrors VramPool::new).
+            let import_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
                 import_d3d11_shared_handle(
                     &self.wgpu_device,
                     handle,
                     self.width,
                     self.height,
                     self.pixel_format.wgpu_format(),
-                )?
+                )
+            }));
+            let wgpu_texture = match import_result {
+                Ok(Ok(tex)) => tex,
+                Ok(Err(e)) => return Err(e),
+                Err(_) => {
+                    unsafe {
+                        let _ = CloseHandle(handle);
+                    }
+                    return Err(D3d11InteropError::D3d11(format!(
+                        "staging texture import (wgpu) failed at slot {i}/{n} \
+                         (~{per_slot_mb:.0} MB/slot, ~{total_mb:.0} MB total). \
+                         Reduce --lookahead or use --no-zero-copy."
+                    )));
+                }
             };
 
             // Import into CUDA for AI detection (NVIDIA only, non-fatal).

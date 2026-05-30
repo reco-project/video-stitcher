@@ -215,16 +215,26 @@ impl StitchSession {
                 }
             }
 
-            let pool = super::vram_pool::VramPool::new(
-                self.core.pipeline().gpu(),
-                self.core.pipeline(),
-                w,
-                h,
-                pool_size,
-                self.gpu_pixel_format,
-            )
-            .map_err(SessionError::Config)?;
-            self.vram_pool = Some(pool);
+            // The VramPool is only consumed on Linux (CUDA/Vulkan copy) and
+            // macOS (Metal CVPixelBuffer import). On Windows the lookahead
+            // frames live in the separate D3D11 staging pool, so a VramPool
+            // here would be allocated-but-unused VRAM (it roughly doubles the
+            // footprint). The pre-flight budget check above still runs on all
+            // platforms; on Windows it sizes the D3D11 staging pool, whose
+            // total VRAM equals estimate_vram(w,h,1,bps)*pool_size.
+            #[cfg(not(target_os = "windows"))]
+            {
+                let pool = super::vram_pool::VramPool::new(
+                    self.core.pipeline().gpu(),
+                    self.core.pipeline(),
+                    w,
+                    h,
+                    pool_size,
+                    self.gpu_pixel_format,
+                )
+                .map_err(SessionError::Config)?;
+                self.vram_pool = Some(pool);
+            }
         }
 
         let produce_one = |session: &mut StitchSession,
