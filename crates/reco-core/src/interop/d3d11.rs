@@ -231,7 +231,9 @@ impl D3d11StagingPool {
                         ))
                     })?;
                 tex.ok_or_else(|| {
-                    D3d11InteropError::D3d11(format!("CreateTexture2D returned None at slot {i}/{n}"))
+                    D3d11InteropError::D3d11(format!(
+                        "CreateTexture2D returned None at slot {i}/{n}"
+                    ))
                 })?
             };
 

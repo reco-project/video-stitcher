@@ -453,7 +453,6 @@ impl DetectionPipeline {
         }
         detections
     }
-
 }
 
 #[cfg(test)]

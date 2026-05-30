@@ -159,10 +159,12 @@ impl StitchSession {
                 frame_index: self.frame_count,
                 timestamp_ms: start.elapsed().as_secs_f64() * 1000.0,
             });
-            sink.emit(crate::detect::pipeline_event::PipelineEvent::DetectionsRaw {
-                frame_index: self.frame_count,
-                detections: oldest.detections.clone(),
-            });
+            sink.emit(
+                crate::detect::pipeline_event::PipelineEvent::DetectionsRaw {
+                    frame_index: self.frame_count,
+                    detections: oldest.detections.clone(),
+                },
+            );
             sink.emit(crate::detect::pipeline_event::PipelineEvent::WorldState {
                 frame_index: self.frame_count,
                 timestamp_ms: oldest.elapsed_ms,
@@ -180,7 +182,13 @@ impl StitchSession {
         self.current_vram_slot = oldest.vram_slot;
 
         let frame_t0 = std::time::Instant::now();
-        self.process_frame_any(&oldest.frame, start.elapsed(), oldest.decode_time, frame_t0, ctx)?;
+        self.process_frame_any(
+            &oldest.frame,
+            start.elapsed(),
+            oldest.decode_time,
+            frame_t0,
+            ctx,
+        )?;
 
         if let (Some(slot), Some(ref mut pool)) = (oldest.vram_slot, self.vram_pool.as_mut()) {
             pool.release(slot);
