@@ -99,6 +99,7 @@ pub trait Panner: Send {
 /// `clippy::too_many_arguments`. The mutable pose + the three
 /// `Option<&mut Box<dyn …>>` slots are the only moving parts per
 /// caller; everything else fits here.
+#[derive(Clone, Copy)]
 pub(crate) struct DispatchContext<'a> {
     /// Raw mapped detections the trackers should consume this frame.
     pub detections: &'a [MappedDetection],
@@ -151,6 +152,10 @@ pub(crate) fn dispatch_detect_only(
 ) -> WorldState {
     let mut world = WorldState::default();
 
+    // Order matters: players first, then ball. The ball tracker's
+    // `observe_world` sees the just-computed player positions so a
+    // player-anchor gate can run against the current frame rather
+    // than the previous one.
     if let Some(t) = player_tracker {
         world.players = t.update(ctx.detections, ctx.timestamp_ms);
     }
@@ -180,27 +185,9 @@ pub(crate) fn dispatch(
     ctx: DispatchContext<'_>,
 ) -> Option<DispatchResult> {
     let panner = panner?;
-    let mut world = WorldState::default();
-
-    // Order matters: players first, then ball. The ball tracker's
-    // `observe_world` sees the just-computed player positions so a
-    // player-anchor gate can run against the current frame rather
-    // than the previous one.
-    if let Some(t) = player_tracker {
-        world.players = t.update(ctx.detections, ctx.timestamp_ms);
-    }
-    if let Some(t) = ball_tracker {
-        t.observe_world(&world);
-        let ents = t.update(ctx.detections, ctx.timestamp_ms);
-        if ents.len() > 1 {
-            log::warn!(
-                "{}: ball_tracker returned {} entities (expected <=1); taking first",
-                ctx.caller,
-                ents.len()
-            );
-        }
-        world.ball = ents.into_iter().next();
-    }
+    // Build the WorldState via the shared tracker-run path (same as the
+    // lookahead produce phase) so the two can never silently diverge.
+    let world = dispatch_detect_only(player_tracker, ball_tracker, ctx);
 
     // Trace: WorldState (only pays for the clone when a sink exists).
     if let Some(sink) = event_sink.as_mut() {
