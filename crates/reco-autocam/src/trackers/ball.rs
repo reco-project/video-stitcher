@@ -1,4 +1,4 @@
-//! Singleton ball tracker composing [`FlickerFilter`](super::filters::FlickerFilter) + player-anchor
+//! Singleton ball tracker composing player-anchor
 //! + nearest-to-last selection + [`Coaster`].
 //!
 //! Port of the Python POC at `/tmp/reco-ai-eval/build_tracker_video.py`
@@ -13,23 +13,20 @@
 //! 2. **Position required** — detections whose
 //!    [`MappedDetection::position`] is `None` (failed panorama
 //!    projection) are dropped.
-//! 3. **Flicker filter** — see [`FlickerFilter`](super::filters::FlickerFilter). Buckets recurring
-//!    at the same camera-frame pixel in a rolling window are tagged
-//!    as static mimics and rejected.
-//! 4. **Player anchor** (optional) — if player anchors have been
+//! 3. **Player anchor** (optional) — if player anchors have been
 //!    supplied via [`BallTracker::set_players`] and non-empty, a
 //!    detection must be within `player_anchor_max_rad` of at least
 //!    one player in panorama yaw/pitch space to survive. When no
 //!    players have been supplied, the filter is a no-op (Phase 2c
 //!    defers PlayerTracker to Phase 5).
-//! 5. **Nearest-to-last with max-jump** — among survivors, pick the
+//! 4. **Nearest-to-last with max-jump** — among survivors, pick the
 //!    one whose panorama position is closest to the last accepted
 //!    tracked position, provided the jump is below `max_jump_rad`.
 //!    Cross-camera yaw/pitch is meaningful because the
 //!    projection already unifies the coordinate frame, so same-cam
 //!    vs cross-cam are scored identically (unlike the Python POC
 //!    which worked in pixels and had to special-case cross-cam).
-//! 6. **Coaster** — if no candidate survived this frame, hold the
+//! 5. **Coaster** — if no candidate survived this frame, hold the
 //!    last known position for up to `max_coast_frames` frames, then
 //!    transition to `Lost`.
 //!
@@ -71,12 +68,9 @@ pub const DEFAULT_PLAYER_ANCHOR_RAD: f32 = 0.20;
 /// [`TrackedEntity`] per frame.
 ///
 /// Internal state is the last accepted measurement, a coaster, and
-/// the optional current-frame player anchors. Flicker rejection is
-/// no longer the tracker's job - it runs session-wide in
-/// `FlickerDetectionFilter` (Step 7b) so it benefits every tracker,
-/// not just this one. Construct with [`BallTracker::new`], optionally
-/// tune via the `with_*` builders, and hand to the session as a
-/// `Box<dyn Tracker>`.
+/// the optional current-frame player anchors. Construct with
+/// [`BallTracker::new`], optionally tune via the `with_*` builders,
+/// and hand to the session as a `Box<dyn Tracker>`.
 pub struct BallTracker {
     class_id: u16,
     coaster: Coaster,
@@ -210,10 +204,6 @@ impl Tracker for BallTracker {
                 );
                 continue;
             };
-            // Flicker rejection now runs upstream in the session's
-            // DetectionFilter chain (Step 7b), so by the time a
-            // detection reaches the tracker it has already passed
-            // the bucketed-spatial test.
             if !self.passes_player_anchor(pos.yaw, pos.pitch) {
                 log::trace!(
                     "BallTracker: drop off-player — yaw={:.3} pitch={:.3} nearest player > {:.3}rad",
@@ -459,10 +449,6 @@ mod tests {
         assert_eq!(out[0].state, TrackState::Coasting);
         assert_eq!(out[0].yaw, 0.0);
     }
-
-    // Flicker-rejection is no longer the tracker's job. The
-    // equivalent coverage lives in `detection_filters::tests`
-    // (see `drops_recurrent_bucket_hits_across_frames`).
 
     #[test]
     fn cross_camera_handoff_tracks() {

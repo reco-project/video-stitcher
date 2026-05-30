@@ -242,11 +242,10 @@ impl StitchSession {
     /// Drive the tracker/panner chain after detection.
     ///
     /// Shared tail for all detection paths (CPU, GPU, Metal, no-detection).
-    /// Emits DetectionsRaw events, runs detection filters, drives every
-    /// registered tracker to build a
-    /// [`WorldState`](crate::detect::tracker::WorldState), then lets the
-    /// panner decide the next pose. Viewport constraining is handled
-    /// separately by [`director_position`](Self::director_position).
+    /// Emits DetectionsRaw events, drives every registered tracker to
+    /// build a [`WorldState`](crate::detect::tracker::WorldState), then
+    /// lets the panner decide the next pose. Viewport constraining is
+    /// handled separately by [`director_position`](Self::director_position).
     pub(crate) fn fire_sink_and_update_director(
         &mut self,
         elapsed: std::time::Duration,
@@ -262,34 +261,6 @@ impl StitchSession {
                     detections: self.detection.last_detections.clone(),
                 },
             );
-        }
-
-        if !self.detection_filters.is_empty() {
-            let calibration = self.core.pipeline().calibration();
-            let filter_ctx = crate::detect::filter::FilterContext {
-                frame_index: self.frame_count,
-                timestamp_ms,
-                calibration,
-            };
-            let trace_enabled = self.event_sink.is_some();
-            for filter in self.detection_filters.iter_mut() {
-                let before = if trace_enabled {
-                    Some(self.detection.last_detections.clone())
-                } else {
-                    None
-                };
-                filter.filter(&mut self.detection.last_detections, &filter_ctx);
-                if let (Some(before), Some(sink)) = (before, self.event_sink.as_deref_mut()) {
-                    sink.emit(
-                        crate::detect::pipeline_event::PipelineEvent::DetectionFilter {
-                            frame_index: self.frame_count,
-                            filter_name: filter.name(),
-                            before,
-                            after: self.detection.last_detections.clone(),
-                        },
-                    );
-                }
-            }
         }
 
         let _ = fresh_detection;

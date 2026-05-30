@@ -8,10 +8,10 @@
 //! stream with stable identities and a tri-valued lifecycle state.
 //!
 //! Layout:
-//! - [`filters`] — shared filter building blocks (flicker, coaster).
+//! - [`filters`] — shared filter building blocks (coaster).
 //!   Each filter is self-contained and independently testable.
 //! - [`ball`] — [`BallTracker`], the singleton ball tracker that
-//!   composes the filters in POC order: flicker → player-anchor →
+//!   composes the filters in POC order: player-anchor →
 //!   nearest-to-last with cross-cam handoff → coast.
 //!
 //! Upcoming (Phase 5, see `~/.claude/plans/zesty-mixing-firefly.md`):

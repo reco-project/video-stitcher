@@ -43,7 +43,6 @@
 
 #![forbid(unsafe_code)]
 
-pub mod detection_filters;
 pub mod panners;
 mod roi_filter;
 pub mod trackers;
@@ -478,8 +477,6 @@ pub fn setup_autocam(
             class_names.len()
         );
 
-        // Pre-tracker flicker rejection: class-keyed bucketed-spatial
-        // histogram that drops recurrent static mimics (line
         match tracking_mode {
             TrackingMode::Field => {
                 let player_tracker = crate::trackers::PlayerTracker::new(person_id);

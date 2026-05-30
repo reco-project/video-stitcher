@@ -19,16 +19,13 @@
 //!
 //! # Event vocabulary
 //!
-//! Six variants, one per natural pipeline stage:
+//! One variant per natural pipeline stage:
 //!
 //! 1. [`FrameStart`](crate::detect::pipeline_event::PipelineEvent::FrameStart) - the frame loop picked up a new frame.
 //! 2. [`DetectionsRaw`](crate::detect::pipeline_event::PipelineEvent::DetectionsRaw) - detector produced mapped detections.
-//! 3. [`DetectionFilter`](crate::detect::pipeline_event::PipelineEvent::DetectionFilter) - a filter stage transformed them
-//!    (before + after, so consumers can audit each filter's effect).
-//!    Reserved for Step 7's `DetectionFilter` trait; not emitted yet.
-//! 4. [`WorldState`](crate::detect::pipeline_event::PipelineEvent::WorldState) - trackers produced the per-frame world.
-//! 5. [`PanDecision`](crate::detect::pipeline_event::PipelineEvent::PanDecision) - panner produced the raw viewport pose.
-//! 6. [`PosePresented`](crate::detect::pipeline_event::PipelineEvent::PosePresented) - post-clamp pose the renderer saw.
+//! 3. [`WorldState`](crate::detect::pipeline_event::PipelineEvent::WorldState) - trackers produced the per-frame world.
+//! 4. [`PanDecision`](crate::detect::pipeline_event::PipelineEvent::PanDecision) - panner produced the raw viewport pose.
+//! 5. [`PosePresented`](crate::detect::pipeline_event::PipelineEvent::PosePresented) - post-clamp pose the renderer saw.
 
 use super::director::{MappedDetection, ViewportPosition};
 use super::tracker::TrackedEntity;
@@ -51,27 +48,13 @@ pub enum PipelineEvent {
     },
 
     /// Detector produced mapped detections for this frame, before
-    /// any `DetectionFilter` stages run (Step 7).
+    /// the trackers consume them.
     DetectionsRaw {
         /// Monotonic frame counter.
         frame_index: u64,
         /// Detections the detector emitted (one per class per camera,
         /// projected into panorama space).
         detections: Vec<MappedDetection>,
-    },
-
-    /// A `DetectionFilter` stage transformed the detection list.
-    /// Reserved for Step 7; not emitted yet but included in the
-    /// vocabulary so consumers and the JSONL schema are stable now.
-    DetectionFilter {
-        /// Monotonic frame counter.
-        frame_index: u64,
-        /// Stage name (`"FlickerFilter"`, `"FeetInRoi"`, ...).
-        filter_name: &'static str,
-        /// Detections the filter saw on input.
-        before: Vec<MappedDetection>,
-        /// Detections the filter produced on output.
-        after: Vec<MappedDetection>,
     },
 
     /// Trackers produced the per-frame world state.
@@ -160,7 +143,6 @@ impl PipelineEvent {
         match self {
             PipelineEvent::FrameStart { frame_index, .. }
             | PipelineEvent::DetectionsRaw { frame_index, .. }
-            | PipelineEvent::DetectionFilter { frame_index, .. }
             | PipelineEvent::WorldState { frame_index, .. }
             | PipelineEvent::PanDecision { frame_index, .. }
             | PipelineEvent::PannerDebug { frame_index, .. }
@@ -340,28 +322,22 @@ mod tests {
                 frame_index: 2,
                 detections: Vec::new(),
             },
-            PipelineEvent::DetectionFilter {
-                frame_index: 3,
-                filter_name: "Test",
-                before: Vec::new(),
-                after: Vec::new(),
-            },
             PipelineEvent::WorldState {
-                frame_index: 4,
+                frame_index: 3,
                 timestamp_ms: 1.0,
                 players: Vec::new(),
                 ball: None,
             },
             PipelineEvent::PanDecision {
-                frame_index: 5,
+                frame_index: 4,
                 pose: ViewportPosition::default(),
             },
             PipelineEvent::PosePresented {
-                frame_index: 6,
+                frame_index: 5,
                 pose: ViewportPosition::default(),
             },
             PipelineEvent::FrameComplete {
-                frame_index: 7,
+                frame_index: 6,
                 timestamp_ms: 2.0,
                 timing: FrameTimingMicros {
                     decode_us: Some(1000),
