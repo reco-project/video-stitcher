@@ -139,6 +139,63 @@ impl StitchSession {
         result
     }
 
+    /// Render one buffered frame at the post-smoothed pose.
+    ///
+    /// Shared tail for the steady-state and drain render sites: emit the
+    /// per-frame trace events, set the pose/skip-detection/slot state,
+    /// render via `process_frame_any`, release the VRAM-pool slot, and
+    /// fire the progress callback. `process_frame_any` increments
+    /// `frame_count`, so events are emitted at the pre-increment index.
+    fn render_buffered_frame(
+        &mut self,
+        oldest: super::frame_buffer::BufferedFrame,
+        smoothed_pose: crate::detect::director::ViewportPosition,
+        start: std::time::Instant,
+        ctx: &crate::session::types::FrameLoopContext,
+        on_progress: &mut Option<ProgressCallback>,
+    ) -> Result<(), SessionError> {
+        if let Some(sink) = self.event_sink.as_deref_mut() {
+            sink.emit(crate::detect::pipeline_event::PipelineEvent::FrameStart {
+                frame_index: self.frame_count,
+                timestamp_ms: start.elapsed().as_secs_f64() * 1000.0,
+            });
+            sink.emit(crate::detect::pipeline_event::PipelineEvent::DetectionsRaw {
+                frame_index: self.frame_count,
+                detections: oldest.detections.clone(),
+            });
+            sink.emit(crate::detect::pipeline_event::PipelineEvent::WorldState {
+                frame_index: self.frame_count,
+                timestamp_ms: oldest.elapsed_ms,
+                players: oldest.world_state.players.clone(),
+                ball: oldest.world_state.ball,
+            });
+            sink.emit(crate::detect::pipeline_event::PipelineEvent::PanDecision {
+                frame_index: self.frame_count,
+                pose: smoothed_pose,
+            });
+        }
+
+        self.previous_panner_pose = smoothed_pose;
+        self.skip_detection = true;
+        self.current_vram_slot = oldest.vram_slot;
+
+        let frame_t0 = std::time::Instant::now();
+        self.process_frame_any(&oldest.frame, start.elapsed(), oldest.decode_time, frame_t0, ctx)?;
+
+        if let (Some(slot), Some(ref mut pool)) = (oldest.vram_slot, self.vram_pool.as_mut()) {
+            pool.release(slot);
+        }
+        self.current_vram_slot = None;
+
+        if let Some(cb) = on_progress.as_mut() {
+            cb(&FrameProgress {
+                frames_completed: self.frame_count,
+                elapsed: start.elapsed(),
+            });
+        }
+        Ok(())
+    }
+
     /// Buffered frame loop with lookahead.
     ///
     /// Three phases: pre-fill the buffer with N frames (decode + detect),
@@ -404,56 +461,7 @@ impl StitchSession {
                     past_poses.pop_front();
                 }
 
-                // Emit events.
-                if let Some(sink) = self.event_sink.as_deref_mut() {
-                    sink.emit(crate::detect::pipeline_event::PipelineEvent::FrameStart {
-                        frame_index: self.frame_count,
-                        timestamp_ms: start.elapsed().as_secs_f64() * 1000.0,
-                    });
-                    sink.emit(
-                        crate::detect::pipeline_event::PipelineEvent::DetectionsRaw {
-                            frame_index: self.frame_count,
-                            detections: oldest.detections.clone(),
-                        },
-                    );
-                    sink.emit(crate::detect::pipeline_event::PipelineEvent::WorldState {
-                        frame_index: self.frame_count,
-                        timestamp_ms: oldest.elapsed_ms,
-                        players: oldest.world_state.players.clone(),
-                        ball: oldest.world_state.ball,
-                    });
-                    sink.emit(crate::detect::pipeline_event::PipelineEvent::PanDecision {
-                        frame_index: self.frame_count,
-                        pose: smoothed_pose,
-                    });
-                }
-
-                self.previous_panner_pose = smoothed_pose;
-                self.skip_detection = true;
-                self.current_vram_slot = oldest.vram_slot;
-
-                let frame_t0 = std::time::Instant::now();
-                self.process_frame_any(
-                    &oldest.frame,
-                    start.elapsed(),
-                    oldest.decode_time,
-                    frame_t0,
-                    &ctx,
-                )?;
-
-                if let (Some(slot), Some(ref mut pool)) =
-                    (oldest.vram_slot, self.vram_pool.as_mut())
-                {
-                    pool.release(slot);
-                }
-                self.current_vram_slot = None;
-
-                if let Some(cb) = on_progress.as_mut() {
-                    cb(&FrameProgress {
-                        frames_completed: self.frame_count,
-                        elapsed: start.elapsed(),
-                    });
-                }
+                self.render_buffered_frame(oldest, smoothed_pose, start, &ctx, on_progress)?;
             } else if eof && buffer.is_empty() && pose_queue.is_empty() {
                 break;
             }
@@ -487,53 +495,7 @@ impl StitchSession {
                 past_poses.pop_front();
             }
 
-            if let Some(sink) = self.event_sink.as_deref_mut() {
-                sink.emit(crate::detect::pipeline_event::PipelineEvent::FrameStart {
-                    frame_index: self.frame_count,
-                    timestamp_ms: start.elapsed().as_secs_f64() * 1000.0,
-                });
-                sink.emit(
-                    crate::detect::pipeline_event::PipelineEvent::DetectionsRaw {
-                        frame_index: self.frame_count,
-                        detections: oldest.detections.clone(),
-                    },
-                );
-                sink.emit(crate::detect::pipeline_event::PipelineEvent::WorldState {
-                    frame_index: self.frame_count,
-                    timestamp_ms: oldest.elapsed_ms,
-                    players: oldest.world_state.players.clone(),
-                    ball: oldest.world_state.ball,
-                });
-                sink.emit(crate::detect::pipeline_event::PipelineEvent::PanDecision {
-                    frame_index: self.frame_count,
-                    pose: smoothed_pose,
-                });
-            }
-
-            self.previous_panner_pose = smoothed_pose;
-            self.skip_detection = true;
-            self.current_vram_slot = oldest.vram_slot;
-
-            let frame_t0 = std::time::Instant::now();
-            self.process_frame_any(
-                &oldest.frame,
-                start.elapsed(),
-                oldest.decode_time,
-                frame_t0,
-                &ctx,
-            )?;
-
-            if let (Some(slot), Some(ref mut pool)) = (oldest.vram_slot, self.vram_pool.as_mut()) {
-                pool.release(slot);
-            }
-            self.current_vram_slot = None;
-
-            if let Some(cb) = on_progress.as_mut() {
-                cb(&FrameProgress {
-                    frames_completed: self.frame_count,
-                    elapsed: start.elapsed(),
-                });
-            }
+            self.render_buffered_frame(oldest, smoothed_pose, start, &ctx, on_progress)?;
         }
 
         self.skip_detection = false;
