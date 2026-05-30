@@ -281,11 +281,15 @@ pub fn setup_autocam(
             );
         }
 
+        // `confidence_threshold` is an override: when the caller sets
+        // it (e.g. 0.25 for ball-only models) it wins on every backend,
+        // not just the CPU fallback; otherwise each backend keeps its
+        // own sensible default.
         match reco_detect::TrtGpuDetector::try_new(
             model_path,
             input_width,
             input_height,
-            0.10,
+            config.confidence_threshold.unwrap_or(0.10),
             trt_labels,
             is_10bit,
         ) {
@@ -319,7 +323,7 @@ pub fn setup_autocam(
             model_path,
             input_width,
             input_height,
-            0.10,
+            config.confidence_threshold.unwrap_or(0.10),
             Vec::new(),
             is_10bit,
         ) {
@@ -350,7 +354,7 @@ pub fn setup_autocam(
             target.gpu(),
             input_width,
             input_height,
-            0.10,
+            config.confidence_threshold.unwrap_or(0.10),
             Vec::new(),
         ) {
             Ok(metal_det) => {
@@ -379,7 +383,7 @@ pub fn setup_autocam(
             640, // default NCNN input size
             input_width,
             input_height,
-            0.25,
+            config.confidence_threshold.unwrap_or(0.25),
             Vec::new(), // labels loaded from sidecar if needed
         ) {
             Ok(ncnn_det) => {
@@ -406,7 +410,11 @@ pub fn setup_autocam(
     #[cfg(feature = "ort")]
     if !detection_active && use_zero_copy {
         let gpu = target.gpu();
-        let yolo = CpuYoloDetector::from_file(model_path)?;
+        let yolo = CpuYoloDetector::with_config(
+            model_path,
+            config.confidence_threshold.unwrap_or(0.10),
+            Vec::new(),
+        )?;
         let input_size = yolo.input_size();
         let wrapper = WgpuPreprocessingDetector::new(
             Box::new(yolo),
