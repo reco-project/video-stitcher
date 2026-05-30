@@ -2,11 +2,9 @@
 //!
 //! Holds N decoded frames with their detection metadata so the
 //! panner can see future WorldStates when deciding the current
-//! frame's viewport position.
-//!
-//! Phase 1: CPU-resident frames only (`StereoFrame::Yuv420p` /
-//! `StereoFrame::Nv12`). GPU-resident frames require expanding the
-//! decode slot pool (Phase 3).
+//! frame's viewport position. Works for both CPU-resident frames
+//! (`StereoFrame::Yuv420p` / `Nv12`) and GPU-resident frames, where
+//! the pixels live in the VRAM pool and `vram_slot` indexes them.
 
 use std::collections::VecDeque;
 
@@ -15,12 +13,10 @@ use crate::detect::tracker::WorldState;
 use crate::source::StereoFrame;
 
 /// A single buffered frame: decoded pixels + detection metadata.
-#[allow(dead_code)]
 pub(crate) struct BufferedFrame {
     pub frame: StereoFrame,
     pub world_state: WorldState,
     pub detections: Vec<MappedDetection>,
-    pub frame_index: u64,
     pub elapsed_ms: f64,
     pub decode_time: std::time::Duration,
     /// VRAM pool slot index (Some when GPU-resident, None for CPU frames).
@@ -38,17 +34,12 @@ pub(crate) struct FrameBuffer {
     capacity: usize,
 }
 
-#[allow(dead_code)]
 impl FrameBuffer {
     pub fn new(capacity: usize) -> Self {
         Self {
             frames: VecDeque::with_capacity(capacity),
             capacity,
         }
-    }
-
-    pub fn capacity(&self) -> usize {
-        self.capacity
     }
 
     pub fn len(&self) -> usize {
@@ -81,11 +72,6 @@ impl FrameBuffer {
         self.frames.iter().map(|f| f.world_state.clone()).collect()
     }
 
-    /// Drain all remaining frames (for the drain phase at EOF).
-    pub fn drain(&mut self) -> impl Iterator<Item = BufferedFrame> + '_ {
-        self.frames.drain(..)
-    }
-
     pub fn is_empty(&self) -> bool {
         self.frames.is_empty()
     }
@@ -96,7 +82,7 @@ mod tests {
     use super::*;
     use crate::detect::tracker::{TrackState, TrackedEntity, WorldState};
 
-    fn make_frame(index: u64, ball_yaw: f32) -> BufferedFrame {
+    fn make_frame(ball_yaw: f32) -> BufferedFrame {
         BufferedFrame {
             frame: StereoFrame::Nv12(crate::source::Nv12FramePair {
                 left: crate::source::Nv12Data {
@@ -122,41 +108,40 @@ mod tests {
                 players: vec![],
             },
             detections: vec![],
-            frame_index: index,
-            elapsed_ms: index as f64 * 33.3,
+            elapsed_ms: 0.0,
             decode_time: std::time::Duration::from_millis(3),
             vram_slot: None,
         }
     }
 
+    fn ball_yaw(f: &BufferedFrame) -> f32 {
+        f.world_state.ball.as_ref().unwrap().yaw
+    }
+
     #[test]
     fn push_pop_fifo_order() {
         let mut buf = FrameBuffer::new(3);
-        buf.push(make_frame(0, 0.1));
-        buf.push(make_frame(1, 0.2));
-        buf.push(make_frame(2, 0.3));
+        buf.push(make_frame(0.1));
+        buf.push(make_frame(0.2));
+        buf.push(make_frame(0.3));
 
-        let f0 = buf.pop().unwrap();
-        assert_eq!(f0.frame_index, 0);
-        let f1 = buf.pop().unwrap();
-        assert_eq!(f1.frame_index, 1);
-        let f2 = buf.pop().unwrap();
-        assert_eq!(f2.frame_index, 2);
+        assert!((ball_yaw(&buf.pop().unwrap()) - 0.1).abs() < 1e-6);
+        assert!((ball_yaw(&buf.pop().unwrap()) - 0.2).abs() < 1e-6);
+        assert!((ball_yaw(&buf.pop().unwrap()) - 0.3).abs() < 1e-6);
         assert!(buf.pop().is_none());
     }
 
     #[test]
-    fn capacity_and_fullness() {
+    fn fullness_tracking() {
         let mut buf = FrameBuffer::new(2);
-        assert_eq!(buf.capacity(), 2);
         assert!(buf.is_empty());
         assert!(!buf.is_full());
 
-        buf.push(make_frame(0, 0.0));
+        buf.push(make_frame(0.0));
         assert_eq!(buf.len(), 1);
         assert!(!buf.is_full());
 
-        buf.push(make_frame(1, 0.0));
+        buf.push(make_frame(0.0));
         assert_eq!(buf.len(), 2);
         assert!(buf.is_full());
     }
@@ -165,7 +150,7 @@ mod tests {
     fn future_world_states_returns_remaining() {
         let mut buf = FrameBuffer::new(5);
         for i in 0..4 {
-            buf.push(make_frame(i, i as f32 * 0.1));
+            buf.push(make_frame(i as f32 * 0.1));
         }
         buf.pop(); // remove frame 0
 
@@ -181,20 +166,10 @@ mod tests {
     }
 
     #[test]
-    fn drain_empties_buffer() {
-        let mut buf = FrameBuffer::new(3);
-        buf.push(make_frame(0, 0.0));
-        buf.push(make_frame(1, 0.0));
-        let drained: Vec<_> = buf.drain().collect();
-        assert_eq!(drained.len(), 2);
-        assert!(buf.is_empty());
-    }
-
-    #[test]
     #[should_panic(expected = "push called on full buffer")]
     fn push_on_full_panics() {
         let mut buf = FrameBuffer::new(1);
-        buf.push(make_frame(0, 0.0));
-        buf.push(make_frame(1, 0.0));
+        buf.push(make_frame(0.0));
+        buf.push(make_frame(0.0));
     }
 }

@@ -268,7 +268,6 @@ impl StitchSession {
                 frame,
                 world_state,
                 detections,
-                frame_index: *produce_count,
                 elapsed_ms: elapsed.as_secs_f64() * 1000.0,
                 decode_time,
                 vram_slot,

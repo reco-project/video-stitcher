@@ -198,28 +198,6 @@ impl StitchSession {
         })
     }
 
-    /// Run detection via CUDA-imported D3D11VA staging textures.
-    #[cfg(target_os = "windows")]
-    pub(crate) fn detect_and_update_director_d3d11(
-        &mut self,
-        left_y: u64,
-        left_uv: u64,
-        right_y: u64,
-        right_uv: u64,
-        pitch: usize,
-        width: u32,
-        height: u32,
-        elapsed: std::time::Duration,
-    ) -> Result<(), SessionError> {
-        let lr = self.left_rotation;
-        let rr = self.right_rotation;
-        self.detect_and_update_director_with(elapsed, |det| {
-            det.run_gpu_detection_raw(
-                left_y, left_uv, right_y, right_uv, pitch, width, height, lr, rr,
-            )
-        })
-    }
-
     /// Update the director without detection.
     ///
     /// Advances the panner/tracker state without running object
