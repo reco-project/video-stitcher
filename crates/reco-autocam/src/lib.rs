@@ -11,10 +11,9 @@
 //!
 //! - [`trackers::BallTracker`] / [`trackers::PlayerTracker`] - per-class
 //!   trackers implementing [`Tracker`](reco_core::detect::tracker::Tracker).
-//! - [`panners::FieldPanner`] / [`panners::SweepPanner`] - camera-motion
+//! - [`panners::FieldPanner`] / [`panners::LookaheadPanner`] /
+//!   [`panners::SweepPanner`] / [`panners::FilePanner`] - camera-motion
 //!   policies implementing [`Panner`](reco_core::detect::panner::Panner).
-//! - [`panners::Smoother`] / [`panners::Anticipator`] /
-//!   [`panners::DeadZone`] - composable panner decorators.
 //! - [`RoiFilteredDetector`] - polygonal-ROI mask wrapper over any
 //!   `UnifiedDetector`, pre-filtering detections before they reach a
 //!   tracker.

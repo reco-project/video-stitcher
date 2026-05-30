@@ -9,22 +9,14 @@
 //! *are*, where should the camera *look*?"
 //!
 //! Implementations (shipped in `reco-autocam`):
-//! - `FieldPanner` - blends ball with the `world.players` cluster
-//!   centroid, widening FOV when the action spreads.
-//! - `SweepPanner` - debug-only, ignores world state and slowly
-//!   pans left-right within coverage bounds.
-//!
-//! # Composition
-//!
-//! Panners compose via decorators in `reco-autocam`:
-//!
-//! ```text
-//! FieldPanner -> Smoother -> DeadZone
-//! ```
-//!
-//! Each decorator is itself a `Panner` wrapping an inner `Panner`.
-//! Smoothing, anticipation, and dead-zone handling all live at this
-//! layer because they transform camera *motion*, not detections.
+//! - `FieldPanner` - production player+ball panner: robust cluster
+//!   centroid, dynamic FOV, ball-presence hysteresis, velocity-clamped
+//!   chase.
+//! - `LookaheadPanner` - future-aware ball/field panner (see
+//!   [`Panner::decide_with_lookahead`]) with a pre-smooth + dead-zone chase.
+//! - `SweepPanner` - debug-only, ignores world state and slowly pans
+//!   left-right within coverage bounds.
+//! - `FilePanner` - replays a precomputed pose trajectory from CSV.
 
 use super::director::{MappedDetection, ViewportPosition};
 use super::pipeline_event::{PipelineEvent, PipelineEventSink};
