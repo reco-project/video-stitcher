@@ -452,6 +452,25 @@ impl GpuContext {
             }
             return local;
         }
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        {
+            if self.adapter_info.backend != wgpu::Backend::Metal {
+                return None;
+            }
+            // SAFETY: downcast to the Metal HAL device; the guard borrows
+            // self.device and lives until end of scope, so raw_device() is
+            // valid for the property reads below.
+            let hal_device = unsafe { self.device.as_hal::<wgpu::hal::api::Metal>()? };
+            let raw = hal_device.raw_device();
+            // recommendedMaxWorkingSetSize is the budget beyond which the GPU
+            // starts swapping - a silent slowdown on unified-memory Apple
+            // Silicon (no hard OOM), a hard limit on Intel dGPUs. Treating it
+            // as "total" lets the pre-flight check fail fast before the pool
+            // pushes the app into swap.
+            let total = raw.recommended_max_working_set_size();
+            let used = raw.current_allocated_size() as u64;
+            return Some((total.saturating_sub(used), total));
+        }
         #[allow(unreachable_code)]
         None
     }
