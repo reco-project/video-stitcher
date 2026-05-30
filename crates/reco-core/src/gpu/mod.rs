@@ -107,6 +107,12 @@ pub struct GpuContext {
     pub(crate) queue: wgpu::Queue,
     /// Information about the selected adapter.
     pub(crate) adapter_info: wgpu::AdapterInfo,
+    /// The wgpu adapter, retained for backend-specific queries such as the
+    /// DXGI VRAM budget on Windows. `None` when the context is built from an
+    /// externally-owned device ([`Self::from_device_queue`]), which has no
+    /// adapter handle. Only read on Windows (DXGI budget query).
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    pub(crate) adapter: Option<wgpu::Adapter>,
 }
 
 impl GpuContext {
@@ -208,6 +214,7 @@ impl GpuContext {
             device,
             queue,
             adapter_info,
+            adapter: Some(adapter),
         })
     }
 
@@ -344,6 +351,7 @@ impl GpuContext {
             device,
             queue,
             adapter_info,
+            adapter: Some(adapter),
         };
         Ok((ctx, surface_info))
     }
@@ -381,12 +389,90 @@ impl GpuContext {
             device,
             queue,
             adapter_info,
+            adapter: None,
         }
     }
 
     /// The name of the selected GPU adapter (e.g. "NVIDIA GeForce RTX 5070").
     pub fn gpu_name(&self) -> &str {
         &self.adapter_info.name
+    }
+
+    /// Best-effort query of (free, total) VRAM in bytes for the selected
+    /// adapter, or `None` if this backend exposes no budget API.
+    ///
+    /// On Linux NVIDIA this uses the CUDA driver (`cuMemGetInfo`), whose
+    /// `free` figure is device-wide and therefore counts the decode pool
+    /// and TensorRT engine alongside the wgpu allocations. On Windows it
+    /// uses the DXGI budget (`IDXGIAdapter3::QueryVideoMemoryInfo`) via the
+    /// DX12 HAL adapter. Other backends return `None`; callers must fall
+    /// back to allocation-time OOM handling when this returns `None`. The
+    /// figure is a snapshot: it can shift as other processes allocate, so
+    /// it is a sizing aid, not a guarantee.
+    pub fn available_vram(&self) -> Option<(u64, u64)> {
+        #[cfg(target_os = "linux")]
+        {
+            if let Ok((free, total)) = crate::interop::cuda::cuda_mem_get_info() {
+                return Some((free as u64, total as u64));
+            }
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use windows::Win32::Graphics::Dxgi::{
+                DXGI_MEMORY_SEGMENT_GROUP, DXGI_MEMORY_SEGMENT_GROUP_LOCAL,
+                DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL,
+            };
+            // The DXGI budget API is reachable only through the DX12 backend.
+            if self.adapter_info.backend != wgpu::Backend::Dx12 {
+                return None;
+            }
+            let adapter = self.adapter.as_ref()?;
+            // SAFETY: downcast to the DX12 HAL adapter; the returned guard
+            // borrows `adapter` and lives until the end of this scope, so the
+            // `&DxgiAdapter` from raw_adapter() stays valid for the query.
+            let hal_adapter = unsafe { adapter.as_hal::<wgpu::hal::api::Dx12>()? };
+            let dxgi = hal_adapter.raw_adapter();
+            let query = |group: DXGI_MEMORY_SEGMENT_GROUP| -> Option<(u64, u64)> {
+                let info = dxgi.query_video_memory_info(group).ok()?;
+                Some((info.Budget.saturating_sub(info.CurrentUsage), info.Budget))
+            };
+            // wgpu allocates GpuOnly textures against the LOCAL segment. On
+            // discrete GPUs that is dedicated VRAM. On integrated/UMA parts
+            // (e.g. AMD iGPUs) the real budget can live in NON_LOCAL (shared
+            // system RAM), so consult both and keep the larger budget - the
+            // allocation-time catch handles any over-estimate.
+            let local = query(DXGI_MEMORY_SEGMENT_GROUP_LOCAL);
+            if self.adapter_info.device_type == wgpu::DeviceType::IntegratedGpu {
+                let non_local = query(DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL);
+                return match (local, non_local) {
+                    (Some(l), Some(nl)) => Some(if nl.1 > l.1 { nl } else { l }),
+                    (l, None) => l,
+                    (None, nl) => nl,
+                };
+            }
+            return local;
+        }
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        {
+            if self.adapter_info.backend != wgpu::Backend::Metal {
+                return None;
+            }
+            // SAFETY: downcast to the Metal HAL device; the guard borrows
+            // self.device and lives until end of scope, so raw_device() is
+            // valid for the property reads below.
+            let hal_device = unsafe { self.device.as_hal::<wgpu::hal::api::Metal>()? };
+            let raw = hal_device.raw_device();
+            // recommendedMaxWorkingSetSize is the budget beyond which the GPU
+            // starts swapping - a silent slowdown on unified-memory Apple
+            // Silicon (no hard OOM), a hard limit on Intel dGPUs. Treating it
+            // as "total" lets the pre-flight check fail fast before the pool
+            // pushes the app into swap.
+            let total = raw.recommended_max_working_set_size();
+            let used = raw.current_allocated_size() as u64;
+            return Some((total.saturating_sub(used), total));
+        }
+        #[allow(unreachable_code)]
+        None
     }
 
     /// The GPU backend name (e.g. "Vulkan", "Dx12", "Metal").

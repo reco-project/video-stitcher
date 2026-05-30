@@ -369,6 +369,30 @@ impl StitchPipeline {
         self.render_to_target_gpu(yaw, pitch)
     }
 
+    /// Create a texture bind group from Y + UV textures.
+    pub fn create_texture_bind_group(
+        &self,
+        y_texture: &wgpu::Texture,
+        uv_texture: &wgpu::Texture,
+        label: &str,
+    ) -> wgpu::BindGroup {
+        self.renderer
+            .create_texture_bind_group(y_texture, uv_texture, label)
+    }
+
+    /// Render from pre-built bind groups (VRAM pool path).
+    pub fn render_with_bind_groups(
+        &mut self,
+        left_bg: &wgpu::BindGroup,
+        right_bg: &wgpu::BindGroup,
+        yaw: f32,
+        pitch: f32,
+    ) -> wgpu::CommandBuffer {
+        self.renderer.set_left_bind_group(left_bg.clone());
+        self.renderer.set_right_bind_group(right_bg.clone());
+        self.render_to_target_gpu(yaw, pitch)
+    }
+
     /// Render from imported GPU textures (e.g. Metal/VideoToolbox zero-copy).
     ///
     /// Takes raw Y + UV texture references for each camera, creates bind groups,

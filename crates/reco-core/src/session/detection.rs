@@ -366,65 +366,6 @@ impl DetectionPipeline {
         detections
     }
 
-    /// Run detection from raw CUDA NV12 pointers (D3D11VA staging path).
-    #[cfg(target_os = "windows")]
-    pub(super) fn run_gpu_detection_raw(
-        &mut self,
-        left_y: u64,
-        left_uv: u64,
-        right_y: u64,
-        right_uv: u64,
-        pitch: usize,
-        width: u32,
-        height: u32,
-        left_rotation: i32,
-        right_rotation: i32,
-    ) -> Vec<Detection> {
-        let Some(ref mut detector) = self.detector else {
-            return Vec::new();
-        };
-        crate::profile_scope!("gpu_detect_d3d11va");
-
-        let left_frame = crate::detect::detector::GpuNv12Frame {
-            y_ptr: left_y,
-            uv_ptr: left_uv,
-            y_pitch: pitch,
-            uv_pitch: pitch,
-            width,
-            height,
-            rotation: left_rotation,
-            is_10bit: false,
-        };
-        let right_frame = crate::detect::detector::GpuNv12Frame {
-            y_ptr: right_y,
-            uv_ptr: right_uv,
-            y_pitch: pitch,
-            uv_pitch: pitch,
-            width,
-            height,
-            rotation: right_rotation,
-            is_10bit: false,
-        };
-
-        let run = |det: &mut Box<dyn UnifiedDetector>,
-                   camera: CameraId,
-                   gpu_frame: crate::detect::detector::GpuNv12Frame|
-         -> Vec<Detection> {
-            match det.detect(camera, &DetectorFrame::Cuda(gpu_frame)) {
-                Ok(v) => v,
-                Err(e) => {
-                    log::warn!("detector '{}' {camera:?}: {e}", det.name());
-                    Vec::new()
-                }
-            }
-        };
-
-        let mut detections = Vec::new();
-        detections.extend(run(detector, CameraId::Left, left_frame));
-        detections.extend(run(detector, CameraId::Right, right_frame));
-        detections
-    }
-
     /// Run detection on Metal-resident CVPixelBuffer stereo frames.
     ///
     /// Dispatches through [`DetectorFrame::Metal`] which the backend
@@ -513,37 +454,6 @@ impl DetectionPipeline {
         detections
     }
 
-    #[allow(dead_code)]
-    pub(super) fn run_detection_preprocessed(
-        &mut self,
-        left_data: &[f32],
-        right_data: &[f32],
-        input_size: u32,
-        src_width: u32,
-        src_height: u32,
-    ) -> Vec<Detection> {
-        let Some(ref mut detector) = self.detector else {
-            return Vec::new();
-        };
-        crate::profile_scope!("detect_preprocessed");
-
-        let mut detections = Vec::new();
-        for (camera, data) in [(CameraId::Left, left_data), (CameraId::Right, right_data)] {
-            let frame = DetectorFrame::PreprocessedChw {
-                data,
-                input_size,
-                src_width,
-                src_height,
-            };
-            match detector.detect(camera, &frame) {
-                Ok(v) => detections.extend(v),
-                Err(e) => {
-                    log::warn!("detector '{}' {camera:?}: {e}", detector.name());
-                }
-            }
-        }
-        detections
-    }
 }
 
 #[cfg(test)]

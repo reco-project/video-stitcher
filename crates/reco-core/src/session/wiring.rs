@@ -115,11 +115,6 @@ impl StitchSession {
         self.ball_tracker = Some(tracker);
     }
 
-    /// Remove the currently attached ball tracker.
-    pub fn clear_ball_tracker(&mut self) {
-        self.ball_tracker = None;
-    }
-
     /// Attach a multi-entity player tracker. Mirror of
     /// [`StitchCore::set_player_tracker`](crate::core::StitchCore::set_player_tracker).
     pub fn set_player_tracker(&mut self, tracker: Box<dyn crate::detect::tracker::Tracker>) {
@@ -130,11 +125,6 @@ impl StitchSession {
         self.player_tracker = Some(tracker);
     }
 
-    /// Remove the currently attached player tracker.
-    pub fn clear_player_tracker(&mut self) {
-        self.player_tracker = None;
-    }
-
     /// Attach a panner. When set, the tracker/panner path owns
     /// pose resolution each frame; without a panner the pose stays at
     /// the pipeline default.
@@ -143,10 +133,9 @@ impl StitchSession {
         self.panner = Some(panner);
     }
 
-    /// Remove the currently attached panner.
-    pub fn clear_panner(&mut self) {
-        log::info!("StitchSession: panner detached");
-        self.panner = None;
+    /// Set the lookahead buffer depth in frames.
+    pub fn set_lookahead(&mut self, frames: usize) {
+        self.lookahead_frames = frames;
     }
 
     /// Attach a stacked-video replay recorder.

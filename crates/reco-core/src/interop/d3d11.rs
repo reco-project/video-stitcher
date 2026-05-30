@@ -75,12 +75,12 @@ impl From<D3d11InteropError> for crate::session::types::SessionError {
 /// the source texture, so all D3D11 operations stay on a single device.
 struct StagingState {
     context: ID3D11DeviceContext,
-    staging: [ID3D11Texture2D; 4],
-    _wgpu_textures: [wgpu::Texture; 4],
-    y_views: [wgpu::TextureView; 4],
-    uv_views: [wgpu::TextureView; 4],
+    staging: Vec<ID3D11Texture2D>,
+    _wgpu_textures: Vec<wgpu::Texture>,
+    y_views: Vec<wgpu::TextureView>,
+    uv_views: Vec<wgpu::TextureView>,
     event_query: ID3D11Query,
-    cuda_nv12: Option<[crate::interop::cuda::CudaImportedNv12; 4]>,
+    cuda_nv12: Option<Vec<crate::interop::cuda::CudaImportedNv12>>,
 }
 
 /// Double-buffered NV12 staging pool for D3D11VA -> wgpu zero-copy.
@@ -99,11 +99,11 @@ pub struct D3d11StagingPool {
     wgpu_device: wgpu::Device,
     width: u32,
     height: u32,
+    /// Number of staging slots.
+    n_slots: usize,
     /// Pixel format (NV12 8-bit or P010 10-bit).
     pixel_format: crate::render::renderer::GpuPixelFormat,
     /// Import D3D11 textures into CUDA for GPU-resident detection.
-    /// Only needed when the detector uses CUDA EP (OrtGpuDetector).
-    /// CUDA imports lock D3D11 textures which blocks wgpu compute access.
     enable_cuda: bool,
     /// Lazily initialized on first `stage_frame` call.
     state: Option<StagingState>,
@@ -119,6 +119,7 @@ impl D3d11StagingPool {
         gpu: &GpuContext,
         width: u32,
         height: u32,
+        n_slots: usize,
         enable_cuda: bool,
         pixel_format: crate::render::renderer::GpuPixelFormat,
     ) -> Result<Self, D3d11InteropError> {
@@ -130,6 +131,7 @@ impl D3d11StagingPool {
             wgpu_device: gpu.device().clone(),
             width,
             height,
+            n_slots,
             pixel_format,
             enable_cuda,
             state: None,
@@ -201,18 +203,36 @@ impl D3d11StagingPool {
                 as u32,
         };
 
-        let mut staging_textures: Vec<ID3D11Texture2D> = Vec::with_capacity(4);
-        let mut wgpu_textures: Vec<wgpu::Texture> = Vec::with_capacity(4);
-        let mut y_views: Vec<wgpu::TextureView> = Vec::with_capacity(4);
-        let mut uv_views: Vec<wgpu::TextureView> = Vec::with_capacity(4);
+        let n = self.n_slots;
+        let mut staging_textures: Vec<ID3D11Texture2D> = Vec::with_capacity(n);
+        let mut wgpu_textures: Vec<wgpu::Texture> = Vec::with_capacity(n);
+        let mut y_views: Vec<wgpu::TextureView> = Vec::with_capacity(n);
+        let mut uv_views: Vec<wgpu::TextureView> = Vec::with_capacity(n);
         let mut cuda_imports: Vec<Option<crate::interop::cuda::CudaImportedNv12>> =
-            Vec::with_capacity(4);
+            Vec::with_capacity(n);
 
-        for i in 0..4 {
+        // VRAM sizing for descriptive OOM errors (mirrors VramPool::new).
+        // Each slot is one NV12/P010 texture: Y (full res) + UV (half res).
+        let per_slot_bytes = (self.width as usize * self.height as usize * 3 / 2)
+            * self.pixel_format.bytes_per_sample();
+        let per_slot_mb = per_slot_bytes as f64 / (1024.0 * 1024.0);
+        let total_mb = (per_slot_bytes * n) as f64 / (1024.0 * 1024.0);
+
+        for i in 0..n {
             let staging: ID3D11Texture2D = unsafe {
                 let mut tex = None;
-                device.CreateTexture2D(&desc, None, Some(&mut tex))?;
-                tex.ok_or_else(|| D3d11InteropError::D3d11("CreateTexture2D returned None".into()))?
+                device
+                    .CreateTexture2D(&desc, None, Some(&mut tex))
+                    .map_err(|e| {
+                        D3d11InteropError::D3d11(format!(
+                            "staging VRAM allocation failed at slot {i}/{n} \
+                             (~{per_slot_mb:.0} MB/slot, ~{total_mb:.0} MB total). \
+                             Reduce --lookahead or use --no-zero-copy. ({e})"
+                        ))
+                    })?;
+                tex.ok_or_else(|| {
+                    D3d11InteropError::D3d11(format!("CreateTexture2D returned None at slot {i}/{n}"))
+                })?
             };
 
             // Get shared NT handle (kept open for both DX12 and CUDA import).
@@ -220,15 +240,31 @@ impl D3d11StagingPool {
             let handle: HANDLE =
                 unsafe { dxgi_resource.CreateSharedHandle(None, GENERIC_ALL.0, None)? };
 
-            // Import into wgpu via DX12 HAL.
-            let wgpu_texture = unsafe {
+            // Import into wgpu via DX12 HAL. create_texture_from_hal can panic
+            // through wgpu's uncaptured-error handler on a bad/post-OOM device
+            // state, so guard it with catch_unwind (mirrors VramPool::new).
+            let import_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
                 import_d3d11_shared_handle(
                     &self.wgpu_device,
                     handle,
                     self.width,
                     self.height,
                     self.pixel_format.wgpu_format(),
-                )?
+                )
+            }));
+            let wgpu_texture = match import_result {
+                Ok(Ok(tex)) => tex,
+                Ok(Err(e)) => return Err(e),
+                Err(_) => {
+                    unsafe {
+                        let _ = CloseHandle(handle);
+                    }
+                    return Err(D3d11InteropError::D3d11(format!(
+                        "staging texture import (wgpu) failed at slot {i}/{n} \
+                         (~{per_slot_mb:.0} MB/slot, ~{total_mb:.0} MB total). \
+                         Reduce --lookahead or use --no-zero-copy."
+                    )));
+                }
             };
 
             // Import into CUDA for AI detection (NVIDIA only, non-fatal).
@@ -284,23 +320,16 @@ impl D3d11StagingPool {
         }
 
         log::info!(
-            "D3D11VA staging pool ready: {}x{} {:?}, 4 slots (same-device)",
+            "D3D11VA staging pool ready: {}x{} {:?}, {n} slots (same-device)",
             self.width,
             self.height,
             self.pixel_format
         );
 
-        // CUDA imports lock D3D11 textures, blocking wgpu compute access.
-        // Only enable when the detector actually needs CUDA pointers.
         let cuda_nv12 = if self.enable_cuda && cuda_imports.iter().all(|c| c.is_some()) {
-            let arr: [crate::interop::cuda::CudaImportedNv12; 4] = cuda_imports
-                .into_iter()
-                .map(|c| c.unwrap())
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap();
+            let v: Vec<_> = cuda_imports.into_iter().map(|c| c.unwrap()).collect();
             log::info!("CUDA detection enabled on D3D11VA staging textures");
-            Some(arr)
+            Some(v)
         } else {
             log::info!(
                 "CUDA detection not available on D3D11VA staging (non-NVIDIA or CUDA not found)"
@@ -310,10 +339,10 @@ impl D3d11StagingPool {
 
         self.state = Some(StagingState {
             context,
-            staging: staging_textures.try_into().unwrap(),
-            _wgpu_textures: wgpu_textures.try_into().unwrap(),
-            y_views: y_views.try_into().unwrap(),
-            uv_views: uv_views.try_into().unwrap(),
+            staging: staging_textures,
+            _wgpu_textures: wgpu_textures,
+            y_views,
+            uv_views,
             cuda_nv12,
             event_query,
         });
@@ -338,9 +367,10 @@ impl D3d11StagingPool {
         if src_texture.is_null() {
             return Err(D3d11InteropError::StagingCopy("null source texture".into()));
         }
-        if slot >= 4 {
+        if slot >= self.n_slots {
             return Err(D3d11InteropError::StagingCopy(format!(
-                "slot {slot} out of range (0..4)"
+                "slot {slot} out of range (0..{})",
+                self.n_slots
             )));
         }
 
@@ -426,6 +456,11 @@ impl D3d11StagingPool {
             .as_ref()
             .expect("staging pool not initialized")
             .uv_views[slot]
+    }
+
+    /// Number of staging slots.
+    pub fn n_slots(&self) -> usize {
+        self.n_slots
     }
 
     /// CUDA NV12 pointers for the given slot, if CUDA import succeeded.

@@ -235,6 +235,7 @@ struct CudaFunctions {
     cu_mem_free_v2: unsafe extern "C" fn(CUdeviceptr) -> CUresult,
     cu_memcpy_dtoh_v2: unsafe extern "C" fn(*mut c_void, CUdeviceptr, usize) -> CUresult,
     cu_memset_d8_v2: unsafe extern "C" fn(CUdeviceptr, u8, usize) -> CUresult,
+    cu_mem_get_info_v2: unsafe extern "C" fn(*mut usize, *mut usize) -> CUresult,
 
     // External memory (D3D11 → CUDA sharing on Windows)
     #[cfg(target_os = "windows")]
@@ -353,6 +354,7 @@ impl CudaFunctions {
                 cu_memcpy_2d_v2: load_sym!(lib_cuda, "cuMemcpy2D_v2"),
                 cu_mem_alloc_v2: load_sym!(lib_cuda, "cuMemAlloc_v2"),
                 cu_mem_free_v2: load_sym!(lib_cuda, "cuMemFree_v2"),
+                cu_mem_get_info_v2: load_sym!(lib_cuda, "cuMemGetInfo_v2"),
                 cu_memcpy_dtoh_v2: load_sym!(lib_cuda, "cuMemcpyDtoH_v2"),
                 cu_memset_d8_v2: load_sym!(lib_cuda, "cuMemsetD8_v2"),
                 #[cfg(target_os = "windows")]
@@ -591,6 +593,28 @@ pub fn cuda_synchronize() -> Result<(), CudaInteropError> {
         check_cuda("cuCtxSynchronize", (cuda.cu_ctx_synchronize)())?;
     }
     Ok(())
+}
+
+/// Query (free, total) device memory in bytes via the CUDA driver.
+///
+/// `free` is the OS-wide free device memory (matches `nvidia-smi`), so
+/// on NVIDIA it reflects the COMBINED footprint of the wgpu/Vulkan
+/// allocations, the NVDEC decode pool, and the TensorRT engine - the
+/// honest budget for sizing the lookahead VRAM pool (a Vulkan-only
+/// `VK_EXT_memory_budget` query would miss the CUDA-side allocations).
+/// Requires a current CUDA context, which this ensures internally.
+pub fn cuda_mem_get_info() -> Result<(usize, usize), CudaInteropError> {
+    let cuda = cuda()?;
+    cuda_ensure_context()?;
+    let mut free: usize = 0;
+    let mut total: usize = 0;
+    unsafe {
+        check_cuda(
+            "cuMemGetInfo_v2",
+            (cuda.cu_mem_get_info_v2)(&mut free, &mut total),
+        )?;
+    }
+    Ok((free, total))
 }
 
 /// Ensure a CUDA context is current on this thread.

@@ -9,22 +9,14 @@
 //! *are*, where should the camera *look*?"
 //!
 //! Implementations (shipped in `reco-autocam`):
-//! - `FieldPanner` - blends ball with the `world.players` cluster
-//!   centroid, widening FOV when the action spreads.
-//! - `SweepPanner` - debug-only, ignores world state and slowly
-//!   pans left-right within coverage bounds.
-//!
-//! # Composition
-//!
-//! Panners compose via decorators in `reco-autocam`:
-//!
-//! ```text
-//! FieldPanner -> Smoother -> DeadZone
-//! ```
-//!
-//! Each decorator is itself a `Panner` wrapping an inner `Panner`.
-//! Smoothing, anticipation, and dead-zone handling all live at this
-//! layer because they transform camera *motion*, not detections.
+//! - `FieldPanner` - production player+ball panner: robust cluster
+//!   centroid, dynamic FOV, ball-presence hysteresis, velocity-clamped
+//!   chase.
+//! - `LookaheadPanner` - future-aware ball/field panner (see
+//!   [`Panner::decide_with_lookahead`]) with a pre-smooth + dead-zone chase.
+//! - `SweepPanner` - debug-only, ignores world state and slowly pans
+//!   left-right within coverage bounds.
+//! - `FilePanner` - replays a precomputed pose trajectory from CSV.
 
 use super::director::{MappedDetection, ViewportPosition};
 use super::pipeline_event::{PipelineEvent, PipelineEventSink};
@@ -74,6 +66,21 @@ pub trait Panner: Send {
     /// Decide where the virtual camera should look this frame.
     fn decide(&mut self, world: &WorldState, ctx: &PanContext<'_>) -> ViewportPosition;
 
+    /// Decide with access to future WorldStates from the lookahead buffer.
+    ///
+    /// `future` contains WorldStates for frames after the current one,
+    /// ordered nearest-to-farthest. Empty when lookahead is disabled.
+    /// Default delegates to [`decide`](Self::decide), ignoring the future.
+    fn decide_with_lookahead(
+        &mut self,
+        world: &WorldState,
+        future: &[WorldState],
+        ctx: &PanContext<'_>,
+    ) -> ViewportPosition {
+        let _ = future;
+        self.decide(world, ctx)
+    }
+
     /// Optional debug snapshot from the last `decide()` call.
     fn debug_event(&self, _frame_index: u64) -> Option<PipelineEvent> {
         None
@@ -84,6 +91,7 @@ pub trait Panner: Send {
 /// `clippy::too_many_arguments`. The mutable pose + the three
 /// `Option<&mut Box<dyn …>>` slots are the only moving parts per
 /// caller; everything else fits here.
+#[derive(Clone, Copy)]
 pub(crate) struct DispatchContext<'a> {
     /// Raw mapped detections the trackers should consume this frame.
     pub detections: &'a [MappedDetection],
@@ -123,19 +131,17 @@ pub(crate) struct DispatchContext<'a> {
 /// of the Step 6 trace vocabulary.
 pub(crate) struct DispatchResult {
     pub pose: ViewportPosition,
+    pub world_state: WorldState,
     pub active_tracks: u32,
     pub ball_present: bool,
 }
 
-pub(crate) fn dispatch(
-    panner: Option<&mut Box<dyn Panner>>,
+/// Run trackers only (no panner). Returns the WorldState for buffering.
+pub(crate) fn dispatch_detect_only(
     player_tracker: Option<&mut Box<dyn Tracker>>,
     ball_tracker: Option<&mut Box<dyn Tracker>>,
-    previous_panner_pose: &mut ViewportPosition,
-    mut event_sink: Option<&mut (dyn PipelineEventSink + '_)>,
     ctx: DispatchContext<'_>,
-) -> Option<DispatchResult> {
-    let panner = panner?;
+) -> WorldState {
     let mut world = WorldState::default();
 
     // Order matters: players first, then ball. The ball tracker's
@@ -157,6 +163,23 @@ pub(crate) fn dispatch(
         }
         world.ball = ents.into_iter().next();
     }
+
+    world
+}
+
+pub(crate) fn dispatch(
+    panner: Option<&mut Box<dyn Panner>>,
+    player_tracker: Option<&mut Box<dyn Tracker>>,
+    ball_tracker: Option<&mut Box<dyn Tracker>>,
+    previous_panner_pose: &mut ViewportPosition,
+    mut event_sink: Option<&mut (dyn PipelineEventSink + '_)>,
+    future_world_states: &[WorldState],
+    ctx: DispatchContext<'_>,
+) -> Option<DispatchResult> {
+    let panner = panner?;
+    // Build the WorldState via the shared tracker-run path (same as the
+    // lookahead produce phase) so the two can never silently diverge.
+    let world = dispatch_detect_only(player_tracker, ball_tracker, ctx);
 
     // Trace: WorldState (only pays for the clone when a sink exists).
     if let Some(sink) = event_sink.as_mut() {
@@ -180,7 +203,7 @@ pub(crate) fn dispatch(
         .as_ref()
         .is_some_and(|b| !matches!(b.state, super::tracker::TrackState::Lost));
 
-    let pose = panner.decide(&world, &pan_ctx);
+    let pose = panner.decide_with_lookahead(&world, future_world_states, &pan_ctx);
     *previous_panner_pose = pose;
 
     if let Some(sink) = event_sink.as_mut() {
@@ -195,6 +218,7 @@ pub(crate) fn dispatch(
 
     Some(DispatchResult {
         pose,
+        world_state: world,
         active_tracks,
         ball_present,
     })

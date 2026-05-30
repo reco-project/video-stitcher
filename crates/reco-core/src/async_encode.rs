@@ -162,9 +162,14 @@ impl AsyncEncodeThread {
 
 impl Drop for AsyncEncodeThread {
     fn drop(&mut self) {
-        // If finish() wasn't called explicitly, join the thread on drop.
-        // The tx is dropped by Drop order (before this), so the thread
-        // will see disconnect and exit.
+        // Drop the sender (and pool receiver) BEFORE joining. Struct
+        // fields are dropped AFTER this body runs, so `self.tx` is still
+        // alive here; if we joined first, the encode thread's `rx.recv()`
+        // would never see a disconnect and the join would block forever.
+        // This matters on early-error paths (e.g. a pre-flight VRAM budget
+        // failure) where `finish()` was never called.
+        self.tx.take();
+        self.pool_rx.take();
         if let Some(handle) = self.handle.take() {
             let _ = handle.join();
         }

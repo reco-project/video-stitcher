@@ -174,11 +174,12 @@ enum Commands {
         #[arg(long, default_value_t = 1)]
         detection_interval: u64,
 
-        /// Director lead time in seconds. Buffers decoded frames and runs
-        /// detection ahead of rendering so the camera anticipates action.
-        /// Typical value: 0.5 (half a second). Only works with CPU path.
+        /// Lookahead buffer in seconds. Decodes N frames ahead so the
+        /// panner can see future ball/player positions. Works with GPU
+        /// zero-copy decode: frames are held in a VRAM pool, not the
+        /// decode slots. 0 = disabled. Typical: 1.0-2.0.
         #[arg(long, default_value_t = 0.0)]
-        lead_time: f64,
+        lookahead: f64,
 
         /// Tracking mode: "ball" (single ball), "field" (ball + players).
         /// Use "field" with a COCO model for robust football tracking.
@@ -239,6 +240,11 @@ enum Commands {
         /// decisions) to a JSONL file for offline analysis.
         #[arg(long)]
         events: Option<String>,
+
+        /// Precomputed trajectory CSV (frame,yaw,pitch,fov). Overrides
+        /// AI tracking with poses read from the file.
+        #[arg(long)]
+        trajectory: Option<String>,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -727,7 +733,7 @@ fn main() -> anyhow::Result<()> {
             sync_offset,
             model,
             detection_interval,
-            lead_time,
+            lookahead,
             tracking,
             quality_value,
             preset,
@@ -737,6 +743,7 @@ fn main() -> anyhow::Result<()> {
             allow_no_tracking,
             no_zero_copy,
             events,
+            trajectory,
         } => stitch::run_stitch(
             stitch::StitchArgs {
                 left: &left,
@@ -755,7 +762,7 @@ fn main() -> anyhow::Result<()> {
                 sync_offset,
                 model_path: model.as_deref(),
                 detection_interval,
-                lead_time,
+                lookahead,
                 tracking_mode: &tracking,
                 quality_value,
                 preset,
@@ -765,6 +772,7 @@ fn main() -> anyhow::Result<()> {
                 allow_no_tracking,
                 no_zero_copy,
                 events_path: events.as_deref(),
+                trajectory_path: trajectory.as_deref(),
             },
             &interrupted,
         ),

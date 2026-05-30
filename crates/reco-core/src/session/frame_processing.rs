@@ -96,122 +96,130 @@ impl StitchSession {
         ctx: &FrameLoopContext,
     ) -> Result<(), SessionError> {
         let _ = &ctx;
-        let scheduled_detection =
-            self.detection.has_detector() && self.detection.should_detect(self.frame_count);
 
-        // ── 1. Detect ──────────────────────────────────────────────
-        let detect_t0 = std::time::Instant::now();
-        let ran_detection = match frame {
-            #[cfg(target_os = "linux")]
-            StereoFrame::GpuResident {
-                left_slot,
-                right_slot,
-            } => {
-                if self.detection.needs_cuda_frames() {
-                    if self.frame_count == 0 {
-                        log::info!("GpuResident detection: CUDA path (TensorRT/ORT-CUDA)");
-                    }
-                    if let Some((left_buf, right_buf)) = &ctx.gpu_buf_info {
-                        self.detect_and_update_director_gpu(
-                            left_buf,
-                            right_buf,
-                            *left_slot,
-                            *right_slot,
-                            elapsed,
-                        )?;
+        // In the buffered lookahead path, detection already ran during
+        // the produce phase. Skip it here and go straight to pose.
+        let (ran_detection, detect_time) = if self.skip_detection {
+            (false, std::time::Duration::ZERO)
+        } else {
+            let scheduled_detection =
+                self.detection.has_detector() && self.detection.should_detect(self.frame_count);
+            let detect_t0 = std::time::Instant::now();
+            let ran_detection = match frame {
+                #[cfg(target_os = "linux")]
+                StereoFrame::GpuResident {
+                    left_slot,
+                    right_slot,
+                } => {
+                    if self.detection.needs_cuda_frames() {
+                        if self.frame_count == 0 {
+                            log::info!("GpuResident detection: CUDA path (TensorRT/ORT-CUDA)");
+                        }
+                        if let Some((left_buf, right_buf)) = &ctx.gpu_buf_info {
+                            self.detect_and_update_director_gpu(
+                                left_buf,
+                                right_buf,
+                                *left_slot,
+                                *right_slot,
+                                elapsed,
+                            )?;
+                            scheduled_detection
+                        } else {
+                            if self.frame_count == 0 {
+                                log::warn!(
+                                    "GpuResident frame but no gpu_buf_info - detection disabled, \
+                                 director advancing without detections"
+                                );
+                            }
+                            self.update_director(elapsed)?;
+                            false
+                        }
+                    } else if let Some(ref views) = self.gpu_shared_views {
+                        if self.frame_count == 0 {
+                            log::info!(
+                                "GpuResident detection: wgpu shared texture views (ORT/wgpu preprocess)"
+                            );
+                        }
+                        let ls = *left_slot as usize;
+                        let rs = *right_slot as usize;
+                        let (w, h) = self.core.pipeline().source_info();
+                        let lr = self.left_rotation;
+                        let rr = self.right_rotation;
+                        if scheduled_detection {
+                            let detections = self.detection.run_detection_wgpu_nv12(
+                                &views[ls * 2],
+                                &views[ls * 2 + 1],
+                                &views[4 + rs * 2],
+                                &views[4 + rs * 2 + 1],
+                                w,
+                                h,
+                                lr,
+                                rr,
+                            );
+                            self.detection.last_detections = self.map_detections(detections);
+                        }
+                        self.fire_sink_and_update_director(elapsed, scheduled_detection)?;
                         scheduled_detection
                     } else {
                         if self.frame_count == 0 {
                             log::warn!(
-                                "GpuResident frame but no gpu_buf_info - detection disabled, \
-                                 director advancing without detections"
+                                "GpuResident frame but no shared views - detection disabled"
                             );
                         }
                         self.update_director(elapsed)?;
                         false
                     }
-                } else if let Some(ref views) = self.gpu_shared_views {
-                    if self.frame_count == 0 {
-                        log::info!(
-                            "GpuResident detection: wgpu shared texture views (ORT/wgpu preprocess)"
-                        );
-                    }
-                    let ls = *left_slot as usize;
-                    let rs = *right_slot as usize;
-                    let (w, h) = self.core.pipeline().source_info();
-                    let lr = self.left_rotation;
-                    let rr = self.right_rotation;
-                    if scheduled_detection {
-                        let detections = self.detection.run_detection_wgpu_nv12(
-                            &views[ls * 2],
-                            &views[ls * 2 + 1],
-                            &views[4 + rs * 2],
-                            &views[4 + rs * 2 + 1],
-                            w,
-                            h,
-                            lr,
-                            rr,
-                        );
-                        self.detection.last_detections = self.map_detections(detections);
-                    }
-                    self.fire_sink_and_update_director(elapsed, scheduled_detection)?;
-                    scheduled_detection
-                } else {
-                    if self.frame_count == 0 {
-                        log::warn!("GpuResident frame but no shared views - detection disabled");
-                    }
-                    self.update_director(elapsed)?;
-                    false
                 }
-            }
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
-            StereoFrame::MetalResident { left, right } => {
-                self.detect_and_update_director_metal(
-                    left.as_ptr(),
-                    right.as_ptr(),
-                    left.width(),
-                    left.height(),
-                    elapsed,
-                )?;
-                scheduled_detection
-            }
-            #[cfg(target_os = "windows")]
-            StereoFrame::D3d11Resident { .. } => {
-                if self.d3d11_staging_pool.is_some() {
-                    let left_slot = self.frame_count as usize % 2;
-                    let right_slot = left_slot + 2;
-                    let (w, h) = self.core.pipeline().source_info();
-                    let lr = self.left_rotation;
-                    let rr = self.right_rotation;
-                    let should_detect = self.detection.has_detector()
-                        && self.detection.should_detect(self.frame_count);
-                    if should_detect {
-                        let pool = self.d3d11_staging_pool.as_ref().unwrap();
-                        let detections = self.detection.run_detection_wgpu_nv12(
-                            pool.y_view(left_slot),
-                            pool.uv_view(left_slot),
-                            pool.y_view(right_slot),
-                            pool.uv_view(right_slot),
-                            w,
-                            h,
-                            lr,
-                            rr,
-                        );
-                        self.detection.last_detections = self.map_detections(detections);
-                    }
-                    self.fire_sink_and_update_director(elapsed, should_detect)?;
+                #[cfg(any(target_os = "macos", target_os = "ios"))]
+                StereoFrame::MetalResident { left, right } => {
+                    self.detect_and_update_director_metal(
+                        left.as_ptr(),
+                        right.as_ptr(),
+                        left.width(),
+                        left.height(),
+                        elapsed,
+                    )?;
                     scheduled_detection
-                } else {
-                    self.update_director(elapsed)?;
-                    false
                 }
-            }
-            _ => {
-                self.detect_and_update_director(frame, elapsed)?;
-                scheduled_detection
-            }
+                #[cfg(target_os = "windows")]
+                StereoFrame::D3d11Resident { .. } => {
+                    if self.d3d11_staging_pool.is_some() {
+                        let left_slot = self.frame_count as usize % 2;
+                        let right_slot = left_slot + 2;
+                        let (w, h) = self.core.pipeline().source_info();
+                        let lr = self.left_rotation;
+                        let rr = self.right_rotation;
+                        let should_detect = self.detection.has_detector()
+                            && self.detection.should_detect(self.frame_count);
+                        if should_detect {
+                            let pool = self.d3d11_staging_pool.as_ref().unwrap();
+                            let detections = self.detection.run_detection_wgpu_nv12(
+                                pool.y_view(left_slot),
+                                pool.uv_view(left_slot),
+                                pool.y_view(right_slot),
+                                pool.uv_view(right_slot),
+                                w,
+                                h,
+                                lr,
+                                rr,
+                            );
+                            self.detection.last_detections = self.map_detections(detections);
+                        }
+                        self.fire_sink_and_update_director(elapsed, should_detect)?;
+                        scheduled_detection
+                    } else {
+                        self.update_director(elapsed)?;
+                        false
+                    }
+                }
+                _ => {
+                    self.detect_and_update_director(frame, elapsed)?;
+                    scheduled_detection
+                }
+            };
+            let detect_time = detect_t0.elapsed();
+            (ran_detection, detect_time)
         };
-        let detect_time = detect_t0.elapsed();
 
         // ── 2. Pose ────────────────────────────────────────────────
         let pos = self.director_position();
@@ -235,29 +243,35 @@ impl StitchSession {
                 right_texture,
                 right_slice,
             } => {
-                // Ensure the previous wgpu render finished reading the
-                // staging texture before we overwrite it with the next
-                // D3D11 CopySubresourceRegion. Without this, Intel and
-                // NVIDIA drivers can return stale data (frame reordering).
-                let _ = self
-                    .core
-                    .gpu()
-                    .device()
-                    .poll(wgpu::PollType::wait_indefinitely());
-                let staging_t0 = std::time::Instant::now();
-                let first = self.stage_d3d11_frames(
-                    *left_texture,
-                    *left_slice,
-                    *right_texture,
-                    *right_slice,
-                )?;
-                upload_time = staging_t0.elapsed();
-                if first {
-                    // First D3D11VA frame has cross-API initialization artifacts.
-                    // Skip rendering it - the next frame will be the first output.
-                    return Ok(());
+                if let Some(staging_slot) = self.current_vram_slot {
+                    // Buffered path: staging was done during produce.
+                    // Render from the pre-staged slot.
+                    self.render_d3d11_from_slot(
+                        staging_slot,
+                        staging_slot + 1,
+                        pos.yaw,
+                        pos.pitch,
+                    )?;
+                } else {
+                    // Immediate path: stage and render now.
+                    let _ = self
+                        .core
+                        .gpu()
+                        .device()
+                        .poll(wgpu::PollType::wait_indefinitely());
+                    let staging_t0 = std::time::Instant::now();
+                    let first = self.stage_d3d11_frames(
+                        *left_texture,
+                        *left_slice,
+                        *right_texture,
+                        *right_slice,
+                    )?;
+                    upload_time = staging_t0.elapsed();
+                    if first {
+                        return Ok(());
+                    }
+                    self.render_d3d11_staged(pos.yaw, pos.pitch)?;
                 }
-                self.render_d3d11_staged(pos.yaw, pos.pitch)?;
             }
             _ => {
                 self.process_frame(frame, pos.yaw, pos.pitch)?;
@@ -432,6 +446,24 @@ impl StitchSession {
         yaw: f32,
         pitch: f32,
     ) -> Result<(), SessionError> {
+        // VRAM pool path: render from pool bind groups.
+        // Decode slots were already freed during produce.
+        if let Some(vram_idx) = self.current_vram_slot {
+            let pool = self
+                .vram_pool
+                .as_ref()
+                .expect("vram_pool must exist when current_vram_slot is set");
+            let left_bg = pool.left_bind_group(vram_idx);
+            let right_bg = pool.right_bind_group(vram_idx);
+            let render_buf = self
+                .core
+                .pipeline_mut()
+                .render_with_bind_groups(left_bg, right_bg, yaw, pitch);
+            self.submit_render_output(render_buf)?;
+            return Ok(());
+        }
+
+        // Shared texture path (non-buffered / immediate mode).
         let bind_groups = self.gpu_bind_groups.as_ref().ok_or_else(|| {
             SessionError::ZeroCopy(
                 "GPU bind groups not configured - call setup_gpu_source() before run()".into(),
@@ -491,16 +523,25 @@ impl StitchSession {
         if first_frame {
             let (w, h) = self.core.pipeline().source_info();
             let needs_cuda = self.detection.needs_cuda_frames();
+            // For lookahead, use 2x buffer depth slots (left+right per frame).
+            // Without lookahead, 4 slots (double-buffered stereo) suffice.
+            let n_slots = if self.lookahead_frames > 0 {
+                let post_smooth_half = (self.lookahead_frames / 2).max(1);
+                (self.lookahead_frames + post_smooth_half + 2) * 2
+            } else {
+                4
+            };
             match crate::interop::d3d11::D3d11StagingPool::new(
                 self.core.gpu(),
                 w,
                 h,
+                n_slots,
                 needs_cuda,
                 self.gpu_pixel_format,
             ) {
                 Ok(pool) => {
                     log::info!(
-                        "D3D11VA staging pool created: {}x{}, 4 {:?} slots",
+                        "D3D11VA staging pool created: {}x{}, {n_slots} {:?} slots",
                         w,
                         h,
                         self.gpu_pixel_format
@@ -521,7 +562,28 @@ impl StitchSession {
         Ok(first_frame)
     }
 
-    /// Render from already-staged D3D11VA views.
+    /// Render from specific D3D11 staging slots (buffered lookahead path).
+    #[cfg(target_os = "windows")]
+    fn render_d3d11_from_slot(
+        &mut self,
+        left_slot: usize,
+        right_slot: usize,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<(), SessionError> {
+        let pool = self.d3d11_staging_pool.as_ref().unwrap();
+        let render_buf = self.core.render_imported_views_at_pose(
+            pool.y_view(left_slot),
+            pool.uv_view(left_slot),
+            pool.y_view(right_slot),
+            pool.uv_view(right_slot),
+            yaw,
+            pitch,
+        );
+        self.submit_render_output(render_buf)
+    }
+
+    /// Render from already-staged D3D11VA views (immediate path).
     #[cfg(target_os = "windows")]
     fn render_d3d11_staged(&mut self, yaw: f32, pitch: f32) -> Result<(), SessionError> {
         let left_pool_slot = self.frame_count as usize % 2;
@@ -613,5 +675,182 @@ impl StitchSession {
         )?;
         self.frame_count += 1;
         Ok(nv12_data)
+    }
+
+    /// Copy a GPU-resident frame to the VRAM pool if available.
+    ///
+    /// Returns `Some(slot)` if the frame was copied to the pool (the
+    /// decode surface can be freed). Returns `None` for CPU frames
+    /// or when no pool is configured.
+    /// Copy a GPU-resident frame to a persistent buffer slot.
+    ///
+    /// On Linux: copies from shared CUDA/Vulkan textures to VramPool.
+    /// On Windows: stages D3D11 frame to an expanded staging pool slot.
+    /// Returns the slot index for rendering, or None for CPU frames.
+    pub(crate) fn copy_to_vram_pool(
+        &mut self,
+        frame: &StereoFrame,
+        produce_index: u64,
+    ) -> Result<Option<usize>, SessionError> {
+        self.copy_to_vram_pool_platform(frame, produce_index)
+    }
+
+    /// Release decode-pool slots back to the decode thread.
+    ///
+    /// Must be called only AFTER detection has finished reading the
+    /// decode slot. In the buffered produce path the frame is copied
+    /// into the VramPool, then detection reads the original decode
+    /// slot; releasing it earlier lets the decode thread overwrite the
+    /// slot mid-read (use-after-free on the shared GPU memory).
+    ///
+    /// No-op on platforms that do not use the GPU decode slot-free
+    /// channel (Windows D3D11 stages into a persistent pool; macOS
+    /// imports CVPixelBuffers).
+    pub(crate) fn release_gpu_decode_slot(&self, frame: &StereoFrame) {
+        #[cfg(target_os = "linux")]
+        {
+            if let StereoFrame::GpuResident {
+                left_slot,
+                right_slot,
+            } = frame
+                && let Some((ref left_tx, ref right_tx)) = self.gpu_slot_free_tx
+            {
+                let _ = left_tx.send(*left_slot);
+                let _ = right_tx.send(*right_slot);
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = frame;
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn copy_to_vram_pool_platform(
+        &mut self,
+        frame: &StereoFrame,
+        _produce_index: u64,
+    ) -> Result<Option<usize>, SessionError> {
+        let (ls, rs) = match frame {
+            StereoFrame::GpuResident {
+                left_slot,
+                right_slot,
+            } => (*left_slot as usize, *right_slot as usize),
+            _ => return Ok(None),
+        };
+        {
+            if let (Some(pool), Some(shared_tex)) =
+                (self.vram_pool.as_mut(), self.gpu_shared_textures.as_ref())
+            {
+                let slot = pool.acquire().ok_or_else(|| {
+                    SessionError::Config(format!(
+                        "VRAM pool exhausted ({} slots, {} available)",
+                        pool.capacity(),
+                        pool.available()
+                    ))
+                })?;
+                let gpu = self.core.pipeline().gpu();
+                pool.copy_from_textures(
+                    gpu,
+                    slot,
+                    &shared_tex[ls * 2],
+                    &shared_tex[ls * 2 + 1],
+                    &shared_tex[4 + rs * 2],
+                    &shared_tex[4 + rs * 2 + 1],
+                );
+                let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
+                // NOTE: the decode slot is NOT released here. Detection
+                // reads it after this copy (see `produce_one`), so the
+                // slot must stay held until `release_gpu_decode_slot` is
+                // called post-detection. Releasing it now would let the
+                // decode thread overwrite the slot mid-detection.
+                return Ok(Some(slot));
+            }
+        }
+        Ok(None)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn copy_to_vram_pool_platform(
+        &mut self,
+        frame: &StereoFrame,
+        produce_index: u64,
+    ) -> Result<Option<usize>, SessionError> {
+        if let StereoFrame::D3d11Resident {
+            left_texture,
+            left_slice,
+            right_texture,
+            right_slice,
+        } = frame
+        {
+            // Ensure the D3D11 staging pool is initialized (lazy init
+            // needs the first source texture to extract the D3D11 device).
+            if self.d3d11_staging_pool.is_none() {
+                self.stage_d3d11_frames(*left_texture, *left_slice, *right_texture, *right_slice)?;
+            }
+            let pool = self.d3d11_staging_pool.as_mut().unwrap();
+            let left_slot = (produce_index as usize * 2) % pool.n_slots();
+            let right_slot = (produce_index as usize * 2 + 1) % pool.n_slots();
+            pool.stage_frame(*left_texture, *left_slice, left_slot)?;
+            pool.stage_frame(*right_texture, *right_slice, right_slot)?;
+            return Ok(Some(left_slot));
+        }
+        Ok(None)
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    fn copy_to_vram_pool_platform(
+        &mut self,
+        frame: &StereoFrame,
+        _produce_index: u64,
+    ) -> Result<Option<usize>, SessionError> {
+        if let StereoFrame::MetalResident { left, right } = frame {
+            // Import CVPixelBuffers as wgpu textures (separate Y + UV).
+            if self.metal_texture_cache.is_none() {
+                self.metal_texture_cache = Some(crate::interop::metal::MetalTextureCache::new(
+                    self.core.gpu(),
+                )?);
+            }
+            let cache = self.metal_texture_cache.as_mut().unwrap();
+            let (left_y, left_uv) = unsafe { cache.import_nv12(left.as_ptr(), self.core.gpu())? };
+            let (right_y, right_uv) =
+                unsafe { cache.import_nv12(right.as_ptr(), self.core.gpu())? };
+
+            if let Some(pool) = self.vram_pool.as_mut() {
+                let slot = pool.acquire().ok_or_else(|| {
+                    SessionError::Config(format!(
+                        "VRAM pool exhausted ({} slots, {} available)",
+                        pool.capacity(),
+                        pool.available()
+                    ))
+                })?;
+                let gpu = self.core.pipeline().gpu();
+                pool.copy_from_textures(
+                    gpu,
+                    slot,
+                    &left_y.texture,
+                    &left_uv.texture,
+                    &right_y.texture,
+                    &right_uv.texture,
+                );
+                let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
+                return Ok(Some(slot));
+            }
+        }
+        Ok(None)
+    }
+
+    #[cfg(not(any(
+        target_os = "linux",
+        target_os = "windows",
+        target_os = "macos",
+        target_os = "ios"
+    )))]
+    fn copy_to_vram_pool_platform(
+        &mut self,
+        _frame: &StereoFrame,
+        _produce_index: u64,
+    ) -> Result<Option<usize>, SessionError> {
+        Ok(None)
     }
 }

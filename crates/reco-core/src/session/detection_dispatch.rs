@@ -34,6 +34,107 @@ impl StitchSession {
         self.fire_sink_and_update_director(elapsed, should_detect)
     }
 
+    /// Run detection + trackers only (no panner). For the lookahead
+    /// produce phase where we want the WorldState but don't want to
+    /// advance the panner.
+    pub(crate) fn detect_and_track_only(
+        &mut self,
+        frame: &StereoFrame,
+        elapsed: std::time::Duration,
+        produce_index: u64,
+    ) -> Result<crate::detect::tracker::WorldState, SessionError> {
+        let should_detect = self.detection.should_detect(produce_index);
+        if should_detect {
+            let detections = match frame {
+                #[cfg(target_os = "linux")]
+                StereoFrame::GpuResident {
+                    left_slot,
+                    right_slot,
+                } => {
+                    if self.detection.needs_cuda_frames() {
+                        if let Some((ref left_buf, ref right_buf)) = self.gpu_buf_info {
+                            self.detection.run_gpu_detection(
+                                left_buf,
+                                right_buf,
+                                *left_slot,
+                                *right_slot,
+                                self.left_rotation,
+                                self.right_rotation,
+                            )
+                        } else {
+                            vec![]
+                        }
+                    } else if let Some(ref views) = self.gpu_shared_views {
+                        let ls = *left_slot as usize;
+                        let rs = *right_slot as usize;
+                        let (w, h) = self.core.pipeline().source_info();
+                        self.detection.run_detection_wgpu_nv12(
+                            &views[ls * 2],
+                            &views[ls * 2 + 1],
+                            &views[4 + rs * 2],
+                            &views[4 + rs * 2 + 1],
+                            w,
+                            h,
+                            self.left_rotation,
+                            self.right_rotation,
+                        )
+                    } else {
+                        vec![]
+                    }
+                }
+                #[cfg(target_os = "windows")]
+                StereoFrame::D3d11Resident { .. } => {
+                    if let Some(ref pool) = self.d3d11_staging_pool {
+                        let left_slot = (produce_index as usize * 2) % pool.n_slots();
+                        let right_slot = (produce_index as usize * 2 + 1) % pool.n_slots();
+                        let (w, h) = self.core.pipeline().source_info();
+                        self.detection.run_detection_wgpu_nv12(
+                            pool.y_view(left_slot),
+                            pool.uv_view(left_slot),
+                            pool.y_view(right_slot),
+                            pool.uv_view(right_slot),
+                            w,
+                            h,
+                            self.left_rotation,
+                            self.right_rotation,
+                        )
+                    } else {
+                        vec![]
+                    }
+                }
+                #[cfg(any(target_os = "macos", target_os = "ios"))]
+                StereoFrame::MetalResident { left, right } => self.detection.run_detection_metal(
+                    left.as_ptr(),
+                    right.as_ptr(),
+                    left.width(),
+                    left.height(),
+                ),
+                _ => {
+                    let (w, h) = self.core.pipeline().source_info();
+                    self.detection.run_detection(frame, w, h)
+                }
+            };
+            self.detection.last_detections = self.map_detections(detections);
+        }
+
+        let calibration = self.core.pipeline().calibration();
+        let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
+
+        let world = crate::detect::panner::dispatch_detect_only(
+            self.player_tracker.as_mut(),
+            self.ball_tracker.as_mut(),
+            crate::detect::panner::DispatchContext {
+                detections: &self.detection.last_detections,
+                calibration,
+                frame_index: produce_index,
+                timestamp_ms,
+                caller: "lookahead_produce",
+            },
+        );
+
+        Ok(world)
+    }
+
     /// Run detection on a CPU-resident stereo frame (YUV420P / NV12).
     pub fn detect_and_update_director(
         &mut self,
@@ -93,28 +194,6 @@ impl StitchSession {
         self.detect_and_update_director_with(elapsed, |det| {
             det.run_detection_preletterboxed(
                 left_ptr, src_width, src_height, right_ptr, src_width, src_height,
-            )
-        })
-    }
-
-    /// Run detection via CUDA-imported D3D11VA staging textures.
-    #[cfg(target_os = "windows")]
-    pub(crate) fn detect_and_update_director_d3d11(
-        &mut self,
-        left_y: u64,
-        left_uv: u64,
-        right_y: u64,
-        right_uv: u64,
-        pitch: usize,
-        width: u32,
-        height: u32,
-        elapsed: std::time::Duration,
-    ) -> Result<(), SessionError> {
-        let lr = self.left_rotation;
-        let rr = self.right_rotation;
-        self.detect_and_update_director_with(elapsed, |det| {
-            det.run_gpu_detection_raw(
-                left_y, left_uv, right_y, right_uv, pitch, width, height, lr, rr,
             )
         })
     }
@@ -221,6 +300,7 @@ impl StitchSession {
             self.ball_tracker.as_mut(),
             &mut self.previous_panner_pose,
             self.event_sink.as_deref_mut(),
+            &self.lookahead_world_states,
             crate::detect::panner::DispatchContext {
                 detections: &self.detection.last_detections,
                 calibration,
@@ -229,6 +309,10 @@ impl StitchSession {
                 caller: "StitchSession",
             },
         );
+
+        if let Some(ref result) = dispatch_result {
+            self.last_world_state = result.world_state.clone();
+        }
 
         self.telemetry.record_detections(
             self.detection.last_detections.len() as u32,

@@ -23,10 +23,14 @@ pub mod types;
 pub mod detection;
 /// Detection dispatch entry points (detect_and_update_director_* variants).
 mod detection_dispatch;
+/// Lookahead frame buffer for temporal-aware processing.
+pub(crate) mod frame_buffer;
 /// Per-frame render and encode methods (step, process_frame, submit_render_output).
 mod frame_processing;
 /// Batch processing entry points (run, run_immediate, setup_gpu_source).
 mod run_loop;
+/// VRAM texture pool for GPU-resident frame buffering.
+pub(crate) mod vram_pool;
 /// Configuration wiring (set/clear/attach methods).
 mod wiring;
 
@@ -92,6 +96,16 @@ pub struct StitchSession {
     /// Previous frame's resolved pose (post-clamping), handed to the
     /// panner via [`PanContext::previous_position`](crate::detect::panner::PanContext::previous_position).
     pub(crate) previous_panner_pose: ViewportPosition,
+    /// Future WorldStates from the lookahead buffer, passed to the
+    /// panner via `decide_with_lookahead`. Empty when lookahead is off.
+    pub(crate) lookahead_world_states: Vec<crate::detect::tracker::WorldState>,
+    /// Last WorldState produced by dispatch, captured for the buffer.
+    pub(crate) last_world_state: crate::detect::tracker::WorldState,
+    /// When true, `process_frame_any` skips detection (the produce phase
+    /// already ran it and stored the WorldState in the buffer).
+    pub(crate) skip_detection: bool,
+    /// Number of lookahead frames (0 = disabled).
+    pub(crate) lookahead_frames: usize,
     pub(crate) frame_count: u64,
     /// Session start time for metrics computation.
     session_start: Option<std::time::Instant>,
@@ -138,6 +152,15 @@ pub struct StitchSession {
     /// still bound to the SharedTextureSet the source owns.
     #[cfg(target_os = "linux")]
     pub(crate) gpu_shared_views: Option<[wgpu::TextureView; 8]>,
+    /// The 8 shared textures (2 slots x 2 cameras x Y/UV), cloned for
+    /// `copy_texture_to_texture` in the VRAM pool path. Cheap (Arc inside).
+    #[cfg(target_os = "linux")]
+    pub(crate) gpu_shared_textures: Option<[wgpu::Texture; 8]>,
+
+    /// VRAM buffer pool for GPU-resident lookahead.
+    pub(crate) vram_pool: Option<vram_pool::VramPool>,
+    /// VRAM pool slot for the frame currently being rendered.
+    pub(crate) current_vram_slot: Option<usize>,
 
     /// Metal texture cache for importing CVPixelBuffers as wgpu textures.
     /// Created lazily on the first MetalResident frame.
@@ -236,6 +259,10 @@ impl StitchSession {
             player_tracker: None,
             panner: None,
             previous_panner_pose: ViewportPosition::default(),
+            lookahead_world_states: Vec::new(),
+            last_world_state: crate::detect::tracker::WorldState::default(),
+            skip_detection: false,
+            lookahead_frames: 0,
             frame_count: 0,
             extra_encoders: Vec::new(),
             session_start: None,
@@ -254,6 +281,10 @@ impl StitchSession {
             gpu_buf_info: None,
             #[cfg(target_os = "linux")]
             gpu_shared_views: None,
+            #[cfg(target_os = "linux")]
+            gpu_shared_textures: None,
+            vram_pool: None,
+            current_vram_slot: None,
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_texture_cache: None,
             #[cfg(target_os = "windows")]

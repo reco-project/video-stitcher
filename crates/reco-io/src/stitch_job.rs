@@ -73,6 +73,10 @@ pub struct StitchJob {
     /// CPU detection is wanted but TensorRT is not available.
     force_cpu_decode: bool,
 
+    /// Lookahead buffer depth in seconds. When > 0, the session
+    /// decodes N frames ahead to give the panner future context.
+    lookahead_secs: f64,
+
     /// Path for pipeline event JSONL output. When set, attaches a
     /// `JsonlSink` to the session that records every detection,
     /// filter decision, and pan decision for offline analysis.
@@ -241,6 +245,7 @@ impl StitchJob {
             #[cfg(feature = "stacked-output")]
             replay_recording: None,
             force_cpu_decode: false,
+            lookahead_secs: 0.0,
             events_path: None,
         }
     }
@@ -439,6 +444,12 @@ impl StitchJob {
         self
     }
 
+    /// Set the lookahead buffer depth in seconds.
+    pub fn lookahead(mut self, seconds: f64) -> Self {
+        self.lookahead_secs = seconds;
+        self
+    }
+
     /// Record pipeline events (detections, filter decisions, pan
     /// decisions) to a JSONL file for offline analysis.
     pub fn events(mut self, path: impl AsRef<Path>) -> Self {
@@ -591,6 +602,15 @@ impl StitchJob {
         #[cfg(target_os = "linux")]
         if let Some(shared) = source.shared_texture_set() {
             session.setup_gpu_source(shared);
+        }
+
+        // Configure lookahead buffer if requested.
+        if self.lookahead_secs > 0.0 {
+            let fps = crate::adapters::FfmpegFileSource::frame_rate(self.left.first_path())
+                .map(|(n, d)| if d != 0 { n as f64 / d as f64 } else { 30.0 })
+                .unwrap_or(30.0);
+            let frames = (self.lookahead_secs * fps).round() as usize;
+            session.set_lookahead(frames);
         }
 
         for hook in self.session_hooks.drain(..) {
