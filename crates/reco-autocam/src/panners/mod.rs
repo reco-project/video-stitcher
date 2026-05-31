@@ -4,7 +4,7 @@
 //! each frame and emit a
 //! [`ViewportPosition`](reco_core::detect::director::ViewportPosition).
 //!
-//! - [`field`] - [`FieldPanner`], Huber-robust player cluster with ball blend and dynamic FOV.
+//! - [`field`] - [`FieldPanner`], trimmed-robust player cluster with ball blend and dynamic FOV.
 //! - [`lookahead`] - [`LookaheadPanner`], future-aware panner (pre-smooth -> blend -> EMA).
 //! - [`file_panner`] - [`FilePanner`], replays precomputed trajectory from CSV.
 //! - [`sweep`] - [`SweepPanner`], deterministic debug pan.

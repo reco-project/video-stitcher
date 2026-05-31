@@ -6,11 +6,11 @@
 //! 1. Take the current-frame tracked players from `world.players`.
 //!    The tracker already enforces class filtering and stable IDs;
 //!    entities in [`TrackState::Lost`] are dropped before clustering.
-//! 2. Huber-weighted robust centroid on (yaw, pitch) in panorama
-//!    space. Outliers (goalkeeper, substitutes) get down-weighted
-//!    smoothly via IRLS rather than binary-accepted or -rejected,
-//!    so frame-to-frame cluster membership flips can no longer
-//!    teleport the centroid.
+//! 2. Trimmed robust centroid on (yaw, pitch) in panorama space:
+//!    keep the densest `keep_fraction` of players and drop the rest
+//!    (goalkeeper, substitutes) as outliers. The downstream centroid
+//!    EMA absorbs boundary flips so the trim does not teleport the
+//!    camera.
 //! 3. Confidence-weighted centroid + EMA smoothing.
 //! 4. Edge-push (yaw *= 1.15) exaggerates side-of-pitch motion so
 //!    the camera leads into the direction of play.
@@ -38,10 +38,11 @@ const LOG_INTERVAL: u64 = 30;
 /// individual fields for other sports or frame rates.
 #[derive(Debug, Clone)]
 pub struct FieldPannerConfig {
-    pub huber_c: f32,
-    pub huber_scale_floor: f32,
-    pub huber_iters: usize,
-    pub huber_converge_eps: f32,
+    /// Fraction of players to keep when computing the cluster
+    /// centroid, in `(0, 1]`. The farthest `1 - keep_fraction`
+    /// (goalkeeper, substitutes) are trimmed as outliers; `0.8`
+    /// follows the densest 80%.
+    pub keep_fraction: f32,
     pub min_cluster: usize,
     pub edge_push: f32,
     pub fov_alpha: f32,
@@ -67,10 +68,7 @@ pub struct FieldPannerConfig {
 impl Default for FieldPannerConfig {
     fn default() -> Self {
         Self {
-            huber_c: 1.1,
-            huber_scale_floor: 0.02,
-            huber_iters: 8,
-            huber_converge_eps: 1e-6,
+            keep_fraction: 0.8,
             min_cluster: 2,
             edge_push: 0.15,
             fov_alpha: 0.01,
@@ -196,109 +194,47 @@ impl FieldPanner {
             .collect()
     }
 
-    /// Huber-weighted robust centroid. Returns the inlier set
-    /// (weight=1) after IRLS convergence.
+    /// Trimmed robust centroid: keep the densest `keep_fraction` of
+    /// the players, drop the rest as outliers (goalkeeper, subs).
     ///
-    /// Replaces the older DBSCAN + trim-to-closest-half pipeline.
-    /// The old one binary-accepted or -rejected each point based
-    /// on neighborhood density, so a marginal player on the
-    /// cluster's boundary could flip in / out between frames and
-    /// teleport the centroid. Huber weights shrink smoothly with
-    /// residual, so a boundary point's influence changes by 1% per
-    /// frame instead of 100%.
+    /// Take the confidence-weighted mean, measure each player's
+    /// distance to it, and return the closest `keep_fraction` as the
+    /// inlier set - one pass, one knob. The downstream centroid EMA in
+    /// [`smooth_centroid`](Self::smooth_centroid) absorbs the small
+    /// step when a boundary player flips in or out, so the hard trim
+    /// does not teleport the camera.
     fn cluster_and_trim(&self, points: &[(f32, f32, f32)]) -> Vec<(f32, f32, f32)> {
         if points.len() < self.config.min_cluster {
             return Vec::new();
         }
-
-        // Seed centroid at the confidence-weighted mean.
         let total_conf: f32 = points.iter().map(|(_, _, c)| c).sum();
         if total_conf <= 0.0 {
             return Vec::new();
         }
-        let mut cy: f32 = points.iter().map(|(y, _, c)| y * c).sum::<f32>() / total_conf;
-        let mut cp: f32 = points.iter().map(|(_, p, c)| p * c).sum::<f32>() / total_conf;
 
-        // IRLS: residual -> robust scale (MAD * 1.4826) -> Huber
-        // weight * confidence -> new centroid. 8 iterations is
-        // plenty for Huber; early-exit on sub-epsilon centroid shift.
-        let mut residuals = vec![0.0_f32; points.len()];
-        let mut abs_r = Vec::with_capacity(points.len());
-        let mut weights = vec![0.0_f32; points.len()];
-        for _ in 0..self.config.huber_iters {
-            for (i, &(y, p, _)) in points.iter().enumerate() {
-                let dy = y - cy;
-                let dp = p - cp;
-                residuals[i] = (dy * dy + dp * dp).sqrt();
-            }
-            abs_r.clear();
-            abs_r.extend_from_slice(&residuals);
-            abs_r.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            let mad = abs_r[abs_r.len() / 2];
-            let scale = (1.4826 * mad).max(self.config.huber_scale_floor);
-            let threshold = self.config.huber_c * scale;
-
-            let mut total_w = 0.0_f32;
-            for (i, &(_, _, conf)) in points.iter().enumerate() {
-                let r = residuals[i];
-                let huber = if r <= threshold {
-                    1.0
-                } else {
-                    threshold / r.max(1e-6)
-                };
-                let w = conf * huber;
-                weights[i] = w;
-                total_w += w;
-            }
-            if total_w <= 0.0 {
-                break;
-            }
-
-            let new_cy: f32 = points
-                .iter()
-                .zip(weights.iter())
-                .map(|((y, _, _), w)| y * w)
-                .sum::<f32>()
-                / total_w;
-            let new_cp: f32 = points
-                .iter()
-                .zip(weights.iter())
-                .map(|((_, p, _), w)| p * w)
-                .sum::<f32>()
-                / total_w;
-
-            let shift_sq = (new_cy - cy).powi(2) + (new_cp - cp).powi(2);
-            cy = new_cy;
-            cp = new_cp;
-            if shift_sq < self.config.huber_converge_eps {
-                break;
-            }
-        }
-
-        // Final inlier set: points whose residual at the converged
-        // centroid is within the robust band.
-        for (i, &(y, p, _)) in points.iter().enumerate() {
-            let dy = y - cy;
-            let dp = p - cp;
-            residuals[i] = (dy * dy + dp * dp).sqrt();
-        }
-        abs_r.clear();
-        abs_r.extend_from_slice(&residuals);
-        abs_r.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let mad = abs_r[abs_r.len() / 2];
-        let scale = (1.4826 * mad).max(self.config.huber_scale_floor);
-        let threshold = self.config.huber_c * scale;
-
-        let inliers: Vec<(f32, f32, f32)> = points
-            .iter()
-            .zip(residuals.iter())
-            .filter_map(|(&pt, &r)| if r <= threshold { Some(pt) } else { None })
-            .collect();
-
-        if inliers.len() < self.config.min_cluster {
+        // Confidence-weighted mean as the trim reference. A non-finite
+        // mean (NaN inputs) means no usable cluster - hold position.
+        let cy: f32 = points.iter().map(|(y, _, c)| y * c).sum::<f32>() / total_conf;
+        let cp: f32 = points.iter().map(|(_, p, c)| p * c).sum::<f32>() / total_conf;
+        if !cy.is_finite() || !cp.is_finite() {
             return Vec::new();
         }
-        inliers
+
+        // Keep the closest `keep_fraction` of players, but never fewer
+        // than `min_cluster`.
+        let keep_fraction = self.config.keep_fraction.clamp(0.0, 1.0);
+        let keep_count = ((points.len() as f32 * keep_fraction).round() as usize)
+            .clamp(self.config.min_cluster, points.len());
+
+        let dist_sq = |&(y, p, _): &(f32, f32, f32)| (y - cy).powi(2) + (p - cp).powi(2);
+        let mut sorted = points.to_vec();
+        sorted.sort_by(|a, b| {
+            dist_sq(a)
+                .partial_cmp(&dist_sq(b))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        sorted.truncate(keep_count);
+        sorted
     }
 
     /// Confidence-weighted centroid + EMA smoothing.
@@ -637,8 +573,8 @@ mod tests {
         for i in 1..200 {
             out = p.decide(&w, &ctx(i, &cal));
         }
-        // Huber centroid on 5 evenly-spaced players at 0.28..0.44
-        // converges on the mean 0.36. Edge push 15% -> 0.414.
+        // Trimmed centroid on 5 evenly-spaced players at 0.28..0.44
+        // (keep 80% = 4) converges near the mean 0.36. Edge push 15%.
         assert!(
             (out.yaw - 0.414).abs() < 0.03,
             "expected ~0.414, got {}",
@@ -665,7 +601,7 @@ mod tests {
     }
 
     #[test]
-    fn huber_excludes_goalkeeper_outlier() {
+    fn trim_excludes_goalkeeper_outlier() {
         let mut p = FieldPanner::new(30.0);
         let cal = cal();
         let w = WorldState {
@@ -684,6 +620,52 @@ mod tests {
             "goalkeeper must not drag centroid: yaw={}",
             out.yaw
         );
+    }
+
+    #[test]
+    fn keep_fraction_trims_farthest_players() {
+        let p = FieldPanner::with_config(
+            30.0,
+            FieldPannerConfig {
+                keep_fraction: 0.6,
+                ..Default::default()
+            },
+        );
+        // 3 tight players + 2 far outliers. keep 60% of 5 = 3.
+        let points = vec![
+            (0.30, 0.0, 1.0),
+            (0.32, 0.0, 1.0),
+            (0.34, 0.0, 1.0),
+            (1.50, 0.0, 1.0),
+            (1.60, 0.0, 1.0),
+        ];
+        let kept = p.cluster_and_trim(&points);
+        assert_eq!(kept.len(), 3, "keep 0.6 of 5 = 3");
+        assert!(
+            kept.iter().all(|&(y, _, _)| y < 0.5),
+            "the tight trio survives, outliers dropped: {kept:?}"
+        );
+    }
+
+    #[test]
+    fn keep_fraction_respects_min_cluster_floor() {
+        // A tiny keep_fraction still keeps at least min_cluster players.
+        let p = FieldPanner::with_config(
+            30.0,
+            FieldPannerConfig {
+                keep_fraction: 0.01,
+                min_cluster: 2,
+                ..Default::default()
+            },
+        );
+        let points = vec![
+            (0.00, 0.0, 1.0),
+            (0.10, 0.0, 1.0),
+            (0.20, 0.0, 1.0),
+            (5.00, 0.0, 1.0),
+        ];
+        let kept = p.cluster_and_trim(&points);
+        assert_eq!(kept.len(), 2, "min_cluster floors the keep count");
     }
 
     #[test]
