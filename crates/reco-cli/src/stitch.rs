@@ -210,7 +210,6 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         let interval = args.detection_interval;
         let mode_str = args.tracking_mode.to_owned();
         let allow_fallback = args.allow_no_tracking;
-        let use_lookahead = args.lookahead > 0.0;
         let tracking_failed = Arc::clone(&tracking_failed);
         job = job.on_session(move |session, source| {
             let info = source.info();
@@ -225,7 +224,6 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
                 .with_tracking_mode(mode)
                 .with_detection_interval(interval)
                 .with_10bit(is_10bit);
-            autocam_config.use_lookahead_panner = use_lookahead;
             if mode == reco_autocam::TrackingMode::Ball {
                 autocam_config.confidence_threshold = Some(0.25);
             }

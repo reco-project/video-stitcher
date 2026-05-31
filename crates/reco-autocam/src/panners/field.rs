@@ -698,8 +698,8 @@ mod tests {
     #[test]
     fn ball_only_follows_ball_without_cluster() {
         // No players (no cluster) but a ball is present: FieldPanner
-        // follows the ball directly instead of holding. This absorbs
-        // LookaheadPanner's only irreplaceable behavior.
+        // follows the ball directly instead of holding. This is what
+        // lets one panner serve ball-centric modes too.
         let mut p = FieldPanner::new(30.0); // default ball_weight 0.5 > 0
         let cal = cal();
         let w = WorldState {

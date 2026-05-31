@@ -11,9 +11,9 @@
 //!
 //! - [`trackers::BallTracker`] / [`trackers::PlayerTracker`] - per-class
 //!   trackers implementing [`Tracker`](reco_core::detect::tracker::Tracker).
-//! - [`panners::FieldPanner`] / [`panners::LookaheadPanner`] /
-//!   [`panners::SweepPanner`] / [`panners::FilePanner`] - camera-motion
-//!   policies implementing [`Panner`](reco_core::detect::panner::Panner).
+//! - [`panners::FieldPanner`] / [`panners::SweepPanner`] /
+//!   [`panners::FilePanner`] - camera-motion policies implementing
+//!   [`Panner`](reco_core::detect::panner::Panner).
 //! - [`RoiFilteredDetector`] - polygonal-ROI mask wrapper over any
 //!   `UnifiedDetector`, pre-filtering detections before they reach a
 //!   tracker.
@@ -120,8 +120,6 @@ pub struct AutocamConfig {
     /// Detector confidence threshold override. When set, replaces
     /// the default 0.10 threshold. Ball-only models need 0.25+.
     pub confidence_threshold: Option<f32>,
-    /// Use lookahead-aware panner (requires buffered run loop).
-    pub use_lookahead_panner: bool,
 }
 
 impl AutocamConfig {
@@ -135,7 +133,6 @@ impl AutocamConfig {
             is_10bit: false,
             field_panner_config: None,
             confidence_threshold: None,
-            use_lookahead_panner: false,
         }
     }
 
@@ -498,27 +495,18 @@ pub fn setup_autocam(
                 target.set_ball_tracker(Box::new(ball_tracker));
                 target.set_player_tracker(Box::new(player_tracker));
 
-                if config.use_lookahead_panner {
-                    let panner = crate::panners::LookaheadPanner::new();
-                    log::info!(
-                        "Tracking mode: field + lookahead (LookaheadPanner, \
-                         player_class={person_id}, ball_class={ball_id})"
-                    );
-                    target.set_panner(Box::new(panner));
-                } else {
-                    let fp_config = config.field_panner_config.clone().unwrap_or(
-                        crate::panners::FieldPannerConfig {
-                            ball_weight: 0.20,
-                            ..Default::default()
-                        },
-                    );
-                    let field_panner = crate::panners::FieldPanner::with_config(fps, fp_config);
-                    log::info!(
-                        "Tracking mode: field (FieldPanner, \
-                         player_class={person_id}, ball_class={ball_id})"
-                    );
-                    target.set_panner(Box::new(field_panner));
-                }
+                let fp_config = config.field_panner_config.clone().unwrap_or(
+                    crate::panners::FieldPannerConfig {
+                        ball_weight: 0.20,
+                        ..Default::default()
+                    },
+                );
+                let field_panner = crate::panners::FieldPanner::with_config(fps, fp_config);
+                log::info!(
+                    "Tracking mode: field (FieldPanner, \
+                     player_class={person_id}, ball_class={ball_id})"
+                );
+                target.set_panner(Box::new(field_panner));
             }
             TrackingMode::Ball => {
                 let ball_tracker =
@@ -526,14 +514,16 @@ pub fn setup_autocam(
                 // No PlayerTracker - ball-only mode for single-class detectors.
                 target.set_ball_tracker(Box::new(ball_tracker));
 
-                let la_config = crate::panners::LookaheadPannerConfig {
+                // No PlayerTracker means no cluster, so FieldPanner
+                // follows the ball directly with a ball-dominant config.
+                let fp_config = crate::panners::FieldPannerConfig {
                     ball_weight: 1.0,
                     ..Default::default()
                 };
-                let panner = crate::panners::LookaheadPanner::with_config(la_config);
+                let panner = crate::panners::FieldPanner::with_config(fps, fp_config);
 
                 log::info!(
-                    "Tracking mode: ball-only (BallTracker + LookaheadPanner, \
+                    "Tracking mode: ball-only (BallTracker + FieldPanner, \
                      ball_class={ball_id})"
                 );
                 target.set_panner(Box::new(panner));
