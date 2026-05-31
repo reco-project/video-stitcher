@@ -22,7 +22,7 @@ use reco_core::detect::detector::{
     CameraId, ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame, UnifiedDetector,
 };
 
-use super::postprocess;
+use super::{postprocess, postprocess_balldet};
 
 /// YOLO-based object detector using ONNX Runtime on CPU.
 ///
@@ -239,12 +239,21 @@ impl CpuYoloDetector {
         // Borrow the output tensor's backing buffer instead of cloning
         // it into a Vec. `outputs` owns it; postprocess finishes before
         // the drop below. (plan M7 item 5)
+        // Stock YOLO exports one [1,N,6] end-to-end-NMS output; the
+        // external ball detector emits multiple (boxes + seg heads) with a
+        // raw pre-NMS, cxcywh, conf-in-col-5 layout. Pick the decoder by
+        // output count - both share a signature.
+        let postproc = if outputs.len() > 1 {
+            postprocess_balldet
+        } else {
+            postprocess
+        };
         let (shape, slice) = outputs[0]
             .try_extract_tensor::<f32>()
             .map_err(|e| DetectorError::InferenceFailed(format!("output extract: {e}")))?;
         let n = shape[1] as usize;
 
-        let detections = postprocess(
+        let detections = postproc(
             slice,
             n,
             camera,
@@ -315,6 +324,11 @@ impl CpuYoloDetector {
                 .map_err(|e| DetectorError::InferenceFailed(format!("ort run: {e}")))?
         };
 
+        let postproc = if outputs.len() > 1 {
+            postprocess_balldet
+        } else {
+            postprocess
+        };
         let (shape, slice) = outputs[0]
             .try_extract_tensor::<f32>()
             .map_err(|e| DetectorError::InferenceFailed(format!("output extract: {e}")))?;
@@ -328,7 +342,7 @@ impl CpuYoloDetector {
         let pad_x = (is - (fw * scale).round()) / 2.0;
         let pad_y = (is - (fh * scale).round()) / 2.0;
 
-        let detections = postprocess(
+        let detections = postproc(
             slice,
             n,
             camera,
