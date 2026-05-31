@@ -63,6 +63,8 @@ pub struct StitchArgs<'a> {
     pub events_path: Option<&'a str>,
     /// Precomputed trajectory CSV (overrides AI panner).
     pub trajectory_path: Option<&'a str>,
+    /// FieldPanner tuning JSON (field mode); only present keys override.
+    pub panner_config_path: Option<&'a str>,
 }
 
 /// Run the stitch subcommand.
@@ -211,6 +213,21 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         let mode_str = args.tracking_mode.to_owned();
         let allow_fallback = args.allow_no_tracking;
         let tracking_failed = Arc::clone(&tracking_failed);
+        // Load any FieldPanner tuning override up front so a bad file
+        // fails the command before rendering starts.
+        let panner_cfg: Option<reco_autocam::panners::FieldPannerConfig> = match args
+            .panner_config_path
+        {
+            Some(p) => {
+                let contents = std::fs::read_to_string(p)
+                    .map_err(|e| anyhow::anyhow!("reading panner config {p}: {e}"))?;
+                let cfg: reco_autocam::panners::FieldPannerConfig = serde_json::from_str(&contents)
+                    .map_err(|e| anyhow::anyhow!("parsing panner config {p}: {e}"))?;
+                log::info!("FieldPanner config override loaded from {p}");
+                Some(cfg)
+            }
+            None => None,
+        };
         job = job.on_session(move |session, source| {
             let info = source.info();
             let mode = match mode_str.as_str() {
@@ -226,6 +243,9 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
                 .with_10bit(is_10bit);
             if mode == reco_autocam::TrackingMode::Ball {
                 autocam_config.confidence_threshold = Some(0.25);
+            }
+            if let Some(ref cfg) = panner_cfg {
+                autocam_config.field_panner_config = Some(cfg.clone());
             }
             let autocam_config = if let Some(roi) = field_roi {
                 autocam_config.with_field_roi(roi)

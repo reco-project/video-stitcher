@@ -515,11 +515,15 @@ pub fn setup_autocam(
                 target.set_ball_tracker(Box::new(ball_tracker));
 
                 // No PlayerTracker means no cluster, so FieldPanner
-                // follows the ball directly with a ball-dominant config.
-                let fp_config = crate::panners::FieldPannerConfig {
-                    ball_weight: 1.0,
-                    ..Default::default()
-                };
+                // follows the ball directly. ball_weight defaults high;
+                // a panner-config override (if supplied) still applies so
+                // dead-zone / reactivity / lead can be tuned in this mode.
+                let fp_config = config.field_panner_config.clone().unwrap_or(
+                    crate::panners::FieldPannerConfig {
+                        ball_weight: 1.0,
+                        ..Default::default()
+                    },
+                );
                 let panner = crate::panners::FieldPanner::with_config(fps, fp_config);
 
                 log::info!(

@@ -29,14 +29,18 @@
 use reco_core::detect::director::ViewportPosition;
 use reco_core::detect::panner::{PanContext, Panner};
 use reco_core::detect::tracker::{TrackState, TrackedEntity, WorldState};
+use serde::{Deserialize, Serialize};
 
 const LOG_INTERVAL: u64 = 30;
 
 /// All tunable parameters for the field panner.
 ///
 /// Safe defaults are tuned for football (soccer) at 30fps. Override
-/// individual fields for other sports or frame rates.
-#[derive(Debug, Clone)]
+/// individual fields for other sports or frame rates. `#[serde(default)]`
+/// means a config file may specify only the knobs it wants to change;
+/// the rest fall back to [`Default`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct FieldPannerConfig {
     /// Fraction of players to keep when computing the cluster
     /// centroid, in `(0, 1]`. The farthest `1 - keep_fraction`

@@ -103,6 +103,11 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+// CLI subcommand variants are inherently size-imbalanced (Stitch carries
+// many optional args); boxing individual fields would only obscure the
+// flag mapping. The enum is constructed once at startup, so the size gap
+// is irrelevant.
+#[allow(clippy::large_enum_variant)]
 enum Commands {
     /// Stitch two video files into a panoramic output.
     Stitch {
@@ -245,6 +250,12 @@ enum Commands {
         /// AI tracking with poses read from the file.
         #[arg(long)]
         trajectory: Option<String>,
+
+        /// FieldPanner tuning as a JSON file (field mode). Only the keys
+        /// present override defaults, e.g. {"dead_zone_rad":0.087,
+        /// "lookahead_reactivity":2.0,"lead_gain":0.7}.
+        #[arg(long = "panner-config")]
+        panner_config: Option<String>,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -744,6 +755,7 @@ fn main() -> anyhow::Result<()> {
             no_zero_copy,
             events,
             trajectory,
+            panner_config,
         } => stitch::run_stitch(
             stitch::StitchArgs {
                 left: &left,
@@ -773,6 +785,7 @@ fn main() -> anyhow::Result<()> {
                 no_zero_copy,
                 events_path: events.as_deref(),
                 trajectory_path: trajectory.as_deref(),
+                panner_config_path: panner_config.as_deref(),
             },
             &interrupted,
         ),

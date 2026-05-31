@@ -5390,6 +5390,7 @@ dependencies = [
  "log",
  "reco-core",
  "reco-detect",
+ "serde",
  "tracing",
  "wgpu",
 ]
