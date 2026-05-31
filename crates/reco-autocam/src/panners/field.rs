@@ -364,7 +364,13 @@ impl Panner for FieldPanner {
         }
         self.ball_presence = self.ball_presence.clamp(0.0, 1.0);
 
-        if let Some(ref c) = cluster {
+        // Resolve where to look: the player cluster (optionally
+        // ball-blended) when we have one, else the ball alone, else
+        // hold. Ball-only follow lets FieldPanner serve ball-centric
+        // sports and ball-only detectors without a separate panner -
+        // the player cluster simply isn't available to size the FOV.
+        let mut cluster_target: Option<(f32, f32, f32)> = None; // (target_yaw, target_pitch, effective_ball_weight)
+        let target = if let Some(ref c) = cluster {
             let mut target_yaw = c.yaw * (1.0 + self.config.edge_push);
             let mut target_pitch = c.pitch + self.config.pitch_bias;
 
@@ -374,22 +380,39 @@ impl Panner for FieldPanner {
                 target_pitch =
                     target_pitch * (1.0 - effective_w) + self.last_ball_pitch * effective_w;
             }
+            cluster_target = Some((target_yaw, target_pitch, effective_w));
+            Some((target_yaw, target_pitch))
+        } else if ball_detected {
+            // No player cluster: follow the ball directly.
+            let b = world.ball.as_ref().unwrap();
+            Some((b.yaw, b.pitch))
+        } else {
+            None
+        };
 
-            if target_yaw.is_finite() && target_pitch.is_finite() {
-                let err_yaw = target_yaw - self.yaw;
-                let err_pitch = target_pitch - self.pitch;
+        // Velocity-clamped chase toward the resolved target (shared by
+        // the cluster and ball-only paths).
+        if let Some((target_yaw, target_pitch)) = target
+            && target_yaw.is_finite()
+            && target_pitch.is_finite()
+        {
+            let err_yaw = target_yaw - self.yaw;
+            let err_pitch = target_pitch - self.pitch;
 
-                let desired_yaw = err_yaw.clamp(-self.max_velocity, self.max_velocity);
-                let desired_pitch = err_pitch.clamp(-self.max_velocity, self.max_velocity);
+            let desired_yaw = err_yaw.clamp(-self.max_velocity, self.max_velocity);
+            let desired_pitch = err_pitch.clamp(-self.max_velocity, self.max_velocity);
 
-                self.velocity_yaw += self.config.velocity_alpha * (desired_yaw - self.velocity_yaw);
-                self.velocity_pitch +=
-                    self.config.velocity_alpha * (desired_pitch - self.velocity_pitch);
+            self.velocity_yaw += self.config.velocity_alpha * (desired_yaw - self.velocity_yaw);
+            self.velocity_pitch +=
+                self.config.velocity_alpha * (desired_pitch - self.velocity_pitch);
 
-                self.yaw += self.velocity_yaw;
-                self.pitch += self.velocity_pitch;
-            }
+            self.yaw += self.velocity_yaw;
+            self.pitch += self.velocity_pitch;
+        }
 
+        // Dynamic FOV needs the cluster spread; a ball-only target has
+        // none, so the FOV holds at its current value.
+        if let Some(ref c) = cluster {
             let vel_mag = (self.velocity_yaw.powi(2) + self.velocity_pitch.powi(2)).sqrt();
             let target_fov = self.target_fov(c.spread, c.pitch, vel_mag);
             if target_fov.is_finite() {
@@ -404,6 +427,8 @@ impl Panner for FieldPanner {
                 );
             }
 
+            let (target_yaw, target_pitch, effective_w) =
+                cluster_target.unwrap_or((c.yaw, c.pitch, 0.0));
             self.last_debug = Some(FieldPannerDebug {
                 cluster_yaw: c.yaw,
                 cluster_pitch: c.pitch,
@@ -418,11 +443,13 @@ impl Panner for FieldPanner {
             });
         } else {
             self.last_debug = None;
-            log::trace!(
-                "FieldPanner: no cluster this frame (players={}, min={})",
-                world.players.len(),
-                self.config.min_cluster
-            );
+            if target.is_none() {
+                log::trace!(
+                    "FieldPanner: no cluster and no ball this frame (players={}, min={})",
+                    world.players.len(),
+                    self.config.min_cluster
+                );
+            }
         }
 
         if self.frame_index.is_multiple_of(LOG_INTERVAL) {
@@ -666,6 +693,33 @@ mod tests {
         ];
         let kept = p.cluster_and_trim(&points);
         assert_eq!(kept.len(), 2, "min_cluster floors the keep count");
+    }
+
+    #[test]
+    fn ball_only_follows_ball_without_cluster() {
+        // No players (no cluster) but a ball is present: FieldPanner
+        // follows the ball directly instead of holding. This absorbs
+        // LookaheadPanner's only irreplaceable behavior.
+        let mut p = FieldPanner::new(30.0); // default ball_weight 0.5 > 0
+        let cal = cal();
+        let w = WorldState {
+            ball: Some(ball(0.5, 0.1)),
+            players: vec![],
+        };
+        let mut out = p.decide(&w, &ctx(0, &cal));
+        for i in 1..300 {
+            out = p.decide(&w, &ctx(i, &cal));
+        }
+        assert!(
+            (out.yaw - 0.5).abs() < 0.05,
+            "ball-only should converge near ball yaw 0.5, got {}",
+            out.yaw
+        );
+        assert!(
+            (out.pitch - 0.1).abs() < 0.05,
+            "ball-only should converge near ball pitch 0.1, got {}",
+            out.pitch
+        );
     }
 
     #[test]
