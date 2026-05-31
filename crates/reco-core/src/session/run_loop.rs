@@ -9,6 +9,36 @@ use super::StitchSession;
 use crate::session::types::{FrameProgress, ProgressCallback, SessionError};
 use crate::source::FrameSource;
 
+/// Centered moving-average of a pose over the past + current + ahead
+/// window. Averages yaw, pitch, AND fov, so the zoom is smoothed the
+/// same lag-free way the angles are - otherwise FOV jitter survives the
+/// lookahead untouched.
+fn centered_smooth(
+    raw_pose: crate::detect::director::ViewportPosition,
+    ahead: impl Iterator<Item = crate::detect::director::ViewportPosition>,
+    past: impl Iterator<Item = crate::detect::director::ViewportPosition>,
+) -> crate::detect::director::ViewportPosition {
+    let mut sum_yaw = raw_pose.yaw;
+    let mut sum_pitch = raw_pose.pitch;
+    let mut sum_fov = raw_pose.fov_degrees.unwrap_or(0.0);
+    let mut fov_n = u32::from(raw_pose.fov_degrees.is_some());
+    let mut n = 1u32;
+    for p in ahead.chain(past) {
+        sum_yaw += p.yaw;
+        sum_pitch += p.pitch;
+        if let Some(f) = p.fov_degrees {
+            sum_fov += f;
+            fov_n += 1;
+        }
+        n += 1;
+    }
+    crate::detect::director::ViewportPosition {
+        yaw: sum_yaw / n as f32,
+        pitch: sum_pitch / n as f32,
+        fov_degrees: (fov_n > 0).then(|| sum_fov / fov_n as f32),
+    }
+}
+
 impl StitchSession {
     /// Auto-configure the session from source metadata.
     ///
@@ -445,25 +475,13 @@ impl StitchSession {
             if pose_queue.len() > post_smooth_half || (eof && !pose_queue.is_empty()) {
                 let (oldest, raw_pose) = pose_queue.pop_front().unwrap();
 
-                // Centered post-smooth: average past + current + future poses.
-                let ahead = pose_queue.len().min(post_smooth_half);
-                let behind = past_poses.len().min(post_smooth_half);
-                let total = behind + 1 + ahead;
-                let mut sum_yaw = raw_pose.yaw;
-                let mut sum_pitch = raw_pose.pitch;
-                for (_, p) in pose_queue.iter().take(ahead) {
-                    sum_yaw += p.yaw;
-                    sum_pitch += p.pitch;
-                }
-                for p in past_poses.iter() {
-                    sum_yaw += p.yaw;
-                    sum_pitch += p.pitch;
-                }
-                let smoothed_pose = crate::detect::director::ViewportPosition {
-                    yaw: sum_yaw / total as f32,
-                    pitch: sum_pitch / total as f32,
-                    fov_degrees: raw_pose.fov_degrees,
-                };
+                // Centered post-smooth: average past + current + future
+                // poses (yaw/pitch/fov) so zoom is smoothed like the angles.
+                let smoothed_pose = centered_smooth(
+                    raw_pose,
+                    pose_queue.iter().take(post_smooth_half).map(|(_, p)| *p),
+                    past_poses.iter().copied(),
+                );
                 past_poses.push_back(raw_pose);
                 if past_poses.len() > post_smooth_half {
                     past_poses.pop_front();
@@ -480,24 +498,11 @@ impl StitchSession {
             if self.frame_count >= frame_limit || interrupted.load(Ordering::Relaxed) {
                 break;
             }
-            let ahead = pose_queue.len().min(post_smooth_half);
-            let behind = past_poses.len().min(post_smooth_half);
-            let total = behind + 1 + ahead;
-            let mut sum_yaw = raw_pose.yaw;
-            let mut sum_pitch = raw_pose.pitch;
-            for (_, p) in pose_queue.iter().take(ahead) {
-                sum_yaw += p.yaw;
-                sum_pitch += p.pitch;
-            }
-            for p in past_poses.iter() {
-                sum_yaw += p.yaw;
-                sum_pitch += p.pitch;
-            }
-            let smoothed_pose = crate::detect::director::ViewportPosition {
-                yaw: sum_yaw / total as f32,
-                pitch: sum_pitch / total as f32,
-                fov_degrees: raw_pose.fov_degrees,
-            };
+            let smoothed_pose = centered_smooth(
+                raw_pose,
+                pose_queue.iter().take(post_smooth_half).map(|(_, p)| *p),
+                past_poses.iter().copied(),
+            );
             past_poses.push_back(raw_pose);
             if past_poses.len() > post_smooth_half {
                 past_poses.pop_front();

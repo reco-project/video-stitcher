@@ -63,6 +63,27 @@ pub struct FieldPannerConfig {
     pub ball_frame_margin_deg: f32,
     pub ball_max_dist_from_cluster: f32,
     pub ball_weight: f32,
+    /// When lookahead is active, the base chase runs this many times
+    /// more reactive (looser velocity clamp + faster velocity EMA). The
+    /// loop's centered smoother removes the resulting jitter lag-free,
+    /// so the base can afford to actually keep up. `1.0` = unchanged
+    /// (the reactive/no-buffer profile).
+    pub lookahead_reactivity: f32,
+    /// Lookahead lead gain: the fraction of the predicted action
+    /// displacement (mean of the future window minus the current
+    /// target) added to the aim, so the camera moves *ahead* of the
+    /// play. `0.0` = no lead. Only applies when future frames exist.
+    pub lead_gain: f32,
+    /// EMA factor for the lead, in `(0, 1]`. The lead is a *trend*, so
+    /// it must be smoothed - otherwise per-frame centroid noise makes
+    /// the aim wobble left-right. Smaller = smoother (and laggier) lead.
+    pub lead_alpha: f32,
+    /// Soft radial dead-zone (radians): the camera holds when the target
+    /// is within this distance of the current aim, and larger errors are
+    /// shrunk by it - removes residual micro-wobble on near-static play.
+    /// Viable because lookahead absorbs the latency a dead-zone adds.
+    /// `0.0` = off.
+    pub dead_zone_rad: f32,
 }
 
 impl Default for FieldPannerConfig {
@@ -89,6 +110,10 @@ impl Default for FieldPannerConfig {
             ball_frame_margin_deg: 3.0,
             ball_max_dist_from_cluster: 0.85,
             ball_weight: 0.5,
+            lookahead_reactivity: 4.0,
+            lead_gain: 1.0,
+            lead_alpha: 0.1,
+            dead_zone_rad: 0.012,
         }
     }
 }
@@ -117,7 +142,15 @@ pub struct FieldPanner {
     ball_presence: f32,
     last_ball_yaw: f32,
     last_ball_pitch: f32,
+    /// EMA-smoothed lookahead lead offset (rad), kept across frames so
+    /// the lead tracks the action's trend rather than per-frame noise.
+    lead_yaw: f32,
+    lead_pitch: f32,
     frame_index: u64,
+    /// Latched true the first frame a non-empty lookahead buffer is
+    /// seen, so the reactive damping profile stays stable through the
+    /// drain tail (where the future window shrinks back to empty).
+    lookahead_active: bool,
     last_debug: Option<FieldPannerDebug>,
 }
 
@@ -157,7 +190,10 @@ impl FieldPanner {
             ball_presence: 0.0,
             last_ball_yaw: 0.0,
             last_ball_pitch: 0.0,
+            lead_yaw: 0.0,
+            lead_pitch: 0.0,
             frame_index: 0,
+            lookahead_active: false,
             last_debug: None,
         }
     }
@@ -294,6 +330,31 @@ impl FieldPanner {
             count: core.len(),
         })
     }
+
+    /// Instantaneous look-at target from a world state, with no
+    /// smoothing or internal state: the trimmed cluster centroid (with
+    /// edge push + pitch bias), else the live ball, else None. Used to
+    /// estimate where the action is heading for the lookahead lead.
+    fn raw_target(&self, world: &WorldState) -> Option<(f32, f32)> {
+        let points = self.to_points(&world.players);
+        let core = self.cluster_and_trim(&points);
+        if !core.is_empty() {
+            let total: f32 = core.iter().map(|(_, _, c)| c).sum();
+            if total > 0.0 {
+                let cy = core.iter().map(|(y, _, c)| y * c).sum::<f32>() / total;
+                let cp = core.iter().map(|(_, p, c)| p * c).sum::<f32>() / total;
+                return Some((
+                    cy * (1.0 + self.config.edge_push),
+                    cp + self.config.pitch_bias,
+                ));
+            }
+        }
+        world
+            .ball
+            .as_ref()
+            .filter(|b| !matches!(b.state, TrackState::Lost))
+            .map(|b| (b.yaw, b.pitch))
+    }
 }
 
 impl FieldPanner {
@@ -335,8 +396,30 @@ impl Default for FieldPanner {
 }
 
 impl Panner for FieldPanner {
-    fn decide(&mut self, world: &WorldState, _ctx: &PanContext<'_>) -> ViewportPosition {
+    fn decide(&mut self, world: &WorldState, ctx: &PanContext<'_>) -> ViewportPosition {
+        // No buffer: empty future, so the reactive (non-lookahead)
+        // damping profile and no lead.
+        self.decide_with_lookahead(world, &[], ctx)
+    }
+
+    fn decide_with_lookahead(
+        &mut self,
+        world: &WorldState,
+        future: &[WorldState],
+        _ctx: &PanContext<'_>,
+    ) -> ViewportPosition {
         reco_core::profile_scope!("field_panner_decide");
+
+        // Once a non-empty lookahead buffer is seen, stay in the
+        // reactive damping profile (latched, so the drain tail does not
+        // snap back to over-damped). The loop's centered smoother is
+        // what removes the resulting jitter, lag-free.
+        self.lookahead_active |= !future.is_empty();
+        let reactivity = if self.lookahead_active {
+            self.config.lookahead_reactivity.max(1.0)
+        } else {
+            1.0
+        };
 
         self.frame_index = self.frame_index.wrapping_add(1);
         let cluster = self.compute_cluster(&world.players);
@@ -370,7 +453,7 @@ impl Panner for FieldPanner {
         // sports and ball-only detectors without a separate panner -
         // the player cluster simply isn't available to size the FOV.
         let mut cluster_target: Option<(f32, f32, f32)> = None; // (target_yaw, target_pitch, effective_ball_weight)
-        let target = if let Some(ref c) = cluster {
+        let mut target = if let Some(ref c) = cluster {
             let mut target_yaw = c.yaw * (1.0 + self.config.edge_push);
             let mut target_pitch = c.pitch + self.config.pitch_bias;
 
@@ -390,21 +473,69 @@ impl Panner for FieldPanner {
             None
         };
 
+        // Lookahead lead: aim toward where the action is heading. The
+        // lead is the displacement from the current target to the MEAN
+        // of the future window (averaging kills per-frame centroid
+        // noise), then EMA-smoothed across frames so it tracks the
+        // trend rather than jitter - a noisy lead makes the camera
+        // wobble left-right. This is the only consumer of the future
+        // world-states, and the reason the camera moves ahead of play.
+        if !future.is_empty()
+            && let Some((ty, tp)) = target
+            && let Some((cur_y, cur_p)) = self.raw_target(world)
+        {
+            let mut sum_y = 0.0_f32;
+            let mut sum_p = 0.0_f32;
+            let mut n = 0u32;
+            for w in future {
+                if let Some((y, p)) = self.raw_target(w) {
+                    sum_y += y;
+                    sum_p += p;
+                    n += 1;
+                }
+            }
+            if n > 0 {
+                let g = self.config.lead_gain;
+                let raw_lead_y = (sum_y / n as f32 - cur_y) * g;
+                let raw_lead_p = (sum_p / n as f32 - cur_p) * g;
+                let a = self.config.lead_alpha;
+                self.lead_yaw += a * (raw_lead_y - self.lead_yaw);
+                self.lead_pitch += a * (raw_lead_p - self.lead_pitch);
+                target = Some((ty + self.lead_yaw, tp + self.lead_pitch));
+            }
+        }
+
         // Velocity-clamped chase toward the resolved target (shared by
-        // the cluster and ball-only paths).
+        // the cluster and ball-only paths). When lookahead is active the
+        // clamp and EMA are loosened by `reactivity` so the base keeps
+        // up; the centered smoother downstream removes the jitter.
         if let Some((target_yaw, target_pitch)) = target
             && target_yaw.is_finite()
             && target_pitch.is_finite()
         {
-            let err_yaw = target_yaw - self.yaw;
-            let err_pitch = target_pitch - self.pitch;
+            let max_v = self.max_velocity * reactivity;
+            let v_alpha = (self.config.velocity_alpha * reactivity).min(1.0);
+            let mut err_yaw = target_yaw - self.yaw;
+            let mut err_pitch = target_pitch - self.pitch;
 
-            let desired_yaw = err_yaw.clamp(-self.max_velocity, self.max_velocity);
-            let desired_pitch = err_pitch.clamp(-self.max_velocity, self.max_velocity);
+            // Soft radial dead-zone: hold for sub-threshold moves, and
+            // shrink larger errors by the threshold so the camera eases
+            // in/out instead of a hard hold-then-jump.
+            let dz = self.config.dead_zone_rad;
+            if dz > 0.0 {
+                let mag = (err_yaw * err_yaw + err_pitch * err_pitch).sqrt();
+                if mag > 1e-6 {
+                    let scale = (mag - dz).max(0.0) / mag;
+                    err_yaw *= scale;
+                    err_pitch *= scale;
+                }
+            }
 
-            self.velocity_yaw += self.config.velocity_alpha * (desired_yaw - self.velocity_yaw);
-            self.velocity_pitch +=
-                self.config.velocity_alpha * (desired_pitch - self.velocity_pitch);
+            let desired_yaw = err_yaw.clamp(-max_v, max_v);
+            let desired_pitch = err_pitch.clamp(-max_v, max_v);
+
+            self.velocity_yaw += v_alpha * (desired_yaw - self.velocity_yaw);
+            self.velocity_pitch += v_alpha * (desired_pitch - self.velocity_pitch);
 
             self.yaw += self.velocity_yaw;
             self.pitch += self.velocity_pitch;
@@ -719,6 +850,45 @@ mod tests {
             (out.pitch - 0.1).abs() < 0.05,
             "ball-only should converge near ball pitch 0.1, got {}",
             out.pitch
+        );
+    }
+
+    #[test]
+    fn lookahead_lead_aims_ahead_of_current() {
+        let cal = cal();
+        // Current cluster centered at yaw 0; the action is heading to 0.5.
+        let cur = WorldState {
+            ball: None,
+            players: vec![
+                player(-0.02, 0.0, 1),
+                player(0.02, 0.0, 2),
+                player(0.0, 0.0, 3),
+            ],
+        };
+        let fut = WorldState {
+            ball: None,
+            players: vec![
+                player(0.48, 0.0, 1),
+                player(0.52, 0.0, 2),
+                player(0.50, 0.0, 3),
+            ],
+        };
+        // Isolate the lead from the reactive-damping boost (reactivity 1.0).
+        let cfg = FieldPannerConfig {
+            lookahead_reactivity: 1.0,
+            lead_gain: 1.0,
+            ..Default::default()
+        };
+        let mut no_lead = FieldPanner::with_config(30.0, cfg.clone());
+        let out_no = no_lead.decide(&cur, &ctx(0, &cal));
+        let mut with_lead = FieldPanner::with_config(30.0, cfg);
+        let out_la =
+            with_lead.decide_with_lookahead(&cur, std::slice::from_ref(&fut), &ctx(0, &cal));
+        assert!(
+            out_la.yaw > out_no.yaw,
+            "lead should push the aim toward the future cluster: no-lead {} vs lead {}",
+            out_no.yaw,
+            out_la.yaw
         );
     }
 
