@@ -272,6 +272,14 @@ def resize_keep_aspect(img, target_w):
     return cv2.resize(img, (target_w, int(h * scale)))
 
 
+def is_window_open(window_name):
+    """Return False once an OpenCV UI window has been closed."""
+    try:
+        return cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) >= 1
+    except cv2.error:
+        return False
+
+
 def annotate_frame(left_img, right_img, frame_idx, frame_data, last_detections,
                    total, fps, panel_w, roi_left, roi_right, hstack):
     """Annotate and combine left+right into a single frame."""
@@ -459,14 +467,23 @@ def browse_mode(events_path, left_path, right_path, cal_path, hstack):
                                   total, fps, panel_w, roi_left, roi_right, hstack)
         return combined, idx, last_detections
 
+    def wait_for_key_or_close():
+        while is_window_open(win):
+            key = cv2.waitKey(50)
+            if key != -1:
+                return key & 0xFF
+        return ord("q")
+
     while True:
         if needs_redraw:
             img, current, last_det = seek_and_draw(current, last_det)
             if img is not None:
                 cv2.imshow(win, img)
+            if not is_window_open(win):
+                break
             needs_redraw = False
 
-        key = cv2.waitKey(0) & 0xFF
+        key = wait_for_key_or_close()
         if key == ord("q") or key == 27:
             break
         elif key == ord("d") or key == 83:  # right arrow
