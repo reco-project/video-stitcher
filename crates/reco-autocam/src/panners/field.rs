@@ -114,10 +114,10 @@ impl Default for FieldPannerConfig {
             ball_frame_margin_deg: 3.0,
             ball_max_dist_from_cluster: 0.85,
             ball_weight: 0.5,
-            lookahead_reactivity: 4.0,
+            lookahead_reactivity: 2.0,
             lead_gain: 1.0,
             lead_alpha: 0.1,
-            dead_zone_rad: 0.012,
+            dead_zone_rad: 0.087,
         }
     }
 }
@@ -877,17 +877,25 @@ mod tests {
                 player(0.50, 0.0, 3),
             ],
         };
-        // Isolate the lead from the reactive-damping boost (reactivity 1.0).
+        // Isolate the lead: reactivity 1.0 (no damping boost) and
+        // dead_zone 0.0 (so the lead isn't masked by the hold). Run a
+        // few frames so the EMA-smoothed lead builds and moves the aim.
         let cfg = FieldPannerConfig {
             lookahead_reactivity: 1.0,
             lead_gain: 1.0,
+            dead_zone_rad: 0.0,
             ..Default::default()
         };
         let mut no_lead = FieldPanner::with_config(30.0, cfg.clone());
-        let out_no = no_lead.decide(&cur, &ctx(0, &cal));
         let mut with_lead = FieldPanner::with_config(30.0, cfg);
-        let out_la =
+        let mut out_no = no_lead.decide(&cur, &ctx(0, &cal));
+        let mut out_la =
             with_lead.decide_with_lookahead(&cur, std::slice::from_ref(&fut), &ctx(0, &cal));
+        for i in 1..20 {
+            out_no = no_lead.decide(&cur, &ctx(i, &cal));
+            out_la =
+                with_lead.decide_with_lookahead(&cur, std::slice::from_ref(&fut), &ctx(i, &cal));
+        }
         assert!(
             out_la.yaw > out_no.yaw,
             "lead should push the aim toward the future cluster: no-lead {} vs lead {}",
