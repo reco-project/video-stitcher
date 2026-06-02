@@ -487,11 +487,6 @@ pub fn setup_autocam(
                 let player_tracker = crate::trackers::PlayerTracker::new(person_id);
                 let ball_tracker =
                     crate::trackers::BallTracker::new(ball_id).with_max_jump_rad(0.8);
-                log::info!(
-                    "Tracking mode: field (PlayerTracker + BallTracker + FieldPanner, \
-                     player_class={person_id}, ball_class={ball_id})"
-                );
-
                 target.set_ball_tracker(Box::new(ball_tracker));
                 target.set_player_tracker(Box::new(player_tracker));
 
@@ -501,11 +496,15 @@ pub fn setup_autocam(
                         ..Default::default()
                     },
                 );
-                let field_panner = crate::panners::FieldPanner::with_config(fps, fp_config);
                 log::info!(
-                    "Tracking mode: field (FieldPanner, \
-                     player_class={person_id}, ball_class={ball_id})"
+                    "Tracking mode: field (PlayerTracker + BallTracker + FieldPanner, \
+                     player_class={person_id}, ball_class={ball_id}); framing={:?}, \
+                     confidence_weighted={}, lock_pitch={}",
+                    fp_config.framing,
+                    fp_config.confidence_weighted,
+                    fp_config.lock_pitch,
                 );
+                let field_panner = crate::panners::FieldPanner::with_config(fps, fp_config);
                 target.set_panner(Box::new(field_panner));
             }
             TrackingMode::Ball => {

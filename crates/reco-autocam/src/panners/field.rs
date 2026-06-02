@@ -123,6 +123,18 @@ pub struct FieldPannerConfig {
     /// box in [`FramingMode::FrameAll`] so players near the edge are not
     /// clipped at the viewport boundary.
     pub frame_all_margin_deg: f32,
+    /// Horizontal-only panning: hold the tilt at [`locked_pitch_rad`] and
+    /// pan in yaw alone, keeping a fixed height. Composes with either
+    /// framing mode. `false` (default) lets pitch track the action.
+    ///
+    /// (Zoom-range lock needs no flag: set `fov_tight == fov_wide` to pin
+    /// the FOV to a constant.)
+    ///
+    /// [`locked_pitch_rad`]: Self::locked_pitch_rad
+    pub lock_pitch: bool,
+    /// Tilt held when [`lock_pitch`](Self::lock_pitch) is set, in radians
+    /// (panorama frame; `0.0` = level). Ignored otherwise.
+    pub locked_pitch_rad: f32,
 }
 
 impl Default for FieldPannerConfig {
@@ -156,6 +168,8 @@ impl Default for FieldPannerConfig {
             framing: FramingMode::Action,
             confidence_weighted: true,
             frame_all_margin_deg: 8.0,
+            lock_pitch: false,
+            locked_pitch_rad: 0.0,
         }
     }
 }
@@ -668,6 +682,15 @@ impl Panner for FieldPanner {
                 self.lead_pitch += a * (raw_lead_p - self.lead_pitch);
                 target = Some((ty + self.lead_yaw, tp + self.lead_pitch));
             }
+        }
+
+        // Horizontal-only: pin the tilt so the camera pans in yaw alone.
+        // Applied after the lead/blend so nothing can reintroduce pitch
+        // motion downstream.
+        if self.config.lock_pitch
+            && let Some((ty, _)) = target
+        {
+            target = Some((ty, self.config.locked_pitch_rad));
         }
 
         // Velocity-clamped chase toward the resolved target (shared by
@@ -1290,6 +1313,43 @@ mod tests {
             "confidence weighting should pull toward the confident player: weighted {} vs unweighted {}",
             ow.yaw,
             ou.yaw
+        );
+    }
+
+    #[test]
+    fn lock_pitch_holds_tilt_but_pans_yaw() {
+        // Players sit at pitch 0.2; with lock_pitch the camera must
+        // converge to the locked tilt (0.0) while still tracking yaw.
+        let cal = cal();
+        let cfg = FieldPannerConfig {
+            lock_pitch: true,
+            locked_pitch_rad: 0.0,
+            dead_zone_rad: 0.0,
+            ball_weight: 0.0,
+            ..Default::default()
+        };
+        let mut p = FieldPanner::with_config(30.0, cfg);
+        let w = WorldState {
+            ball: None,
+            players: vec![
+                player(0.30, 0.2, 1),
+                player(0.34, 0.2, 2),
+                player(0.38, 0.2, 3),
+            ],
+        };
+        let mut out = p.decide(&w, &ctx(0, &cal));
+        for i in 1..400 {
+            out = p.decide(&w, &ctx(i, &cal));
+        }
+        assert!(
+            out.pitch.abs() < 1e-3,
+            "lock_pitch should hold tilt at 0.0, got {}",
+            out.pitch
+        );
+        assert!(
+            out.yaw > 0.2,
+            "yaw should still track the cluster, got {}",
+            out.yaw
         );
     }
 }
