@@ -1,23 +1,25 @@
-//! Field-aware panner following the densest player cluster,
-//! optionally blending the ball position.
+//! Field-aware panner. Two framing modes share one motion pipeline:
+//! [`FramingMode::Action`] follows the densest player cluster (broadcast
+//! style), [`FramingMode::FrameAll`] keeps every player in frame.
 //!
 //! # Pipeline (per `decide` call)
 //!
-//! 1. Take the current-frame tracked players from `world.players`.
-//!    The tracker already enforces class filtering and stable IDs;
-//!    entities in [`TrackState::Lost`] are dropped before clustering.
-//! 2. Trimmed robust centroid on (yaw, pitch) in panorama space:
-//!    keep the densest `keep_fraction` of players and drop the rest
-//!    (goalkeeper, substitutes) as outliers. The downstream centroid
-//!    EMA absorbs boundary flips so the trim does not teleport the
-//!    camera.
-//! 3. Confidence-weighted centroid + EMA smoothing.
-//! 4. Edge-push (yaw *= 1.15) exaggerates side-of-pitch motion so
-//!    the camera leads into the direction of play.
-//! 5. Optional ball blend: weighted linear combination with
-//!    `world.ball.yaw/pitch` when both are available.
-//! 6. Dynamic FOV from cluster spread, pitch (distance proxy), and
-//!    absolute yaw (panorama-edge bias), all EMA-smoothed.
+//! 1. Take the current-frame players from `world.players` (the provider
+//!    self-filters by class; `Lost` entities are dropped before
+//!    clustering).
+//! 2. Resolve the look-at center per [`FramingMode`]:
+//!    - **Action** - trimmed centroid: keep the densest `keep_fraction`
+//!      of players, drop the rest (goalkeeper, substitutes) as outliers,
+//!      then a (optionally confidence-weighted) mean + EMA. Edge-push and
+//!      pitch-bias lean the aim into the direction of play; an optional
+//!      ball blend pulls toward `world.ball`.
+//!    - **FrameAll** - the EMA-smoothed geometric midpoint of every
+//!      player's bounding box; no trim, no weighting, no biases.
+//! 3. Lookahead lead, velocity-clamped chase, and soft dead-zone move
+//!    the aim toward that center (mode-agnostic).
+//! 4. Dynamic FOV: Action sizes from cluster spread + distance/edge/
+//!    velocity biases (widened to keep the ball framed); FrameAll sizes
+//!    to the bounding-box extent plus a margin. Both EMA-smoothed.
 //!
 //! # Logging
 //!
@@ -32,6 +34,26 @@ use reco_core::detect::tracker::{TrackState, TrackedEntity, WorldState};
 use serde::{Deserialize, Serialize};
 
 const LOG_INTERVAL: u64 = 30;
+
+/// How the panner chooses what to frame each frame.
+///
+/// The two modes share all of the motion machinery (velocity-clamped
+/// chase, dead-zone, lookahead lead, pose smoothing); they differ only
+/// in *where* the camera aims and *how wide* it zooms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FramingMode {
+    /// Follow the action: the trimmed, (optionally) confidence-weighted
+    /// player cluster, with edge-push, pitch-bias, ball blending, and
+    /// the dynamic FOV biases. The broadcast-style default.
+    #[default]
+    Action,
+    /// Keep every player in frame: aim at the geometric midpoint of the
+    /// players' bounding box and size the FOV to the box extent plus a
+    /// margin. No trim, no confidence weighting, no FOV biases, no ball
+    /// blend - the "show the whole team" mode (frisbee, training, etc.).
+    FrameAll,
+}
 
 /// All tunable parameters for the field panner.
 ///
@@ -88,6 +110,19 @@ pub struct FieldPannerConfig {
     /// Viable because lookahead absorbs the latency a dead-zone adds.
     /// `0.0` = off.
     pub dead_zone_rad: f32,
+    /// Framing mode: follow the action ([`FramingMode::Action`], default)
+    /// or keep every player in frame ([`FramingMode::FrameAll`]).
+    pub framing: FramingMode,
+    /// Whether the [`FramingMode::Action`] centroid weights players by
+    /// detection confidence. `true` (default) lets high-confidence
+    /// players anchor the aim; `false` is a pure geometric mean of the
+    /// kept players. Ignored in [`FramingMode::FrameAll`], whose midpoint
+    /// is geometric by construction.
+    pub confidence_weighted: bool,
+    /// Extra padding (degrees, each side) added to the player bounding
+    /// box in [`FramingMode::FrameAll`] so players near the edge are not
+    /// clipped at the viewport boundary.
+    pub frame_all_margin_deg: f32,
 }
 
 impl Default for FieldPannerConfig {
@@ -118,6 +153,9 @@ impl Default for FieldPannerConfig {
             lead_gain: 1.0,
             lead_alpha: 0.1,
             dead_zone_rad: 0.087,
+            framing: FramingMode::Action,
+            confidence_weighted: true,
+            frame_all_margin_deg: 8.0,
         }
     }
 }
@@ -221,11 +259,11 @@ impl FieldPanner {
     /// Convert live tracked players to `(yaw, pitch, confidence)`
     /// tuples for the clustering pipeline.
     ///
-    /// Lost entities are dropped — the tracker may report them for
-    /// one final frame so consumers can observe the transition, but
-    /// they have no meaningful centroid contribution. Class and
-    /// cross-camera deduplication are already the tracker's job;
-    /// the panner simply trusts the IDs.
+    /// Lost entities are dropped — a tracker may report them for one
+    /// final frame so consumers can observe the transition, but they
+    /// have no meaningful centroid contribution. Class filtering and
+    /// cross-camera handling are the provider's job; the panner just
+    /// consumes the points.
     fn to_points(&self, players: &[TrackedEntity]) -> Vec<(f32, f32, f32)> {
         players
             .iter()
@@ -247,15 +285,21 @@ impl FieldPanner {
         if points.len() < self.config.min_cluster {
             return Vec::new();
         }
-        let total_conf: f32 = points.iter().map(|(_, _, c)| c).sum();
-        if total_conf <= 0.0 {
+        // Trim reference: confidence-weighted mean, or a plain geometric
+        // mean when `confidence_weighted` is off (weight every player 1).
+        let weight = |c: f32| {
+            if self.config.confidence_weighted {
+                c
+            } else {
+                1.0
+            }
+        };
+        let total_w: f32 = points.iter().map(|(_, _, c)| weight(*c)).sum();
+        if total_w <= 0.0 {
             return Vec::new();
         }
-
-        // Confidence-weighted mean as the trim reference. A non-finite
-        // mean (NaN inputs) means no usable cluster - hold position.
-        let cy: f32 = points.iter().map(|(y, _, c)| y * c).sum::<f32>() / total_conf;
-        let cp: f32 = points.iter().map(|(_, p, c)| p * c).sum::<f32>() / total_conf;
+        let cy: f32 = points.iter().map(|(y, _, c)| y * weight(*c)).sum::<f32>() / total_w;
+        let cp: f32 = points.iter().map(|(_, p, c)| p * weight(*c)).sum::<f32>() / total_w;
         if !cy.is_finite() || !cp.is_finite() {
             return Vec::new();
         }
@@ -277,15 +321,24 @@ impl FieldPanner {
         sorted
     }
 
-    /// Confidence-weighted centroid + EMA smoothing.
+    /// Cluster centroid (confidence-weighted unless the config opts out)
+    /// followed by EMA smoothing.
     fn smooth_centroid(&mut self, core: &[(f32, f32, f32)]) -> (f32, f32) {
+        let weight = |c: f32| {
+            if self.config.confidence_weighted {
+                c
+            } else {
+                1.0
+            }
+        };
         let mut sum_yaw = 0.0_f32;
         let mut sum_pitch = 0.0_f32;
         let mut total_weight = 0.0_f32;
         for &(yaw, pitch, conf) in core {
-            sum_yaw += yaw * conf;
-            sum_pitch += pitch * conf;
-            total_weight += conf;
+            let w = weight(conf);
+            sum_yaw += yaw * w;
+            sum_pitch += pitch * w;
+            total_weight += w;
         }
         if total_weight <= 0.0 {
             return (self.ema_yaw, self.ema_pitch);
@@ -295,11 +348,18 @@ impl FieldPanner {
         if !raw_yaw.is_finite() || !raw_pitch.is_finite() {
             return (self.ema_yaw, self.ema_pitch);
         }
+        self.ema_step(raw_yaw, raw_pitch)
+    }
 
-        // First-stage EMA: smooths step changes in the raw centroid
-        // into ramps. The output EMA (POSE_ALPHA) then smooths the
-        // ramps further, naturally bounding acceleration. Two cascaded
-        // EMAs = second-order filter with smooth accel/decel.
+    /// Advance the centroid EMA toward a raw `(yaw, pitch)` and return
+    /// the smoothed value. Shared by the action centroid and the
+    /// frame-all bounding-box midpoint.
+    ///
+    /// First-stage EMA: smooths step changes in the raw center into
+    /// ramps. The output pose EMA in the run loop then smooths the ramps
+    /// further, naturally bounding acceleration - two cascaded EMAs give
+    /// a second-order filter with smooth accel/decel.
+    fn ema_step(&mut self, raw_yaw: f32, raw_pitch: f32) -> (f32, f32) {
         if !self.ema_initialized {
             self.ema_yaw = raw_yaw;
             self.ema_pitch = raw_pitch;
@@ -308,13 +368,22 @@ impl FieldPanner {
             self.ema_yaw += self.config.cluster_alpha * (raw_yaw - self.ema_yaw);
             self.ema_pitch += self.config.cluster_alpha * (raw_pitch - self.ema_pitch);
         }
-
         (self.ema_yaw, self.ema_pitch)
     }
 
     fn compute_cluster(&mut self, players: &[TrackedEntity]) -> Option<Cluster> {
         let points = self.to_points(players);
-        let core = self.cluster_and_trim(&points);
+        match self.config.framing {
+            FramingMode::Action => self.cluster_action(&points),
+            FramingMode::FrameAll => self.cluster_frame_all(&points),
+        }
+    }
+
+    /// Action framing: trimmed, (optionally) confidence-weighted cluster
+    /// centroid; `spread` is the max radial distance of a kept player, so
+    /// the FOV path frames the cluster tightly.
+    fn cluster_action(&mut self, points: &[(f32, f32, f32)]) -> Option<Cluster> {
+        let core = self.cluster_and_trim(points);
         if core.is_empty() {
             return None;
         }
@@ -335,22 +404,65 @@ impl FieldPanner {
         })
     }
 
+    /// Frame-all framing: aim at the geometric midpoint of every player's
+    /// bounding box (EMA-smoothed so a new extreme player does not snap
+    /// the camera), and report `spread` as the larger half-extent so the
+    /// FOV path widens to contain the whole box. No trim, no confidence
+    /// weighting - every player counts equally.
+    fn cluster_frame_all(&mut self, points: &[(f32, f32, f32)]) -> Option<Cluster> {
+        if points.len() < self.config.min_cluster {
+            return None;
+        }
+        let (cy, cp, half_yaw, half_pitch) = bbox(points)?;
+        let (yaw, pitch) = self.ema_step(cy, cp);
+        // The viewport FOV is the horizontal angle, so the yaw extent
+        // usually dominates; keep the larger half-extent so a tall, narrow
+        // formation is not clipped vertically either.
+        let spread = half_yaw.max(half_pitch);
+        Some(Cluster {
+            yaw,
+            pitch,
+            spread,
+            count: points.len(),
+        })
+    }
+
     /// Instantaneous look-at target from a world state, with no
-    /// smoothing or internal state: the trimmed cluster centroid (with
-    /// edge push + pitch bias), else the live ball, else None. Used to
-    /// estimate where the action is heading for the lookahead lead.
+    /// smoothing or internal state, else the live ball, else None. Used
+    /// to estimate where the action is heading for the lookahead lead, so
+    /// it must mirror the framing the real target uses: the action
+    /// centroid (edge-pushed, pitch-biased) or the frame-all bbox
+    /// midpoint.
     fn raw_target(&self, world: &WorldState) -> Option<(f32, f32)> {
         let points = self.to_points(&world.players);
-        let core = self.cluster_and_trim(&points);
-        if !core.is_empty() {
-            let total: f32 = core.iter().map(|(_, _, c)| c).sum();
-            if total > 0.0 {
-                let cy = core.iter().map(|(y, _, c)| y * c).sum::<f32>() / total;
-                let cp = core.iter().map(|(_, p, c)| p * c).sum::<f32>() / total;
-                return Some((
-                    cy * (1.0 + self.config.edge_push),
-                    cp + self.config.pitch_bias,
-                ));
+        match self.config.framing {
+            FramingMode::Action => {
+                let core = self.cluster_and_trim(&points);
+                if !core.is_empty() {
+                    let weight = |c: f32| {
+                        if self.config.confidence_weighted {
+                            c
+                        } else {
+                            1.0
+                        }
+                    };
+                    let total: f32 = core.iter().map(|(_, _, c)| weight(*c)).sum();
+                    if total > 0.0 {
+                        let cy = core.iter().map(|(y, _, c)| y * weight(*c)).sum::<f32>() / total;
+                        let cp = core.iter().map(|(_, p, c)| p * weight(*c)).sum::<f32>() / total;
+                        return Some((
+                            cy * (1.0 + self.config.edge_push),
+                            cp + self.config.pitch_bias,
+                        ));
+                    }
+                }
+            }
+            FramingMode::FrameAll => {
+                if points.len() >= self.config.min_cluster
+                    && let Some((cy, cp, _, _)) = bbox(&points)
+                {
+                    return Some((cy, cp));
+                }
             }
         }
         world
@@ -361,10 +473,48 @@ impl FieldPanner {
     }
 }
 
+/// Axis-aligned bounding box of the finite points: returns
+/// `(center_yaw, center_pitch, half_yaw_extent, half_pitch_extent)`,
+/// or `None` if no point has finite coordinates.
+fn bbox(points: &[(f32, f32, f32)]) -> Option<(f32, f32, f32, f32)> {
+    let (mut min_y, mut max_y) = (f32::INFINITY, f32::NEG_INFINITY);
+    let (mut min_p, mut max_p) = (f32::INFINITY, f32::NEG_INFINITY);
+    for &(y, p, _) in points {
+        if !y.is_finite() || !p.is_finite() {
+            continue;
+        }
+        min_y = min_y.min(y);
+        max_y = max_y.max(y);
+        min_p = min_p.min(p);
+        max_p = max_p.max(p);
+    }
+    if min_y.is_finite() && max_y.is_finite() {
+        Some((
+            0.5 * (min_y + max_y),
+            0.5 * (min_p + max_p),
+            0.5 * (max_y - min_y),
+            0.5 * (max_p - min_p),
+        ))
+    } else {
+        None
+    }
+}
+
 impl FieldPanner {
     /// Dynamic FOV: player spread + distance + edge + velocity biases,
     /// then widened if needed to keep the ball in frame.
+    ///
+    /// In [`FramingMode::FrameAll`] the biases are bypassed entirely: the
+    /// FOV is just the player bounding-box extent (`2 * spread`) plus the
+    /// configured margin, so every player stays framed regardless of
+    /// distance or velocity.
     fn target_fov(&self, spread: f32, pitch: f32, velocity_mag: f32) -> f32 {
+        if self.config.framing == FramingMode::FrameAll {
+            let extent_deg = (2.0 * spread).to_degrees();
+            return (extent_deg + 2.0 * self.config.frame_all_margin_deg)
+                .clamp(self.config.fov_tight, self.config.fov_wide);
+        }
+
         let spread_deg = spread.to_degrees();
         let fov_from_spread = (2.0 * spread_deg).max(self.config.fov_tight);
 
@@ -458,17 +608,28 @@ impl Panner for FieldPanner {
         // the player cluster simply isn't available to size the FOV.
         let mut cluster_target: Option<(f32, f32, f32)> = None; // (target_yaw, target_pitch, effective_ball_weight)
         let mut target = if let Some(ref c) = cluster {
-            let mut target_yaw = c.yaw * (1.0 + self.config.edge_push);
-            let mut target_pitch = c.pitch + self.config.pitch_bias;
+            match self.config.framing {
+                FramingMode::Action => {
+                    let mut target_yaw = c.yaw * (1.0 + self.config.edge_push);
+                    let mut target_pitch = c.pitch + self.config.pitch_bias;
 
-            let effective_w = self.config.ball_weight * self.ball_presence;
-            if effective_w > 0.001 {
-                target_yaw = target_yaw * (1.0 - effective_w) + self.last_ball_yaw * effective_w;
-                target_pitch =
-                    target_pitch * (1.0 - effective_w) + self.last_ball_pitch * effective_w;
+                    let effective_w = self.config.ball_weight * self.ball_presence;
+                    if effective_w > 0.001 {
+                        target_yaw =
+                            target_yaw * (1.0 - effective_w) + self.last_ball_yaw * effective_w;
+                        target_pitch =
+                            target_pitch * (1.0 - effective_w) + self.last_ball_pitch * effective_w;
+                    }
+                    cluster_target = Some((target_yaw, target_pitch, effective_w));
+                    Some((target_yaw, target_pitch))
+                }
+                // Frame-all aims at the raw bbox midpoint: no edge-push,
+                // no pitch-bias, no ball blend - just frame the team.
+                FramingMode::FrameAll => {
+                    cluster_target = Some((c.yaw, c.pitch, 0.0));
+                    Some((c.yaw, c.pitch))
+                }
             }
-            cluster_target = Some((target_yaw, target_pitch, effective_w));
-            Some((target_yaw, target_pitch))
         } else if ball_detected {
             // No player cluster: follow the ball directly.
             let b = world.ball.as_ref().unwrap();
@@ -637,12 +798,16 @@ mod tests {
     use reco_core::detect::detector::CameraId;
 
     fn player(yaw: f32, pitch: f32, id: u64) -> TrackedEntity {
+        player_conf(yaw, pitch, id, 0.9)
+    }
+
+    fn player_conf(yaw: f32, pitch: f32, id: u64, confidence: f32) -> TrackedEntity {
         TrackedEntity {
             id,
             class_id: 0,
             yaw,
             pitch,
-            confidence: 0.9,
+            confidence,
             state: TrackState::Tracking,
             age_frames: 5,
             origin: CameraId::Left,
@@ -1025,5 +1190,106 @@ mod tests {
         let cal = cal();
         let out = p.decide(&tight_world(), &ctx(0, &cal));
         assert!(out.fov_degrees.is_some());
+    }
+
+    fn frame_all_config() -> FieldPannerConfig {
+        FieldPannerConfig {
+            framing: FramingMode::FrameAll,
+            dead_zone_rad: 0.0, // let the aim converge exactly for the assert
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn frame_all_aims_at_bbox_midpoint_not_mean() {
+        // Players bunched low + one high: midpoint of [0.0, 0.5] = 0.25,
+        // whereas the mean would sit at ~0.2. Frame-all must use the
+        // midpoint (and apply no edge-push), so the lone player isn't
+        // clipped.
+        let mut p = FieldPanner::with_config(30.0, frame_all_config());
+        let cal = cal();
+        let w = WorldState {
+            ball: None,
+            players: vec![
+                player(0.0, 0.0, 1),
+                player(0.1, 0.0, 2),
+                player(0.5, 0.0, 3),
+            ],
+        };
+        let mut out = p.decide(&w, &ctx(0, &cal));
+        for i in 1..400 {
+            out = p.decide(&w, &ctx(i, &cal));
+        }
+        assert!(
+            (out.yaw - 0.25).abs() < 0.02,
+            "frame-all should aim at the bbox midpoint 0.25, got {}",
+            out.yaw
+        );
+    }
+
+    #[test]
+    fn frame_all_fov_grows_with_player_extent() {
+        let p = FieldPanner::with_config(30.0, frame_all_config());
+        // spread is the half-extent; a wider squad needs a wider FOV.
+        let tight = p.target_fov(0.05, 0.0, 0.0);
+        let wide = p.target_fov(0.30, 0.0, 0.0);
+        assert!(tight < wide, "tight={tight} wide={wide}");
+        // The FOV must cover the full extent (2*spread) plus the margin.
+        let half: f32 = 0.20;
+        let got = p.target_fov(half, 0.0, 0.0);
+        let needed = (2.0 * half).to_degrees() + 2.0 * p.config.frame_all_margin_deg;
+        assert!(
+            got >= needed - 1e-3 || (got - p.config.fov_wide).abs() < 1e-3,
+            "frame-all FOV {got} must cover extent+margin {needed} (or be clamped to fov_wide)"
+        );
+    }
+
+    #[test]
+    fn confidence_weighting_can_be_disabled() {
+        // One low-confidence player near 0.0 and one high-confidence
+        // player at 0.4. Weighted, the aim leans toward the confident
+        // player; unweighted, it sits at the geometric mean.
+        let cal = cal();
+        let w = WorldState {
+            ball: None,
+            players: vec![
+                player_conf(0.0, 0.0, 1, 0.2),
+                player_conf(0.4, 0.0, 2, 0.95),
+            ],
+        };
+        let base = FieldPannerConfig {
+            keep_fraction: 1.0, // keep both so weighting is what differs
+            dead_zone_rad: 0.0,
+            ball_weight: 0.0,
+            ..Default::default()
+        };
+        let mut weighted = FieldPanner::with_config(
+            30.0,
+            FieldPannerConfig {
+                confidence_weighted: true,
+                ..base.clone()
+            },
+        );
+        let mut unweighted = FieldPanner::with_config(
+            30.0,
+            FieldPannerConfig {
+                confidence_weighted: false,
+                ..base
+            },
+        );
+        let (mut ow, mut ou) = (
+            weighted.decide(&w, &ctx(0, &cal)),
+            unweighted.decide(&w, &ctx(0, &cal)),
+        );
+        for i in 1..400 {
+            ow = weighted.decide(&w, &ctx(i, &cal));
+            ou = unweighted.decide(&w, &ctx(i, &cal));
+        }
+        assert!(
+            ow.yaw > ou.yaw,
+            "confidence weighting should pull toward the confident player: weighted {} vs unweighted {}",
+            ow.yaw,
+            ou.yaw
+        );
     }
 }

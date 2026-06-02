@@ -252,8 +252,9 @@ enum Commands {
         trajectory: Option<String>,
 
         /// FieldPanner tuning as a JSON file (field mode). Only the keys
-        /// present override defaults, e.g. {"dead_zone_rad":0.087,
-        /// "lookahead_reactivity":2.0,"lead_gain":0.7}.
+        /// present override defaults, e.g. {"framing":"frame_all",
+        /// "dead_zone_rad":0.087,"lookahead_reactivity":2.0}. Set
+        /// "framing":"frame_all" to keep every player in frame.
         #[arg(long = "panner-config")]
         panner_config: Option<String>,
     },
