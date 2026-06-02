@@ -83,10 +83,18 @@ pub struct FieldPannerConfig {
     pub max_velocity_rad_per_sec: f32,
     pub velocity_alpha: f32,
     pub pitch_bias: f32,
+    /// Per-frame multiplier that bleeds off ball presence when the ball
+    /// is not near the cluster. Closer to `1.0` holds the ball's pull
+    /// longer after it disappears; smaller releases faster. Too slow and
+    /// the camera lingers on an empty goal after a stray ball detection.
     pub ball_presence_decay: f32,
     pub ball_presence_attack: f32,
     pub velocity_fov_bias_max: f32,
     pub ball_frame_margin_deg: f32,
+    /// Max panorama distance (radians) the ball may be from the player
+    /// cluster centroid and still blend into the aim. Beyond this the
+    /// ball is treated as off-the-action (a stray detection or the far
+    /// goal) and ignored, so it cannot drag the camera off the play.
     pub ball_max_dist_from_cluster: f32,
     pub ball_weight: f32,
     /// When lookahead is active, the base chase runs this many times
@@ -155,11 +163,11 @@ impl Default for FieldPannerConfig {
             max_velocity_rad_per_sec: 0.18,
             velocity_alpha: 0.06,
             pitch_bias: 0.05,
-            ball_presence_decay: 0.99,
+            ball_presence_decay: 0.90,
             ball_presence_attack: 0.15,
             velocity_fov_bias_max: 10.0,
             ball_frame_margin_deg: 3.0,
-            ball_max_dist_from_cluster: 0.85,
+            ball_max_dist_from_cluster: 0.5,
             ball_weight: 0.5,
             lookahead_reactivity: 2.0,
             lead_gain: 1.0,
