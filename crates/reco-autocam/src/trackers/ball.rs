@@ -17,8 +17,8 @@
 //!    supplied via [`BallTracker::set_players`] and non-empty, a
 //!    detection must be within `player_anchor_max_rad` of at least
 //!    one player in panorama yaw/pitch space to survive. When no
-//!    players have been supplied, the filter is a no-op (Phase 2c
-//!    defers PlayerTracker to Phase 5).
+//!    players have been supplied (no player provider attached, or a
+//!    ball-only model), the filter is a no-op.
 //! 4. **Nearest-to-last with max-jump** — among survivors, pick the
 //!    one whose panorama position is closest to the last accepted
 //!    tracked position, provided the jump is below `max_jump_rad`.

@@ -15,7 +15,7 @@
 //! # Pipeline
 //!
 //! ```text
-//!  Detectors → class splitter → [BallTracker | PlayerTracker | …]
+//!  Detectors → class splitter → [ball tracker | class providers | …]
 //!                                         ↓
 //!                                  WorldState { ball, players, … }
 //!                                         ↓
@@ -29,7 +29,7 @@
 //! - `reco-core` stays domain-generic. All ball/player/referee logic
 //!   lives in consumer crates such as `reco-autocam`. This module
 //!   defines only the contract.
-//! - No implementations here. `BallTracker`, `PlayerTracker`, and
+//! - No implementations here. `BallTracker`, `ClassProvider`, and
 //!   future tracker variants ship in `reco-autocam::trackers`.
 
 use super::detector::CameraId;

@@ -12,12 +12,14 @@
 //!   tracker.
 //! - [`ball`] — [`BallTracker`], the singleton ball tracker:
 //!   player-anchor → nearest-to-last with cross-cam handoff → coast.
-//! - [`player`] — [`PlayerTracker`], a stateless live-players provider
-//!   (no identity, no coast: the panner only needs this frame's points).
+//! - [`class_provider`] — [`ClassProvider`], a stateless per-class
+//!   projector (no identity, no coast: a point-cloud panner only needs
+//!   this frame's points). The [`Tracker`](reco_core::detect::tracker::Tracker)
+//!   trait's two real shapes are this and the stateful ball tracker.
 
 pub mod ball;
+pub mod class_provider;
 pub mod filters;
-pub mod player;
 
 pub use ball::BallTracker;
-pub use player::PlayerTracker;
+pub use class_provider::ClassProvider;

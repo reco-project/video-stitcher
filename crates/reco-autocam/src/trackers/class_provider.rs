@@ -1,50 +1,53 @@
-//! Live-players provider: projects the current frame's player
-//! detections into the world state, with no temporal tracking.
+//! Stateless class provider: projects the current frame's detections of
+//! one class into world entities, with no temporal tracking.
 //!
 //! # Why there is no tracking here
 //!
-//! The panner consumes an *unordered set* of `(yaw, pitch, confidence)`
-//! points to compute a cluster centroid and spread; it never keys off
-//! per-entity identity. So stable IDs, age, greedy matching, velocity
-//! prediction, and multi-frame coasting had no consumer on the control
-//! path (verified by grep: only this module's tests referenced them).
-//! Per the project's "every component needs a proven purpose" rule they
-//! were removed; recover them from git history if a future consumer
-//! (e.g. per-player highlight overlays) actually needs identity.
+//! A panner that aggregates a point cloud (the [`FieldPanner`] cluster)
+//! gets its robustness from the aggregation itself - the trim discards
+//! outliers - so per-entity identity, age, matching, velocity, and
+//! coasting have no consumer on the control path (verified by grep: only
+//! tests referenced them). Per the "every component needs a proven
+//! purpose" rule they are gone; recover them from git history if a
+//! future consumer (e.g. per-entity highlight overlays) needs identity.
 //!
-//! # Why dropping the coast is safe
+//! This is the counterpart to [`BallTracker`](crate::trackers::BallTracker):
+//! the ball is a noisy *singleton* with no cloud to average against, so
+//! it keeps a stateful tracker (jump-gate, coast, player-anchor). A
+//! point-cloud class (players, and later referees/keepers) needs none of
+//! that and uses this provider instead. The two are the [`Tracker`]
+//! trait's two real shapes.
+//!
+//! # Why there is no coast
 //!
 //! Detection-interval gaps are already bridged upstream: on the frames
 //! between detection cycles the session re-runs trackers on the
-//! *retained* `last_detections`, so the same players are re-emitted
-//! every frame without any coast state here. The old 45-frame coast did
-//! one extra thing - hold a player the model dropped for a full
-//! detection cycle - which at interval 15 meant inventing a stale
-//! "ghost" for ~1.5s. Those ghosts inflated the cluster spread (and thus
-//! the FOV), so removing the coast removes a bug, not a feature.
+//! *retained* `last_detections`, so the same entities are re-emitted
+//! every frame without any coast state here.
+//!
+//! [`FieldPanner`]: crate::panners::FieldPanner
 
 use reco_core::detect::director::MappedDetection;
 use reco_core::detect::tracker::{TrackState, TrackedEntity, Tracker, WorldState};
 
-/// Emits this frame's player detections as live tracked entities.
+/// Emits this frame's detections of a single class as live tracked
+/// entities, one per detection, with no temporal state.
 ///
-/// Stateless beyond the configured class id: each `update` projects
-/// every in-class detection with a position into a `Tracking`
-/// [`TrackedEntity`]. The identity fields it cannot meaningfully fill
-/// (`id`, `age_frames`) are left at `0`; `origin` records the reporting
-/// camera for diagnostics only.
-pub struct PlayerTracker {
+/// The identity fields it cannot meaningfully fill (`id`, `age_frames`)
+/// are left at `0`; `origin` records the reporting camera for
+/// diagnostics only.
+pub struct ClassProvider {
     class_id: u16,
 }
 
-impl PlayerTracker {
-    /// Build a live-players provider for the given detection `class_id`.
+impl ClassProvider {
+    /// Build a provider for the given detection `class_id`.
     pub fn new(class_id: u16) -> Self {
         Self { class_id }
     }
 }
 
-impl Tracker for PlayerTracker {
+impl Tracker for ClassProvider {
     fn update(&mut self, detections: &[MappedDetection], _timestamp_ms: f64) -> Vec<TrackedEntity> {
         detections
             .iter()
@@ -70,8 +73,7 @@ impl Tracker for PlayerTracker {
     }
 
     fn observe_world(&mut self, _world: &WorldState) {
-        // First tracker the session runs each frame; no earlier
-        // tracker context to observe.
+        // Stateless: nothing to observe.
     }
 }
 
@@ -98,7 +100,7 @@ mod tests {
 
     #[test]
     fn emits_one_entity_per_in_class_detection() {
-        let mut t = PlayerTracker::new(0);
+        let mut t = ClassProvider::new(0);
         let dets = vec![
             det(CameraId::Left, 0.0, 0.0, 0.9),
             det(CameraId::Left, 0.5, 0.0, 0.8),
@@ -113,11 +115,11 @@ mod tests {
     }
 
     #[test]
-    fn same_detections_emit_same_players_across_frames() {
+    fn same_detections_emit_same_entities_across_frames() {
         // Between detection cycles the session re-feeds the retained
-        // detections; the provider must be deterministic so players
+        // detections; the provider must be deterministic so entities
         // don't flicker without any coast state.
-        let mut t = PlayerTracker::new(0);
+        let mut t = ClassProvider::new(0);
         let dets = vec![
             det(CameraId::Left, 0.1, 0.0, 0.9),
             det(CameraId::Left, 0.2, 0.0, 0.9),
@@ -131,14 +133,14 @@ mod tests {
     }
 
     #[test]
-    fn no_detections_means_no_players() {
-        let mut t = PlayerTracker::new(0);
+    fn no_detections_means_no_entities() {
+        let mut t = ClassProvider::new(0);
         assert!(t.update(&[], 0.0).is_empty());
     }
 
     #[test]
     fn only_configured_class_is_emitted() {
-        let mut t = PlayerTracker::new(0);
+        let mut t = ClassProvider::new(0);
         let mut other = det(CameraId::Left, 0.3, 0.0, 0.9);
         other.class_id = 5;
         let out = t.update(&[other, det(CameraId::Left, 0.1, 0.0, 0.9)], 0.0);
@@ -148,7 +150,7 @@ mod tests {
 
     #[test]
     fn detection_without_position_is_skipped() {
-        let mut t = PlayerTracker::new(0);
+        let mut t = ClassProvider::new(0);
         let mut no_pos = det(CameraId::Left, 0.3, 0.0, 0.9);
         no_pos.position = None;
         let out = t.update(&[no_pos], 0.0);
@@ -157,7 +159,7 @@ mod tests {
 
     #[test]
     fn class_id_accessor() {
-        let t = PlayerTracker::new(7);
+        let t = ClassProvider::new(7);
         assert_eq!(t.class_id(), 7);
     }
 }
