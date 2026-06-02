@@ -1,22 +1,19 @@
 //! Tracker implementations for reco-autocam.
 //!
-//! Ports of the Python offline POC
-//! (`/tmp/reco-ai-eval/build_tracker_video.py`) into the
-//! `reco_core::detect::tracker::Tracker` contract. Each tracker turns a
-//! noisy stream of [`MappedDetection`](reco_core::detect::director::MappedDetection)s
-//! into a clean [`TrackedEntity`](reco_core::detect::tracker::TrackedEntity)
-//! stream with stable identities and a tri-valued lifecycle state.
+//! Each tracker implements the
+//! [`Tracker`](reco_core::detect::tracker::Tracker) contract, turning a
+//! per-frame stream of [`MappedDetection`](reco_core::detect::director::MappedDetection)s
+//! into a [`TrackedEntity`](reco_core::detect::tracker::TrackedEntity)
+//! list a panner can consume.
 //!
 //! Layout:
-//! - [`filters`] — shared filter building blocks (coaster).
-//!   Each filter is self-contained and independently testable.
-//! - [`ball`] — [`BallTracker`], the singleton ball tracker that
-//!   composes the filters in POC order: player-anchor →
-//!   nearest-to-last with cross-cam handoff → coast.
-//!
-//! Upcoming (Phase 5, see `~/.claude/plans/zesty-mixing-firefly.md`):
-//! `player` and `ensemble` — multi-entity tracking with
-//! Hungarian-matched stable IDs.
+//! - [`filters`] — shared filter building blocks (the coaster).
+//!   Self-contained and independently testable; used by the ball
+//!   tracker.
+//! - [`ball`] — [`BallTracker`], the singleton ball tracker:
+//!   player-anchor → nearest-to-last with cross-cam handoff → coast.
+//! - [`player`] — [`PlayerTracker`], a stateless live-players provider
+//!   (no identity, no coast: the panner only needs this frame's points).
 
 pub mod ball;
 pub mod filters;
