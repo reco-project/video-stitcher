@@ -8,11 +8,11 @@
 //!    self-filters by class; `Lost` entities are dropped before
 //!    clustering).
 //! 2. Resolve the look-at center per [`FramingMode`]:
-//!    - **Action** - trimmed centroid: keep the densest `keep_fraction`
-//!      of players, drop the rest (goalkeeper, substitutes) as outliers,
-//!      then a (optionally confidence-weighted) mean + EMA. Edge-push and
-//!      pitch-bias lean the aim into the direction of play; an optional
-//!      ball blend pulls toward `world.ball`.
+//!    - **Action** - select the cluster per [`ClusterMode`] (density
+//!      peak by default, trimmed mean as fallback), then a (optionally
+//!      confidence-weighted) mean + EMA. Edge-push and pitch-bias lean
+//!      the aim into the direction of play; an optional ball blend pulls
+//!      toward `world.ball`.
 //!    - **FrameAll** - the EMA-smoothed geometric midpoint of every
 //!      player's bounding box; no trim, no weighting, no biases.
 //! 3. Lookahead lead, velocity-clamped chase, and soft dead-zone move
@@ -55,6 +55,27 @@ pub enum FramingMode {
     FrameAll,
 }
 
+/// How [`FramingMode::Action`] selects the player cluster to aim at.
+///
+/// Both feed the same downstream `mean(core)` aim and `spread(core)`
+/// FOV; they differ only in *which* players form `core`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterMode {
+    /// Keep the `keep_fraction` of players closest to the *global* mean.
+    /// Simple, but the mean is dragged by a far group, so this can drop
+    /// near players and keep a distant block - biased toward the far
+    /// side. Kept for comparison / fallback.
+    TrimmedMean,
+    /// Center on the densest concentration of players (the point with the
+    /// most neighbors within `cluster_bandwidth_rad`), then keep that
+    /// group. A far group cannot drag the selection, so the aim sits on a
+    /// real cluster and the FOV tightens onto it. Collapses to the same
+    /// result as `TrimmedMean` for a single tight group.
+    #[default]
+    Density,
+}
+
 /// All tunable parameters for the field panner.
 ///
 /// Safe defaults are tuned for football (soccer) at 30fps. Override
@@ -64,10 +85,18 @@ pub enum FramingMode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FieldPannerConfig {
-    /// Fraction of players to keep when computing the cluster
-    /// centroid, in `(0, 1]`. The farthest `1 - keep_fraction`
-    /// (goalkeeper, substitutes) are trimmed as outliers; `0.8`
-    /// follows the densest 80%.
+    /// How the action cluster is selected - see [`ClusterMode`]. Default
+    /// [`ClusterMode::Density`]; set `trimmed_mean` to fall back.
+    pub cluster_mode: ClusterMode,
+    /// Neighborhood radius (radians) for [`ClusterMode::Density`]: the
+    /// densest player wins, and every player within this radius of it
+    /// forms the cluster. Larger pulls in more of a spread formation;
+    /// smaller isolates a tighter core. Ignored by `TrimmedMean`.
+    pub cluster_bandwidth_rad: f32,
+    /// Fraction of players to keep when computing the cluster centroid
+    /// under [`ClusterMode::TrimmedMean`], in `(0, 1]`. The farthest
+    /// `1 - keep_fraction` are trimmed as outliers; `0.8` follows the
+    /// densest 80%. Ignored by `Density`.
     pub keep_fraction: f32,
     pub min_cluster: usize,
     pub edge_push: f32,
@@ -148,6 +177,8 @@ pub struct FieldPannerConfig {
 impl Default for FieldPannerConfig {
     fn default() -> Self {
         Self {
+            cluster_mode: ClusterMode::Density,
+            cluster_bandwidth_rad: 0.35,
             keep_fraction: 0.8,
             min_cluster: 2,
             edge_push: 0.15,
@@ -343,6 +374,53 @@ impl FieldPanner {
         sorted
     }
 
+    /// Density-based cluster selection: pick the densest concentration of
+    /// players - the one with the most neighbors within
+    /// `cluster_bandwidth_rad` - and return that group.
+    ///
+    /// Unlike [`cluster_and_trim`](Self::cluster_and_trim), the reference
+    /// is a local density peak, not the global mean, so a distant group
+    /// cannot drag the selection (and cannot make nearer players look
+    /// like the outliers). For a single tight group every player is its
+    /// own neighbor and the result matches the trimmed mean.
+    fn densest_cluster(&self, points: &[(f32, f32, f32)]) -> Vec<(f32, f32, f32)> {
+        if points.len() < self.config.min_cluster {
+            return Vec::new();
+        }
+        let bw = self.config.cluster_bandwidth_rad.max(1e-3);
+        let bw_sq = bw * bw;
+        let within = |a: &(f32, f32, f32), b: &(f32, f32, f32)| {
+            (a.0 - b.0).powi(2) + (a.1 - b.1).powi(2) <= bw_sq
+        };
+        // Greedy density peak: O(n^2) over the ~tens of players per frame.
+        let center = points
+            .iter()
+            .filter(|c| c.0.is_finite() && c.1.is_finite())
+            .max_by_key(|c| points.iter().filter(|p| within(c, p)).count());
+        let Some(center) = center.copied() else {
+            return Vec::new();
+        };
+        let core: Vec<(f32, f32, f32)> = points
+            .iter()
+            .filter(|p| within(&center, p))
+            .copied()
+            .collect();
+        if core.len() < self.config.min_cluster {
+            return Vec::new();
+        }
+        core
+    }
+
+    /// Select the player cluster `core` per the configured
+    /// [`ClusterMode`]. Shared by the aim path and the lookahead-lead
+    /// estimator so they never disagree on which players are the cluster.
+    fn select_core(&self, points: &[(f32, f32, f32)]) -> Vec<(f32, f32, f32)> {
+        match self.config.cluster_mode {
+            ClusterMode::TrimmedMean => self.cluster_and_trim(points),
+            ClusterMode::Density => self.densest_cluster(points),
+        }
+    }
+
     /// Cluster centroid (confidence-weighted unless the config opts out)
     /// followed by EMA smoothing.
     fn smooth_centroid(&mut self, core: &[(f32, f32, f32)]) -> (f32, f32) {
@@ -405,7 +483,7 @@ impl FieldPanner {
     /// centroid; `spread` is the max radial distance of a kept player, so
     /// the FOV path frames the cluster tightly.
     fn cluster_action(&mut self, points: &[(f32, f32, f32)]) -> Option<Cluster> {
-        let core = self.cluster_and_trim(points);
+        let core = self.select_core(points);
         if core.is_empty() {
             return None;
         }
@@ -459,7 +537,7 @@ impl FieldPanner {
         let points = self.to_points(&world.players);
         match self.config.framing {
             FramingMode::Action => {
-                let core = self.cluster_and_trim(&points);
+                let core = self.select_core(&points);
                 if !core.is_empty() {
                     let weight = |c: f32| {
                         if self.config.confidence_weighted {
@@ -1289,6 +1367,10 @@ mod tests {
             ],
         };
         let base = FieldPannerConfig {
+            // TrimmedMean: this exercises the centroid weighting with both
+            // players kept (they sit 0.4 apart, beyond the Density
+            // bandwidth, so Density would not co-cluster them).
+            cluster_mode: ClusterMode::TrimmedMean,
             keep_fraction: 1.0, // keep both so weighting is what differs
             dead_zone_rad: 0.0,
             ball_weight: 0.0,
@@ -1357,6 +1439,84 @@ mod tests {
         assert!(
             out.yaw > 0.2,
             "yaw should still track the cluster, got {}",
+            out.yaw
+        );
+    }
+
+    /// A dominant near group plus a smaller far block. TrimmedMean's
+    /// reference is the global mean, dragged toward the far block;
+    /// Density locks onto the near group and excludes the far block.
+    fn bimodal_points() -> Vec<(f32, f32, f32)> {
+        vec![
+            (-0.05, 0.0, 1.0),
+            (-0.02, 0.0, 1.0),
+            (0.00, 0.0, 1.0),
+            (0.03, 0.0, 1.0),
+            (0.05, 0.0, 1.0),
+            (0.02, 0.0, 1.0),
+            (1.35, 0.0, 1.0),
+            (1.40, 0.0, 1.0),
+            (1.45, 0.0, 1.0),
+        ]
+    }
+
+    #[test]
+    fn density_selects_dominant_group_not_dragged_by_far_block() {
+        let p = FieldPanner::with_config(
+            30.0,
+            FieldPannerConfig {
+                cluster_mode: ClusterMode::Density,
+                cluster_bandwidth_rad: 0.35,
+                ..Default::default()
+            },
+        );
+        let core = p.densest_cluster(&bimodal_points());
+        assert_eq!(core.len(), 6, "keeps the 6-player near group, got {core:?}");
+        assert!(
+            core.iter().all(|&(y, _, _)| y < 0.5),
+            "far block excluded: {core:?}"
+        );
+    }
+
+    #[test]
+    fn density_keeps_a_single_tight_group_whole() {
+        // Same input the trimmed-mean tests use; a tight group has every
+        // player as a neighbor, so Density returns all of them (matches
+        // the trim for the single-group case).
+        let p = FieldPanner::new(30.0); // default ClusterMode::Density
+        let pts: Vec<(f32, f32, f32)> =
+            (0..5).map(|i| (0.28 + 0.04 * i as f32, 0.0, 1.0)).collect();
+        assert_eq!(p.densest_cluster(&pts).len(), 5);
+    }
+
+    #[test]
+    fn density_default_aims_at_dominant_group() {
+        // End-to-end: the default panner (Density) converges on the near
+        // group at ~0.0, not dragged toward the far block at 1.4.
+        let cal = cal();
+        let w = WorldState {
+            ball: None,
+            players: bimodal_points()
+                .iter()
+                .enumerate()
+                .map(|(i, &(y, pt, _))| player(y, pt, i as u64))
+                .collect(),
+        };
+        let mut p = FieldPanner::with_config(
+            30.0,
+            FieldPannerConfig {
+                ball_weight: 0.0,
+                dead_zone_rad: 0.0,
+                ..Default::default()
+            },
+        );
+        let mut out = p.decide(&w, &ctx(0, &cal));
+        for i in 1..300 {
+            out = p.decide(&w, &ctx(i, &cal));
+        }
+        assert!(
+            out.yaw.abs() < 0.15,
+            "density should aim at the dominant near group (~0.0), got {}",
             out.yaw
         );
     }
