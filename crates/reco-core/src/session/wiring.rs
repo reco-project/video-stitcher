@@ -86,23 +86,6 @@ impl StitchSession {
         self.event_sink = Some(sink);
     }
 
-    /// Append a [`DetectionFilter`](crate::detect::filter::DetectionFilter)
-    /// to the pre-tracker chain. Filters run in insertion order before
-    /// the trackers see the detection list. With an event sink
-    /// attached, each stage emits
-    /// `PipelineEvent::DetectionFilter { before, after, filter_name }`.
-    ///
-    /// Typical chain:
-    /// 1. `FlickerFilter` (recurrent static false-positive rejection).
-    /// 2. Class-specific filters (feet-in-ROI, hands-raised, etc).
-    pub fn add_detection_filter(
-        &mut self,
-        filter: Box<dyn crate::detect::filter::DetectionFilter>,
-    ) {
-        log::info!("StitchSession: detection filter '{}' added", filter.name());
-        self.detection_filters.push(filter);
-    }
-
     /// Attach a singleton ball tracker. See
     /// [`StitchCore::set_ball_tracker`](crate::core::StitchCore::set_ball_tracker)
     /// for semantics - the session mirrors the core's API so push

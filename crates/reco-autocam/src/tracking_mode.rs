@@ -5,12 +5,13 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum TrackingMode {
-    /// Track player cluster + ball for broadcast-style coverage
-    /// (multi-class model). Uses
-    /// [`PlayerTracker`](crate::trackers::PlayerTracker),
-    /// [`BallTracker`](crate::trackers::BallTracker), and
-    /// [`FieldPanner`](crate::panners::FieldPanner).
-    /// Ball influence is controlled by `FieldPannerConfig::ball_weight`.
+    /// Player cluster + ball for broadcast-style coverage. Uses a
+    /// [`ClassProvider`](crate::trackers::ClassProvider) for players, a
+    /// [`BallTracker`](crate::trackers::BallTracker), and a
+    /// [`FieldPanner`](crate::panners::FieldPanner). The player provider
+    /// is attached only when the model names a player class, so this mode
+    /// degrades gracefully to ball-follow on a ball-only model. Ball
+    /// influence is controlled by `FieldPannerConfig::ball_weight`.
     #[default]
     Field,
     /// Ball-only tracking for single-class ball detectors. No player

@@ -9,6 +9,45 @@ use super::StitchSession;
 use crate::session::types::{FrameProgress, ProgressCallback, SessionError};
 use crate::source::FrameSource;
 
+/// Centered moving-average of a pose over the past + current + ahead
+/// window. Averages yaw, pitch, AND fov, so the zoom is smoothed the
+/// same lag-free way the angles are - otherwise FOV jitter survives the
+/// lookahead untouched.
+///
+/// The window is symmetric only in steady state. At the stream head the
+/// `past` side is short (it grows from empty during warm-up) and in the
+/// drain tail the `ahead` side shrinks, so the average is computed over a
+/// lopsided window at both boundaries - the first/last ~`post_smooth_half`
+/// rendered poses are smoothed slightly differently from the middle. On a
+/// clip shorter than the lookahead window the entire output is in this
+/// boundary regime. This is acceptable (no future data exists past EOF);
+/// it is documented so the boundary behavior is not mistaken for a bug.
+fn centered_smooth(
+    raw_pose: crate::detect::director::ViewportPosition,
+    ahead: impl Iterator<Item = crate::detect::director::ViewportPosition>,
+    past: impl Iterator<Item = crate::detect::director::ViewportPosition>,
+) -> crate::detect::director::ViewportPosition {
+    let mut sum_yaw = raw_pose.yaw;
+    let mut sum_pitch = raw_pose.pitch;
+    let mut sum_fov = raw_pose.fov_degrees.unwrap_or(0.0);
+    let mut fov_n = u32::from(raw_pose.fov_degrees.is_some());
+    let mut n = 1u32;
+    for p in ahead.chain(past) {
+        sum_yaw += p.yaw;
+        sum_pitch += p.pitch;
+        if let Some(f) = p.fov_degrees {
+            sum_fov += f;
+            fov_n += 1;
+        }
+        n += 1;
+    }
+    crate::detect::director::ViewportPosition {
+        yaw: sum_yaw / n as f32,
+        pitch: sum_pitch / n as f32,
+        fov_degrees: (fov_n > 0).then(|| sum_fov / fov_n as f32),
+    }
+}
+
 impl StitchSession {
     /// Auto-configure the session from source metadata.
     ///
@@ -118,10 +157,12 @@ impl StitchSession {
         self.configure_from_source(source);
 
         let result = if self.lookahead_frames > 0 {
+            let fps = source.info().fps.max(1.0);
             log::info!(
-                "Lookahead: {} frames ({:.1}s at source fps)",
+                "Lookahead: {} frames ({:.1}s at {:.2} fps)",
                 self.lookahead_frames,
-                self.lookahead_frames as f64 / 30.0,
+                self.lookahead_frames as f64 / fps,
+                fps,
             );
             self.run_buffered(source, frame_limit, interrupted, &mut on_progress)
         } else {
@@ -231,7 +272,9 @@ impl StitchSession {
         // Create VRAM pool if the source is GPU-resident.
         if source.is_gpu_resident() && self.vram_pool.is_none() {
             let post_smooth_half = (n / 2).max(1);
-            let pool_size = n + post_smooth_half + 2;
+            // Keep in sync with the D3D11 staging pool sizing in
+            // frame_processing.rs (peak occupancy + slack).
+            let pool_size = n + post_smooth_half + 4;
             let (w, h) = self.core.pipeline().source_info();
             let per_slot =
                 super::vram_pool::estimate_vram(w, h, 1, self.gpu_pixel_format.bytes_per_sample());
@@ -262,9 +305,10 @@ impl StitchSession {
                         let req_secs = n as f64 / fps;
                         return Err(SessionError::Config(format!(
                             "--lookahead {req_secs:.1}s needs ~{:.1} GB VRAM for the frame pool \
-                             ({pool_size} slots @ {w}x{h}) but only ~{:.1} GB is free. Reduce \
-                             --lookahead to <= {max_secs:.1}s, lower the output resolution, or \
-                             free GPU memory, then retry.",
+                             ({pool_size} slots @ {w}x{h}) but only ~{:.1} GB is free. The pool \
+                             stores decoded source-resolution frames, so reduce --lookahead to \
+                             <= {max_secs:.1}s, use lower-resolution source footage, or free GPU \
+                             memory, then retry. (Output resolution does not affect this pool.)",
                             required as f64 / 1e9,
                             free as f64 / 1e9,
                         )));
@@ -445,25 +489,13 @@ impl StitchSession {
             if pose_queue.len() > post_smooth_half || (eof && !pose_queue.is_empty()) {
                 let (oldest, raw_pose) = pose_queue.pop_front().unwrap();
 
-                // Centered post-smooth: average past + current + future poses.
-                let ahead = pose_queue.len().min(post_smooth_half);
-                let behind = past_poses.len().min(post_smooth_half);
-                let total = behind + 1 + ahead;
-                let mut sum_yaw = raw_pose.yaw;
-                let mut sum_pitch = raw_pose.pitch;
-                for (_, p) in pose_queue.iter().take(ahead) {
-                    sum_yaw += p.yaw;
-                    sum_pitch += p.pitch;
-                }
-                for p in past_poses.iter() {
-                    sum_yaw += p.yaw;
-                    sum_pitch += p.pitch;
-                }
-                let smoothed_pose = crate::detect::director::ViewportPosition {
-                    yaw: sum_yaw / total as f32,
-                    pitch: sum_pitch / total as f32,
-                    fov_degrees: raw_pose.fov_degrees,
-                };
+                // Centered post-smooth: average past + current + future
+                // poses (yaw/pitch/fov) so zoom is smoothed like the angles.
+                let smoothed_pose = centered_smooth(
+                    raw_pose,
+                    pose_queue.iter().take(post_smooth_half).map(|(_, p)| *p),
+                    past_poses.iter().copied(),
+                );
                 past_poses.push_back(raw_pose);
                 if past_poses.len() > post_smooth_half {
                     past_poses.pop_front();
@@ -480,24 +512,11 @@ impl StitchSession {
             if self.frame_count >= frame_limit || interrupted.load(Ordering::Relaxed) {
                 break;
             }
-            let ahead = pose_queue.len().min(post_smooth_half);
-            let behind = past_poses.len().min(post_smooth_half);
-            let total = behind + 1 + ahead;
-            let mut sum_yaw = raw_pose.yaw;
-            let mut sum_pitch = raw_pose.pitch;
-            for (_, p) in pose_queue.iter().take(ahead) {
-                sum_yaw += p.yaw;
-                sum_pitch += p.pitch;
-            }
-            for p in past_poses.iter() {
-                sum_yaw += p.yaw;
-                sum_pitch += p.pitch;
-            }
-            let smoothed_pose = crate::detect::director::ViewportPosition {
-                yaw: sum_yaw / total as f32,
-                pitch: sum_pitch / total as f32,
-                fov_degrees: raw_pose.fov_degrees,
-            };
+            let smoothed_pose = centered_smooth(
+                raw_pose,
+                pose_queue.iter().take(post_smooth_half).map(|(_, p)| *p),
+                past_poses.iter().copied(),
+            );
             past_poses.push_back(raw_pose);
             if past_poses.len() > post_smooth_half {
                 past_poses.pop_front();

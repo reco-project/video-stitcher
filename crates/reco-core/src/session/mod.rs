@@ -120,11 +120,6 @@ pub struct StitchSession {
     /// render / readback / encode for accurate telemetry.
     pub(crate) last_readback_time: std::time::Duration,
     pub(crate) last_encode_time: std::time::Duration,
-    /// Ordered pre-tracker detection filters. Empty by default; each
-    /// stage transforms `detection.last_detections` in place before
-    /// the trackers run. Emission of the before/after event is gated
-    /// on `event_sink`.
-    pub(crate) detection_filters: Vec<Box<dyn crate::detect::filter::DetectionFilter>>,
     // ── GPU-resident source state (populated by configure_from_source) ──
     /// Bind groups for GPU-resident shared textures.
     /// Created lazily from the source's textures at the start of run().
@@ -272,7 +267,6 @@ impl StitchSession {
             telemetry: crate::telemetry::TelemetryCollector::new(),
             last_readback_time: std::time::Duration::ZERO,
             last_encode_time: std::time::Duration::ZERO,
-            detection_filters: Vec::new(),
             #[cfg(target_os = "linux")]
             gpu_bind_groups: None,
             #[cfg(target_os = "linux")]

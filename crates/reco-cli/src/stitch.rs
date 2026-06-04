@@ -63,6 +63,10 @@ pub struct StitchArgs<'a> {
     pub events_path: Option<&'a str>,
     /// Precomputed trajectory CSV (overrides AI panner).
     pub trajectory_path: Option<&'a str>,
+    /// FieldPanner tuning JSON (field mode); only present keys override.
+    pub panner_config_path: Option<&'a str>,
+    /// Named panner preset (base config); JSON overlays on top.
+    pub panner_preset: Option<&'a str>,
 }
 
 /// Run the stitch subcommand.
@@ -112,8 +116,25 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     if args.no_zero_copy {
         job = job.force_cpu_decode();
     }
+    // Lookahead only helps when an AI panner drives the camera: it buffers
+    // future frames so the panner can lead and the loop can centered-smooth.
+    // For a plain stitch (no model) or sweep mode it would only add latency
+    // and VRAM, so skip it and say why.
+    let tracking_active = args.model_path.is_some() && args.tracking_mode != "sweep";
     if args.lookahead > 0.0 {
-        job = job.lookahead(args.lookahead);
+        if tracking_active {
+            job = job.lookahead(args.lookahead);
+            log::info!(
+                "Lookahead: {:.1}s buffer enabled (AI tracking active)",
+                args.lookahead
+            );
+        } else {
+            log::info!(
+                "Lookahead {:.1}s ignored: no AI tracking (needs --model, non-sweep); \
+                 a plain stitch needs none",
+                args.lookahead
+            );
+        }
     }
     if let Some(path) = args.events_path {
         job = job.events(path);
@@ -210,8 +231,48 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         let interval = args.detection_interval;
         let mode_str = args.tracking_mode.to_owned();
         let allow_fallback = args.allow_no_tracking;
-        let use_lookahead = args.lookahead > 0.0;
         let tracking_failed = Arc::clone(&tracking_failed);
+        // Resolve FieldPanner tuning up front so a bad preset/file fails
+        // before rendering. Preset is the base; --panner-config overlays.
+        let panner_cfg: Option<reco_autocam::panners::FieldPannerConfig> = {
+            use reco_autocam::panners::{FieldPannerConfig, PRESET_NAMES};
+            let base = match args.panner_preset {
+                Some(name) => {
+                    let c = FieldPannerConfig::from_preset_name(name).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "unknown --panner-preset '{name}' (expected: {})",
+                            PRESET_NAMES.join(", ")
+                        )
+                    })?;
+                    log::info!("FieldPanner preset: {name}");
+                    Some(c)
+                }
+                None => None,
+            };
+            match args.panner_config_path {
+                Some(p) => {
+                    let contents = std::fs::read_to_string(p)
+                        .map_err(|e| anyhow::anyhow!("reading panner config {p}: {e}"))?;
+                    let cfg = if let Some(b) = base {
+                        let mut v = serde_json::to_value(&b).expect("config serializes");
+                        let over: serde_json::Value = serde_json::from_str(&contents)
+                            .map_err(|e| anyhow::anyhow!("parsing panner config {p}: {e}"))?;
+                        if let (Some(bm), serde_json::Value::Object(om)) = (v.as_object_mut(), over)
+                        {
+                            bm.extend(om);
+                        }
+                        serde_json::from_value(v)
+                            .map_err(|e| anyhow::anyhow!("applying panner config {p}: {e}"))?
+                    } else {
+                        serde_json::from_str(&contents)
+                            .map_err(|e| anyhow::anyhow!("parsing panner config {p}: {e}"))?
+                    };
+                    log::info!("FieldPanner config loaded from {p}");
+                    Some(cfg)
+                }
+                None => base,
+            }
+        };
         job = job.on_session(move |session, source| {
             let info = source.info();
             let mode = match mode_str.as_str() {
@@ -225,9 +286,11 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
                 .with_tracking_mode(mode)
                 .with_detection_interval(interval)
                 .with_10bit(is_10bit);
-            autocam_config.use_lookahead_panner = use_lookahead;
             if mode == reco_autocam::TrackingMode::Ball {
                 autocam_config.confidence_threshold = Some(0.25);
+            }
+            if let Some(ref cfg) = panner_cfg {
+                autocam_config.field_panner_config = Some(cfg.clone());
             }
             let autocam_config = if let Some(roi) = field_roi {
                 autocam_config.with_field_roi(roi)

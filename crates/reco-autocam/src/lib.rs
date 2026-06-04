@@ -9,11 +9,12 @@
 //!
 //! # What this crate owns
 //!
-//! - [`trackers::BallTracker`] / [`trackers::PlayerTracker`] - per-class
-//!   trackers implementing [`Tracker`](reco_core::detect::tracker::Tracker).
-//! - [`panners::FieldPanner`] / [`panners::LookaheadPanner`] /
-//!   [`panners::SweepPanner`] / [`panners::FilePanner`] - camera-motion
-//!   policies implementing [`Panner`](reco_core::detect::panner::Panner).
+//! - [`trackers::BallTracker`] (stateful singleton) / [`trackers::ClassProvider`]
+//!   (stateless per-class projector) - the two shapes of
+//!   [`Tracker`](reco_core::detect::tracker::Tracker).
+//! - [`panners::FieldPanner`] / [`panners::SweepPanner`] /
+//!   [`panners::FilePanner`] - camera-motion policies implementing
+//!   [`Panner`](reco_core::detect::panner::Panner).
 //! - [`RoiFilteredDetector`] - polygonal-ROI mask wrapper over any
 //!   `UnifiedDetector`, pre-filtering detections before they reach a
 //!   tracker.
@@ -43,7 +44,6 @@
 
 #![forbid(unsafe_code)]
 
-pub mod detection_filters;
 pub mod panners;
 mod roi_filter;
 pub mod trackers;
@@ -121,8 +121,6 @@ pub struct AutocamConfig {
     /// Detector confidence threshold override. When set, replaces
     /// the default 0.10 threshold. Ball-only models need 0.25+.
     pub confidence_threshold: Option<f32>,
-    /// Use lookahead-aware panner (requires buffered run loop).
-    pub use_lookahead_panner: bool,
 }
 
 impl AutocamConfig {
@@ -136,7 +134,6 @@ impl AutocamConfig {
             is_10bit: false,
             field_panner_config: None,
             confidence_threshold: None,
-            use_lookahead_panner: false,
         }
     }
 
@@ -254,7 +251,7 @@ pub fn setup_autocam(
     // can install the Step 7c per-class anchor policy (player = Bottom
     // so feet + 75th-pctile must both lie inside the ROI; ball stays
     // on the Center default).
-    let person_id_for_roi = resolve_class_id(&class_names, &["person"], 0);
+    let person_id_for_roi = resolve_or(&class_names, &["person"], 0);
 
     // Tiny helper so each backend's "wrap the detector in
     // RoiFilteredDetector if ROI is present" site stays one line.
@@ -282,11 +279,15 @@ pub fn setup_autocam(
             );
         }
 
+        // `confidence_threshold` is an override: when the caller sets
+        // it (e.g. 0.25 for ball-only models) it wins on every backend,
+        // not just the CPU fallback; otherwise each backend keeps its
+        // own sensible default.
         match reco_detect::TrtGpuDetector::try_new(
             model_path,
             input_width,
             input_height,
-            0.10,
+            config.confidence_threshold.unwrap_or(0.10),
             trt_labels,
             is_10bit,
         ) {
@@ -320,7 +321,7 @@ pub fn setup_autocam(
             model_path,
             input_width,
             input_height,
-            0.10,
+            config.confidence_threshold.unwrap_or(0.10),
             Vec::new(),
             is_10bit,
         ) {
@@ -351,7 +352,7 @@ pub fn setup_autocam(
             target.gpu(),
             input_width,
             input_height,
-            0.10,
+            config.confidence_threshold.unwrap_or(0.10),
             Vec::new(),
         ) {
             Ok(metal_det) => {
@@ -380,7 +381,7 @@ pub fn setup_autocam(
             640, // default NCNN input size
             input_width,
             input_height,
-            0.25,
+            config.confidence_threshold.unwrap_or(0.25),
             Vec::new(), // labels loaded from sidecar if needed
         ) {
             Ok(ncnn_det) => {
@@ -407,7 +408,11 @@ pub fn setup_autocam(
     #[cfg(feature = "ort")]
     if !detection_active && use_zero_copy {
         let gpu = target.gpu();
-        let yolo = CpuYoloDetector::from_file(model_path)?;
+        let yolo = CpuYoloDetector::with_config(
+            model_path,
+            config.confidence_threshold.unwrap_or(0.10),
+            Vec::new(),
+        )?;
         let input_size = yolo.input_size();
         let wrapper = WgpuPreprocessingDetector::new(
             Box::new(yolo),
@@ -471,64 +476,84 @@ pub fn setup_autocam(
         }
 
         // Resolve label names to class IDs from the model's label list.
-        let ball_id = resolve_class_id(&class_names, &["ball", "sports ball"], 32);
-        let person_id = resolve_class_id(&class_names, &["person"], 0);
-        log::info!(
-            "Class IDs: ball={ball_id}, person={person_id} (from {} model labels)",
-            class_names.len()
-        );
+        // The ball tracker always needs an id (COCO fallback); the player
+        // class is left as an Option so field mode can tell "no players
+        // in this model" apart from "players at the COCO index".
+        let ball_id = resolve_or(&class_names, &["ball", "sports ball"], 32);
+        let person = resolve_class_id(&class_names, &["person"]);
+        match person {
+            Some(p) => log::info!(
+                "Resolved class ids from {} model labels: ball={ball_id}, person={p}",
+                class_names.len()
+            ),
+            None => log::info!(
+                "Resolved class ids from {} model labels: ball={ball_id}, person=absent",
+                class_names.len()
+            ),
+        }
 
-        // Pre-tracker flicker rejection: class-keyed bucketed-spatial
-        // histogram that drops recurrent static mimics (line
         match tracking_mode {
             TrackingMode::Field => {
-                let player_tracker = crate::trackers::PlayerTracker::new(person_id);
                 let ball_tracker =
                     crate::trackers::BallTracker::new(ball_id).with_max_jump_rad(0.8);
-                log::info!(
-                    "Tracking mode: field (PlayerTracker + BallTracker + FieldPanner, \
-                     player_class={person_id}, ball_class={ball_id})"
-                );
-
                 target.set_ball_tracker(Box::new(ball_tracker));
-                target.set_player_tracker(Box::new(player_tracker));
 
-                if config.use_lookahead_panner {
-                    let panner = crate::panners::LookaheadPanner::new();
-                    log::info!(
-                        "Tracking mode: field + lookahead (LookaheadPanner, \
-                         player_class={person_id}, ball_class={ball_id})"
-                    );
-                    target.set_panner(Box::new(panner));
-                } else {
-                    let fp_config = config.field_panner_config.clone().unwrap_or(
-                        crate::panners::FieldPannerConfig {
-                            ball_weight: 0.20,
-                            ..Default::default()
-                        },
-                    );
-                    let field_panner = crate::panners::FieldPanner::with_config(fps, fp_config);
-                    log::info!(
-                        "Tracking mode: field (FieldPanner, \
-                         player_class={person_id}, ball_class={ball_id})"
-                    );
-                    target.set_panner(Box::new(field_panner));
+                // Attach the player provider only when the model actually
+                // names a player class. With a ball-only model there are no
+                // players to cluster, so the panner runs on the ball alone
+                // rather than mis-ingesting the ball as a "player" (its id
+                // would collide with the COCO person fallback).
+                match person {
+                    Some(person_id) => {
+                        target.set_player_tracker(Box::new(crate::trackers::ClassProvider::new(
+                            person_id,
+                        )));
+                        log::info!(
+                            "Tracking mode: field with player cluster \
+                             (player_class={person_id}, ball_class={ball_id})"
+                        );
+                    }
+                    None => log::info!(
+                        "Tracking mode: field, but the model names no player class - the panner \
+                         will follow the ball alone (ball_class={ball_id})"
+                    ),
                 }
+
+                let fp_config = config.field_panner_config.clone().unwrap_or(
+                    crate::panners::FieldPannerConfig {
+                        ball_weight: 0.20,
+                        ..Default::default()
+                    },
+                );
+                log::info!(
+                    "FieldPanner: framing={:?}, confidence_weighted={}, lock_pitch={}",
+                    fp_config.framing,
+                    fp_config.confidence_weighted,
+                    fp_config.lock_pitch,
+                );
+                let field_panner = crate::panners::FieldPanner::with_config(fps, fp_config);
+                target.set_panner(Box::new(field_panner));
             }
             TrackingMode::Ball => {
                 let ball_tracker =
                     crate::trackers::BallTracker::new(ball_id).with_max_jump_rad(0.5);
-                // No PlayerTracker - ball-only mode for single-class detectors.
+                // No player provider - ball-only mode, even if the model
+                // has a player class (the user asked to track the ball).
                 target.set_ball_tracker(Box::new(ball_tracker));
 
-                let la_config = crate::panners::LookaheadPannerConfig {
-                    ball_weight: 1.0,
-                    ..Default::default()
-                };
-                let panner = crate::panners::LookaheadPanner::with_config(la_config);
+                // No player provider means no cluster, so the ball must
+                // drive the frame fully: force ball_weight=1.0 even when a
+                // config is supplied (there is nothing to blend against).
+                // Owning this here is what lets consumers pass a panner
+                // config without re-deriving the mode default themselves.
+                // All other tuning (dead-zone / reactivity / lead / fov)
+                // still comes from the supplied override.
+                let mut fp_config = config.field_panner_config.clone().unwrap_or_default();
+                fp_config.ball_weight = 1.0;
+                let panner = crate::panners::FieldPanner::with_config(fps, fp_config);
 
                 log::info!(
-                    "Tracking mode: ball-only (BallTracker + LookaheadPanner, \
+                    "Tracking mode: ball-only (BallTracker + FieldPanner, \
                      ball_class={ball_id})"
                 );
                 target.set_panner(Box::new(panner));
@@ -540,22 +565,32 @@ pub fn setup_autocam(
     Ok(detection_active)
 }
 
-/// Resolve a class label to its ID from the model's label list.
+/// Resolve a class label to its ID from the model's label list, by name
+/// (case-insensitive), trying each candidate in order.
 ///
-/// Tries each candidate name in order, returning the first match.
-/// Falls back to `default_id` if no match is found (e.g. COCO defaults).
-fn resolve_class_id(class_names: &[String], candidates: &[&str], default_id: u16) -> u16 {
-    for candidate in candidates {
-        if let Some(idx) = class_names
+/// Returns `None` when the model names none of the candidates - the
+/// caller decides whether to fall back to a default id or to skip the
+/// class entirely (e.g. don't attach a player provider for a model with
+/// no player class). This is the signal that drives field-mode's
+/// adaptive wiring.
+fn resolve_class_id(class_names: &[String], candidates: &[&str]) -> Option<u16> {
+    candidates.iter().find_map(|candidate| {
+        class_names
             .iter()
             .position(|name| name.eq_ignore_ascii_case(candidate))
-        {
-            return idx as u16;
-        }
-    }
-    log::warn!(
-        "Class '{}' not found in model labels, using COCO default ID {default_id}",
-        candidates[0]
-    );
-    default_id
+            .map(|idx| idx as u16)
+    })
+}
+
+/// [`resolve_class_id`] with a COCO-index fallback, for callers that
+/// always need an id (the ball tracker, the ROI anchor). Logs when the
+/// fallback is used so a mislabeled or label-less model is visible.
+fn resolve_or(class_names: &[String], candidates: &[&str], default_id: u16) -> u16 {
+    resolve_class_id(class_names, candidates).unwrap_or_else(|| {
+        log::warn!(
+            "Class '{}' not found in model labels; using COCO default id {default_id}",
+            candidates[0]
+        );
+        default_id
+    })
 }

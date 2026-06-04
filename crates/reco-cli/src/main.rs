@@ -103,6 +103,11 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+// CLI subcommand variants are inherently size-imbalanced (Stitch carries
+// many optional args); boxing individual fields would only obscure the
+// flag mapping. The enum is constructed once at startup, so the size gap
+// is irrelevant.
+#[allow(clippy::large_enum_variant)]
 enum Commands {
     /// Stitch two video files into a panoramic output.
     Stitch {
@@ -175,15 +180,18 @@ enum Commands {
         detection_interval: u64,
 
         /// Lookahead buffer in seconds. Decodes N frames ahead so the
-        /// panner can see future ball/player positions. Works with GPU
-        /// zero-copy decode: frames are held in a VRAM pool, not the
-        /// decode slots. 0 = disabled. Typical: 1.0-2.0.
-        #[arg(long, default_value_t = 0.0)]
+        /// panner can lead the play and the loop can centered-smooth the
+        /// pose lag-free. The validated dead-zone/reactivity defaults
+        /// assume this is on, so it defaults to 1.5. Only engages with AI
+        /// tracking (needs --model, non-sweep); ignored for a plain
+        /// stitch. Held in a VRAM pool, not the decode slots. 0 = off.
+        #[arg(long, default_value_t = 1.5)]
         lookahead: f64,
 
-        /// Tracking mode: "ball" (single ball), "field" (ball + players).
-        /// Use "field" with a COCO model for robust football tracking.
-        #[arg(long, default_value = "ball")]
+        /// Tracking mode: "field" (ball + players, default), "ball"
+        /// (ball only), "sweep" (no AI, debug pan). field is robust with
+        /// COCO models; ball-only follows the weak COCO ball alone.
+        #[arg(long, default_value = "field")]
         tracking: String,
 
         /// Encoder quality on a 0-100 scale (higher = better). Overrides the
@@ -245,6 +253,16 @@ enum Commands {
         /// AI tracking with poses read from the file.
         #[arg(long)]
         trajectory: Option<String>,
+
+        /// FieldPanner tuning as a JSON file (field mode). Only the keys
+        /// present override the base, e.g. {"framing":"frame_all",
+        /// "dead_zone_rad":0.087}. Overlays on --panner-preset if both set.
+        #[arg(long = "panner-config")]
+        panner_config: Option<String>,
+
+        /// Named panner preset: broadcast (default), action, frame_all.
+        #[arg(long = "panner-preset")]
+        panner_preset: Option<String>,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -378,12 +396,9 @@ enum Commands {
         #[arg(long)]
         stream_url: Option<String>,
 
-        /// Tracking director mode. `ball` (default): YOLO ball
-        /// tracking via BallDirector. `field`: ball + players
-        /// (FieldDirector, for multi-class models). `sweep`:
-        /// no AI, slow left-right pan across the full coverage
-        /// (debug / demo). Sweep mode doesn't require `--model`.
-        #[arg(long, default_value = "ball")]
+        /// Tracking mode: `field` (ball + players, default), `ball`
+        /// (ball only), `sweep` (no AI, slow pan; no --model needed).
+        #[arg(long, default_value = "field")]
         tracking: String,
 
         /// Disable the constrained-look coverage clamp
@@ -744,6 +759,8 @@ fn main() -> anyhow::Result<()> {
             no_zero_copy,
             events,
             trajectory,
+            panner_config,
+            panner_preset,
         } => stitch::run_stitch(
             stitch::StitchArgs {
                 left: &left,
@@ -773,6 +790,8 @@ fn main() -> anyhow::Result<()> {
                 no_zero_copy,
                 events_path: events.as_deref(),
                 trajectory_path: trajectory.as_deref(),
+                panner_config_path: panner_config.as_deref(),
+                panner_preset: panner_preset.as_deref(),
             },
             &interrupted,
         ),

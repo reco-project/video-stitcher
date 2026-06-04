@@ -108,6 +108,109 @@ pub fn postprocess(
     detections
 }
 
+/// Parse a raw seg-YOLO ball-detector output `[1, N, 6]` into detections.
+///
+/// TEMPORARY adapter for an external single-class ball detector whose
+/// export differs from the stock end-to-end-NMS YOLO this codebase
+/// assumes:
+/// - rows are `[cx, cy, w, h, obj, conf]` - center+size (not corners),
+///   confidence in col 5 (not col 4), col 4 is a constant objectness;
+/// - the output is PRE-NMS (all N anchors), so we conf-filter then run a
+///   greedy IoU NMS;
+/// - single class ("ball"), emitted as class id 0 per the model metadata.
+///
+/// Selected when the ONNX session reports more than one output (this
+/// model also emits segmentation heads we ignore). Coordinates are
+/// un-letterboxed and normalized to `[0, 1]` exactly as [`postprocess`].
+#[allow(clippy::too_many_arguments)]
+pub fn postprocess_balldet(
+    data: &[f32],
+    n: usize,
+    camera: CameraId,
+    confidence_threshold: f32,
+    scale: f32,
+    pad_x: f32,
+    pad_y: f32,
+    frame_width: u32,
+    frame_height: u32,
+) -> Vec<Detection> {
+    /// Single-class ball model: metadata declares class 0 = "ball".
+    const BALL_CLASS_ID: u16 = 0;
+    let expected_len = n * 6;
+    if data.len() < expected_len {
+        log::error!(
+            "ball-detector output buffer too small: got {} floats, expected {} ({n} x 6)",
+            data.len(),
+            expected_len,
+        );
+        return Vec::new();
+    }
+
+    let fw = frame_width as f32;
+    let fh = frame_height as f32;
+    let mut cands: Vec<Detection> = Vec::new();
+    for i in 0..n {
+        let base = i * 6;
+        let conf = data[base + 5];
+        if !conf.is_finite() || conf < confidence_threshold {
+            continue;
+        }
+        let (cx_p, cy_p, w_p, h_p) = (data[base], data[base + 1], data[base + 2], data[base + 3]);
+        if !cx_p.is_finite() || !cy_p.is_finite() || !w_p.is_finite() || !h_p.is_finite() {
+            continue;
+        }
+        // Un-letterbox center+size from padded input px to original-frame
+        // normalized coords.
+        let cx = ((cx_p - pad_x) / scale) / fw;
+        let cy = ((cy_p - pad_y) / scale) / fh;
+        let w = (w_p / scale) / fw;
+        let h = (h_p / scale) / fh;
+        if !(0.0..=1.0).contains(&cx) || !(0.0..=1.0).contains(&cy) {
+            continue;
+        }
+        cands.push(Detection {
+            camera,
+            class_id: BALL_CLASS_ID,
+            confidence: conf,
+            center_x: cx.clamp(0.0, 1.0),
+            center_y: cy.clamp(0.0, 1.0),
+            width: w.clamp(0.0, 1.0),
+            height: h.clamp(0.0, 1.0),
+        });
+    }
+    greedy_nms(cands, 0.45)
+}
+
+/// IoU of two normalized center+size detection boxes.
+fn box_iou(a: &Detection, b: &Detection) -> f32 {
+    let (ax1, ay1) = (a.center_x - a.width / 2.0, a.center_y - a.height / 2.0);
+    let (ax2, ay2) = (a.center_x + a.width / 2.0, a.center_y + a.height / 2.0);
+    let (bx1, by1) = (b.center_x - b.width / 2.0, b.center_y - b.height / 2.0);
+    let (bx2, by2) = (b.center_x + b.width / 2.0, b.center_y + b.height / 2.0);
+    let iw = (ax2.min(bx2) - ax1.max(bx1)).max(0.0);
+    let ih = (ay2.min(by2) - ay1.max(by1)).max(0.0);
+    let inter = iw * ih;
+    let union = a.width * a.height + b.width * b.height - inter;
+    if union <= 0.0 { 0.0 } else { inter / union }
+}
+
+/// Greedy IoU non-maximum suppression: keep highest-confidence boxes,
+/// drop any later box overlapping a kept one beyond `iou_thresh`.
+fn greedy_nms(mut dets: Vec<Detection>, iou_thresh: f32) -> Vec<Detection> {
+    dets.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let mut keep: Vec<Detection> = Vec::new();
+    for d in dets {
+        if keep.iter().all(|k| box_iou(k, &d) < iou_thresh) {
+            keep.push(d);
+        }
+    }
+    keep
+}
+
 /// Read class labels from a sidecar `.labels` file (one name per line).
 ///
 /// If the file doesn't exist, returns an empty vec. Labels are used
@@ -486,5 +589,34 @@ mod tests {
 
         assert_eq!(dets_left[0].camera, CameraId::Left);
         assert_eq!(dets_right[0].camera, CameraId::Right);
+    }
+
+    #[test]
+    fn postprocess_balldet_decodes_cxcywh_with_conf_in_col5() {
+        // [cx, cy, w, h, obj=1, conf]; scale=1, no pad, 1000x1000 frame.
+        let data = vec![500.0, 250.0, 40.0, 40.0, 1.0, 0.90];
+        let dets = postprocess_balldet(&data, 1, CameraId::Left, 0.25, 1.0, 0.0, 0.0, 1000, 1000);
+        assert_eq!(dets.len(), 1);
+        assert_eq!(dets[0].class_id, 0, "single ball class");
+        assert!((dets[0].confidence - 0.90).abs() < 1e-6, "conf from col 5");
+        assert!((dets[0].center_x - 0.5).abs() < 1e-3, "cx 500/1000");
+        assert!((dets[0].center_y - 0.25).abs() < 1e-3, "cy 250/1000");
+        assert!((dets[0].width - 0.04).abs() < 1e-3, "w 40/1000");
+    }
+
+    #[test]
+    fn postprocess_balldet_conf_filters_and_nms_dedups() {
+        let data = vec![
+            500.0, 250.0, 40.0, 40.0, 1.0, 0.10, // below 0.25 -> dropped
+            500.0, 250.0, 40.0, 40.0, 1.0, 0.90, // kept (highest)
+            505.0, 252.0, 40.0, 40.0, 1.0, 0.80, // overlaps -> NMS-dropped
+            100.0, 100.0, 30.0, 30.0, 1.0, 0.70, // far -> kept
+        ];
+        let dets = postprocess_balldet(&data, 4, CameraId::Left, 0.25, 1.0, 0.0, 0.0, 1000, 1000);
+        assert_eq!(dets.len(), 2, "low-conf filtered + overlap NMS-deduped");
+        assert!(
+            (dets[0].confidence - 0.90).abs() < 1e-6,
+            "highest-conf first"
+        );
     }
 }

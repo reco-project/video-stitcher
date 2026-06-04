@@ -9,11 +9,11 @@
 //! *are*, where should the camera *look*?"
 //!
 //! Implementations (shipped in `reco-autocam`):
-//! - `FieldPanner` - production player+ball panner: robust cluster
-//!   centroid, dynamic FOV, ball-presence hysteresis, velocity-clamped
-//!   chase.
-//! - `LookaheadPanner` - future-aware ball/field panner (see
-//!   [`Panner::decide_with_lookahead`]) with a pre-smooth + dead-zone chase.
+//! - `FieldPanner` - the production player+ball panner: trimmed-robust
+//!   cluster centroid, ball-only follow when no cluster, dynamic FOV,
+//!   ball-presence hysteresis, velocity-clamped chase. Lookahead is not
+//!   a separate panner - the buffered run loop centered-smooths this
+//!   panner's pose stream over past + future frames.
 //! - `SweepPanner` - debug-only, ignores world state and slowly pans
 //!   left-right within coverage bounds.
 //! - `FilePanner` - replays a precomputed pose trajectory from CSV.

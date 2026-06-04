@@ -11,7 +11,7 @@ Stitch two camera feeds into a seamless panoramic sports view with AI-powered au
 
 - **GPU-first pipeline** - Real-time stitching via wgpu 28 (Vulkan / Metal / DX12), 500+ fps on modern desktop GPUs
 - **Zero-copy decode** - NVDEC (Linux/Windows) and VideoToolbox (macOS) frames go directly to GPU textures, no CPU bounce
-- **AI ball + player tracking** - YOLO detection on ONNX (CPU / CUDA / CoreML / NCNN) or native TensorRT `.engine`, with One Euro trajectory smoothing and DBSCAN player clustering
+- **AI ball + player tracking** - YOLO detection on ONNX (CPU / CUDA / CoreML / NCNN) or native TensorRT `.engine`, with anticipatory lookahead smoothing and density-peak player clustering
 - **Automatic calibration** - AKAZE feature matching with IMU / audio cross-correlation for temporal sync, Gyroflow lens profiles
 - **Live production** - GStreamer camera ingest (Linux / Jetson CSI), push-based `StitchCore::submit_frame_*` for OBS and live streams, replay ring buffer, stacked-video pack/unpack
 - **Cross-platform** - Linux / macOS / Windows desktop, NVIDIA Jetson Orin, cloud workers; mobile (iOS / Android) trait points land in this release, concrete impls follow
@@ -32,6 +32,11 @@ cargo build --release -p reco-cli
 ./target/release/reco stitch left.mp4 right.mp4 -c match.json -o tracked.mp4 \
     --model yolo.onnx --tracking field
 
+# Pick a framing preset (broadcast | action | frame_all); --panner-config
+# JSON overlays individual knobs on top
+./target/release/reco stitch left.mp4 right.mp4 -c match.json -o tracked.mp4 \
+    --model yolo.onnx --tracking field --panner-preset action
+
 # Interactive preview with pan/zoom
 ./target/release/reco preview left.mp4 right.mp4 -c match.json
 
@@ -49,7 +54,7 @@ Nine Rust crates. Strict dependency direction keeps the engine reusable as a lib
 reco-core        GPU stitching engine (wgpu). No I/O, no domain logic.
 reco-io          FFmpeg decode/encode, GStreamer cameras, StitchJob API, stacked-video pack/unpack.
 reco-detect      Inference backends: ORT (CPU/CUDA/CoreML), NCNN, native TensorRT.
-reco-autocam     Directors (ball, field, sweep), trajectory smoothing, ROI filters.
+reco-autocam     Panners (field, ball, sweep), lookahead smoothing, ROI filters.
 reco-calibrate   AKAZE features, stereo optimization, lens database, live-calibration source trait.
 reco-control     Operator intent vocabulary (keyboard today; gopro/mobile/websocket scaffolds).
 reco-cli         Terminal consumer: stitch / calibrate / preview / camera / analyze / info.
