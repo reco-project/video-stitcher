@@ -34,9 +34,22 @@ jobs:
       - name: Install FFmpeg
         if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-05-12-13-59/ffmpeg-n7.1.4-win64-gpl-shared-7.1.zip"
-          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\ffmpeg.zip"
+          # Resolve the newest BtbN autobuild that still carries an n7.1
+          # win64-gpl-shared zip. BtbN garbage-collects old autobuild tags,
+          # so a hard-pinned URL 404s after a few weeks; query instead.
+          $headers = @{ 'User-Agent' = 'reco-ci'; 'Authorization' = "Bearer $env:GH_TOKEN" }
+          $releases = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases?per_page=15"
+          $asset = $null
+          foreach ($r in $releases) {
+            $asset = $r.assets | Where-Object { $_.name -like "*n7.1*win64-gpl-shared*.zip" } | Select-Object -First 1
+            if ($asset) { break }
+          }
+          if (-not $asset) { throw "No n7.1 win64-gpl-shared FFmpeg asset found in recent BtbN autobuilds" }
+          Write-Host "Using FFmpeg asset: $($asset.name)"
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$env:RUNNER_TEMP\ffmpeg.zip"
           Expand-Archive -Path "$env:RUNNER_TEMP\ffmpeg.zip" -DestinationPath C:\ffmpeg
 
       - name: Set FFmpeg env
@@ -80,9 +93,22 @@ jobs:
       - name: Install FFmpeg
         if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-05-12-13-59/ffmpeg-n7.1.4-win64-gpl-shared-7.1.zip"
-          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\ffmpeg.zip"
+          # Resolve the newest BtbN autobuild that still carries an n7.1
+          # win64-gpl-shared zip. BtbN garbage-collects old autobuild tags,
+          # so a hard-pinned URL 404s after a few weeks; query instead.
+          $headers = @{ 'User-Agent' = 'reco-ci'; 'Authorization' = "Bearer $env:GH_TOKEN" }
+          $releases = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases?per_page=15"
+          $asset = $null
+          foreach ($r in $releases) {
+            $asset = $r.assets | Where-Object { $_.name -like "*n7.1*win64-gpl-shared*.zip" } | Select-Object -First 1
+            if ($asset) { break }
+          }
+          if (-not $asset) { throw "No n7.1 win64-gpl-shared FFmpeg asset found in recent BtbN autobuilds" }
+          Write-Host "Using FFmpeg asset: $($asset.name)"
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$env:RUNNER_TEMP\ffmpeg.zip"
           Expand-Archive -Path "$env:RUNNER_TEMP\ffmpeg.zip" -DestinationPath C:\ffmpeg
 
       - name: Set FFmpeg env
