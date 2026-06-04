@@ -3136,11 +3136,22 @@ fn main() -> anyhow::Result<()> {
         let start_secs = app.get_export_start_secs();
         let end_secs = app.get_export_end_secs();
         log::info!("Export range: start={start_secs:.1}s, end={end_secs:.1}s");
-        let autocam_enabled = app.get_export_autocam_enabled();
-        let model_path = app.get_export_model_path().to_string();
-        let tracking_mode = app.get_export_tracking_mode().to_string();
-
-        let detection_interval = app.get_export_detection_interval() as u32;
+        let autocam = crate::export::AutocamUiConfig {
+            enabled: app.get_export_autocam_enabled(),
+            model_path: app.get_export_model_path().to_string(),
+            tracking_mode: app.get_export_tracking_mode().to_string(),
+            detection_interval: app.get_export_detection_interval() as u32,
+            lookahead_secs: app.get_export_lookahead_secs() as f64,
+            framing: app.get_export_framing().to_string(),
+            lock_pitch: app.get_export_lock_pitch(),
+            cluster_mode: app.get_export_cluster_mode().to_string(),
+            cluster_bandwidth_rad: app.get_export_cluster_bandwidth(),
+            dead_zone_rad: app.get_export_dead_zone(),
+            ball_weight: app.get_export_ball_weight(),
+            fov_tight: app.get_export_fov_tight(),
+            fov_wide: app.get_export_fov_wide(),
+            fov_default: app.get_export_fov_default(),
+        };
         let replay_enabled = app.get_export_replay_enabled();
         let events_enabled = app.get_export_events_enabled();
         let events_path = if events_enabled {
@@ -3202,10 +3213,7 @@ fn main() -> anyhow::Result<()> {
                 blend,
                 start_secs,
                 end_secs,
-                autocam_enabled,
-                model_path,
-                tracking_mode,
-                detection_interval,
+                autocam,
                 app_weak_bg,
                 &interrupted,
                 last_progress_at,

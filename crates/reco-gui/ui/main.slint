@@ -299,6 +299,19 @@ export component RecoApp inherits Window {
     in-out property <string> export-tracking-mode: "field";
     in-out property <int> export-detection-interval: 3;
     in-out property <bool> export-autocam-enabled: false;
+    // Panner tuning (mapped onto FieldPannerConfig in export.rs). Defaults
+    // mirror the validated football defaults; lookahead defaults on because
+    // dead-zone assumes it is active to absorb its latency.
+    in-out property <float> export-lookahead-secs: 1.5;
+    in-out property <string> export-framing: "action";
+    in-out property <bool> export-lock-pitch: false;
+    in-out property <string> export-cluster-mode: "density";
+    in-out property <float> export-cluster-bandwidth: 0.30;
+    in-out property <float> export-dead-zone: 0.20;
+    in-out property <float> export-ball-weight: 0.20;
+    in-out property <float> export-fov-tight: 22.0;
+    in-out property <float> export-fov-wide: 58.0;
+    in-out property <float> export-fov-default: 40.0;
     in-out property <bool> export-replay-enabled: false;
     in-out property <bool> export-events-enabled: false;
 
@@ -2280,8 +2293,8 @@ export component RecoApp inherits Window {
                                 horizontal-stretch: 1;
                                 Text { text: "Tracking mode"; color: #ccc; font-size: 12px; }
                                 ComboBox {
-                                    model: ["ball", "field", "sweep"];
-                                    current-index: root.export-tracking-mode == "field" ? 1
+                                    model: ["field", "ball", "sweep"];
+                                    current-index: root.export-tracking-mode == "ball" ? 1
                                                  : root.export-tracking-mode == "sweep" ? 2
                                                  : 0;
                                     selected(v) => { root.export-tracking-mode = v; }
@@ -2305,6 +2318,125 @@ export component RecoApp inherits Window {
                                             v == "1" ? 1 : v == "5" ? 5 : v == "10" ? 10
                                             : v == "15" ? 15 : v == "30" ? 30 : 3;
                                     }
+                                }
+                            }
+                        }
+
+                        // Framing + pitch lock.
+                        HorizontalBox {
+                            spacing: 10px;
+                            padding: 0;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                horizontal-stretch: 1;
+                                Text { text: "Framing"; color: #ccc; font-size: 12px; }
+                                ComboBox {
+                                    model: ["action", "frame_all"];
+                                    current-index: root.export-framing == "frame_all" ? 1 : 0;
+                                    selected(v) => { root.export-framing = v; }
+                                }
+                            }
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                horizontal-stretch: 1;
+                                Text { text: "Pitch"; color: #ccc; font-size: 12px; }
+                                CheckBox {
+                                    text: "Lock (horizontal-only)";
+                                    checked <=> root.export-lock-pitch;
+                                }
+                            }
+                        }
+
+                        // Lookahead is the dominant smoothness lever; give it
+                        // a full-width slider. 0 disables the buffer.
+                        LabeledSlider {
+                            label: "Lookahead (smoothness)";
+                            minimum: 0.0;
+                            maximum: 2.5;
+                            value <=> root.export-lookahead-secs;
+                            suffix: "s";
+                            decimals: 1;
+                        }
+
+                        panner-advanced := SectionHeader {
+                            title: "Advanced panner";
+                            expanded: false;
+                        }
+
+                        if panner-advanced.expanded: VerticalLayout {
+                            spacing: 8px;
+
+                            HorizontalBox {
+                                spacing: 10px;
+                                padding: 0;
+
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    horizontal-stretch: 1;
+                                    Text { text: "Cluster mode"; color: #ccc; font-size: 12px; }
+                                    ComboBox {
+                                        model: ["density", "trimmed_mean"];
+                                        current-index: root.export-cluster-mode == "trimmed_mean" ? 1 : 0;
+                                        selected(v) => { root.export-cluster-mode = v; }
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    horizontal-stretch: 1;
+                                    LabeledSlider {
+                                        label: "Ball weight";
+                                        minimum: 0.0;
+                                        maximum: 1.0;
+                                        value <=> root.export-ball-weight;
+                                        decimals: 2;
+                                    }
+                                }
+                            }
+
+                            LabeledSlider {
+                                label: "Cluster bandwidth";
+                                minimum: 0.1;
+                                maximum: 0.6;
+                                value <=> root.export-cluster-bandwidth;
+                                suffix: " rad";
+                                decimals: 2;
+                            }
+                            LabeledSlider {
+                                label: "Dead-zone";
+                                minimum: 0.0;
+                                maximum: 0.5;
+                                value <=> root.export-dead-zone;
+                                suffix: " rad";
+                                decimals: 2;
+                            }
+
+                            Text { text: "Field of view (degrees)"; color: #ccc; font-size: 12px; }
+                            HorizontalBox {
+                                spacing: 10px;
+                                padding: 0;
+                                LabeledSlider {
+                                    label: "Tight";
+                                    minimum: 10.0;
+                                    maximum: 40.0;
+                                    value <=> root.export-fov-tight;
+                                    decimals: 0;
+                                }
+                                LabeledSlider {
+                                    label: "Default";
+                                    minimum: 20.0;
+                                    maximum: 60.0;
+                                    value <=> root.export-fov-default;
+                                    decimals: 0;
+                                }
+                                LabeledSlider {
+                                    label: "Wide";
+                                    minimum: 40.0;
+                                    maximum: 90.0;
+                                    value <=> root.export-fov-wide;
+                                    decimals: 0;
                                 }
                             }
                         }

@@ -23,6 +23,48 @@ pub enum ExportOutcome {
     Failed(reco_io::stitch_job::StitchError),
 }
 
+/// Autocam + panner settings captured from the GUI export panel.
+///
+/// Slint properties can only be read on the UI thread, so the caller
+/// snapshots them into this struct before spawning the worker thread.
+/// String fields (`tracking_mode`, `framing`, `cluster_mode`) carry the
+/// Slint combo values and are mapped to the reco-autocam enums inside
+/// [`run_export`].
+///
+/// In an AI-less build (`--no-default-features`, no detection backend) the
+/// fields are only snapshotted and never read, so dead-code is allowed for
+/// that configuration alone.
+#[cfg_attr(not(feature = "autocam"), allow(dead_code))]
+#[derive(Debug, Clone)]
+pub struct AutocamUiConfig {
+    /// Master toggle for the AI tracking pipeline.
+    pub enabled: bool,
+    /// Path to the YOLO model (ONNX/engine/NCNN dir). Empty = no-op.
+    pub model_path: String,
+    /// `"field"`, `"ball"`, or `"sweep"`.
+    pub tracking_mode: String,
+    /// Run the detector every N frames.
+    pub detection_interval: u32,
+    /// Lookahead buffer depth in seconds (0 = off).
+    pub lookahead_secs: f64,
+    /// `"action"` or `"frame_all"`.
+    pub framing: String,
+    /// Horizontal-only pan (hold pitch level).
+    pub lock_pitch: bool,
+    /// `"density"` or `"trimmed_mean"`.
+    pub cluster_mode: String,
+    /// Density-peak neighborhood / trim window, radians.
+    pub cluster_bandwidth_rad: f32,
+    /// Soft dead-zone radius, radians.
+    pub dead_zone_rad: f32,
+    /// Ball-vs-cluster blend weight (0..1); forced to 1.0 in ball mode.
+    pub ball_weight: f32,
+    /// Tight / wide / default field-of-view, degrees.
+    pub fov_tight: f32,
+    pub fov_wide: f32,
+    pub fov_default: f32,
+}
+
 /// Telemetry sink that forwards snapshots to the Slint UI thread.
 struct ExportTelemetrySink {
     window: slint::Weak<RecoApp>,
@@ -75,10 +117,7 @@ pub fn run_export(
     blend: f32,
     start_secs: f32,
     end_secs: f32,
-    autocam_enabled: bool,
-    model_path: String,
-    tracking_mode: String,
-    detection_interval: u32,
+    autocam: AutocamUiConfig,
     app_weak: slint::Weak<RecoApp>,
     interrupted: &AtomicBool,
     last_progress_at: Arc<Mutex<Option<Instant>>>,
@@ -224,24 +263,69 @@ pub fn run_export(
         session.telemetry_mut().set_sink(Box::new(sink), 30);
     });
 
+    // Lookahead buffers N future frames so the panner can centered-smooth
+    // its pose stream. It is the dominant quality lever for AI panning, so
+    // the GUI defaults it on; the baked dead_zone_rad assumes it is active.
     #[cfg(feature = "autocam")]
-    if autocam_enabled && !model_path.is_empty() {
-        let model_path_owned = model_path.clone();
-        let mode_str_owned = tracking_mode.clone();
-        let interval = detection_interval as u64;
+    if autocam.enabled && autocam.lookahead_secs > 0.0 {
+        job = job.lookahead(autocam.lookahead_secs);
+    }
+
+    #[cfg(feature = "autocam")]
+    if autocam.enabled && !autocam.model_path.is_empty() {
+        let ac = autocam.clone();
         let status_weak = app_weak.clone();
         job = job.on_session(move |session, source| {
             let info = source.info();
-            let mode = match mode_str_owned.as_str() {
+            let mode = match ac.tracking_mode.as_str() {
+                "ball" => reco_autocam::TrackingMode::Ball,
                 "sweep" => reco_autocam::TrackingMode::Sweep,
                 _ => reco_autocam::TrackingMode::Field,
             };
             let is_10bit =
                 source.gpu_pixel_format() == reco_core::render::renderer::GpuPixelFormat::P010;
-            let autocam_config = reco_autocam::AutocamConfig::new(&model_path_owned)
+
+            // Map the GUI knobs onto FieldPannerConfig, leaving every other
+            // field at its validated default. Ball mode has no player
+            // cluster to blend against, so force a ball-only weight. This
+            // mirrors setup_autocam's mode-aware default, which we would
+            // otherwise bypass by supplying an explicit config.
+            let framing = match ac.framing.as_str() {
+                "frame_all" => reco_autocam::panners::FramingMode::FrameAll,
+                _ => reco_autocam::panners::FramingMode::Action,
+            };
+            let cluster_mode = match ac.cluster_mode.as_str() {
+                "trimmed_mean" => reco_autocam::panners::ClusterMode::TrimmedMean,
+                _ => reco_autocam::panners::ClusterMode::Density,
+            };
+            let ball_weight = if mode == reco_autocam::TrackingMode::Ball {
+                1.0
+            } else {
+                ac.ball_weight
+            };
+            let panner_cfg = reco_autocam::panners::FieldPannerConfig {
+                framing,
+                cluster_mode,
+                cluster_bandwidth_rad: ac.cluster_bandwidth_rad,
+                dead_zone_rad: ac.dead_zone_rad,
+                ball_weight,
+                lock_pitch: ac.lock_pitch,
+                fov_tight: ac.fov_tight,
+                fov_wide: ac.fov_wide,
+                fov_default: ac.fov_default,
+                ..Default::default()
+            };
+
+            let mut autocam_config = reco_autocam::AutocamConfig::new(&ac.model_path)
                 .with_tracking_mode(mode)
-                .with_detection_interval(interval)
+                .with_detection_interval(ac.detection_interval as u64)
                 .with_10bit(is_10bit);
+            autocam_config.field_panner_config = Some(panner_cfg);
+            // Ball-only models need a higher floor than the 0.10 field
+            // default (matches the CLI's ball-mode override).
+            if mode == reco_autocam::TrackingMode::Ball {
+                autocam_config.confidence_threshold = Some(0.25);
+            }
             let autocam_config = if let Some(roi) = field_roi.as_ref() {
                 autocam_config.with_field_roi(roi.clone())
             } else {
@@ -275,12 +359,7 @@ pub fn run_export(
         });
     }
     #[cfg(not(feature = "autocam"))]
-    let _ = (
-        autocam_enabled,
-        &model_path,
-        &tracking_mode,
-        detection_interval,
-    );
+    let _ = &autocam;
 
     match job.run(interrupted) {
         Ok(r) => ExportOutcome::Ok(r.frames_processed, output),
