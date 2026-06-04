@@ -178,7 +178,7 @@ impl Default for FieldPannerConfig {
     fn default() -> Self {
         Self {
             cluster_mode: ClusterMode::Density,
-            cluster_bandwidth_rad: 0.35,
+            cluster_bandwidth_rad: 0.30,
             keep_fraction: 0.8,
             min_cluster: 2,
             edge_push: 0.15,
@@ -200,10 +200,10 @@ impl Default for FieldPannerConfig {
             ball_frame_margin_deg: 3.0,
             ball_max_dist_from_cluster: 0.5,
             ball_weight: 0.5,
-            lookahead_reactivity: 2.0,
-            lead_gain: 1.0,
+            lookahead_reactivity: 2.5,
+            lead_gain: 1.3,
             lead_alpha: 0.1,
-            dead_zone_rad: 0.087,
+            dead_zone_rad: 0.20,
             framing: FramingMode::Action,
             confidence_weighted: true,
             frame_all_margin_deg: 8.0,
@@ -1000,7 +1000,15 @@ mod tests {
 
     #[test]
     fn follows_player_centroid() {
-        let mut p = FieldPanner::new(30.0);
+        // dead_zone off: this asserts the exact converged aim, which the
+        // default dead-zone would (by design) stop short of.
+        let mut p = FieldPanner::with_config(
+            30.0,
+            FieldPannerConfig {
+                dead_zone_rad: 0.0,
+                ..Default::default()
+            },
+        );
         let cal = cal();
         let w = tight_world();
         // Per-frame delta clamp (0.015 rad) means the pose needs many
@@ -1109,7 +1117,14 @@ mod tests {
         // No players (no cluster) but a ball is present: FieldPanner
         // follows the ball directly instead of holding. This is what
         // lets one panner serve ball-centric modes too.
-        let mut p = FieldPanner::new(30.0); // default ball_weight 0.5 > 0
+        // ball_weight 0.5 > 0; dead-zone off to assert exact convergence.
+        let mut p = FieldPanner::with_config(
+            30.0,
+            FieldPannerConfig {
+                dead_zone_rad: 0.0,
+                ..Default::default()
+            },
+        );
         let cal = cal();
         let w = WorldState {
             ball: Some(ball(0.5, 0.1)),
@@ -1195,7 +1210,14 @@ mod tests {
 
     #[test]
     fn ball_lost_ignored_in_blend() {
-        let mut p = FieldPanner::new(30.0).with_ball_weight(0.3);
+        let mut p = FieldPanner::with_config(
+            30.0,
+            FieldPannerConfig {
+                dead_zone_rad: 0.0,
+                ball_weight: 0.3,
+                ..Default::default()
+            },
+        );
         let cal = cal();
         let mut w = tight_world();
         let mut lost = ball(0.80, 0.0);
