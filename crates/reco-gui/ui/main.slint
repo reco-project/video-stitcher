@@ -2284,6 +2284,16 @@ export component RecoApp inherits Window {
                             }
                         }
 
+                        // AI is enabled but no model picked: without one the
+                        // detector never attaches and the export silently
+                        // produces no tracking. Warn and block Start below.
+                        if root.export-model-path == "": Text {
+                            text: "⚠ Pick a model - AI tracking needs one, and export is blocked until you do.";
+                            color: #e0a020;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
+
                         HorizontalBox {
                             spacing: 10px;
                             padding: 0;
@@ -2466,7 +2476,11 @@ export component RecoApp inherits Window {
                         Button {
                             text: "Start Export";
                             primary: true;
-                            enabled: root.export-output-path != "";
+                            // Block when AI tracking is on but no model is
+                            // picked - otherwise the export runs with no
+                            // tracking and no warning.
+                            enabled: root.export-output-path != ""
+                                && !(root.export-autocam-enabled && root.export-model-path == "");
                             clicked => { root.start-export(); }
                         }
                     }

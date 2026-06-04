@@ -351,6 +351,13 @@ pub fn run_export(
             });
         });
     }
+    // Defense in depth: the GUI blocks Start when AI is on with no model,
+    // but if that guard is ever bypassed, say so rather than silently
+    // producing a tracking-free export.
+    #[cfg(feature = "autocam")]
+    if autocam.enabled && autocam.model_path.is_empty() {
+        log::warn!("AI tracking enabled but no model selected; exporting WITHOUT tracking");
+    }
     #[cfg(not(feature = "autocam"))]
     let _ = &autocam;
 
