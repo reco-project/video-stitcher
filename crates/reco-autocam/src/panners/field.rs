@@ -82,7 +82,7 @@ pub enum ClusterMode {
 /// individual fields for other sports or frame rates. `#[serde(default)]`
 /// means a config file may specify only the knobs it wants to change;
 /// the rest fall back to [`Default`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FieldPannerConfig {
     /// How the action cluster is selected - see [`ClusterMode`]. Default
@@ -213,6 +213,52 @@ impl Default for FieldPannerConfig {
     }
 }
 
+impl FieldPannerConfig {
+    /// Clamp every field to its valid range, returning a corrected copy.
+    ///
+    /// Deserialized or struct-literal configs (a hand-written
+    /// `--panner-config` JSON, a consumer building the struct directly)
+    /// can carry out-of-range or inverted values. The most dangerous is an
+    /// inverted FOV range (`fov_tight > fov_wide`), which would make
+    /// `f32::clamp` panic on every frame in [`FieldPanner::target_fov`].
+    /// This also bounds the EMA factors, weights, and the reactivity
+    /// multiplier so a typo cannot send the camera unbounded. Logs a
+    /// warning naming the correction when it changes anything.
+    #[must_use]
+    pub fn sanitized(mut self) -> Self {
+        let before = self.clone();
+        // FOV range: ordered and strictly positive.
+        let lo = self.fov_tight.min(self.fov_wide).max(1.0);
+        let hi = self.fov_tight.max(self.fov_wide).max(lo);
+        self.fov_tight = lo;
+        self.fov_wide = hi;
+        self.fov_default = self.fov_default.clamp(lo, hi);
+        // Weights / fractions.
+        self.ball_weight = self.ball_weight.clamp(0.0, 1.0);
+        self.keep_fraction = self.keep_fraction.clamp(0.01, 1.0);
+        self.min_cluster = self.min_cluster.max(1);
+        // Non-negative radii; EMA factors in (0, 1]; reactivity is a >=1x.
+        self.cluster_bandwidth_rad = self.cluster_bandwidth_rad.max(1e-3);
+        self.dead_zone_rad = self.dead_zone_rad.max(0.0);
+        self.ball_max_dist_from_cluster = self.ball_max_dist_from_cluster.max(0.0);
+        self.lead_gain = self.lead_gain.max(0.0);
+        self.lead_alpha = self.lead_alpha.clamp(1e-3, 1.0);
+        self.cluster_alpha = self.cluster_alpha.clamp(1e-3, 1.0);
+        self.fov_alpha = self.fov_alpha.clamp(1e-3, 1.0);
+        self.velocity_alpha = self.velocity_alpha.clamp(1e-3, 1.0);
+        self.lookahead_reactivity = self.lookahead_reactivity.clamp(1.0, 10.0);
+        self.ball_presence_decay = self.ball_presence_decay.clamp(0.0, 1.0);
+        self.ball_presence_attack = self.ball_presence_attack.clamp(0.0, 1.0);
+        if self != before {
+            log::warn!(
+                "FieldPannerConfig: clamped out-of-range values to valid ranges \
+                 (e.g. fov_tight<=fov_wide, weights in [0,1], reactivity in [1,10])"
+            );
+        }
+        self
+    }
+}
+
 /// Intermediate cluster descriptor produced by the pipeline.
 struct Cluster {
     yaw: f32,
@@ -269,6 +315,7 @@ impl FieldPanner {
 
     pub fn with_config(fps: f32, config: FieldPannerConfig) -> Self {
         let fps = fps.clamp(1.0, 1000.0);
+        let config = config.sanitized();
         let current_fov = config.fov_default;
         let max_velocity = config.max_velocity_rad_per_sec / fps;
         Self {
@@ -299,8 +346,9 @@ impl FieldPanner {
     }
 
     pub fn with_fov_range(mut self, tight: f32, wide: f32) -> Self {
-        self.config.fov_tight = tight;
-        self.config.fov_wide = wide;
+        // Order defensively so an inverted range can't panic target_fov.
+        self.config.fov_tight = tight.min(wide).max(1.0);
+        self.config.fov_wide = tight.max(wide).max(self.config.fov_tight);
         self
     }
 
@@ -905,6 +953,36 @@ impl Panner for FieldPanner {
 mod tests {
     use super::*;
     use reco_core::detect::detector::CameraId;
+
+    #[test]
+    fn sanitized_orders_inverted_fov_and_no_panic() {
+        // An inverted FOV range used to panic f32::clamp in target_fov.
+        let cfg = FieldPannerConfig {
+            fov_tight: 60.0,
+            fov_wide: 30.0,
+            ball_weight: 1.5,
+            lookahead_reactivity: 100.0,
+            keep_fraction: -0.2,
+            ..Default::default()
+        }
+        .sanitized();
+        assert!(cfg.fov_tight <= cfg.fov_wide, "FOV range must be ordered");
+        assert_eq!(cfg.fov_tight, 30.0);
+        assert_eq!(cfg.fov_wide, 60.0);
+        assert!((0.0..=1.0).contains(&cfg.ball_weight));
+        assert!((1.0..=10.0).contains(&cfg.lookahead_reactivity));
+        assert!(cfg.keep_fraction > 0.0);
+
+        // The panner must build and decide without panicking on what was
+        // an inverted range (drives target_fov via a non-empty world).
+        let cal = cal();
+        let mut panner = FieldPanner::with_config(30.0, cfg);
+        let w = WorldState {
+            ball: None,
+            players: vec![player(0.30, 0.0, 1), player(0.36, 0.0, 2)],
+        };
+        let _ = panner.decide(&w, &ctx(0, &cal));
+    }
 
     fn player(yaw: f32, pitch: f32, id: u64) -> TrackedEntity {
         player_conf(yaw, pitch, id, 0.9)
