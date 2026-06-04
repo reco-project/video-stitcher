@@ -70,7 +70,7 @@ jobs:
           Copy-Item "$env:FFMPEG_DLL_DIR\*.dll" artifact/
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: reco-cli-windows-test
           path: artifact/
@@ -145,7 +145,7 @@ jobs:
           if (Test-Path "$env:DML_DLL") { Copy-Item "$env:DML_DLL" artifact-gui/ }
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: reco-gui-windows-test
           path: artifact-gui/
