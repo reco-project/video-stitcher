@@ -77,11 +77,10 @@ pub struct BallTracker {
     last: Option<LastKnown>,
     max_jump_rad: f32,
     player_anchor_max_rad: f32,
-    /// Current-frame player anchors in panorama yaw/pitch.
-    /// Set by an ensemble wrapper via [`BallTracker::set_players`]
-    /// before each `update` call. Empty by default → player-anchor
-    /// filter is a no-op (Phase 2 fallback; Phase 5 wires this up
-    /// properly via a TrackerEnsemble).
+    /// Current-frame player anchors in panorama yaw/pitch. Populated each
+    /// frame by [`observe_world`](Tracker::observe_world) (the session
+    /// calls it after the player tracker runs). Empty when no player
+    /// tracker is registered → the player-anchor filter is a no-op.
     current_players: Vec<(f32, f32)>,
     /// Persistent age counter; singleton ball so `id` is always 0
     /// but `age_frames` ticks every frame we're actively tracking.
@@ -138,12 +137,11 @@ impl BallTracker {
 
     /// Supply the current frame's player anchors in panorama yaw/pitch.
     ///
-    /// Intended to be called by a `TrackerEnsemble` (Phase 5)
-    /// immediately before [`update`](Tracker::update), after the
-    /// player tracker has produced its output for this frame. Each
-    /// call replaces the previous anchors — there is no accumulation.
-    /// When no anchors are supplied, the player-anchor filter
-    /// short-circuits to "accept" (no rejection).
+    /// Called each frame by [`observe_world`](Tracker::observe_world) from
+    /// the session's `WorldState`, after the player tracker has produced
+    /// its output for this frame. Each call replaces the previous anchors -
+    /// there is no accumulation. When no anchors are supplied, the
+    /// player-anchor filter short-circuits to "accept" (no rejection).
     pub fn set_players(&mut self, players: &[TrackedEntity]) {
         self.current_players.clear();
         self.current_players

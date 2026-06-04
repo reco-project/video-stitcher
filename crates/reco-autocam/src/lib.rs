@@ -541,16 +541,15 @@ pub fn setup_autocam(
                 // has a player class (the user asked to track the ball).
                 target.set_ball_tracker(Box::new(ball_tracker));
 
-                // No player provider means no cluster, so FieldPanner
-                // follows the ball directly. ball_weight defaults high;
-                // a panner-config override (if supplied) still applies so
-                // dead-zone / reactivity / lead can be tuned in this mode.
-                let fp_config = config.field_panner_config.clone().unwrap_or(
-                    crate::panners::FieldPannerConfig {
-                        ball_weight: 1.0,
-                        ..Default::default()
-                    },
-                );
+                // No player provider means no cluster, so the ball must
+                // drive the frame fully: force ball_weight=1.0 even when a
+                // config is supplied (there is nothing to blend against).
+                // Owning this here is what lets consumers pass a panner
+                // config without re-deriving the mode default themselves.
+                // All other tuning (dead-zone / reactivity / lead / fov)
+                // still comes from the supplied override.
+                let mut fp_config = config.field_panner_config.clone().unwrap_or_default();
+                fp_config.ball_weight = 1.0;
                 let panner = crate::panners::FieldPanner::with_config(fps, fp_config);
 
                 log::info!(

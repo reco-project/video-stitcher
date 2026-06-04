@@ -98,33 +98,72 @@ pub struct FieldPannerConfig {
     /// `1 - keep_fraction` are trimmed as outliers; `0.8` follows the
     /// densest 80%. Ignored by `Density`.
     pub keep_fraction: f32,
+    /// Minimum players for a valid cluster. Below this the panner has no
+    /// cluster and holds (or follows the ball alone).
     pub min_cluster: usize,
+    /// Pushes the aim outward from the cluster centroid by this fraction of
+    /// its yaw, biasing toward the touchline the action sits on. `0.0` = aim
+    /// dead-center on the cluster.
     pub edge_push: f32,
+    /// EMA factor in `(0, 1]` for the dynamic FOV: the zoom eases toward its
+    /// target by this fraction per frame. Smaller = smoother (laggier) zoom.
     pub fov_alpha: f32,
+    /// Pitch (radians) treated as "near" for the distance→FOV bias ramp.
     pub pitch_near: f32,
+    /// Pitch (radians) treated as "far" for the distance→FOV bias ramp;
+    /// play higher in frame (farther up the pitch) interpolates toward
+    /// [`distance_bias_max`](Self::distance_bias_max).
     pub pitch_far: f32,
+    /// Max FOV bias (degrees) applied at the far pitch. Negative tightens
+    /// the zoom on distant play (so far players stay large enough).
     pub distance_bias_max: f32,
+    /// Max FOV bias (degrees) from how far off-center (in yaw) the aim is;
+    /// widens slightly near the panorama edges.
     pub edge_bias_max: f32,
+    /// Tightest allowed FOV (degrees) - the zoomed-in bound.
     pub fov_tight: f32,
+    /// Widest allowed FOV (degrees) - the zoomed-out bound. Set
+    /// `fov_tight == fov_wide` to pin the zoom to a constant.
     pub fov_wide: f32,
+    /// FOV (degrees) the panner starts at before it has a cluster to size.
     pub fov_default: f32,
+    /// EMA factor in `(0, 1]` for the cluster centroid - smooths the aim
+    /// target frame-to-frame. Smaller = steadier (laggier) follow.
     pub cluster_alpha: f32,
+    /// Max pan/tilt speed (radians per second), converted to a per-frame
+    /// clamp using the source fps. The hard ceiling on how fast the camera
+    /// can swing.
     pub max_velocity_rad_per_sec: f32,
+    /// EMA factor in `(0, 1]` for the chase velocity - smooths acceleration
+    /// so the camera eases into and out of moves.
     pub velocity_alpha: f32,
+    /// Constant pitch offset (radians) added to the cluster centroid, e.g.
+    /// to frame slightly above the players' feet.
     pub pitch_bias: f32,
     /// Per-frame multiplier that bleeds off ball presence when the ball
     /// is not near the cluster. Closer to `1.0` holds the ball's pull
     /// longer after it disappears; smaller releases faster. Too slow and
     /// the camera lingers on an empty goal after a stray ball detection.
     pub ball_presence_decay: f32,
+    /// Per-frame ramp-up of ball presence while the ball is near the
+    /// cluster, the counterpart to [`ball_presence_decay`](Self::ball_presence_decay).
+    /// Larger snaps the ball blend in faster.
     pub ball_presence_attack: f32,
+    /// Max FOV widening (degrees) driven by camera velocity, so fast pans
+    /// zoom out to give the action room.
     pub velocity_fov_bias_max: f32,
+    /// Extra margin (degrees) kept around the ball when widening the FOV to
+    /// hold it in frame.
     pub ball_frame_margin_deg: f32,
     /// Max panorama distance (radians) the ball may be from the player
     /// cluster centroid and still blend into the aim. Beyond this the
     /// ball is treated as off-the-action (a stray detection or the far
     /// goal) and ignored, so it cannot drag the camera off the play.
     pub ball_max_dist_from_cluster: f32,
+    /// Blend weight of the ball vs the player cluster in
+    /// [`FramingMode::Action`], in `[0, 1]`. The effective pull is
+    /// `ball_weight * ball_presence`, so the ball only tugs the aim while
+    /// present and near. Forced to `1.0` in ball-only tracking mode.
     pub ball_weight: f32,
     /// When lookahead is active, the base chase runs this many times
     /// more reactive (looser velocity clamp + faster velocity EMA). The
@@ -906,8 +945,20 @@ impl Panner for FieldPanner {
         }
 
         if self.frame_index.is_multiple_of(LOG_INTERVAL) {
+            // mode makes the cluster->ball-only fallback visible (the camera
+            // abandons player framing to chase the ball alone); lead/lock
+            // surface the otherwise-invisible lookahead and pitch-lock state.
+            let mode = if cluster.is_some() {
+                "cluster"
+            } else if ball_detected {
+                "ball-only"
+            } else {
+                "hold"
+            };
             log::debug!(
-                "FieldPanner frame {}: yaw={:.4} pitch={:.4} fov={:.1} players={} spread={:.3} world_players={} ball_blend={}",
+                "FieldPanner frame {}: mode={mode} yaw={:.4} pitch={:.4} fov={:.1} \
+                 players={} spread={:.3} world_players={} ball_blend={} \
+                 lead=({:.4},{:.4}) lock_pitch={}",
                 self.frame_index,
                 self.yaw,
                 self.pitch,
@@ -915,7 +966,10 @@ impl Panner for FieldPanner {
                 cluster.as_ref().map_or(0, |c| c.count),
                 cluster.as_ref().map_or(0.0, |c| c.spread),
                 world.players.len(),
-                self.ball_presence > 0.001
+                self.ball_presence > 0.001,
+                self.lead_yaw,
+                self.lead_pitch,
+                self.config.lock_pitch,
             );
         }
 

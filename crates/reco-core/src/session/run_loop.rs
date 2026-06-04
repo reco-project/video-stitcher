@@ -13,6 +13,15 @@ use crate::source::FrameSource;
 /// window. Averages yaw, pitch, AND fov, so the zoom is smoothed the
 /// same lag-free way the angles are - otherwise FOV jitter survives the
 /// lookahead untouched.
+///
+/// The window is symmetric only in steady state. At the stream head the
+/// `past` side is short (it grows from empty during warm-up) and in the
+/// drain tail the `ahead` side shrinks, so the average is computed over a
+/// lopsided window at both boundaries - the first/last ~`post_smooth_half`
+/// rendered poses are smoothed slightly differently from the middle. On a
+/// clip shorter than the lookahead window the entire output is in this
+/// boundary regime. This is acceptable (no future data exists past EOF);
+/// it is documented so the boundary behavior is not mistaken for a bug.
 fn centered_smooth(
     raw_pose: crate::detect::director::ViewportPosition,
     ahead: impl Iterator<Item = crate::detect::director::ViewportPosition>,
@@ -148,10 +157,12 @@ impl StitchSession {
         self.configure_from_source(source);
 
         let result = if self.lookahead_frames > 0 {
+            let fps = source.info().fps.max(1.0);
             log::info!(
-                "Lookahead: {} frames ({:.1}s at source fps)",
+                "Lookahead: {} frames ({:.1}s at {:.2} fps)",
                 self.lookahead_frames,
-                self.lookahead_frames as f64 / 30.0,
+                self.lookahead_frames as f64 / fps,
+                fps,
             );
             self.run_buffered(source, frame_limit, interrupted, &mut on_progress)
         } else {
@@ -261,7 +272,9 @@ impl StitchSession {
         // Create VRAM pool if the source is GPU-resident.
         if source.is_gpu_resident() && self.vram_pool.is_none() {
             let post_smooth_half = (n / 2).max(1);
-            let pool_size = n + post_smooth_half + 2;
+            // Keep in sync with the D3D11 staging pool sizing in
+            // frame_processing.rs (peak occupancy + slack).
+            let pool_size = n + post_smooth_half + 4;
             let (w, h) = self.core.pipeline().source_info();
             let per_slot =
                 super::vram_pool::estimate_vram(w, h, 1, self.gpu_pixel_format.bytes_per_sample());

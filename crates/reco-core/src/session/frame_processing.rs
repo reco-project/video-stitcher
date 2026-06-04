@@ -523,11 +523,20 @@ impl StitchSession {
         if first_frame {
             let (w, h) = self.core.pipeline().source_info();
             let needs_cuda = self.detection.needs_cuda_frames();
-            // For lookahead, use 2x buffer depth slots (left+right per frame).
-            // Without lookahead, 4 slots (double-buffered stereo) suffice.
+            // For lookahead, size slots to the max frames simultaneously
+            // in flight (decoded but not yet rendered), x2 for left+right.
+            // Peak occupancy is n + post_smooth_half + 1 (buffer hits n+1
+            // right after a produce while the pose queue holds
+            // post_smooth_half). Slots are assigned by produce_index modulo
+            // n_slots with no occupancy check, so the pool must exceed peak
+            // occupancy or a producer would overwrite a frame still queued
+            // for render. +4 keeps a few frames of slack above the exact
+            // fit (the Linux VramPool uses ref-counted acquire/release; this
+            // path relies on the sizing margin instead). Without lookahead,
+            // 4 slots (double-buffered stereo) suffice.
             let n_slots = if self.lookahead_frames > 0 {
                 let post_smooth_half = (self.lookahead_frames / 2).max(1);
-                (self.lookahead_frames + post_smooth_half + 2) * 2
+                (self.lookahead_frames + post_smooth_half + 4) * 2
             } else {
                 4
             };

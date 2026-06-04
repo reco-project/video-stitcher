@@ -286,10 +286,8 @@ pub fn run_export(
                 source.gpu_pixel_format() == reco_core::render::renderer::GpuPixelFormat::P010;
 
             // Map the GUI knobs onto FieldPannerConfig, leaving every other
-            // field at its validated default. Ball mode has no player
-            // cluster to blend against, so force a ball-only weight. This
-            // mirrors setup_autocam's mode-aware default, which we would
-            // otherwise bypass by supplying an explicit config.
+            // field at its validated default. Ball mode's ball_weight=1.0 is
+            // owned by setup_autocam, so we pass the slider value as-is.
             let framing = match ac.framing.as_str() {
                 "frame_all" => reco_autocam::panners::FramingMode::FrameAll,
                 _ => reco_autocam::panners::FramingMode::Action,
@@ -298,17 +296,12 @@ pub fn run_export(
                 "trimmed_mean" => reco_autocam::panners::ClusterMode::TrimmedMean,
                 _ => reco_autocam::panners::ClusterMode::Density,
             };
-            let ball_weight = if mode == reco_autocam::TrackingMode::Ball {
-                1.0
-            } else {
-                ac.ball_weight
-            };
             let panner_cfg = reco_autocam::panners::FieldPannerConfig {
                 framing,
                 cluster_mode,
                 cluster_bandwidth_rad: ac.cluster_bandwidth_rad,
                 dead_zone_rad: ac.dead_zone_rad,
-                ball_weight,
+                ball_weight: ac.ball_weight,
                 lock_pitch: ac.lock_pitch,
                 fov_tight: ac.fov_tight,
                 fov_wide: ac.fov_wide,
