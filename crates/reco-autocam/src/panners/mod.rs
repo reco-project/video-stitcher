@@ -16,6 +16,6 @@ pub mod field;
 pub mod file_panner;
 pub mod sweep;
 
-pub use field::{ClusterMode, FieldPanner, FieldPannerConfig, FramingMode};
+pub use field::{ClusterMode, FieldPanner, FieldPannerConfig, FramingMode, PRESET_NAMES};
 pub use file_panner::FilePanner;
 pub use sweep::SweepPanner;

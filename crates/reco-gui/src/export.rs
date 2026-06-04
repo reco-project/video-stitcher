@@ -47,6 +47,8 @@ pub struct AutocamUiConfig {
     pub detection_interval: u32,
     /// Lookahead buffer depth in seconds (0 = off).
     pub lookahead_secs: f64,
+    /// Preset name used as the config base; visible knobs overlay it.
+    pub preset: String,
     /// `"action"` or `"frame_all"`.
     pub framing: String,
     /// Horizontal-only pan (hold pitch level).
@@ -306,7 +308,10 @@ pub fn run_export(
                 fov_tight: ac.fov_tight,
                 fov_wide: ac.fov_wide,
                 fov_default: ac.fov_default,
-                ..Default::default()
+                // Preset is the base; the visible knobs above overlay it
+                // (they mirror the preset until the user tweaks them).
+                ..reco_autocam::panners::FieldPannerConfig::from_preset_name(&ac.preset)
+                    .unwrap_or_default()
             };
 
             let mut autocam_config = reco_autocam::AutocamConfig::new(&ac.model_path)

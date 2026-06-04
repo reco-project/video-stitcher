@@ -252,7 +252,54 @@ impl Default for FieldPannerConfig {
     }
 }
 
+/// Names accepted by [`FieldPannerConfig::from_preset_name`].
+pub const PRESET_NAMES: &[&str] = &["broadcast", "action", "frame_all"];
+
 impl FieldPannerConfig {
+    /// Calm, anticipatory broadcast framing - the validated default.
+    pub fn broadcast() -> Self {
+        Self {
+            ball_weight: 0.20,
+            ..Self::default()
+        }
+    }
+
+    /// Tighter, more reactive follow for highlight-style energy.
+    pub fn action() -> Self {
+        Self {
+            dead_zone_rad: 0.12,
+            fov_tight: 20.0,
+            fov_wide: 48.0,
+            fov_default: 34.0,
+            lookahead_reactivity: 3.0,
+            ball_weight: 0.35,
+            edge_push: 0.20,
+            ..Self::default()
+        }
+    }
+
+    /// Keep every player in frame (team framing).
+    pub fn frame_all() -> Self {
+        Self {
+            framing: FramingMode::FrameAll,
+            confidence_weighted: false,
+            frame_all_margin_deg: 10.0,
+            fov_wide: 70.0,
+            ball_weight: 0.0,
+            ..Self::default()
+        }
+    }
+
+    /// Resolve a [`PRESET_NAMES`] entry to its config (case-insensitive).
+    pub fn from_preset_name(name: &str) -> Option<Self> {
+        match name.to_ascii_lowercase().as_str() {
+            "broadcast" => Some(Self::broadcast()),
+            "action" => Some(Self::action()),
+            "frame_all" => Some(Self::frame_all()),
+            _ => None,
+        }
+    }
+
     /// Clamp every field to its valid range, returning a corrected copy.
     ///
     /// Deserialized or struct-literal configs (a hand-written
@@ -1036,6 +1083,29 @@ mod tests {
             players: vec![player(0.30, 0.0, 1), player(0.36, 0.0, 2)],
         };
         let _ = panner.decide(&w, &ctx(0, &cal));
+    }
+
+    #[test]
+    fn presets_resolve_and_differ() {
+        assert!(FieldPannerConfig::from_preset_name("broadcast").is_some());
+        assert!(FieldPannerConfig::from_preset_name("ACTION").is_some());
+        assert!(FieldPannerConfig::from_preset_name("nope").is_none());
+
+        let b = FieldPannerConfig::broadcast();
+        let a = FieldPannerConfig::action();
+        let f = FieldPannerConfig::frame_all();
+
+        assert_eq!(f.framing, FramingMode::FrameAll);
+        assert!(!f.confidence_weighted);
+        assert!(a.dead_zone_rad < b.dead_zone_rad);
+        assert!(a.fov_wide < b.fov_wide);
+        assert!(a.lookahead_reactivity > b.lookahead_reactivity);
+
+        // Every preset must already be in valid ranges.
+        for name in PRESET_NAMES {
+            let c = FieldPannerConfig::from_preset_name(name).unwrap();
+            assert_eq!(c.clone(), c.sanitized());
+        }
     }
 
     fn player(yaw: f32, pitch: f32, id: u64) -> TrackedEntity {

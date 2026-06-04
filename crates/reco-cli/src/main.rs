@@ -188,9 +188,10 @@ enum Commands {
         #[arg(long, default_value_t = 1.5)]
         lookahead: f64,
 
-        /// Tracking mode: "ball" (single ball), "field" (ball + players).
-        /// Use "field" with a COCO model for robust football tracking.
-        #[arg(long, default_value = "ball")]
+        /// Tracking mode: "field" (ball + players, default), "ball"
+        /// (ball only), "sweep" (no AI, debug pan). field is robust with
+        /// COCO models; ball-only follows the weak COCO ball alone.
+        #[arg(long, default_value = "field")]
         tracking: String,
 
         /// Encoder quality on a 0-100 scale (higher = better). Overrides the
@@ -254,11 +255,14 @@ enum Commands {
         trajectory: Option<String>,
 
         /// FieldPanner tuning as a JSON file (field mode). Only the keys
-        /// present override defaults, e.g. {"framing":"frame_all",
-        /// "dead_zone_rad":0.087,"lookahead_reactivity":2.0}. Set
-        /// "framing":"frame_all" to keep every player in frame.
+        /// present override the base, e.g. {"framing":"frame_all",
+        /// "dead_zone_rad":0.087}. Overlays on --panner-preset if both set.
         #[arg(long = "panner-config")]
         panner_config: Option<String>,
+
+        /// Named panner preset: broadcast (default), action, frame_all.
+        #[arg(long = "panner-preset")]
+        panner_preset: Option<String>,
     },
 
     /// Open an interactive preview window to debug the stitch.
@@ -392,12 +396,9 @@ enum Commands {
         #[arg(long)]
         stream_url: Option<String>,
 
-        /// Tracking director mode. `ball` (default): YOLO ball
-        /// tracking via BallDirector. `field`: ball + players
-        /// (FieldDirector, for multi-class models). `sweep`:
-        /// no AI, slow left-right pan across the full coverage
-        /// (debug / demo). Sweep mode doesn't require `--model`.
-        #[arg(long, default_value = "ball")]
+        /// Tracking mode: `field` (ball + players, default), `ball`
+        /// (ball only), `sweep` (no AI, slow pan; no --model needed).
+        #[arg(long, default_value = "field")]
         tracking: String,
 
         /// Disable the constrained-look coverage clamp
@@ -759,6 +760,7 @@ fn main() -> anyhow::Result<()> {
             events,
             trajectory,
             panner_config,
+            panner_preset,
         } => stitch::run_stitch(
             stitch::StitchArgs {
                 left: &left,
@@ -789,6 +791,7 @@ fn main() -> anyhow::Result<()> {
                 events_path: events.as_deref(),
                 trajectory_path: trajectory.as_deref(),
                 panner_config_path: panner_config.as_deref(),
+                panner_preset: panner_preset.as_deref(),
             },
             &interrupted,
         ),

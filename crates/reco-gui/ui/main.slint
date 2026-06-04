@@ -302,6 +302,7 @@ export component RecoApp inherits Window {
     // Panner tuning (mapped onto FieldPannerConfig in export.rs). Defaults
     // mirror the validated football defaults; lookahead defaults on because
     // dead-zone assumes it is active to absorb its latency.
+    in-out property <string> export-panner-preset: "broadcast";
     in-out property <float> export-lookahead-secs: 1.5;
     in-out property <string> export-framing: "action";
     in-out property <bool> export-lock-pitch: false;
@@ -516,6 +517,8 @@ export component RecoApp inherits Window {
     callback pick-export-output();
     callback pick-export-model();
     callback start-export();
+    // Populate the visible panner controls from a named preset.
+    callback apply-panner-preset(string);
     callback cancel-export();
     callback submit-bug-report(string, string, bool);
     in-out property <bool> bug-dialog-open: false;
@@ -2328,6 +2331,22 @@ export component RecoApp inherits Window {
                                             v == "1" ? 1 : v == "5" ? 5 : v == "10" ? 10
                                             : v == "15" ? 15 : v == "30" ? 30 : 3;
                                     }
+                                }
+                            }
+                        }
+
+                        // Style preset: sets the controls below; tweak after.
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text { text: "Style preset"; color: #ccc; font-size: 12px; }
+                            ComboBox {
+                                model: ["broadcast", "action", "frame_all"];
+                                current-index: root.export-panner-preset == "action" ? 1
+                                             : root.export-panner-preset == "frame_all" ? 2
+                                             : 0;
+                                selected(v) => {
+                                    root.export-panner-preset = v;
+                                    root.apply-panner-preset(v);
                                 }
                             }
                         }

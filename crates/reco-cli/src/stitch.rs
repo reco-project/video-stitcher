@@ -65,6 +65,8 @@ pub struct StitchArgs<'a> {
     pub trajectory_path: Option<&'a str>,
     /// FieldPanner tuning JSON (field mode); only present keys override.
     pub panner_config_path: Option<&'a str>,
+    /// Named panner preset (base config); JSON overlays on top.
+    pub panner_preset: Option<&'a str>,
 }
 
 /// Run the stitch subcommand.
@@ -230,20 +232,46 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         let mode_str = args.tracking_mode.to_owned();
         let allow_fallback = args.allow_no_tracking;
         let tracking_failed = Arc::clone(&tracking_failed);
-        // Load any FieldPanner tuning override up front so a bad file
-        // fails the command before rendering starts.
-        let panner_cfg: Option<reco_autocam::panners::FieldPannerConfig> = match args
-            .panner_config_path
-        {
-            Some(p) => {
-                let contents = std::fs::read_to_string(p)
-                    .map_err(|e| anyhow::anyhow!("reading panner config {p}: {e}"))?;
-                let cfg: reco_autocam::panners::FieldPannerConfig = serde_json::from_str(&contents)
-                    .map_err(|e| anyhow::anyhow!("parsing panner config {p}: {e}"))?;
-                log::info!("FieldPanner config override loaded from {p}");
-                Some(cfg)
+        // Resolve FieldPanner tuning up front so a bad preset/file fails
+        // before rendering. Preset is the base; --panner-config overlays.
+        let panner_cfg: Option<reco_autocam::panners::FieldPannerConfig> = {
+            use reco_autocam::panners::{FieldPannerConfig, PRESET_NAMES};
+            let base = match args.panner_preset {
+                Some(name) => {
+                    let c = FieldPannerConfig::from_preset_name(name).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "unknown --panner-preset '{name}' (expected: {})",
+                            PRESET_NAMES.join(", ")
+                        )
+                    })?;
+                    log::info!("FieldPanner preset: {name}");
+                    Some(c)
+                }
+                None => None,
+            };
+            match args.panner_config_path {
+                Some(p) => {
+                    let contents = std::fs::read_to_string(p)
+                        .map_err(|e| anyhow::anyhow!("reading panner config {p}: {e}"))?;
+                    let cfg = if let Some(b) = base {
+                        let mut v = serde_json::to_value(&b).expect("config serializes");
+                        let over: serde_json::Value = serde_json::from_str(&contents)
+                            .map_err(|e| anyhow::anyhow!("parsing panner config {p}: {e}"))?;
+                        if let (Some(bm), serde_json::Value::Object(om)) = (v.as_object_mut(), over)
+                        {
+                            bm.extend(om);
+                        }
+                        serde_json::from_value(v)
+                            .map_err(|e| anyhow::anyhow!("applying panner config {p}: {e}"))?
+                    } else {
+                        serde_json::from_str(&contents)
+                            .map_err(|e| anyhow::anyhow!("parsing panner config {p}: {e}"))?
+                    };
+                    log::info!("FieldPanner config loaded from {p}");
+                    Some(cfg)
+                }
+                None => base,
             }
-            None => None,
         };
         job = job.on_session(move |session, source| {
             let info = source.info();

@@ -3073,6 +3073,36 @@ fn main() -> anyhow::Result<()> {
     });
 
     let app_weak = app.as_weak();
+    app.on_apply_panner_preset(move |name| {
+        #[cfg(feature = "autocam")]
+        if let Some(app) = app_weak.upgrade() {
+            use reco_autocam::panners::{ClusterMode, FieldPannerConfig, FramingMode};
+            let cfg = FieldPannerConfig::from_preset_name(name.as_str()).unwrap_or_default();
+            let framing = if cfg.framing == FramingMode::FrameAll {
+                "frame_all"
+            } else {
+                "action"
+            };
+            let cluster = if cfg.cluster_mode == ClusterMode::TrimmedMean {
+                "trimmed_mean"
+            } else {
+                "density"
+            };
+            app.set_export_framing(framing.into());
+            app.set_export_cluster_mode(cluster.into());
+            app.set_export_lock_pitch(cfg.lock_pitch);
+            app.set_export_cluster_bandwidth(cfg.cluster_bandwidth_rad);
+            app.set_export_dead_zone(cfg.dead_zone_rad);
+            app.set_export_ball_weight(cfg.ball_weight);
+            app.set_export_fov_tight(cfg.fov_tight);
+            app.set_export_fov_wide(cfg.fov_wide);
+            app.set_export_fov_default(cfg.fov_default);
+        }
+        #[cfg(not(feature = "autocam"))]
+        let _ = (&app_weak, &name);
+    });
+
+    let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     app.on_start_export(move || {
         let Some(app) = app_weak.upgrade() else {
@@ -3142,6 +3172,7 @@ fn main() -> anyhow::Result<()> {
             tracking_mode: app.get_export_tracking_mode().to_string(),
             detection_interval: app.get_export_detection_interval() as u32,
             lookahead_secs: app.get_export_lookahead_secs() as f64,
+            preset: app.get_export_panner_preset().to_string(),
             framing: app.get_export_framing().to_string(),
             lock_pitch: app.get_export_lock_pitch(),
             cluster_mode: app.get_export_cluster_mode().to_string(),
