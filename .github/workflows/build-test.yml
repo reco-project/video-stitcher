@@ -3,7 +3,7 @@ name: Build Test Binary
 on:
   workflow_dispatch:
   push:
-    branches: [fix/v0.5.0-release-prep, fix/10bit-d3d11va]
+    branches: [fix/v0.5.0-release-prep, fix/10bit-d3d11va, feat/panner-unify]
 
 permissions:
   contents: read
@@ -61,3 +61,65 @@ jobs:
         with:
           name: reco-cli-windows-test
           path: artifact/
+
+  build-windows-gui:
+    name: Windows GUI
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Cache FFmpeg
+        id: cache-ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: C:\ffmpeg
+          key: ffmpeg-n7.1.4-win64-gpl-shared
+
+      - name: Install FFmpeg
+        if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-05-12-13-59/ffmpeg-n7.1.4-win64-gpl-shared-7.1.zip"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\ffmpeg.zip"
+          Expand-Archive -Path "$env:RUNNER_TEMP\ffmpeg.zip" -DestinationPath C:\ffmpeg
+
+      - name: Set FFmpeg env
+        shell: pwsh
+        run: |
+          $dir = (Get-ChildItem "C:\ffmpeg" -Directory | Select-Object -First 1).FullName
+          echo "FFMPEG_DIR=$dir" >> $env:GITHUB_ENV
+          echo "FFMPEG_DLL_DIR=$dir\bin" >> $env:GITHUB_ENV
+
+      # ONNX Runtime (DirectML) + DirectML.dll, bundled so AI detection
+      # works on any Windows GPU. Mirrors the release workflow.
+      - name: Download ONNX Runtime (DirectML)
+        shell: pwsh
+        run: |
+          $nupkg = "$env:RUNNER_TEMP\ort-dml.nupkg"
+          Invoke-WebRequest -Uri "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime.directml/1.24.4/microsoft.ml.onnxruntime.directml.1.24.4.nupkg" -OutFile $nupkg
+          Expand-Archive -Path $nupkg -DestinationPath "$env:RUNNER_TEMP\ort-dml"
+          echo "ORT_DLL=$env:RUNNER_TEMP\ort-dml\runtimes\win-x64\native\onnxruntime.dll" >> $env:GITHUB_ENV
+          $dmlPkg = "$env:RUNNER_TEMP\directml.nupkg"
+          Invoke-WebRequest -Uri "https://api.nuget.org/v3-flatcontainer/microsoft.ai.directml/1.15.4/microsoft.ai.directml.1.15.4.nupkg" -OutFile $dmlPkg
+          Expand-Archive -Path $dmlPkg -DestinationPath "$env:RUNNER_TEMP\directml"
+          echo "DML_DLL=$env:RUNNER_TEMP\directml\bin\x64-win\DirectML.dll" >> $env:GITHUB_ENV
+
+      - name: Build GUI
+        run: cargo build --release -p reco-gui --features load-dynamic
+
+      - name: Bundle GUI + DLLs
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact-gui
+          Copy-Item target/release/reco-gui.exe artifact-gui/
+          Copy-Item "$env:FFMPEG_DLL_DIR\*.dll" artifact-gui/
+          if (Test-Path "$env:ORT_DLL") { Copy-Item "$env:ORT_DLL" artifact-gui/ }
+          if (Test-Path "$env:DML_DLL") { Copy-Item "$env:DML_DLL" artifact-gui/ }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: reco-gui-windows-test
+          path: artifact-gui/
