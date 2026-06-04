@@ -180,10 +180,12 @@ enum Commands {
         detection_interval: u64,
 
         /// Lookahead buffer in seconds. Decodes N frames ahead so the
-        /// panner can see future ball/player positions. Works with GPU
-        /// zero-copy decode: frames are held in a VRAM pool, not the
-        /// decode slots. 0 = disabled. Typical: 1.0-2.0.
-        #[arg(long, default_value_t = 0.0)]
+        /// panner can lead the play and the loop can centered-smooth the
+        /// pose lag-free. The validated dead-zone/reactivity defaults
+        /// assume this is on, so it defaults to 1.5. Only engages with AI
+        /// tracking (needs --model, non-sweep); ignored for a plain
+        /// stitch. Held in a VRAM pool, not the decode slots. 0 = off.
+        #[arg(long, default_value_t = 1.5)]
         lookahead: f64,
 
         /// Tracking mode: "ball" (single ball), "field" (ball + players).
