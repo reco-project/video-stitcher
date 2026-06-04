@@ -306,7 +306,7 @@ impl FieldPannerConfig {
     /// `--panner-config` JSON, a consumer building the struct directly)
     /// can carry out-of-range or inverted values. The most dangerous is an
     /// inverted FOV range (`fov_tight > fov_wide`), which would make
-    /// `f32::clamp` panic on every frame in [`FieldPanner::target_fov`].
+    /// `f32::clamp` panic on every frame in `target_fov`.
     /// This also bounds the EMA factors, weights, and the reactivity
     /// multiplier so a typo cannot send the camera unbounded. Logs a
     /// warning naming the correction when it changes anything.
