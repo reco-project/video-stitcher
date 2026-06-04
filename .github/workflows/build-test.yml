@@ -3,7 +3,7 @@ name: Build Test Binary
 on:
   workflow_dispatch:
   push:
-    branches: [fix/v0.5.0-release-prep, fix/10bit-d3d11va, feat/panner-unify]
+    branches: [fix/v0.5.0-release-prep, fix/10bit-d3d11va]
 
 permissions:
   contents: read
