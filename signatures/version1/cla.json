@@ -1,3 +1,12 @@
 {
-   "signedContributors": []
+  "signedContributors": [
+    {
+      "name": "uSpike",
+      "id": 5686650,
+      "comment_id": 4632031354,
+      "created_at": "2026-06-05T13:34:02Z",
+      "repoId": 1071713969,
+      "pullRequestNo": 323
+    }
+  ]
 }
