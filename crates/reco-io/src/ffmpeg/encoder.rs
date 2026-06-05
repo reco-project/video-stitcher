@@ -10,8 +10,16 @@ use ffmpeg::format::Pixel;
 use ffmpeg::software::scaling::{context::Context as ScalingContext, flag::Flags as ScalingFlags};
 use ffmpeg::util::frame::video::Video as VideoFrame;
 use ffmpeg::{Rational, codec, encoder, format};
-use std::path::Path;
+use std::{path::Path, ptr};
 use thiserror::Error;
+
+fn staging_pixel_format(encoder_pixel_format: Pixel) -> Pixel {
+    if encoder_pixel_format == Pixel::VAAPI {
+        Pixel::NV12
+    } else {
+        encoder_pixel_format
+    }
+}
 
 /// Errors from the video encoder.
 #[derive(Debug, Error)]
@@ -104,7 +112,7 @@ const H264_ENCODERS: &[EncoderCandidate] = &[
     EncoderCandidate {
         name: "h264_vaapi",
         is_hardware: true,
-        pixel_format: Pixel::NV12,
+        pixel_format: Pixel::VAAPI,
     },
     EncoderCandidate {
         name: "h264_v4l2m2m",
@@ -153,7 +161,7 @@ const HEVC_ENCODERS: &[EncoderCandidate] = &[
     EncoderCandidate {
         name: "hevc_vaapi",
         is_hardware: true,
-        pixel_format: Pixel::NV12,
+        pixel_format: Pixel::VAAPI,
     },
     EncoderCandidate {
         name: "hevc_v4l2m2m",
@@ -197,7 +205,7 @@ const AV1_ENCODERS: &[EncoderCandidate] = &[
     EncoderCandidate {
         name: "av1_vaapi",
         is_hardware: true,
-        pixel_format: Pixel::NV12,
+        pixel_format: Pixel::VAAPI,
     },
     EncoderCandidate {
         name: "libsvtav1",
@@ -388,6 +396,94 @@ pub struct EncoderConfig {
     pub stream_url: Option<String>,
 }
 
+struct HardwareUpload {
+    frame: VideoFrame,
+    frames_ref: *mut ffmpeg::sys::AVBufferRef,
+}
+
+type OpenedVideoEncoder = (
+    ffmpeg::encoder::video::Encoder,
+    ScalingContext,
+    usize,
+    Rational,
+    Rational,
+    Option<HardwareUpload>,
+);
+
+impl HardwareUpload {
+    fn new_vaapi(width: u32, height: u32) -> Result<Self, EncodeError> {
+        unsafe {
+            let mut device_ref = ptr::null_mut();
+            let ret = ffmpeg::sys::av_hwdevice_ctx_create(
+                &mut device_ref,
+                ffmpeg::sys::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI,
+                ptr::null(),
+                ptr::null_mut(),
+                0,
+            );
+            if ret < 0 {
+                return Err(ffmpeg::Error::from(ret).into());
+            }
+
+            let mut frames_ref = ffmpeg::sys::av_hwframe_ctx_alloc(device_ref);
+            if frames_ref.is_null() {
+                ffmpeg::sys::av_buffer_unref(&mut device_ref);
+                return Err(ffmpeg::Error::Unknown.into());
+            }
+            ffmpeg::sys::av_buffer_unref(&mut device_ref);
+
+            let frames_ctx = (*frames_ref).data as *mut ffmpeg::sys::AVHWFramesContext;
+            if frames_ctx.is_null() {
+                ffmpeg::sys::av_buffer_unref(&mut frames_ref);
+                return Err(ffmpeg::Error::Unknown.into());
+            }
+
+            (*frames_ctx).format = Pixel::VAAPI.into();
+            (*frames_ctx).sw_format = Pixel::NV12.into();
+            (*frames_ctx).width = width as i32;
+            (*frames_ctx).height = height as i32;
+            (*frames_ctx).initial_pool_size = 8;
+
+            let ret = ffmpeg::sys::av_hwframe_ctx_init(frames_ref);
+            if ret < 0 {
+                ffmpeg::sys::av_buffer_unref(&mut frames_ref);
+                return Err(ffmpeg::Error::from(ret).into());
+            }
+
+            Ok(Self {
+                frame: VideoFrame::empty(),
+                frames_ref,
+            })
+        }
+    }
+
+    fn upload(&mut self, source: &VideoFrame) -> Result<&VideoFrame, EncodeError> {
+        let frame = &mut self.frame;
+        unsafe {
+            ffmpeg::sys::av_frame_unref(frame.as_mut_ptr());
+            let ret = ffmpeg::sys::av_hwframe_get_buffer(self.frames_ref, frame.as_mut_ptr(), 0);
+            if ret < 0 {
+                return Err(ffmpeg::Error::from(ret).into());
+            }
+            let ret = ffmpeg::sys::av_hwframe_transfer_data(frame.as_mut_ptr(), source.as_ptr(), 0);
+            if ret < 0 {
+                return Err(ffmpeg::Error::from(ret).into());
+            }
+        }
+        frame.set_pts(source.pts());
+        Ok(frame)
+    }
+}
+
+impl Drop for HardwareUpload {
+    fn drop(&mut self) {
+        unsafe {
+            ffmpeg::sys::av_frame_unref(self.frame.as_mut_ptr());
+            ffmpeg::sys::av_buffer_unref(&mut self.frames_ref);
+        }
+    }
+}
+
 /// Video encoder that writes RGBA frames to an MP4 file.
 ///
 /// # Example
@@ -417,6 +513,7 @@ pub struct VideoEncoder {
     /// Reusable frame buffers to avoid per-frame allocation.
     rgba_frame: VideoFrame,
     yuv_frame: VideoFrame,
+    hardware_upload: Option<HardwareUpload>,
     /// Audio passthrough state (if enabled).
     audio: Option<AudioPassthrough>,
     /// Secondary output context for RTMP streaming (same encoded packets).
@@ -554,7 +651,7 @@ impl VideoEncoder {
             match Self::try_open(
                 &mut octx, codec, *pixel_fmt, *is_hw, width, height, fps, config, name,
             ) {
-                Ok((enc_opened, scaler, stream_index, encoder_time_base, _)) => {
+                Ok((enc_opened, scaler, stream_index, encoder_time_base, _, hardware_upload)) => {
                     let hw_tag = if *is_hw { " (hardware)" } else { " (software)" };
                     log::info!(
                         "Encoder: {}x{} {}{} @ {}/{} fps",
@@ -631,7 +728,8 @@ impl VideoEncoder {
                         finished: false,
                         encoder_name: name.to_string(),
                         rgba_frame: VideoFrame::new(Pixel::RGBA, width, height),
-                        yuv_frame: VideoFrame::new(*pixel_fmt, width, height),
+                        yuv_frame: VideoFrame::new(staging_pixel_format(*pixel_fmt), width, height),
+                        hardware_upload,
                         audio,
                         stream,
                     });
@@ -659,16 +757,7 @@ impl VideoEncoder {
         fps: Rational,
         config: &EncoderConfig,
         name: &str,
-    ) -> Result<
-        (
-            ffmpeg::encoder::video::Encoder,
-            ScalingContext,
-            usize,
-            Rational,
-            Rational,
-        ),
-        EncodeError,
-    > {
+    ) -> Result<OpenedVideoEncoder, EncodeError> {
         let needs_global_header = octx.format().flags().contains(format::Flags::GLOBAL_HEADER);
 
         let mut ost = octx.add_stream(codec)?;
@@ -700,6 +789,20 @@ impl VideoEncoder {
             enc.set_threading(ffmpeg::threading::Config::count(0));
         }
 
+        let hardware_upload = if pixel_fmt == Pixel::VAAPI {
+            let upload = HardwareUpload::new_vaapi(width, height)?;
+            unsafe {
+                let frames_ref = ffmpeg::sys::av_buffer_ref(upload.frames_ref);
+                if frames_ref.is_null() {
+                    return Err(ffmpeg::Error::Unknown.into());
+                }
+                (*enc.as_mut_ptr()).hw_frames_ctx = frames_ref;
+            }
+            Some(upload)
+        } else {
+            None
+        };
+
         // Seed the output stream with the encoder's unopened
         // parameters BEFORE `open_with` so the muxer has valid
         // codec parameters when it allocates its internal fragment
@@ -726,11 +829,12 @@ impl VideoEncoder {
 
         let output_time_base = Rational(0, 0); // placeholder, updated after write_header
 
+        let staging_pixel_fmt = staging_pixel_format(pixel_fmt);
         let scaler = ScalingContext::get(
             Pixel::RGBA,
             width,
             height,
-            pixel_fmt,
+            staging_pixel_fmt,
             width,
             height,
             ScalingFlags::BILINEAR,
@@ -742,6 +846,7 @@ impl VideoEncoder {
             stream_index,
             encoder_time_base,
             output_time_base,
+            hardware_upload,
         ))
     }
 
@@ -970,6 +1075,20 @@ impl VideoEncoder {
         Ok(())
     }
 
+    fn send_current_yuv_frame(&mut self) -> Result<(), EncodeError> {
+        self.yuv_frame.set_pts(Some(self.frame_count));
+        if let Some(ref mut upload) = self.hardware_upload {
+            let frame = upload.upload(&self.yuv_frame)?;
+            self.encoder.send_frame(frame)?;
+        } else {
+            self.encoder.send_frame(&self.yuv_frame)?;
+        }
+        self.receive_and_write_packets()?;
+
+        self.frame_count += 1;
+        Ok(())
+    }
+
     /// Write an RGBA frame to the output file.
     ///
     /// `rgba_data` must be exactly `width * height * 4` bytes (tightly packed).
@@ -1000,13 +1119,7 @@ impl VideoEncoder {
         }
 
         self.scaler.run(&self.rgba_frame, &mut self.yuv_frame)?;
-        self.yuv_frame.set_pts(Some(self.frame_count));
-
-        self.encoder.send_frame(&self.yuv_frame)?;
-        self.receive_and_write_packets()?;
-
-        self.frame_count += 1;
-        Ok(())
+        self.send_current_yuv_frame()
     }
 
     /// Write a pre-converted NV12 frame to the output file.
@@ -1077,12 +1190,7 @@ impl VideoEncoder {
             }
         }
 
-        self.yuv_frame.set_pts(Some(self.frame_count));
-        self.encoder.send_frame(&self.yuv_frame)?;
-        self.receive_and_write_packets()?;
-
-        self.frame_count += 1;
-        Ok(())
+        self.send_current_yuv_frame()
     }
 
     /// Write a pre-converted YUV420P planar frame.
@@ -1187,12 +1295,7 @@ impl VideoEncoder {
             }
         }
 
-        self.yuv_frame.set_pts(Some(self.frame_count));
-        self.encoder.send_frame(&self.yuv_frame)?;
-        self.receive_and_write_packets()?;
-
-        self.frame_count += 1;
-        Ok(())
+        self.send_current_yuv_frame()
     }
 
     /// Flush muxer + AVIO buffers to disk without finalizing the
