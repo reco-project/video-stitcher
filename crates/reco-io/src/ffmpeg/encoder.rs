@@ -10,16 +10,10 @@ use ffmpeg::format::Pixel;
 use ffmpeg::software::scaling::{context::Context as ScalingContext, flag::Flags as ScalingFlags};
 use ffmpeg::util::frame::video::Video as VideoFrame;
 use ffmpeg::{Rational, codec, encoder, format};
-use std::{path::Path, ptr};
+use std::path::Path;
 use thiserror::Error;
 
-fn staging_pixel_format(encoder_pixel_format: Pixel) -> Pixel {
-    if encoder_pixel_format == Pixel::VAAPI {
-        Pixel::NV12
-    } else {
-        encoder_pixel_format
-    }
-}
+use super::hw_upload::{HardwareUpload, staging_pixel_format};
 
 /// Errors from the video encoder.
 #[derive(Debug, Error)]
@@ -396,11 +390,6 @@ pub struct EncoderConfig {
     pub stream_url: Option<String>,
 }
 
-struct HardwareUpload {
-    frame: VideoFrame,
-    frames_ref: *mut ffmpeg::sys::AVBufferRef,
-}
-
 type OpenedVideoEncoder = (
     ffmpeg::encoder::video::Encoder,
     ScalingContext,
@@ -409,80 +398,6 @@ type OpenedVideoEncoder = (
     Rational,
     Option<HardwareUpload>,
 );
-
-impl HardwareUpload {
-    fn new_vaapi(width: u32, height: u32) -> Result<Self, EncodeError> {
-        unsafe {
-            let mut device_ref = ptr::null_mut();
-            let ret = ffmpeg::sys::av_hwdevice_ctx_create(
-                &mut device_ref,
-                ffmpeg::sys::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI,
-                ptr::null(),
-                ptr::null_mut(),
-                0,
-            );
-            if ret < 0 {
-                return Err(ffmpeg::Error::from(ret).into());
-            }
-
-            let mut frames_ref = ffmpeg::sys::av_hwframe_ctx_alloc(device_ref);
-            if frames_ref.is_null() {
-                ffmpeg::sys::av_buffer_unref(&mut device_ref);
-                return Err(ffmpeg::Error::Unknown.into());
-            }
-            ffmpeg::sys::av_buffer_unref(&mut device_ref);
-
-            let frames_ctx = (*frames_ref).data as *mut ffmpeg::sys::AVHWFramesContext;
-            if frames_ctx.is_null() {
-                ffmpeg::sys::av_buffer_unref(&mut frames_ref);
-                return Err(ffmpeg::Error::Unknown.into());
-            }
-
-            (*frames_ctx).format = Pixel::VAAPI.into();
-            (*frames_ctx).sw_format = Pixel::NV12.into();
-            (*frames_ctx).width = width as i32;
-            (*frames_ctx).height = height as i32;
-            (*frames_ctx).initial_pool_size = 8;
-
-            let ret = ffmpeg::sys::av_hwframe_ctx_init(frames_ref);
-            if ret < 0 {
-                ffmpeg::sys::av_buffer_unref(&mut frames_ref);
-                return Err(ffmpeg::Error::from(ret).into());
-            }
-
-            Ok(Self {
-                frame: VideoFrame::empty(),
-                frames_ref,
-            })
-        }
-    }
-
-    fn upload(&mut self, source: &VideoFrame) -> Result<&VideoFrame, EncodeError> {
-        let frame = &mut self.frame;
-        unsafe {
-            ffmpeg::sys::av_frame_unref(frame.as_mut_ptr());
-            let ret = ffmpeg::sys::av_hwframe_get_buffer(self.frames_ref, frame.as_mut_ptr(), 0);
-            if ret < 0 {
-                return Err(ffmpeg::Error::from(ret).into());
-            }
-            let ret = ffmpeg::sys::av_hwframe_transfer_data(frame.as_mut_ptr(), source.as_ptr(), 0);
-            if ret < 0 {
-                return Err(ffmpeg::Error::from(ret).into());
-            }
-        }
-        frame.set_pts(source.pts());
-        Ok(frame)
-    }
-}
-
-impl Drop for HardwareUpload {
-    fn drop(&mut self) {
-        unsafe {
-            ffmpeg::sys::av_frame_unref(self.frame.as_mut_ptr());
-            ffmpeg::sys::av_buffer_unref(&mut self.frames_ref);
-        }
-    }
-}
 
 /// Video encoder that writes RGBA frames to an MP4 file.
 ///
@@ -791,13 +706,9 @@ impl VideoEncoder {
 
         let hardware_upload = if pixel_fmt == Pixel::VAAPI {
             let upload = HardwareUpload::new_vaapi(width, height)?;
-            unsafe {
-                let frames_ref = ffmpeg::sys::av_buffer_ref(upload.frames_ref);
-                if frames_ref.is_null() {
-                    return Err(ffmpeg::Error::Unknown.into());
-                }
-                (*enc.as_mut_ptr()).hw_frames_ctx = frames_ref;
-            }
+            // SAFETY: `enc` is a live, not-yet-opened encoder context.
+            let codec_ctx = unsafe { enc.as_mut_ptr() };
+            upload.attach_to_encoder(codec_ctx)?;
             Some(upload)
         } else {
             None
