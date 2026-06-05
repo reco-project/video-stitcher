@@ -1,22 +1,14 @@
 ## Description
 
-<!-- Brief description of the changes -->
-
-## Type of Change
-
-- [ ] 🐛 Bug fix
-- [ ] ✨ New feature
-- [ ] 💥 Breaking change
-- [ ] 📖 Documentation update
-- [ ] 🧹 Code cleanup / refactor
+<!-- What does this change do, and why? -->
 
 ## Checklist
 
-- [ ] Code follows project style guidelines
-- [ ] Self-reviewed my own code
-- [ ] Tests pass locally (`cargo test`)
-- [ ] Lint/format checks pass (`cargo clippy --all-targets -- -D warnings && cargo fmt --all -- --check`)
+- [ ] I self-reviewed this change and it follows the project style guidelines
+- [ ] `cargo test --all` passes
+- [ ] `cargo clippy --all-targets -- -D warnings` and `cargo fmt --all -- --check` pass
+- [ ] I added or updated tests where it made sense
 
-## Screenshots (if applicable)
+## Screenshots
 
-<!-- Add screenshots for UI changes -->
+<!-- Required for UI changes, otherwise delete this section -->
