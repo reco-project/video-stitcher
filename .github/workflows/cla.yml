@@ -30,8 +30,8 @@ jobs:
           branch: cla-signatures
           # The agreement contributors are signing.
           path-to-document: https://github.com/reco-project/video-stitcher/blob/main/CONTRIBUTING.md#contributor-license-agreement
-          # Bots (dependabot, etc.) never need to sign.
-          allowlist: '*[bot]'
+          # The maintainer (CLA grantee) and bots never need to sign.
+          allowlist: 'mohamedtahaguelzim,*[bot]'
           custom-notsigned-prcomment: >-
             Thank you for your contribution. Before this can be merged, please
             read our [Contributor License Agreement](https://github.com/reco-project/video-stitcher/blob/main/CONTRIBUTING.md#contributor-license-agreement)
