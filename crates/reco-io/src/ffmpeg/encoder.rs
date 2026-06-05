@@ -1707,3 +1707,39 @@ fn build_encoder_opts(
 
     opts
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Only a positive, finite start time should shift audio; anything else
+    /// (default exports, garbage values) must leave the soundtrack untouched.
+    #[test]
+    fn sanitize_audio_start_time_keeps_only_valid_offsets() {
+        assert_eq!(sanitize_audio_start_time(12.5), 12.5);
+        assert_eq!(sanitize_audio_start_time(0.0), 0.0);
+        assert_eq!(sanitize_audio_start_time(-4.0), 0.0);
+        assert_eq!(sanitize_audio_start_time(f64::NAN), 0.0);
+        assert_eq!(sanitize_audio_start_time(f64::INFINITY), 0.0);
+    }
+
+    /// The audio rebase offset must equal the requested start time expressed
+    /// in the output stream's time base, so trimmed audio lands at time zero
+    /// in sync with the video. This is the core of the `--start-time` fix.
+    #[test]
+    fn seconds_to_pts_converts_into_the_stream_time_base() {
+        // One second in a 44.1 kHz audio time base is exactly 44_100 ticks.
+        assert_eq!(seconds_to_pts(1.0, Rational(1, 44_100)), 44_100);
+        // Half a second in a millisecond time base is 500 ticks.
+        assert_eq!(seconds_to_pts(0.5, Rational(1, 1_000)), 500);
+    }
+
+    /// A zero or invalid start time produces no shift, so exports without
+    /// `--start-time` mux audio exactly as before this fix.
+    #[test]
+    fn seconds_to_pts_is_zero_for_no_offset() {
+        assert_eq!(seconds_to_pts(0.0, Rational(1, 44_100)), 0);
+        assert_eq!(seconds_to_pts(-2.0, Rational(1, 44_100)), 0);
+        assert_eq!(seconds_to_pts(f64::NAN, Rational(1, 44_100)), 0);
+    }
+}
