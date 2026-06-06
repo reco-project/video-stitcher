@@ -74,6 +74,11 @@ impl VideoCodec {
 struct EncoderCandidate {
     name: &'static str,
     is_hardware: bool,
+    /// Pixel format the encoder is opened with. For most encoders this is the
+    /// CPU swscale target (NV12 or YUV420P). `Pixel::VAAPI` is a sentinel
+    /// meaning "GPU surface, sw_format = NV12": the CPU stages frames in NV12
+    /// (see `staging_pixel_format`) and uploads them to a VAAPI surface before
+    /// encoding (see `hw_upload`).
     pixel_format: Pixel,
 }
 
@@ -577,6 +582,19 @@ impl VideoEncoder {
                         fps.0,
                         fps.1,
                     );
+                    // Story-tell which frame-delivery path this encoder uses, so
+                    // the upload cost is visible in the field.
+                    if hardware_upload.is_some() {
+                        log::info!(
+                            "Encoder frame path: explicit VAAPI surface upload (NV12 -> GPU surface)"
+                        );
+                    } else if *is_hw {
+                        log::info!(
+                            "Encoder frame path: implicit driver upload (software NV12 -> GPU, handled by FFmpeg)"
+                        );
+                    } else {
+                        log::info!("Encoder frame path: software encode (no GPU upload)");
+                    }
 
                     // Set up audio passthrough before writing the header.
                     let audio = if let Some(ref audio_path) = config.audio_source {
@@ -1119,12 +1137,11 @@ impl VideoEncoder {
     /// scaler saves ~1-2ms per frame at 1080p and avoids colorspace
     /// drift from repeated range conversion.
     ///
-    /// Requires the encoder's internal pixel format to be
-    /// YUV420P. Currently all software encoders
-    /// (`libx264`/`libx265`/`libsvtav1`/`libaom-av1`) use YUV420P;
-    /// hardware encoders use NV12 and are not supported on this
-    /// path (they should go through [`Self::write_nv12_frame`]
-    /// instead).
+    /// Adapts to the encoder's staging pixel format: writes separate
+    /// U and V planes for YUV420P (software encoders), or interleaves
+    /// the chroma into a single UV plane for NV12 (hardware encoders,
+    /// including the VAAPI path, whose NV12 staging frame is then
+    /// uploaded to a GPU surface before encoding).
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "encode_yuv420p_frame")
