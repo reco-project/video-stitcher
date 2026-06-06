@@ -83,6 +83,11 @@ const DRAG_DEG_PER_PIXEL: f32 = 0.287;
 /// Matches the pre-migration GUI constant `CAMERA_SMOOTHING`.
 const POSE_SMOOTHING: f32 = 0.25;
 
+/// Free-fly camera movement speed (scene units per second).
+const FLY_SPEED: f32 = 0.6;
+/// Free-fly speed multiplier while Shift is held.
+const FLY_BOOST: f32 = 4.0;
+
 /// How long the seek-slider fraction must stay stable before we
 /// actually execute the seek. Debouncing is required because every
 /// pixel of drag emits a `changed` event, and each seek forces a
@@ -145,6 +150,15 @@ struct AppState {
     /// through the camera-smoothing path but still need a re-render.
     /// Cleared by the timer after it renders.
     preview_dirty: bool,
+    /// Free-fly mode (F key): WASD/E/C translate the virtual camera through
+    /// the 3D scene; mouse-drag still looks around.
+    fly_mode: bool,
+    /// Held free-fly movement keys (w/a/s/d/e/c, lowercased).
+    keys_down: std::collections::HashSet<char>,
+    /// Shift state at the last movement-key event (speed boost).
+    fly_shift: bool,
+    /// Last free-fly integration tick, for frame-rate-independent movement.
+    last_move_time: Instant,
     /// Interrupt flag for a running export. Set to true when the user
     /// clicks Cancel; StitchJob checks it between frames and aborts.
     export_interrupted: Arc<AtomicBool>,
@@ -390,6 +404,10 @@ impl AppState {
             pending_seek: None,
             last_render_at: None,
             preview_dirty: false,
+            fly_mode: false,
+            keys_down: std::collections::HashSet::new(),
+            fly_shift: false,
+            last_move_time: Instant::now(),
             export_interrupted: Arc::new(AtomicBool::new(false)),
             export_last_progress_at: Arc::new(Mutex::new(None)),
             export_thread: None,
@@ -740,6 +758,91 @@ impl AppState {
         // after the mouse is released is never run (timer sees nothing
         // to do and stops nudging Slint), so pan motion snaps/stalls.
         self.preview_dirty = true;
+    }
+
+    /// Toggle free-fly camera mode (F key). Clears any held movement keys.
+    fn toggle_fly(&mut self) {
+        self.fly_mode = !self.fly_mode;
+        self.keys_down.clear();
+        self.last_move_time = Instant::now();
+        log::info!(
+            "Fly mode {} - WASD move, E/C up/down, Shift boost, drag to look, F to exit",
+            if self.fly_mode { "ON" } else { "OFF" }
+        );
+    }
+
+    /// Track a held free-fly movement key (w/a/s/d/e/c); records Shift for boost.
+    fn set_fly_key(&mut self, text: &str, pressed: bool, shift: bool) {
+        self.fly_shift = shift;
+        let Some(c) = text.chars().next().map(|c| c.to_ascii_lowercase()) else {
+            return;
+        };
+        if !matches!(c, 'w' | 'a' | 's' | 'd' | 'e' | 'c') {
+            return;
+        }
+        if pressed {
+            self.keys_down.insert(c);
+        } else {
+            self.keys_down.remove(&c);
+        }
+    }
+
+    /// True while fly mode is active with movement keys held.
+    fn fly_active(&self) -> bool {
+        self.fly_mode && !self.keys_down.is_empty()
+    }
+
+    /// Integrate held movement keys into the virtual camera position, frame-rate
+    /// independent via dt. Movement follows where the camera looks (yaw/pitch).
+    fn apply_fly(&mut self) {
+        if !self.fly_active() {
+            self.last_move_time = Instant::now();
+            return;
+        }
+        let dt = self.last_move_time.elapsed().as_secs_f32().min(0.05);
+        self.last_move_time = Instant::now();
+
+        let mut mv = [0.0_f32; 3]; // [right, up, forward]
+        if self.keys_down.contains(&'d') {
+            mv[0] += 1.0;
+        }
+        if self.keys_down.contains(&'a') {
+            mv[0] -= 1.0;
+        }
+        if self.keys_down.contains(&'e') {
+            mv[1] += 1.0;
+        }
+        if self.keys_down.contains(&'c') {
+            mv[1] -= 1.0;
+        }
+        if self.keys_down.contains(&'w') {
+            mv[2] += 1.0;
+        }
+        if self.keys_down.contains(&'s') {
+            mv[2] -= 1.0;
+        }
+        if mv == [0.0; 3] {
+            return;
+        }
+
+        let Some(rig_tilt) = self
+            .bridge
+            .as_ref()
+            .map(|b| b.renderer().pipeline().viewport().rig_tilt)
+        else {
+            return;
+        };
+        let render = self.pose.render_pose(rig_tilt);
+        let boost = if self.fly_shift { FLY_BOOST } else { 1.0 };
+        let step = FLY_SPEED * boost * dt;
+        if let Some(bridge) = self.bridge.as_mut() {
+            bridge.renderer_mut().pipeline_mut().fly_camera(
+                [mv[0] * step, mv[1] * step, mv[2] * step],
+                render.yaw,
+                render.pitch,
+            );
+            self.preview_dirty = true;
+        }
     }
 
     /// Apply a FOV delta (degrees). Clamps the target; tick handles smoothing.
@@ -2501,6 +2604,18 @@ fn main() -> anyhow::Result<()> {
     });
 
     let state_ref = Rc::clone(&state);
+    app.on_fly_toggle(move || {
+        state_ref.borrow_mut().toggle_fly();
+    });
+
+    let state_ref = Rc::clone(&state);
+    app.on_fly_key(move |text, pressed, shift| {
+        state_ref
+            .borrow_mut()
+            .set_fly_key(text.as_str(), pressed, shift);
+    });
+
+    let state_ref = Rc::clone(&state);
     app.on_changed_blend_width(move |w| {
         state_ref.borrow_mut().set_blend_width(w);
     });
@@ -3578,7 +3693,10 @@ fn main() -> anyhow::Result<()> {
             // nudge Slint to keep redrawing so BeforeRendering fires
             // even if nothing marked the window dirty yet.
             if let Some(app) = app_weak.upgrade()
-                && (app.get_playing() || s.pending_seek.is_some() || s.preview_dirty)
+                && (app.get_playing()
+                    || s.pending_seek.is_some()
+                    || s.preview_dirty
+                    || s.fly_active())
             {
                 app.window().request_redraw();
             }
@@ -3623,6 +3741,7 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
         }
     }
 
+    s.apply_fly();
     let camera_changed = s.smooth_camera();
     let video_advanced = match s.playback.tick() {
         Ok(advanced) => advanced,

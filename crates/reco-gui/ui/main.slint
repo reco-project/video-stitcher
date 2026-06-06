@@ -457,6 +457,10 @@ export component RecoApp inherits Window {
     callback zoom(float);
     // Reset yaw/pitch/fov to defaults.
     callback reset-view();
+    // Free-fly camera (experiment): F toggles, WASD/E/C move. Args: key text,
+    // pressed, shift-held.
+    callback fly-toggle();
+    callback fly-key(string, bool, bool);
     // Settings-panel slider callbacks.
     callback changed-blend-width(float);
     callback changed-rig-tilt(float);
@@ -588,9 +592,23 @@ export component RecoApp inherits Window {
             if (event.text == "]") { root.seek-relative(5);  return accept; }
             // R : reset view
             if (event.text == "r" || event.text == "R") { root.reset-view(); return accept; }
-            // F or F11 : toggle fullscreen
-            if (event.text == "f" || event.text == "F" || event.text == Key.F11) {
-                root.full-screen = !root.full-screen;
+            // F : toggle free-fly camera (experiment). F11 toggles fullscreen.
+            if (event.text == "f" || event.text == "F") { root.fly-toggle(); return accept; }
+            if (event.text == Key.F11) { root.full-screen = !root.full-screen; return accept; }
+            // Free-fly movement (no-op in Rust unless fly mode is on).
+            if (event.text == "w" || event.text == "W" || event.text == "a" || event.text == "A"
+                || event.text == "s" || event.text == "S" || event.text == "d" || event.text == "D"
+                || event.text == "e" || event.text == "E" || event.text == "c" || event.text == "C") {
+                root.fly-key(event.text, true, event.modifiers.shift);
+                return accept;
+            }
+            return reject;
+        }
+        key-released(event) => {
+            if (event.text == "w" || event.text == "W" || event.text == "a" || event.text == "A"
+                || event.text == "s" || event.text == "S" || event.text == "d" || event.text == "D"
+                || event.text == "e" || event.text == "E" || event.text == "c" || event.text == "C") {
+                root.fly-key(event.text, false, event.modifiers.shift);
                 return accept;
             }
             return reject;
