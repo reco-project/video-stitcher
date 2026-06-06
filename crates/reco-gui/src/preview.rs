@@ -179,7 +179,8 @@ impl PreviewBridge {
     /// Render a single camera through orthographic projection with
     /// optional lens correction. Returns a Slint image for display.
     ///
-    /// `correction_amount`: 0.0 = raw input, 1.0 = full KB4 correction.
+    /// `correction_amount`: -1.0 = raw source frame, 0.0 = uncorrected
+    /// plane projection, 1.0 = full KB4 correction.
     pub fn render_lens_preview(
         &mut self,
         planes: &YuvPlanes<'_>,

@@ -41,14 +41,12 @@ reco-autocam = { path = "../reco-autocam", optional = true, default-features = f
 
 slint = { version = "~1.15", default-features = false, features = ["std", "backend-winit", "renderer-femtovg-wgpu", "renderer-software", "accessibility", "compat-1-2", "unstable-wgpu-28"] }
 rfd = "0.15"
-image = { version = "0.25", default-features = false, features = ["png"] }
 # M2 tracing migration: tracing-subscriber replaces env_logger.
 # tracing-log bridges legacy `log::*` calls to the tracing pipeline.
 log = "0.4"
 anyhow = "1"
 arboard = "3"
 open = "5"
-base64 = "0.22"
 ureq = "3"
 uuid = { version = "1", features = ["v4"] }
 serde_json = "1"

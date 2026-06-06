@@ -30,10 +30,10 @@ If the image looks warped (curved lines that should be straight):
 
 ## 4. Set the Field Area
 
-- Click **Set ROI** - a browser page opens after a few seconds
-- Draw a polygon covering the field visible in the **left camera**
-- Switch to **Right Camera** in the dropdown and do the same for the right
-- Click **Copy ROI**, go back to the app, click **Paste ROI**
+- Click **Set ROI**
+- Draw the field boundary on the stitched preview
+- Click **Save ROI** to write it into the calibration JSON
+- Use **Copy JSON** only when you want the raw ROI JSON on the clipboard
 
 ## 5. Export
 
