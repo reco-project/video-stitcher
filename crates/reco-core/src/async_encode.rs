@@ -226,6 +226,22 @@ impl AsyncEncodeThread {
     }
 }
 
+impl Drop for AsyncEncodeThread {
+    fn drop(&mut self) {
+        // Drop the sender (and pool receiver) BEFORE joining. Struct
+        // fields are dropped AFTER this body runs, so `self.tx` is still
+        // alive here; if we joined first, the encode thread's `rx.recv()`
+        // would never see a disconnect and the join would block forever.
+        // This matters on early-error paths (e.g. a pre-flight VRAM budget
+        // failure) where `finish()` was never called.
+        self.tx.take();
+        self.pool_rx.take();
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,21 +267,5 @@ mod tests {
         let (frames, avg_ms, _bp, _bp_ms) = t.stats();
         assert_eq!(frames, 8);
         assert!(avg_ms.is_finite() && avg_ms >= 0.0);
-    }
-}
-
-impl Drop for AsyncEncodeThread {
-    fn drop(&mut self) {
-        // Drop the sender (and pool receiver) BEFORE joining. Struct
-        // fields are dropped AFTER this body runs, so `self.tx` is still
-        // alive here; if we joined first, the encode thread's `rx.recv()`
-        // would never see a disconnect and the join would block forever.
-        // This matters on early-error paths (e.g. a pre-flight VRAM budget
-        // failure) where `finish()` was never called.
-        self.tx.take();
-        self.pool_rx.take();
-        if let Some(handle) = self.handle.take() {
-            let _ = handle.join();
-        }
     }
 }
