@@ -390,7 +390,7 @@ export component RecoApp inherits Window {
     in-out property <float> telem-decode-ms: 0.0;
     in-out property <float> telem-stitch-ms: 0.0;
     in-out property <float> telem-readback-ms: 0.0;
-    in-out property <float> telem-encode-ms: 0.0;
+    in-out property <float> telem-submit-ms: 0.0;
     in-out property <float> telem-total-ms: 0.0;
     in-out property <float> telem-p99-ms: 0.0;
     in-out property <float> telem-detection-ms: 0.0;
@@ -1347,7 +1347,7 @@ export component RecoApp inherits Window {
                         Text { text: "  Decode:   " + round(root.telem-decode-ms * 10) / 10 + " ms"; color: #888; font-size: 10px; }
                         Text { text: "  Stitch:   " + round(root.telem-stitch-ms * 10) / 10 + " ms"; color: #888; font-size: 10px; }
                         Text { text: "  Readback: " + round(root.telem-readback-ms * 10) / 10 + " ms"; color: #888; font-size: 10px; }
-                        Text { text: "  Encode:   " + round(root.telem-encode-ms * 10) / 10 + " ms"; color: #888; font-size: 10px; }
+                        Text { text: "  Submit:   " + round(root.telem-submit-ms * 10) / 10 + " ms"; color: #888; font-size: 10px; }
                         if root.telem-bottleneck != "": Text { text: "Bottleneck: " + root.telem-bottleneck; color: #e8a060; font-size: 11px; font-weight: 600; }
                         if root.telem-gpu-name != "": Text { text: root.telem-gpu-name; color: #666; font-size: 10px; }
                         if root.telem-frames-dropped > 0: Text { text: "Dropped: " + root.telem-frames-dropped; color: #f88; font-size: 11px; }

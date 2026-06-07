@@ -83,7 +83,7 @@ impl reco_core::telemetry::TelemetrySink for ExportTelemetrySink {
                 app.set_telem_decode_ms(snap.avg_decode_ms);
                 app.set_telem_stitch_ms(snap.avg_stitch_ms);
                 app.set_telem_readback_ms(snap.avg_readback_ms);
-                app.set_telem_encode_ms(snap.avg_encode_ms);
+                app.set_telem_submit_ms(snap.avg_submit_ms);
                 app.set_telem_total_ms(snap.avg_total_ms);
                 app.set_telem_p99_ms(snap.p99_total_ms);
                 app.set_telem_detection_ms(snap.avg_detection_ms);

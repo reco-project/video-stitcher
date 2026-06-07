@@ -116,7 +116,7 @@ pub struct FrameTimingMicros {
     pub upload_us: Option<u32>,
     pub stitch_us: Option<u32>,
     pub readback_us: Option<u32>,
-    pub encode_us: Option<u32>,
+    pub submit_us: Option<u32>,
     pub detection_us: Option<u32>,
     pub total_us: u32,
 }
@@ -129,7 +129,7 @@ impl From<&crate::telemetry::FrameTiming> for FrameTimingMicros {
             upload_us: to_us(t.upload),
             stitch_us: to_us(t.stitch),
             readback_us: to_us(t.readback),
-            encode_us: to_us(t.encode),
+            submit_us: to_us(t.submit),
             detection_us: to_us(t.detection),
             total_us: t.total.map_or(0, |d| d.as_micros() as u32),
         }
@@ -344,7 +344,7 @@ mod tests {
                     upload_us: None,
                     stitch_us: Some(500),
                     readback_us: None,
-                    encode_us: Some(2000),
+                    submit_us: Some(2000),
                     detection_us: None,
                     total_us: 5000,
                 },

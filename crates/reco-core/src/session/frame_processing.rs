@@ -283,7 +283,7 @@ impl StitchSession {
         let stitch_time = render_time
             .saturating_sub(upload_time)
             .saturating_sub(self.last_readback_time)
-            .saturating_sub(self.last_encode_time);
+            .saturating_sub(self.last_submit_time);
         self.telemetry.record_frame(crate::telemetry::FrameTiming {
             decode: Some(decode_time),
             upload: Some(upload_time),
@@ -294,7 +294,7 @@ impl StitchSession {
             },
             stitch: Some(stitch_time),
             readback: Some(self.last_readback_time),
-            encode: Some(self.last_encode_time),
+            submit: Some(self.last_submit_time),
             total: Some(frame_t0.elapsed()),
             ..Default::default()
         });
@@ -658,7 +658,7 @@ impl StitchSession {
                 enc.submit(data, self.frame_count as i64)?;
             }
         }
-        self.last_encode_time = encode_t0.elapsed();
+        self.last_submit_time = encode_t0.elapsed();
 
         self.frame_count += 1;
         Ok(())

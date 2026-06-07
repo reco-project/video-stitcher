@@ -15,7 +15,11 @@ pub struct FrameTiming {
     pub upload: Option<Duration>,
     pub stitch: Option<Duration>,
     pub readback: Option<Duration>,
-    pub encode: Option<Duration>,
+    /// Synchronous submit cost on the pipeline thread: NV12 memcpy into the
+    /// async encode buffer + channel enqueue (+ backpressure wait if the
+    /// encoder is the bottleneck). NOT the encode compute, which runs
+    /// overlapped on the encode thread (see `AsyncEncodeThread`).
+    pub submit: Option<Duration>,
     pub detection: Option<Duration>,
     pub tracking: Option<Duration>,
     pub total: Option<Duration>,
@@ -29,7 +33,7 @@ pub enum PipelineStage {
     Upload,
     Stitch,
     Readback,
-    Encode,
+    Submit,
     Detection,
     Tracking,
 }
@@ -41,7 +45,7 @@ impl std::fmt::Display for PipelineStage {
             Self::Upload => write!(f, "upload"),
             Self::Stitch => write!(f, "stitch"),
             Self::Readback => write!(f, "readback"),
-            Self::Encode => write!(f, "encode"),
+            Self::Submit => write!(f, "submit"),
             Self::Detection => write!(f, "detection"),
             Self::Tracking => write!(f, "tracking"),
         }
@@ -199,7 +203,7 @@ impl TelemetryCollector {
         let avg_upload = avg(|t| t.upload);
         let avg_stitch = avg(|t| t.stitch);
         let avg_readback = avg(|t| t.readback);
-        let avg_encode = avg(|t| t.encode);
+        let avg_submit = avg(|t| t.submit);
         let avg_detection = avg(|t| t.detection);
         let avg_total = avg(|t| t.total);
 
@@ -234,7 +238,7 @@ impl TelemetryCollector {
             avg_upload,
             avg_stitch,
             avg_readback,
-            avg_encode,
+            avg_submit,
             avg_detection,
         );
 
@@ -247,7 +251,7 @@ impl TelemetryCollector {
             avg_upload_ms: avg_upload,
             avg_stitch_ms: avg_stitch,
             avg_readback_ms: avg_readback,
-            avg_encode_ms: avg_encode,
+            avg_submit_ms: avg_submit,
             avg_detection_ms: avg_detection,
             avg_total_ms: avg_total,
             p99_total_ms: p99_total,
@@ -287,7 +291,7 @@ impl TelemetryCollector {
         upload: f32,
         stitch: f32,
         readback: f32,
-        encode: f32,
+        submit: f32,
         detection: f32,
     ) -> Option<PipelineStage> {
         // Upload (staging copies) is a sub-step of decode for zero-copy paths.
@@ -297,7 +301,7 @@ impl TelemetryCollector {
             (PipelineStage::Decode, decode + upload),
             (PipelineStage::Stitch, stitch),
             (PipelineStage::Readback, readback),
-            (PipelineStage::Encode, encode),
+            (PipelineStage::Submit, submit),
             (PipelineStage::Detection, detection),
         ];
         stages
@@ -326,7 +330,7 @@ pub struct TelemetrySnapshot {
     pub avg_upload_ms: f32,
     pub avg_stitch_ms: f32,
     pub avg_readback_ms: f32,
-    pub avg_encode_ms: f32,
+    pub avg_submit_ms: f32,
     pub avg_detection_ms: f32,
     pub avg_total_ms: f32,
     pub p99_total_ms: f32,
@@ -387,7 +391,7 @@ impl std::fmt::Display for SessionSummary {
         }
         writeln!(f, "  Stitch:    {:.1} ms", s.avg_stitch_ms)?;
         writeln!(f, "  Readback:  {:.1} ms", s.avg_readback_ms)?;
-        writeln!(f, "  Encode:    {:.1} ms", s.avg_encode_ms)?;
+        writeln!(f, "  Submit:    {:.1} ms", s.avg_submit_ms)?;
         if s.avg_detection_ms > 0.0 {
             writeln!(f, "  Detection: {:.1} ms", s.avg_detection_ms)?;
         }
@@ -425,7 +429,7 @@ mod tests {
             tc.record_frame(FrameTiming {
                 decode: Some(Duration::from_millis(2)),
                 stitch: Some(Duration::from_millis(1)),
-                encode: Some(Duration::from_millis(3)),
+                submit: Some(Duration::from_millis(3)),
                 total: Some(Duration::from_millis(8)),
                 ..Default::default()
             });
@@ -433,8 +437,8 @@ mod tests {
         let snap = tc.snapshot();
         assert_eq!(snap.frames_processed, 100);
         assert!((snap.avg_decode_ms - 2.0).abs() < 0.1);
-        assert!((snap.avg_encode_ms - 3.0).abs() < 0.1);
-        assert!(snap.bottleneck == Some(PipelineStage::Encode));
+        assert!((snap.avg_submit_ms - 3.0).abs() < 0.1);
+        assert!(snap.bottleneck == Some(PipelineStage::Submit));
     }
 
     #[test]
@@ -442,13 +446,13 @@ mod tests {
         let mut tc = TelemetryCollector::new();
         tc.record_frame(FrameTiming {
             decode: Some(Duration::from_millis(10)),
-            encode: Some(Duration::from_millis(20)),
+            submit: Some(Duration::from_millis(20)),
             readback: Some(Duration::from_millis(5)),
             total: Some(Duration::from_millis(35)),
             ..Default::default()
         });
         let snap = tc.snapshot();
-        assert_eq!(snap.bottleneck, Some(PipelineStage::Encode));
+        assert_eq!(snap.bottleneck, Some(PipelineStage::Submit));
     }
 
     #[test]
