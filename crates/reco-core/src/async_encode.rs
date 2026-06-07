@@ -13,8 +13,11 @@
 //! send, the thread maintains a pool of pre-allocated buffers. After
 //! encoding, each buffer is returned to the pool for reuse.
 
-use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::thread::{self, JoinHandle};
+use std::time::Instant;
 
 use crate::encoder::{EncodeError, Encoder, OutputFrame, PixelFormat};
 
@@ -24,6 +27,18 @@ struct EncodeJob {
     data: Vec<u8>,
     /// Presentation timestamp in microseconds.
     pts_us: i64,
+}
+
+/// Shared encode-thread counters. The worker records the true (overlapped)
+/// encode cost; `submit` records backpressure stalls (the encoder being the
+/// real bottleneck). Distinct from the pipeline's per-frame "encode" timing,
+/// which only measures the submit memcpy + enqueue.
+#[derive(Default)]
+struct EncodeStats {
+    encode_busy_ns: AtomicU64,
+    frames_encoded: AtomicU64,
+    backpressure_ns: AtomicU64,
+    backpressure_count: AtomicU64,
 }
 
 /// Async encoder that runs on a dedicated thread.
@@ -42,6 +57,8 @@ pub struct AsyncEncodeThread {
     /// Output dimensions (needed for OutputFrame construction).
     width: u32,
     height: u32,
+    /// Encode-thread counters (shared with the worker).
+    stats: Arc<EncodeStats>,
 }
 
 impl AsyncEncodeThread {
@@ -68,15 +85,18 @@ impl AsyncEncodeThread {
             let _ = pool_tx.try_send(vec![0u8; nv12_size]);
         }
 
+        let stats = Arc::new(EncodeStats::default());
+        let worker_stats = Arc::clone(&stats);
         let handle = thread::Builder::new()
             .name("encode".into())
-            .spawn(move || Self::encode_loop(rx, pool_tx, encoder, width, height))
+            .spawn(move || Self::encode_loop(rx, pool_tx, encoder, width, height, worker_stats))
             .expect("spawn encode thread");
 
         Self {
             tx: Some(tx),
             pool_rx: Some(pool_rx),
             handle: Some(handle),
+            stats,
             width,
             height,
         }
@@ -106,11 +126,42 @@ impl AsyncEncodeThread {
         buf.resize(nv12_data.len(), 0);
         buf.copy_from_slice(nv12_data);
 
-        tx.send(EncodeJob { data: buf, pts_us })
-            .map_err(|_| EncodeError::Frame {
-                frame_index: None,
-                reason: "encode thread died".into(),
-            })
+        let dead = || EncodeError::Frame {
+            frame_index: None,
+            reason: "encode thread died".into(),
+        };
+        // Try non-blocking first; only a full channel means the encoder is
+        // the bottleneck. Measure that stall.
+        match tx.try_send(EncodeJob { data: buf, pts_us }) {
+            Ok(()) => Ok(()),
+            Err(TrySendError::Full(job)) => {
+                let t0 = Instant::now();
+                let r = tx.send(job).map_err(|_| dead());
+                self.stats
+                    .backpressure_ns
+                    .fetch_add(t0.elapsed().as_nanos() as u64, Ordering::Relaxed);
+                self.stats
+                    .backpressure_count
+                    .fetch_add(1, Ordering::Relaxed);
+                r
+            }
+            Err(TrySendError::Disconnected(_)) => Err(dead()),
+        }
+    }
+
+    /// Snapshot of encode-thread counters: (frames, avg encode ms,
+    /// backpressure stalls, total backpressure ms).
+    pub fn stats(&self) -> (u64, f32, u64, f32) {
+        let frames = self.stats.frames_encoded.load(Ordering::Relaxed);
+        let busy_ns = self.stats.encode_busy_ns.load(Ordering::Relaxed);
+        let avg_ms = if frames > 0 {
+            (busy_ns as f64 / frames as f64 / 1e6) as f32
+        } else {
+            0.0
+        };
+        let bp_count = self.stats.backpressure_count.load(Ordering::Relaxed);
+        let bp_ms = (self.stats.backpressure_ns.load(Ordering::Relaxed) as f64 / 1e6) as f32;
+        (frames, avg_ms, bp_count, bp_ms)
     }
 
     /// Flush all pending frames and shut down the encode thread.
@@ -124,13 +175,22 @@ impl AsyncEncodeThread {
         // Drop pool_rx so the encode thread's pool_tx sends don't block.
         self.pool_rx.take();
 
-        if let Some(handle) = self.handle.take() {
+        let result = if let Some(handle) = self.handle.take() {
             handle.join().map_err(|_| EncodeError::Finalize {
                 reason: "encode thread panicked".into(),
             })?
         } else {
             Ok(())
+        };
+
+        let (frames, avg_ms, bp_count, bp_ms) = self.stats();
+        if frames > 0 {
+            log::info!(
+                "Encode thread: {frames} frames, avg encode {avg_ms:.2}ms (overlapped); \
+                 backpressure {bp_count} stalls totaling {bp_ms:.1}ms"
+            );
         }
+        result
     }
 
     /// The encode thread's main loop.
@@ -140,9 +200,11 @@ impl AsyncEncodeThread {
         mut encoder: Box<dyn Encoder + Send>,
         width: u32,
         height: u32,
+        stats: Arc<EncodeStats>,
     ) -> Result<(), EncodeError> {
         while let Ok(job) = rx.recv() {
             profile_scope!("encode_submit");
+            let t0 = Instant::now();
             encoder.submit(OutputFrame {
                 data: &job.data,
                 width,
@@ -150,6 +212,10 @@ impl AsyncEncodeThread {
                 format: PixelFormat::Nv12,
                 pts_us: job.pts_us,
             })?;
+            stats
+                .encode_busy_ns
+                .fetch_add(t0.elapsed().as_nanos() as u64, Ordering::Relaxed);
+            stats.frames_encoded.fetch_add(1, Ordering::Relaxed);
 
             // Return the buffer to the pool for reuse.
             // If the pool channel is full or disconnected, just drop it.
