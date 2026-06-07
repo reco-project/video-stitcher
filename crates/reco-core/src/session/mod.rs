@@ -378,8 +378,19 @@ impl StitchSession {
     }
 
     /// Snapshot of the session's telemetry collector.
+    ///
+    /// Merges the async encode thread's overlapped encode cost and
+    /// backpressure into the snapshot (the collector only sees the
+    /// per-frame submit cost).
     pub fn telemetry_snapshot(&self) -> crate::telemetry::TelemetrySnapshot {
-        self.telemetry.snapshot()
+        let mut snap = self.telemetry.snapshot();
+        if let Some(enc) = &self.encoder {
+            let (_frames, avg_encode_ms, bp_stalls, bp_ms) = enc.stats();
+            snap.avg_encode_worker_ms = avg_encode_ms;
+            snap.backpressure_stalls = bp_stalls;
+            snap.backpressure_ms = bp_ms;
+        }
+        snap
     }
 
     /// Mutable reference to the telemetry collector.

@@ -252,6 +252,11 @@ impl TelemetryCollector {
             avg_stitch_ms: avg_stitch,
             avg_readback_ms: avg_readback,
             avg_submit_ms: avg_submit,
+            // Populated by the session from the async encode thread; the
+            // collector itself has no view of the overlapped encode cost.
+            avg_encode_worker_ms: 0.0,
+            backpressure_stalls: 0,
+            backpressure_ms: 0.0,
             avg_detection_ms: avg_detection,
             avg_total_ms: avg_total,
             p99_total_ms: p99_total,
@@ -331,6 +336,13 @@ pub struct TelemetrySnapshot {
     pub avg_stitch_ms: f32,
     pub avg_readback_ms: f32,
     pub avg_submit_ms: f32,
+    /// Real overlapped encode cost on the async encode thread (per frame).
+    /// Zero if no async encoder is attached.
+    pub avg_encode_worker_ms: f32,
+    /// Times `submit` blocked on a full encode channel (encoder = bottleneck).
+    pub backpressure_stalls: u64,
+    /// Total time spent blocked on encode backpressure (ms).
+    pub backpressure_ms: f32,
     pub avg_detection_ms: f32,
     pub avg_total_ms: f32,
     pub p99_total_ms: f32,
@@ -392,6 +404,13 @@ impl std::fmt::Display for SessionSummary {
         writeln!(f, "  Stitch:    {:.1} ms", s.avg_stitch_ms)?;
         writeln!(f, "  Readback:  {:.1} ms", s.avg_readback_ms)?;
         writeln!(f, "  Submit:    {:.1} ms", s.avg_submit_ms)?;
+        if s.avg_encode_worker_ms > 0.0 || s.backpressure_stalls > 0 {
+            writeln!(
+                f,
+                "  Encode:    {:.1} ms (overlapped); backpressure {} stalls / {:.1} ms",
+                s.avg_encode_worker_ms, s.backpressure_stalls, s.backpressure_ms
+            )?;
+        }
         if s.avg_detection_ms > 0.0 {
             writeln!(f, "  Detection: {:.1} ms", s.avg_detection_ms)?;
         }
