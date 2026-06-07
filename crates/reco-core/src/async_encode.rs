@@ -226,6 +226,34 @@ impl AsyncEncodeThread {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct NoopEncoder;
+    impl Encoder for NoopEncoder {
+        fn submit(&mut self, _f: OutputFrame<'_>) -> Result<(), EncodeError> {
+            Ok(())
+        }
+        fn finish(&mut self) -> Result<(), EncodeError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn counts_encoded_frames() {
+        let mut t = AsyncEncodeThread::new(Box::new(NoopEncoder), 16, 16, 2);
+        let data = vec![0u8; 16 * 16 * 3 / 2];
+        for i in 0..8 {
+            t.submit(&data, i).unwrap();
+        }
+        t.finish().unwrap();
+        let (frames, avg_ms, _bp, _bp_ms) = t.stats();
+        assert_eq!(frames, 8);
+        assert!(avg_ms.is_finite() && avg_ms >= 0.0);
+    }
+}
+
 impl Drop for AsyncEncodeThread {
     fn drop(&mut self) {
         // Drop the sender (and pool receiver) BEFORE joining. Struct
