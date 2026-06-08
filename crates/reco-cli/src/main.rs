@@ -57,6 +57,18 @@ fn init_tracing() {
         .try_init();
 }
 
+#[cfg(target_os = "linux")]
+fn quiet_libva_info_by_default() {
+    if std::env::var_os("LIBVA_MESSAGING_LEVEL").is_none() {
+        // SAFETY: This runs at CLI process startup, before we install the
+        // Ctrl-C handler or start decode/encode worker threads. Callers can
+        // still opt back into libva info logs by setting the env var.
+        unsafe {
+            std::env::set_var("LIBVA_MESSAGING_LEVEL", "1");
+        }
+    }
+}
+
 /// Install a panic hook that captures the panic context (location,
 /// payload) as a structured `tracing::error!` event before the default
 /// hook runs. When a user reports a bug post-deployment with a log
@@ -704,6 +716,9 @@ fn parse_wxh(s: &str) -> Result<(u32, u32), String> {
 }
 
 fn main() -> anyhow::Result<()> {
+    #[cfg(target_os = "linux")]
+    quiet_libva_info_by_default();
+
     // When profiling, tracing-subscriber is owned by the chrome layer
     // (one global subscriber per process). Otherwise, install our fmt
     // subscriber + log bridge for normal structured output.

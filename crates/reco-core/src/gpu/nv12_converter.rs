@@ -215,7 +215,7 @@ impl Nv12Converter {
         let dispatch_x = (width / 4).div_ceil(16);
         let dispatch_y = height.div_ceil(4);
 
-        log::info!(
+        log::debug!(
             "NV12 converter: {}x{} → {} bytes ({:.1} MB), dispatch ({}, {}, 1)",
             width,
             height,

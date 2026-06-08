@@ -258,7 +258,7 @@ impl FfmpegFileSource {
             .spawn(move || {
                 let mut dec = match ffmpeg::decoder::VideoDecoder::open_input(&input) {
                     Ok(d) => {
-                        log::info!(
+                        log::debug!(
                             "{label} decoder: {} ({}x{})",
                             d.backend(),
                             d.width(),
@@ -350,7 +350,7 @@ impl FfmpegFileSource {
                             return;
                         }
                     }
-                    log::info!("Sync offset: skipped {sync_offset} right frames");
+                    log::debug!("Sync offset: skipped {sync_offset} right frames");
                 } else if sync_offset < 0 {
                     // Left started first — skip N left frames.
                     let skip = sync_offset.unsigned_abs();
@@ -359,7 +359,7 @@ impl FfmpegFileSource {
                             return;
                         }
                     }
-                    log::info!("Sync offset: skipped {skip} left frames");
+                    log::debug!("Sync offset: skipped {skip} left frames");
                 }
 
                 while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
@@ -452,7 +452,7 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         }
 
         let secs = frame as f64 / self.info.fps;
-        log::info!("Seeking to frame {frame} ({secs:.1}s)");
+        log::debug!("Seeking to frame {frame} ({secs:.1}s)");
         // Drop old receiver - disconnects current decode threads which
         // exit on the next send() failure. Spawns fresh decoders that
         // seek to the target keyframe and skip to the exact PTS.

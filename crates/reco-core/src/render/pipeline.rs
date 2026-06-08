@@ -137,7 +137,7 @@ impl StitchPipeline {
             &scene,
         );
 
-        log::info!(
+        log::debug!(
             "Pipeline initialized: {}x{} output, GPU: {}",
             viewport.width,
             viewport.height,

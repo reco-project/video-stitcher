@@ -270,7 +270,7 @@ impl CoverageBoundary {
             }
         }
 
-        log::info!(
+        log::debug!(
             "CoverageBoundary: pitch [{:.3}, {:.3}] ({:.1} deg), min pitch range {:.1} deg",
             global_pitch_min,
             global_pitch_max,

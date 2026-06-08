@@ -129,7 +129,7 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
                 args.lookahead
             );
         } else {
-            log::info!(
+            log::debug!(
                 "Lookahead {:.1}s ignored: no AI tracking (needs --model, non-sweep); \
                  a plain stitch needs none",
                 args.lookahead
