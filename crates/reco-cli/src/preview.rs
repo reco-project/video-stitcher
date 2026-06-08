@@ -7,6 +7,8 @@
 //! - `[`/`]`: seek backward/forward 5 seconds, Home: restart
 //! - Arrows / mouse drag: pan (yaw/pitch)
 //! - +/- / scroll: zoom (FOV)
+//! - F: toggle free-fly camera (then WASD move, E/C up/down, Shift boost,
+//!   mouse-drag look) - move the virtual camera through the 3D scene
 //! - Q / Escape: quit
 //!
 //! This module is intentionally CLI-only. The rendering is already handled by
@@ -46,6 +48,10 @@ const FOV_MIN: f32 = 20.0;
 const FOV_MAX: f32 = 150.0;
 /// Default FOV at startup (degrees).
 const FOV_DEFAULT: f32 = 75.0;
+/// Free-fly camera movement speed (scene units per second).
+const FLY_SPEED: f32 = 0.6;
+/// Free-fly speed multiplier while Shift is held.
+const FLY_BOOST: f32 = 4.0;
 /// Number of frames to skip on P key press.
 const FRAME_SKIP_COUNT: usize = 30;
 /// Number of seconds to seek on `[`/`]` key press.
@@ -203,6 +209,10 @@ pub fn run_preview(
         fps_rational,
         total_frames,
         pending_seek: None,
+        fly_mode: false,
+        keys_down: std::collections::HashSet::new(),
+        last_move_time: Instant::now(),
+        rmb_dragging: false,
     };
 
     event_loop.run_app(&mut app)?;
@@ -260,6 +270,16 @@ struct App {
     /// Coalesced seek target. Multiple rapid key presses accumulate here;
     /// only the final value is executed (in about_to_wait).
     pending_seek: Option<u64>,
+    // -- Free-fly camera (debug navigation) --
+    /// When true, WASD/E/C move the virtual camera through 3D space and
+    /// mouse-drag looks around; the normal letter hotkeys are suspended.
+    fly_mode: bool,
+    /// Movement keys currently held (WASD / E / C / Shift) for continuous fly.
+    keys_down: std::collections::HashSet<winit::keyboard::KeyCode>,
+    /// Last free-fly integration tick, for frame-rate-independent movement.
+    last_move_time: Instant,
+    /// Right mouse button held (free-look in fly mode).
+    rmb_dragging: bool,
 }
 
 impl App {
@@ -568,7 +588,59 @@ impl ApplicationHandler for App {
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 use winit::keyboard::{KeyCode, PhysicalKey};
-                if event.state == winit::event::ElementState::Pressed {
+                let pressed = event.state == winit::event::ElementState::Pressed;
+
+                // F toggles free-fly mode (camera translation via WASD/E/C +
+                // mouse-drag look). Available in any mode.
+                if pressed && event.physical_key == PhysicalKey::Code(KeyCode::KeyF) {
+                    self.fly_mode = !self.fly_mode;
+                    self.keys_down.clear();
+                    if self.fly_mode {
+                        self.last_move_time = Instant::now();
+                        println!(
+                            "Fly mode ON - WASD move, E/C up/down, Shift boost, mouse-drag look, F to exit"
+                        );
+                    } else {
+                        if !self.playing {
+                            event_loop.set_control_flow(ControlFlow::Wait);
+                        }
+                        println!("Fly mode OFF");
+                    }
+                    return;
+                }
+
+                // In fly mode, WASD/E/C/Shift drive camera movement (held-key
+                // state) and suspend their normal letter-hotkey meanings.
+                if self.fly_mode
+                    && let PhysicalKey::Code(code) = event.physical_key
+                    && matches!(
+                        code,
+                        KeyCode::KeyW
+                            | KeyCode::KeyA
+                            | KeyCode::KeyS
+                            | KeyCode::KeyD
+                            | KeyCode::KeyE
+                            | KeyCode::KeyC
+                            | KeyCode::ShiftLeft
+                            | KeyCode::ShiftRight
+                    )
+                {
+                    if pressed {
+                        if self.keys_down.is_empty() {
+                            self.last_move_time = Instant::now();
+                        }
+                        self.keys_down.insert(code);
+                        event_loop.set_control_flow(ControlFlow::Poll);
+                    } else {
+                        self.keys_down.remove(&code);
+                        if self.keys_down.is_empty() && !self.playing {
+                            event_loop.set_control_flow(ControlFlow::Wait);
+                        }
+                    }
+                    return;
+                }
+
+                if pressed {
                     match event.physical_key {
                         PhysicalKey::Code(KeyCode::Escape | KeyCode::KeyQ) => {
                             if self.recording.is_some() {
@@ -770,21 +842,32 @@ impl ApplicationHandler for App {
             WindowEvent::MouseInput { state, button, .. } => {
                 use winit::event::ElementState;
                 use winit::event::MouseButton;
-                if button == MouseButton::Left {
+                if button == MouseButton::Left || button == MouseButton::Right {
                     let pressed = state == ElementState::Pressed;
-                    self.mouse_dragging = pressed;
+                    // Left drag and right drag both look around (yaw/pitch).
+                    if button == MouseButton::Left {
+                        self.mouse_dragging = pressed;
+                    } else {
+                        self.rmb_dragging = pressed;
+                    }
                     if pressed {
                         // Capture start position - first CursorMoved will anchor here
                         self.last_mouse_pos = None;
                     } else {
                         self.last_mouse_pos = None;
-                        if !self.playing {
+                        if !self.mouse_dragging
+                            && !self.rmb_dragging
+                            && self.keys_down.is_empty()
+                            && !self.playing
+                        {
                             event_loop.set_control_flow(ControlFlow::Wait);
                         }
                     }
                 }
             }
-            WindowEvent::CursorMoved { position, .. } if self.mouse_dragging => {
+            WindowEvent::CursorMoved { position, .. }
+                if self.mouse_dragging || self.rmb_dragging =>
+            {
                 if let Some((prev_x, prev_y)) = self.last_mouse_pos {
                     let dx = (position.x - prev_x) as f32;
                     let dy = (position.y - prev_y) as f32;
@@ -918,7 +1001,52 @@ impl ApplicationHandler for App {
             self.needs_redraw = true;
         }
 
-        if !self.playing && !smoothing_active {
+        // Free-fly camera translation: integrate held movement keys into the
+        // virtual camera position, frame-rate independent via dt.
+        if self.fly_mode && !self.keys_down.is_empty() {
+            use winit::keyboard::KeyCode;
+            let dt = self.last_move_time.elapsed().as_secs_f32().min(0.05);
+            let k = &self.keys_down;
+            let mut mv = [0.0_f32; 3]; // [right, up, forward]
+            if k.contains(&KeyCode::KeyD) {
+                mv[0] += 1.0;
+            }
+            if k.contains(&KeyCode::KeyA) {
+                mv[0] -= 1.0;
+            }
+            if k.contains(&KeyCode::KeyE) {
+                mv[1] += 1.0;
+            }
+            if k.contains(&KeyCode::KeyC) {
+                mv[1] -= 1.0;
+            }
+            if k.contains(&KeyCode::KeyW) {
+                mv[2] += 1.0;
+            }
+            if k.contains(&KeyCode::KeyS) {
+                mv[2] -= 1.0;
+            }
+            if mv != [0.0; 3] {
+                let boost = if k.contains(&KeyCode::ShiftLeft) || k.contains(&KeyCode::ShiftRight) {
+                    FLY_BOOST
+                } else {
+                    1.0
+                };
+                let step = FLY_SPEED * boost * dt;
+                let render = self.pose.render_pose(self.rig_tilt);
+                if let Some(r) = &mut self.renderer {
+                    r.pipeline_mut().fly_camera(
+                        [mv[0] * step, mv[1] * step, mv[2] * step],
+                        render.yaw,
+                        render.pitch,
+                    );
+                }
+                self.needs_redraw = true;
+            }
+        }
+        self.last_move_time = Instant::now();
+
+        if !self.playing && !smoothing_active && self.keys_down.is_empty() {
             return;
         }
 

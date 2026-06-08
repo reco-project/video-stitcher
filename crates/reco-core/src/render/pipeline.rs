@@ -250,6 +250,51 @@ impl StitchPipeline {
         self.viewport.lens_correction_amount = amount.clamp(0.0, 1.0);
     }
 
+    /// Current virtual camera position `[x, y, z]` in scene space.
+    pub fn camera_position(&self) -> [f32; 3] {
+        self.scene.camera_position
+    }
+
+    /// Override the virtual camera position (e.g. to reset free-fly).
+    ///
+    /// Takes effect on the next render (the eye is read from the scene each
+    /// frame). The position is never allowed to reach the scene origin,
+    /// where the look-toward-origin basis would be undefined.
+    pub fn set_camera_position(&mut self, pos: [f32; 3]) {
+        let norm = (pos[0] * pos[0] + pos[1] * pos[1] + pos[2] * pos[2]).sqrt();
+        if norm > 1e-2 {
+            self.scene.camera_position = pos;
+        }
+    }
+
+    /// Translate the virtual camera in its current view frame (free-fly).
+    ///
+    /// `local` is `[right, up, forward]` in scene-space distance units,
+    /// evaluated at the given `yaw`/`pitch` so movement follows where the
+    /// camera looks. The basis matches `view_matrix`'s yaw-around-up,
+    /// pitch-around-right convention (rig tilt/roll are ignored here; this
+    /// is a debug/preview navigation aid, not a render path). Vertical
+    /// (`up`) uses world up so it stays level regardless of pitch.
+    pub fn fly_camera(&mut self, local: [f32; 3], yaw: f32, pitch: f32) {
+        use crate::projection::VirtualCamera;
+        use nalgebra::{Unit, UnitQuaternion};
+
+        let cam = VirtualCamera::new(&self.scene.camera_position);
+        let world_up = VirtualCamera::world_up();
+        let yaw_q = UnitQuaternion::from_axis_angle(&Unit::new_normalize(world_up), yaw);
+        let right = yaw_q * cam.base_right;
+        let pitch_q = UnitQuaternion::from_axis_angle(&Unit::new_normalize(right), pitch);
+        let forward = (pitch_q * yaw_q) * cam.base_forward;
+
+        let delta = right * local[0] + world_up * local[1] + forward * local[2];
+        let next = [
+            self.scene.camera_position[0] + delta.x,
+            self.scene.camera_position[1] + delta.y,
+            self.scene.camera_position[2] + delta.z,
+        ];
+        self.set_camera_position(next);
+    }
+
     /// Update calibration parameters. Recomputes [`SceneGeometry`] from the
     /// new layout. Takes effect on the next render call (uniforms are rebuilt
     /// each frame from the stored calibration and scene).
