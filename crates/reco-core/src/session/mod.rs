@@ -382,6 +382,12 @@ impl crate::detect::DetectionTarget for StitchSession {
     fn source_info(&self) -> (u32, u32) {
         self.core.source_info()
     }
+    fn calibration(&self) -> &crate::calibration::Calibration {
+        self.core.calibration()
+    }
+    fn scene(&self) -> &crate::render::scene::SceneGeometry {
+        self.core.scene()
+    }
     fn gpu(&self) -> Option<&crate::gpu::GpuContext> {
         self.core.executor.gpu().map(|g| g.pipeline.gpu())
     }

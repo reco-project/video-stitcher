@@ -434,6 +434,11 @@ impl StitchCore {
         self.executor.calibration()
     }
 
+    /// The derived plane-placement geometry for the active calibration.
+    pub fn scene(&self) -> &crate::render::scene::SceneGeometry {
+        self.executor.scene()
+    }
+
     /// Set the vertical field of view in degrees.
     pub fn set_fov(&mut self, fov_degrees: f32) {
         self.executor.set_fov(fov_degrees);
@@ -442,6 +447,11 @@ impl StitchCore {
     /// Current vertical field of view in degrees.
     pub fn fov(&self) -> f32 {
         self.executor.fov()
+    }
+
+    /// The output viewport configuration.
+    pub fn viewport(&self) -> &crate::render::viewport::ViewportConfig {
+        self.executor.viewport()
     }
 
     /// Resize the output viewport. Returns the accepted `(width, height)`,
@@ -723,6 +733,12 @@ impl crate::detect::DetectionTarget for StitchCore {
     }
     fn source_info(&self) -> (u32, u32) {
         self.source_info()
+    }
+    fn calibration(&self) -> &crate::calibration::Calibration {
+        self.calibration()
+    }
+    fn scene(&self) -> &crate::render::scene::SceneGeometry {
+        self.scene()
     }
     #[cfg(feature = "gpu")]
     fn gpu(&self) -> Option<&crate::gpu::GpuContext> {

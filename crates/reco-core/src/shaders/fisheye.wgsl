@@ -25,7 +25,7 @@ struct Uniforms {
     //          Used by the GPU zero-copy path where buffer reversal is not possible.
     // flags.w: is_full_range (0 = limited 16-235, 1 = full 0-255)
     flags: vec4<u32>,
-    // lens_preview.x: correction_amount (0.0 = no correction, 1.0 = full KB4)
+    // lens_preview.x: correction_amount (<0 = raw source, 0.0 = no correction, 1.0 = full KB4)
     // lens_preview.y: split_view (> 0.5 = left half uncorrected, right half corrected)
     lens_preview: vec4<f32>,
 };
@@ -163,6 +163,14 @@ fn sample_yuv(uv: vec2<f32>) -> vec4<f32> {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    // Literal raw mode for ROI editing: sample the input frame in its
+    // original source-pixel UV space. This matches the old browser/OpenCV
+    // ROI editors, which stored raw normalized image coordinates.
+    if u.lens_preview.x < 0.0 {
+        let raw = sample_yuv(in.uv);
+        return vec4<f32>(raw.rgb, 1.0);
+    }
+
     // Remap UV from [0,1] to [-0.5, 1.5] in the fragment shader.
     // This extends the coordinate space so the undistortion can
     // map points outside the plane back to valid texture coords.
@@ -170,16 +178,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // GPU drivers pass vertex attributes directly to the fragment
     // stage, ignoring vertex shader output for user-defined varyings.)
     let uv = in.uv * 2.0 - vec2<f32>(0.5);
-
-    // Raw mode: negative correction bypasses all projection math
-    // and samples the input texture directly at the fragment UV.
-    if u.lens_preview.x < 0.0 {
-        if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
-            return vec4<f32>(0.0, 0.0, 0.0, 0.0);
-        }
-        let raw = sample_yuv(uv);
-        return vec4<f32>(raw.rgb, 1.0);
-    }
 
     let fx = u.intrinsics.x;
     let fy = u.intrinsics.y;

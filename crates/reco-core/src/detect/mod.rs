@@ -27,6 +27,10 @@ pub trait DetectionTarget {
     fn set_panner(&mut self, panner: Box<dyn panner::Panner>);
     /// Source frame dimensions `(width, height)` per camera.
     fn source_info(&self) -> (u32, u32);
+    /// Active calibration document used to project raw detections.
+    fn calibration(&self) -> &crate::calibration::Calibration;
+    /// Derived scene geometry for the active calibration.
+    fn scene(&self) -> &crate::render::scene::SceneGeometry;
     /// The GPU context, when the target renders on a GPU executor.
     /// `None` on CPU engines; GPU-dependent detector setups (zero-copy
     /// imports, wgpu preprocessing) skip themselves so the caller falls

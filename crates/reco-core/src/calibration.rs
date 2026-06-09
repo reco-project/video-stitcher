@@ -385,18 +385,17 @@ pub struct Framing {
     pub roll: f64,
 }
 
-/// Playing-field region of interest for per-camera detection filtering.
+/// Playing-field region of interest for detection filtering.
 ///
-/// A detection concern (consumed by `reco-autocam`), kept here transitionally;
-/// it will move out of the calibration when detection config is extracted.
+/// A single polygon in stitched panorama coordinates, stored as `[yaw, pitch]`
+/// radians. Detections are projected from their source camera into this shared
+/// space before filtering.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct FieldRoi {
-    /// Polygon vertices for the left camera, normalized `[0,1]`.
+    /// Polygon vertices in stitched panorama `[yaw, pitch]` radians.
     #[serde(default)]
-    pub left: Vec<[f64; 2]>,
-    /// Polygon vertices for the right camera, normalized `[0,1]`.
-    #[serde(default)]
-    pub right: Vec<[f64; 2]>,
+    pub points: Vec<[f64; 2]>,
 }
 
 /// The calibration document: canonical, serializable source of truth.
@@ -878,14 +877,14 @@ mod tests {
     fn parse_calibration_with_field_roi() {
         let mut cal: Calibration = serde_json::from_str(sample_json()).unwrap();
         cal.field_roi = Some(FieldRoi {
-            left: vec![[0.49, 0.90], [0.33, 0.73], [0.42, 0.58]],
-            right: vec![[0.63, 0.85], [0.78, 0.68], [0.55, 0.60]],
+            points: vec![[-0.49, -0.10], [0.33, -0.08], [0.42, 0.18]],
         });
         let json = cal.to_json_pretty();
         let back: Calibration = serde_json::from_str(&json).unwrap();
         let roi = back.field_roi.as_ref().unwrap();
-        assert_eq!(roi.left.len(), 3);
-        assert!((roi.right[1][1] - 0.68).abs() < 1e-6);
+        assert_eq!(roi.points.len(), 3);
+        assert!((roi.points[0][0] - (-0.49)).abs() < 1e-6);
+        assert!((roi.points[2][1] - 0.18).abs() < 1e-6);
     }
 
     fn valid_cal() -> Calibration {

@@ -238,14 +238,14 @@ pub fn setup_autocam(
     };
 
     // Check if ROI filtering should be applied.
-    // A FieldRoi is only meaningful if at least one polygon has >= 3 vertices.
-    let effective_roi = field_roi
-        .filter(|roi| roi.left.len() >= 3 || roi.right.len() >= 3)
-        .cloned();
+    // A FieldRoi is only meaningful if the shared panorama polygon has >= 3 vertices.
+    let effective_roi = field_roi.filter(|roi| roi.points.len() >= 3).cloned();
     let has_effective_roi = effective_roi.is_some();
     if has_effective_roi {
         log::info!("Autocam: field ROI filtering enabled");
     }
+    let roi_calibration = target.calibration().clone();
+    let roi_scene = target.scene().clone();
 
     // Resolved once up front so each RoiFilteredDetector wrap below
     // can install the Step 7c per-class anchor policy (player = Bottom
@@ -259,7 +259,7 @@ pub fn setup_autocam(
                          roi: reco_core::calibration::FieldRoi|
      -> Box<dyn reco_core::detect::detector::UnifiedDetector> {
         Box::new(
-            RoiFilteredDetector::new(inner, roi)
+            RoiFilteredDetector::new(inner, roi, roi_calibration.clone(), roi_scene.clone())
                 .with_class_anchor(person_id_for_roi, RoiAnchor::Bottom),
         )
     };
