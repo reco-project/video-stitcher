@@ -115,10 +115,10 @@ pub struct PoseControlConfig {
     /// reco-cli + reco-gui.
     pub fov_min_degrees: f32,
 
-    /// Maximum FOV in degrees (zoomed-out limit). `150.0` is the
-    /// baseline; `clamp_via_coverage` narrows this at runtime to
-    /// `coverage.max_fov_degrees()` so the viewport never reveals
-    /// black panorama edges.
+    /// Maximum FOV in degrees (zoomed-out limit), the baseline ceiling.
+    /// `clamp_via_coverage` applies the tighter `coverage.max_fov_degrees()`
+    /// limit transiently (without changing this baseline) so the viewport
+    /// never reveals black edges while constrained look is on.
     pub fov_max_degrees: f32,
 
     /// Whether drag deltas on the X axis are inverted. Off
@@ -351,10 +351,13 @@ impl PoseControl {
     /// back so the target stays in user-space (matching how
     /// `StitchCore::safe_clamp` returns it).
     pub fn clamp_via_coverage(&mut self, coverage: &CoverageBoundary, aspect: f32, rig_tilt: f32) {
-        let max_fov = coverage.max_fov_degrees();
-        self.config.fov_max_degrees = max_fov.min(150.0);
-        self.target_fov_deg = self.target_fov_deg.min(self.config.fov_max_degrees);
-        self.current_fov_deg = self.current_fov_deg.min(self.config.fov_max_degrees);
+        // Coverage FOV ceiling for this pass, bounded by the configured
+        // baseline. Applied transiently to target/current FOV; the config's
+        // `fov_max_degrees` baseline is left untouched, so disabling
+        // constrained look (which stops calling this) frees the FOV again.
+        let max_fov = coverage.max_fov_degrees().min(self.config.fov_max_degrees);
+        self.target_fov_deg = self.target_fov_deg.min(max_fov);
+        self.current_fov_deg = self.current_fov_deg.min(max_fov);
 
         // The inputs (target_*, current_*) are user-space. Coverage is
         // world-space. `safe_clamp` with `rig_tilt` argument does the
