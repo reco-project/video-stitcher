@@ -52,3 +52,14 @@ without reading raw JSON.
 
 **Impact**: Low. Likely a Slint bug. Workaround: move critical sliders
 outside the ScrollView.
+
+### N19. FOV reaches the renderer via a cached push, not a render param
+
+**Impact**: Medium. `render_yuv` takes yaw/pitch as live per-frame
+parameters, but FOV only through a separate cached `pipeline.set_fov`.
+A pose change applied outside the smoothing tick (e.g. re-enabling
+constrained look, which clamps `current_fov` directly) updates yaw/pitch
+live but leaves the cached FOV stale, so the view ignores the clamp while
+the slider shows it. The consumer has to remember to push FOV after any
+out-of-tick clamp. FOV should be a `render_yuv` parameter like yaw/pitch
+(or the renderer should own the full pose state).
