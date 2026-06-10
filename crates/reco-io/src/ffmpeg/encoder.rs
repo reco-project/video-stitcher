@@ -745,6 +745,8 @@ impl VideoEncoder {
             config.quality_preset,
             config.quality,
             config.preset.as_deref(),
+            width,
+            height,
         );
         // B-frames cause negative initial PTS offsets and frame reordering
         // in the encoded output. For real-time stitching they add latency
@@ -1483,13 +1485,28 @@ impl SilentAudio {
 }
 
 /// Build encoder-specific FFmpeg options.
+/// Scale a 1080p-tuned bitrate ceiling (Mbps) by output pixel count, so
+/// higher resolutions get a proportionally higher cap. Clamped to
+/// [0.5x, 8x] of the 1080p baseline; always >= 1 Mbps.
+fn scale_bitrate_mbps(base_mbps: u32, width: u32, height: u32) -> u32 {
+    let scale = (f64::from(width) * f64::from(height) / (1920.0 * 1080.0)).clamp(0.5, 8.0);
+    ((f64::from(base_mbps) * scale).round() as u32).max(1)
+}
+
 fn build_encoder_opts(
     name: &str,
     quality_preset: Quality,
     quality_override: Option<u8>,
     preset_override: Option<&str>,
+    width: u32,
+    height: u32,
 ) -> ffmpeg::Dictionary<'static> {
     let mut opts = ffmpeg::Dictionary::new();
+
+    // Bitrate ceilings below are tuned for 1080p. Scale them with pixel
+    // count so higher resolutions (2K/4K) aren't capped far below the
+    // quality the CQ setting actually wants. Returns an "NM" string.
+    let mbps = |base: u32| format!("{}M", scale_bitrate_mbps(base, width, height));
 
     // When a quality override is set, derive the effective preset from
     // the quality value so NVENC preset/maxrate scale with the CQ.
@@ -1507,16 +1524,16 @@ fn build_encoder_opts(
             // High output at ~15 Mbps even with cq=19. Scale the ceilings
             // with quality so "high" actually delivers the visual bump.
             let (preset, cq, bv, maxrate) = match effective_preset {
-                Quality::Fast => ("p3", "28", "8M", "12M"),
-                Quality::Balanced => ("p4", "23", "12M", "18M"),
-                Quality::High => ("p5", "19", "20M", "30M"),
+                Quality::Fast => ("p3", "28", 8, 12),
+                Quality::Balanced => ("p4", "23", 12, 18),
+                Quality::High => ("p5", "19", 20, 30),
             };
             opts.set("preset", preset);
             opts.set("tune", "hq");
             opts.set("rc", "vbr");
             opts.set("cq", cq);
-            opts.set("b:v", bv);
-            opts.set("maxrate", maxrate);
+            opts.set("b:v", &mbps(bv));
+            opts.set("maxrate", &mbps(maxrate));
             opts.set("profile", "high");
             opts.set("spatial-aq", "1");
             opts.set("temporal-aq", "1");
@@ -1524,16 +1541,16 @@ fn build_encoder_opts(
         "hevc_nvenc" => {
             // HEVC ~30% more efficient than H264, so ceilings scale down.
             let (preset, cq, bv, maxrate) = match effective_preset {
-                Quality::Fast => ("p3", "28", "6M", "10M"),
-                Quality::Balanced => ("p4", "23", "9M", "14M"),
-                Quality::High => ("p5", "19", "15M", "22M"),
+                Quality::Fast => ("p3", "28", 6, 10),
+                Quality::Balanced => ("p4", "23", 9, 14),
+                Quality::High => ("p5", "19", 15, 22),
             };
             opts.set("preset", preset);
             opts.set("tune", "hq");
             opts.set("rc", "vbr");
             opts.set("cq", cq);
-            opts.set("b:v", bv);
-            opts.set("maxrate", maxrate);
+            opts.set("b:v", &mbps(bv));
+            opts.set("maxrate", &mbps(maxrate));
             opts.set("profile", "main");
             opts.set("spatial-aq", "1");
             opts.set("temporal-aq", "1");
@@ -1541,16 +1558,16 @@ fn build_encoder_opts(
         "av1_nvenc" => {
             // AV1 another ~20% tighter than HEVC.
             let (preset, cq, bv, maxrate) = match effective_preset {
-                Quality::Fast => ("p3", "32", "5M", "8M"),
-                Quality::Balanced => ("p4", "27", "7M", "11M"),
-                Quality::High => ("p5", "22", "12M", "18M"),
+                Quality::Fast => ("p3", "32", 5, 8),
+                Quality::Balanced => ("p4", "27", 7, 11),
+                Quality::High => ("p5", "22", 12, 18),
             };
             opts.set("preset", preset);
             opts.set("tune", "hq");
             opts.set("rc", "vbr");
             opts.set("cq", cq);
-            opts.set("b:v", bv);
-            opts.set("maxrate", maxrate);
+            opts.set("b:v", &mbps(bv));
+            opts.set("maxrate", &mbps(maxrate));
         }
         "h264_qsv" => {
             let gq = match effective_preset {
@@ -1772,5 +1789,21 @@ mod tests {
         assert_eq!(seconds_to_pts(0.0, Rational(1, 44_100)), 0);
         assert_eq!(seconds_to_pts(-2.0, Rational(1, 44_100)), 0);
         assert_eq!(seconds_to_pts(f64::NAN, Rational(1, 44_100)), 0);
+    }
+
+    /// Bitrate ceilings scale with output resolution vs the 1080p baseline.
+    #[test]
+    fn bitrate_scales_with_resolution() {
+        // 1080p: unchanged baseline.
+        assert_eq!(scale_bitrate_mbps(30, 1920, 1080), 30);
+        // 2560x1440 (~1.78x pixels).
+        assert_eq!(scale_bitrate_mbps(30, 2560, 1440), 53);
+        // 4K (4x pixels).
+        assert_eq!(scale_bitrate_mbps(30, 3840, 2160), 120);
+        // Clamped: very high res caps at 8x.
+        assert_eq!(scale_bitrate_mbps(30, 7680, 4320), 240);
+        // Clamped: low res floors at 0.5x, never below 1 Mbps.
+        assert_eq!(scale_bitrate_mbps(30, 640, 360), 15);
+        assert_eq!(scale_bitrate_mbps(1, 320, 240), 1);
     }
 }
