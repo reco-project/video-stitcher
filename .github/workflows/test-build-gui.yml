@@ -1,0 +1,85 @@
+name: Test Build (Windows GUI)
+
+# On-demand Windows reco-gui build for testing a branch on a Windows box
+# without a local FFmpeg/clang toolchain. Produces a runnable bundle
+# (reco-gui.exe + FFmpeg/ONNX/DirectML DLLs) as a downloadable artifact.
+# Not a release: no tag, no publish.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or SHA to build
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          key: test-gui-windows
+
+      - name: Install FFmpeg
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $headers = @{ 'User-Agent' = 'reco-ci'; 'Authorization' = "Bearer $env:GH_TOKEN" }
+          $releases = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases?per_page=15"
+          $asset = $null
+          foreach ($r in $releases) {
+            $asset = $r.assets | Where-Object { $_.name -like "*n7.1*win64-gpl-shared*.zip" } | Select-Object -First 1
+            if ($asset) { break }
+          }
+          if (-not $asset) { throw "No n7.1 win64-gpl-shared FFmpeg asset found" }
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$env:RUNNER_TEMP\ffmpeg.zip"
+          Expand-Archive -Path "$env:RUNNER_TEMP\ffmpeg.zip" -DestinationPath "$env:RUNNER_TEMP\ffmpeg"
+          $dir = (Get-ChildItem "$env:RUNNER_TEMP\ffmpeg" -Directory | Select-Object -First 1).FullName
+          echo "FFMPEG_DIR=$dir" >> $env:GITHUB_ENV
+          echo "FFMPEG_DLL_DIR=$dir\bin" >> $env:GITHUB_ENV
+
+      - name: Build reco-gui
+        run: cargo build --release --target x86_64-pc-windows-msvc -p reco-gui --features load-dynamic
+
+      - name: Download ONNX Runtime (DirectML) + DirectML
+        shell: pwsh
+        run: |
+          $nupkg = "$env:RUNNER_TEMP\ort-dml.nupkg"
+          Invoke-WebRequest -Uri "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime.directml/1.24.4/microsoft.ml.onnxruntime.directml.1.24.4.nupkg" -OutFile $nupkg
+          Expand-Archive -Path $nupkg -DestinationPath "$env:RUNNER_TEMP\ort-dml"
+          echo "ORT_DLL=$env:RUNNER_TEMP\ort-dml\runtimes\win-x64\native\onnxruntime.dll" >> $env:GITHUB_ENV
+          $dmlPkg = "$env:RUNNER_TEMP\directml.nupkg"
+          Invoke-WebRequest -Uri "https://api.nuget.org/v3-flatcontainer/microsoft.ai.directml/1.15.4/microsoft.ai.directml.1.15.4.nupkg" -OutFile $dmlPkg
+          Expand-Archive -Path $dmlPkg -DestinationPath "$env:RUNNER_TEMP\directml"
+          echo "DML_DLL=$env:RUNNER_TEMP\directml\bin\x64-win\DirectML.dll" >> $env:GITHUB_ENV
+
+      - name: Bundle
+        shell: pwsh
+        run: |
+          $staging = "reco-gui-test-windows-x86_64"
+          New-Item -ItemType Directory -Path $staging | Out-Null
+          Copy-Item "target\x86_64-pc-windows-msvc\release\reco-gui.exe" "$staging\"
+          Copy-Item LICENSE "$staging\"
+          Copy-Item "$env:FFMPEG_DLL_DIR\*.dll" "$staging\"
+          Copy-Item "$env:ORT_DLL" "$staging\"
+          Copy-Item "$env:DML_DLL" "$staging\"
+          Compress-Archive -Path $staging -DestinationPath "$staging.zip"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reco-gui-test-windows
+          path: reco-gui-test-windows-x86_64.zip
+          if-no-files-found: error
