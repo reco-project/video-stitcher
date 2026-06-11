@@ -377,7 +377,7 @@ impl VideoDecoder {
                     Pixel::YUV420P10LE | Pixel::YUV420P10BE | Pixel::P010LE | Pixel::P010BE
                 );
                 if is_10 {
-                    log::info!(
+                    log::debug!(
                         "Source is 10-bit ({pixel:?}), GPU textures will use R16Unorm/Rg16Unorm"
                     );
                 }
@@ -391,7 +391,7 @@ impl VideoDecoder {
             let yuvj = matches!(format, Pixel::YUVJ420P | Pixel::YUVJ422P | Pixel::YUVJ444P);
             let range_jpeg = raw_codecpar.color_range == ffi::AVColorRange::AVCOL_RANGE_JPEG;
             if yuvj || range_jpeg {
-                log::info!(
+                log::debug!(
                     "Source is full-range YUV (format={format:?}, color_range={:?})",
                     raw_codecpar.color_range
                 );
@@ -1091,18 +1091,13 @@ fn attach_shared_hw_device(
 
 /// Platform-preferred hwaccel candidates.
 fn hwaccel_candidates() -> Vec<(ffi::AVHWDeviceType, DecodeBackend)> {
-    vec![
+    let mut candidates = vec![
         #[cfg(target_os = "windows")]
         (
             ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_D3D11VA,
             DecodeBackend::D3d11va,
         ),
-        #[cfg(not(target_os = "macos"))]
-        (
-            ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA,
-            DecodeBackend::Cuda,
-        ),
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "linux")]
         (
             ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI,
             DecodeBackend::Vaapi,
@@ -1112,7 +1107,22 @@ fn hwaccel_candidates() -> Vec<(ffi::AVHWDeviceType, DecodeBackend)> {
             ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VIDEOTOOLBOX,
             DecodeBackend::VideoToolbox,
         ),
-    ]
+    ];
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    if reco_core::interop::cuda::is_cuda_available() {
+        let cuda = (
+            ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA,
+            DecodeBackend::Cuda,
+        );
+
+        #[cfg(target_os = "windows")]
+        candidates.insert(1, cuda);
+        #[cfg(target_os = "linux")]
+        candidates.insert(0, cuda);
+    }
+
+    candidates
 }
 
 /// Try to enable hardware-accelerated decoding on the codec context.
@@ -1161,7 +1171,7 @@ fn try_hwaccel(
         return (backend, device_ref);
     }
 
-    log::info!("No hardware decoder available - using software decode");
+    log::debug!("No hardware decoder available - using software decode");
     (DecodeBackend::Software, ptr::null_mut())
 }
 

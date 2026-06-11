@@ -153,7 +153,7 @@ impl GpuContext {
     /// drivers on some AMD iGPUs crash during instance creation).
     pub async fn with_surface(surface: Option<&wgpu::Surface<'_>>) -> Result<Self, GpuError> {
         let backends = Self::select_backends();
-        log::info!("wgpu backends: {:?}", backends);
+        log::debug!("wgpu backends: {:?}", backends);
 
         let desc = wgpu::InstanceDescriptor {
             backends,
@@ -206,9 +206,9 @@ impl GpuContext {
             features |= wgpu::Features::TEXTURE_FORMAT_P010;
         }
 
-        log::info!("Requesting device with features: {:?}", features);
+        log::debug!("Requesting device with features: {:?}", features);
         let (device, queue) = Self::request_device_with_fallback(&adapter, features).await?;
-        log::info!("Device created successfully");
+        log::debug!("Device created successfully");
 
         Ok(Self {
             device,
@@ -343,9 +343,9 @@ impl GpuContext {
             features |= wgpu::Features::TEXTURE_FORMAT_NV12;
         }
 
-        log::info!("Requesting device with features: {:?}", features);
+        log::debug!("Requesting device with features: {:?}", features);
         let (device, queue) = Self::request_device_with_fallback(&adapter, features).await?;
-        log::info!("Device created successfully");
+        log::debug!("Device created successfully");
 
         let ctx = Self {
             device,
