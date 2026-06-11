@@ -73,11 +73,16 @@ impl PreviewBridge {
             gpu.backend_name(),
         );
 
+        // Lens-correction strength is consumed by the pipeline, not the
+        // viewport; capture it before `calibration` is moved into the
+        // renderer below.
+        let lens_correction_amount = calibration.lens_correction_amount;
+
         let viewport = ViewportConfig {
             width: viewport_width,
             height: viewport_height,
             fov_degrees: 75.0,
-            blend_width: 0.05,
+            blend_width: calibration.blend_width,
             rig_tilt: calibration.rig_tilt as f32,
             rig_roll: calibration.rig_roll as f32,
             ..ViewportConfig::default()
@@ -87,7 +92,7 @@ impl PreviewBridge {
         // the safe common denominator across backends (Vulkan/Metal/DX12).
         let texture_format = wgpu::TextureFormat::Rgba8Unorm;
 
-        let renderer = StitchRenderer::new(
+        let mut renderer = StitchRenderer::new(
             calibration,
             gpu,
             viewport,
@@ -96,6 +101,11 @@ impl PreviewBridge {
             texture_format,
             reco_core::render::renderer::InputFormat::Yuv420p,
         )?;
+        // Honour a persisted lens-correction strength (e.g. correction
+        // saved off) instead of the pipeline's full-correction default.
+        renderer
+            .pipeline_mut()
+            .set_lens_correction_amount(lens_correction_amount);
 
         Ok(Self {
             renderer,

@@ -294,6 +294,36 @@ pub struct MatchCalibration {
     /// from stands, scoreboards, and other non-field areas.
     #[serde(default)]
     pub field_roi: Option<FieldRoi>,
+
+    /// Lens distortion-correction strength applied in the renderer.
+    ///
+    /// `1.0` = full correction (the modelled lens profile is applied),
+    /// `0.0` = correction off (raw fisheye). Persisted so the GUI restores
+    /// the user's choice on reload. Defaults to `1.0` for older
+    /// calibrations that predate this field, matching prior behaviour.
+    #[serde(default = "default_lens_correction_amount")]
+    pub lens_correction_amount: f32,
+
+    /// Seam blend width as a fraction of the panorama overlap.
+    ///
+    /// Controls how wide the feathered transition between the two cameras
+    /// is. Persisted so a hand-tuned seam survives save/reload. Defaults to
+    /// `0.05` for older calibrations that predate this field, matching the
+    /// previous hard-coded renderer default.
+    #[serde(default = "default_blend_width")]
+    pub blend_width: f32,
+}
+
+/// Backward-compatible default for [`MatchCalibration::lens_correction_amount`]
+/// when loading a calibration written before the field existed.
+fn default_lens_correction_amount() -> f32 {
+    1.0
+}
+
+/// Backward-compatible default for [`MatchCalibration::blend_width`] when
+/// loading a calibration written before the field existed.
+fn default_blend_width() -> f32 {
+    0.05
 }
 
 /// Maximum calibration file size (1 MB) to prevent loading unreasonably large files.
@@ -370,6 +400,22 @@ impl MatchCalibration {
             return Err(CalibrationError::NonFiniteFloat {
                 field: "rig_roll".to_string(),
                 value: self.rig_roll.to_string(),
+            });
+        }
+        // blend_width and lens_correction_amount feed the GPU shader; a
+        // NaN/inf slipping in from a hand-edited JSON would corrupt the
+        // render. Range is clamped at the GUI setters and re-validated by
+        // the viewport, so a finiteness gate here matches rig_tilt/roll.
+        if !self.blend_width.is_finite() {
+            return Err(CalibrationError::NonFiniteFloat {
+                field: "blend_width".to_string(),
+                value: self.blend_width.to_string(),
+            });
+        }
+        if !self.lens_correction_amount.is_finite() {
+            return Err(CalibrationError::NonFiniteFloat {
+                field: "lens_correction_amount".to_string(),
+                value: self.lens_correction_amount.to_string(),
             });
         }
         // B-10: reject pathological sync_offset (e.g. i64::MIN) that would
@@ -678,6 +724,8 @@ mod tests {
             rig_roll: 0.0,
             sync_offset: 0,
             field_roi: None,
+            lens_correction_amount: 1.0,
+            blend_width: 0.05,
         }
     }
 
@@ -811,6 +859,17 @@ mod tests {
     }
 
     #[test]
+    fn validate_nan_blend_width_fails() {
+        let mut cal = valid_cal();
+        cal.blend_width = f32::NAN;
+        let err = cal.validate().unwrap_err();
+        assert!(
+            matches!(err, CalibrationError::NonFiniteFloat { ref field, .. } if field == "blend_width"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
     fn roundtrip_serialization() {
         let cal = MatchCalibration {
             left: CameraParams {
@@ -842,8 +901,12 @@ mod tests {
                 z_rz: 0.0,
             },
             rig_tilt: 0.3,
-            rig_roll: 0.0,
+            rig_roll: -0.12,
             sync_offset: 67,
+            // Deliberately non-default (correction off, wide seam) so a
+            // dropped field would change the round-tripped value.
+            lens_correction_amount: 0.0,
+            blend_width: 0.123,
         };
 
         let json = serde_json::to_string(&cal).unwrap();
@@ -851,6 +914,26 @@ mod tests {
 
         assert_eq!(parsed.left.width, cal.left.width);
         assert!((parsed.layout.intersect - cal.layout.intersect).abs() < f64::EPSILON);
+        assert!((parsed.rig_tilt - cal.rig_tilt).abs() < f64::EPSILON);
+        assert!((parsed.rig_roll - cal.rig_roll).abs() < f64::EPSILON);
+        assert_eq!(parsed.sync_offset, cal.sync_offset);
+        assert!((parsed.lens_correction_amount - cal.lens_correction_amount).abs() < f32::EPSILON);
+        assert!((parsed.blend_width - cal.blend_width).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn old_calibration_json_without_new_fields_uses_safe_defaults() {
+        // A calibration written before lens_correction_amount/blend_width
+        // existed must load with the prior behaviour: full correction (1.0)
+        // and the 0.05 seam, not 0.0/0.0.
+        let mut value = serde_json::to_value(valid_cal()).unwrap();
+        let obj = value.as_object_mut().unwrap();
+        obj.remove("lens_correction_amount");
+        obj.remove("blend_width");
+
+        let parsed: MatchCalibration = serde_json::from_value(value).unwrap();
+        assert!((parsed.lens_correction_amount - 1.0).abs() < f32::EPSILON);
+        assert!((parsed.blend_width - 0.05).abs() < f32::EPSILON);
     }
 
     #[test]
