@@ -272,13 +272,20 @@ impl VideoDecoder {
         shared: &SharedHwDevice,
     ) -> Result<Self, DecodeError> {
         crate::init();
-        let ictx = match input_path {
-            crate::stitch_job::InputPath::Single(p) => input(p)?,
-            crate::stitch_job::InputPath::Chained(_) => {
-                return Self::open_input(input_path);
+        match input_path {
+            crate::stitch_job::InputPath::Single(p) => {
+                let ictx = input(p)?;
+                Self::from_input_context_with_shared(ictx, shared)
             }
-        };
-        Self::from_input_context_with_shared(ictx, shared)
+            // Chained must also attach the shared device. Otherwise each
+            // concat decoder creates its own D3D11 device, and the staging
+            // pool's CopySubresourceRegion copies one side's frame into the
+            // other device's texture -> cross-device fault (DEVICE_REMOVED on
+            // desktop NVIDIA, driver hang on laptops). See open_chained_impl.
+            crate::stitch_job::InputPath::Chained(paths) => {
+                Self::open_chained_impl(paths, Some(shared))
+            }
+        }
     }
 
     fn from_input_context(ictx: ffmpeg::format::context::Input) -> Result<Self, DecodeError> {
@@ -443,13 +450,31 @@ impl VideoDecoder {
     /// Timestamps are rebased, hardware acceleration works across
     /// segment boundaries, and seeking spans the full duration.
     pub fn open_chained(paths: &[std::path::PathBuf]) -> Result<Self, DecodeError> {
+        Self::open_chained_impl(paths, None)
+    }
+
+    /// Chained open that optionally attaches a pre-created shared hw device.
+    ///
+    /// A stereo pair's two concat decoders must land on the SAME D3D11
+    /// device: the zero-copy staging pool copies both sides into textures on
+    /// a single device via `CopySubresourceRegion`, which faults across
+    /// devices. Single-file open already threads the shared device through;
+    /// concat must do the same or it regresses to per-decoder devices.
+    fn open_chained_impl(
+        paths: &[std::path::PathBuf],
+        shared: Option<&SharedHwDevice>,
+    ) -> Result<Self, DecodeError> {
         use std::io::Write;
 
-        if paths.len() <= 1 {
-            return Self::open(paths.first().map(|p| p.as_path()).unwrap_or(Path::new("")));
-        }
-
         crate::init();
+
+        if paths.len() <= 1 {
+            let p = paths.first().map(|p| p.as_path()).unwrap_or(Path::new(""));
+            return match shared {
+                Some(s) => Self::from_input_context_with_shared(input(p)?, s),
+                None => Self::open(p),
+            };
+        }
 
         let mut manifest = tempfile::Builder::new()
             .prefix("reco_concat_")
@@ -490,7 +515,7 @@ impl VideoDecoder {
             _ => return Err(DecodeError::Ffmpeg("expected input context".into())),
         };
 
-        let mut dec = Self::from_input_context(ictx)?;
+        let mut dec = Self::from_input_context_inner(ictx, shared)?;
         dec._manifest = Some(manifest);
         Ok(dec)
     }
