@@ -757,6 +757,8 @@ mod tests {
             rig_roll: 0.0,
             sync_offset: 0,
             field_roi: None,
+            lens_correction_amount: 1.0,
+            blend_width: 0.05,
         }
     }
 

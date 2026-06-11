@@ -488,7 +488,20 @@ impl AppState {
         let (Some(cal), Some(path)) = (&self.calibration, &self.calibration_path) else {
             return Err("No calibration or path to save".into());
         };
-        let json = serde_json::to_string_pretty(cal).map_err(|e| format!("serialize: {e}"))?;
+        // `self.calibration` already tracks layout, rig tilt/roll and sync.
+        // The per-camera lens intrinsics, seam blend, and lens-correction
+        // strength live on the live renderer/AppState (kept off the struct so
+        // slider ticks stay cheap), so fold them in before writing - otherwise
+        // hand-tuned lens and seam values are silently lost on reload.
+        let mut out = cal.clone();
+        out.lens_correction_amount = self.lens_correction_amount;
+        if let Some(bridge) = self.bridge.as_ref() {
+            let pipeline = bridge.renderer().pipeline();
+            out.left = pipeline.calibration().left.clone();
+            out.right = pipeline.calibration().right.clone();
+            out.blend_width = pipeline.viewport().blend_width;
+        }
+        let json = serde_json::to_string_pretty(&out).map_err(|e| format!("serialize: {e}"))?;
         std::fs::write(path, json).map_err(|e| format!("write {}: {e}", path.display()))?;
         log::info!("Saved calibration to {}", path.display());
         Ok(())
@@ -2501,8 +2514,14 @@ fn main() -> anyhow::Result<()> {
     });
 
     let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
     app.on_changed_blend_width(move |w| {
         state_ref.borrow_mut().set_blend_width(w);
+        // Seam blend is persisted with the calibration, so a change is
+        // unsaved work - surface the Save Calibration button.
+        if let Some(app) = app_weak.upgrade() {
+            app.set_cal_dirty(true);
+        }
     });
 
     let state_ref = Rc::clone(&state);
@@ -2618,7 +2637,11 @@ fn main() -> anyhow::Result<()> {
                 let mut s = state_ref.borrow_mut();
                 if let Some(app) = app_weak.upgrade() {
                     app.set_status_text("Calibration saved".into());
+                    // Clear BOTH dirty flags: the Save button is shown on
+                    // `cal-dirty || lens-dirty`, so leaving lens-dirty set
+                    // kept the button visible after a successful save.
                     app.set_cal_dirty(false);
+                    app.set_lens_dirty(false);
                     s.toasts.push(Severity::Info, "Calibration saved", "");
                     crate::toast::sync_to_ui(&s.toasts, &app);
                 }
@@ -2984,6 +3007,8 @@ fn main() -> anyhow::Result<()> {
         s.preview_dirty = true;
         if let Some(app) = app_weak.upgrade() {
             app.set_lens_correction_amount(clamped);
+            // Lens correction is persisted with the calibration.
+            app.set_cal_dirty(true);
         }
     });
 
@@ -3720,6 +3745,13 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 .bridge
                 .as_ref()
                 .map(|b| b.renderer().pipeline().viewport().blend_width);
+            // Lens-correction strength came in via the loaded calibration and
+            // the renderer was seeded with it at bridge creation; mirror it
+            // into AppState so a later save re-persists the right value.
+            let lens_correction = s.calibration.as_ref().map(|c| c.lens_correction_amount);
+            if let Some(lc) = lens_correction {
+                s.lens_correction_amount = lc;
+            }
 
             if let Some(app) = app_weak.upgrade() {
                 app.set_files_loaded(true);
@@ -3749,6 +3781,9 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 }
                 if let Some(bw) = blend_width {
                     app.set_blend_width(bw);
+                }
+                if let Some(lc) = lens_correction {
+                    app.set_lens_correction_amount(lc);
                 }
                 if let Some(cal) = s.calibration.as_ref() {
                     app.set_sync_offset(cal.sync_offset as i32);
@@ -3919,10 +3954,23 @@ fn handle_calibration_result(
                         .bridge
                         .as_ref()
                         .map(|b| b.renderer().pipeline().viewport().rig_tilt);
+                    // rig_roll was previously omitted here (only the manual
+                    // load restored it), so an auto-calibrated roll left the
+                    // slider at 0 while the preview was corrected - touching
+                    // it then snapped roll back to 0 and broke the cal.
+                    let rig_roll_rad = state
+                        .bridge
+                        .as_ref()
+                        .map(|b| b.renderer().pipeline().viewport().rig_roll);
                     let blend_width = state
                         .bridge
                         .as_ref()
                         .map(|b| b.renderer().pipeline().viewport().blend_width);
+                    let lens_correction =
+                        state.calibration.as_ref().map(|c| c.lens_correction_amount);
+                    if let Some(lc) = lens_correction {
+                        state.lens_correction_amount = lc;
+                    }
 
                     // Auto-save calibration next to the left video so
                     // it appears in Recent and can be reloaded.
@@ -3988,8 +4036,14 @@ fn handle_calibration_result(
                         if let Some(rt) = rig_tilt_rad {
                             app.set_rig_tilt(rt.to_degrees());
                         }
+                        if let Some(rr) = rig_roll_rad {
+                            app.set_rig_roll(rr.to_degrees());
+                        }
                         if let Some(bw) = blend_width {
                             app.set_blend_width(bw);
+                        }
+                        if let Some(lc) = lens_correction {
+                            app.set_lens_correction_amount(lc);
                         }
                         if let Some(cal) = state.calibration.as_ref() {
                             app.set_sync_offset(cal.sync_offset as i32);
