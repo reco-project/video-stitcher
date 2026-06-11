@@ -89,17 +89,40 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     #[cfg_attr(not(feature = "autocam"), allow(unused_variables))]
     let field_roi = cal.field_roi.clone();
 
-    let mut job = reco_io::StitchJob::with_calibration(args.left, args.right, cal, args.output)
-        .codec(parse_codec(args.codec))
-        .quality(parse_quality(args.quality))
-        .resolution(args.width, args.height)
-        .blend_width(args.blend)
-        .on_progress(move |p: &reco_core::session::types::FrameProgress| {
-            // Use the session's own elapsed clock so the reported
-            // rate excludes one-time GPU / encoder / ORT init and
-            // reflects only the decode → stitch → encode loop.
-            progress.report_with_elapsed(p.frames_completed, p.elapsed);
-        });
+    // Accept `a.mp4;b.mp4;c.mp4` to chain segments via the concat demuxer
+    // (mirrors the GUI's multi-segment selection). A single path stays Single.
+    let to_input = |s: &str| -> reco_io::stitch_job::InputPath {
+        let parts: Vec<std::path::PathBuf> = s
+            .split(';')
+            .filter(|p| !p.is_empty())
+            .map(std::path::PathBuf::from)
+            .collect();
+        if parts.len() > 1 {
+            log::info!(
+                "CLI input: {} segments, chaining via concat demuxer",
+                parts.len()
+            );
+            reco_io::stitch_job::InputPath::Chained(parts)
+        } else {
+            reco_io::stitch_job::InputPath::Single(std::path::PathBuf::from(s))
+        }
+    };
+    let mut job = reco_io::StitchJob::with_calibration(
+        to_input(args.left),
+        to_input(args.right),
+        cal,
+        args.output,
+    )
+    .codec(parse_codec(args.codec))
+    .quality(parse_quality(args.quality))
+    .resolution(args.width, args.height)
+    .blend_width(args.blend)
+    .on_progress(move |p: &reco_core::session::types::FrameProgress| {
+        // Use the session's own elapsed clock so the reported
+        // rate excludes one-time GPU / encoder / ORT init and
+        // reflects only the decode → stitch → encode loop.
+        progress.report_with_elapsed(p.frames_completed, p.elapsed);
+    });
 
     if let Some(t) = args.start_time {
         job = job.start_time(t);

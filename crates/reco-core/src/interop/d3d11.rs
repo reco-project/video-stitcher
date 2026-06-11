@@ -28,8 +28,8 @@ use thiserror::Error;
 use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE, S_OK};
 use windows::Win32::Graphics::Direct3D11::{
     D3D11_QUERY, D3D11_QUERY_DESC, D3D11_RESOURCE_MISC_SHARED, D3D11_RESOURCE_MISC_SHARED_NTHANDLE,
-    D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, ID3D11DeviceContext, ID3D11Multithread, ID3D11Query,
-    ID3D11Texture2D,
+    D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, ID3D11Device, ID3D11DeviceContext,
+    ID3D11Multithread, ID3D11Query, ID3D11Texture2D,
 };
 use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
 use windows::Win32::Graphics::Dxgi::Common::{
@@ -74,6 +74,10 @@ impl From<D3d11InteropError> for crate::session::types::SessionError {
 /// Created on the first `stage_frame` call using the device obtained from
 /// the source texture, so all D3D11 operations stay on a single device.
 struct StagingState {
+    /// FFmpeg's D3D11 device that owns the decode pool and the staging
+    /// textures. `stage_frame` rejects source frames from any other device:
+    /// a cross-device `CopySubresourceRegion` faults the GPU.
+    device: ID3D11Device,
     context: ID3D11DeviceContext,
     staging: Vec<ID3D11Texture2D>,
     _wgpu_textures: Vec<wgpu::Texture>,
@@ -164,7 +168,8 @@ impl D3d11StagingPool {
         // immediate contexts are single-threaded by default; this adds an
         // internal critical section that serializes access.
         let multithread: ID3D11Multithread = device.cast()?;
-        unsafe { multithread.SetMultithreadProtected(true) };
+        // Returns the previous state; we don't need it.
+        let _ = unsafe { multithread.SetMultithreadProtected(true) };
 
         let context = unsafe { device.GetImmediateContext()? };
 
@@ -340,6 +345,7 @@ impl D3d11StagingPool {
         };
 
         self.state = Some(StagingState {
+            device,
             context,
             staging: staging_textures,
             _wgpu_textures: wgpu_textures,
@@ -387,6 +393,20 @@ impl D3d11StagingPool {
 
             self.ensure_initialized(&src)?;
             let state = self.state.as_ref().unwrap();
+
+            // The staging textures live on the device captured at init. A
+            // CopySubresourceRegion from a texture on a different device faults
+            // the GPU (DEVICE_REMOVED on desktop NVIDIA, driver hang on
+            // laptops). Reject it with a clear error - the stereo decoders
+            // sharing one hw device is an invariant of this path.
+            let src_device = src.GetDevice()?;
+            if Interface::as_raw(&src_device) != Interface::as_raw(&state.device) {
+                return Err(D3d11InteropError::StagingCopy(
+                    "source frame is on a different D3D11 device than the staging pool; \
+                     the stereo decoders must share one hw device"
+                        .into(),
+                ));
+            }
 
             let src_subresource = array_slice as u32;
 
