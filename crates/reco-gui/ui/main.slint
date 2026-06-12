@@ -257,11 +257,25 @@ export component RecoApp inherits Window {
     in-out property <string> calibration-step: "";
     in-out property <bool> has-both-videos: left-path != "" && right-path != "";
     in-out property <bool> has-roi: false;
+    in-out property <bool> roi-editing: false;
+    in-out property <bool> roi-visible: true;
+    in-out property <bool> roi-pan-mode: false;
+    in-out property <int> roi-point-count: 0;
     in-out property <[float]> roi-points-x: [];
     in-out property <[float]> roi-points-y: [];
-    callback launch-roi-editor();
-    callback paste-roi();
-    in-out property <string> roi-manual-json: "";
+    in-out property <[float]> roi-lines-x1: [];
+    in-out property <[float]> roi-lines-y1: [];
+    in-out property <[float]> roi-lines-x2: [];
+    in-out property <[float]> roi-lines-y2: [];
+    in-out property <float> input-aspect: 16.0 / 9.0;
+    callback toggle-roi-editor();
+    callback roi-pointer-down(float, float, float, float);
+    callback roi-pointer-move(float, float);
+    callback roi-pointer-up();
+    callback roi-undo();
+    callback roi-clear();
+    callback roi-save();
+    callback roi-copy-json();
 
     // Camera view state (kept in sync with Rust AppState).
     in-out property <float> yaw: 0.0;      // radians
@@ -954,40 +968,53 @@ export component RecoApp inherits Window {
                         if root.files-loaded: HorizontalLayout {
                             spacing: 6px;
                             Text {
-                                text: root.has-roi ? "Field ROI: loaded" : "Field ROI: none";
+                                text: root.has-roi
+                                    ? "Field ROI: " + root.roi-point-count + " points"
+                                    : "Field ROI: none";
                                 color: root.has-roi ? #8ae68a : #777;
                                 font-size: 11px;
                                 vertical-alignment: center;
                                 horizontal-stretch: 1;
+                            }
+                            CheckBox {
+                                text: "Show ROI";
+                                checked <=> root.roi-visible;
+                                enabled: root.has-roi || root.roi-editing;
                             }
                         }
 
                         if root.files-loaded: HorizontalLayout {
                             spacing: 4px;
                             Button {
-                                text: root.has-roi ? "Edit ROI..." : "Set ROI...";
+                                text: root.roi-editing ? "Done" : (root.has-roi ? "Edit ROI" : "Set ROI");
                                 horizontal-stretch: 1;
-                                clicked => { root.launch-roi-editor(); }
+                                clicked => { root.toggle-roi-editor(); }
                             }
                             Button {
-                                text: "Paste ROI";
-                                clicked => { root.paste-roi(); }
+                                text: "Save ROI";
+                                clicked => { root.roi-save(); }
+                            }
+                            Button {
+                                text: "Copy JSON";
+                                clicked => { root.roi-copy-json(); }
                             }
                         }
 
-                        if root.files-loaded: LineEdit {
-                            placeholder-text: "Or paste ROI JSON here...";
-                            accepted(text) => {
-                                root.roi-manual-json = text;
-                                root.paste-roi();
+                        if root.files-loaded && root.roi-editing: HorizontalLayout {
+                            spacing: 4px;
+                            Button {
+                                text: "Pan";
+                                primary: root.roi-pan-mode;
+                                clicked => { root.roi-pan-mode = !root.roi-pan-mode; }
                             }
-                        }
-
-                        if root.files-loaded && !root.has-roi: Text {
-                            text: "Draw in browser, Copy ROI, then Paste or type JSON above.";
-                            color: root.text-dim;
-                            font-size: 10px;
-                            wrap: word-wrap;
+                            Button {
+                                text: "Undo";
+                                clicked => { root.roi-undo(); }
+                            }
+                            Button {
+                                text: "Clear";
+                                clicked => { root.roi-clear(); }
+                            }
                         }
 
                         Rectangle { height: 1px; background: root.border-subtle; }
@@ -1057,31 +1084,124 @@ export component RecoApp inherits Window {
                     height: fit-h;
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
+                    clip: true;
 
-                    if root.files-loaded: Image {
-                        source: root.preview-frame;
-                        image-fit: contain;
-                        width: 100%;
-                        height: 100%;
-                    }
+                    image-layer := Rectangle {
+                        property <float> box-aspect: (preview-box.width / 1px) / max(1.0, preview-box.height / 1px);
+                        property <float> image-aspect: root.lens-preview-active ? root.input-aspect : box-aspect;
+                        property <length> base-w: image-aspect > box-aspect
+                            ? preview-box.width
+                            : preview-box.height * image-aspect / 1.0;
+                        property <length> base-h: image-aspect > box-aspect
+                            ? preview-box.width / image-aspect * 1.0
+                            : preview-box.height;
 
-                    // ROI vertex overlay (visible in lens preview mode).
-                    // Absolute-positioned dots at each polygon vertex.
-                    for idx in root.roi-points-x.length: Rectangle {
-                        visible: root.lens-preview-active && root.has-roi;
-                        x: root.roi-points-x[idx] * preview-box.width - 4px;
-                        y: root.roi-points-y[idx] * preview-box.height - 4px;
-                        width: 8px;
-                        height: 8px;
-                        border-radius: 4px;
-                        background: #0f08;
-                        border-width: 1px;
-                        border-color: #0f0;
+                        width: base-w;
+                        height: base-h;
+                        x: (preview-box.width - self.width) / 2;
+                        y: (preview-box.height - self.height) / 2;
+                        clip: true;
+
+                        if root.files-loaded: Image {
+                            source: root.preview-frame;
+                            image-fit: fill;
+                            width: 100%;
+                            height: 100%;
+                        }
+
+                        for idx in root.roi-lines-x1.length: Path {
+                            visible: root.files-loaded && root.roi-visible;
+                            width: image-layer.width + 2px;
+                            height: image-layer.height + 2px;
+                            x: -1px;
+                            y: -1px;
+                            viewbox-width: image-layer.width / 1px;
+                            viewbox-height: image-layer.height / 1px;
+                            stroke: #00ff88;
+                            stroke-width: 2px;
+                            fill: #00ff8800;
+                            stroke-line-join: round;
+                            stroke-line-cap: round;
+
+                            MoveTo {
+                                x: root.roi-lines-x1[idx] * image-layer.width / 1px;
+                                y: root.roi-lines-y1[idx] * image-layer.height / 1px;
+                            }
+                            LineTo {
+                                x: root.roi-lines-x2[idx] * image-layer.width / 1px;
+                                y: root.roi-lines-y2[idx] * image-layer.height / 1px;
+                            }
+                        }
+
+                        for idx in root.roi-points-x.length: Rectangle {
+                            visible: root.files-loaded && root.roi-visible;
+                            x: root.roi-points-x[idx] * image-layer.width - 4px;
+                            y: root.roi-points-y[idx] * image-layer.height - 4px;
+                            width: 8px;
+                            height: 8px;
+                            border-radius: 4px;
+                            background: #00ff8888;
+                            border-width: 1px;
+                            border-color: #ffffffcc;
+                        }
+
+                        roi-edit-touch := TouchArea {
+                            enabled: root.files-loaded && root.roi-editing;
+                            mouse-cursor: crosshair;
+                            property <length> last-x: 0px;
+                            property <length> last-y: 0px;
+                            property <bool> panning: false;
+                            pointer-event(e) => {
+                                if (e.kind == PointerEventKind.down) {
+                                    if (root.roi-pan-mode || e.button == PointerEventButton.middle) {
+                                        self.panning = true;
+                                        self.last-x = self.mouse-x;
+                                        self.last-y = self.mouse-y;
+                                        root.roi-pointer-up();
+                                    } else if (e.button == PointerEventButton.left) {
+                                        root.roi-pointer-down(
+                                            (self.mouse-x / image-layer.width),
+                                            (self.mouse-y / image-layer.height),
+                                            image-layer.width / 1px,
+                                            image-layer.height / 1px,
+                                        );
+                                    }
+                                }
+                                if (e.kind == PointerEventKind.up) {
+                                    self.panning = false;
+                                    root.roi-pointer-up();
+                                }
+                            }
+                            moved => {
+                                if (self.panning) {
+                                    root.pan(
+                                        (self.mouse-x - self.last-x) / 1px,
+                                        (self.mouse-y - self.last-y) / 1px,
+                                    );
+                                    self.last-x = self.mouse-x;
+                                    self.last-y = self.mouse-y;
+                                } else {
+                                    if (self.pressed) {
+                                        root.roi-pointer-move(
+                                            (self.mouse-x / image-layer.width),
+                                            (self.mouse-y / image-layer.height),
+                                        );
+                                    }
+                                }
+                            }
+                            scroll-event(e) => {
+                                root.zoom(-e.delta-y / 40px);
+                                return accept;
+                            }
+                            clicked => {
+                                root.roi-pointer-up();
+                            }
+                        }
                     }
                 }
 
                 drag := TouchArea {
-                    enabled: root.files-loaded;
+                    enabled: root.files-loaded && !root.roi-editing;
                     property <length> last-x: 0px;
                     property <length> last-y: 0px;
 

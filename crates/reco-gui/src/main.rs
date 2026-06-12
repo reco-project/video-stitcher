@@ -33,8 +33,10 @@ use std::time::{Duration, Instant};
 use reco_calibrate::{LensProfileInfo, ProfileSource};
 use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_control::{ControlIntent, IntentTranslator, PoseIntent};
-use reco_core::calibration::MatchCalibration;
+use reco_core::calibration::{CameraParams, FieldRoi, MatchCalibration};
+use reco_core::detect::detector::CameraId;
 use reco_core::detect::director::ViewportPosition;
+use reco_core::render::scene::SceneGeometry;
 use reco_core::wgpu;
 
 use crate::playback::{PlayState, Playback};
@@ -56,6 +58,7 @@ slint::include_modules!();
 /// adaptive resize reads the actual preview container size from Slint).
 const PREVIEW_WIDTH_DEFAULT: u32 = 1920;
 const PREVIEW_HEIGHT_DEFAULT: u32 = 1080;
+const ROI_DRAG_HIT_RADIUS_PX: f64 = 12.0;
 
 /// Tick interval for the playback timer (ms).
 ///
@@ -194,10 +197,13 @@ struct AppState {
     lens_preview_active: bool,
     /// Which camera to show in lens preview mode ("left" or "right").
     lens_preview_side: String,
-    /// Lens correction amount for the preview (0.0 = raw, 1.0 = full).
+    /// Lens correction amount for stitched/lens preview (0.0 = uncorrected, 1.0 = full).
     lens_correction_amount: f32,
-    /// Set by the ROI editor thread. Timer tick reloads calibration when true.
-    roi_reload_pending: Option<Arc<AtomicBool>>,
+    /// In-app ROI edit mode uses the stitched panorama preview as its canvas.
+    roi_editing: bool,
+    roi_drag_point: Option<usize>,
+    roi_restore_lens_preview_active: bool,
+    roi_restore_lens_preview_side: String,
     toasts: ToastManager,
     telemetry: Option<telemetry_client::TelemetryClient>,
 }
@@ -411,7 +417,10 @@ impl AppState {
             lens_preview_active: false,
             lens_preview_side: "left".into(),
             lens_correction_amount: 1.0,
-            roi_reload_pending: None,
+            roi_editing: false,
+            roi_drag_point: None,
+            roi_restore_lens_preview_active: false,
+            roi_restore_lens_preview_side: "left".into(),
             toasts: ToastManager::default(),
             telemetry: None,
         }
@@ -1063,23 +1072,293 @@ fn sync_segments(state: &AppState, app: &RecoApp) {
     ))));
 }
 
-fn sync_roi_points(state: &AppState, app: &RecoApp) {
-    let (xs, ys) = if let Some(cal) = &state.calibration
-        && let Some(roi) = &cal.field_roi
-    {
-        let side = if state.lens_preview_side == "right" {
-            &roi.right
-        } else {
-            &roi.left
-        };
-        let xs: Vec<f32> = side.iter().map(|p| p[0] as f32).collect();
-        let ys: Vec<f32> = side.iter().map(|p| p[1] as f32).collect();
-        (xs, ys)
+fn has_effective_roi(roi: &FieldRoi) -> bool {
+    !roi.points.is_empty()
+}
+
+fn nearest_roi_point(
+    points: &[(f32, f32)],
+    point: [f32; 2],
+    image_width_px: f32,
+    image_height_px: f32,
+) -> Option<usize> {
+    let image_width_px = f64::from(image_width_px.max(1.0));
+    let image_height_px = f64::from(image_height_px.max(1.0));
+    let max_dist_sq = ROI_DRAG_HIT_RADIUS_PX * ROI_DRAG_HIT_RADIUS_PX;
+
+    points
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, &(candidate_x, candidate_y))| {
+            let dx = f64::from(candidate_x - point[0]) * image_width_px;
+            let dy = f64::from(candidate_y - point[1]) * image_height_px;
+            let dist_sq = dx * dx + dy * dy;
+            (dist_sq <= max_dist_sq).then_some((idx, dist_sq))
+        })
+        .min_by(|(_, a), (_, b)| a.total_cmp(b))
+        .map(|(idx, _)| idx)
+}
+
+#[derive(Default)]
+struct RoiOverlayGeometry {
+    points_x: Vec<f32>,
+    points_y: Vec<f32>,
+    lines_x1: Vec<f32>,
+    lines_y1: Vec<f32>,
+    lines_x2: Vec<f32>,
+    lines_y2: Vec<f32>,
+}
+
+impl RoiOverlayGeometry {
+    fn push_point(&mut self, x: f32, y: f32) {
+        self.points_x.push(x);
+        self.points_y.push(y);
+    }
+
+    fn push_segment(&mut self, from: (f32, f32), to: (f32, f32)) {
+        self.lines_x1.push(from.0);
+        self.lines_y1.push(from.1);
+        self.lines_x2.push(to.0);
+        self.lines_y2.push(to.1);
+    }
+}
+
+fn scene_for_calibration(calibration: &MatchCalibration) -> SceneGeometry {
+    let scene_aspect = calibration.left.width as f32 / calibration.left.height.max(1) as f32;
+    SceneGeometry::from_layout_with_aspect(&calibration.layout, scene_aspect)
+}
+
+fn lens_preview_roi_geometry(
+    points: &[[f64; 2]],
+    camera: CameraId,
+    calibration: &MatchCalibration,
+    scene: &SceneGeometry,
+    params: &CameraParams,
+    lens_correction_amount: f32,
+) -> RoiOverlayGeometry {
+    roi_geometry_from_projector(points, 12, |point| {
+        let raw = reco_core::projection::panorama_to_camera(
+            point[0] as f32,
+            point[1] as f32,
+            camera,
+            calibration,
+            scene,
+        )?;
+        reco_core::projection::camera_to_lens_preview(raw.0, raw.1, params, lens_correction_amount)
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn viewport_roi_geometry(
+    points: &[[f64; 2]],
+    scene: &SceneGeometry,
+    view_yaw: f32,
+    view_pitch: f32,
+    fov_degrees: f32,
+    aspect: f32,
+    rig_tilt: f32,
+    rig_roll: f32,
+) -> RoiOverlayGeometry {
+    roi_geometry_from_projector(points, 12, |point| {
+        reco_core::projection::panorama_to_viewport(
+            point[0] as f32,
+            point[1] as f32,
+            view_yaw,
+            view_pitch,
+            fov_degrees,
+            aspect,
+            rig_tilt,
+            rig_roll,
+            scene,
+        )
+    })
+}
+
+fn roi_point_from_viewport(state: &AppState, norm_x: f32, norm_y: f32) -> Option<[f64; 2]> {
+    if state.lens_preview_active {
+        return None;
+    }
+    let calibration = state.calibration.as_ref()?;
+    let bridge = state.bridge.as_ref()?;
+    let (width, height) = bridge.viewport_size();
+    let aspect = if height > 0 {
+        width as f32 / height as f32
     } else {
-        (vec![], vec![])
+        16.0 / 9.0
     };
-    app.set_roi_points_x(slint::ModelRc::new(slint::VecModel::from(xs)));
-    app.set_roi_points_y(slint::ModelRc::new(slint::VecModel::from(ys)));
+    let viewport = bridge.renderer().pipeline().viewport();
+    let scene = scene_for_calibration(calibration);
+    let pose = state.pose.render_pose(viewport.rig_tilt);
+    let pos = reco_core::projection::viewport_to_panorama(
+        norm_x.clamp(0.0, 1.0),
+        norm_y.clamp(0.0, 1.0),
+        pose.yaw,
+        pose.pitch,
+        viewport.fov_degrees,
+        aspect,
+        viewport.rig_tilt,
+        viewport.rig_roll,
+        &scene,
+    )?;
+    Some([pos.yaw as f64, pos.pitch as f64])
+}
+
+fn roi_screen_points(state: &AppState) -> Vec<(f32, f32)> {
+    if state.lens_preview_active {
+        return Vec::new();
+    }
+    let Some(calibration) = state.calibration.as_ref() else {
+        return Vec::new();
+    };
+    let Some(bridge) = state.bridge.as_ref() else {
+        return Vec::new();
+    };
+    let roi = calibration.field_roi.clone().unwrap_or_default();
+    let (width, height) = bridge.viewport_size();
+    let aspect = if height > 0 {
+        width as f32 / height as f32
+    } else {
+        16.0 / 9.0
+    };
+    let viewport = bridge.renderer().pipeline().viewport();
+    let scene = scene_for_calibration(calibration);
+    let pose = state.pose.render_pose(viewport.rig_tilt);
+    roi.points
+        .iter()
+        .filter_map(|point| {
+            reco_core::projection::panorama_to_viewport(
+                point[0] as f32,
+                point[1] as f32,
+                pose.yaw,
+                pose.pitch,
+                viewport.fov_degrees,
+                aspect,
+                viewport.rig_tilt,
+                viewport.rig_roll,
+                &scene,
+            )
+        })
+        .collect()
+}
+
+fn roi_geometry_from_projector(
+    points: &[[f64; 2]],
+    samples_per_edge: usize,
+    mut project: impl FnMut([f64; 2]) -> Option<(f32, f32)>,
+) -> RoiOverlayGeometry {
+    let mut geometry = RoiOverlayGeometry::default();
+
+    for &point in points {
+        if let Some((x, y)) = project(point) {
+            geometry.push_point(x, y);
+        }
+    }
+
+    if points.len() < 2 {
+        return geometry;
+    }
+
+    let edge_count = if points.len() >= 3 {
+        points.len()
+    } else {
+        points.len() - 1
+    };
+
+    for edge_idx in 0..edge_count {
+        let a = points[edge_idx];
+        let b = points[(edge_idx + 1) % points.len()];
+        let mut last_projected = None;
+
+        for sample_idx in 0..=samples_per_edge.max(1) {
+            let t = sample_idx as f64 / samples_per_edge.max(1) as f64;
+            let point = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+
+            if let Some(projected) = project(point) {
+                if let Some(previous) = last_projected {
+                    geometry.push_segment(previous, projected);
+                }
+                last_projected = Some(projected);
+            } else {
+                last_projected = None;
+            }
+        }
+    }
+
+    geometry
+}
+
+fn set_float_model(setter: impl FnOnce(slint::ModelRc<f32>), values: Vec<f32>) {
+    setter(slint::ModelRc::new(slint::VecModel::from(values)));
+}
+
+fn set_roi_model(app: &RecoApp, geometry: RoiOverlayGeometry) {
+    set_float_model(|model| app.set_roi_points_x(model), geometry.points_x);
+    set_float_model(|model| app.set_roi_points_y(model), geometry.points_y);
+    set_float_model(|model| app.set_roi_lines_x1(model), geometry.lines_x1);
+    set_float_model(|model| app.set_roi_lines_y1(model), geometry.lines_y1);
+    set_float_model(|model| app.set_roi_lines_x2(model), geometry.lines_x2);
+    set_float_model(|model| app.set_roi_lines_y2(model), geometry.lines_y2);
+}
+
+fn sync_roi_overlay(state: &AppState, app: &RecoApp) {
+    let Some(calibration) = state.calibration.as_ref() else {
+        app.set_has_roi(false);
+        app.set_roi_point_count(0);
+        set_roi_model(app, RoiOverlayGeometry::default());
+        return;
+    };
+
+    let roi = calibration.field_roi.clone().unwrap_or_default();
+    app.set_has_roi(has_effective_roi(&roi));
+    app.set_roi_point_count(roi.points.len() as i32);
+
+    if state.lens_preview_active {
+        let scene = scene_for_calibration(calibration);
+        let (camera, params) = if state.lens_preview_side == "right" {
+            (CameraId::Right, &calibration.right)
+        } else {
+            (CameraId::Left, &calibration.left)
+        };
+        let geometry = lens_preview_roi_geometry(
+            &roi.points,
+            camera,
+            calibration,
+            &scene,
+            params,
+            state.lens_correction_amount,
+        );
+        set_roi_model(app, geometry);
+        return;
+    }
+
+    let Some(bridge) = state.bridge.as_ref() else {
+        set_roi_model(app, RoiOverlayGeometry::default());
+        return;
+    };
+
+    let (width, height) = bridge.viewport_size();
+    let aspect = if height > 0 {
+        width as f32 / height as f32
+    } else {
+        16.0 / 9.0
+    };
+    let viewport = bridge.renderer().pipeline().viewport();
+    let scene = scene_for_calibration(calibration);
+    let pose = state.pose.render_pose(viewport.rig_tilt);
+    let fov = viewport.fov_degrees;
+
+    let geometry = viewport_roi_geometry(
+        &roi.points,
+        &scene,
+        pose.yaw,
+        pose.pitch,
+        fov,
+        aspect,
+        viewport.rig_tilt,
+        viewport.rig_roll,
+    );
+
+    set_roi_model(app, geometry);
 }
 
 /// Install the standard tracing subscriber + log bridge.
@@ -1750,6 +2029,7 @@ fn main() -> anyhow::Result<()> {
             app.set_files_loaded(false);
             app.set_status_text("Left video cleared. Calibration preserved.".into());
             sync_segments(&s, &app);
+            sync_roi_overlay(&s, &app);
         }
     });
 
@@ -1767,6 +2047,7 @@ fn main() -> anyhow::Result<()> {
             app.set_files_loaded(false);
             app.set_status_text("Right video cleared. Calibration preserved.".into());
             sync_segments(&s, &app);
+            sync_roi_overlay(&s, &app);
         }
     });
 
@@ -1783,248 +2064,224 @@ fn main() -> anyhow::Result<()> {
             app.set_calibration_path("".into());
             app.set_files_loaded(false);
             app.set_status_text("Calibration cleared".into());
+            sync_roi_overlay(&s, &app);
         }
     });
 
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
-    app.on_launch_roi_editor(move || {
-        let paths = {
-            let s = state_ref.borrow();
-            match (
-                s.left_path.clone(),
-                s.right_path.clone(),
-                s.calibration_path.clone(),
-            ) {
-                (Some(l), Some(r), Some(c)) => Some((l, r, c)),
-                _ => None,
-            }
-        };
-        let Some((left, right, cal_path)) = paths else {
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "Cannot set ROI",
-                    "Need left video, right video, and calibration loaded.",
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
+    app.on_toggle_roi_editor(move || {
+        let Some(app) = app_weak.upgrade() else {
             return;
         };
-
-        // Use $HOME/.cache/reco instead of /tmp because snap-packaged
-        // browsers (Firefox) can't access /tmp due to sandboxing.
-        let cache_base = std::env::var("XDG_CACHE_HOME")
-            .map(PathBuf::from)
-            .or_else(|_| std::env::var("HOME").map(|h| PathBuf::from(h).join(".cache")))
-            .unwrap_or_else(|_| std::env::temp_dir());
-        let tmp_dir = cache_base.join("reco").join("roi");
-        if let Err(e) = std::fs::create_dir_all(&tmp_dir) {
-            log::error!("Failed to create ROI temp dir {}: {e}", tmp_dir.display());
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "ROI editor",
-                    format!("Cannot create temp dir: {e}"),
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
-            return;
-        }
-        let left_png = tmp_dir.join("left.png");
-        let right_png = tmp_dir.join("right.png");
-
-        let current_secs = {
-            let s = state_ref.borrow();
-            if s.playback.fps() > 0.0 {
-                s.playback.frame_index() as f64 / s.playback.fps()
-            } else {
-                1.0
-            }
-        };
-        let _seek_str = format!("{:.2}", current_secs);
-        let frame_index = {
-            let s = state_ref.borrow();
-            s.playback.frame_index()
-        };
-        let extract_frame = |video: &std::path::Path, out: &std::path::Path, idx: u64| {
-            match reco_io::ffmpeg::calibration_io::extract_frames(video, &[idx]) {
-                Ok(frames) if !frames.is_empty() => {
-                    let yuv = &frames[0];
-                    let w = yuv.width as usize;
-                    let h = yuv.height as usize;
-                    let uv_w = w / 2;
-                    let mut rgb = vec![0u8; w * h * 3];
-                    for row in 0..h {
-                        for col in 0..w {
-                            let yi = row * w + col;
-                            let uvi = (row / 2) * uv_w + (col / 2);
-                            let y = yuv.y[yi] as f32;
-                            let u = yuv.u[uvi] as f32;
-                            let v = yuv.v[uvi] as f32;
-                            let r = y + 1.402 * (v - 128.0);
-                            let g = y - 0.344 * (u - 128.0) - 0.714 * (v - 128.0);
-                            let b = y + 1.772 * (u - 128.0);
-                            let pi = yi * 3;
-                            rgb[pi] = r.clamp(0.0, 255.0) as u8;
-                            rgb[pi + 1] = g.clamp(0.0, 255.0) as u8;
-                            rgb[pi + 2] = b.clamp(0.0, 255.0) as u8;
-                        }
-                    }
-                    if let Err(e) =
-                        image::save_buffer(out, &rgb, w as u32, h as u32, image::ColorType::Rgb8)
-                    {
-                        log::warn!("Failed to save ROI frame {}: {e}", out.display());
-                    }
-                }
-                Ok(_) => log::warn!("No frame decoded from {}", video.display()),
-                Err(e) => log::error!("Frame extraction failed for {}: {e}", video.display()),
-            }
-        };
-        extract_frame(&left, &left_png, frame_index);
-        extract_frame(&right, &right_png, frame_index);
-        log::info!(
-            "ROI frame extraction: left={} right={}",
-            left_png.exists(),
-            right_png.exists()
-        );
-
-        use base64::Engine;
-        let b64 = base64::engine::general_purpose::STANDARD;
-
-        let left_data = std::fs::read(&left_png)
-            .ok()
-            .map(|bytes| format!("data:image/png;base64,{}", b64.encode(&bytes)))
-            .unwrap_or_default();
-        let right_data = std::fs::read(&right_png)
-            .ok()
-            .map(|bytes| format!("data:image/png;base64,{}", b64.encode(&bytes)))
-            .unwrap_or_default();
-
-        let cal_json_str = std::fs::read_to_string(&cal_path).unwrap_or_else(|_| "{}".into());
-
-        // Template is embedded at compile time so deployed binaries work
-        // without needing the source tree.
-        let template = include_str!("../../../resources/roi_editor.html");
-        let html = template
-            .replace("'{{LEFT_IMAGE_DATA}}'", &format!("'{left_data}'"))
-            .replace("'{{RIGHT_IMAGE_DATA}}'", &format!("'{right_data}'"))
-            .replace("{{CAL_JSON}}", &cal_json_str)
-            .replace("'{{CAL_PATH}}'", &format!("'{}'", cal_path.display()));
-
-        let out_html = tmp_dir.join("roi_editor.html");
-        if let Err(e) = std::fs::write(&out_html, &html) {
-            log::error!("Failed to write ROI editor HTML: {e}");
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "ROI editor",
-                    format!("Cannot write temp file: {e}"),
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
-            return;
-        }
-        log::info!(
-            "ROI editor: wrote {} bytes to {}, opening in browser",
-            html.len(),
-            out_html.display()
-        );
-
-        let open_result = open::that(out_html.as_os_str());
-        if let Err(e) = open_result {
-            log::error!("Failed to open ROI editor: {e}");
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "Cannot open browser",
-                    e.to_string(),
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
-        } else {
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Info,
-                    "ROI editor opened in browser",
-                    "Draw field boundary, click Save ROI, then come back here and click Paste ROI.",
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
-        }
-    });
-
-    let app_weak = app.as_weak();
-    let state_ref = Rc::clone(&state);
-    app.on_paste_roi(move || {
         let mut s = state_ref.borrow_mut();
-        // Try manual JSON input first, then clipboard
-        let manual = app_weak
-            .upgrade()
-            .map(|a| {
-                let t = a.get_roi_manual_json().to_string();
-                a.set_roi_manual_json("".into());
-                t
-            })
-            .unwrap_or_default();
-        let clipboard_text = if !manual.trim().is_empty() {
-            manual
+        if s.calibration.is_none() || s.bridge.is_none() {
+            s.toasts.push(
+                Severity::Error,
+                "Cannot set ROI",
+                "Need videos and calibration loaded.",
+            );
+            crate::toast::sync_to_ui(&s.toasts, &app);
+            return;
+        }
+
+        if s.roi_editing {
+            s.roi_editing = false;
+            s.roi_drag_point = None;
+            s.lens_preview_active = s.roi_restore_lens_preview_active;
+            s.lens_preview_side = s.roi_restore_lens_preview_side.clone();
+            app.set_roi_editing(false);
+            app.set_roi_pan_mode(false);
+            app.set_lens_preview_active(s.lens_preview_active);
+            app.set_lens_preview_side(s.lens_preview_side.clone().into());
+            app.set_status_text("ROI editing finished".into());
         } else {
-            match arboard::Clipboard::new().and_then(|mut cb| cb.get_text()) {
-                Ok(t) => t,
-                Err(e) => {
-                    log::warn!("Clipboard read failed: {e}");
-                    if let Some(app) = app_weak.upgrade() {
-                        s.toasts.push(
-                            crate::toast::Severity::Error,
-                            "Paste ROI",
-                            "Could not read clipboard. Paste JSON in the text field instead.",
-                        );
-                        crate::toast::sync_to_ui(&s.toasts, &app);
-                    }
-                    return;
-                }
+            s.roi_editing = true;
+            s.roi_restore_lens_preview_active = s.lens_preview_active;
+            s.roi_restore_lens_preview_side = s.lens_preview_side.clone();
+            s.lens_preview_active = false;
+            app.set_roi_editing(true);
+            app.set_roi_visible(true);
+            app.set_roi_pan_mode(false);
+            app.set_lens_preview_active(false);
+            app.set_lens_preview_side(s.lens_preview_side.clone().into());
+            app.set_status_text("Editing field ROI".into());
+        }
+        s.preview_dirty = true;
+        sync_roi_overlay(&s, &app);
+        app.window().request_redraw();
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_roi_pointer_down(move |x, y, image_width_px, image_height_px| {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let mut s = state_ref.borrow_mut();
+        if !s.roi_editing {
+            return;
+        }
+        let screen_points = roi_screen_points(&s);
+        let selected = nearest_roi_point(
+            &screen_points,
+            [x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)],
+            image_width_px,
+            image_height_px,
+        );
+        let selected = if let Some(idx) = selected {
+            idx
+        } else {
+            let Some(point) = roi_point_from_viewport(&s, x, y) else {
+                return;
+            };
+            let Some(cal) = s.calibration.as_mut() else {
+                return;
+            };
+            let roi = cal.field_roi.get_or_insert_with(FieldRoi::default);
+            roi.points.push(point);
+            roi.points.len() - 1
+        };
+        s.roi_drag_point = Some(selected);
+        sync_roi_overlay(&s, &app);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_roi_pointer_move(move |x, y| {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let mut s = state_ref.borrow_mut();
+        if !s.roi_editing {
+            return;
+        }
+        let Some(drag_idx) = s.roi_drag_point else {
+            return;
+        };
+        let Some(point) = roi_point_from_viewport(&s, x, y) else {
+            return;
+        };
+        let moved = {
+            let Some(roi) = s
+                .calibration
+                .as_mut()
+                .and_then(|cal| cal.field_roi.as_mut())
+            else {
+                return;
+            };
+            if let Some(existing) = roi.points.get_mut(drag_idx) {
+                *existing = point;
+                true
+            } else {
+                false
             }
         };
+        if moved {
+            sync_roi_overlay(&s, &app);
+        } else {
+            s.roi_drag_point = None;
+        }
+    });
 
-        let roi: reco_core::calibration::FieldRoi = match serde_json::from_str(&clipboard_text) {
-            Ok(r) => r,
+    let state_ref = Rc::clone(&state);
+    app.on_roi_pointer_up(move || {
+        state_ref.borrow_mut().roi_drag_point = None;
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_roi_undo(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let mut s = state_ref.borrow_mut();
+        s.roi_drag_point = None;
+        if let Some(roi) = s
+            .calibration
+            .as_mut()
+            .and_then(|cal| cal.field_roi.as_mut())
+        {
+            roi.points.pop();
+        }
+        sync_roi_overlay(&s, &app);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_roi_clear(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let mut s = state_ref.borrow_mut();
+        s.roi_drag_point = None;
+        if let Some(roi) = s
+            .calibration
+            .as_mut()
+            .and_then(|cal| cal.field_roi.as_mut())
+        {
+            roi.points.clear();
+        }
+        sync_roi_overlay(&s, &app);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_roi_save(move || {
+        let save_result = state_ref.borrow().save_calibration();
+        let mut s = state_ref.borrow_mut();
+        if let Some(app) = app_weak.upgrade() {
+            match save_result {
+                Ok(()) => {
+                    app.set_status_text("ROI saved".into());
+                    s.toasts.push(Severity::Info, "ROI saved", "");
+                    sync_roi_overlay(&s, &app);
+                }
+                Err(e) => {
+                    log::error!("Save ROI: {e}");
+                    app.set_status_text("ROI save failed".into());
+                    s.toasts.push(Severity::Error, "ROI save failed", e);
+                }
+            }
+            crate::toast::sync_to_ui(&s.toasts, &app);
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_roi_copy_json(move || {
+        let roi = state_ref
+            .borrow()
+            .calibration
+            .as_ref()
+            .and_then(|cal| cal.field_roi.clone())
+            .unwrap_or_default();
+        let json = match serde_json::to_string_pretty(&roi) {
+            Ok(json) => json,
             Err(e) => {
-                log::warn!("Clipboard is not valid ROI JSON: {e}");
+                let mut s = state_ref.borrow_mut();
                 if let Some(app) = app_weak.upgrade() {
-                    s.toasts.push(
-                        crate::toast::Severity::Error,
-                        "Paste ROI",
-                        "Clipboard doesn't contain valid ROI JSON. Save ROI in the browser editor first.",
-                    );
+                    s.toasts
+                        .push(Severity::Error, "Copy ROI JSON failed", e.to_string());
                     crate::toast::sync_to_ui(&s.toasts, &app);
                 }
                 return;
             }
         };
 
-        let point_count = roi.left.len() + roi.right.len();
-        if let Some(cal) = s.calibration.as_mut() {
-            cal.field_roi = Some(roi);
-        }
-        if let Err(e) = s.save_calibration() {
-            log::error!("Failed to save calibration with ROI: {e}");
-        }
-
+        let mut s = state_ref.borrow_mut();
         if let Some(app) = app_weak.upgrade() {
-            let has = point_count > 0;
-            app.set_has_roi(has);
-            sync_roi_points(&s, &app);
-            s.toasts.push(
-                crate::toast::Severity::Info,
-                "ROI applied",
-                format!("{point_count} points saved to calibration."),
-            );
+            match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(json)) {
+                Ok(()) => {
+                    app.set_status_text("ROI JSON copied".into());
+                    s.toasts.push(Severity::Info, "ROI JSON copied", "");
+                }
+                Err(e) => {
+                    log::warn!("Clipboard write failed: {e}");
+                    s.toasts
+                        .push(Severity::Error, "Copy ROI JSON failed", e.to_string());
+                }
+            }
             crate::toast::sync_to_ui(&s.toasts, &app);
         }
     });
@@ -2986,7 +3243,13 @@ fn main() -> anyhow::Result<()> {
         let mut s = state_ref.borrow_mut();
         s.lens_preview_active = app.get_lens_preview_active();
         s.lens_preview_side = app.get_lens_preview_side().to_string();
-        sync_roi_points(&s, &app);
+        if s.roi_editing {
+            s.roi_editing = false;
+            s.roi_drag_point = None;
+            app.set_roi_editing(false);
+            app.set_roi_pan_mode(false);
+        }
+        sync_roi_overlay(&s, &app);
         s.preview_dirty = true;
     });
 
@@ -3533,36 +3796,6 @@ fn main() -> anyhow::Result<()> {
                 }
             }
 
-            // Check if ROI editor finished and reload calibration.
-            if let Some(ref flag) = s.roi_reload_pending
-                && flag.load(Ordering::Relaxed)
-            {
-                s.roi_reload_pending = None;
-                if let Some(cal_path) = s.calibration_path.as_ref()
-                    && let Ok(cal) = MatchCalibration::from_file(cal_path)
-                {
-                    let has_roi = cal
-                        .field_roi
-                        .as_ref()
-                        .is_some_and(|r| !r.left.is_empty() || !r.right.is_empty());
-                    s.calibration = Some(cal);
-                    if let Some(app) = app_weak.upgrade() {
-                        app.set_has_roi(has_roi);
-                        sync_roi_points(&s, &app);
-                        s.toasts.push(
-                            Severity::Info,
-                            "Field ROI updated",
-                            if has_roi {
-                                "ROI loaded from calibration"
-                            } else {
-                                "No ROI points saved"
-                            },
-                        );
-                        crate::toast::sync_to_ui(&s.toasts, &app);
-                    }
-                }
-            }
-
             // Expire aged toasts (Tier 3a).
             if !s.toasts.is_empty()
                 && s.toasts.expire(Instant::now())
@@ -3694,6 +3927,7 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
         if let Some(fov) = current.fov_degrees {
             app.set_fov(fov);
         }
+        sync_roi_overlay(&s, &app);
         return true;
     }
     false
@@ -3755,12 +3989,10 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
 
             if let Some(app) = app_weak.upgrade() {
                 app.set_files_loaded(true);
-                app.set_has_roi(
-                    s.calibration
-                        .as_ref()
-                        .and_then(|c| c.field_roi.as_ref())
-                        .is_some_and(|r| !r.left.is_empty() || !r.right.is_empty()),
-                );
+                if in_h > 0 {
+                    app.set_input_aspect(in_w as f32 / in_h as f32);
+                }
+                sync_roi_overlay(&s, &app);
                 sync_frame_display(&app, s.playback.frame_index(), total, fps);
                 app.set_fps(fps as f32);
                 app.set_status_text(format!("Ready - {:.0} fps - {total} frames", fps).into());
@@ -4010,13 +4242,10 @@ fn handle_calibration_result(
                             .map(|p| display_name(p))
                             .unwrap_or_else(|| "(auto-calibrated)".into());
                         app.set_files_loaded(true);
-                        app.set_has_roi(
-                            state
-                                .calibration
-                                .as_ref()
-                                .and_then(|c| c.field_roi.as_ref())
-                                .is_some_and(|r| !r.left.is_empty() || !r.right.is_empty()),
-                        );
+                        if in_h > 0 {
+                            app.set_input_aspect(in_w as f32 / in_h as f32);
+                        }
+                        sync_roi_overlay(state, &app);
                         app.set_calibration_path(cal_label.into());
                         sync_recent_paths(&state.user_settings, &app);
                         sync_frame_display(&app, state.playback.frame_index(), total, fps);

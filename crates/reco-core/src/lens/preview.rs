@@ -6,9 +6,10 @@
 //! `wgpu::Texture` per frame with `RENDER_ATTACHMENT | TEXTURE_BINDING`
 //! so the result can be handed to a UI framework as a zero-copy image.
 //!
-//! The `lens_correction_amount` parameter (0.0 to 1.0) lets users
-//! visually evaluate how much the lens profile contributes: 1.0 is
-//! full KB4 correction, 0.0 is raw (pinhole projection).
+//! The `lens_correction_amount` parameter lets users visually evaluate
+//! how much the lens profile contributes: 1.0 is full KB4 correction,
+//! 0.0 is uncorrected/pinhole plane projection, and negative values
+//! render the literal raw source frame for ROI editing.
 
 use crate::calibration::CameraParams;
 use crate::gpu::GpuContext;
@@ -267,7 +268,8 @@ impl LensPreviewRenderer {
     /// The returned texture has `RENDER_ATTACHMENT | TEXTURE_BINDING` and
     /// can be passed to `slint::Image::try_from(wgpu::Texture)`.
     ///
-    /// `correction_amount`: 0.0 = raw input, 1.0 = full KB4 correction.
+    /// `correction_amount`: -1.0 = raw source frame, 0.0 = uncorrected
+    /// plane projection, 1.0 = full KB4 correction.
     pub fn render_yuv(
         &self,
         gpu: &GpuContext,

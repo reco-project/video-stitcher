@@ -1,6 +1,6 @@
 //! ROI-filtered detector decorator.
 //!
-//! Wraps any [`UnifiedDetector`] to drop detections whose camera-space
+//! Wraps any [`UnifiedDetector`] to drop detections whose stitched-panorama
 //! position falls outside a playing-field polygon. This moves
 //! sports-domain filtering out of `reco-core` (which stays domain-
 //! agnostic) into `reco-autocam`.
@@ -23,11 +23,12 @@
 
 use std::collections::HashMap;
 
-use reco_core::calibration::FieldRoi;
+use reco_core::calibration::{FieldRoi, MatchCalibration};
 use reco_core::detect::detector::{
     CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector,
 };
-use reco_core::projection::point_in_polygon;
+use reco_core::projection::{camera_to_panorama, point_in_polygon};
+use reco_core::render::scene::SceneGeometry;
 
 /// Where on a detection's bounding box the ROI test samples.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -46,27 +47,39 @@ pub enum RoiAnchor {
 }
 
 impl RoiAnchor {
-    /// Return `true` if the detection passes the anchor test against
-    /// `polygon`. A polygon with fewer than 3 vertices is treated as
-    /// "no filter" by the caller; this method does not re-check that
-    /// case.
-    fn passes(self, d: &Detection, polygon: &[[f64; 2]]) -> bool {
+    fn samples(self, d: &Detection) -> Vec<[f32; 2]> {
         let cx = d.center_x as f64;
         let cy = d.center_y as f64;
         let half_h = (d.height as f64) * 0.5;
         let quarter_h = (d.height as f64) * 0.25;
         match self {
-            RoiAnchor::Center => point_in_polygon([cx, cy], polygon),
-            RoiAnchor::Bottom => {
-                point_in_polygon([cx, cy + half_h], polygon)
-                    && point_in_polygon([cx, cy + quarter_h], polygon)
-            }
-            RoiAnchor::Top => {
-                point_in_polygon([cx, cy - half_h], polygon)
-                    && point_in_polygon([cx, cy - quarter_h], polygon)
-            }
+            RoiAnchor::Center => vec![[cx as f32, cy as f32]],
+            RoiAnchor::Bottom => vec![
+                [cx as f32, (cy + half_h) as f32],
+                [cx as f32, (cy + quarter_h) as f32],
+            ],
+            RoiAnchor::Top => vec![
+                [cx as f32, (cy - half_h) as f32],
+                [cx as f32, (cy - quarter_h) as f32],
+            ],
         }
     }
+}
+
+fn sample_passes_roi(
+    camera: CameraId,
+    sample: [f32; 2],
+    polygon: &[[f64; 2]],
+    calibration: &MatchCalibration,
+    scene: &SceneGeometry,
+) -> bool {
+    if !(0.0..=1.0).contains(&sample[0]) || !(0.0..=1.0).contains(&sample[1]) {
+        return false;
+    }
+    let Some(pos) = camera_to_panorama(camera, sample[0], sample[1], calibration, scene) else {
+        return false;
+    };
+    point_in_polygon([pos.yaw as f64, pos.pitch as f64], polygon)
 }
 
 /// Filter detections by field ROI polygon using a per-class anchor
@@ -74,16 +87,15 @@ impl RoiAnchor {
 fn filter_by_roi(
     detections: Vec<Detection>,
     roi: &FieldRoi,
+    calibration: &MatchCalibration,
+    scene: &SceneGeometry,
     class_anchors: &HashMap<u16, RoiAnchor>,
     default_anchor: RoiAnchor,
 ) -> Vec<Detection> {
+    let polygon = &roi.points;
     detections
         .into_iter()
         .filter(|d| {
-            let polygon = match d.camera {
-                CameraId::Left => &roi.left,
-                CameraId::Right => &roi.right,
-            };
             if polygon.len() < 3 {
                 return true;
             }
@@ -91,7 +103,10 @@ fn filter_by_roi(
                 .get(&d.class_id)
                 .copied()
                 .unwrap_or(default_anchor);
-            anchor.passes(d, polygon)
+            anchor
+                .samples(d)
+                .into_iter()
+                .all(|sample| sample_passes_roi(d.camera, sample, polygon, calibration, scene))
         })
         .collect()
 }
@@ -120,6 +135,8 @@ fn filter_by_roi(
 pub struct RoiFilteredDetector {
     inner: Box<dyn UnifiedDetector>,
     roi: FieldRoi,
+    calibration: MatchCalibration,
+    scene: SceneGeometry,
     class_anchors: HashMap<u16, RoiAnchor>,
     default_anchor: RoiAnchor,
 }
@@ -128,10 +145,17 @@ impl RoiFilteredDetector {
     /// Create a new ROI-filtered detector wrapping `inner`. All
     /// classes default to [`RoiAnchor::Center`] until
     /// [`with_class_anchor`](Self::with_class_anchor) overrides them.
-    pub fn new(inner: Box<dyn UnifiedDetector>, roi: FieldRoi) -> Self {
+    pub fn new(
+        inner: Box<dyn UnifiedDetector>,
+        roi: FieldRoi,
+        calibration: MatchCalibration,
+        scene: SceneGeometry,
+    ) -> Self {
         Self {
             inner,
             roi,
+            calibration,
+            scene,
             class_anchors: HashMap::new(),
             default_anchor: RoiAnchor::Center,
         }
@@ -165,6 +189,8 @@ impl UnifiedDetector for RoiFilteredDetector {
         Ok(filter_by_roi(
             detections,
             &self.roi,
+            &self.calibration,
+            &self.scene,
             &self.class_anchors,
             self.default_anchor,
         ))
@@ -178,8 +204,9 @@ impl UnifiedDetector for RoiFilteredDetector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reco_core::calibration::FieldRoi;
+    use reco_core::calibration::{CameraParams, FieldRoi, MatchCalibration, PlaneLayout};
     use reco_core::detect::detector::{CameraId, Detection};
+    use reco_core::render::scene::SceneGeometry;
 
     fn make_detection(camera: CameraId, cx: f32, cy: f32, w: f32, h: f32) -> Detection {
         make_detection_class(camera, 0, cx, cy, w, h)
@@ -206,20 +233,75 @@ mod tests {
 
     fn full_roi() -> FieldRoi {
         FieldRoi {
-            left: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
-            right: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+            points: vec![[-10.0, -10.0], [10.0, -10.0], [10.0, 10.0], [-10.0, 10.0]],
+        }
+    }
+
+    fn test_calibration() -> MatchCalibration {
+        let params = CameraParams {
+            width: 1920,
+            height: 1080,
+            fx: 900.0,
+            fy: 900.0,
+            cx: 960.0,
+            cy: 540.0,
+            d: [0.0, 0.0, 0.0, 0.0],
+        };
+        MatchCalibration {
+            left: params.clone(),
+            right: params,
+            layout: PlaneLayout {
+                camera_axis_offset: 0.25,
+                intersect: 0.5,
+                x_ty: 0.0,
+                x_rz: 0.0,
+                z_rx: 0.0,
+                x_rx: 0.0,
+                z_rz: 0.0,
+            },
+            rig_tilt: 0.0,
+            rig_roll: 0.0,
+            sync_offset: 0,
+            field_roi: None,
+        }
+    }
+
+    fn test_scene(calibration: &MatchCalibration) -> SceneGeometry {
+        let aspect = calibration.left.width as f32 / calibration.left.height as f32;
+        SceneGeometry::from_layout_with_aspect(&calibration.layout, aspect)
+    }
+
+    fn roi_around(camera: CameraId, x: f32, y: f32, half_size: f64) -> FieldRoi {
+        let calibration = test_calibration();
+        let scene = test_scene(&calibration);
+        let pos = camera_to_panorama(camera, x, y, &calibration, &scene).unwrap();
+        let yaw = pos.yaw as f64;
+        let pitch = pos.pitch as f64;
+        FieldRoi {
+            points: vec![
+                [yaw - half_size, pitch - half_size],
+                [yaw + half_size, pitch - half_size],
+                [yaw + half_size, pitch + half_size],
+                [yaw - half_size, pitch + half_size],
+            ],
         }
     }
 
     fn small_roi() -> FieldRoi {
-        FieldRoi {
-            left: vec![[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]],
-            right: vec![[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]],
-        }
+        roi_around(CameraId::Left, 0.5, 0.4, 0.04)
     }
 
     fn filter(dets: Vec<Detection>, roi: &FieldRoi) -> Vec<Detection> {
-        filter_by_roi(dets, roi, &HashMap::new(), RoiAnchor::Center)
+        let calibration = test_calibration();
+        let scene = test_scene(&calibration);
+        filter_by_roi(
+            dets,
+            roi,
+            &calibration,
+            &scene,
+            &HashMap::new(),
+            RoiAnchor::Center,
+        )
     }
 
     #[test]
@@ -238,10 +320,7 @@ mod tests {
 
     #[test]
     fn empty_polygon_passes_all() {
-        let roi = FieldRoi {
-            left: vec![],
-            right: vec![],
-        };
+        let roi = FieldRoi { points: vec![] };
         let det = make_detection(CameraId::Left, 0.5, 0.5, 0.1, 0.2);
         assert_eq!(filter(vec![det], &roi).len(), 1);
     }
@@ -249,21 +328,17 @@ mod tests {
     #[test]
     fn degenerate_polygon_passes_all() {
         let roi = FieldRoi {
-            left: vec![[0.0, 0.0], [1.0, 1.0]],
-            right: vec![],
+            points: vec![[0.0, 0.0], [1.0, 1.0]],
         };
         let det = make_detection(CameraId::Left, 0.5, 0.5, 0.1, 0.2);
         assert_eq!(filter(vec![det], &roi).len(), 1);
     }
 
     #[test]
-    fn camera_id_selects_correct_polygon() {
-        let roi = FieldRoi {
-            left: vec![[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]],
-            right: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
-        };
-        let det_left = make_detection(CameraId::Left, 0.05, 0.05, 0.1, 0.2);
-        let det_right = make_detection(CameraId::Right, 0.05, 0.05, 0.1, 0.2);
+    fn camera_projection_is_used_for_shared_polygon() {
+        let roi = roi_around(CameraId::Right, 0.5, 0.5, 0.01);
+        let det_left = make_detection(CameraId::Left, 0.5, 0.5, 0.1, 0.2);
+        let det_right = make_detection(CameraId::Right, 0.5, 0.5, 0.1, 0.2);
         assert!(filter(vec![det_left], &roi).is_empty());
         assert_eq!(filter(vec![det_right], &roi).len(), 1);
     }
@@ -282,10 +357,10 @@ mod tests {
 
     #[test]
     fn center_anchor_passes_ball_whose_feet_fall_outside() {
-        // Small ROI [0.2, 0.8]^2. Detection centered in-bounds at
-        // (0.5, 0.7), height 0.3 -> feet at y=0.85 outside, center
-        // at y=0.7 inside. A ball class with Center anchor passes.
-        let roi = small_roi();
+        // Detection centered in-bounds at (0.5, 0.7), height 0.3
+        // -> feet at y=0.85 outside, center at y=0.7 inside. A ball
+        // class with Center anchor passes.
+        let roi = roi_around(CameraId::Left, 0.5, 0.7, 0.04);
         let ball = make_detection_class(CameraId::Left, 0, 0.5, 0.7, 0.1, 0.3);
         assert_eq!(filter(vec![ball], &roi).len(), 1);
     }
@@ -294,11 +369,20 @@ mod tests {
     fn bottom_anchor_rejects_player_whose_feet_fall_outside() {
         // Same geometry as above but as a Player (class=1) with
         // Bottom anchor: feet at y=0.85 outside -> rejected.
-        let roi = small_roi();
+        let roi = roi_around(CameraId::Left, 0.5, 0.7, 0.04);
         let player = make_detection_class(CameraId::Left, 1, 0.5, 0.7, 0.1, 0.3);
         let mut anchors = HashMap::new();
         anchors.insert(1u16, RoiAnchor::Bottom);
-        let filtered = filter_by_roi(vec![player], &roi, &anchors, RoiAnchor::Center);
+        let calibration = test_calibration();
+        let scene = test_scene(&calibration);
+        let filtered = filter_by_roi(
+            vec![player],
+            &roi,
+            &calibration,
+            &scene,
+            &anchors,
+            RoiAnchor::Center,
+        );
         assert!(filtered.is_empty());
     }
 
@@ -307,12 +391,21 @@ mod tests {
         // Same frame: a ball and a player at identical bboxes. With
         // Center default + Bottom for players, ball survives and
         // player gets dropped.
-        let roi = small_roi();
+        let roi = roi_around(CameraId::Left, 0.5, 0.7, 0.04);
         let ball = make_detection_class(CameraId::Left, 0, 0.5, 0.7, 0.1, 0.3);
         let player = make_detection_class(CameraId::Left, 1, 0.5, 0.7, 0.1, 0.3);
         let mut anchors = HashMap::new();
         anchors.insert(1u16, RoiAnchor::Bottom);
-        let filtered = filter_by_roi(vec![ball, player], &roi, &anchors, RoiAnchor::Center);
+        let calibration = test_calibration();
+        let scene = test_scene(&calibration);
+        let filtered = filter_by_roi(
+            vec![ball, player],
+            &roi,
+            &calibration,
+            &scene,
+            &anchors,
+            RoiAnchor::Center,
+        );
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].class_id, 0, "only the ball should survive");
     }
@@ -321,10 +414,22 @@ mod tests {
     fn with_class_anchor_builder_stores_mapping() {
         // Locks the public-API shape: builder method + lookup via
         // detect() path work together.
-        let roi = small_roi();
+        let roi = roi_around(CameraId::Left, 0.5, 0.7, 0.04);
         let det = make_detection_class(CameraId::Left, 7, 0.5, 0.7, 0.1, 0.3);
         let mut anchors = HashMap::new();
         anchors.insert(7u16, RoiAnchor::Bottom);
-        assert!(filter_by_roi(vec![det], &roi, &anchors, RoiAnchor::Center).is_empty());
+        let calibration = test_calibration();
+        let scene = test_scene(&calibration);
+        assert!(
+            filter_by_roi(
+                vec![det],
+                &roi,
+                &calibration,
+                &scene,
+                &anchors,
+                RoiAnchor::Center
+            )
+            .is_empty()
+        );
     }
 }
