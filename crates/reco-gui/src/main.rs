@@ -3915,6 +3915,13 @@ fn handle_calibration_result(
             }
             let left_profile = output.left_lens_profile.clone();
             let right_profile = output.right_lens_profile.clone();
+            // Either camera resolving to a Fallback profile means no real
+            // camera match was found - the user must know, because it is the
+            // most common reason calibration looks wrong or fails outright.
+            let used_fallback = [left_profile.as_ref(), right_profile.as_ref()]
+                .into_iter()
+                .flatten()
+                .any(|p| matches!(p.source, ProfileSource::Fallback));
             match state.init_with_calibration(output.calibration) {
                 Ok(true) => {
                     let fps = state.playback.fps();
@@ -4068,6 +4075,23 @@ fn handle_calibration_result(
                                     "{:.0}% confidence ({total_matches} matches). \
                                      Try recording with more camera overlap.",
                                     confidence * 100.0
+                                ),
+                            );
+                            crate::toast::sync_to_ui(&state.toasts, &app);
+                        }
+                        if used_fallback {
+                            log::warn!(
+                                "calibration used a GENERIC fallback lens profile (no \
+                                 camera match at {in_w}x{in_h}); stitch quality may be \
+                                 poor and the optimizer can fail to converge"
+                            );
+                            state.toasts.push(
+                                Severity::Warn,
+                                "Using a generic lens profile",
+                                format!(
+                                    "No lens profile matched your camera at {in_w}x{in_h}, \
+                                     so a generic one was used. If the stitch looks wrong, \
+                                     load a lens profile or adjust the Lens sliders."
                                 ),
                             );
                             crate::toast::sync_to_ui(&state.toasts, &app);
