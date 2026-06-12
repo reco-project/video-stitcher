@@ -1313,18 +1313,15 @@ export component RecoApp inherits Window {
                             changed(v) => { root.changed-cal-x-ty(v); }
                         }
 
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Button {
-                                text: "Save Cal & Lens";
-                                enabled: root.cal-dirty;
-                                clicked => { root.save-calibration(); }
-                            }
-                            Button {
-                                text: "Reset";
-                                enabled: root.cal-dirty;
-                                clicked => { root.reset-calibration(); }
-                            }
+                        // Saving lives in one place: the "Save Calibration"
+                        // button in the Files-panel Calibration card (enabled on
+                        // cal/lens dirty, saves the whole calibration incl. lens
+                        // + blend). This section keeps only the contextual
+                        // layout Reset so there is no duplicate save button.
+                        Button {
+                            text: "Reset";
+                            enabled: root.cal-dirty;
+                            clicked => { root.reset-calibration(); }
                         }
                     }
 
