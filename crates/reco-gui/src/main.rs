@@ -516,8 +516,11 @@ impl AppState {
 
     /// Check if all three files are selected and try to initialize.
     fn try_init(&mut self) -> Result<bool, String> {
+        // Open playback from the full InputPath (all concat segments) so the
+        // timeline duration spans every file, not just the first. left_path/
+        // right_path stay single (first segment) for lens/calibration.
         let (left, right, cal_path) =
-            match (&self.left_path, &self.right_path, &self.calibration_path) {
+            match (&self.left_input, &self.right_input, &self.calibration_path) {
                 (Some(l), Some(r), Some(c)) => (l.clone(), r.clone(), c.clone()),
                 _ => return Ok(false),
             };
@@ -546,9 +549,9 @@ impl AppState {
 
     /// Initialize preview from a calibration result (no file needed).
     fn init_with_calibration(&mut self, cal: MatchCalibration) -> Result<bool, String> {
-        let (left, right) = match (&self.left_path, &self.right_path) {
+        let (left, right) = match (&self.left_input, &self.right_input) {
             (Some(l), Some(r)) => (l.clone(), r.clone()),
-            _ => return Err("Both video paths required".into()),
+            _ => return Err("Both video inputs required".into()),
         };
 
         let sync_offset = cal.sync_offset;
@@ -833,7 +836,7 @@ impl AppState {
         if let Some(cal) = self.calibration.as_mut() {
             cal.sync_offset = offset;
         }
-        if let (Some(left), Some(right)) = (&self.left_path, &self.right_path) {
+        if let (Some(left), Some(right)) = (&self.left_input, &self.right_input) {
             let left = left.clone();
             let right = right.clone();
             if let Err(e) = self.playback.open(&left, &right, offset) {
@@ -3743,6 +3746,10 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
     if let Some(app) = app_weak.upgrade() {
         sync_segments(&s, &app);
     }
+    // Capture the pre-init clip length so we can distinguish an input
+    // change (new load / appended segments) from a calibration-only
+    // reload further down.
+    let prev_total = s.playback.total_frames();
     match s.try_init() {
         Ok(true) => {
             let fps = s.playback.fps();
@@ -3802,6 +3809,21 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 sync_frame_display(&app, s.playback.frame_index(), total, fps);
                 app.set_fps(fps as f32);
                 app.set_status_text(format!("Ready - {:.0} fps - {total} frames", fps).into());
+                // The export trim defaults to the whole clip. When the input
+                // length changes (new file, appended segments, or a shorter
+                // clip) a previously seeded trim end would stick to the old
+                // duration and silently truncate the export, so refresh it
+                // here. A manual trim survives a calibration-only reload,
+                // where the frame total is unchanged.
+                if prev_total != Some(total) && fps > 0.0 {
+                    let clip_secs = total as f32 / fps as f32;
+                    app.set_clip_duration_secs(clip_secs);
+                    app.set_export_start_secs(0.0);
+                    app.set_export_end_secs(clip_secs);
+                    log::info!(
+                        "Export trim reset to full clip ({clip_secs:.1}s, {total} frames) after input change"
+                    );
+                }
                 if let Some(img) = img {
                     app.set_preview_frame(img);
                 }
