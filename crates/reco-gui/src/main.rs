@@ -113,6 +113,7 @@ type CalibrationResult = Result<CalibrationOutput, reco_calibrate::video::Calibr
 /// the given left/right videos and calibration on startup (and optionally
 /// starts an export via `RECO_AUTOEXPORT`), so the app can be driven under
 /// Xvfb for screenshots and CI smoke tests. Inert when the env var is unset.
+#[cfg(feature = "automation")]
 struct AutoloadSpec {
     left: Vec<PathBuf>,
     right: Vec<PathBuf>,
@@ -121,12 +122,14 @@ struct AutoloadSpec {
 }
 
 /// Optional auto-export for [`AutoloadSpec`], from `RECO_AUTOEXPORT`.
+#[cfg(feature = "automation")]
 struct AutoExportSpec {
     output: PathBuf,
     model: Option<PathBuf>,
     lookahead_secs: f32,
 }
 
+#[cfg(feature = "automation")]
 impl AutoloadSpec {
     /// Parse `RECO_AUTOLOAD="left[;left2,...],right[;right2,...],cal.json"`
     /// (segments within a side separated by `;`). Returns `None` when unset or
@@ -194,6 +197,7 @@ struct AppState {
     /// until the window has completed its first rendering setup.
     shared_gpu: Option<SharedGpu>,
     /// Headless preload/auto-export hook (RECO_AUTOLOAD); `None` in normal use.
+    #[cfg(feature = "automation")]
     autoload: Option<AutoloadSpec>,
     /// Unified pose state machine (target + current + smoothing +
     /// coverage clamping). Replaces the earlier hand-rolled
@@ -438,6 +442,7 @@ impl AppState {
             recording_frames: 0,
             cal_rx: None,
             shared_gpu: None,
+            #[cfg(feature = "automation")]
             autoload: AutoloadSpec::from_env(),
             pose: PoseControl::new(PoseControlConfig {
                 drag_deg_per_pixel: DRAG_DEG_PER_PIXEL,
@@ -3517,6 +3522,7 @@ fn main() -> anyhow::Result<()> {
         move || {
             // Dev/test preload (RECO_AUTOLOAD): fire once, after the GPU
             // device has been captured by the rendering notifier.
+            #[cfg(feature = "automation")]
             {
                 let ready = {
                     let s = state_ref.borrow();
@@ -3820,9 +3826,9 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
     false
 }
 
-/// Try to initialize the pipeline when all files are selected.
 /// Execute an [`AutoloadSpec`]: set inputs + calibration, build the preview,
 /// and optionally start an export. Dev/test hook (RECO_AUTOLOAD) only.
+#[cfg(feature = "automation")]
 fn run_autoload(
     state: &Rc<RefCell<AppState>>,
     app_weak: &slint::Weak<RecoApp>,

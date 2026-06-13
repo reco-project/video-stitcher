@@ -26,6 +26,10 @@ cuda = ["autocam", "reco-autocam/cuda"]
 coreml = ["autocam", "reco-autocam/coreml"]
 load-dynamic = ["autocam", "reco-autocam/load-dynamic"]
 profiling = ["reco-core/profiling", "reco-io/profiling", "reco-calibrate/profiling"]
+# Headless dev/test preload + auto-export hook (RECO_AUTOLOAD/RECO_AUTOEXPORT).
+# Off by default so the hook is compiled out of release binaries; CI and dev
+# builds enable it for Xvfb screenshots and smoke tests.
+automation = []
 
 [dependencies]
 reco-core = { path = "../reco-core" }

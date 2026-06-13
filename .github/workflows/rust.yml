@@ -55,6 +55,8 @@ jobs:
         run: cargo clippy --workspace --all-targets --features gstreamer -- -D warnings
       - name: Clippy (with load-dynamic)
         run: cargo clippy --workspace --all-targets --features load-dynamic -- -D warnings
+      - name: Clippy (reco-gui automation hook)
+        run: cargo clippy -p reco-gui --all-targets --features automation -- -D warnings
       - name: Clippy (no default features)
         run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
 
