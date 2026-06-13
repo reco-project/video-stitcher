@@ -304,11 +304,10 @@ impl StitchSession {
                         let max_secs = max_n as f64 / fps;
                         let req_secs = n as f64 / fps;
                         return Err(SessionError::Config(format!(
-                            "--lookahead {req_secs:.1}s needs ~{:.1} GB VRAM for the frame pool \
-                             ({pool_size} slots @ {w}x{h}) but only ~{:.1} GB is free. The pool \
-                             stores decoded source-resolution frames, so reduce --lookahead to \
-                             <= {max_secs:.1}s, use lower-resolution source footage, or free GPU \
-                             memory, then retry. (Output resolution does not affect this pool.)",
+                            "not enough VRAM for a {req_secs:.1}s lookahead: reduce the lookahead \
+                             to <= {max_secs:.1}s, use lower-resolution source footage, or free \
+                             GPU memory. The frame pool needs ~{:.1} GB ({pool_size} slots @ \
+                             {w}x{h}) but only ~{:.1} GB is free.",
                             required as f64 / 1e9,
                             free as f64 / 1e9,
                         )));

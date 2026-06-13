@@ -335,7 +335,6 @@ pub fn run_export(
                 info.fps as f32,
                 source.is_gpu_resident(),
             );
-            let is_failure = !matches!(&result, Ok(true));
             let banner: String = match result {
                 Ok(true) => "AI tracking: active".into(),
                 Ok(false) => {
@@ -348,10 +347,11 @@ pub fn run_export(
             let weak = status_weak.clone();
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(app) = weak.upgrade() {
-                    if is_failure {
-                        app.set_export_status_text(banner.clone().into());
-                    }
-                    app.set_status_text(banner.into());
+                    // Banner goes to the export status only, never the main
+                    // status bar. This async set can land after the export
+                    // completion handler and would otherwise clobber the final
+                    // outcome (e.g. the VRAM error) shown there.
+                    app.set_export_status_text(banner.into());
                 }
             });
         });

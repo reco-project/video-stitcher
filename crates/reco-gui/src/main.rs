@@ -3534,7 +3534,6 @@ fn main() -> anyhow::Result<()> {
                         }
                         ExportOutcome::Failed(err) => {
                             app.set_export_status_text("".into());
-                            app.set_status_text("Export failed".into());
                             let (title, body) = match &err {
                                 reco_io::stitch_job::StitchError::EmptyOutput { .. } => (
                                     "Export produced no video",
@@ -3548,11 +3547,19 @@ fn main() -> anyhow::Result<()> {
                                     "Calibration error",
                                     e.clone(),
                                 ),
+                                reco_io::stitch_job::StitchError::Session(
+                                    reco_core::session::types::SessionError::Config(detail),
+                                ) => ("Export failed", detail.clone()),
                                 other => (
                                     "Export failed",
                                     format!("{other}"),
                                 ),
                             };
+                            // Build the detailed status now (body is moved into
+                            // the toast below) and apply it AFTER sync_to_ui,
+                            // whose status-bar fallback would otherwise replace
+                            // it with the generic toast title.
+                            let status = format!("Export failed - {body}");
                             let msg = format!("{err}");
                             if let Some(ref t) = s.telemetry {
                                 let codec = app.get_export_codec().to_string();
@@ -3560,6 +3567,7 @@ fn main() -> anyhow::Result<()> {
                             }
                             s.toasts.push(Severity::Error, title, body);
                             crate::toast::sync_to_ui(&s.toasts, &app);
+                            app.set_status_text(status.into());
                         }
                     }
                 }
