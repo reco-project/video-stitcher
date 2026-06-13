@@ -1065,6 +1065,21 @@ export component RecoApp inherits Window {
                         height: 100%;
                     }
 
+                    // Preview is released during export to free VRAM; show
+                    // that it is intentionally paused, not frozen/broken.
+                    if root.files-loaded && root.export-in-progress: Rectangle {
+                        width: 100%;
+                        height: 100%;
+                        background: #000000bb;
+                        Text {
+                            text: "Preview paused during export";
+                            color: #dddddd;
+                            font-size: 14px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
                     // ROI vertex overlay (visible in lens preview mode).
                     // Absolute-positioned dots at each polygon vertex.
                     for idx in root.roi-points-x.length: Rectangle {

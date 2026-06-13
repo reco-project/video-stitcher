@@ -3281,6 +3281,11 @@ fn main() -> anyhow::Result<()> {
         s.playback.pause();
         app.set_playing(false);
 
+        // Release the preview pipeline so its VRAM is free for the export;
+        // rebuilt on completion. run_export uses its own source.
+        log::info!("Releasing preview GPU pipeline to free VRAM for export");
+        s.reset_pipeline();
+
         app.set_export_error_text("".into());
         app.set_export_in_progress(true);
         app.set_export_progress(0.0);
@@ -3484,6 +3489,17 @@ fn main() -> anyhow::Result<()> {
                 s.export_rx = None;
                 if let Some(h) = s.export_thread.take() {
                     let _ = h.join();
+                }
+                // Rebuild the preview from the in-memory calibration, on any
+                // outcome.
+                if let Some(cal) = s.calibration.clone() {
+                    match s.init_with_calibration(cal) {
+                        Ok(_) => {
+                            s.preview_dirty = true;
+                            log::info!("Rebuilt live preview after export");
+                        }
+                        Err(e) => log::warn!("Failed to rebuild preview after export: {e}"),
+                    }
                 }
                 if let Some(app) = app_weak.upgrade() {
                     app.set_export_in_progress(false);
