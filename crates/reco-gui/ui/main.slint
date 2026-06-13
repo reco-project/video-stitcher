@@ -1480,6 +1480,11 @@ export component RecoApp inherits Window {
                     color: #666;
                     font-size: 11px;
                     vertical-alignment: center;
+                    // Status bar is the primary error channel (toasts are
+                    // broken), so long failure messages must stay readable:
+                    // wrap onto extra lines instead of clipping the tail.
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
                 }
 
                 if root.export-in-progress: Text {
@@ -1505,8 +1510,6 @@ export component RecoApp inherits Window {
                     text: "Show in folder";
                     clicked => { root.show-in-folder(root.last-output-path); }
                 }
-
-                if !root.export-in-progress: Rectangle { horizontal-stretch: 1; }
 
                 if !root.export-in-progress && root.telem-fps-avg > 0: Text {
                     text: round(root.telem-fps-avg) + " / " + round(root.telem-fps-recent) + " fps";
