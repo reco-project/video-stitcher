@@ -187,7 +187,9 @@ impl CalibrationPipeline {
         )
         .ok_or_else(|| {
             CalibrateError::InvalidConfig(format!(
-                "no lens profile found for left camera ({}x{})",
+                "no lens profile matched the left camera at {}x{}: the video carries no \
+                 usable camera telemetry and no database profile shares this resolution. \
+                 Load a lens profile or record at a supported resolution.",
                 self.left_info.width, self.left_info.height
             ))
         })?;

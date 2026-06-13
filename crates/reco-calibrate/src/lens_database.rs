@@ -328,8 +328,12 @@ impl LensDatabase {
     ) -> Option<(CameraParams, LensProfileInfo)> {
         for p in &self.profiles {
             if p.width == width && p.height == height {
-                log::info!(
-                    "lens auto-detect: resolution-only match {}x{} from {} ({})",
+                log::warn!(
+                    "lens auto-detect: no camera match for {}x{}; falling back to a \
+                     GENERIC resolution-only profile from {} ({}). Its distortion model \
+                     may not match your lens, which can make calibration inaccurate or \
+                     fail. If results look wrong, supply a lens profile or tune the Lens \
+                     sliders manually.",
                     width,
                     height,
                     p.brand,
