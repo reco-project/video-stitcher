@@ -3,11 +3,11 @@
 //! Wraps an `FfmpegFileSource` with play/pause/step/seek state and
 //! frame timing. Delivers YUV frame data on demand, paced by FPS.
 
-use std::path::Path;
 use std::time::{Duration, Instant};
 
 use reco_core::source::{FrameSource, SourceError, SourceInfo, YuvData};
 use reco_io::adapters::FfmpegFileSource;
+use reco_io::stitch_job::InputPath;
 
 /// Playback state machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,13 +65,17 @@ impl Playback {
     }
 
     /// Open a stereo video source.
+    ///
+    /// Takes [`InputPath`] so multi-segment (concat) inputs span every file
+    /// in the timeline - total frames, seeking, and the duration range cover
+    /// the whole chain, not just the first segment.
     pub fn open(
         &mut self,
-        left_path: &Path,
-        right_path: &Path,
+        left: &InputPath,
+        right: &InputPath,
         sync_offset: i64,
     ) -> Result<(), SourceError> {
-        let source = FfmpegFileSource::open_with_offset(left_path, right_path, sync_offset)?;
+        let source = FfmpegFileSource::open_from_inputs(left, right, sync_offset)?;
         let info = source.info();
         let fps = info.fps;
         self.total_frames = source.total_frames();

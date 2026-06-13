@@ -516,8 +516,11 @@ impl AppState {
 
     /// Check if all three files are selected and try to initialize.
     fn try_init(&mut self) -> Result<bool, String> {
+        // Open playback from the full InputPath (all concat segments) so the
+        // timeline duration spans every file, not just the first. left_path/
+        // right_path stay single (first segment) for lens/calibration.
         let (left, right, cal_path) =
-            match (&self.left_path, &self.right_path, &self.calibration_path) {
+            match (&self.left_input, &self.right_input, &self.calibration_path) {
                 (Some(l), Some(r), Some(c)) => (l.clone(), r.clone(), c.clone()),
                 _ => return Ok(false),
             };
@@ -546,9 +549,9 @@ impl AppState {
 
     /// Initialize preview from a calibration result (no file needed).
     fn init_with_calibration(&mut self, cal: MatchCalibration) -> Result<bool, String> {
-        let (left, right) = match (&self.left_path, &self.right_path) {
+        let (left, right) = match (&self.left_input, &self.right_input) {
             (Some(l), Some(r)) => (l.clone(), r.clone()),
-            _ => return Err("Both video paths required".into()),
+            _ => return Err("Both video inputs required".into()),
         };
 
         let sync_offset = cal.sync_offset;
@@ -833,7 +836,7 @@ impl AppState {
         if let Some(cal) = self.calibration.as_mut() {
             cal.sync_offset = offset;
         }
-        if let (Some(left), Some(right)) = (&self.left_path, &self.right_path) {
+        if let (Some(left), Some(right)) = (&self.left_input, &self.right_input) {
             let left = left.clone();
             let right = right.clone();
             if let Err(e) = self.playback.open(&left, &right, offset) {
