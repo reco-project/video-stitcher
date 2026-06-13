@@ -265,72 +265,83 @@ impl StitchSession {
             #[cfg(target_os = "linux")]
             gpu_buf_info: self.gpu_buf_info.clone(),
         };
-        let n = self.lookahead_frames;
-        let mut buffer = FrameBuffer::new(n + 1);
-        let mut produce_count: u64 = 0;
+        let mut n = self.lookahead_frames;
 
-        // Create VRAM pool if the source is GPU-resident.
-        if source.is_gpu_resident() && self.vram_pool.is_none() {
-            let post_smooth_half = (n / 2).max(1);
-            // Keep in sync with the D3D11 staging pool sizing in
-            // frame_processing.rs (peak occupancy + slack).
-            let pool_size = n + post_smooth_half + 4;
-            let (w, h) = self.core.pipeline().source_info();
-            let per_slot =
-                super::vram_pool::estimate_vram(w, h, 1, self.gpu_pixel_format.bytes_per_sample());
-            let required = per_slot * pool_size;
-
-            // Pre-flight VRAM budget check: fail fast with a fit suggestion.
-            // available_vram() is None on backends with no budget API; there
-            // we skip the check and rely on the allocation-time catch in
-            // VramPool::new plus graceful teardown for any slip-through.
+        // Pre-flight VRAM budget: the lookahead frame pool stores decoded
+        // SOURCE-resolution frames, so a deep lookahead on a constrained GPU
+        // can exceed the budget. Instead of hard-failing, clamp the depth to
+        // the largest that fits and warn - a tracked export then completes with
+        // shallower smoothing rather than aborting at 0 frames. Runs on all
+        // platforms (on Windows it governs the D3D11 staging-pool size; on
+        // Linux/macOS the VramPool below). GPU-resident sources only.
+        if source.is_gpu_resident() {
             match self.core.pipeline().gpu().available_vram() {
                 Some((free, total)) => {
                     const BUDGET_FRACTION: f64 = 0.80;
-                    let budget = (free as f64 * BUDGET_FRACTION) as usize;
+                    let (w, h) = self.core.pipeline().source_info();
+                    let per_slot = super::vram_pool::estimate_vram(
+                        w,
+                        h,
+                        1,
+                        self.gpu_pixel_format.bytes_per_sample(),
+                    );
+                    let max_slots = (free as f64 * BUDGET_FRACTION) as usize / per_slot.max(1);
+                    let fitted = super::vram_pool::lookahead_fitting_budget(max_slots, n);
+                    let fps = source.info().fps.max(1.0);
+                    let pool_slots = super::vram_pool::lookahead_pool_size(n);
                     log::info!(
-                        "VRAM budget: {:.2} GB free / {:.2} GB total; lookahead pool needs \
-                         {:.2} GB ({pool_size} slots @ {w}x{h}), keeping {:.0}% headroom",
+                        "VRAM budget: {:.2} GB free / {:.2} GB total; lookahead {n} frames \
+                         ({:.1}s) needs ~{:.2} GB ({pool_slots} slots @ {w}x{h}), keeping {:.0}% \
+                         headroom",
                         free as f64 / 1e9,
                         total as f64 / 1e9,
-                        required as f64 / 1e9,
+                        n as f64 / fps,
+                        (per_slot * pool_slots) as f64 / 1e9,
                         (1.0 - BUDGET_FRACTION) * 100.0,
                     );
-                    if required > budget {
-                        let fps = source.info().fps.max(1.0);
-                        let max_slots = budget / per_slot.max(1);
-                        // pool_size = n + (n/2).max(1) + 2 ~= 1.5n + 2; invert for n.
-                        let max_n = max_slots.saturating_sub(2) * 2 / 3;
-                        let max_secs = max_n as f64 / fps;
-                        let req_secs = n as f64 / fps;
+                    if fitted == 0 {
                         return Err(SessionError::Config(format!(
-                            "--lookahead {req_secs:.1}s needs ~{:.1} GB VRAM for the frame pool \
-                             ({pool_size} slots @ {w}x{h}) but only ~{:.1} GB is free. The pool \
-                             stores decoded source-resolution frames, so reduce --lookahead to \
-                             <= {max_secs:.1}s, use lower-resolution source footage, or free GPU \
-                             memory, then retry. (Output resolution does not affect this pool.)",
-                            required as f64 / 1e9,
+                            "AI tracking needs more VRAM than is free: even a 1-frame lookahead \
+                             pool exceeds ~{:.1} GB free at {w}x{h}. Free GPU memory (close the \
+                             live preview or other apps) or use lower-resolution source footage, \
+                             then retry.",
                             free as f64 / 1e9,
                         )));
+                    }
+                    if fitted < n {
+                        log::warn!(
+                            "lookahead clamped {n} -> {fitted} frames ({:.1}s -> {:.1}s) to fit \
+                             the VRAM budget ({:.1} GB free @ {w}x{h}); AI tracking smoothing will \
+                             be shallower. Free GPU memory to use the full depth.",
+                            n as f64 / fps,
+                            fitted as f64 / fps,
+                            free as f64 / 1e9,
+                        );
+                        n = fitted;
+                        self.lookahead_frames = fitted;
                     }
                 }
                 None => {
                     log::info!(
                         "VRAM budget query unavailable on this backend; relying on \
-                         allocation-time OOM handling for the {pool_size}-slot lookahead pool \
-                         (~{:.2} GB @ {w}x{h})",
-                        required as f64 / 1e9,
+                         allocation-time OOM handling for the lookahead pool"
                     );
                 }
             }
+        }
 
-            // The VramPool is only consumed on Linux (CUDA/Vulkan copy) and
-            // macOS (Metal CVPixelBuffer import). On Windows the lookahead
-            // frames live in the separate D3D11 staging pool, so a VramPool
-            // here would be allocated-but-unused VRAM (it roughly doubles the
-            // footprint). The pre-flight budget check above still runs on all
-            // platforms; on Windows it sizes the D3D11 staging pool, whose
-            // total VRAM equals estimate_vram(w,h,1,bps)*pool_size.
+        let mut buffer = FrameBuffer::new(n + 1);
+        let mut produce_count: u64 = 0;
+
+        // Allocate the VRAM pool; the clamped depth now fits the budget.
+        //
+        // The VramPool is only consumed on Linux (CUDA/Vulkan copy) and macOS
+        // (Metal CVPixelBuffer import). On Windows the lookahead frames live in
+        // the separate D3D11 staging pool sized from `self.lookahead_frames`
+        // (clamped above), so a VramPool here would be allocated-but-unused.
+        if source.is_gpu_resident() && self.vram_pool.is_none() {
+            let pool_size = super::vram_pool::lookahead_pool_size(n);
+            let (w, h) = self.core.pipeline().source_info();
             #[cfg(not(target_os = "windows"))]
             {
                 let pool = super::vram_pool::VramPool::new(
@@ -343,6 +354,11 @@ impl StitchSession {
                 )
                 .map_err(SessionError::Config)?;
                 self.vram_pool = Some(pool);
+            }
+            #[cfg(target_os = "windows")]
+            {
+                // Sizing only; the D3D11 staging pool holds the frames.
+                let _ = (pool_size, w, h);
             }
         }
 

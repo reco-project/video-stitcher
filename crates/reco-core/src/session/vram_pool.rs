@@ -242,3 +242,56 @@ pub fn estimate_vram(width: u32, height: u32, n_slots: usize, bytes_per_sample: 
     let per_frame = (y_bytes + uv_bytes) * 2; // 2 cameras
     per_frame * n_slots
 }
+
+/// Frame-pool slot count for a lookahead depth of `n` frames.
+///
+/// Mirrors peak occupancy: `n` buffered future frames + `(n/2).max(1)` past
+/// frames held for the centered post-smooth + 4 slots of slack. Must stay in
+/// sync with the D3D11 staging-pool sizing on Windows.
+pub fn lookahead_pool_size(n: usize) -> usize {
+    n + (n / 2).max(1) + 4
+}
+
+/// Largest lookahead depth (in frames) whose [`lookahead_pool_size`] pool
+/// fits within `max_slots`.
+///
+/// Returns `requested_n` unchanged when it already fits, a smaller depth when
+/// the request must be clamped to the VRAM budget, or `0` when not even a
+/// single-frame lookahead fits (caller should then disable lookahead or fail).
+pub fn lookahead_fitting_budget(max_slots: usize, requested_n: usize) -> usize {
+    let mut n = requested_n;
+    while n > 0 && lookahead_pool_size(n) > max_slots {
+        n -= 1;
+    }
+    n
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fitting_budget_keeps_request_when_it_fits() {
+        // pool_size(45) = 45 + 22 + 4 = 71. A budget of 80 slots fits 45.
+        assert_eq!(lookahead_pool_size(45), 71);
+        assert_eq!(lookahead_fitting_budget(80, 45), 45);
+    }
+
+    #[test]
+    fn fitting_budget_clamps_to_largest_that_fits() {
+        // 71 slots requested (45 frames) but only 30 slots of budget.
+        // Largest n with pool_size(n) <= 30: pool_size(17)=17+8+4=29 <= 30,
+        // pool_size(18)=18+9+4=31 > 30 -> clamp to 17.
+        let fitted = lookahead_fitting_budget(30, 45);
+        assert_eq!(fitted, 17);
+        assert!(lookahead_pool_size(fitted) <= 30);
+        assert!(lookahead_pool_size(fitted + 1) > 30);
+    }
+
+    #[test]
+    fn fitting_budget_returns_zero_when_nothing_fits() {
+        // pool_size(1) = 1 + 1 + 4 = 6. A budget below that fits no lookahead.
+        assert_eq!(lookahead_fitting_budget(5, 45), 0);
+        assert_eq!(lookahead_fitting_budget(0, 10), 0);
+    }
+}
