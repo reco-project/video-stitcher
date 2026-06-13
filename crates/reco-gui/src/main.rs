@@ -3746,6 +3746,10 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
     if let Some(app) = app_weak.upgrade() {
         sync_segments(&s, &app);
     }
+    // Capture the pre-init clip length so we can distinguish an input
+    // change (new load / appended segments) from a calibration-only
+    // reload further down.
+    let prev_total = s.playback.total_frames();
     match s.try_init() {
         Ok(true) => {
             let fps = s.playback.fps();
@@ -3805,6 +3809,21 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 sync_frame_display(&app, s.playback.frame_index(), total, fps);
                 app.set_fps(fps as f32);
                 app.set_status_text(format!("Ready - {:.0} fps - {total} frames", fps).into());
+                // The export trim defaults to the whole clip. When the input
+                // length changes (new file, appended segments, or a shorter
+                // clip) a previously seeded trim end would stick to the old
+                // duration and silently truncate the export, so refresh it
+                // here. A manual trim survives a calibration-only reload,
+                // where the frame total is unchanged.
+                if prev_total != Some(total) && fps > 0.0 {
+                    let clip_secs = total as f32 / fps as f32;
+                    app.set_clip_duration_secs(clip_secs);
+                    app.set_export_start_secs(0.0);
+                    app.set_export_end_secs(clip_secs);
+                    log::info!(
+                        "Export trim reset to full clip ({clip_secs:.1}s, {total} frames) after input change"
+                    );
+                }
                 if let Some(img) = img {
                     app.set_preview_frame(img);
                 }
