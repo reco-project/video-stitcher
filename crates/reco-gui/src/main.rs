@@ -1489,7 +1489,6 @@ fn main() -> anyhow::Result<()> {
                         reco_io::stitch_job::InputPath::Chained(ps) => ps.clone(),
                     };
                     all.extend(paths);
-                    all.sort();
                     log::info!("Left: appended to {} total segments", all.len());
                     reco_io::stitch_job::InputPath::Chained(all)
                 }
@@ -1563,7 +1562,6 @@ fn main() -> anyhow::Result<()> {
                         reco_io::stitch_job::InputPath::Chained(ps) => ps.clone(),
                     };
                     all.extend(paths);
-                    all.sort();
                     log::info!("Right: appended to {} total segments", all.len());
                     reco_io::stitch_job::InputPath::Chained(all)
                 }
