@@ -2302,17 +2302,29 @@ fn main() -> anyhow::Result<()> {
         let interrupted = Arc::new(AtomicBool::new(false));
         let (tx, rx) = std::sync::mpsc::channel();
 
-        // Preserve user-picked lens profiles for recalibration.
+        // Preserve the user's current lens (a picked profile or slider edits)
+        // across recalibration. `self.calibration` is the source of truth -
+        // the lens picker and sliders write it - so the optimizer is handed
+        // the lens the user is actually looking at, not a stale fallback that
+        // only `self.calibration` retained before the picker wrote it.
         let (existing_left_params, existing_right_params) = {
             let s = state_ref.borrow();
-            if let Some(bridge) = s.bridge.as_ref() {
-                let cal = bridge.renderer().pipeline().calibration();
-                (Some(cal.left.clone()), Some(cal.right.clone()))
-            } else {
-                (
+            match s.calibration.as_ref() {
+                Some(cal) => {
+                    log::info!(
+                        "Re-calibrate: preserving current lens (left fx={:.1} cx={:.1}, \
+                         right fx={:.1} cx={:.1})",
+                        cal.left.fx,
+                        cal.left.cx,
+                        cal.right.fx,
+                        cal.right.cx
+                    );
+                    (Some(cal.left.clone()), Some(cal.right.clone()))
+                }
+                None => (
                     s.cal_baseline_left_params.clone(),
                     s.cal_baseline_right_params.clone(),
-                )
+                ),
             }
         };
 
@@ -2763,6 +2775,17 @@ fn main() -> anyhow::Result<()> {
                 (Some(p), None)
             }
         };
+        // Mirror slider edits into the source-of-truth calibration too, so
+        // they survive a preview rebuild / recalibration / save (not just the
+        // live renderer).
+        if let Some(cal) = s.calibration.as_mut() {
+            if let Some(l) = &left_params {
+                cal.left = l.clone();
+            }
+            if let Some(r) = &right_params {
+                cal.right = r.clone();
+            }
+        }
         if let Some(bridge) = s.bridge.as_mut() {
             bridge
                 .renderer_mut()
@@ -2860,6 +2883,17 @@ fn main() -> anyhow::Result<()> {
                     "right" => (None, Some(scaled.clone())),
                     _ => (Some(scaled.clone()), Some(scaled.clone())),
                 };
+                // Write the source-of-truth calibration so the pick survives a
+                // preview rebuild, recalibration, and save - not just the live
+                // renderer (the bug: picker updated only the renderer).
+                if let Some(cal) = s.calibration.as_mut() {
+                    if side_str != "right" {
+                        cal.left = scaled.clone();
+                    }
+                    if side_str != "left" {
+                        cal.right = scaled.clone();
+                    }
+                }
                 if let Some(bridge) = s.bridge.as_mut() {
                     bridge
                         .renderer_mut()
@@ -2913,6 +2947,10 @@ fn main() -> anyhow::Result<()> {
                         cy: params.cy * scale_h,
                         d: params.d,
                     };
+                    if let Some(cal) = s.calibration.as_mut() {
+                        cal.left = scaled.clone();
+                        cal.right = scaled.clone();
+                    }
                     if let Some(bridge) = s.bridge.as_mut() {
                         bridge
                             .renderer_mut()
