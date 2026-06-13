@@ -848,6 +848,33 @@ impl AppState {
         }
     }
 
+    /// Re-open the playback source from the current chained inputs without
+    /// rebuilding the GPU pipeline. Used after a segment reorder: the
+    /// calibration and bridge are unchanged, only the decode order differs,
+    /// so the next render picks up the new order from the start.
+    fn reopen_source(&mut self) {
+        // Nothing consumes the source until a preview pipeline exists (e.g.
+        // before calibration), so skip the costly decoder open. try_init opens
+        // it in the current order once calibration is loaded.
+        if self.bridge.is_none() {
+            return;
+        }
+        let offset = self
+            .calibration
+            .as_ref()
+            .map(|c| c.sync_offset)
+            .unwrap_or(0);
+        if let (Some(left), Some(right)) = (&self.left_input, &self.right_input) {
+            let left = left.clone();
+            let right = right.clone();
+            if let Err(e) = self.playback.open(&left, &right, offset) {
+                log::error!("Failed to reopen playback after reorder: {e}");
+                return;
+            }
+            self.preview_dirty = true;
+        }
+    }
+
     fn set_rig_roll(&mut self, deg: f32) {
         if let Some(cal) = self.calibration.as_mut() {
             cal.rig_roll = (deg as f64).to_radians();
@@ -2134,6 +2161,88 @@ fn main() -> anyhow::Result<()> {
                 sync_segments(&s, &app);
             }
         }
+    });
+
+    // Drag-to-reorder within a side. The segments are the same cameras in a
+    // new temporal order, so the calibration still applies: reorder the
+    // chained paths and rebuild the preview. The frame total is unchanged,
+    // so the export trim is deliberately left as-is.
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_reorder_left_segment(move |from, to| {
+        let mut s = state_ref.borrow_mut();
+        let (from, to) = (from as usize, to as usize);
+        let new_first = match s.left_input {
+            Some(reco_io::stitch_job::InputPath::Chained(ref mut paths)) => {
+                if from < paths.len() && to < paths.len() && from != to {
+                    let p = paths.remove(from);
+                    paths.insert(to, p);
+                    Some(paths[0].clone())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        let Some(first) = new_first else {
+            return;
+        };
+        log::info!("Left: reordered segment {from} -> {to}");
+        s.left_path = Some(first);
+        if let Some(app) = app_weak.upgrade() {
+            if let Some(reco_io::stitch_job::InputPath::Chained(ps)) = s.left_input.as_ref() {
+                app.set_left_path(
+                    format!("{} ({} segments)", display_name(&ps[0]), ps.len()).into(),
+                );
+            }
+            sync_segments(&s, &app);
+        }
+        drop(s);
+        // Re-open the preview source off the drop handler: the list reorders
+        // and repaints immediately, then the (slow) 4K concat re-probe runs on
+        // the next tick instead of freezing the UI on every drop.
+        let reopen = Rc::clone(&state_ref);
+        slint::Timer::single_shot(std::time::Duration::from_millis(40), move || {
+            reopen.borrow_mut().reopen_source();
+        });
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_reorder_right_segment(move |from, to| {
+        let mut s = state_ref.borrow_mut();
+        let (from, to) = (from as usize, to as usize);
+        let new_first = match s.right_input {
+            Some(reco_io::stitch_job::InputPath::Chained(ref mut paths)) => {
+                if from < paths.len() && to < paths.len() && from != to {
+                    let p = paths.remove(from);
+                    paths.insert(to, p);
+                    Some(paths[0].clone())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        let Some(first) = new_first else {
+            return;
+        };
+        log::info!("Right: reordered segment {from} -> {to}");
+        s.right_path = Some(first);
+        if let Some(app) = app_weak.upgrade() {
+            if let Some(reco_io::stitch_job::InputPath::Chained(ps)) = s.right_input.as_ref() {
+                app.set_right_path(
+                    format!("{} ({} segments)", display_name(&ps[0]), ps.len()).into(),
+                );
+            }
+            sync_segments(&s, &app);
+        }
+        drop(s);
+        // Re-open the preview source off the drop handler (see left handler).
+        let reopen = Rc::clone(&state_ref);
+        slint::Timer::single_shot(std::time::Duration::from_millis(40), move || {
+            reopen.borrow_mut().reopen_source();
+        });
     });
 
     // ── Preferences dialog callbacks ──
