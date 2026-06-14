@@ -258,7 +258,7 @@ impl FfmpegFileSource {
             .spawn(move || {
                 let mut dec = match ffmpeg::decoder::VideoDecoder::open_input(&input) {
                     Ok(d) => {
-                        log::debug!(
+                        log::info!(
                             "{label} decoder: {} ({}x{})",
                             d.backend(),
                             d.width(),

@@ -22,11 +22,15 @@ pub fn init() {
 }
 
 fn configure_external_logging() {
+    // Default to ERROR (not FATAL): real FFmpeg encode/decode errors stay
+    // visible for diagnostics, while the chatty WARNING/INFO output (codec
+    // probes, "zero duration" stream notes, driver banners) is suppressed.
+    // Override with RECO_FFMPEG_LOG (e.g. `warning`, `info`, `debug`).
     let ffmpeg_level = std::env::var("RECO_FFMPEG_LOG")
         .ok()
         .as_deref()
         .map(ffmpeg_log_level)
-        .unwrap_or(ffmpeg_next::sys::AV_LOG_FATAL);
+        .unwrap_or(ffmpeg_next::sys::AV_LOG_ERROR);
 
     unsafe {
         ffmpeg_next::sys::av_log_set_level(ffmpeg_level);
@@ -44,6 +48,6 @@ fn ffmpeg_log_level(level: &str) -> i32 {
         "verbose" => ffmpeg_next::sys::AV_LOG_VERBOSE,
         "debug" => ffmpeg_next::sys::AV_LOG_DEBUG,
         "trace" => ffmpeg_next::sys::AV_LOG_TRACE,
-        _ => ffmpeg_next::sys::AV_LOG_FATAL,
+        _ => ffmpeg_next::sys::AV_LOG_ERROR,
     }
 }
