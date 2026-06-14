@@ -132,6 +132,15 @@ impl InputPath {
             Self::Chained(v) => &v[0],
         }
     }
+
+    /// All segment paths in order (one element for `Single`). Used for audio
+    /// passthrough, which must span every chained segment, not just the first.
+    pub fn all_paths(&self) -> Vec<PathBuf> {
+        match self {
+            Self::Single(p) => vec![p.clone()],
+            Self::Chained(v) => v.clone(),
+        }
+    }
 }
 
 impl From<&str> for InputPath {
@@ -652,10 +661,11 @@ impl StitchJob {
             .filter(|secs| secs.is_finite() && *secs > 0.0)
             .unwrap_or(0.0);
 
-        // Resolve audio source path from AudioMode.
+        // Resolve audio source paths from AudioMode. All chained segments are
+        // included so passthrough spans the whole recording, not just file 1.
         let audio_source = match &self.audio {
-            AudioMode::CopyFrom(0) => Some(self.left.first_path().to_path_buf()),
-            AudioMode::CopyFrom(1) => Some(self.right.first_path().to_path_buf()),
+            AudioMode::CopyFrom(0) => Some(self.left.all_paths()),
+            AudioMode::CopyFrom(1) => Some(self.right.all_paths()),
             AudioMode::CopyFrom(n) => {
                 log::warn!("AudioMode::CopyFrom({n}) - only 0 (left) and 1 (right) are valid");
                 None
@@ -964,5 +974,32 @@ impl StitchJob {
             decode_mode,
             telemetry: Some(telemetry_snap),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_paths_returns_every_chained_segment() {
+        let single = InputPath::Single(PathBuf::from("a.mp4"));
+        assert_eq!(single.all_paths(), vec![PathBuf::from("a.mp4")]);
+
+        let chained = InputPath::Chained(vec![
+            PathBuf::from("a.mp4"),
+            PathBuf::from("b.mp4"),
+            PathBuf::from("c.mp4"),
+        ]);
+        assert_eq!(
+            chained.all_paths(),
+            vec![
+                PathBuf::from("a.mp4"),
+                PathBuf::from("b.mp4"),
+                PathBuf::from("c.mp4"),
+            ]
+        );
+        // first_path stays the first segment; all_paths must not drop the rest.
+        assert_eq!(chained.first_path(), std::path::Path::new("a.mp4"));
     }
 }
