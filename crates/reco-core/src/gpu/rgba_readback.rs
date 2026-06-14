@@ -111,7 +111,7 @@ impl RgbaReadback {
 
         let (map_tx, map_rx) = std::sync::mpsc::sync_channel(1);
 
-        log::info!(
+        log::debug!(
             "RgbaReadback: {width}x{height} → {staging_size} bytes staging \
              ({} MB, row padding {padded_bytes_per_row}/{bytes_per_row})",
             staging_size / 1_048_576,

@@ -252,6 +252,69 @@ pub fn available_h264_encoders() -> Vec<EncoderInfo> {
     available_encoders(VideoCodec::H264)
 }
 
+fn auto_candidate_allowed(name: &str) -> bool {
+    if name.ends_with("_nvenc") && !cuda_runtime_available() {
+        return false;
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    if name.ends_with("_qsv") {
+        return false;
+    }
+
+    #[cfg(target_os = "linux")]
+    if name.ends_with("_qsv")
+        && let Some(vaapi_name) = vaapi_peer_encoder(name)
+        && encoder::find_by_name(vaapi_name).is_some()
+    {
+        return false;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    if name.ends_with("_videotoolbox") {
+        return false;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    if name.ends_with("_amf") || name.ends_with("_mf") {
+        return false;
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    if name.ends_with("_vaapi") || name.ends_with("_v4l2m2m") {
+        return false;
+    }
+
+    #[cfg(not(target_os = "android"))]
+    if name.ends_with("_mediacodec") {
+        return false;
+    }
+
+    true
+}
+
+#[cfg(target_os = "linux")]
+fn vaapi_peer_encoder(name: &str) -> Option<&'static str> {
+    match name {
+        "h264_qsv" => Some("h264_vaapi"),
+        "hevc_qsv" => Some("hevc_vaapi"),
+        "av1_qsv" => Some("av1_vaapi"),
+        _ => None,
+    }
+}
+
+fn cuda_runtime_available() -> bool {
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    {
+        reco_core::interop::cuda::is_cuda_available()
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        false
+    }
+}
+
 /// Encoder quality preset.
 #[derive(Debug, Clone, Copy, Default)]
 pub enum Quality {
@@ -511,6 +574,8 @@ impl VideoEncoder {
 
         let all_candidates = config.codec.candidates();
 
+        let forced_encoder = config.encoder_name.is_some();
+
         // Build candidate list
         let candidates: Vec<(&str, bool, Pixel)> = if let Some(ref name) = config.encoder_name {
             // When a specific encoder is forced, look it up in all codec tables
@@ -531,6 +596,7 @@ impl VideoEncoder {
             all_candidates
                 .iter()
                 .filter(|c| encoder::find_by_name(c.name).is_some())
+                .filter(|c| auto_candidate_allowed(c.name))
                 .map(|c| (c.name, c.is_hardware, c.pixel_format))
                 .collect()
         };
@@ -668,7 +734,11 @@ impl VideoEncoder {
                     });
                 }
                 Err(e) => {
-                    log::warn!("Encoder {name} failed to open: {e}, trying next...");
+                    if forced_encoder {
+                        log::warn!("Encoder {name} failed to open: {e}");
+                    } else {
+                        log::debug!("Encoder {name} failed to open: {e}, trying next...");
+                    }
                     last_err = Some(e);
                 }
             }

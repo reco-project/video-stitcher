@@ -186,7 +186,7 @@ impl SmartFileSource {
         let use_zero_copy = !hwaccel_disabled && backend_capable && gpu_capable;
 
         if !use_zero_copy && !hwaccel_disabled {
-            log::info!(
+            log::debug!(
                 "Zero-copy disabled: decode_backend={decode_backend} (capable={backend_capable}), \
                  gpu_zero_copy={gpu_capable}. Using CPU upload path."
             );
@@ -701,12 +701,12 @@ impl FrameSource for SmartFileSource {
                         }
                     }
                 }
-                log::info!("GPU zero-copy: skipped {count} frames for start_time");
+                log::debug!("GPU zero-copy: skipped {count} frames for start_time");
                 Ok(count)
             }
             SourceMode::Cpu(source) => {
                 source.seek(count)?;
-                log::info!("CPU seek: jumped to frame {count}");
+                log::debug!("CPU seek: jumped to frame {count}");
                 Ok(count)
             }
             #[cfg(target_os = "macos")]

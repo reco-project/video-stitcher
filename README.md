@@ -46,6 +46,36 @@ cargo build --release -p reco-cli
     --model yolo.engine --tracking field
 ```
 
+## Logging
+
+Reco uses `RUST_LOG` for its own CLI/library logs. If `RUST_LOG` is unset,
+the CLI defaults to `info`; set it explicitly when you want more or less
+output.
+
+```bash
+# Show debug messages from Reco and dependencies
+RUST_LOG=debug ./target/release/reco stitch left.mp4 right.mp4 -c match.json -o out.mp4
+
+# Set 'info' level debug for default, 'debug' only for certain crates
+RUST_LOG='info,reco_io=debug,reco_autocam=debug' \
+    ./target/release/reco stitch ...
+
+# Quieter normal run
+RUST_LOG=warn ./target/release/reco stitch left.mp4 right.mp4 -c match.json -o out.mp4
+```
+
+Raw FFmpeg and libva messages are controlled separately because they write
+outside Rust's logger. Reco keeps them quiet by default; opt in when debugging
+codec, hardware decode, or driver setup issues:
+
+```bash
+# Show FFmpeg's own diagnostics
+RECO_FFMPEG_LOG=debug ./target/release/reco stitch left.mp4 right.mp4 -c match.json -o out.mp4
+
+# Linux: show libva driver messages again
+LIBVA_MESSAGING_LEVEL=2 ./target/release/reco stitch left.mp4 right.mp4 -c match.json -o out.mp4
+```
+
 ## Architecture
 
 Nine Rust crates. Strict dependency direction keeps the engine reusable as a library.
