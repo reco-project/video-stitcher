@@ -196,6 +196,128 @@ component ToastStack inherits Rectangle {
     }
 }
 
+// Per-side video segment list with drag-to-reorder (grip handle) and
+// per-row removal. Rows are a fixed height so pointer travel maps cleanly
+// to row offsets; the dragged row dims and the destination row is outlined
+// to preview where the segment will land.
+component SegmentList inherits Rectangle {
+    in property <[string]> segments;
+    in property <brush> card-bg;
+    callback remove(int);
+    callback reorder(int /* from */, int /* to */);
+
+    property <int> drag-from: -1; // row being dragged, or -1 when idle
+    property <int> drag-to: -1; // insertion gap [0..count] under the cursor
+    property <length> row-h: 26px;
+    property <length> row-gap: 4px;
+    property <length> rowstep: root.row-h + root.row-gap;
+    property <int> count: root.segments.length;
+
+    height: root.count > 0 ? root.count * root.rowstep - root.row-gap : 0px;
+
+    VerticalLayout {
+        spacing: root.row-gap;
+        for seg[idx] in root.segments: Rectangle {
+            height: root.row-h;
+            border-radius: 4px;
+            background: root.card-bg;
+            // The dragged row dims to a "ghost"; the drop position is shown
+            // by the insertion line below, not a per-row outline.
+            opacity: root.drag-from == idx ? 0.4 : 1.0;
+            HorizontalLayout {
+                padding-left: 2px;
+                padding-right: 4px;
+                spacing: 4px;
+                // Drag handle. Only active with 2+ segments to reorder.
+                Rectangle {
+                    width: 18px;
+                    Text {
+                        text: "⠿";
+                        color: grip.has-hover || root.drag-from == idx ? #8ae68a : #5a5a5a;
+                        font-size: 13px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    grip := TouchArea {
+                        enabled: root.count > 1;
+                        mouse-cursor: grab;
+                        pointer-event(e) => {
+                            if (e.kind == PointerEventKind.down) {
+                                root.drag-from = idx;
+                                root.drag-to = idx;
+                            }
+                            if (e.kind == PointerEventKind.up) {
+                                // drag-to is an insertion gap [0..count]. Dropping
+                                // in either gap touching the source is a no-op;
+                                // otherwise map the gap to a row index, adjusting
+                                // for the source being removed first.
+                                if (root.drag-from != -1
+                                    && root.drag-to != root.drag-from
+                                    && root.drag-to != root.drag-from + 1) {
+                                    root.reorder(
+                                        root.drag-from,
+                                        root.drag-to > root.drag-from ? root.drag-to - 1 : root.drag-to);
+                                }
+                                root.drag-from = -1;
+                                root.drag-to = -1;
+                            }
+                            if (e.kind == PointerEventKind.cancel) {
+                                root.drag-from = -1;
+                                root.drag-to = -1;
+                            }
+                        }
+                        moved => {
+                            if (root.drag-from == idx) {
+                                // Nearest insertion gap to the cursor, in list
+                                // coordinates (the grabbed grip reports mouse-y
+                                // relative to its own row even past its bounds).
+                                root.drag-to = Math.max(0, Math.min(root.count,
+                                    Math.round((idx * root.rowstep + self.mouse-y) / root.rowstep)));
+                            }
+                        }
+                    }
+                }
+                Text {
+                    text: (idx + 1) + ". " + seg;
+                    color: #ccc;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                Rectangle {
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 3px;
+                    background: rm.has-hover ? #3a2020 : transparent;
+                    Text { text: "×"; color: #888; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; }
+                    rm := TouchArea { clicked => { root.remove(idx); } }
+                }
+            }
+        }
+    }
+
+    // Insertion line: during a drag, drawn in the gap where the segment will
+    // land - a thin accent bar with a dot on the leading edge. Hidden when the
+    // target gap touches the dragged row (those drops are no-ops).
+    if root.drag-from != -1 && root.drag-to != root.drag-from && root.drag-to != root.drag-from + 1: Rectangle {
+        x: 0;
+        y: max(0px, min(root.height - 2px, root.drag-to * root.rowstep - root.row-gap / 2));
+        width: root.width;
+        height: 2px;
+        background: #8ae68a;
+        border-radius: 1px;
+        Rectangle {
+            x: 0px;
+            y: -2px;
+            width: 6px;
+            height: 6px;
+            border-radius: 3px;
+            background: #8ae68a;
+        }
+    }
+}
+
 export component RecoApp inherits Window {
     title: "Reco Video Stitcher";
     preferred-width: 1280px;
@@ -542,6 +664,8 @@ export component RecoApp inherits Window {
     in-out property <[string]> right-segments: [];
     callback remove-left-segment(int);
     callback remove-right-segment(int);
+    callback reorder-left-segment(int /* from */, int /* to */);
+    callback reorder-right-segment(int /* from */, int /* to */);
     callback clear-left();
     callback clear-right();
     callback clear-calibration();
@@ -711,31 +835,11 @@ export component RecoApp inherits Window {
                             font-size: 11px;
                         }
 
-                        for seg[idx] in root.left-segments: Rectangle {
-                            height: 26px;
-                            border-radius: 4px;
-                            background: root.bg-card;
-                            HorizontalLayout {
-                                padding-left: 8px;
-                                padding-right: 4px;
-                                spacing: 4px;
-                                Text {
-                                    text: (idx + 1) + ". " + seg;
-                                    color: #ccc;
-                                    font-size: 10px;
-                                    vertical-alignment: center;
-                                    overflow: elide;
-                                    horizontal-stretch: 1;
-                                }
-                                Rectangle {
-                                    width: 18px;
-                                    height: 18px;
-                                    border-radius: 3px;
-                                    background: seg-rm.has-hover ? #3a2020 : transparent;
-                                    Text { text: "×"; color: #888; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; }
-                                    seg-rm := TouchArea { clicked => { root.remove-left-segment(idx); } }
-                                }
-                            }
+                        SegmentList {
+                            segments: root.left-segments;
+                            card-bg: root.bg-card;
+                            remove(i) => { root.remove-left-segment(i); }
+                            reorder(f, t) => { root.reorder-left-segment(f, t); }
                         }
 
                         Rectangle { height: 1px; background: root.border-subtle; }
@@ -754,31 +858,11 @@ export component RecoApp inherits Window {
                             font-size: 11px;
                         }
 
-                        for seg[idx] in root.right-segments: Rectangle {
-                            height: 26px;
-                            border-radius: 4px;
-                            background: root.bg-card;
-                            HorizontalLayout {
-                                padding-left: 8px;
-                                padding-right: 4px;
-                                spacing: 4px;
-                                Text {
-                                    text: (idx + 1) + ". " + seg;
-                                    color: #ccc;
-                                    font-size: 10px;
-                                    vertical-alignment: center;
-                                    overflow: elide;
-                                    horizontal-stretch: 1;
-                                }
-                                Rectangle {
-                                    width: 18px;
-                                    height: 18px;
-                                    border-radius: 3px;
-                                    background: seg-rm2.has-hover ? #3a2020 : transparent;
-                                    Text { text: "×"; color: #888; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; }
-                                    seg-rm2 := TouchArea { clicked => { root.remove-right-segment(idx); } }
-                                }
-                            }
+                        SegmentList {
+                            segments: root.right-segments;
+                            card-bg: root.bg-card;
+                            remove(i) => { root.remove-right-segment(i); }
+                            reorder(f, t) => { root.reorder-right-segment(f, t); }
                         }
 
                         if root.has-both-videos || root.calibration-path != "": Rectangle { height: 1px; background: root.border-subtle; }
