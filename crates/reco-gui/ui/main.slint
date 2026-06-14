@@ -48,6 +48,123 @@ component LabeledSlider inherits VerticalLayout {
     }
 }
 
+/// Lookahead slider with VRAM risk colouring. Green/yellow/red zones show
+/// where the chosen lookahead stops fitting GPU memory for the loaded source
+/// resolution, so the user sees the risk and stays in control instead of
+/// meeting a silent clamp or a post-hoc export failure. Thresholds (in the
+/// same units as `value`) come from the engine's VRAM fit estimate; when
+/// they are unknown the track falls back to a neutral colour.
+component VramRiskSlider inherits VerticalLayout {
+    in property <string> label;
+    in property <float> minimum: 0;
+    in property <float> maximum: 1;
+    in-out property <float> value;
+    in property <string> suffix: "";
+    in property <float> green-max;
+    in property <float> red-min;
+    in property <bool> risk-active: false;
+    callback changed(float);
+
+    spacing: 3px;
+
+    function apply-x(mx: length, w: length) {
+        root.value = clamp(
+            root.minimum + (mx / w) * (root.maximum - root.minimum),
+            root.minimum, root.maximum);
+        root.changed(root.value);
+    }
+
+    HorizontalLayout {
+        spacing: 6px;
+        Text {
+            text: root.label;
+            color: #bbb;
+            font-size: 11px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        Text {
+            text: !root.risk-active ? ""
+                : root.value <= root.green-max ? "safe"
+                : root.value <= root.red-min ? "tight" : "may fail";
+            color: !root.risk-active ? #888
+                : root.value <= root.green-max ? #5cd65c
+                : root.value <= root.red-min ? #e6c14d : #e35c5c;
+            font-size: 11px;
+            vertical-alignment: center;
+        }
+        Text {
+            text: round(root.value * 10) / 10 + root.suffix;
+            color: #888;
+            font-size: 11px;
+            vertical-alignment: center;
+        }
+    }
+
+    track := Rectangle {
+        height: 16px;
+        border-radius: 8px;
+        clip: true;
+        background: #2b2b2b;
+        property <float> gfrac: clamp(root.green-max / max(root.maximum, 0.0001), 0.0, 1.0);
+        property <float> rfrac: clamp(root.red-min / max(root.maximum, 0.0001), 0.0, 1.0);
+
+        if root.risk-active: Rectangle {
+            x: 0;
+            y: 0;
+            height: track.height;
+            width: track.width * track.gfrac;
+            background: #2e7d32;
+        }
+        if root.risk-active: Rectangle {
+            x: track.width * track.gfrac;
+            y: 0;
+            height: track.height;
+            width: max(0px, track.width * (track.rfrac - track.gfrac));
+            background: #b8932a;
+        }
+        if root.risk-active: Rectangle {
+            x: track.width * track.rfrac;
+            y: 0;
+            height: track.height;
+            width: max(0px, track.width * (1.0 - track.rfrac));
+            background: #b13b2e;
+        }
+
+        handle := Rectangle {
+            width: 14px;
+            height: 14px;
+            border-radius: 7px;
+            background: #ffffff;
+            border-width: 2px;
+            border-color: #222;
+            y: (track.height - self.height) / 2;
+            x: clamp((root.value - root.minimum) / max(root.maximum - root.minimum, 0.0001), 0.0, 1.0)
+                * (track.width - self.width);
+        }
+
+        TouchArea {
+            mouse-cursor: pointer;
+            moved => {
+                if (self.pressed) {
+                    root.apply-x(self.mouse-x, track.width);
+                }
+            }
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.down) {
+                    root.apply-x(self.mouse-x, track.width);
+                }
+            }
+        }
+    }
+
+    if root.risk-active: Text {
+        text: "fits ≈ " + (round(root.red-min * 10) / 10) + "s here (VRAM)";
+        color: #777;
+        font-size: 10px;
+    }
+}
+
 /// Collapsible section header with clear hover feedback.
 component SectionHeader inherits Rectangle {
     in property <string> title;
@@ -426,6 +543,12 @@ export component RecoApp inherits Window {
     // dead-zone assumes it is active to absorb its latency.
     in-out property <string> export-panner-preset: "broadcast";
     in-out property <float> export-lookahead-secs: 1.5;
+    // Lookahead VRAM risk thresholds (seconds) for the export slider, set from
+    // the engine's fit estimate once footage + GPU are known. green-max =
+    // comfortable ceiling, red-min = hard ceiling that still fits VRAM.
+    in-out property <float> lookahead-green-max: 0;
+    in-out property <float> lookahead-red-min: 0;
+    in-out property <bool> lookahead-risk-active: false;
     in-out property <string> export-framing: "action";
     in-out property <bool> export-lock-pitch: false;
     in-out property <string> export-cluster-mode: "density";
@@ -2478,14 +2601,18 @@ export component RecoApp inherits Window {
                         }
 
                         // Lookahead is the dominant smoothness lever; give it
-                        // a full-width slider. 0 disables the buffer.
-                        LabeledSlider {
+                        // a full-width slider. 0 disables the buffer. The VRAM
+                        // risk colouring warns when the chosen value won't fit
+                        // GPU memory for the loaded source resolution.
+                        VramRiskSlider {
                             label: "Lookahead (smoothness)";
                             minimum: 0.0;
                             maximum: 2.5;
                             value <=> root.export-lookahead-secs;
                             suffix: "s";
-                            decimals: 1;
+                            green-max: root.lookahead-green-max;
+                            red-min: root.lookahead-red-min;
+                            risk-active: root.lookahead-risk-active;
                         }
 
                         panner-advanced := SectionHeader {
