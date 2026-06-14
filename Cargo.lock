@@ -5427,7 +5427,7 @@ dependencies = [
 
 [[package]]
 name = "reco-autocam"
-version = "0.5.3-beta.1"
+version = "0.5.3-beta.2"
 dependencies = [
  "log",
  "reco-core",
@@ -5439,7 +5439,7 @@ dependencies = [
 
 [[package]]
 name = "reco-calibrate"
-version = "0.5.3-beta.1"
+version = "0.5.3-beta.2"
 dependencies = [
  "approx",
  "argmin",
@@ -5468,7 +5468,7 @@ dependencies = [
 
 [[package]]
 name = "reco-cli"
-version = "0.5.3-beta.1"
+version = "0.5.3-beta.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -5491,7 +5491,7 @@ dependencies = [
 
 [[package]]
 name = "reco-control"
-version = "0.5.3-beta.1"
+version = "0.5.3-beta.2"
 dependencies = [
  "log",
  "reco-core",
@@ -5504,7 +5504,7 @@ dependencies = [
 
 [[package]]
 name = "reco-core"
-version = "0.5.3-beta.1"
+version = "0.5.3-beta.2"
 dependencies = [
  "approx",
  "ash",
@@ -5533,7 +5533,7 @@ dependencies = [
 
 [[package]]
 name = "reco-detect"
-version = "0.5.3-beta.1"
+version = "0.5.3-beta.2"
 dependencies = [
  "block2 0.6.2",
  "bytemuck",
@@ -5556,7 +5556,7 @@ dependencies = [
 
 [[package]]
 name = "reco-gui"
-version = "0.5.3-beta.1"
+version = "0.5.3-beta.2"
 dependencies = [
  "anyhow",
  "arboard",
@@ -5584,7 +5584,7 @@ dependencies = [
 
 [[package]]
 name = "reco-io"
-version = "0.5.3-beta.1"
+version = "0.5.3-beta.2"
 dependencies = [
  "directories",
  "ffmpeg-next",
@@ -5602,7 +5602,7 @@ dependencies = [
 
 [[package]]
 name = "reco-obs"
-version = "0.5.3-beta.1"
+version = "0.5.3-beta.2"
 dependencies = [
  "bindgen",
  "cc",
