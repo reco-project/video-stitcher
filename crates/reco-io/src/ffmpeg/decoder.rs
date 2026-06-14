@@ -1196,7 +1196,7 @@ fn try_hwaccel(
         return (backend, device_ref);
     }
 
-    log::debug!("No hardware decoder available - using software decode");
+    log::info!("No hardware decoder available - using software decode");
     (DecodeBackend::Software, ptr::null_mut())
 }
 
