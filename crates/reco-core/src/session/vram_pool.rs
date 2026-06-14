@@ -282,6 +282,24 @@ pub struct LookaheadFit {
 /// Headroom fraction for the comfortable (`safe`/green) ceiling.
 const LOOKAHEAD_SAFE_FRACTION: f64 = 0.75;
 
+/// Fraction of total VRAM treated as usable for the lookahead pool.
+///
+/// The pool competes with decode surfaces, the stitch pipeline, the encoder,
+/// AI tensors, and the OS compositor, so part of total VRAM is reserved.
+const LOOKAHEAD_BUDGET_FRACTION: f64 = 0.70;
+
+/// VRAM budget (bytes) available to the lookahead pool, derived from *total*
+/// VRAM rather than the driver's "free" figure.
+///
+/// The free query is unreliable on some GPUs - it can report 0 bytes free on a
+/// multi-GB card mid-session, which would otherwise block a perfectly viable
+/// export. A total-based estimate is used instead, and over-allocation is
+/// caught gracefully at pool creation on every platform. Shared by the export
+/// pre-flight check and the GUI risk slider so the two always agree.
+pub fn lookahead_budget_bytes(total_vram: u64) -> usize {
+    (total_vram as f64 * LOOKAHEAD_BUDGET_FRACTION) as usize
+}
+
 /// Compute lookahead fit thresholds for a source resolution and VRAM budget.
 pub fn lookahead_fit(
     width: u32,
@@ -343,5 +361,17 @@ mod tests {
         // Plenty of VRAM: 1080p source, 8 GB budget -> default 1.5s is safe.
         let fit = lookahead_fit(1920, 1080, 1, 8_000_000_000, 30.0);
         assert!(fit.safe_secs >= 1.5);
+    }
+
+    #[test]
+    fn budget_is_total_based_and_reserves_headroom() {
+        // zzz's case: 5.52 GB total. A bogus free=0 must not zero the budget;
+        // the budget is derived from total and leaves a reserve.
+        let total = 5_520_000_000u64;
+        let budget = lookahead_budget_bytes(total);
+        assert!(budget > 0);
+        assert!(budget < total as usize); // reserves headroom
+        // The 2.49 GB pool from the forum report fits in the usable budget.
+        assert!(budget >= 2_490_000_000);
     }
 }

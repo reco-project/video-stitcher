@@ -4028,10 +4028,9 @@ fn budget_for_lookahead(total_vram: u64) -> usize {
     {
         return (v * 1e9) as usize;
     }
-    // Fraction of total VRAM assumed usable for the pool once the preview is
-    // freed and decode/stitch/encode/AI have taken their share.
-    const SLIDER_VRAM_FRACTION: f64 = 0.70;
-    (total_vram as f64 * SLIDER_VRAM_FRACTION) as usize
+    // Same budget the export pre-flight uses, so the slider's risk zones match
+    // exactly what the engine will accept.
+    reco_core::session::lookahead_budget_bytes(total_vram)
 }
 
 fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) {

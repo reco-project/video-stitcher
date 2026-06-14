@@ -286,15 +286,19 @@ impl StitchSession {
             // VramPool::new plus graceful teardown for any slip-through.
             match self.core.pipeline().gpu().available_vram() {
                 Some((free, total)) => {
-                    const BUDGET_FRACTION: f64 = 0.80;
-                    let budget = (free as f64 * BUDGET_FRACTION) as usize;
+                    // Budget from total VRAM, not the driver's "free" figure:
+                    // the latter is unreliable (can read 0 on a multi-GB card
+                    // mid-session) and would block viable exports. Shared with
+                    // the export-panel risk slider so the two always agree.
+                    // Over-allocation is caught gracefully at pool creation.
+                    let budget = super::vram_pool::lookahead_budget_bytes(total);
                     log::info!(
-                        "VRAM budget: {:.2} GB free / {:.2} GB total; lookahead pool needs \
-                         {:.2} GB ({pool_size} slots @ {w}x{h}), keeping {:.0}% headroom",
-                        free as f64 / 1e9,
+                        "VRAM budget: {:.2} GB usable of {:.2} GB total ({:.2} GB reported free); \
+                         lookahead pool needs {:.2} GB ({pool_size} slots @ {w}x{h})",
+                        budget as f64 / 1e9,
                         total as f64 / 1e9,
+                        free as f64 / 1e9,
                         required as f64 / 1e9,
-                        (1.0 - BUDGET_FRACTION) * 100.0,
                     );
                     if required > budget {
                         let fps = source.info().fps.max(1.0);
@@ -307,9 +311,10 @@ impl StitchSession {
                             "not enough VRAM for a {req_secs:.1}s lookahead: reduce the lookahead \
                              to <= {max_secs:.1}s, use lower-resolution source footage, or free \
                              GPU memory. The frame pool needs ~{:.1} GB ({pool_size} slots @ \
-                             {w}x{h}) but only ~{:.1} GB is free.",
+                             {w}x{h}); usable budget is ~{:.1} GB of {:.1} GB total.",
                             required as f64 / 1e9,
-                            free as f64 / 1e9,
+                            budget as f64 / 1e9,
+                            total as f64 / 1e9,
                         )));
                     }
                 }
