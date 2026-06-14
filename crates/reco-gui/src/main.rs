@@ -4117,6 +4117,21 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                             fit.max_secs,
                             budget as f64 / 1e9,
                         );
+                        // VRAM-aware default: if the current lookahead would
+                        // not fit (red zone = guaranteed export failure), seed
+                        // it to the comfortable value instead. This only
+                        // rescues an unusable value; a lookahead that already
+                        // fits is left as the user set it, so a deliberate
+                        // in-budget choice is never overridden.
+                        if app.get_export_lookahead_secs() as f64 > fit.max_secs {
+                            let safe = fit.safe_secs as f32;
+                            app.set_export_lookahead_secs(safe);
+                            log::info!(
+                                "Lookahead lowered to {safe:.1}s to fit VRAM \
+                                 (chosen value exceeded the {:.1}s ceiling)",
+                                fit.max_secs,
+                            );
+                        }
                     }
                     _ => app.set_lookahead_risk_active(false),
                 }
