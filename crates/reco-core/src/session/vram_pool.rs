@@ -242,3 +242,106 @@ pub fn estimate_vram(width: u32, height: u32, n_slots: usize, bytes_per_sample: 
     let per_frame = (y_bytes + uv_bytes) * 2; // 2 cameras
     per_frame * n_slots
 }
+
+/// Number of stereo pool slots required for `n` lookahead frames.
+///
+/// Mirrors the buffered-loop sizing (lookahead window + post-smoothing tail +
+/// slack). Keep in sync with `run_loop`'s `pool_size` and the D3D11 staging
+/// pool so the slider, the pre-flight check, and the actual allocation agree.
+pub fn lookahead_pool_slots(n: usize) -> usize {
+    let post_smooth_half = (n / 2).max(1);
+    n + post_smooth_half + 4
+}
+
+/// Largest lookahead frame count whose pool fits within `budget_bytes`.
+///
+/// Inverts [`lookahead_pool_slots`] against the per-slot cost from
+/// [`estimate_vram`]. Returns 0 when not even a minimal pool fits.
+pub fn max_lookahead_frames(per_slot_bytes: usize, budget_bytes: usize) -> usize {
+    let max_slots = budget_bytes / per_slot_bytes.max(1);
+    // lookahead_pool_slots(n) ~= 1.5*n + 4 for n >= 2; invert for n.
+    max_slots.saturating_sub(4) * 2 / 3
+}
+
+/// Lookahead VRAM fit thresholds, in seconds, for a source resolution and
+/// VRAM budget.
+///
+/// `safe_secs` is a comfortable ceiling (green zone upper bound); `max_secs`
+/// is the hard ceiling that still fits `budget_bytes` (red zone lower bound);
+/// the band between is "tight" (yellow). The lookahead pool stores
+/// source-resolution frames (they are re-rendered into the export), so the
+/// cost scales with source `width`x`height`, not output resolution.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LookaheadFit {
+    /// Comfortable ceiling with headroom (green zone upper bound), seconds.
+    pub safe_secs: f64,
+    /// Hard ceiling that still fits the budget (red zone lower bound), seconds.
+    pub max_secs: f64,
+}
+
+/// Headroom fraction for the comfortable (`safe`/green) ceiling.
+const LOOKAHEAD_SAFE_FRACTION: f64 = 0.75;
+
+/// Compute lookahead fit thresholds for a source resolution and VRAM budget.
+pub fn lookahead_fit(
+    width: u32,
+    height: u32,
+    bytes_per_sample: usize,
+    budget_bytes: usize,
+    fps: f64,
+) -> LookaheadFit {
+    let per_slot = estimate_vram(width, height, 1, bytes_per_sample);
+    let fps = fps.max(1.0);
+    let max_frames = max_lookahead_frames(per_slot, budget_bytes);
+    let safe_frames = max_lookahead_frames(
+        per_slot,
+        (budget_bytes as f64 * LOOKAHEAD_SAFE_FRACTION) as usize,
+    );
+    LookaheadFit {
+        safe_secs: safe_frames as f64 / fps,
+        max_secs: max_frames as f64 / fps,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pool_slots_match_buffered_sizing() {
+        assert_eq!(lookahead_pool_slots(0), 1 + 4); // post_smooth_half clamps to 1
+        assert_eq!(lookahead_pool_slots(10), 10 + 5 + 4);
+        assert_eq!(lookahead_pool_slots(44), 44 + 22 + 4);
+    }
+
+    #[test]
+    fn max_frames_zero_when_budget_too_small() {
+        let per_slot = estimate_vram(5312, 4648, 1, 1); // ~74 MB
+        assert_eq!(max_lookahead_frames(per_slot, 0), 0);
+        assert_eq!(max_lookahead_frames(per_slot, per_slot), 0); // < 4 slots
+    }
+
+    #[test]
+    fn max_frames_monotonic_in_budget() {
+        let per_slot = estimate_vram(1920, 1080, 1, 1);
+        let small = max_lookahead_frames(per_slot, 500_000_000);
+        let big = max_lookahead_frames(per_slot, 4_000_000_000);
+        assert!(big > small);
+    }
+
+    #[test]
+    fn fit_safe_below_max() {
+        // chefboyrd86's case: 5.3K (5312x4648), ~1.7 GB budget, 30 fps.
+        let fit = lookahead_fit(5312, 4648, 1, 1_700_000_000, 30.0);
+        assert!(fit.safe_secs <= fit.max_secs);
+        // His 1.5s default does NOT fit on this budget -> lands in the red zone.
+        assert!(fit.max_secs < 1.5);
+    }
+
+    #[test]
+    fn fit_high_budget_allows_default() {
+        // Plenty of VRAM: 1080p source, 8 GB budget -> default 1.5s is safe.
+        let fit = lookahead_fit(1920, 1080, 1, 8_000_000_000, 30.0);
+        assert!(fit.safe_secs >= 1.5);
+    }
+}

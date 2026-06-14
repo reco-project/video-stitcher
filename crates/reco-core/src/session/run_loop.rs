@@ -298,9 +298,9 @@ impl StitchSession {
                     );
                     if required > budget {
                         let fps = source.info().fps.max(1.0);
-                        let max_slots = budget / per_slot.max(1);
-                        // pool_size = n + (n/2).max(1) + 2 ~= 1.5n + 2; invert for n.
-                        let max_n = max_slots.saturating_sub(2) * 2 / 3;
+                        // Shared with the export-panel risk slider so the
+                        // suggested ceiling here matches the slider's red zone.
+                        let max_n = super::vram_pool::max_lookahead_frames(per_slot, budget);
                         let max_secs = max_n as f64 / fps;
                         let req_secs = n as f64 / fps;
                         return Err(SessionError::Config(format!(

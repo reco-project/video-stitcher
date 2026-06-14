@@ -4014,6 +4014,26 @@ fn run_autoload(
     }
 }
 
+/// VRAM budget (bytes) available to the lookahead pool at export time.
+///
+/// The preview pipeline is released during export, so we estimate from total
+/// VRAM minus a reserve for decode/stitch/encode/AI rather than the
+/// preview-occupied "free" figure (which is also unreliable on some Windows
+/// GPUs). A test build can override the budget via `RECO_VRAM_BUDGET_GB` to
+/// exercise the risk zones on a large GPU.
+fn budget_for_lookahead(total_vram: u64) -> usize {
+    #[cfg(feature = "automation")]
+    if let Ok(gb) = std::env::var("RECO_VRAM_BUDGET_GB")
+        && let Ok(v) = gb.parse::<f64>()
+    {
+        return (v * 1e9) as usize;
+    }
+    // Fraction of total VRAM assumed usable for the pool once the preview is
+    // freed and decode/stitch/encode/AI have taken their share.
+    const SLIDER_VRAM_FRACTION: f64 = 0.70;
+    (total_vram as f64 * SLIDER_VRAM_FRACTION) as usize
+}
+
 fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) {
     let mut s = state.borrow_mut();
     if let Some(app) = app_weak.upgrade() {
@@ -4073,6 +4093,48 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
 
             if let Some(app) = app_weak.upgrade() {
                 app.set_files_loaded(true);
+                // Lookahead VRAM risk thresholds for the export slider. The
+                // pool stores source-resolution frames (re-rendered into the
+                // export), so the ceiling scales with source resolution, not
+                // output. Budget = total VRAM minus a reserve for
+                // decode/stitch/encode/AI; the preview is freed during export,
+                // so it is not counted here.
+                match s
+                    .bridge
+                    .as_ref()
+                    .and_then(|b| b.renderer().gpu().available_vram())
+                {
+                    Some((_free, total)) if total > 0 && in_w > 0 && in_h > 0 => {
+                        let budget = budget_for_lookahead(total);
+                        let fit = reco_core::session::lookahead_fit(in_w, in_h, 1, budget, fps);
+                        app.set_lookahead_green_max(fit.safe_secs as f32);
+                        app.set_lookahead_red_min(fit.max_secs as f32);
+                        app.set_lookahead_risk_active(true);
+                        log::info!(
+                            "Lookahead VRAM fit: safe<={:.1}s tight<={:.1}s @ {in_w}x{in_h}, \
+                             budget {:.1} GB",
+                            fit.safe_secs,
+                            fit.max_secs,
+                            budget as f64 / 1e9,
+                        );
+                        // VRAM-aware default: if the current lookahead would
+                        // not fit (red zone = guaranteed export failure), seed
+                        // it to the comfortable value instead. This only
+                        // rescues an unusable value; a lookahead that already
+                        // fits is left as the user set it, so a deliberate
+                        // in-budget choice is never overridden.
+                        if app.get_export_lookahead_secs() as f64 > fit.max_secs {
+                            let safe = fit.safe_secs as f32;
+                            app.set_export_lookahead_secs(safe);
+                            log::info!(
+                                "Lookahead lowered to {safe:.1}s to fit VRAM \
+                                 (chosen value exceeded the {:.1}s ceiling)",
+                                fit.max_secs,
+                            );
+                        }
+                    }
+                    _ => app.set_lookahead_risk_active(false),
+                }
                 app.set_has_roi(
                     s.calibration
                         .as_ref()
