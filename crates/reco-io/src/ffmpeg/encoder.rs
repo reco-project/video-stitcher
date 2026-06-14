@@ -10,7 +10,7 @@ use ffmpeg::format::Pixel;
 use ffmpeg::software::scaling::{context::Context as ScalingContext, flag::Flags as ScalingFlags};
 use ffmpeg::util::frame::video::Video as VideoFrame;
 use ffmpeg::{Rational, codec, encoder, format};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use super::hw_upload::{HardwareUpload, staging_pixel_format};
@@ -430,9 +430,11 @@ pub struct EncoderConfig {
     pub quality: Option<u8>,
     /// Override the encoder preset string (passed through to the encoder).
     pub preset: Option<String>,
-    /// Path to a source file to copy audio from (stream copy, no re-encoding).
-    /// The first audio stream found will be muxed into the output.
-    pub audio_source: Option<std::path::PathBuf>,
+    /// Source files to copy audio from, in order (stream copy, no re-encoding).
+    /// For a chained recording, list every segment so audio spans the whole
+    /// output; passing a single file copies just that one. The first audio
+    /// stream of each file is used.
+    pub audio_source: Option<Vec<std::path::PathBuf>>,
     /// Start copying audio at this source timestamp, in seconds.
     ///
     /// Used when the video export starts from a later processing window
@@ -523,21 +525,41 @@ struct SilentAudio {
     sample_rate: u32,
 }
 
-/// State for copying an audio stream from an input file to the output.
+/// State for copying audio from one or more input files to the output.
+///
+/// For a chained recording the segments are copied back-to-back: when the
+/// current segment's audio ends, the next opens and its timestamps are
+/// shifted by `segment_offset` so the output audio is gapless.
 struct AudioPassthrough {
     ictx: format::context::Input,
-    /// Audio stream index in the input file.
+    /// Audio stream index in the current input file.
     input_stream_index: usize,
     /// Audio stream index in the output file.
     output_stream_index: usize,
-    /// Input audio stream time base (for rescaling).
+    /// Current input audio stream time base (for rescaling).
     input_time_base: Rational,
     /// Output audio stream time base.
     output_time_base: Rational,
-    /// Source timestamp where audio passthrough starts, in seconds.
+    /// Source timestamp where audio passthrough starts, in seconds. Applies to
+    /// the first segment only (the start-time trim is within file 1).
     start_time_secs: f64,
-    /// Whether all audio packets have been read.
+    /// Whether all segments have been read.
     exhausted: bool,
+    /// Remaining chained segments to copy after the current one ends.
+    remaining_segments: std::collections::VecDeque<std::path::PathBuf>,
+    /// Output-timebase shift added to the current segment's timestamps so
+    /// audio is continuous across chained segments. Recomputed per segment
+    /// from its first packet (segments may not start at timestamp 0 - AAC
+    /// priming can even make the first DTS negative).
+    segment_offset: i64,
+    /// Highest packet end (pts + duration) written, in output ticks; the next
+    /// segment is rebased so its first packet lands here.
+    next_offset: i64,
+    /// When set, the next packet read is the first of a freshly opened segment;
+    /// its timestamp is rebased so the segment starts at this output position.
+    pending_start: Option<i64>,
+    /// True only while copying the first segment (start-time trim applies there).
+    first_segment: bool,
 }
 
 // SAFETY: VideoEncoder is only used from a single thread. The raw pointers
@@ -663,8 +685,8 @@ impl VideoEncoder {
                     }
 
                     // Set up audio passthrough before writing the header.
-                    let audio = if let Some(ref audio_path) = config.audio_source {
-                        Self::setup_audio_stream(&mut octx, audio_path, config.audio_start_time)?
+                    let audio = if let Some(ref audio_paths) = config.audio_source {
+                        Self::setup_audio_stream(&mut octx, audio_paths, config.audio_start_time)?
                     } else {
                         None
                     };
@@ -877,9 +899,12 @@ impl VideoEncoder {
     /// Called before `write_header`. Returns `None` if no audio stream found.
     fn setup_audio_stream(
         octx: &mut format::context::Output,
-        source_path: &Path,
+        sources: &[PathBuf],
         start_time_secs: f64,
     ) -> Result<Option<AudioPassthrough>, EncodeError> {
+        let Some((source_path, rest)) = sources.split_first() else {
+            return Ok(None);
+        };
         let mut ictx = format::input(source_path)?;
         let start_time_secs = sanitize_audio_start_time(start_time_secs);
 
@@ -942,7 +967,43 @@ impl VideoEncoder {
             output_time_base,
             start_time_secs,
             exhausted: false,
+            remaining_segments: rest.iter().cloned().collect(),
+            segment_offset: 0,
+            next_offset: 0,
+            pending_start: None,
+            first_segment: true,
         }))
+    }
+
+    /// Open the next chained segment for audio copy, continuing the timeline.
+    ///
+    /// Skips segments with no audio stream. Returns `false` when none remain.
+    fn advance_segment(audio: &mut AudioPassthrough) -> Result<bool, EncodeError> {
+        loop {
+            let Some(next) = audio.remaining_segments.pop_front() else {
+                return Ok(false);
+            };
+            let ictx = format::input(&next)?;
+            let Some(stream) = ictx.streams().best(ffmpeg::media::Type::Audio) else {
+                log::warn!(
+                    "Chained audio: {} has no audio stream, skipping",
+                    next.display()
+                );
+                continue;
+            };
+            audio.input_stream_index = stream.index();
+            audio.input_time_base = stream.time_base();
+            audio.ictx = ictx;
+            // Rebase from this segment's first packet (computed in the loop).
+            audio.pending_start = Some(audio.next_offset);
+            audio.first_segment = false;
+            log::info!(
+                "Chained audio: continuing from {} at +{:.2}s",
+                next.display(),
+                audio.next_offset as f64 * f64::from(audio.output_time_base),
+            );
+            return Ok(true);
+        }
     }
 
     /// Open a secondary FLV output context for RTMP streaming.
@@ -1028,6 +1089,7 @@ impl VideoEncoder {
         if audio.exhausted {
             return Ok(());
         }
+        // Start-time trim is expressed in the (fixed) output time base.
         let start_pts = seconds_to_pts(audio.start_time_secs, audio.output_time_base);
 
         loop {
@@ -1040,7 +1102,8 @@ impl VideoEncoder {
                     packet.set_stream(audio.output_stream_index);
                     packet.rescale_ts(audio.input_time_base, audio.output_time_base);
 
-                    if start_pts > 0 {
+                    // The start-time trim applies to the first segment only.
+                    if audio.first_segment && start_pts > 0 {
                         let packet_start = match (packet.pts(), packet.dts()) {
                             (Some(pts), Some(dts)) => Some(pts.min(dts)),
                             (Some(pts), None) => Some(pts),
@@ -1058,6 +1121,33 @@ impl VideoEncoder {
                         }
                     }
 
+                    // First packet of a continuation segment: rebase it so the
+                    // segment starts exactly where the previous one ended,
+                    // regardless of the segment's own (possibly negative) start.
+                    if let Some(target) = audio.pending_start {
+                        let anchor = packet.dts().or_else(|| packet.pts()).unwrap_or(0);
+                        audio.segment_offset = target - anchor;
+                        audio.pending_start = None;
+                    }
+
+                    // Shift later segments so audio is gapless across the chain.
+                    if audio.segment_offset != 0 {
+                        if let Some(pts) = packet.pts() {
+                            packet.set_pts(Some(pts + audio.segment_offset));
+                        }
+                        if let Some(dts) = packet.dts() {
+                            packet.set_dts(Some(dts + audio.segment_offset));
+                        }
+                    }
+
+                    // Track the running end so the next segment continues from here.
+                    if let Some(pts) = packet.pts() {
+                        let end = pts + packet.duration().max(0);
+                        if end > audio.next_offset {
+                            audio.next_offset = end;
+                        }
+                    }
+
                     // Stop if this audio packet is beyond the video duration.
                     if packet.pts().is_some_and(|pts| pts > max_pts) {
                         audio.exhausted = true;
@@ -1067,8 +1157,11 @@ impl VideoEncoder {
                     packet.write_interleaved(&mut self.octx)?;
                 }
                 Err(ffmpeg::Error::Eof) => {
-                    audio.exhausted = true;
-                    break;
+                    // Current segment done; continue with the next chained one.
+                    if !Self::advance_segment(audio)? {
+                        audio.exhausted = true;
+                        break;
+                    }
                 }
                 Err(_) => break,
             }
