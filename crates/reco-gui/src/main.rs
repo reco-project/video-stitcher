@@ -109,6 +109,74 @@ struct CalibrationOutput {
 /// `Io(...)`, etc.) instead of parsing a stringified message.
 type CalibrationResult = Result<CalibrationOutput, reco_calibrate::video::CalibrateVideosError>;
 
+/// Headless dev/test preload hook. When `RECO_AUTOLOAD` is set the GUI loads
+/// the given left/right videos and calibration on startup (and optionally
+/// starts an export via `RECO_AUTOEXPORT`), so the app can be driven under
+/// Xvfb for screenshots and CI smoke tests. Inert when the env var is unset.
+#[cfg(feature = "automation")]
+struct AutoloadSpec {
+    left: Vec<PathBuf>,
+    right: Vec<PathBuf>,
+    cal: PathBuf,
+    export: Option<AutoExportSpec>,
+}
+
+/// Optional auto-export for [`AutoloadSpec`], from `RECO_AUTOEXPORT`.
+#[cfg(feature = "automation")]
+struct AutoExportSpec {
+    output: PathBuf,
+    model: Option<PathBuf>,
+    lookahead_secs: f32,
+}
+
+#[cfg(feature = "automation")]
+impl AutoloadSpec {
+    /// Parse `RECO_AUTOLOAD="left[;left2,...],right[;right2,...],cal.json"`
+    /// (segments within a side separated by `;`). Returns `None` when unset or
+    /// malformed.
+    fn from_env() -> Option<Self> {
+        let raw = std::env::var("RECO_AUTOLOAD").ok()?;
+        let parts: Vec<&str> = raw.split(',').collect();
+        if parts.len() != 3 {
+            log::warn!(
+                "RECO_AUTOLOAD ignored: expected 'left[;left2],right[;right2],cal.json', got {raw:?}"
+            );
+            return None;
+        }
+        let to_paths =
+            |s: &str| -> Vec<PathBuf> { s.split(';').map(|p| PathBuf::from(p.trim())).collect() };
+        let left = to_paths(parts[0]);
+        let right = to_paths(parts[1]);
+        let cal = PathBuf::from(parts[2].trim());
+        if left
+            .iter()
+            .chain(right.iter())
+            .any(|p| p.as_os_str().is_empty())
+        {
+            log::warn!("RECO_AUTOLOAD ignored: empty path component");
+            return None;
+        }
+        let export = std::env::var("RECO_AUTOEXPORT")
+            .ok()
+            .map(|out| AutoExportSpec {
+                output: PathBuf::from(out),
+                model: std::env::var("RECO_AUTOEXPORT_MODEL")
+                    .ok()
+                    .map(PathBuf::from),
+                lookahead_secs: std::env::var("RECO_AUTOEXPORT_LOOKAHEAD")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0.0),
+            });
+        Some(Self {
+            left,
+            right,
+            cal,
+            export,
+        })
+    }
+}
+
 /// Application state shared between Slint callbacks.
 struct AppState {
     left_path: Option<PathBuf>,
@@ -128,6 +196,9 @@ struct AppState {
     /// wgpu handles captured from Slint's rendering notifier. `None`
     /// until the window has completed its first rendering setup.
     shared_gpu: Option<SharedGpu>,
+    /// Headless preload/auto-export hook (RECO_AUTOLOAD); `None` in normal use.
+    #[cfg(feature = "automation")]
+    autoload: Option<AutoloadSpec>,
     /// Unified pose state machine (target + current + smoothing +
     /// coverage clamping). Replaces the earlier hand-rolled
     /// `yaw/pitch/target_*` fields; all input events (drag, wheel,
@@ -371,6 +442,8 @@ impl AppState {
             recording_frames: 0,
             cal_rx: None,
             shared_gpu: None,
+            #[cfg(feature = "automation")]
+            autoload: AutoloadSpec::from_env(),
             pose: PoseControl::new(PoseControlConfig {
                 drag_deg_per_pixel: DRAG_DEG_PER_PIXEL,
                 smoothing: POSE_SMOOTHING,
@@ -3453,6 +3526,22 @@ fn main() -> anyhow::Result<()> {
         slint::TimerMode::Repeated,
         std::time::Duration::from_millis(TICK_INTERVAL_MS as u64),
         move || {
+            // Dev/test preload (RECO_AUTOLOAD): fire once, after the GPU
+            // device has been captured by the rendering notifier.
+            #[cfg(feature = "automation")]
+            {
+                let ready = {
+                    let s = state_ref.borrow();
+                    s.autoload.is_some() && s.shared_gpu.is_some()
+                };
+                if ready {
+                    let spec = state_ref.borrow_mut().autoload.take();
+                    if let Some(spec) = spec {
+                        run_autoload(&state_ref, &app_weak, spec);
+                    }
+                }
+            }
+
             let mut s = state_ref.borrow_mut();
 
             // Check for update notification from the background thread.
@@ -3762,7 +3851,60 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
     false
 }
 
-/// Try to initialize the pipeline when all files are selected.
+/// Execute an [`AutoloadSpec`]: set inputs + calibration, build the preview,
+/// and optionally start an export. Dev/test hook (RECO_AUTOLOAD) only.
+#[cfg(feature = "automation")]
+fn run_autoload(
+    state: &Rc<RefCell<AppState>>,
+    app_weak: &slint::Weak<RecoApp>,
+    spec: AutoloadSpec,
+) {
+    log::info!(
+        "RECO_AUTOLOAD: preloading {} left + {} right segment(s), cal {}",
+        spec.left.len(),
+        spec.right.len(),
+        spec.cal.display()
+    );
+    let make_input = |paths: &[PathBuf]| {
+        if paths.len() == 1 {
+            reco_io::stitch_job::InputPath::Single(paths[0].clone())
+        } else {
+            reco_io::stitch_job::InputPath::Chained(paths.to_vec())
+        }
+    };
+    {
+        let mut s = state.borrow_mut();
+        s.left_input = Some(make_input(&spec.left));
+        s.left_path = Some(spec.left[0].clone());
+        s.right_input = Some(make_input(&spec.right));
+        s.right_path = Some(spec.right[0].clone());
+        s.calibration_path = Some(spec.cal.clone());
+        if let Some(app) = app_weak.upgrade() {
+            app.set_left_path(display_name(&spec.left[0]).into());
+            app.set_right_path(display_name(&spec.right[0]).into());
+            app.set_calibration_path(display_name(&spec.cal).into());
+        }
+    }
+    try_init_and_update(state, app_weak);
+    if let Some(exp) = spec.export
+        && let Some(app) = app_weak.upgrade()
+    {
+        app.set_export_output_path(exp.output.display().to_string().into());
+        if let Some(model) = &exp.model {
+            app.set_export_autocam_enabled(true);
+            app.set_export_model_path(model.display().to_string().into());
+            app.set_export_tracking_mode("field".into());
+            app.set_export_lookahead_secs(exp.lookahead_secs);
+        }
+        log::info!(
+            "RECO_AUTOEXPORT: starting export -> {} (lookahead {}s)",
+            exp.output.display(),
+            exp.lookahead_secs
+        );
+        app.invoke_start_export();
+    }
+}
+
 fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) {
     let mut s = state.borrow_mut();
     if let Some(app) = app_weak.upgrade() {
