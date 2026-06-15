@@ -282,22 +282,44 @@ pub struct LookaheadFit {
 /// Headroom fraction for the comfortable (`safe`/green) ceiling.
 const LOOKAHEAD_SAFE_FRACTION: f64 = 0.75;
 
-/// Fraction of total VRAM treated as usable for the lookahead pool.
+/// Ceiling fraction of *total* VRAM the lookahead pool may use.
 ///
-/// The pool competes with decode surfaces, the stitch pipeline, the encoder,
-/// AI tensors, and the OS compositor, so part of total VRAM is reserved.
+/// Acts as an upper bound (and the fallback when `free` is unusable). The pool
+/// competes with decode surfaces, the stitch pipeline, the encoder, AI tensors,
+/// and the OS compositor, so the pool is never allowed past this fraction of
+/// total even when the driver reports more free.
 const LOOKAHEAD_BUDGET_FRACTION: f64 = 0.70;
 
-/// VRAM budget (bytes) available to the lookahead pool, derived from *total*
-/// VRAM rather than the driver's "free" figure.
+/// Runtime margin held back below the driver's "free" figure.
 ///
-/// The free query is unreliable on some GPUs - it can report 0 bytes free on a
-/// multi-GB card mid-session, which would otherwise block a perfectly viable
-/// export. A total-based estimate is used instead, and over-allocation is
-/// caught gracefully at pool creation on every platform. Shared by the export
-/// pre-flight check and the GUI risk slider so the two always agree.
-pub fn lookahead_budget_bytes(total_vram: u64) -> usize {
-    (total_vram as f64 * LOOKAHEAD_BUDGET_FRACTION) as usize
+/// `free` is sampled just before the pool allocates, but the encoder output
+/// surfaces, extra decode buffering, and AI tensors still grow during the run.
+/// This fixed margin leaves room for that growth so the pool does not consume
+/// the last byte of free VRAM.
+const LOOKAHEAD_FREE_RESERVE_BYTES: u64 = 512 * 1024 * 1024;
+
+/// VRAM budget (bytes) available to the lookahead pool, from the driver's
+/// `free` figure when it is trustworthy, else a fraction of `total`.
+///
+/// `free` is the honest signal: it already excludes the OS compositor and the
+/// rest of the pipeline, so on small cards it avoids the over-estimate a flat
+/// `total * fraction` makes (a fixed baseline is a large share of an 8 GB card).
+/// But some drivers report a bogus ~0 free on a multi-GB card mid-session, which
+/// would block a viable export, so `free` is trusted only when it is a
+/// believable fraction of total; otherwise the total-based estimate is used and
+/// over-allocation is caught gracefully at pool creation. Capped at
+/// `total * LOOKAHEAD_BUDGET_FRACTION` either way. Shared by the export
+/// pre-flight check and the GUI risk slider so the two stay consistent.
+pub fn lookahead_budget_bytes(free_vram: u64, total_vram: u64) -> usize {
+    let total_based = (total_vram as f64 * LOOKAHEAD_BUDGET_FRACTION) as u64;
+    let budget = if free_vram >= total_vram / 8 {
+        free_vram
+            .saturating_sub(LOOKAHEAD_FREE_RESERVE_BYTES)
+            .min(total_based)
+    } else {
+        total_based
+    };
+    budget as usize
 }
 
 /// Compute lookahead fit thresholds for a source resolution and VRAM budget.
@@ -364,14 +386,45 @@ mod tests {
     }
 
     #[test]
-    fn budget_is_total_based_and_reserves_headroom() {
-        // zzz's case: 5.52 GB total. A bogus free=0 must not zero the budget;
-        // the budget is derived from total and leaves a reserve.
+    fn bogus_free_falls_back_to_total() {
+        // zzz's case: 5.52 GB total, driver reports a bogus free=0. The budget
+        // must not collapse to ~0; it falls back to the total-based estimate.
         let total = 5_520_000_000u64;
-        let budget = lookahead_budget_bytes(total);
+        let budget = lookahead_budget_bytes(0, total);
         assert!(budget > 0);
         assert!(budget < total as usize); // reserves headroom
-        // The 2.49 GB pool from the forum report fits in the usable budget.
+        // The 2.49 GB pool from the forum report still fits.
         assert!(budget >= 2_490_000_000);
+        // Falls back to exactly the total-based estimate.
+        assert_eq!(budget, (total as f64 * 0.70) as usize);
+    }
+
+    #[test]
+    fn clean_small_card_trusts_free_no_false_green() {
+        // Problem 2: a clean 8 GB card. DXGI budget ~7.6 GB total, but a fixed
+        // baseline (compositor + pipeline) leaves ~4.5 GB actually free. The old
+        // total*0.70 = 5.33 GB over-estimated and let a 4.71 GB pool pass
+        // pre-flight, then OOM. The free-trusting budget must stay below the
+        // real free so that pool is correctly rejected.
+        let total = 7_600_000_000u64;
+        let free = 4_500_000_000u64;
+        let budget = lookahead_budget_bytes(free, total);
+        // Below total*0.70 - free constrained it.
+        assert!(budget < (total as f64 * 0.70) as usize);
+        // Below the actual free (reserve held back), so it never promises more
+        // than the card has.
+        assert!(budget < free as usize);
+        // The 4.71 GB default pool does NOT fit -> no false green.
+        assert!(budget < 4_710_000_000);
+    }
+
+    #[test]
+    fn big_card_capped_at_total_fraction() {
+        // 24 GB card, 22 GB free. free - reserve (21.5 GB) exceeds the total
+        // ceiling, so the pool is capped at total*0.70, not the huge free.
+        let total = 24_000_000_000u64;
+        let free = 22_000_000_000u64;
+        let budget = lookahead_budget_bytes(free, total);
+        assert_eq!(budget, (total as f64 * 0.70) as usize);
     }
 }
