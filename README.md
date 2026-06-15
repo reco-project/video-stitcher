@@ -115,6 +115,26 @@ brew install ffmpeg pkg-config
 cargo build --release
 ```
 
+### Intel Mac setup and GUI build via Make
+
+Use the root [Makefile](Makefile) to bootstrap dependencies and build the GUI on x86_64 macOS.
+
+```bash
+# Install dependencies and pin workspace Rust toolchain
+make mac-intel-init
+
+# Verify ffmpeg/pkg-config and Rust are visible
+make mac-intel-doctor
+
+# Build GUI for Intel macOS (avoids default ORT backend)
+make gui-build-mac-intel
+
+# Run GUI
+make gui-run-mac-intel
+```
+
+Why no default features on Intel macOS GUI build: current ORT prebuilt availability can fail for this target/feature combination, so the Intel Make target compiles the GUI without default ORT/autocam features.
+
 ### Feature flags
 
 | Feature | Crate | Purpose |
