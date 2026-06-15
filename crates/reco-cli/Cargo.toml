@@ -12,6 +12,13 @@ repository = "https://github.com/reco-project/video-stitcher"
 name = "reco"
 path = "src/main.rs"
 
+# Cross-export VRAM leak repro. Uses reco-autocam to drive the lookahead pool,
+# so it only builds when the `autocam` feature is on (skipped under
+# --no-default-features).
+[[example]]
+name = "vram_leak_repro"
+required-features = ["autocam"]
+
 [features]
 # Default gives autocam + ort (CPU) detection, matching
 # pre-refactor behavior. Jetson / custom builds opt out via
