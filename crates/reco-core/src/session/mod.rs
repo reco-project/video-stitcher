@@ -33,7 +33,7 @@ mod run_loop;
 pub(crate) mod vram_pool;
 /// Lookahead VRAM fit estimate, for the export UI risk slider and the
 /// pre-flight budget check.
-pub use vram_pool::{LookaheadFit, lookahead_fit};
+pub use vram_pool::{LookaheadFit, lookahead_budget_bytes, lookahead_fit};
 /// Configuration wiring (set/clear/attach methods).
 mod wiring;
 
