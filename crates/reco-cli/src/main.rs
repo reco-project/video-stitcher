@@ -11,6 +11,8 @@ mod helpers;
 #[cfg(feature = "libcamera")]
 mod libcamera_cmd;
 mod preview;
+#[cfg(feature = "snapshot")]
+mod snapshot;
 mod stitch;
 
 use clap::{Parser, Subcommand};
@@ -383,6 +385,19 @@ enum Commands {
         /// Detection interval: run detection every N frames (default: 1).
         #[arg(long, default_value_t = 1)]
         detection_interval: u64,
+
+        /// Directory for periodic JPEG snapshots of the stitched output
+        /// (live preview for the gameday web panel). Requires the
+        /// `snapshot` build feature.
+        #[cfg(feature = "snapshot")]
+        #[arg(long)]
+        snapshot_dir: Option<String>,
+
+        /// Write a snapshot every N frames (default: 30). Only effective
+        /// when --snapshot-dir is set.
+        #[cfg(feature = "snapshot")]
+        #[arg(long, default_value_t = 30)]
+        snapshot_interval: u64,
 
         /// Encoder quality on a 0-100 scale (higher = better). Overrides the
         /// quality preset. See `stitch --help` for the full mapping table.
@@ -862,6 +877,10 @@ fn main() -> anyhow::Result<()> {
             end_time,
             model,
             detection_interval,
+            #[cfg(feature = "snapshot")]
+            snapshot_dir,
+            #[cfg(feature = "snapshot")]
+            snapshot_interval,
             quality_value,
             preset,
             container,
@@ -926,6 +945,10 @@ fn main() -> anyhow::Result<()> {
                     capture_fps,
                     model_path: model.as_deref(),
                     detection_interval,
+                    #[cfg(feature = "snapshot")]
+                    snapshot_dir: snapshot_dir.as_deref(),
+                    #[cfg(feature = "snapshot")]
+                    snapshot_interval,
                     quality_value,
                     preset,
                     container: container.as_deref(),
