@@ -127,6 +127,12 @@ struct AutoExportSpec {
     output: PathBuf,
     model: Option<PathBuf>,
     lookahead_secs: f32,
+    /// Total number of exports to run back-to-back in one session, from
+    /// `RECO_AUTOEXPORT_REPEAT` (default 1). Used to surface cross-export GPU
+    /// resource leaks: VRAM is logged between runs, so a leak shows up as a
+    /// figure that never returns to baseline. The output path gets a `_N`
+    /// suffix per run so runs don't clobber each other.
+    repeats: u32,
 }
 
 #[cfg(feature = "automation")]
@@ -167,6 +173,11 @@ impl AutoloadSpec {
                     .ok()
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(0.0),
+                repeats: std::env::var("RECO_AUTOEXPORT_REPEAT")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .filter(|&n| n > 0)
+                    .unwrap_or(1),
             });
         Some(Self {
             left,
@@ -199,6 +210,21 @@ struct AppState {
     /// Headless preload/auto-export hook (RECO_AUTOLOAD); `None` in normal use.
     #[cfg(feature = "automation")]
     autoload: Option<AutoloadSpec>,
+    /// Repeat-export driver state (RECO_AUTOEXPORT_REPEAT). When `mode` is set,
+    /// the export-completion handler re-triggers another export until `done`
+    /// reaches `total`, then quits the event loop. Inert otherwise.
+    #[cfg(feature = "automation")]
+    auto_export_mode: bool,
+    /// Total exports to run back-to-back this session.
+    #[cfg(feature = "automation")]
+    auto_export_total: u32,
+    /// Exports completed so far (the next run is `done + 1`).
+    #[cfg(feature = "automation")]
+    auto_export_done: u32,
+    /// Base output path for repeat exports; each run appends `_N` before the
+    /// extension so successive runs do not overwrite each other.
+    #[cfg(feature = "automation")]
+    auto_export_base: Option<PathBuf>,
     /// Unified pose state machine (target + current + smoothing +
     /// coverage clamping). Replaces the earlier hand-rolled
     /// `yaw/pitch/target_*` fields; all input events (drag, wheel,
@@ -444,6 +470,14 @@ impl AppState {
             shared_gpu: None,
             #[cfg(feature = "automation")]
             autoload: AutoloadSpec::from_env(),
+            #[cfg(feature = "automation")]
+            auto_export_mode: false,
+            #[cfg(feature = "automation")]
+            auto_export_total: 0,
+            #[cfg(feature = "automation")]
+            auto_export_done: 0,
+            #[cfg(feature = "automation")]
+            auto_export_base: None,
             pose: PoseControl::new(PoseControlConfig {
                 drag_deg_per_pixel: DRAG_DEG_PER_PIXEL,
                 smoothing: POSE_SMOOTHING,
@@ -3723,10 +3757,69 @@ fn main() -> anyhow::Result<()> {
                                 format!("{frames} frames to {}", path.display()),
                             );
                             crate::toast::sync_to_ui(&s.toasts, &app);
+
+                            // Repeat-export driver: measure VRAM now that the
+                            // preview has been rebuilt (the steady state between
+                            // runs), then either trigger the next export or quit.
+                            // A leak shows up as `used` that never returns to the
+                            // baseline logged at startup. Deferred via single_shot
+                            // so the next start_export runs after this borrow of
+                            // `s` is released (start_export borrows it too).
+                            #[cfg(feature = "automation")]
+                            if s.auto_export_mode {
+                                s.auto_export_done += 1;
+                                let done = s.auto_export_done;
+                                let total = s.auto_export_total;
+                                let vram = autoexport_vram();
+                                if done < total {
+                                    log::info!(
+                                        "RECO_AUTOEXPORT: run {done}/{total} complete, {vram}; starting next"
+                                    );
+                                    let base = s.auto_export_base.clone();
+                                    let app_w = app_weak.clone();
+                                    slint::Timer::single_shot(
+                                        std::time::Duration::from_millis(800),
+                                        move || {
+                                            if let Some(app) = app_w.upgrade() {
+                                                if let Some(base) = base {
+                                                    let out = autoexport_run_path(&base, done + 1);
+                                                    app.set_export_output_path(
+                                                        out.display().to_string().into(),
+                                                    );
+                                                }
+                                                app.invoke_start_export();
+                                            }
+                                        },
+                                    );
+                                } else {
+                                    log::info!(
+                                        "RECO_AUTOEXPORT: all {total} runs complete, final {vram}; quitting"
+                                    );
+                                    slint::Timer::single_shot(
+                                        std::time::Duration::from_millis(1500),
+                                        || {
+                                            let _ = slint::quit_event_loop();
+                                        },
+                                    );
+                                }
+                            }
                         }
                         ExportOutcome::Cancelled => {
                             app.set_export_status_text("".into());
                             app.set_status_text("Export cancelled".into());
+                            #[cfg(feature = "automation")]
+                            if s.auto_export_mode {
+                                log::warn!(
+                                    "RECO_AUTOEXPORT: run cancelled, {}; quitting",
+                                    autoexport_vram()
+                                );
+                                slint::Timer::single_shot(
+                                    std::time::Duration::from_millis(1000),
+                                    || {
+                                        let _ = slint::quit_event_loop();
+                                    },
+                                );
+                            }
                         }
                         ExportOutcome::Failed(err) => {
                             app.set_export_status_text("".into());
@@ -3764,6 +3857,19 @@ fn main() -> anyhow::Result<()> {
                             s.toasts.push(Severity::Error, title, body);
                             crate::toast::sync_to_ui(&s.toasts, &app);
                             app.set_status_text(status.into());
+                            #[cfg(feature = "automation")]
+                            if s.auto_export_mode {
+                                log::warn!(
+                                    "RECO_AUTOEXPORT: run failed ({msg}), {}; quitting",
+                                    autoexport_vram()
+                                );
+                                slint::Timer::single_shot(
+                                    std::time::Duration::from_millis(1000),
+                                    || {
+                                        let _ = slint::quit_event_loop();
+                                    },
+                                );
+                            }
                         }
                     }
                 }
@@ -3960,6 +4066,35 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
     false
 }
 
+/// GPU free/used VRAM (MB) via `nvidia-smi`, for repeat-export leak logging.
+/// Returns a short descriptive string; never fails the run.
+#[cfg(feature = "automation")]
+fn autoexport_vram() -> String {
+    std::process::Command::new("nvidia-smi")
+        .args([
+            "--query-gpu=memory.free,memory.used",
+            "--format=csv,noheader,nounits",
+        ])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| format!("free/used MB = {}", s.trim()))
+        .unwrap_or_else(|| "nvidia-smi unavailable".into())
+}
+
+/// Output path for repeat-export run `n`: `base_n.ext` (1-based), so successive
+/// runs in one session do not overwrite each other.
+#[cfg(feature = "automation")]
+fn autoexport_run_path(base: &std::path::Path, n: u32) -> PathBuf {
+    let stem = base
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("export");
+    let ext = base.extension().and_then(|e| e.to_str()).unwrap_or("mp4");
+    let name = format!("{stem}_{n}.{ext}");
+    base.with_file_name(name)
+}
+
 /// Execute an [`AutoloadSpec`]: set inputs + calibration, build the preview,
 /// and optionally start an export. Dev/test hook (RECO_AUTOLOAD) only.
 #[cfg(feature = "automation")]
@@ -3998,7 +4133,19 @@ fn run_autoload(
     if let Some(exp) = spec.export
         && let Some(app) = app_weak.upgrade()
     {
-        app.set_export_output_path(exp.output.display().to_string().into());
+        // Repeat-export driver: run `exp.repeats` exports back-to-back in this
+        // one session so a cross-export GPU leak shows up as VRAM that never
+        // returns to baseline. The completion handler re-triggers the next run
+        // and quits when done. `remaining` counts runs AFTER this first one.
+        {
+            let mut s = state.borrow_mut();
+            s.auto_export_mode = true;
+            s.auto_export_total = exp.repeats;
+            s.auto_export_done = 0;
+            s.auto_export_base = Some(exp.output.clone());
+        }
+        let first_out = autoexport_run_path(&exp.output, 1);
+        app.set_export_output_path(first_out.display().to_string().into());
         if let Some(model) = &exp.model {
             app.set_export_autocam_enabled(true);
             app.set_export_model_path(model.display().to_string().into());
@@ -4006,8 +4153,10 @@ fn run_autoload(
             app.set_export_lookahead_secs(exp.lookahead_secs);
         }
         log::info!(
-            "RECO_AUTOEXPORT: starting export -> {} (lookahead {}s)",
-            exp.output.display(),
+            "RECO_AUTOEXPORT: baseline {}; starting export 1/{} -> {} (lookahead {}s)",
+            autoexport_vram(),
+            exp.repeats,
+            first_out.display(),
             exp.lookahead_secs
         );
         app.invoke_start_export();

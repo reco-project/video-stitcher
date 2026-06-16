@@ -980,7 +980,30 @@ pub struct CudaImportedNv12 {
 impl Drop for CudaImportedNv12 {
     fn drop(&mut self) {
         if let Ok(cuda) = cuda() {
+            // The staging pool drops on the session thread, not the decode
+            // thread that established the CUDA context, so a context may not be
+            // current here. Without one, the cleanup calls below fail and the
+            // import - which pins the D3D11 staging texture's VRAM - is never
+            // released (a permanent per-export leak on NVIDIA). Mirror
+            // `CudaKernel::drop` and ensure a context first.
+            if let Err(e) = cuda_ensure_context() {
+                log::warn!("CudaImportedNv12 drop: no CUDA context, leaking import: {e}");
+                return;
+            }
             unsafe {
+                // The mapped buffers from cuExternalMemoryGetMappedBuffer must
+                // be freed with cuMemFree *before* the external memory object is
+                // destroyed (CUDA driver API contract). Skipping this leaves the
+                // mappings live, so cuDestroyExternalMemory cannot release CUDA's
+                // reference to the shared texture and its VRAM never returns.
+                let y_rc = (cuda.cu_mem_free_v2)(self.y_ptr);
+                if y_rc != CUDA_SUCCESS {
+                    log::warn!("cuMemFree(Y 0x{:x}) failed: {y_rc}", self.y_ptr);
+                }
+                let uv_rc = (cuda.cu_mem_free_v2)(self.uv_ptr);
+                if uv_rc != CUDA_SUCCESS {
+                    log::warn!("cuMemFree(UV 0x{:x}) failed: {uv_rc}", self.uv_ptr);
+                }
                 let rc = (cuda.cu_destroy_external_memory)(self.ext_mem);
                 if rc != CUDA_SUCCESS {
                     log::warn!("cuDestroyExternalMemory failed: {rc}");
