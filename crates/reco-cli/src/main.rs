@@ -399,6 +399,15 @@ enum Commands {
         #[arg(long, default_value_t = 30)]
         snapshot_interval: u64,
 
+        /// Lookahead buffer in seconds for the live camera path. The panner
+        /// leads the play by this window and the loop centered-smooths the
+        /// pose lag-free, the same as `stitch --lookahead`. Adds ~this much
+        /// latency and a VRAM pool sized to the window, so the live default
+        /// is modest. Only engages with AI tracking (needs --model,
+        /// non-sweep). 0 = off (immediate render).
+        #[arg(long, default_value_t = 0.75)]
+        lookahead: f64,
+
         /// Encoder quality on a 0-100 scale (higher = better). Overrides the
         /// quality preset. See `stitch --help` for the full mapping table.
         #[arg(long = "quality-value")]
@@ -881,6 +890,7 @@ fn main() -> anyhow::Result<()> {
             snapshot_dir,
             #[cfg(feature = "snapshot")]
             snapshot_interval,
+            lookahead,
             quality_value,
             preset,
             container,
@@ -949,6 +959,7 @@ fn main() -> anyhow::Result<()> {
                     snapshot_dir: snapshot_dir.as_deref(),
                     #[cfg(feature = "snapshot")]
                     snapshot_interval,
+                    lookahead,
                     quality_value,
                     preset,
                     container: container.as_deref(),

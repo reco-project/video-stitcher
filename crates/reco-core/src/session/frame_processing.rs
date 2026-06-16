@@ -170,6 +170,18 @@ impl StitchSession {
                         false
                     }
                 }
+                #[cfg(target_os = "linux")]
+                StereoFrame::NvmmResident { left, right } => {
+                    // Immediate (non-lookahead) NVMM detection: letterbox via
+                    // NvBufSurfTransform, then detect. (The buffered path runs
+                    // detection during produce and skips this whole step.)
+                    if scheduled_detection {
+                        let detections = self.nvmm_run_detection(left, right);
+                        self.detection.last_detections = self.map_detections(detections);
+                    }
+                    self.fire_sink_and_update_director(elapsed, scheduled_detection)?;
+                    scheduled_detection
+                }
                 #[cfg(any(target_os = "macos", target_os = "ios"))]
                 StereoFrame::MetalResident { left, right } => {
                     self.detect_and_update_director_metal(
@@ -235,6 +247,18 @@ impl StitchSession {
                 right_slot,
             } => {
                 self.render_gpu_resident(*left_slot, *right_slot, pos.yaw, pos.pitch)?;
+            }
+            #[cfg(target_os = "linux")]
+            StereoFrame::NvmmResident { left, right } => {
+                if self.current_vram_slot.is_some() {
+                    // Buffered path: the frame was already imported + copied
+                    // into the pool slot during produce; render from it. The
+                    // slot args are ignored when current_vram_slot is set.
+                    self.render_gpu_resident(0, 0, pos.yaw, pos.pitch)?;
+                } else {
+                    // Immediate path: import the DMA-buf and render directly.
+                    self.render_nvmm_immediate(left, right, pos.yaw, pos.pitch)?;
+                }
             }
             #[cfg(target_os = "windows")]
             StereoFrame::D3d11Resident {
@@ -505,6 +529,58 @@ impl StitchSession {
         Ok(())
     }
 
+    /// Render an NVMM frame directly from imported DMA-buf textures
+    /// (immediate / non-lookahead path).
+    ///
+    /// Imports both cameras' DMA-bufs into Vulkan textures (cached by fd)
+    /// and renders via [`process_frame_imported_nv12`](Self::process_frame_imported_nv12).
+    /// The buffered (lookahead) path uses the VRAM pool instead; this is the
+    /// fallback when no pool exists (`lookahead == 0`).
+    #[cfg(target_os = "linux")]
+    fn render_nvmm_immediate(
+        &mut self,
+        left: &crate::source::NvmmPlaneInfo,
+        right: &crate::source::NvmmPlaneInfo,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<(), SessionError> {
+        if self.nvmm_dmabuf_cache.is_none() {
+            self.nvmm_dmabuf_cache = Some(crate::interop::dmabuf::DmaBufTextureCache::new());
+        }
+        let gpu = self.core.pipeline().gpu();
+        let cache = self.nvmm_dmabuf_cache.as_mut().unwrap();
+        cache
+            .ensure_imported(
+                gpu,
+                left.dmabuf_fd,
+                left.width,
+                left.height,
+                left.y_offset,
+                left.uv_offset,
+                left.total_size,
+            )
+            .map_err(|e| SessionError::ZeroCopy(format!("left NVMM DMA-buf import: {e}")))?;
+        cache
+            .ensure_imported(
+                gpu,
+                right.dmabuf_fd,
+                right.width,
+                right.height,
+                right.y_offset,
+                right.uv_offset,
+                right.total_size,
+            )
+            .map_err(|e| SessionError::ZeroCopy(format!("right NVMM DMA-buf import: {e}")))?;
+
+        // Clone the texture handles (cheap, Arc-backed) to drop the cache
+        // borrow before the &mut self render call.
+        let left_tex = cache.get(left.dmabuf_fd);
+        let right_tex = cache.get(right.dmabuf_fd);
+        let (ly, lu) = (left_tex.y_texture.clone(), left_tex.uv_texture.clone());
+        let (ry, ru) = (right_tex.y_texture.clone(), right_tex.uv_texture.clone());
+        self.process_frame_imported_nv12(&ly, &lu, &ry, &ru, yaw, pitch)
+    }
+
     /// Stage D3D11VA decoded frames into the shared staging pool.
     ///
     /// Lazily creates the pool on first call. Performs `CopySubresourceRegion`
@@ -750,6 +826,13 @@ impl StitchSession {
         frame: &StereoFrame,
         _produce_index: u64,
     ) -> Result<Option<usize>, SessionError> {
+        // NVMM zero-copy: import the DMA-buf as Vulkan textures and copy
+        // them into a VRAM pool slot - the same import-then-copy pattern
+        // as the macOS Metal arm, just sourced from an NvBufSurface fd
+        // instead of a CVPixelBuffer.
+        if let StereoFrame::NvmmResident { left, right } = frame {
+            return self.copy_nvmm_to_vram_pool(left, right);
+        }
         let (ls, rs) = match frame {
             StereoFrame::GpuResident {
                 left_slot,
@@ -787,6 +870,74 @@ impl StitchSession {
             }
         }
         Ok(None)
+    }
+
+    /// Import a stereo NVMM frame's DMA-bufs and copy them into a VRAM
+    /// pool slot for buffered (lookahead) rendering.
+    ///
+    /// Mirrors the macOS Metal import path: the per-camera DMA-buf is
+    /// imported into Vulkan textures (cached by fd, since the ISP rotates a
+    /// small fd pool), then `copy_from_textures` blits both cameras' Y/UV
+    /// planes into a freshly acquired pool slot. The blit is awaited before
+    /// returning so the source may recycle the DMA-buf immediately after.
+    #[cfg(target_os = "linux")]
+    fn copy_nvmm_to_vram_pool(
+        &mut self,
+        left: &crate::source::NvmmPlaneInfo,
+        right: &crate::source::NvmmPlaneInfo,
+    ) -> Result<Option<usize>, SessionError> {
+        if self.vram_pool.is_none() {
+            return Ok(None);
+        }
+        if self.nvmm_dmabuf_cache.is_none() {
+            self.nvmm_dmabuf_cache = Some(crate::interop::dmabuf::DmaBufTextureCache::new());
+        }
+
+        let gpu = self.core.pipeline().gpu();
+        let cache = self.nvmm_dmabuf_cache.as_mut().unwrap();
+        cache
+            .ensure_imported(
+                gpu,
+                left.dmabuf_fd,
+                left.width,
+                left.height,
+                left.y_offset,
+                left.uv_offset,
+                left.total_size,
+            )
+            .map_err(|e| SessionError::ZeroCopy(format!("left NVMM DMA-buf import: {e}")))?;
+        cache
+            .ensure_imported(
+                gpu,
+                right.dmabuf_fd,
+                right.width,
+                right.height,
+                right.y_offset,
+                right.uv_offset,
+                right.total_size,
+            )
+            .map_err(|e| SessionError::ZeroCopy(format!("right NVMM DMA-buf import: {e}")))?;
+
+        let left_tex = cache.get(left.dmabuf_fd);
+        let right_tex = cache.get(right.dmabuf_fd);
+        let pool = self.vram_pool.as_mut().unwrap();
+        let slot = pool.acquire().ok_or_else(|| {
+            SessionError::Config(format!(
+                "VRAM pool exhausted ({} slots, {} available)",
+                pool.capacity(),
+                pool.available()
+            ))
+        })?;
+        pool.copy_from_textures(
+            gpu,
+            slot,
+            &left_tex.y_texture,
+            &left_tex.uv_texture,
+            &right_tex.y_texture,
+            &right_tex.uv_texture,
+        );
+        let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
+        Ok(Some(slot))
     }
 
     #[cfg(target_os = "windows")]
