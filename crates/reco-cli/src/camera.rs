@@ -12,6 +12,8 @@ use reco_core::source::StereoFrame;
 use reco_io::gstreamer::camera::CameraConfig;
 
 use crate::helpers;
+#[cfg(feature = "snapshot")]
+use crate::snapshot::SnapshotWriter;
 
 /// Run live camera stitching.
 ///
@@ -37,6 +39,13 @@ pub struct CameraRunConfig<'a> {
     pub capture_fps: u32,
     pub model_path: Option<&'a str>,
     pub detection_interval: u64,
+    /// Directory for periodic JPEG snapshots of the stitched output
+    /// (live preview). `snapshot` build feature only.
+    #[cfg(feature = "snapshot")]
+    pub snapshot_dir: Option<&'a str>,
+    /// Write a snapshot every N frames (only with `snapshot_dir`).
+    #[cfg(feature = "snapshot")]
+    pub snapshot_interval: u64,
     pub quality_value: Option<u8>,
     pub preset: Option<String>,
     /// Output container (`mp4` / `fmp4` / `mkv`). None -> `mp4`.
@@ -87,6 +96,10 @@ pub fn run_camera(
         capture_fps,
         model_path,
         detection_interval,
+        #[cfg(feature = "snapshot")]
+        snapshot_dir,
+        #[cfg(feature = "snapshot")]
+        snapshot_interval,
         quality_value,
         preset,
         container,
@@ -347,6 +360,20 @@ pub fn run_camera(
     println!("Encoder: {}", encoder.encoder_name());
 
     session.set_encoder(Box::new(encoder), 2);
+
+    // Snapshot writer for live preview (gameday panel). Taps the NV12
+    // readback after each frame and writes a JPEG every N frames on a
+    // background thread; held alive until the function returns. Gated
+    // behind the `snapshot` build feature.
+    #[cfg(feature = "snapshot")]
+    let mut _snapshot_writer: Option<SnapshotWriter> = None;
+    #[cfg(feature = "snapshot")]
+    if let Some(dir) = snapshot_dir {
+        let (writer, tap) = SnapshotWriter::new(Path::new(dir), snapshot_interval)?;
+        session.set_nv12_tap(tap);
+        println!("Snapshots: {dir}/snapshot.jpg (every {snapshot_interval} frames)");
+        _snapshot_writer = Some(writer);
+    }
 
     let frame_limit =
         reco_core::session::types::compute_frame_limit(end_time, max_frames, capture_fps as f64);

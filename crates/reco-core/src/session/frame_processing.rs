@@ -639,6 +639,10 @@ impl StitchSession {
         &mut self,
         render_commands: wgpu::CommandBuffer,
     ) -> Result<(), SessionError> {
+        // Read NV12 dims up front (Copy) so the tap below can borrow `data`
+        // without re-borrowing self.nv12_converter.
+        let nv12_width = self.nv12_converter.width();
+        let nv12_height = self.nv12_converter.height();
         let readback_t0 = std::time::Instant::now();
         let nv12_data = self.nv12_converter.convert_and_readback(
             self.core.gpu(),
@@ -656,6 +660,12 @@ impl StitchSession {
             }
             for enc in &self.extra_encoders {
                 enc.submit(data, self.frame_count as i64)?;
+            }
+            // NV12 tap for snapshot / preview hooks (reco-cli's periodic
+            // JPEG writer). Runs after encode submit; the callback is
+            // expected to be non-blocking (try_send on a channel).
+            if let Some(ref mut tap) = self.nv12_tap {
+                tap(data, nv12_width, nv12_height);
             }
         }
         self.last_submit_time = encode_t0.elapsed();

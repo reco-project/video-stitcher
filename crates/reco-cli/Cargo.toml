@@ -36,6 +36,10 @@ tensorrt-native = ["autocam", "reco-autocam/tensorrt-native"]
 ncnn = ["autocam", "reco-autocam/ncnn"]
 gopro = ["reco-control/gopro"]
 gstreamer = ["reco-io/gstreamer"]
+# Periodic JPEG snapshots of the stitched output (live preview for the
+# gameday panel). Opt-in so it compiles out cleanly; implies gstreamer
+# since it's only wired into the camera path.
+snapshot = ["gstreamer"]
 v4l2 = ["reco-io/v4l2"]
 libcamera = ["reco-io/libcamera"]
 rpi = ["reco-io/rpi"]
