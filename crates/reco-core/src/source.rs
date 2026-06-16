@@ -258,6 +258,42 @@ pub struct Nv12FramePair {
     pub right: Nv12Data,
 }
 
+/// Per-camera metadata for an NVMM zero-copy frame (Jetson).
+///
+/// Carries the DMA-buf fd (Vulkan render import) and the raw
+/// `NvBufSurface*` pointer (NvBufSurfTransform detection preprocessing)
+/// for one camera, plus the plane geometry needed for the Vulkan import.
+/// This is the reco-core mirror of reco-io's `NvmmFrameInfo` - reco-core
+/// has no I/O deps, so the I/O backend constructs this from its own type.
+///
+/// Both the fd and the surface pointer are only valid while the source
+/// holds the underlying GStreamer sample alive (until the session has
+/// copied the frame into the VRAM pool and run detection on it).
+#[cfg(target_os = "linux")]
+#[derive(Debug, Clone, Copy)]
+pub struct NvmmPlaneInfo {
+    /// DMA-buf file descriptor for Vulkan import (render path).
+    pub dmabuf_fd: i32,
+    /// Frame width in pixels.
+    pub width: u32,
+    /// Frame height in pixels.
+    pub height: u32,
+    /// Y plane byte offset within the DMA-buf.
+    pub y_offset: u32,
+    /// UV plane byte offset within the DMA-buf.
+    pub uv_offset: u32,
+    /// Total allocation size (Vulkan memory import).
+    pub total_size: u32,
+    /// Raw `NvBufSurface*` pointer for `NvBufSurfTransform` (detection path).
+    pub surface_ptr: *mut std::ffi::c_void,
+}
+
+// SAFETY: the surface pointer is a stable kernel-managed NVMM pool address;
+// the source's capture thread keeps the GstSample alive until release. The
+// session that consumes this never moves it across threads.
+#[cfg(target_os = "linux")]
+unsafe impl Send for NvmmPlaneInfo {}
+
 /// A stereo frame in any supported format.
 ///
 /// Sources produce whichever format is most efficient for their backend:
@@ -265,6 +301,7 @@ pub struct Nv12FramePair {
 /// - Jetson ISP / NVDEC NV12: `Nv12`
 /// - CUDA/Vulkan zero-copy shared textures: `GpuResident`
 /// - VideoToolbox/Metal zero-copy: `MetalResident`
+/// - Jetson NVMM zero-copy (DMA-buf + NvBufSurface): `NvmmResident`
 #[non_exhaustive]
 pub enum StereoFrame {
     /// CPU-resident YUV420P planes (3 planes per camera).
@@ -301,6 +338,17 @@ pub enum StereoFrame {
         right_texture: *mut std::ffi::c_void,
         /// Array slice index within the D3D11VA decode pool for right camera.
         right_slice: usize,
+    },
+    /// Jetson NVMM zero-copy: NV12 frames in NvBufSurface DMA-buf memory.
+    /// The session imports the DMA-buf as Vulkan textures for rendering
+    /// (copied into the VRAM pool) and runs `NvBufSurfTransform` on the
+    /// surface pointer for detection. Produced by the NVMM camera source.
+    #[cfg(target_os = "linux")]
+    NvmmResident {
+        /// Left camera NVMM plane metadata.
+        left: NvmmPlaneInfo,
+        /// Right camera NVMM plane metadata.
+        right: NvmmPlaneInfo,
     },
 }
 

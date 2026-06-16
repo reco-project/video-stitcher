@@ -173,6 +173,19 @@ pub struct StitchSession {
     #[cfg(target_os = "windows")]
     pub(crate) d3d11_staging_pool: Option<crate::interop::d3d11::D3d11StagingPool>,
 
+    /// DMA-buf -> Vulkan texture cache for the NVMM zero-copy render path
+    /// (Jetson). Keyed by DMA-buf fd; the ISP rotates a small fd pool so
+    /// each is imported once. Created lazily on the first NvmmResident frame.
+    #[cfg(target_os = "linux")]
+    pub(crate) nvmm_dmabuf_cache: Option<crate::interop::dmabuf::DmaBufTextureCache>,
+    /// Left-camera NvBufSurfTransform detection surface (Jetson NVMM path).
+    /// Allocated by [`setup_nvmm_detection`](Self::setup_nvmm_detection).
+    #[cfg(target_os = "linux")]
+    pub(crate) nvmm_det_left: Option<crate::nvbuf_transform::NvBufDetectionSurface>,
+    /// Right-camera NvBufSurfTransform detection surface (Jetson NVMM path).
+    #[cfg(target_os = "linux")]
+    pub(crate) nvmm_det_right: Option<crate::nvbuf_transform::NvBufDetectionSurface>,
+
     /// Camera rotation from stream metadata, populated by
     /// [`configure_from_source`](Self::configure_from_source).
     /// Used to tell the GPU detector to flip frames during preprocessing.
@@ -293,6 +306,12 @@ impl StitchSession {
             metal_texture_cache: None,
             #[cfg(target_os = "windows")]
             d3d11_staging_pool: None,
+            #[cfg(target_os = "linux")]
+            nvmm_dmabuf_cache: None,
+            #[cfg(target_os = "linux")]
+            nvmm_det_left: None,
+            #[cfg(target_os = "linux")]
+            nvmm_det_right: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             left_rotation: 0,
             #[cfg(any(target_os = "linux", target_os = "windows"))]

@@ -109,6 +109,8 @@ impl StitchSession {
                     left.width(),
                     left.height(),
                 ),
+                #[cfg(target_os = "linux")]
+                StereoFrame::NvmmResident { left, right } => self.nvmm_run_detection(left, right),
                 _ => {
                     let (w, h) = self.core.pipeline().source_info();
                     self.detection.run_detection(frame, w, h)
@@ -133,6 +135,82 @@ impl StitchSession {
         );
 
         Ok(world)
+    }
+
+    /// Allocate the NVMM detection surfaces for the Jetson zero-copy path.
+    ///
+    /// Call once before [`run`](Self::run) when feeding a
+    /// `StereoFrame::NvmmResident` source (mirrors
+    /// [`setup_gpu_source`](Self::setup_gpu_source) for the desktop GPU
+    /// path). `model_size` is the detector's square input dimension (e.g.
+    /// 1280); `src_width`/`src_height` are the capture resolution, used to
+    /// compute the letterbox geometry. Without this the NVMM detection arm
+    /// no-ops (the director still advances, just without detections).
+    #[cfg(target_os = "linux")]
+    pub fn setup_nvmm_detection(
+        &mut self,
+        model_size: u32,
+        src_width: u32,
+        src_height: u32,
+    ) -> Result<(), SessionError> {
+        let left =
+            crate::nvbuf_transform::NvBufDetectionSurface::new(model_size, src_width, src_height)
+                .map_err(|e| SessionError::ZeroCopy(format!("NVMM left detection surface: {e}")))?;
+        let right =
+            crate::nvbuf_transform::NvBufDetectionSurface::new(model_size, src_width, src_height)
+                .map_err(|e| SessionError::ZeroCopy(format!("NVMM right detection surface: {e}")))?;
+        self.nvmm_det_left = Some(left);
+        self.nvmm_det_right = Some(right);
+        log::info!(
+            "NVMM detection surfaces ready: {model_size}x{model_size} (src {src_width}x{src_height})"
+        );
+        Ok(())
+    }
+
+    /// Run detection on a stereo NVMM frame via NvBufSurfTransform.
+    ///
+    /// Letterboxes both cameras' raw NVMM surfaces into the pre-allocated
+    /// CUDA RGBA detection buffers (set up by
+    /// [`setup_nvmm_detection`](Self::setup_nvmm_detection)) and runs the
+    /// detector on them. Returns empty if the surfaces are not set up or a
+    /// transform fails. Shared by the buffered produce arm
+    /// ([`detect_and_track_only`](Self::detect_and_track_only)) and the
+    /// immediate-render detect arm.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn nvmm_run_detection(
+        &mut self,
+        left: &crate::source::NvmmPlaneInfo,
+        right: &crate::source::NvmmPlaneInfo,
+    ) -> Vec<Detection> {
+        // Transform both surfaces, capturing the (Copy) device pointers so
+        // the &mut borrows on the detection surfaces end before the
+        // detection pipeline borrow begins.
+        let (left_ptr, right_ptr) = {
+            let (Some(det_left), Some(det_right)) =
+                (self.nvmm_det_left.as_mut(), self.nvmm_det_right.as_mut())
+            else {
+                return Vec::new();
+            };
+            unsafe {
+                if let Err(e) = det_left.transform_from_nvmm(left.surface_ptr) {
+                    log::warn!("NVMM left detection transform failed: {e}");
+                    return Vec::new();
+                }
+                if let Err(e) = det_right.transform_from_nvmm(right.surface_ptr) {
+                    log::warn!("NVMM right detection transform failed: {e}");
+                    return Vec::new();
+                }
+            }
+            (det_left.data_ptr, det_right.data_ptr)
+        };
+        self.detection.run_detection_preletterboxed(
+            left_ptr,
+            left.width,
+            left.height,
+            right_ptr,
+            right.width,
+            right.height,
+        )
     }
 
     /// Run detection on a CPU-resident stereo frame (YUV420P / NV12).
