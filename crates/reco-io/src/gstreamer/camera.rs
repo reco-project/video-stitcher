@@ -107,8 +107,11 @@ fn build_pipeline_string(
         // Jetson: nvarguscamerasrc runs the full NVIDIA ISP
         // (debayer, AWB, AE, denoise). Output is NV12 in NVMM;
         // nvvidconv copies to system memory (and converts format if needed).
+        // RECO_NVARGUS_OPTS injects extra source properties (e.g. aelock,
+        // exposuretimerange, gainrange, wbmode) for seam-matched capture.
+        let nvargus_opts = std::env::var("RECO_NVARGUS_OPTS").unwrap_or_default();
         format!(
-            "nvarguscamerasrc sensor-id={device} ! \
+            "nvarguscamerasrc sensor-id={device} {nvargus_opts} ! \
              video/x-raw(memory:NVMM),width={width},height={height},format=NV12,framerate={fps}/1 ! \
              nvvidconv ! \
              video/x-raw,format={fmt_str} ! \
@@ -608,8 +611,11 @@ mod nvmm_source {
         }
 
         validate_device_string(device)?;
+        // RECO_NVARGUS_OPTS injects extra source properties (e.g. aelock,
+        // exposuretimerange, gainrange, wbmode) for seam-matched capture.
+        let nvargus_opts = std::env::var("RECO_NVARGUS_OPTS").unwrap_or_default();
         Ok(format!(
-            "nvarguscamerasrc sensor-id={device} ! \
+            "nvarguscamerasrc sensor-id={device} {nvargus_opts} ! \
              video/x-raw(memory:NVMM),width={width},height={height},format=NV12,framerate={fps}/1 ! \
              appsink name=sink emit-signals=false sync=false max-buffers=4 drop=true"
         ))
