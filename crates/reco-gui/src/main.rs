@@ -4165,12 +4165,14 @@ fn run_autoload(
 
 /// VRAM budget (bytes) available to the lookahead pool at export time.
 ///
-/// The preview pipeline is released during export, so we estimate from total
-/// VRAM minus a reserve for decode/stitch/encode/AI rather than the
-/// preview-occupied "free" figure (which is also unreliable on some Windows
-/// GPUs). A test build can override the budget via `RECO_VRAM_BUDGET_GB` to
-/// exercise the risk zones on a large GPU.
-fn budget_for_lookahead(total_vram: u64) -> usize {
+/// Uses the same free-trusting estimate as the export pre-flight. Note the
+/// slider samples `free` while the live preview is still resident, whereas the
+/// export releases the preview first, so this figure is slightly conservative
+/// (it counts the preview against the budget) - a safe direction: the slider
+/// never shows green for a lookahead the export would reject. A test build can
+/// override the budget via `RECO_VRAM_BUDGET_GB` to exercise the risk zones on a
+/// large GPU.
+fn budget_for_lookahead(free_vram: u64, total_vram: u64) -> usize {
     #[cfg(feature = "automation")]
     if let Ok(gb) = std::env::var("RECO_VRAM_BUDGET_GB")
         && let Ok(v) = gb.parse::<f64>()
@@ -4178,8 +4180,8 @@ fn budget_for_lookahead(total_vram: u64) -> usize {
         return (v * 1e9) as usize;
     }
     // Same budget the export pre-flight uses, so the slider's risk zones match
-    // exactly what the engine will accept.
-    reco_core::session::lookahead_budget_bytes(total_vram)
+    // what the engine will accept.
+    reco_core::session::lookahead_budget_bytes(free_vram, total_vram)
 }
 
 fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) {
@@ -4252,8 +4254,8 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                     .as_ref()
                     .and_then(|b| b.renderer().gpu().available_vram())
                 {
-                    Some((_free, total)) if total > 0 && in_w > 0 && in_h > 0 => {
-                        let budget = budget_for_lookahead(total);
+                    Some((free, total)) if total > 0 && in_w > 0 && in_h > 0 => {
+                        let budget = budget_for_lookahead(free, total);
                         let fit = reco_core::session::lookahead_fit(in_w, in_h, 1, budget, fps);
                         app.set_lookahead_green_max(fit.safe_secs as f32);
                         app.set_lookahead_red_min(fit.max_secs as f32);
