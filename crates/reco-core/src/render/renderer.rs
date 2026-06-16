@@ -847,6 +847,13 @@ impl Renderer {
 
         let left_mvp = projection * view * scene.model_matrix_left();
         let correction = viewport.config.lens_correction_amount;
+        // RECO_BLEND_POSITION shifts the stitch seam along the right plane's
+        // x axis (carried in lens_preview.z). 0 = default; >0 moves the seam
+        // right (left plane covers more), <0 moves it left.
+        let blend_position: f32 = std::env::var("RECO_BLEND_POSITION")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.0);
         let mut left_uniforms = build_gpu_uniforms(
             &left_mvp,
             &calibration.left,
@@ -857,6 +864,7 @@ impl Renderer {
             self.is_full_range,
         );
         left_uniforms.lens_preview[0] = correction;
+        left_uniforms.lens_preview[2] = blend_position;
 
         let right_mvp = projection * view * scene.model_matrix_right();
         let mut right_uniforms = build_gpu_uniforms(
@@ -869,6 +877,7 @@ impl Renderer {
             self.is_full_range,
         );
         right_uniforms.lens_preview[0] = correction;
+        right_uniforms.lens_preview[2] = blend_position;
 
         gpu.queue.write_buffer(
             &self.left.uniform_buffer,

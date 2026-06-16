@@ -228,11 +228,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Apply YUV-space color transfer
     color = apply_color_transfer(color, u.color_scale.xyz, u.color_offset_blend.xyz);
 
-    // Compute alpha for seam blending (right plane fades in at left edge)
+    // Compute alpha for seam blending (right plane fades in at left edge).
+    // lens_preview.z = blend_position: shifts the seam along the right plane's
+    // x axis. 0 = default (seam at the right plane's left edge); >0 moves the
+    // seam right (left plane covers more); <0 moves it left.
     var alpha = 1.0;
     let blend_width = u.color_offset_blend.w;
     if u.flags.x == 1u && blend_width > 0.0 {
-        let edge_dist = uv.x;
+        let edge_dist = uv.x - u.lens_preview.z;
         alpha = smoothstep(0.0, blend_width, edge_dist);
     }
 
