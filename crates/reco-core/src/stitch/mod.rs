@@ -253,6 +253,10 @@ mod tests {
         // real geometry regression (which would blow max into the tens).
         assert!(mean < 1.0, "mean RGB diff too high: {mean}");
         assert!(pct_gt4 < 0.5, "too many large RGB diffs: {pct_gt4}%");
+        assert!(
+            max <= 8,
+            "max RGB diff {max} too high (geometry divergence?)"
+        );
     }
 
     /// Synthetic YUV420p: horizontal luma gradient + mild chroma gradients, so
@@ -368,5 +372,176 @@ mod tests {
         eprintln!("YUV420p GPU-vs-CPU RGB: max={max} mean={mean:.3} >4:{pct_gt4:.3}%");
         assert!(mean < 1.0, "mean RGB diff too high: {mean}");
         assert!(pct_gt4 < 0.5, "too many large RGB diffs: {pct_gt4}%");
+        assert!(
+            max <= 8,
+            "max RGB diff {max} too high (geometry divergence?)"
+        );
+    }
+
+    /// Textured NV12 (rippled luma + gradient interleaved chroma) - non-flat so
+    /// geometry divergences surface as large diffs, not LSB noise.
+    fn textured_nv12(w: u32, h: u32, phase: f64) -> (Vec<u8>, Vec<u8>) {
+        let mut y = vec![0u8; (w * h) as usize];
+        for j in 0..h {
+            for i in 0..w {
+                let g = 128.0
+                    + 80.0 * ((i as f64) * 0.05 + phase).sin()
+                    + 40.0 * ((j as f64) * 0.04).cos();
+                y[(j * w + i) as usize] = g.clamp(0.0, 255.0) as u8;
+            }
+        }
+        let mut uv = vec![128u8; (w * (h / 2)) as usize];
+        for j in 0..h / 2 {
+            for i in (0..w).step_by(2) {
+                uv[(j * w + i) as usize] = (i * 255 / w) as u8;
+                uv[(j * w + i + 1) as usize] = (j * 255 / (h / 2)) as u8;
+            }
+        }
+        (y, uv)
+    }
+
+    /// Render a scene on the GPU and the CPU and return `(mean, pct>16, max)` of
+    /// the per-channel RGB difference, or `None` if there is no GPU adapter.
+    /// The single agreement primitive used across regimes. A geometry
+    /// divergence shows up as a large contiguous wrong region (high mean +
+    /// high pct>16); a correct result only has thin boundary f32/f64 flips.
+    fn gpu_cpu_diff(
+        calib: &MatchCalibration,
+        config: &ViewportConfig,
+        cam: (u32, u32),
+        yaw: f32,
+        pitch: f32,
+        full_range: bool,
+    ) -> Option<(f64, f64, u32)> {
+        use crate::gpu::{GpuContext, GpuError};
+        use crate::render::renderer::InputFormat;
+        let gpu = match pollster::block_on(GpuContext::new()) {
+            Ok(g) => g,
+            Err(GpuError::NoAdapter | GpuError::AdapterRequest(_)) => return None,
+            Err(e) => panic!("gpu init: {e}"),
+        };
+        let (cam_w, cam_h) = cam;
+        let mut pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
+            gpu,
+            calib.clone(),
+            config.clone(),
+            cam_w,
+            cam_h,
+            wgpu::TextureFormat::Rgba8Unorm,
+            InputFormat::Nv12,
+        )
+        .expect("pipeline");
+        pipeline.set_full_range(full_range);
+        let mut readback = crate::gpu::rgba_readback::RgbaReadback::new(
+            pipeline.gpu(),
+            config.width,
+            config.height,
+        )
+        .expect("readback");
+        let (ly, luv) = textured_nv12(cam_w, cam_h, 0.0);
+        let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);
+        let left = Nv12Planes { y: &ly, uv: &luv };
+        let right = Nv12Planes { y: &ry, uv: &ruv };
+        let mut gpu_rgba = None;
+        for _ in 0..3 {
+            let cmd = pipeline
+                .render_to_target_nv12(&left, &right, yaw, pitch)
+                .expect("render");
+            let tex = pipeline.render_target();
+            if let Some(b) = readback
+                .readback(pipeline.gpu(), tex, cmd)
+                .expect("readback")
+            {
+                gpu_rgba = Some(b.to_vec());
+            }
+        }
+        let gpu_rgba = gpu_rgba.expect("gpu frame");
+        let cpu_rgba =
+            stitch_l_shape_rgba(&left, &right, cam, calib, config, yaw, pitch, full_range);
+        let (mut sum, mut n, mut gt, mut max) = (0i64, 0i64, 0i64, 0i32);
+        for (g, c) in gpu_rgba.chunks_exact(4).zip(cpu_rgba.chunks_exact(4)) {
+            for k in 0..3 {
+                let d = (g[k] as i32 - c[k] as i32).abs();
+                sum += d as i64;
+                n += 1;
+                if d > 16 {
+                    gt += 1;
+                }
+                max = max.max(d);
+            }
+        }
+        Some((
+            sum as f64 / n as f64,
+            100.0 * gt as f64 / n as f64,
+            max as u32,
+        ))
+    }
+
+    /// Regression guard for the regimes that masked the original behind-camera
+    /// and quad-footprint divergences: wide pan, wide FOV, off-center principal
+    /// point, full-range, and partial lens correction. Each must agree with the
+    /// GPU (a geometry divergence blows mean and the >16 fraction far past these
+    /// bounds - the original bugs gave 35-68% wrong pixels here).
+    #[test]
+    fn cpu_matches_gpu_across_regimes() {
+        let (cam_w, cam_h) = (256u32, 144u32);
+        let (out_w, out_h) = (192u32, 108u32);
+        let cfg = |fov: f32, corr: f32| ViewportConfig {
+            width: out_w,
+            height: out_h,
+            fov_degrees: fov,
+            lens_correction_amount: corr,
+            ..Default::default()
+        };
+        let calib_cx = |cx_off: f64| {
+            let mut c = test_calib(cam_w, cam_h);
+            c.left.cx = cam_w as f64 * (0.5 + cx_off);
+            c.right.cx = cam_w as f64 * (0.5 + cx_off);
+            c
+        };
+        let base = test_calib(cam_w, cam_h);
+        let cases: [(&str, MatchCalibration, ViewportConfig, f32, f32, bool); 5] = [
+            ("wide-pan", base.clone(), cfg(75.0, 1.0), 0.9, 0.0, false),
+            ("wide-fov", base.clone(), cfg(130.0, 1.0), 0.0, 0.0, false),
+            (
+                "off-center-cx",
+                calib_cx(0.12),
+                cfg(75.0, 1.0),
+                0.2,
+                0.0,
+                false,
+            ),
+            ("full-range", base.clone(), cfg(75.0, 1.0), 0.1, -0.05, true),
+            (
+                "lens-corr-0.5",
+                base.clone(),
+                cfg(75.0, 0.5),
+                0.1,
+                -0.05,
+                false,
+            ),
+        ];
+        let mut ran = false;
+        for (label, calib, config, yaw, pitch, fr) in cases {
+            match gpu_cpu_diff(&calib, &config, (cam_w, cam_h), yaw, pitch, fr) {
+                None => {
+                    eprintln!("skipping regimes: no GPU adapter");
+                    return;
+                }
+                Some((mean, pct16, max)) => {
+                    ran = true;
+                    eprintln!("regime {label}: mean={mean:.3} >16:{pct16:.3}% max={max}");
+                    assert!(
+                        mean < 1.5,
+                        "{label}: mean RGB diff {mean} (geometry divergence?)"
+                    );
+                    assert!(
+                        pct16 < 0.5,
+                        "{label}: {pct16}% of channels off by >16 (geometry divergence?)"
+                    );
+                }
+            }
+        }
+        assert!(ran, "regimes test did not run");
     }
 }

@@ -27,8 +27,10 @@ use super::{SurfaceMap, SurfaceUv};
 /// [`sample_uv`]: SurfaceMap::sample_uv
 pub struct PlaneMap {
     /// Inverse of the MVP's drop-z 3x3: maps `[ndc_x, ndc_y, 1]` (up to scale)
-    /// to plane-local `[x, y, 1]`.
-    m3_inv: Matrix3<f64>,
+    /// to plane-local `[x, y, 1]`. `None` if the MVP is singular (e.g. an
+    /// edge-on plane), in which case the plane covers nothing - like the GPU's
+    /// zero-area quad.
+    m3_inv: Option<Matrix3<f64>>,
     /// Output dimensions in pixels.
     out_w: f64,
     out_h: f64,
@@ -71,7 +73,7 @@ impl PlaneMap {
             mvp[(3, 1)] as f64,
             mvp[(3, 3)] as f64,
         );
-        let m3_inv = m3.try_inverse().unwrap_or_else(Matrix3::identity);
+        let m3_inv = m3.try_inverse();
         let w = cam.width as f64;
         let h = cam.height as f64;
         Self {
@@ -95,9 +97,14 @@ impl SurfaceMap for PlaneMap {
         let ndc_x = (out_x as f64 + 0.5) / self.out_w * 2.0 - 1.0;
         let ndc_y = 1.0 - (out_y as f64 + 0.5) / self.out_h * 2.0;
 
+        // A singular MVP (edge-on plane) covers nothing.
+        let m3_inv = self.m3_inv?;
         // Inverse rasterize to plane-local coordinates (homogeneous divide).
-        let p = self.m3_inv * Vector3::new(ndc_x, ndc_y, 1.0);
-        if p.z.abs() < 1e-12 {
+        let p = m3_inv * Vector3::new(ndc_x, ndc_y, 1.0);
+        // p.z = 1 / clip_w: reject points at or behind the virtual camera
+        // (clip_w <= 0), matching the GPU rasterizer's near/w clip. A plain
+        // `p.z.abs()` guard would wrongly admit behind-camera geometry.
+        if p.z <= 1e-12 {
             return None;
         }
         let local_x = p.x / p.z;
@@ -107,6 +114,13 @@ impl SurfaceMap for PlaneMap {
         // `local_x = uv_x - 0.5`, `local_y = (0.5 - uv_y) / aspect`).
         let uv_x = local_x + 0.5;
         let uv_y = 0.5 - local_y * self.plane_aspect;
+
+        // The GPU rasterizes a FINITE quad (uv in [0,1]); the extended-UV remap
+        // below only widens the sampling domain, not the rasterized footprint.
+        // Reject pixels outside the quad so CPU coverage matches the GPU's.
+        if !(0.0..=1.0).contains(&uv_x) || !(0.0..=1.0).contains(&uv_y) {
+            return None;
+        }
 
         // Shader's extended-UV remap (`uv * 2 - 0.5`) that widens the sampling
         // domain so undistortion can reach past the plane edge.

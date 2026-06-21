@@ -37,6 +37,14 @@ pub enum StitchError {
     /// The GPU pipeline did not yield a frame when one was expected.
     #[error("gpu produced no frame")]
     NoOutput,
+    /// A source plane is smaller than the configured frame size.
+    #[error("frame size mismatch: plane has {actual} bytes, need at least {expected}")]
+    FrameSizeMismatch {
+        /// Minimum bytes the plane must contain for the configured dimensions.
+        expected: usize,
+        /// Bytes the supplied plane actually contains.
+        actual: usize,
+    },
 }
 
 /// One frame's stitch, GPU or CPU, behind a single interface.
@@ -96,6 +104,25 @@ impl StitchBackend for CpuStitchBackend {
         yaw: f32,
         pitch: f32,
     ) -> Result<Vec<u8>, StitchError> {
+        // Validate plane sizes (the GPU backend does too, via upload_nv12) so
+        // both backends return a typed error rather than the CPU path panicking
+        // on a short/truncated frame.
+        let (w, h) = (self.cam.0 as usize, self.cam.1 as usize);
+        let (y_len, uv_len) = (w * h, w * (h / 2));
+        for p in [left, right] {
+            if p.y.len() < y_len {
+                return Err(StitchError::FrameSizeMismatch {
+                    expected: y_len,
+                    actual: p.y.len(),
+                });
+            }
+            if p.uv.len() < uv_len {
+                return Err(StitchError::FrameSizeMismatch {
+                    expected: uv_len,
+                    actual: p.uv.len(),
+                });
+            }
+        }
         Ok(stitch_l_shape_rgba(
             left,
             right,
@@ -249,6 +276,30 @@ mod tests {
         );
         assert_eq!(backend.output_dims(), (w, h));
         assert_eq!(backend.name(), "cpu");
+    }
+
+    #[test]
+    fn cpu_backend_rejects_undersized_planes() {
+        let (w, h) = (64u32, 36u32);
+        let mut backend = CpuStitchBackend::new(
+            test_calib(w, h),
+            ViewportConfig {
+                width: w,
+                height: h,
+                ..Default::default()
+            },
+            w,
+            h,
+            false,
+        );
+        let short = vec![0u8; 10];
+        let planes = Nv12Planes {
+            y: &short,
+            uv: &short,
+        };
+        // Must return a typed error, not panic (matches the GPU backend).
+        let err = backend.stitch(&planes, &planes, 0.0, 0.0).unwrap_err();
+        assert!(matches!(err, StitchError::FrameSizeMismatch { .. }));
     }
 
     #[test]
