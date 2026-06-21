@@ -414,19 +414,43 @@ mod tests {
         (y, uv)
     }
 
-    /// Render a scene on the GPU and the CPU and return `(mean, pct>16, max)` of
-    /// the per-channel RGB difference, or `None` if there is no GPU adapter.
-    /// The single agreement primitive used across regimes. A geometry
-    /// divergence shows up as a large contiguous wrong region (high mean +
-    /// high pct>16); a correct result only has thin boundary f32/f64 flips.
-    fn gpu_cpu_diff(
+    /// High-frequency NV12 (fine luma + chroma checker) - "locks" the sampler:
+    /// a half-texel / coordinate-convention error is invisible on smooth content
+    /// (bilinear reproduces a gradient near-exactly) but shows as a large diff
+    /// on a checker.
+    fn checker_nv12(w: u32, h: u32) -> (Vec<u8>, Vec<u8>) {
+        let mut y = vec![0u8; (w * h) as usize];
+        for j in 0..h {
+            for i in 0..w {
+                let on = ((i / 3) + (j / 3)) % 2 == 0;
+                y[(j * w + i) as usize] = if on { 220 } else { 30 };
+            }
+        }
+        let mut uv = vec![128u8; (w * (h / 2)) as usize];
+        for j in 0..h / 2 {
+            for i in (0..w).step_by(2) {
+                let on = ((i / 4) + (j / 4)) % 2 == 0;
+                uv[(j * w + i) as usize] = if on { 200 } else { 60 };
+                uv[(j * w + i + 1) as usize] = if on { 60 } else { 200 };
+            }
+        }
+        (y, uv)
+    }
+
+    /// Render a scene on both the GPU and the CPU and return `(gpu_rgba,
+    /// cpu_rgba)`, or `None` if there is no GPU adapter. The shared agreement
+    /// primitive: callers diff the buffers however they need (aggregate stats,
+    /// coverage/black-region masks).
+    fn gpu_cpu_rgba(
         calib: &MatchCalibration,
         config: &ViewportConfig,
         cam: (u32, u32),
+        left: &Nv12Planes,
+        right: &Nv12Planes,
         yaw: f32,
         pitch: f32,
         full_range: bool,
-    ) -> Option<(f64, f64, u32)> {
+    ) -> Option<(Vec<u8>, Vec<u8>)> {
         use crate::render::renderer::InputFormat;
         let gpu = gpu_or_skip()?;
         let (cam_w, cam_h) = cam;
@@ -447,14 +471,10 @@ mod tests {
             config.height,
         )
         .expect("readback");
-        let (ly, luv) = textured_nv12(cam_w, cam_h, 0.0);
-        let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);
-        let left = Nv12Planes { y: &ly, uv: &luv };
-        let right = Nv12Planes { y: &ry, uv: &ruv };
         let mut gpu_rgba = None;
         for _ in 0..3 {
             let cmd = pipeline
-                .render_to_target_nv12(&left, &right, yaw, pitch)
+                .render_to_target_nv12(left, right, yaw, pitch)
                 .expect("render");
             let tex = pipeline.render_target();
             if let Some(b) = readback
@@ -465,10 +485,16 @@ mod tests {
             }
         }
         let gpu_rgba = gpu_rgba.expect("gpu frame");
-        let cpu_rgba =
-            stitch_l_shape_rgba(&left, &right, cam, calib, config, yaw, pitch, full_range);
+        let cpu_rgba = stitch_l_shape_rgba(left, right, cam, calib, config, yaw, pitch, full_range);
+        Some((gpu_rgba, cpu_rgba))
+    }
+
+    /// `(mean, pct>16, max)` of the per-channel RGB difference. A geometry
+    /// divergence shows up as a large contiguous wrong region (high mean +
+    /// high pct>16); a correct result only has thin boundary f32/f64 flips.
+    fn rgb_diff_stats(gpu: &[u8], cpu: &[u8]) -> (f64, f64, u32) {
         let (mut sum, mut n, mut gt, mut max) = (0i64, 0i64, 0i64, 0i32);
-        for (g, c) in gpu_rgba.chunks_exact(4).zip(cpu_rgba.chunks_exact(4)) {
+        for (g, c) in gpu.chunks_exact(4).zip(cpu.chunks_exact(4)) {
             for k in 0..3 {
                 let d = (g[k] as i32 - c[k] as i32).abs();
                 sum += d as i64;
@@ -479,11 +505,11 @@ mod tests {
                 max = max.max(d);
             }
         }
-        Some((
+        (
             sum as f64 / n as f64,
             100.0 * gt as f64 / n as f64,
             max as u32,
-        ))
+        )
     }
 
     /// Regression guard for the regimes that masked the original behind-camera
@@ -494,10 +520,9 @@ mod tests {
     #[test]
     fn cpu_matches_gpu_across_regimes() {
         let (cam_w, cam_h) = (256u32, 144u32);
-        let (out_w, out_h) = (192u32, 108u32);
-        let cfg = |fov: f32, corr: f32| ViewportConfig {
-            width: out_w,
-            height: out_h,
+        let cfg = |w: u32, h: u32, fov: f32, corr: f32| ViewportConfig {
+            width: w,
+            height: h,
             fov_degrees: fov,
             lens_correction_amount: corr,
             ..Default::default()
@@ -509,22 +534,55 @@ mod tests {
             c
         };
         let base = calib(cam_w, cam_h);
-        let cases: [(&str, MatchCalibration, ViewportConfig, f32, f32, bool); 5] = [
-            ("wide-pan", base.clone(), cfg(75.0, 1.0), 0.9, 0.0, false),
-            ("wide-fov", base.clone(), cfg(130.0, 1.0), 0.0, 0.0, false),
+        let (ly, luv) = textured_nv12(cam_w, cam_h, 0.0);
+        let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);
+        let left = Nv12Planes { y: &ly, uv: &luv };
+        let right = Nv12Planes { y: &ry, uv: &ruv };
+        let cases: [(&str, MatchCalibration, ViewportConfig, f32, f32, bool); 6] = [
+            (
+                "wide-pan",
+                base.clone(),
+                cfg(192, 108, 75.0, 1.0),
+                0.9,
+                0.0,
+                false,
+            ),
+            (
+                "wide-fov",
+                base.clone(),
+                cfg(192, 108, 130.0, 1.0),
+                0.0,
+                0.0,
+                false,
+            ),
             (
                 "off-center-cx",
                 calib_cx(0.12),
-                cfg(75.0, 1.0),
+                cfg(192, 108, 75.0, 1.0),
                 0.2,
                 0.0,
                 false,
             ),
-            ("full-range", base.clone(), cfg(75.0, 1.0), 0.1, -0.05, true),
+            (
+                "full-range",
+                base.clone(),
+                cfg(192, 108, 75.0, 1.0),
+                0.1,
+                -0.05,
+                true,
+            ),
             (
                 "lens-corr-0.5",
                 base.clone(),
-                cfg(75.0, 0.5),
+                cfg(192, 108, 75.0, 0.5),
+                0.1,
+                -0.05,
+                false,
+            ),
+            (
+                "non-16:9 (4:3 out)",
+                base.clone(),
+                cfg(144, 108, 75.0, 1.0),
                 0.1,
                 -0.05,
                 false,
@@ -532,25 +590,123 @@ mod tests {
         ];
         let mut ran = false;
         for (label, calib, config, yaw, pitch, fr) in cases {
-            match gpu_cpu_diff(&calib, &config, (cam_w, cam_h), yaw, pitch, fr) {
-                None => {
-                    eprintln!("skipping regimes: no GPU adapter");
-                    return;
-                }
-                Some((mean, pct16, max)) => {
-                    ran = true;
-                    eprintln!("regime {label}: mean={mean:.3} >16:{pct16:.3}% max={max}");
-                    assert!(
-                        mean < 1.5,
-                        "{label}: mean RGB diff {mean} (geometry divergence?)"
-                    );
-                    assert!(
-                        pct16 < 0.5,
-                        "{label}: {pct16}% of channels off by >16 (geometry divergence?)"
-                    );
+            let Some((g, c)) = gpu_cpu_rgba(
+                &calib,
+                &config,
+                (cam_w, cam_h),
+                &left,
+                &right,
+                yaw,
+                pitch,
+                fr,
+            ) else {
+                eprintln!("skipping regimes: no GPU adapter");
+                return;
+            };
+            ran = true;
+            let (mean, pct16, max) = rgb_diff_stats(&g, &c);
+            eprintln!("regime {label}: mean={mean:.3} >16:{pct16:.3}% max={max}");
+            assert!(
+                mean < 1.5,
+                "{label}: mean RGB diff {mean} (geometry divergence?)"
+            );
+            assert!(
+                pct16 < 0.5,
+                "{label}: {pct16}% of channels off by >16 (geometry divergence?)"
+            );
+        }
+        assert!(ran, "regimes test did not run");
+    }
+
+    /// High-frequency content locks the sampler: smooth gradients hide a
+    /// half-texel / coordinate-convention error (bilinear of a ramp is
+    /// near-exact), a checker exposes it. Looser bounds than the smooth regimes
+    /// because sharp edges produce isolated f32/f64 + texture-filter-precision
+    /// spikes; a real convention bug would blow the mean into the tens.
+    #[test]
+    fn cpu_matches_gpu_high_frequency() {
+        let (cam_w, cam_h) = (256u32, 144u32);
+        let cal = calib(cam_w, cam_h);
+        let config = ViewportConfig {
+            width: 192,
+            height: 108,
+            ..Default::default()
+        };
+        let (cy, cuv) = checker_nv12(cam_w, cam_h);
+        let left = Nv12Planes { y: &cy, uv: &cuv };
+        let right = Nv12Planes { y: &cy, uv: &cuv };
+        let Some((g, c)) = gpu_cpu_rgba(
+            &cal,
+            &config,
+            (cam_w, cam_h),
+            &left,
+            &right,
+            0.05,
+            -0.03,
+            false,
+        ) else {
+            return;
+        };
+        let (mean, pct16, max) = rgb_diff_stats(&g, &c);
+        eprintln!("high-freq GPU-vs-CPU: mean={mean:.3} >16:{pct16:.3}% max={max}");
+        assert!(
+            mean < 3.0,
+            "high-freq mean {mean} (sampler/convention error?)"
+        );
+        assert!(
+            pct16 < 3.0,
+            "high-freq {pct16}% off by >16 (sampler/convention error?)"
+        );
+    }
+
+    /// Consistency: where the GPU leaves the cleared-black background (no plane
+    /// covers the pixel), the CPU must also be black - it must NOT "fill in" the
+    /// uncovered region with extended plane content. A wide FOV leaves a real
+    /// black margin around the L-shape planes. (Edge-extend past the plane is a
+    /// deliberate future opt-in for *both* backends, not an accidental CPU-only
+    /// divergence.)
+    #[test]
+    fn cpu_black_region_matches_gpu() {
+        let (cam_w, cam_h) = (256u32, 144u32);
+        let cal = calib(cam_w, cam_h);
+        let config = ViewportConfig {
+            width: 192,
+            height: 108,
+            fov_degrees: 140.0,
+            ..Default::default()
+        };
+        let (ly, luv) = textured_nv12(cam_w, cam_h, 0.0);
+        let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);
+        let left = Nv12Planes { y: &ly, uv: &luv };
+        let right = Nv12Planes { y: &ry, uv: &ruv };
+        let Some((g, c)) = gpu_cpu_rgba(
+            &cal,
+            &config,
+            (cam_w, cam_h),
+            &left,
+            &right,
+            0.0,
+            0.0,
+            false,
+        ) else {
+            return;
+        };
+        let (mut gpu_black, mut leak) = (0u32, 0u32);
+        for (gp, cp) in g.chunks_exact(4).zip(c.chunks_exact(4)) {
+            if gp[0] == 0 && gp[1] == 0 && gp[2] == 0 {
+                gpu_black += 1;
+                // > 8 ignores 1-LSB near-black blend noise at the boundary.
+                if cp[0] > 8 || cp[1] > 8 || cp[2] > 8 {
+                    leak += 1;
                 }
             }
         }
-        assert!(ran, "regimes test did not run");
+        eprintln!("black-region: gpu_black={gpu_black} cpu-leak={leak}");
+        assert!(gpu_black > 0, "expected a black margin at fov=140");
+        let leak_pct = 100.0 * leak as f64 / gpu_black as f64;
+        assert!(
+            leak_pct < 5.0,
+            "{leak_pct}% of GPU-black pixels are non-black on CPU (coverage divergence?)"
+        );
     }
 }
