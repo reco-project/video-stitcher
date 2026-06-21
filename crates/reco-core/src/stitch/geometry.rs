@@ -5,7 +5,7 @@
 //! KB4 distortion. For a planar quad that forward transform is a homography,
 //! so the CPU dual - output pixel back to plane UV - is the *inverse* of the
 //! MVP's drop-z 3x3. This module builds that inverse once per frame per plane
-//! (reusing [`crate::render`]'s exact view/projection and [`crate::lens::kb4`])
+//! (reusing [`crate::render`]'s exact view/projection and `crate::lens::kb4`)
 //! and exposes it as a [`SurfaceMap`].
 
 use nalgebra::{Matrix3, Matrix4, Perspective3, Vector3};

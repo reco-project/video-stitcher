@@ -5,7 +5,7 @@
 //! It serves two roles:
 //!
 //! 1. **Correctness oracle** for the GPU path. The geometry reuses
-//!    [`crate::lens::kb4`] and the same view/projection matrices as
+//!    `crate::lens::kb4` and the same view/projection matrices as
 //!    [`crate::render`], so the CPU and GPU outputs agree by construction
 //!    rather than by coincidence.
 //! 2. **Rendering path for GPU-less targets** (edge SoCs, cloud CPU workers)
@@ -16,7 +16,7 @@
 //! [`SurfaceMap`] is the only projection-specific piece: it maps an output
 //! pixel to a source-camera UV. The two-plane L-shape provides one
 //! [`PlaneMap`] per camera; future projections (cylinder, N-camera) implement
-//! the same trait and the gather loop in [`cpu`] is unchanged.
+//! the same trait and the gather loop in `cpu` is unchanged.
 //!
 //! ## Phase 1 scope
 //!
