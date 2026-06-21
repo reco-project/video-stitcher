@@ -1,14 +1,14 @@
 //! Float CPU gather and composite.
 //!
-//! Projection-independent: it queries the L-shape [`SurfaceMap`]s and
-//! composites the covered surfaces, mirroring `fisheye.wgsl`'s fragment stage
-//! per output pixel - live KB4 geometry (in [`super::geometry`]), float
-//! bilinear sampling, BT.709 YUV->RGB, and a smoothstep seam. The output is
-//! sRGB-domain RGBA written exactly as the GPU render target would, so it
-//! doubles as the agreement oracle.
+//! Two-axis-agnostic: the gather loop ([`stitch_l_shape_with`]) is independent
+//! of both the projection (it queries [`SurfaceMap`]s from [`super::geometry`])
+//! and the pixel format (it works through a `sample(u, v) -> rgb` closure). It
+//! mirrors `fisheye.wgsl`'s fragment stage per output pixel - float bilinear,
+//! BT.709 YUV->RGB, and a smoothstep seam - writing sRGB-domain RGBA exactly as
+//! the GPU render target would, so it doubles as the agreement oracle.
 
 use crate::calibration::MatchCalibration;
-use crate::render::planes::Nv12Planes;
+use crate::render::planes::{Nv12Planes, YuvPlanes};
 use crate::render::viewport::ViewportConfig;
 
 use super::SurfaceMap;
@@ -37,7 +37,58 @@ pub fn stitch_l_shape_rgba(
     pitch: f32,
     full_range: bool,
 ) -> Vec<u8> {
-    let (cam_w, cam_h) = cam;
+    let (cw, ch) = cam;
+    stitch_l_shape_with(
+        calib,
+        config,
+        yaw,
+        pitch,
+        |u, v| sample_nv12(left, cw, ch, u, v, full_range),
+        |u, v| sample_nv12(right, cw, ch, u, v, full_range),
+    )
+}
+
+/// Stitch two YUV420p (planar) camera frames into an RGBA panorama on the CPU.
+///
+/// Identical to [`stitch_l_shape_rgba`] but for the software-decode planar
+/// format (separate Y, U, V planes). Useful as the GPU-less rendering path on
+/// desktop/cloud where FFmpeg software decode yields YUV420p.
+#[allow(clippy::too_many_arguments)]
+pub fn stitch_l_shape_rgba_yuv420p(
+    left: &YuvPlanes,
+    right: &YuvPlanes,
+    cam: (u32, u32),
+    calib: &MatchCalibration,
+    config: &ViewportConfig,
+    yaw: f32,
+    pitch: f32,
+    full_range: bool,
+) -> Vec<u8> {
+    let (cw, ch) = cam;
+    stitch_l_shape_with(
+        calib,
+        config,
+        yaw,
+        pitch,
+        |u, v| sample_yuv420p(left, cw, ch, u, v, full_range),
+        |u, v| sample_yuv420p(right, cw, ch, u, v, full_range),
+    )
+}
+
+/// Format-agnostic L-shape gather and composite.
+///
+/// `sample_left` / `sample_right` map a normalised camera UV to sRGB-domain
+/// RGB for their respective source frame; the loop itself knows nothing about
+/// the pixel format. Left plane is the opaque base; the right plane fades in
+/// over it with a smoothstep seam, matching the GPU's two-draw alpha blend.
+fn stitch_l_shape_with(
+    calib: &MatchCalibration,
+    config: &ViewportConfig,
+    yaw: f32,
+    pitch: f32,
+    sample_left: impl Fn(f64, f64) -> [f64; 3],
+    sample_right: impl Fn(f64, f64) -> [f64; 3],
+) -> Vec<u8> {
     let (out_w, out_h) = (config.width, config.height);
     let (lmap, rmap) = l_shape_plane_maps(calib, config, yaw, pitch);
     let blend_width = config.blend_width as f64;
@@ -45,12 +96,9 @@ pub fn stitch_l_shape_rgba(
     let mut out = vec![0u8; (out_w * out_h * 4) as usize];
     for py in 0..out_h {
         for px in 0..out_w {
-            // Left plane is the opaque base; right plane fades in over it.
-            let left_rgb = lmap
-                .sample_uv(px, py)
-                .map(|s| sample_nv12(left, cam_w, cam_h, s.u, s.v, full_range));
+            let left_rgb = lmap.sample_uv(px, py).map(|s| sample_left(s.u, s.v));
             let right_s = rmap.sample_uv(px, py);
-            let right_rgb = right_s.map(|s| sample_nv12(right, cam_w, cam_h, s.u, s.v, full_range));
+            let right_rgb = right_s.map(|s| sample_right(s.u, s.v));
             let right_alpha = match right_s {
                 Some(s) if blend_width > 0.0 => smoothstep(0.0, blend_width, s.edge),
                 Some(_) => 1.0,
@@ -77,11 +125,7 @@ pub fn stitch_l_shape_rgba(
     out
 }
 
-/// Sample an NV12 frame at normalised UV and convert to sRGB-domain RGB.
-///
-/// Mirrors `fisheye.wgsl::sample_yuv`: bilinear Y + bilinear interleaved
-/// chroma (with the GPU sampler's half-texel convention), then BT.709
-/// YCbCr->R'G'B' with limited/full range handling.
+/// Sample an NV12 frame at normalised UV (bilinear Y + interleaved chroma).
 #[inline]
 fn sample_nv12(
     planes: &Nv12Planes,
@@ -92,10 +136,8 @@ fn sample_nv12(
     full_range: bool,
 ) -> [f64; 3] {
     let (w, h) = (cam_w as usize, cam_h as usize);
-    // Luma: full-resolution plane, row stride = width.
-    let y_raw = bilinear_u8(planes.y, w, w, h, u * w as f64 - 0.5, v * h as f64 - 0.5) / 255.0;
-    // Chroma: half-resolution interleaved (U, V) texels, row stride = width bytes.
     let (cw, ch) = (w / 2, h / 2);
+    let y_raw = bilinear_u8(planes.y, w, w, h, u * w as f64 - 0.5, v * h as f64 - 0.5) / 255.0;
     let (u_raw, v_raw) = bilinear_chroma(
         planes.uv,
         w,
@@ -104,15 +146,54 @@ fn sample_nv12(
         u * cw as f64 - 0.5,
         v * ch as f64 - 0.5,
     );
+    yuv_to_rgb(y_raw, u_raw / 255.0, v_raw / 255.0, full_range)
+}
 
-    // BT.709 YCbCr -> R'G'B'. Limited range rescales to full before the matrix.
+/// Sample a YUV420p frame at normalised UV (bilinear Y + separate U, V planes).
+#[inline]
+fn sample_yuv420p(
+    planes: &YuvPlanes,
+    cam_w: u32,
+    cam_h: u32,
+    u: f64,
+    v: f64,
+    full_range: bool,
+) -> [f64; 3] {
+    let (w, h) = (cam_w as usize, cam_h as usize);
+    let (cw, ch) = (w / 2, h / 2);
+    let y_raw = bilinear_u8(planes.y, w, w, h, u * w as f64 - 0.5, v * h as f64 - 0.5) / 255.0;
+    let u_raw = bilinear_u8(
+        planes.u,
+        cw,
+        cw,
+        ch,
+        u * cw as f64 - 0.5,
+        v * ch as f64 - 0.5,
+    ) / 255.0;
+    let v_raw = bilinear_u8(
+        planes.v,
+        cw,
+        cw,
+        ch,
+        u * cw as f64 - 0.5,
+        v * ch as f64 - 0.5,
+    ) / 255.0;
+    yuv_to_rgb(y_raw, u_raw, v_raw, full_range)
+}
+
+/// BT.709 YCbCr -> sRGB-domain R'G'B', inputs normalised to `[0, 1]`.
+///
+/// Limited range rescales to full before the matrix. Mirrors
+/// `fisheye.wgsl::sample_yuv`.
+#[inline]
+fn yuv_to_rgb(y_raw: f64, u_raw: f64, v_raw: f64, full_range: bool) -> [f64; 3] {
     let (y, cb, cr) = if full_range {
-        (y_raw, u_raw / 255.0 - 0.5, v_raw / 255.0 - 0.5)
+        (y_raw, u_raw - 0.5, v_raw - 0.5)
     } else {
         (
             (y_raw - 16.0 / 255.0) * (255.0 / 219.0),
-            (u_raw / 255.0 - 128.0 / 255.0) * (255.0 / 224.0),
-            (v_raw / 255.0 - 128.0 / 255.0) * (255.0 / 224.0),
+            (u_raw - 128.0 / 255.0) * (255.0 / 224.0),
+            (v_raw - 128.0 / 255.0) * (255.0 / 224.0),
         )
     };
     [
@@ -201,13 +282,31 @@ mod tests {
     }
 
     #[test]
-    fn full_range_grey_is_neutral() {
-        // Full-range Y=128, chroma 128 -> mid-grey, near-equal channels.
-        let y = vec![128u8; 4 * 4];
-        let uv = vec![128u8; 4 * 2];
-        let planes = Nv12Planes { y: &y, uv: &uv };
-        let rgb = sample_nv12(&planes, 4, 4, 0.5, 0.5, true);
-        assert!((rgb[0] - rgb[1]).abs() < 0.02 && (rgb[1] - rgb[2]).abs() < 0.02);
-        assert!((rgb[0] - 128.0 / 255.0).abs() < 0.02);
+    fn nv12_and_yuv420p_agree_on_grey() {
+        // Limited-range Y=128, chroma 128 -> the two formats must agree, since
+        // they carry the same samples in different layouts.
+        let y = vec![128u8; 8 * 8];
+        let nv12_uv = vec![128u8; 8 * 4]; // interleaved, (w) * (h/2)
+        let u = vec![128u8; 4 * 4]; // (w/2)*(h/2)
+        let v = vec![128u8; 4 * 4];
+        let nv = Nv12Planes {
+            y: &y,
+            uv: &nv12_uv,
+        };
+        let yuv = YuvPlanes {
+            y: &y,
+            u: &u,
+            v: &v,
+        };
+        let a = sample_nv12(&nv, 8, 8, 0.5, 0.5, false);
+        let b = sample_yuv420p(&yuv, 8, 8, 0.5, 0.5, false);
+        for k in 0..3 {
+            assert!(
+                (a[k] - b[k]).abs() < 1e-9,
+                "channel {k}: {} vs {}",
+                a[k],
+                b[k]
+            );
+        }
     }
 }

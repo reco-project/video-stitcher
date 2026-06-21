@@ -27,7 +27,7 @@
 mod cpu;
 pub mod geometry;
 
-pub use cpu::stitch_l_shape_rgba;
+pub use cpu::{stitch_l_shape_rgba, stitch_l_shape_rgba_yuv420p};
 pub use geometry::{PlaneMap, l_shape_plane_maps};
 
 /// A source-camera sample location produced by a [`SurfaceMap`].
@@ -249,6 +249,121 @@ mod tests {
         // Shared geometry + lens => agreement to ~1 LSB; tolerances leave room
         // for f32-vs-f64 and cross-GPU bilinear/rounding without masking a
         // real geometry regression (which would blow max into the tens).
+        assert!(mean < 1.0, "mean RGB diff too high: {mean}");
+        assert!(pct_gt4 < 0.5, "too many large RGB diffs: {pct_gt4}%");
+    }
+
+    /// Synthetic YUV420p: horizontal luma gradient + mild chroma gradients, so
+    /// the separate-plane U/V sampler is exercised (not just flat chroma).
+    fn yuv420(w: u32, h: u32, bias: u8) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+        let y: Vec<u8> = (0..w * h)
+            .map(|i| ((i % w) as usize * 255 / w as usize) as u8)
+            .map(|val| val.saturating_add(bias))
+            .collect();
+        let (cw, ch2) = (w / 2, h / 2);
+        let u: Vec<u8> = (0..cw * ch2)
+            .map(|i| ((i % cw) as usize * 255 / cw as usize) as u8)
+            .collect();
+        let v: Vec<u8> = (0..cw * ch2)
+            .map(|i| ((i / cw) as usize * 255 / ch2 as usize) as u8)
+            .collect();
+        (y, u, v)
+    }
+
+    /// YUV420p planar input must agree with the GPU's YUV420p path too,
+    /// validating the separate-plane chroma sampler against the shader.
+    #[test]
+    fn cpu_yuv420p_matches_gpu_within_tolerance() {
+        use crate::gpu::{GpuContext, GpuError};
+        use crate::render::planes::YuvPlanes;
+        use crate::render::renderer::InputFormat;
+
+        let gpu = match pollster::block_on(GpuContext::new()) {
+            Ok(g) => g,
+            Err(GpuError::NoAdapter | GpuError::AdapterRequest(_)) => {
+                eprintln!("skipping GPU agreement (yuv420p): no adapter");
+                return;
+            }
+            Err(e) => panic!("gpu init: {e}"),
+        };
+
+        let (cam_w, cam_h) = (256u32, 144u32);
+        let (out_w, out_h) = (192u32, 108u32);
+        let calib = test_calib(cam_w, cam_h);
+        let config = ViewportConfig {
+            width: out_w,
+            height: out_h,
+            ..Default::default()
+        };
+        let (ly, lu, lv) = yuv420(cam_w, cam_h, 0);
+        let (ry, ru, rv) = yuv420(cam_w, cam_h, 30);
+        let left = YuvPlanes {
+            y: &ly,
+            u: &lu,
+            v: &lv,
+        };
+        let right = YuvPlanes {
+            y: &ry,
+            u: &ru,
+            v: &rv,
+        };
+        let (yaw, pitch) = (0.10f32, -0.05f32);
+
+        let pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
+            gpu,
+            calib.clone(),
+            config.clone(),
+            cam_w,
+            cam_h,
+            wgpu::TextureFormat::Rgba8Unorm,
+            InputFormat::Yuv420p,
+        )
+        .expect("pipeline");
+        let mut readback =
+            crate::gpu::rgba_readback::RgbaReadback::new(pipeline.gpu(), out_w, out_h)
+                .expect("readback");
+        let mut gpu_rgba: Option<Vec<u8>> = None;
+        for _ in 0..3 {
+            let cmd = pipeline
+                .render_to_target(&left, &right, yaw, pitch)
+                .expect("render");
+            let tex = pipeline.render_target();
+            if let Some(bytes) = readback
+                .readback(pipeline.gpu(), tex, cmd)
+                .expect("readback")
+            {
+                gpu_rgba = Some(bytes.to_vec());
+            }
+        }
+        let gpu_rgba = gpu_rgba.expect("gpu should produce a frame after 3 renders");
+
+        let cpu_rgba = stitch_l_shape_rgba_yuv420p(
+            &left,
+            &right,
+            (cam_w, cam_h),
+            &calib,
+            &config,
+            yaw,
+            pitch,
+            false,
+        );
+        assert_eq!(gpu_rgba.len(), cpu_rgba.len());
+
+        let (mut max, mut sum, mut n, mut gt4) = (0i32, 0i64, 0i64, 0i64);
+        for (g, c) in gpu_rgba.chunks_exact(4).zip(cpu_rgba.chunks_exact(4)) {
+            for k in 0..3 {
+                let d = (g[k] as i32 - c[k] as i32).abs();
+                max = max.max(d);
+                sum += d as i64;
+                n += 1;
+                if d > 4 {
+                    gt4 += 1;
+                }
+            }
+        }
+        let mean = sum as f64 / n as f64;
+        let pct_gt4 = 100.0 * gt4 as f64 / n as f64;
+        eprintln!("YUV420p GPU-vs-CPU RGB: max={max} mean={mean:.3} >4:{pct_gt4:.3}%");
         assert!(mean < 1.0, "mean RGB diff too high: {mean}");
         assert!(pct_gt4 < 0.5, "too many large RGB diffs: {pct_gt4}%");
     }
