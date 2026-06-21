@@ -36,9 +36,9 @@ use wgpu::util::DeviceExt;
 // ---- Constants ----
 
 /// Near clipping plane for the perspective projection.
-const NEAR_PLANE: f32 = 0.01;
+pub(crate) const NEAR_PLANE: f32 = 0.01;
 /// Far clipping plane for the perspective projection.
-const FAR_PLANE: f32 = 5.0;
+pub(crate) const FAR_PLANE: f32 = 5.0;
 /// Aspect ratio of scene planes (matches GoPro 16:9 capture).
 ///
 /// Deprecated: derive the aspect ratio from camera parameters instead.
@@ -1174,7 +1174,7 @@ fn upload_nv12(
 /// planes meet) by default. This matches v1 Three.js where the OrbitControls
 /// target is `[0, 0, 0]`. `yaw` rotates around Y (left/right from center),
 /// `pitch` rotates around X (up/down).
-fn view_matrix(
+pub(crate) fn view_matrix(
     position: &[f32; 3],
     yaw: f32,
     pitch: f32,

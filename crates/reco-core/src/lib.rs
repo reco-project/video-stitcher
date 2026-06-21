@@ -90,4 +90,5 @@ pub mod projection;
 pub mod render;
 pub mod session;
 pub mod source;
+pub mod stitch;
 pub mod telemetry;
