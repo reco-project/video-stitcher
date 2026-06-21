@@ -155,4 +155,101 @@ mod tests {
             "expected some covered (non-black) output pixels"
         );
     }
+
+    /// The keystone: the CPU float reference must agree with the GPU shader on
+    /// the same scene. Because both share `view_matrix`, the projection, and
+    /// `lens::kb4`, the only differences are f32-vs-f64 and hardware-vs-software
+    /// bilinear - so the RGB match should be tight. Skips when no GPU adapter.
+    #[test]
+    fn cpu_matches_gpu_within_tolerance() {
+        use crate::gpu::{GpuContext, GpuError};
+        use crate::render::renderer::InputFormat;
+
+        let gpu = match pollster::block_on(GpuContext::new()) {
+            Ok(g) => g,
+            Err(GpuError::NoAdapter | GpuError::AdapterRequest(_)) => {
+                eprintln!("skipping GPU agreement: no adapter");
+                return;
+            }
+            Err(e) => panic!("gpu init: {e}"),
+        };
+
+        let (cam_w, cam_h) = (256u32, 144u32);
+        let (out_w, out_h) = (192u32, 108u32);
+        let calib = test_calib(cam_w, cam_h);
+        let config = ViewportConfig {
+            width: out_w,
+            height: out_h,
+            ..Default::default()
+        };
+        let (ly, luv) = nv12(cam_w, cam_h, 0);
+        let (ry, ruv) = nv12(cam_w, cam_h, 30);
+        let left = Nv12Planes { y: &ly, uv: &luv };
+        let right = Nv12Planes { y: &ry, uv: &ruv };
+        let (yaw, pitch) = (0.10f32, -0.05f32);
+
+        // GPU render -> RGBA. The readback is triple-buffered (N-2 latency), so
+        // render the same frame three times to drain one result.
+        let pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
+            gpu,
+            calib.clone(),
+            config.clone(),
+            cam_w,
+            cam_h,
+            wgpu::TextureFormat::Rgba8Unorm,
+            InputFormat::Nv12,
+        )
+        .expect("pipeline");
+        let mut readback =
+            crate::gpu::rgba_readback::RgbaReadback::new(pipeline.gpu(), out_w, out_h)
+                .expect("readback");
+        let mut gpu_rgba: Option<Vec<u8>> = None;
+        for _ in 0..3 {
+            let cmd = pipeline
+                .render_to_target_nv12(&left, &right, yaw, pitch)
+                .expect("render");
+            let tex = pipeline.render_target();
+            if let Some(bytes) = readback
+                .readback(pipeline.gpu(), tex, cmd)
+                .expect("readback")
+            {
+                gpu_rgba = Some(bytes.to_vec());
+            }
+        }
+        let gpu_rgba = gpu_rgba.expect("gpu should produce a frame after 3 renders");
+
+        // CPU reference on the same inputs (limited range, matching the GPU default).
+        let cpu_rgba = stitch_l_shape_rgba(
+            &left,
+            &right,
+            (cam_w, cam_h),
+            &calib,
+            &config,
+            yaw,
+            pitch,
+            false,
+        );
+        assert_eq!(gpu_rgba.len(), cpu_rgba.len());
+
+        let (mut max, mut sum, mut n, mut gt4) = (0i32, 0i64, 0i64, 0i64);
+        for (g, c) in gpu_rgba.chunks_exact(4).zip(cpu_rgba.chunks_exact(4)) {
+            for k in 0..3 {
+                let d = (g[k] as i32 - c[k] as i32).abs();
+                max = max.max(d);
+                sum += d as i64;
+                n += 1;
+                if d > 4 {
+                    gt4 += 1;
+                }
+            }
+        }
+        let mean = sum as f64 / n as f64;
+        let pct_gt4 = 100.0 * gt4 as f64 / n as f64;
+        eprintln!("GPU-vs-CPU RGB: max={max} mean={mean:.3} >4:{pct_gt4:.3}%");
+        // Shared geometry + lens => agreement to ~1 LSB; tolerances leave room
+        // for f32-vs-f64 and cross-GPU bilinear/rounding without masking a
+        // real geometry regression (which would blow max into the tens).
+        assert!(mean < 1.0, "mean RGB diff too high: {mean}");
+        assert!(pct_gt4 < 0.5, "too many large RGB diffs: {pct_gt4}%");
+    }
 }
