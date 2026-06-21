@@ -170,6 +170,10 @@ mod tests {
         let gpu = match pollster::block_on(GpuContext::new()) {
             Ok(g) => g,
             Err(GpuError::NoAdapter | GpuError::AdapterRequest(_)) => {
+                assert!(
+                    std::env::var("RECO_REQUIRE_GPU").is_err(),
+                    "RECO_REQUIRE_GPU is set but no GPU adapter was found"
+                );
                 eprintln!("skipping GPU agreement: no adapter");
                 return;
             }
@@ -287,6 +291,10 @@ mod tests {
         let gpu = match pollster::block_on(GpuContext::new()) {
             Ok(g) => g,
             Err(GpuError::NoAdapter | GpuError::AdapterRequest(_)) => {
+                assert!(
+                    std::env::var("RECO_REQUIRE_GPU").is_err(),
+                    "RECO_REQUIRE_GPU is set but no GPU adapter was found"
+                );
                 eprintln!("skipping GPU agreement (yuv420p): no adapter");
                 return;
             }
@@ -417,7 +425,13 @@ mod tests {
         use crate::render::renderer::InputFormat;
         let gpu = match pollster::block_on(GpuContext::new()) {
             Ok(g) => g,
-            Err(GpuError::NoAdapter | GpuError::AdapterRequest(_)) => return None,
+            Err(GpuError::NoAdapter | GpuError::AdapterRequest(_)) => {
+                assert!(
+                    std::env::var("RECO_REQUIRE_GPU").is_err(),
+                    "RECO_REQUIRE_GPU is set but no GPU adapter was found"
+                );
+                return None;
+            }
             Err(e) => panic!("gpu init: {e}"),
         };
         let (cam_w, cam_h) = cam;
