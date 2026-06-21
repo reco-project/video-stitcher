@@ -24,9 +24,11 @@
 //! memory-tuned specialisation and NV12-direct output are deliberate later
 //! additions, gated on profiling (see the cpu-stitch portability work).
 
+mod backend;
 mod cpu;
 pub mod geometry;
 
+pub use backend::{CpuStitchBackend, GpuStitchBackend, StitchBackend, StitchError};
 pub use cpu::{stitch_l_shape_rgba, stitch_l_shape_rgba_yuv420p};
 pub use geometry::{PlaneMap, l_shape_plane_maps};
 
