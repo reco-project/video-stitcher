@@ -31,6 +31,10 @@ pub struct PlaneMap {
     /// edge-on plane), in which case the plane covers nothing - like the GPU's
     /// zero-area quad.
     m3_inv: Option<Matrix3<f64>>,
+    /// The MVP's z-row restricted to the model-z=0 quad: `[m20, m21, m23]`, so
+    /// `clip_z = z_row . [local_x, local_y, 1]`. The 3x3 inverse drops z, but the
+    /// GPU rasterizer still depth-clips, so the z-row is kept to reconstruct it.
+    z_row: (f64, f64, f64),
     /// Output dimensions in pixels.
     out_w: f64,
     out_h: f64,
@@ -74,10 +78,13 @@ impl PlaneMap {
             mvp[(3, 3)] as f64,
         );
         let m3_inv = m3.try_inverse();
+        // z-row of the MVP for the model-z=0 quad (x, y, translation columns).
+        let z_row = (mvp[(2, 0)] as f64, mvp[(2, 1)] as f64, mvp[(2, 3)] as f64);
         let w = cam.width as f64;
         let h = cam.height as f64;
         Self {
             m3_inv,
+            z_row,
             out_w: out_w as f64,
             out_h: out_h as f64,
             plane_aspect,
@@ -109,6 +116,18 @@ impl SurfaceMap for PlaneMap {
         }
         let local_x = p.x / p.z;
         let local_y = p.y / p.z;
+
+        // Depth clip: the GPU rasterizer keeps only fragments with
+        // `0 <= clip_z <= clip_w` (wgpu NDC z in [0, 1]); geometry within
+        // NEAR_PLANE of the virtual camera is clipped. The 3x3 inverse dropped
+        // z, so reconstruct `clip_z` from the z-row and `clip_w = 1 / p.z`.
+        // Without this, a plane closer than NEAR_PLANE (tiny camera_axis_offset
+        // or an extreme FOV) is gathered by the CPU but clipped by the GPU.
+        let clip_w = 1.0 / p.z;
+        let clip_z = self.z_row.0 * local_x + self.z_row.1 * local_y + self.z_row.2;
+        if clip_z < 0.0 || clip_z > clip_w {
+            return None;
+        }
 
         // Plane-local -> texture UV (inverse of the quad vertex layout:
         // `local_x = uv_x - 0.5`, `local_y = (0.5 - uv_y) / aspect`).

@@ -618,6 +618,67 @@ mod tests {
         assert!(ran, "regimes test did not run");
     }
 
+    /// The GPU rasterizer depth-clips fragments at NEAR_PLANE; the CPU inverse
+    /// map must apply the same `0 <= clip_z <= clip_w` test. A tiny
+    /// `camera_axis_offset` (or a FOV near the 179 singularity) places a plane
+    /// within the near plane, so without the clip the CPU gathers a near band
+    /// the GPU discards - a large coverage divergence (mean in the hundreds,
+    /// most channels off by >16). Regression guard for the near-plane clip.
+    #[test]
+    fn cpu_matches_gpu_near_plane_clip() {
+        let (cam_w, cam_h) = (256u32, 144u32);
+        let (ly, luv) = textured_nv12(cam_w, cam_h, 0.0);
+        let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);
+        let left = Nv12Planes { y: &ly, uv: &luv };
+        let right = Nv12Planes { y: &ry, uv: &ruv };
+        let axis = |off: f64| {
+            let mut c = calib(cam_w, cam_h);
+            c.layout.camera_axis_offset = off;
+            c
+        };
+        let cfg = |fov: f32| ViewportConfig {
+            width: 192,
+            height: 108,
+            fov_degrees: fov,
+            ..Default::default()
+        };
+        // Each case puts a plane within NEAR_PLANE of the virtual camera before
+        // the fix: axis offset below ~0.012, or FOV near the projection limit.
+        let cases: [(&str, MatchCalibration, ViewportConfig); 3] = [
+            ("axis-offset 0.005", axis(0.005), cfg(75.0)),
+            ("axis-offset 0.012", axis(0.012), cfg(75.0)),
+            ("fov 178", calib(cam_w, cam_h), cfg(178.0)),
+        ];
+        let mut ran = false;
+        for (label, cal, config) in cases {
+            let Some((g, c)) = gpu_cpu_rgba(
+                &cal,
+                &config,
+                (cam_w, cam_h),
+                &left,
+                &right,
+                0.0,
+                0.0,
+                false,
+            ) else {
+                eprintln!("skipping near-plane: no GPU adapter");
+                return;
+            };
+            ran = true;
+            let (mean, pct16, max) = rgb_diff_stats(&g, &c);
+            eprintln!("near-plane {label}: mean={mean:.3} >16:{pct16:.3}% max={max}");
+            assert!(
+                mean < 1.5,
+                "{label}: mean RGB diff {mean} (missing near-plane clip?)"
+            );
+            assert!(
+                pct16 < 0.5,
+                "{label}: {pct16}% of channels off by >16 (missing near-plane clip?)"
+            );
+        }
+        assert!(ran, "near-plane test did not run");
+    }
+
     /// High-frequency content locks the sampler: smooth gradients hide a
     /// half-texel / coordinate-convention error (bilinear of a ramp is
     /// near-exact), a checker exposes it. Looser bounds than the smooth regimes
