@@ -215,43 +215,12 @@ pub fn l_shape_plane_maps(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::calibration::PlaneLayout;
-
-    fn calib() -> MatchCalibration {
-        let cam = CameraParams {
-            width: 1920,
-            height: 1080,
-            fx: 960.0,
-            fy: 960.0,
-            cx: 960.0,
-            cy: 540.0,
-            d: [-0.02, 0.004, 0.0, 0.0],
-        };
-        MatchCalibration {
-            left: cam.clone(),
-            right: cam,
-            layout: PlaneLayout {
-                camera_axis_offset: 0.25,
-                intersect: 0.5,
-                x_ty: 0.0,
-                x_rz: 0.0,
-                z_rx: 0.0,
-                x_rx: 0.0,
-                z_rz: 0.0,
-            },
-            rig_tilt: 0.0,
-            rig_roll: 0.0,
-            sync_offset: 0,
-            field_roi: None,
-            lens_correction_amount: 1.0,
-            blend_width: 0.05,
-        }
-    }
+    use crate::stitch::test_support::calib;
 
     #[test]
     fn covered_pixels_return_uv_in_range() {
         let cfg = ViewportConfig::default();
-        let (left, right) = l_shape_plane_maps(&calib(), &cfg, 0.0, 0.0);
+        let (left, right) = l_shape_plane_maps(&calib(1920, 1080), &cfg, 0.0, 0.0);
         // Across the output, every covered pixel must report a UV inside [0,1],
         // and at least one plane must cover a healthy fraction of the frame.
         let mut covered = 0usize;

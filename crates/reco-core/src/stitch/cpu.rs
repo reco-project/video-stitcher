@@ -4,8 +4,9 @@
 //! of both the projection (it queries [`SurfaceMap`]s from [`super::geometry`])
 //! and the pixel format (it works through a `sample(u, v) -> rgb` closure). It
 //! mirrors `fisheye.wgsl`'s fragment stage per output pixel - float bilinear,
-//! BT.709 YUV->RGB, and a smoothstep seam - writing sRGB-domain RGBA exactly as
-//! the GPU render target would, so it doubles as the agreement oracle.
+//! BT.709 YUV->RGB, and a smoothstep seam - agreeing with the GPU render target
+//! to ~1 LSB (the GPU blends through an 8-bit intermediate and uses
+//! implementation-defined unorm rounding), so it doubles as the agreement oracle.
 
 use crate::calibration::MatchCalibration;
 use crate::render::planes::{Nv12Planes, YuvPlanes};
@@ -137,7 +138,7 @@ fn sample_nv12(
 ) -> [f64; 3] {
     let (w, h) = (cam_w as usize, cam_h as usize);
     let (cw, ch) = (w / 2, h / 2);
-    let y_raw = bilinear_u8(planes.y, w, w, h, u * w as f64 - 0.5, v * h as f64 - 0.5) / 255.0;
+    let y_raw = bilinear_u8(planes.y, w, h, u * w as f64 - 0.5, v * h as f64 - 0.5) / 255.0;
     let (u_raw, v_raw) = bilinear_chroma(
         planes.uv,
         w,
@@ -161,23 +162,9 @@ fn sample_yuv420p(
 ) -> [f64; 3] {
     let (w, h) = (cam_w as usize, cam_h as usize);
     let (cw, ch) = (w / 2, h / 2);
-    let y_raw = bilinear_u8(planes.y, w, w, h, u * w as f64 - 0.5, v * h as f64 - 0.5) / 255.0;
-    let u_raw = bilinear_u8(
-        planes.u,
-        cw,
-        cw,
-        ch,
-        u * cw as f64 - 0.5,
-        v * ch as f64 - 0.5,
-    ) / 255.0;
-    let v_raw = bilinear_u8(
-        planes.v,
-        cw,
-        cw,
-        ch,
-        u * cw as f64 - 0.5,
-        v * ch as f64 - 0.5,
-    ) / 255.0;
+    let y_raw = bilinear_u8(planes.y, w, h, u * w as f64 - 0.5, v * h as f64 - 0.5) / 255.0;
+    let u_raw = bilinear_u8(planes.u, cw, ch, u * cw as f64 - 0.5, v * ch as f64 - 0.5) / 255.0;
+    let v_raw = bilinear_u8(planes.v, cw, ch, u * cw as f64 - 0.5, v * ch as f64 - 0.5) / 255.0;
     yuv_to_rgb(y_raw, u_raw, v_raw, full_range)
 }
 
@@ -203,9 +190,10 @@ fn yuv_to_rgb(y_raw: f64, u_raw: f64, v_raw: f64, full_range: bool) -> [f64; 3] 
     ]
 }
 
-/// Bilinear sample of a single-byte plane with clamp-to-edge addressing.
+/// Bilinear sample of a tightly-packed single-byte plane (row stride = `w`),
+/// with clamp-to-edge addressing.
 #[inline]
-fn bilinear_u8(data: &[u8], stride: usize, w: usize, h: usize, fx: f64, fy: f64) -> f64 {
+fn bilinear_u8(data: &[u8], w: usize, h: usize, fx: f64, fy: f64) -> f64 {
     let fx = fx.clamp(0.0, (w - 1) as f64);
     let fy = fy.clamp(0.0, (h - 1) as f64);
     let x0 = fx.floor() as usize;
@@ -214,7 +202,7 @@ fn bilinear_u8(data: &[u8], stride: usize, w: usize, h: usize, fx: f64, fy: f64)
     let y1 = (y0 + 1).min(h - 1);
     let dx = fx - x0 as f64;
     let dy = fy - y0 as f64;
-    let p = |x: usize, y: usize| data[y * stride + x] as f64;
+    let p = |x: usize, y: usize| data[y * w + x] as f64;
     let top = p(x0, y0) * (1.0 - dx) + p(x1, y0) * dx;
     let bot = p(x0, y1) * (1.0 - dx) + p(x1, y1) * dx;
     top * (1.0 - dy) + bot * dy
@@ -248,8 +236,9 @@ fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// Quantise an sRGB-domain channel in `[0, 1]` to a `u8`, matching the GPU's
-/// `Rgba8Unorm` write (round-to-nearest).
+/// Quantise an sRGB-domain channel in `[0, 1]` to a `u8` (round-to-nearest).
+/// The GPU's `Rgba8Unorm` unorm rounding is implementation-defined, so this
+/// agrees to ~1 LSB rather than bit-exactly.
 #[inline]
 fn to_u8(v: f64) -> u8 {
     (v * 255.0).round().clamp(0.0, 255.0) as u8
@@ -277,7 +266,7 @@ mod tests {
     #[test]
     fn bilinear_flat_plane_is_constant() {
         let data = vec![200u8; 16 * 16];
-        let s = bilinear_u8(&data, 16, 16, 16, 3.3, 7.8);
+        let s = bilinear_u8(&data, 16, 16, 3.3, 7.8);
         assert!((s - 200.0).abs() < 1e-9);
     }
 

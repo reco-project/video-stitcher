@@ -34,9 +34,9 @@ pub enum StitchError {
     /// The GPU readback failed.
     #[error("gpu readback: {0}")]
     Readback(#[from] RgbaReadbackError),
-    /// The GPU pipeline did not yield a frame when one was expected.
-    #[error("gpu produced no frame")]
-    NoOutput,
+    /// Backend configuration is invalid (e.g. degenerate dimensions).
+    #[error("invalid stitch config: {0}")]
+    InvalidConfig(String),
     /// A source plane is smaller than the configured frame size.
     #[error("frame size mismatch: plane has {actual} bytes, need at least {expected}")]
     FrameSizeMismatch {
@@ -86,13 +86,19 @@ impl CpuStitchBackend {
         cam_w: u32,
         cam_h: u32,
         full_range: bool,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, StitchError> {
+        config.validate().map_err(StitchError::InvalidConfig)?;
+        if cam_w < 2 || cam_h < 2 {
+            return Err(StitchError::InvalidConfig(format!(
+                "source dimensions must be >= 2, got {cam_w}x{cam_h}"
+            )));
+        }
+        Ok(Self {
             calib,
             config,
             cam: (cam_w, cam_h),
             full_range,
-        }
+        })
     }
 }
 
@@ -200,10 +206,12 @@ impl StitchBackend for GpuStitchBackend {
             .render_to_target_nv12(left, right, yaw, pitch)?;
         let tex = self.pipeline.render_target();
         self.readback.readback(self.pipeline.gpu(), tex, cmd)?;
-        match self.readback.flush_pending(self.pipeline.gpu())? {
-            Some(bytes) => Ok(bytes.to_vec()),
-            None => Err(StitchError::NoOutput),
-        }
+        // A frame was just submitted, so flush_pending always drains it.
+        let frame = self
+            .readback
+            .flush_pending(self.pipeline.gpu())?
+            .expect("flush_pending yields the just-submitted frame");
+        Ok(frame.to_vec())
     }
 
     fn output_dims(&self) -> (u32, u32) {
@@ -218,53 +226,13 @@ impl StitchBackend for GpuStitchBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::calibration::{CameraParams, PlaneLayout};
-
-    fn test_calib(w: u32, h: u32) -> MatchCalibration {
-        let cam = || CameraParams {
-            width: w,
-            height: h,
-            fx: w as f64 * 0.5,
-            fy: w as f64 * 0.5,
-            cx: w as f64 * 0.5,
-            cy: h as f64 * 0.5,
-            d: [-0.02, 0.004, 0.0, 0.0],
-        };
-        MatchCalibration {
-            left: cam(),
-            right: cam(),
-            layout: PlaneLayout {
-                camera_axis_offset: 0.25,
-                intersect: 0.5,
-                x_ty: 0.0,
-                x_rz: 0.0,
-                z_rx: 0.0,
-                x_rx: 0.0,
-                z_rz: 0.0,
-            },
-            rig_tilt: 0.0,
-            rig_roll: 0.0,
-            sync_offset: 0,
-            field_roi: None,
-            lens_correction_amount: 1.0,
-            blend_width: 0.05,
-        }
-    }
-
-    fn nv12(w: u32, h: u32, bias: u8) -> (Vec<u8>, Vec<u8>) {
-        let y: Vec<u8> = (0..w * h)
-            .map(|i| ((i % w) as usize * 255 / w as usize) as u8)
-            .map(|val| val.saturating_add(bias))
-            .collect();
-        let uv = vec![128u8; (w * (h / 2)) as usize];
-        (y, uv)
-    }
+    use crate::stitch::test_support::{calib, gpu_or_skip, nv12};
 
     #[test]
     fn cpu_backend_reports_dims_and_name() {
         let (w, h) = (64u32, 36u32);
         let backend = CpuStitchBackend::new(
-            test_calib(w, h),
+            calib(w, h),
             ViewportConfig {
                 width: w,
                 height: h,
@@ -273,7 +241,8 @@ mod tests {
             w,
             h,
             false,
-        );
+        )
+        .expect("cpu backend");
         assert_eq!(backend.output_dims(), (w, h));
         assert_eq!(backend.name(), "cpu");
     }
@@ -282,7 +251,7 @@ mod tests {
     fn cpu_backend_rejects_undersized_planes() {
         let (w, h) = (64u32, 36u32);
         let mut backend = CpuStitchBackend::new(
-            test_calib(w, h),
+            calib(w, h),
             ViewportConfig {
                 width: w,
                 height: h,
@@ -291,7 +260,8 @@ mod tests {
             w,
             h,
             false,
-        );
+        )
+        .expect("cpu backend");
         let short = vec![0u8; 10];
         let planes = Nv12Planes {
             y: &short,
@@ -304,24 +274,13 @@ mod tests {
 
     #[test]
     fn cpu_and_gpu_backends_agree() {
-        use crate::gpu::GpuError;
-
-        let gpu = match pollster::block_on(GpuContext::new()) {
-            Ok(g) => g,
-            Err(GpuError::NoAdapter | GpuError::AdapterRequest(_)) => {
-                assert!(
-                    std::env::var("RECO_REQUIRE_GPU").is_err(),
-                    "RECO_REQUIRE_GPU is set but no GPU adapter was found"
-                );
-                eprintln!("skipping backend agreement: no adapter");
-                return;
-            }
-            Err(e) => panic!("gpu init: {e}"),
+        let Some(gpu) = gpu_or_skip() else {
+            return;
         };
 
         let (cam_w, cam_h) = (192u32, 108u32);
         let (out_w, out_h) = (160u32, 90u32);
-        let calib = test_calib(cam_w, cam_h);
+        let calib = calib(cam_w, cam_h);
         let config = ViewportConfig {
             width: out_w,
             height: out_h,
@@ -333,7 +292,8 @@ mod tests {
         let right = Nv12Planes { y: &ry, uv: &ruv };
         let (yaw, pitch) = (0.08f32, -0.04f32);
 
-        let mut cpu = CpuStitchBackend::new(calib.clone(), config.clone(), cam_w, cam_h, false);
+        let mut cpu = CpuStitchBackend::new(calib.clone(), config.clone(), cam_w, cam_h, false)
+            .expect("cpu backend");
         let mut gpu =
             GpuStitchBackend::new(gpu, calib, config, cam_w, cam_h, false).expect("gpu backend");
 

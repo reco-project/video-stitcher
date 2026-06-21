@@ -1,8 +1,8 @@
 //! CPU stitching backend (projection-agnostic).
 //!
 //! A pure-Rust, no-wgpu software stitcher that mirrors the GPU fisheye shader
-//! ([`shaders/fisheye.wgsl`](../render/renderer/index.html)) per output pixel.
-//! It serves two roles:
+//! (`shaders/fisheye.wgsl`, the fragment stage in [`crate::render`]) per output
+//! pixel. It serves two roles:
 //!
 //! 1. **Correctness oracle** for the GPU path. The geometry reuses
 //!    `crate::lens::kb4` and the same view/projection matrices as
@@ -15,8 +15,9 @@
 //!
 //! [`SurfaceMap`] is the only projection-specific piece: it maps an output
 //! pixel to a source-camera UV. The two-plane L-shape provides one
-//! [`PlaneMap`] per camera; future projections (cylinder, N-camera) implement
-//! the same trait and the gather loop in `cpu` is unchanged.
+//! [`PlaneMap`] per camera. The gather loop in `cpu` is currently specialised
+//! to the two-surface L-shape composite; the trait is the seam that N-surface
+//! projections (cylinder, N-camera) build on.
 //!
 //! ## Phase 1 scope
 //!
@@ -26,7 +27,7 @@
 
 mod backend;
 mod cpu;
-pub mod geometry;
+mod geometry;
 
 pub use backend::{CpuStitchBackend, GpuStitchBackend, StitchBackend, StitchError};
 pub use cpu::{stitch_l_shape_rgba, stitch_l_shape_rgba_yuv420p};
@@ -50,25 +51,23 @@ pub struct SurfaceUv {
 ///
 /// Implemented once per projection. The L-shape supplies two (one per camera
 /// plane); the CPU gather loop queries each surface and composites the ones
-/// that cover a pixel, so adding a projection means implementing this trait -
-/// the loop never changes. This is the CPU dual of the GPU rasterizer's
-/// per-fragment plane-UV interpolation.
+/// that cover a pixel. The L-shape composite loop is two-surface today; this
+/// trait is the seam future N-surface projections build on. It is the CPU dual
+/// of the GPU rasterizer's per-fragment plane-UV interpolation.
 pub trait SurfaceMap {
     /// Map an output pixel centre to its source-camera UV, or `None` when this
     /// surface does not cover the pixel (the GPU shader's bounds discard).
     fn sample_uv(&self, out_x: u32, out_y: u32) -> Option<SurfaceUv>;
 }
 
+/// Shared test fixtures + GPU acquisition for the stitch test modules.
 #[cfg(test)]
-mod tests {
-    use super::*;
+pub(crate) mod test_support {
     use crate::calibration::{CameraParams, MatchCalibration, PlaneLayout};
-    use crate::render::planes::Nv12Planes;
-    use crate::render::viewport::ViewportConfig;
+    use crate::gpu::{GpuContext, GpuError};
 
-    /// A frontal-ish two-camera calibration with a mild fisheye, sized for fast
-    /// tests. Both cameras share dimensions (as a real stereo rig does).
-    fn test_calib(w: u32, h: u32) -> MatchCalibration {
+    /// Two-camera calibration (shared dims, mild fisheye, centred) for tests.
+    pub fn calib(w: u32, h: u32) -> MatchCalibration {
         let cam = || CameraParams {
             width: w,
             height: h,
@@ -100,19 +99,46 @@ mod tests {
     }
 
     /// Synthetic NV12 frame: a horizontal luma gradient + flat mid-grey chroma.
-    fn nv12(w: u32, h: u32, bias: u8) -> (Vec<u8>, Vec<u8>) {
+    pub fn nv12(w: u32, h: u32, bias: u8) -> (Vec<u8>, Vec<u8>) {
         let y: Vec<u8> = (0..w * h)
-            .map(|i| ((i % w as usize as u32) as usize * 255 / w as usize) as u8)
-            .map(|v| v.saturating_add(bias))
+            .map(|i| ((i % w) as usize * 255 / w as usize) as u8)
+            .map(|val| val.saturating_add(bias))
             .collect();
         let uv = vec![128u8; (w * (h / 2)) as usize];
         (y, uv)
     }
 
+    /// Acquire a GPU context, or `None` to skip the test - unless
+    /// `RECO_REQUIRE_GPU` is set, in which case a missing adapter is a hard
+    /// failure (so CI with a software adapter cannot silently skip the
+    /// agreement tests).
+    pub fn gpu_or_skip() -> Option<GpuContext> {
+        match pollster::block_on(GpuContext::new()) {
+            Ok(g) => Some(g),
+            Err(GpuError::NoAdapter | GpuError::AdapterRequest(_)) => {
+                assert!(
+                    std::env::var("RECO_REQUIRE_GPU").is_err(),
+                    "RECO_REQUIRE_GPU is set but no GPU adapter was found"
+                );
+                None
+            }
+            Err(e) => panic!("gpu init: {e}"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test_support::{calib, gpu_or_skip, nv12};
+    use super::*;
+    use crate::calibration::MatchCalibration;
+    use crate::render::planes::Nv12Planes;
+    use crate::render::viewport::ViewportConfig;
+
     #[test]
     fn output_dimensions_and_opaque_alpha() {
         let (w, h) = (96u32, 54u32);
-        let calib = test_calib(w, h);
+        let calib = calib(w, h);
         let cfg = ViewportConfig {
             width: w,
             height: h,
@@ -132,7 +158,7 @@ mod tests {
     #[test]
     fn produces_covered_pixels_and_is_deterministic() {
         let (w, h) = (96u32, 54u32);
-        let calib = test_calib(w, h);
+        let calib = calib(w, h);
         let cfg = ViewportConfig {
             width: w,
             height: h,
@@ -164,25 +190,15 @@ mod tests {
     /// bilinear - so the RGB match should be tight. Skips when no GPU adapter.
     #[test]
     fn cpu_matches_gpu_within_tolerance() {
-        use crate::gpu::{GpuContext, GpuError};
         use crate::render::renderer::InputFormat;
 
-        let gpu = match pollster::block_on(GpuContext::new()) {
-            Ok(g) => g,
-            Err(GpuError::NoAdapter | GpuError::AdapterRequest(_)) => {
-                assert!(
-                    std::env::var("RECO_REQUIRE_GPU").is_err(),
-                    "RECO_REQUIRE_GPU is set but no GPU adapter was found"
-                );
-                eprintln!("skipping GPU agreement: no adapter");
-                return;
-            }
-            Err(e) => panic!("gpu init: {e}"),
+        let Some(gpu) = gpu_or_skip() else {
+            return;
         };
 
         let (cam_w, cam_h) = (256u32, 144u32);
         let (out_w, out_h) = (192u32, 108u32);
-        let calib = test_calib(cam_w, cam_h);
+        let calib = calib(cam_w, cam_h);
         let config = ViewportConfig {
             width: out_w,
             height: out_h,
@@ -284,26 +300,16 @@ mod tests {
     /// validating the separate-plane chroma sampler against the shader.
     #[test]
     fn cpu_yuv420p_matches_gpu_within_tolerance() {
-        use crate::gpu::{GpuContext, GpuError};
         use crate::render::planes::YuvPlanes;
         use crate::render::renderer::InputFormat;
 
-        let gpu = match pollster::block_on(GpuContext::new()) {
-            Ok(g) => g,
-            Err(GpuError::NoAdapter | GpuError::AdapterRequest(_)) => {
-                assert!(
-                    std::env::var("RECO_REQUIRE_GPU").is_err(),
-                    "RECO_REQUIRE_GPU is set but no GPU adapter was found"
-                );
-                eprintln!("skipping GPU agreement (yuv420p): no adapter");
-                return;
-            }
-            Err(e) => panic!("gpu init: {e}"),
+        let Some(gpu) = gpu_or_skip() else {
+            return;
         };
 
         let (cam_w, cam_h) = (256u32, 144u32);
         let (out_w, out_h) = (192u32, 108u32);
-        let calib = test_calib(cam_w, cam_h);
+        let calib = calib(cam_w, cam_h);
         let config = ViewportConfig {
             width: out_w,
             height: out_h,
@@ -421,19 +427,8 @@ mod tests {
         pitch: f32,
         full_range: bool,
     ) -> Option<(f64, f64, u32)> {
-        use crate::gpu::{GpuContext, GpuError};
         use crate::render::renderer::InputFormat;
-        let gpu = match pollster::block_on(GpuContext::new()) {
-            Ok(g) => g,
-            Err(GpuError::NoAdapter | GpuError::AdapterRequest(_)) => {
-                assert!(
-                    std::env::var("RECO_REQUIRE_GPU").is_err(),
-                    "RECO_REQUIRE_GPU is set but no GPU adapter was found"
-                );
-                return None;
-            }
-            Err(e) => panic!("gpu init: {e}"),
-        };
+        let gpu = gpu_or_skip()?;
         let (cam_w, cam_h) = cam;
         let mut pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
             gpu,
@@ -508,12 +503,12 @@ mod tests {
             ..Default::default()
         };
         let calib_cx = |cx_off: f64| {
-            let mut c = test_calib(cam_w, cam_h);
+            let mut c = calib(cam_w, cam_h);
             c.left.cx = cam_w as f64 * (0.5 + cx_off);
             c.right.cx = cam_w as f64 * (0.5 + cx_off);
             c
         };
-        let base = test_calib(cam_w, cam_h);
+        let base = calib(cam_w, cam_h);
         let cases: [(&str, MatchCalibration, ViewportConfig, f32, f32, bool); 5] = [
             ("wide-pan", base.clone(), cfg(75.0, 1.0), 0.9, 0.0, false),
             ("wide-fov", base.clone(), cfg(130.0, 1.0), 0.0, 0.0, false),
