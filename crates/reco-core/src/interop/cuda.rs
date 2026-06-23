@@ -418,6 +418,14 @@ pub struct CudaSharedMemory {
 impl Drop for CudaSharedMemory {
     fn drop(&mut self) {
         if let Ok(cuda) = cuda() {
+            // This may drop on a thread without the CUDA context current (the
+            // session thread rather than the decode thread that allocated).
+            // Without a current context the cleanup calls below fail and the VMM
+            // allocation leaks. Ensure one first, as the other CUDA drops do.
+            if let Err(e) = cuda_ensure_context() {
+                log::warn!("CudaSharedMemory drop: no CUDA context, leaking allocation: {e}");
+                return;
+            }
             unsafe {
                 let unmap_rc = (cuda.cu_mem_unmap)(self.device_ptr, self.alloc_size);
                 if unmap_rc != CUDA_SUCCESS {
