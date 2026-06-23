@@ -12,8 +12,31 @@ use crate::calibration::MatchCalibration;
 use crate::render::planes::{Nv12Planes, YuvPlanes};
 use crate::render::viewport::ViewportConfig;
 
+use super::StitchError;
 use super::SurfaceMap;
 use super::geometry::l_shape_plane_maps;
+
+/// Reject degenerate source dimensions that would underflow chroma indexing.
+fn check_source_dims(cw: u32, ch: u32) -> Result<(), StitchError> {
+    if cw < 2 || ch < 2 {
+        return Err(StitchError::InvalidConfig(format!(
+            "source dimensions must be >= 2, got {cw}x{ch}"
+        )));
+    }
+    Ok(())
+}
+
+/// Reject a plane shorter than the configured frame requires (would otherwise
+/// index out of bounds in the gather and panic).
+fn check_plane(plane: &[u8], expected: usize) -> Result<(), StitchError> {
+    if plane.len() < expected {
+        return Err(StitchError::FrameSizeMismatch {
+            expected,
+            actual: plane.len(),
+        });
+    }
+    Ok(())
+}
 
 /// Stitch two NV12 camera frames into an RGBA panorama on the CPU.
 ///
@@ -27,6 +50,11 @@ use super::geometry::l_shape_plane_maps;
 /// * `yaw`, `pitch` - per-frame virtual-camera pan, in radians.
 /// * `full_range` - `true` for full-range (0-255) YUV, `false` for limited
 ///   (16-235) BT.709, matching the source decoder.
+///
+/// Returns [`StitchError::InvalidConfig`] for degenerate source dimensions and
+/// [`StitchError::FrameSizeMismatch`] if a plane is shorter than `cam` requires,
+/// rather than panicking - this is the GPU-less render path, so callers (e.g.
+/// the X5) get a typed error instead of an out-of-bounds panic.
 #[allow(clippy::too_many_arguments)]
 pub fn stitch_l_shape_rgba(
     left: &Nv12Planes,
@@ -37,16 +65,22 @@ pub fn stitch_l_shape_rgba(
     yaw: f32,
     pitch: f32,
     full_range: bool,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, StitchError> {
     let (cw, ch) = cam;
-    stitch_l_shape_with(
+    check_source_dims(cw, ch)?;
+    let (w, h) = (cw as usize, ch as usize);
+    check_plane(left.y, w * h)?;
+    check_plane(left.uv, w * (h / 2))?;
+    check_plane(right.y, w * h)?;
+    check_plane(right.uv, w * (h / 2))?;
+    Ok(stitch_l_shape_with(
         calib,
         config,
         yaw,
         pitch,
         |u, v| sample_nv12(left, cw, ch, u, v, full_range),
         |u, v| sample_nv12(right, cw, ch, u, v, full_range),
-    )
+    ))
 }
 
 /// Stitch two YUV420p (planar) camera frames into an RGBA panorama on the CPU.
@@ -64,16 +98,25 @@ pub fn stitch_l_shape_rgba_yuv420p(
     yaw: f32,
     pitch: f32,
     full_range: bool,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, StitchError> {
     let (cw, ch) = cam;
-    stitch_l_shape_with(
+    check_source_dims(cw, ch)?;
+    let (w, h) = (cw as usize, ch as usize);
+    let chroma = (w / 2) * (h / 2);
+    check_plane(left.y, w * h)?;
+    check_plane(left.u, chroma)?;
+    check_plane(left.v, chroma)?;
+    check_plane(right.y, w * h)?;
+    check_plane(right.u, chroma)?;
+    check_plane(right.v, chroma)?;
+    Ok(stitch_l_shape_with(
         calib,
         config,
         yaw,
         pitch,
         |u, v| sample_yuv420p(left, cw, ch, u, v, full_range),
         |u, v| sample_yuv420p(right, cw, ch, u, v, full_range),
-    )
+    ))
 }
 
 /// Format-agnostic L-shape gather and composite.

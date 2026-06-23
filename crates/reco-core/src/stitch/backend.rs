@@ -87,6 +87,9 @@ impl CpuStitchBackend {
         cam_h: u32,
         full_range: bool,
     ) -> Result<Self, StitchError> {
+        calib
+            .validate()
+            .map_err(|e| StitchError::InvalidConfig(e.to_string()))?;
         config.validate().map_err(StitchError::InvalidConfig)?;
         if cam_w < 2 || cam_h < 2 {
             return Err(StitchError::InvalidConfig(format!(
@@ -110,26 +113,9 @@ impl StitchBackend for CpuStitchBackend {
         yaw: f32,
         pitch: f32,
     ) -> Result<Vec<u8>, StitchError> {
-        // Validate plane sizes (the GPU backend does too, via upload_nv12) so
-        // both backends return a typed error rather than the CPU path panicking
-        // on a short/truncated frame.
-        let (w, h) = (self.cam.0 as usize, self.cam.1 as usize);
-        let (y_len, uv_len) = (w * h, w * (h / 2));
-        for p in [left, right] {
-            if p.y.len() < y_len {
-                return Err(StitchError::FrameSizeMismatch {
-                    expected: y_len,
-                    actual: p.y.len(),
-                });
-            }
-            if p.uv.len() < uv_len {
-                return Err(StitchError::FrameSizeMismatch {
-                    expected: uv_len,
-                    actual: p.uv.len(),
-                });
-            }
-        }
-        Ok(stitch_l_shape_rgba(
+        // Plane-size + dimension validation lives in stitch_l_shape_rgba, which
+        // returns a typed error instead of panicking on a short/truncated frame.
+        stitch_l_shape_rgba(
             left,
             right,
             self.cam,
@@ -138,7 +124,7 @@ impl StitchBackend for CpuStitchBackend {
             yaw,
             pitch,
             self.full_range,
-        ))
+        )
     }
 
     fn output_dims(&self) -> (u32, u32) {
@@ -172,6 +158,9 @@ impl GpuStitchBackend {
         cam_h: u32,
         full_range: bool,
     ) -> Result<Self, StitchError> {
+        calib
+            .validate()
+            .map_err(|e| StitchError::InvalidConfig(e.to_string()))?;
         let mut pipeline = StitchPipeline::with_gpu(
             gpu,
             calib,

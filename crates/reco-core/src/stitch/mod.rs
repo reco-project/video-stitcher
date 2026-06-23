@@ -149,7 +149,8 @@ mod tests {
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
 
-        let out = stitch_l_shape_rgba(&left, &right, (w, h), &calib, &cfg, 0.0, 0.0, false);
+        let out =
+            stitch_l_shape_rgba(&left, &right, (w, h), &calib, &cfg, 0.0, 0.0, false).unwrap();
         assert_eq!(out.len(), (w * h * 4) as usize);
         // Alpha channel is fully opaque.
         assert!(out.iter().skip(3).step_by(4).all(|&a| a == 255));
@@ -169,8 +170,8 @@ mod tests {
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
 
-        let a = stitch_l_shape_rgba(&left, &right, (w, h), &calib, &cfg, 0.0, 0.0, false);
-        let b = stitch_l_shape_rgba(&left, &right, (w, h), &calib, &cfg, 0.0, 0.0, false);
+        let a = stitch_l_shape_rgba(&left, &right, (w, h), &calib, &cfg, 0.0, 0.0, false).unwrap();
+        let b = stitch_l_shape_rgba(&left, &right, (w, h), &calib, &cfg, 0.0, 0.0, false).unwrap();
         assert_eq!(a, b, "stitch must be deterministic");
 
         // Some pixels are covered (non-black) - the planes are in view.
@@ -250,7 +251,8 @@ mod tests {
             yaw,
             pitch,
             false,
-        );
+        )
+        .expect("cpu stitch");
         assert_eq!(gpu_rgba.len(), cpu_rgba.len());
 
         let (mut max, mut sum, mut n, mut gt4) = (0i32, 0i64, 0i64, 0i64);
@@ -366,7 +368,8 @@ mod tests {
             yaw,
             pitch,
             false,
-        );
+        )
+        .expect("cpu stitch yuv420p");
         assert_eq!(gpu_rgba.len(), cpu_rgba.len());
 
         let (mut max, mut sum, mut n, mut gt4) = (0i32, 0i64, 0i64, 0i64);
@@ -485,7 +488,8 @@ mod tests {
             }
         }
         let gpu_rgba = gpu_rgba.expect("gpu frame");
-        let cpu_rgba = stitch_l_shape_rgba(left, right, cam, calib, config, yaw, pitch, full_range);
+        let cpu_rgba =
+            stitch_l_shape_rgba(left, right, cam, calib, config, yaw, pitch, full_range).unwrap();
         Some((gpu_rgba, cpu_rgba))
     }
 
