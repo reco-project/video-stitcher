@@ -125,11 +125,102 @@ pub(crate) mod test_support {
             Err(e) => panic!("gpu init: {e}"),
         }
     }
+
+    /// Per-channel RGB agreement between a reference (GPU) and a candidate (CPU)
+    /// RGBA buffer (alpha ignored). The trustworthy gate is `mean` + `pct_over`
+    /// (the fraction of channels diverging past [`DIVERGENCE_LSB`]); `max` is
+    /// informational only. A *correct* stitch legitimately produces `max = 255`
+    /// at a couple of seam coverage-boundary pixels on some rasterizers (RADV),
+    /// so a global-max bound is unsound. Measured floor across llvmpipe / NVIDIA
+    /// / RADV: `mean <= 0.31`, `pct_over <= 0.003%`. A real geometry or sampler
+    /// divergence gives `mean` in the tens and `pct_over` in the tens of percent.
+    pub struct Agreement {
+        pub mean: f64,
+        /// Percent of RGB channels differing by more than [`DIVERGENCE_LSB`].
+        pub pct_over: f64,
+        /// Largest single-channel difference (informational; not gated).
+        pub max: u32,
+    }
+
+    /// Differences larger than this many LSB are structural (coverage / geometry
+    /// divergence), never f32-vs-f64 or cross-GPU bilinear rounding: the floor
+    /// keeps rounding noise at `<= 3` LSB, and the only larger diffs are full
+    /// coverage-XOR flips at individual seam pixels.
+    pub const DIVERGENCE_LSB: i32 = 16;
+
+    impl Agreement {
+        /// Compare two equal-length RGBA buffers.
+        pub fn compare(reference: &[u8], candidate: &[u8]) -> Self {
+            assert_eq!(
+                reference.len(),
+                candidate.len(),
+                "agreement buffers differ in length"
+            );
+            let (mut sum, mut n, mut over, mut max) = (0i64, 0i64, 0i64, 0i32);
+            for (r, c) in reference.chunks_exact(4).zip(candidate.chunks_exact(4)) {
+                for k in 0..3 {
+                    let d = (r[k] as i32 - c[k] as i32).abs();
+                    sum += d as i64;
+                    n += 1;
+                    if d > DIVERGENCE_LSB {
+                        over += 1;
+                    }
+                    max = max.max(d);
+                }
+            }
+            Agreement {
+                mean: sum as f64 / n as f64,
+                pct_over: 100.0 * over as f64 / n as f64,
+                max: max as u32,
+            }
+        }
+
+        /// Assert the agreement is within `bounds`, printing the stats with
+        /// `label` either way. A real divergence blows `mean` and `pct_over`
+        /// orders of magnitude past these bounds.
+        pub fn assert_within(&self, bounds: AgreementBounds, label: &str) {
+            eprintln!(
+                "[{label}] mean={:.3} >{DIVERGENCE_LSB}:{:.4}% max={}",
+                self.mean, self.pct_over, self.max
+            );
+            assert!(
+                self.mean < bounds.max_mean,
+                "{label}: mean RGB diff {:.3} exceeds {:.3} (geometry/sampler divergence?)",
+                self.mean,
+                bounds.max_mean
+            );
+            assert!(
+                self.pct_over < bounds.max_pct_over,
+                "{label}: {:.4}% of channels off by >{DIVERGENCE_LSB} exceeds {:.4}% (coverage divergence?)",
+                self.pct_over,
+                bounds.max_pct_over
+            );
+        }
+    }
+
+    /// Tolerance for a GPU-vs-CPU agreement assertion. One
+    /// [`AgreementBounds::DEFAULT`] covers every scene (smooth ramps and the
+    /// high-frequency checker alike): the measured floor across three
+    /// rasterizers is `mean <= 0.31` / `pct_over <= 0.003%`, so DEFAULT leaves
+    /// ~2.6x / ~16x headroom for cross-GPU rounding while staying ~50-100x below
+    /// any real divergence.
+    #[derive(Clone, Copy)]
+    pub struct AgreementBounds {
+        pub max_mean: f64,
+        pub max_pct_over: f64,
+    }
+
+    impl AgreementBounds {
+        pub const DEFAULT: Self = Self {
+            max_mean: 0.8,
+            max_pct_over: 0.05,
+        };
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::test_support::{calib, gpu_or_skip, nv12};
+    use super::test_support::{Agreement, AgreementBounds, calib, gpu_or_skip, nv12};
     use super::*;
     use crate::calibration::MatchCalibration;
     use crate::render::planes::Nv12Planes;
@@ -253,32 +344,7 @@ mod tests {
             false,
         )
         .expect("cpu stitch");
-        assert_eq!(gpu_rgba.len(), cpu_rgba.len());
-
-        let (mut max, mut sum, mut n, mut gt4) = (0i32, 0i64, 0i64, 0i64);
-        for (g, c) in gpu_rgba.chunks_exact(4).zip(cpu_rgba.chunks_exact(4)) {
-            for k in 0..3 {
-                let d = (g[k] as i32 - c[k] as i32).abs();
-                max = max.max(d);
-                sum += d as i64;
-                n += 1;
-                if d > 4 {
-                    gt4 += 1;
-                }
-            }
-        }
-        let mean = sum as f64 / n as f64;
-        let pct_gt4 = 100.0 * gt4 as f64 / n as f64;
-        eprintln!("GPU-vs-CPU RGB: max={max} mean={mean:.3} >4:{pct_gt4:.3}%");
-        // Shared geometry + lens => agreement to ~1 LSB; tolerances leave room
-        // for f32-vs-f64 and cross-GPU bilinear/rounding without masking a
-        // real geometry regression (which would blow max into the tens).
-        assert!(mean < 1.0, "mean RGB diff too high: {mean}");
-        assert!(pct_gt4 < 0.5, "too many large RGB diffs: {pct_gt4}%");
-        assert!(
-            max <= 8,
-            "max RGB diff {max} too high (geometry divergence?)"
-        );
+        Agreement::compare(&gpu_rgba, &cpu_rgba).assert_within(AgreementBounds::DEFAULT, "nv12");
     }
 
     /// Synthetic YUV420p: horizontal luma gradient + mild chroma gradients, so
@@ -370,29 +436,7 @@ mod tests {
             false,
         )
         .expect("cpu stitch yuv420p");
-        assert_eq!(gpu_rgba.len(), cpu_rgba.len());
-
-        let (mut max, mut sum, mut n, mut gt4) = (0i32, 0i64, 0i64, 0i64);
-        for (g, c) in gpu_rgba.chunks_exact(4).zip(cpu_rgba.chunks_exact(4)) {
-            for k in 0..3 {
-                let d = (g[k] as i32 - c[k] as i32).abs();
-                max = max.max(d);
-                sum += d as i64;
-                n += 1;
-                if d > 4 {
-                    gt4 += 1;
-                }
-            }
-        }
-        let mean = sum as f64 / n as f64;
-        let pct_gt4 = 100.0 * gt4 as f64 / n as f64;
-        eprintln!("YUV420p GPU-vs-CPU RGB: max={max} mean={mean:.3} >4:{pct_gt4:.3}%");
-        assert!(mean < 1.0, "mean RGB diff too high: {mean}");
-        assert!(pct_gt4 < 0.5, "too many large RGB diffs: {pct_gt4}%");
-        assert!(
-            max <= 8,
-            "max RGB diff {max} too high (geometry divergence?)"
-        );
+        Agreement::compare(&gpu_rgba, &cpu_rgba).assert_within(AgreementBounds::DEFAULT, "yuv420p");
     }
 
     /// Textured NV12 (rippled luma + gradient interleaved chroma) - non-flat so
@@ -493,29 +537,6 @@ mod tests {
         Some((gpu_rgba, cpu_rgba))
     }
 
-    /// `(mean, pct>16, max)` of the per-channel RGB difference. A geometry
-    /// divergence shows up as a large contiguous wrong region (high mean +
-    /// high pct>16); a correct result only has thin boundary f32/f64 flips.
-    fn rgb_diff_stats(gpu: &[u8], cpu: &[u8]) -> (f64, f64, u32) {
-        let (mut sum, mut n, mut gt, mut max) = (0i64, 0i64, 0i64, 0i32);
-        for (g, c) in gpu.chunks_exact(4).zip(cpu.chunks_exact(4)) {
-            for k in 0..3 {
-                let d = (g[k] as i32 - c[k] as i32).abs();
-                sum += d as i64;
-                n += 1;
-                if d > 16 {
-                    gt += 1;
-                }
-                max = max.max(d);
-            }
-        }
-        (
-            sum as f64 / n as f64,
-            100.0 * gt as f64 / n as f64,
-            max as u32,
-        )
-    }
-
     /// Regression guard for the regimes that masked the original behind-camera
     /// and quad-footprint divergences: wide pan, wide FOV, off-center principal
     /// point, full-range, and partial lens correction. Each must agree with the
@@ -608,16 +629,7 @@ mod tests {
                 return;
             };
             ran = true;
-            let (mean, pct16, max) = rgb_diff_stats(&g, &c);
-            eprintln!("regime {label}: mean={mean:.3} >16:{pct16:.3}% max={max}");
-            assert!(
-                mean < 1.5,
-                "{label}: mean RGB diff {mean} (geometry divergence?)"
-            );
-            assert!(
-                pct16 < 0.5,
-                "{label}: {pct16}% of channels off by >16 (geometry divergence?)"
-            );
+            Agreement::compare(&g, &c).assert_within(AgreementBounds::DEFAULT, label);
         }
         assert!(ran, "regimes test did not run");
     }
@@ -669,16 +681,7 @@ mod tests {
                 return;
             };
             ran = true;
-            let (mean, pct16, max) = rgb_diff_stats(&g, &c);
-            eprintln!("near-plane {label}: mean={mean:.3} >16:{pct16:.3}% max={max}");
-            assert!(
-                mean < 1.5,
-                "{label}: mean RGB diff {mean} (missing near-plane clip?)"
-            );
-            assert!(
-                pct16 < 0.5,
-                "{label}: {pct16}% of channels off by >16 (missing near-plane clip?)"
-            );
+            Agreement::compare(&g, &c).assert_within(AgreementBounds::DEFAULT, label);
         }
         assert!(ran, "near-plane test did not run");
     }
@@ -712,16 +715,7 @@ mod tests {
         ) else {
             return;
         };
-        let (mean, pct16, max) = rgb_diff_stats(&g, &c);
-        eprintln!("high-freq GPU-vs-CPU: mean={mean:.3} >16:{pct16:.3}% max={max}");
-        assert!(
-            mean < 3.0,
-            "high-freq mean {mean} (sampler/convention error?)"
-        );
-        assert!(
-            pct16 < 3.0,
-            "high-freq {pct16}% off by >16 (sampler/convention error?)"
-        );
+        Agreement::compare(&g, &c).assert_within(AgreementBounds::DEFAULT, "high-freq");
     }
 
     /// Consistency: where the GPU leaves the cleared-black background (no plane
@@ -770,8 +764,72 @@ mod tests {
         assert!(gpu_black > 0, "expected a black margin at fov=140");
         let leak_pct = 100.0 * leak as f64 / gpu_black as f64;
         assert!(
-            leak_pct < 5.0,
+            leak_pct < 1.0,
             "{leak_pct}% of GPU-black pixels are non-black on CPU (coverage divergence?)"
+        );
+    }
+
+    /// Trustworthiness self-test for the agreement oracle: it must FAIL on a
+    /// real geometry error, not merely pass on a correct one. The correct CPU
+    /// stitch agrees with the GPU within [`AgreementBounds::DEFAULT`]; the same
+    /// stitch with the virtual pan nudged by ~1px of output must NOT - its mean
+    /// blows well past the bound. Without this guard a too-loose tolerance could
+    /// silently accept a sub-pixel geometry regression (the class of bug the
+    /// near-plane clip divergence was). Uses the offset-sensitive ramp scene; a
+    /// flat scene would hide the misregistration.
+    #[test]
+    fn agreement_oracle_detects_subpixel_offset() {
+        let (cam_w, cam_h) = (256u32, 144u32);
+        let cal = calib(cam_w, cam_h);
+        let config = ViewportConfig {
+            width: 192,
+            height: 108,
+            ..Default::default()
+        };
+        let (ly, luv) = textured_nv12(cam_w, cam_h, 0.0);
+        let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);
+        let left = Nv12Planes { y: &ly, uv: &luv };
+        let right = Nv12Planes { y: &ry, uv: &ruv };
+        let (yaw, pitch) = (0.10f32, -0.05f32);
+        let Some((gpu_rgba, cpu_rgba)) = gpu_cpu_rgba(
+            &cal,
+            &config,
+            (cam_w, cam_h),
+            &left,
+            &right,
+            yaw,
+            pitch,
+            false,
+        ) else {
+            return;
+        };
+
+        // The correct CPU stitch must pass the tightened bound.
+        let good = Agreement::compare(&gpu_rgba, &cpu_rgba);
+        good.assert_within(AgreementBounds::DEFAULT, "probe-correct");
+
+        // ~1px of output (fov 75 over 192px ~= 0.007 rad/px); 0.01 rad is decisive.
+        let perturbed = stitch_l_shape_rgba(
+            &left,
+            &right,
+            (cam_w, cam_h),
+            &cal,
+            &config,
+            yaw + 0.01,
+            pitch,
+            false,
+        )
+        .expect("cpu stitch");
+        let bad = Agreement::compare(&gpu_rgba, &perturbed);
+        eprintln!(
+            "injection probe: correct mean={:.3}, +1px mean={:.3}",
+            good.mean, bad.mean
+        );
+        assert!(
+            bad.mean > AgreementBounds::DEFAULT.max_mean,
+            "oracle not trustworthy: a ~1px geometry offset gave mean {:.3}, still within the {:.3} bound",
+            bad.mean,
+            AgreementBounds::DEFAULT.max_mean
         );
     }
 }

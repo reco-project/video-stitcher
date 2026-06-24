@@ -215,7 +215,7 @@ impl StitchBackend for GpuStitchBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::stitch::test_support::{calib, gpu_or_skip, nv12};
+    use crate::stitch::test_support::{Agreement, AgreementBounds, calib, gpu_or_skip, nv12};
 
     #[test]
     fn cpu_backend_reports_dims_and_name() {
@@ -295,15 +295,7 @@ mod tests {
         }
         let (cpu_rgba, gpu_rgba) = (&outputs[0], &outputs[1]);
         assert_eq!(cpu_rgba.len(), (out_w * out_h * 4) as usize);
-        assert_eq!(cpu_rgba.len(), gpu_rgba.len());
-
-        let mut max = 0i32;
-        for (c, g) in cpu_rgba.chunks_exact(4).zip(gpu_rgba.chunks_exact(4)) {
-            for k in 0..3 {
-                max = max.max((c[k] as i32 - g[k] as i32).abs());
-            }
-        }
-        eprintln!("backend CPU-vs-GPU max RGB diff: {max}");
-        assert!(max <= 4, "backends disagree by {max} (>4)");
+        Agreement::compare(gpu_rgba, cpu_rgba)
+            .assert_within(AgreementBounds::DEFAULT, "backend cpu-vs-gpu");
     }
 }
