@@ -485,12 +485,14 @@ impl ApplicationHandler for App {
             },
         );
 
+        // Blend/rig live on the calibration now; seed them from the preview's
+        // current state before building the renderer.
+        self.cal.topology.blend_width = self.blend_width;
+        self.cal.framing.tilt = self.rig_tilt as f64;
+        self.cal.framing.roll = self.rig_roll as f64;
         let viewport = reco_core::render::viewport::ViewportConfig {
             width: self.width,
             height: self.height,
-            blend_width: self.blend_width,
-            rig_tilt: self.rig_tilt,
-            rig_roll: self.rig_roll,
             ..Default::default()
         };
 

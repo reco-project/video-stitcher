@@ -545,12 +545,18 @@ mod tests {
     #[test]
     fn cpu_matches_gpu_across_regimes() {
         let (cam_w, cam_h) = (256u32, 144u32);
-        let cfg = |w: u32, h: u32, fov: f32, corr: f32| ViewportConfig {
+        let cfg = |w: u32, h: u32, fov: f32| ViewportConfig {
             width: w,
             height: h,
             fov_degrees: fov,
-            lens_correction_amount: corr,
-            ..Default::default()
+        };
+        // Lens correction is now per-lens on the calibration.
+        let calib_corr = |c: f32| {
+            let mut cal = calib(cam_w, cam_h);
+            for lens in &mut cal.lenses {
+                lens.correction = c;
+            }
+            cal
         };
         let calib_cx = |cx_off: f64| {
             let mut c = calib(cam_w, cam_h);
@@ -567,7 +573,7 @@ mod tests {
             (
                 "wide-pan",
                 base.clone(),
-                cfg(192, 108, 75.0, 1.0),
+                cfg(192, 108, 75.0),
                 0.9,
                 0.0,
                 false,
@@ -575,7 +581,7 @@ mod tests {
             (
                 "wide-fov",
                 base.clone(),
-                cfg(192, 108, 130.0, 1.0),
+                cfg(192, 108, 130.0),
                 0.0,
                 0.0,
                 false,
@@ -583,7 +589,7 @@ mod tests {
             (
                 "off-center-cx",
                 calib_cx(0.12),
-                cfg(192, 108, 75.0, 1.0),
+                cfg(192, 108, 75.0),
                 0.2,
                 0.0,
                 false,
@@ -591,15 +597,15 @@ mod tests {
             (
                 "full-range",
                 base.clone(),
-                cfg(192, 108, 75.0, 1.0),
+                cfg(192, 108, 75.0),
                 0.1,
                 -0.05,
                 true,
             ),
             (
                 "lens-corr-0.5",
-                base.clone(),
-                cfg(192, 108, 75.0, 0.5),
+                calib_corr(0.5),
+                cfg(192, 108, 75.0),
                 0.1,
                 -0.05,
                 false,
@@ -607,7 +613,7 @@ mod tests {
             (
                 "non-16:9 (4:3 out)",
                 base.clone(),
-                cfg(144, 108, 75.0, 1.0),
+                cfg(144, 108, 75.0),
                 0.1,
                 -0.05,
                 false,
@@ -656,7 +662,6 @@ mod tests {
             width: 192,
             height: 108,
             fov_degrees: fov,
-            ..Default::default()
         };
         // Each case puts a plane within NEAR_PLANE of the virtual camera before
         // the fix: axis offset below ~0.012, or FOV near the projection limit.
@@ -732,7 +737,6 @@ mod tests {
             width: 192,
             height: 108,
             fov_degrees: 140.0,
-            ..Default::default()
         };
         let (ly, luv) = textured_nv12(cam_w, cam_h, 0.0);
         let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);

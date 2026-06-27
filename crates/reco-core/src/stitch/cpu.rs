@@ -135,7 +135,7 @@ fn stitch_l_shape_with(
 ) -> Vec<u8> {
     let (out_w, out_h) = (config.width, config.height);
     let (lmap, rmap) = l_shape_plane_maps(calib, config, yaw, pitch);
-    let blend_width = config.blend_width as f64;
+    let blend_width = calib.topology.blend_width as f64;
 
     let mut out = vec![0u8; (out_w * out_h * 4) as usize];
     for py in 0..out_h {

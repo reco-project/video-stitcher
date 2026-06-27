@@ -546,7 +546,7 @@ impl StitchJob {
         let start = std::time::Instant::now();
 
         // Load calibration
-        let cal = match self.calibration {
+        let mut cal = match self.calibration {
             CalibrationSource::File(ref path) => {
                 reco_core::calibration::Calibration::from_file(path)
                     .map_err(|e| StitchError::Calibration(format!("{e}")))?
@@ -583,13 +583,12 @@ impl StitchJob {
             reco_core::render::renderer::InputFormat::Yuv420p
         };
 
-        // Build session
+        // Build session. The job's blend width lives on the calibration now;
+        // rig tilt/roll are read straight from it by the stitch.
+        cal.topology.blend_width = self.blend_width;
         let viewport = reco_core::render::viewport::ViewportConfig {
             width: out_w,
             height: out_h,
-            blend_width: self.blend_width,
-            rig_tilt: cal.framing.tilt as f32,
-            rig_roll: cal.framing.roll as f32,
             ..Default::default()
         };
         let session_config = reco_core::session::types::SessionConfig {

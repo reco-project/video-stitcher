@@ -619,7 +619,7 @@ impl AppState {
             let pipeline = bridge.renderer().pipeline();
             out.lenses[0] = pipeline.calibration().lenses[0].clone();
             out.lenses[1] = pipeline.calibration().lenses[1].clone();
-            out.topology.blend_width = pipeline.viewport().blend_width;
+            out.topology.blend_width = pipeline.calibration().topology.blend_width;
         }
         let json = serde_json::to_string_pretty(&out).map_err(|e| format!("serialize: {e}"))?;
         std::fs::write(path, json).map_err(|e| format!("write {}: {e}", path.display()))?;
@@ -811,7 +811,7 @@ impl AppState {
             };
         }
 
-        let rig_tilt = bridge.renderer().pipeline().viewport().rig_tilt;
+        let rig_tilt = bridge.renderer().pipeline().calibration().framing.tilt as f32;
         let pose = self.pose.render_pose(rig_tilt);
 
         let recording = self.is_recording();
@@ -908,7 +908,7 @@ impl AppState {
             let renderer = bridge.renderer();
             let (vw, vh) = bridge.viewport_size();
             let aspect = vw as f32 / vh as f32;
-            let rig_tilt = renderer.pipeline().viewport().rig_tilt;
+            let rig_tilt = renderer.pipeline().calibration().framing.tilt as f32;
             self.pose
                 .clamp_via_coverage(renderer.coverage(), aspect, rig_tilt);
         }
@@ -1027,7 +1027,7 @@ impl AppState {
         let renderer = bridge.renderer();
         let (vw, vh) = bridge.viewport_size();
         let aspect = vw as f32 / vh as f32;
-        let rig_tilt = renderer.pipeline().viewport().rig_tilt;
+        let rig_tilt = renderer.pipeline().calibration().framing.tilt as f32;
         self.pose
             .clamp_via_coverage(renderer.coverage(), aspect, rig_tilt);
     }
@@ -4238,15 +4238,15 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
             let rig_tilt_rad = s
                 .bridge
                 .as_ref()
-                .map(|b| b.renderer().pipeline().viewport().rig_tilt);
+                .map(|b| b.renderer().pipeline().calibration().framing.tilt as f32);
             let rig_roll_rad = s
                 .bridge
                 .as_ref()
-                .map(|b| b.renderer().pipeline().viewport().rig_roll);
+                .map(|b| b.renderer().pipeline().calibration().framing.roll as f32);
             let blend_width = s
                 .bridge
                 .as_ref()
-                .map(|b| b.renderer().pipeline().viewport().blend_width);
+                .map(|b| b.renderer().pipeline().calibration().topology.blend_width);
             // Lens-correction strength came in via the loaded calibration and
             // the renderer was seeded with it at bridge creation; mirror it
             // into AppState so a later save re-persists the right value.
@@ -4519,7 +4519,7 @@ fn handle_calibration_result(
                     let rig_tilt_rad = state
                         .bridge
                         .as_ref()
-                        .map(|b| b.renderer().pipeline().viewport().rig_tilt);
+                        .map(|b| b.renderer().pipeline().calibration().framing.tilt as f32);
                     // rig_roll was previously omitted here (only the manual
                     // load restored it), so an auto-calibrated roll left the
                     // slider at 0 while the preview was corrected - touching
@@ -4527,11 +4527,11 @@ fn handle_calibration_result(
                     let rig_roll_rad = state
                         .bridge
                         .as_ref()
-                        .map(|b| b.renderer().pipeline().viewport().rig_roll);
+                        .map(|b| b.renderer().pipeline().calibration().framing.roll as f32);
                     let blend_width = state
                         .bridge
                         .as_ref()
-                        .map(|b| b.renderer().pipeline().viewport().blend_width);
+                        .map(|b| b.renderer().pipeline().calibration().topology.blend_width);
                     let lens_correction =
                         state.calibration.as_ref().map(|c| c.lenses[0].correction);
                     if let Some(lc) = lens_correction {

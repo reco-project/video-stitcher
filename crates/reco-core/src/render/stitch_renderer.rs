@@ -347,7 +347,7 @@ impl StitchRenderer {
             pitch,
             fov_degrees,
             aspect,
-            self.pipeline.viewport.rig_tilt,
+            self.pipeline.calibration().framing.tilt as f32,
         )
     }
 
@@ -417,15 +417,15 @@ impl StitchRenderer {
 
     /// Set the seam blend width (0.0 = hard edge, 0.15 = default smooth blend).
     pub fn set_blend_width(&mut self, w: f32) {
-        self.pipeline.viewport.blend_width = w;
+        self.pipeline.set_blend_width(w);
     }
 
     pub fn set_rig_tilt(&mut self, radians: f32) {
-        self.pipeline.viewport.rig_tilt = radians;
+        self.pipeline.set_rig_tilt(radians);
     }
 
     pub fn set_rig_roll(&mut self, radians: f32) {
-        self.pipeline.viewport.rig_roll = radians;
+        self.pipeline.set_rig_roll(radians);
     }
 
     /// Access the current calibration (for saving after adjustments).

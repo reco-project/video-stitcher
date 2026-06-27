@@ -352,7 +352,7 @@ impl StitchCore {
             .min(coverage.max_fov_degrees());
         let aspect = self.pipeline.viewport().aspect_ratio();
         let clamped = coverage.safe_clamp(pose.yaw, pose.pitch, fov, aspect, 0.0);
-        let rig_tilt = self.pipeline.viewport().rig_tilt;
+        let rig_tilt = self.pipeline.calibration().framing.tilt as f32;
         ViewportPosition {
             yaw: clamped.yaw,
             pitch: clamped.pitch - rig_tilt,

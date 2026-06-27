@@ -247,11 +247,7 @@ fn build_test_session(
         .viewport(ViewportConfig {
             width: 64,
             height: 64,
-            blend_width: 0.15,
             fov_degrees: 75.0,
-            rig_tilt: 0.0,
-            rig_roll: 0.0,
-            ..ViewportConfig::default()
         })
         .detection_interval(detection_interval);
 

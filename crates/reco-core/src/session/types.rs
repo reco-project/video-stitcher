@@ -294,7 +294,6 @@ impl StitchSessionBuilder {
         let viewport = self.viewport.unwrap_or(ViewportConfig {
             width: 1920,
             height: 1080,
-            blend_width: 0.15,
             ..Default::default()
         });
 

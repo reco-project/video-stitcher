@@ -841,12 +841,11 @@ impl Renderer {
             &scene.camera_position,
             viewport.position.yaw,
             viewport.position.pitch,
-            viewport.config.rig_tilt,
-            viewport.config.rig_roll,
+            calibration.framing.tilt as f32,
+            calibration.framing.roll as f32,
         );
 
         let left_mvp = projection * view * scene.model_matrix_left();
-        let correction = viewport.config.lens_correction_amount;
         let mut left_uniforms = build_gpu_uniforms(
             &left_mvp,
             &calibration.lenses[0],
@@ -856,7 +855,7 @@ impl Renderer {
             self.flip_180[0],
             self.is_full_range,
         );
-        left_uniforms.lens_preview[0] = correction;
+        left_uniforms.lens_preview[0] = calibration.lenses[0].correction;
 
         let right_mvp = projection * view * scene.model_matrix_right();
         let mut right_uniforms = build_gpu_uniforms(
@@ -868,7 +867,7 @@ impl Renderer {
             self.flip_180[1],
             self.is_full_range,
         );
-        right_uniforms.lens_preview[0] = correction;
+        right_uniforms.lens_preview[0] = calibration.lenses[1].correction;
 
         gpu.queue.write_buffer(
             &self.left.uniform_buffer,

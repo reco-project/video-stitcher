@@ -203,12 +203,11 @@ pub fn l_shape_plane_maps(
         &scene.camera_position,
         yaw,
         pitch,
-        config.rig_tilt,
-        config.rig_roll,
+        calib.framing.tilt as f32,
+        calib.framing.roll as f32,
     );
     let view_projection = projection * view;
 
-    let correction = config.lens_correction_amount as f64;
     let aspect = plane_aspect as f64;
     let left = PlaneMap::new(
         scene.model_matrix_left(),
@@ -217,7 +216,7 @@ pub fn l_shape_plane_maps(
         config.width,
         config.height,
         aspect,
-        correction,
+        calib.lenses[0].correction as f64,
     );
     let right = PlaneMap::new(
         scene.model_matrix_right(),
@@ -226,7 +225,7 @@ pub fn l_shape_plane_maps(
         config.width,
         config.height,
         aspect,
-        correction,
+        calib.lenses[1].correction as f64,
     );
     (left, right)
 }

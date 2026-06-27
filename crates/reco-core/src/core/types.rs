@@ -117,7 +117,6 @@ impl StitchCoreConfig {
             viewport: ViewportConfig {
                 width: 1920,
                 height: 1080,
-                blend_width: 0.15,
                 ..Default::default()
             },
             input_width,

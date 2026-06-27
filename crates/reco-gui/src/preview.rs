@@ -82,10 +82,6 @@ impl PreviewBridge {
             width: viewport_width,
             height: viewport_height,
             fov_degrees: 75.0,
-            blend_width: calibration.topology.blend_width,
-            rig_tilt: calibration.framing.tilt as f32,
-            rig_roll: calibration.framing.roll as f32,
-            ..ViewportConfig::default()
         };
 
         // Slint expects textures in a format it can sample. Rgba8Unorm is
