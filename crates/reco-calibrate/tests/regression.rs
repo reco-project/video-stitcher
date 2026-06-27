@@ -77,22 +77,22 @@ fn run_calibration(points: &[MatchedPoint], trim: f64) -> (f64, f64, f64, f64, f
         ..Default::default()
     };
 
-    let (layout, _residual) =
+    let (topology, framing, _residual) =
         optimizer::optimize(points, &config).expect("optimizer should converge");
 
-    let half_offset = 0.5 * (1.0 - layout.intersect);
+    let half_offset = 0.5 * (1.0 - topology.intersect);
     let ratio = if half_offset > 1e-10 {
-        layout.camera_axis_offset / half_offset
+        framing.axis_offset / half_offset
     } else {
         f64::INFINITY
     };
 
     (
-        layout.camera_axis_offset,
-        layout.intersect,
-        layout.x_ty,
-        layout.x_rz.to_degrees(),
-        layout.z_rx.to_degrees(),
+        framing.axis_offset,
+        topology.intersect,
+        topology.x_ty,
+        topology.x_rz.to_degrees(),
+        topology.z_rx.to_degrees(),
         ratio,
     )
 }

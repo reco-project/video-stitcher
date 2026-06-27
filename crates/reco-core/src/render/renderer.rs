@@ -25,7 +25,7 @@
 
 use super::scene::SceneGeometry;
 use super::viewport::ResolvedViewport;
-use crate::calibration::{Calibration, CameraParams};
+use crate::calibration::{Calibration, Lens};
 use crate::gpu::GpuContext;
 
 use bytemuck::{Pod, Zeroable};
@@ -849,7 +849,7 @@ impl Renderer {
         let correction = viewport.config.lens_correction_amount;
         let mut left_uniforms = build_gpu_uniforms(
             &left_mvp,
-            &calibration.left,
+            &calibration.lenses[0],
             false,
             blend_width,
             self.input_format,
@@ -861,7 +861,7 @@ impl Renderer {
         let right_mvp = projection * view * scene.model_matrix_right();
         let mut right_uniforms = build_gpu_uniforms(
             &right_mvp,
-            &calibration.right,
+            &calibration.lenses[1],
             true,
             blend_width,
             self.input_format,
@@ -1236,7 +1236,7 @@ pub(crate) fn view_matrix(
 /// buffer-reversal trick from the software decode path is not possible.
 pub(crate) fn build_gpu_uniforms(
     mvp: &Matrix4<f32>,
-    camera: &CameraParams,
+    camera: &Lens,
     is_right: bool,
     blend_width: f32,
     input_format: InputFormat,
@@ -1254,10 +1254,10 @@ pub(crate) fn build_gpu_uniforms(
             camera.cy as f32 / h,
         ],
         dist: [
-            camera.d[0] as f32,
-            camera.d[1] as f32,
-            camera.d[2] as f32,
-            camera.d[3] as f32,
+            camera.distortion[0] as f32,
+            camera.distortion[1] as f32,
+            camera.distortion[2] as f32,
+            camera.distortion[3] as f32,
         ],
         color_scale: [1.0, 1.0, 1.0, 0.0],
         color_offset_blend: [0.0, 0.0, 0.0, blend_width],
@@ -1308,15 +1308,15 @@ mod tests {
 
     #[test]
     fn uniforms_are_normalized() {
-        let camera = CameraParams {
-            width: 3840,
-            height: 2160,
-            fx: 1796.32,
-            fy: 1797.22,
-            cx: 1919.37,
-            cy: 1063.17,
-            d: [0.0342, 0.0677, -0.0741, 0.0299],
-        };
+        let camera = Lens::fisheye(
+            3840,
+            2160,
+            1796.32,
+            1797.22,
+            1919.37,
+            1063.17,
+            [0.0342, 0.0677, -0.0741, 0.0299],
+        );
         let mvp = Matrix4::identity();
         let u = build_gpu_uniforms(
             &mvp,

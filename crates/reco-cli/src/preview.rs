@@ -102,7 +102,7 @@ pub fn run_preview(
     let rig_tilt_degrees = if rig_tilt_degrees.abs() > 1e-6 {
         rig_tilt_degrees
     } else {
-        (cal.rig_tilt as f32).to_degrees()
+        (cal.framing.tilt as f32).to_degrees()
     };
 
     let mut source = reco_io::adapters::FfmpegFileSource::open_with_offset(
@@ -132,7 +132,7 @@ pub fn run_preview(
     let max_fov = {
         let aspect = info.width as f32 / info.height as f32;
         let scene =
-            reco_core::render::scene::SceneGeometry::from_layout_with_aspect(&cal.layout, aspect);
+            reco_core::render::scene::SceneGeometry::new(&cal.topology, &cal.framing, aspect);
         let coverage = reco_core::projection::CoverageBoundary::from_calibration(&cal, &scene);
         coverage.max_fov_degrees().min(FOV_MAX)
     };
@@ -141,7 +141,7 @@ pub fn run_preview(
 
     let fps_rational = info.fps_rational.unwrap_or((30, 1));
     let total_frames = source.total_frames();
-    let rig_roll = cal.rig_roll as f32;
+    let rig_roll = cal.framing.roll as f32;
 
     let mut app = App {
         source: Some(source),
@@ -634,40 +634,36 @@ impl ApplicationHandler for App {
                         }
                         // Calibration adjustment keys
                         PhysicalKey::Code(KeyCode::Digit1) => {
-                            self.cal.layout.intersect = (self.cal.layout.intersect + 0.01).min(1.0);
+                            self.cal.topology.intersect =
+                                (self.cal.topology.intersect + 0.01).min(1.0);
                             self.apply_calibration_change();
-                            println!("intersect: {:.4}", self.cal.layout.intersect);
+                            println!("intersect: {:.4}", self.cal.topology.intersect);
                         }
                         PhysicalKey::Code(KeyCode::Digit2) => {
-                            self.cal.layout.intersect = (self.cal.layout.intersect - 0.01).max(0.0);
+                            self.cal.topology.intersect =
+                                (self.cal.topology.intersect - 0.01).max(0.0);
                             self.apply_calibration_change();
-                            println!("intersect: {:.4}", self.cal.layout.intersect);
+                            println!("intersect: {:.4}", self.cal.topology.intersect);
                         }
                         PhysicalKey::Code(KeyCode::Digit3) => {
-                            self.cal.layout.camera_axis_offset += 0.005;
+                            self.cal.framing.axis_offset += 0.005;
                             self.apply_calibration_change();
-                            println!(
-                                "camera_axis_offset: {:.4}",
-                                self.cal.layout.camera_axis_offset
-                            );
+                            println!("camera_axis_offset: {:.4}", self.cal.framing.axis_offset);
                         }
                         PhysicalKey::Code(KeyCode::Digit4) => {
-                            self.cal.layout.camera_axis_offset -= 0.005;
+                            self.cal.framing.axis_offset -= 0.005;
                             self.apply_calibration_change();
-                            println!(
-                                "camera_axis_offset: {:.4}",
-                                self.cal.layout.camera_axis_offset
-                            );
+                            println!("camera_axis_offset: {:.4}", self.cal.framing.axis_offset);
                         }
                         PhysicalKey::Code(KeyCode::Digit5) => {
-                            self.cal.layout.x_ty += 0.005;
+                            self.cal.topology.x_ty += 0.005;
                             self.apply_calibration_change();
-                            println!("x_ty: {:.4}", self.cal.layout.x_ty);
+                            println!("x_ty: {:.4}", self.cal.topology.x_ty);
                         }
                         PhysicalKey::Code(KeyCode::Digit6) => {
-                            self.cal.layout.x_ty -= 0.005;
+                            self.cal.topology.x_ty -= 0.005;
                             self.apply_calibration_change();
-                            println!("x_ty: {:.4}", self.cal.layout.x_ty);
+                            println!("x_ty: {:.4}", self.cal.topology.x_ty);
                         }
                         PhysicalKey::Code(KeyCode::KeyB) => {
                             // Cycle blend width: 0.0 -> 0.05 -> 0.10 -> 0.15 -> 0.20 -> 0.0
@@ -684,46 +680,46 @@ impl ApplicationHandler for App {
                         }
                         PhysicalKey::Code(KeyCode::Digit7) => {
                             // Increase focal length (both cameras) - zoom in effect
-                            self.cal.left.fx *= 1.02;
-                            self.cal.left.fy *= 1.02;
-                            self.cal.right.fx *= 1.02;
-                            self.cal.right.fy *= 1.02;
+                            self.cal.lenses[0].fx *= 1.02;
+                            self.cal.lenses[0].fy *= 1.02;
+                            self.cal.lenses[1].fx *= 1.02;
+                            self.cal.lenses[1].fy *= 1.02;
                             self.apply_calibration_change();
                             println!(
                                 "focal length: {:.1} / {:.1}",
-                                self.cal.left.fx, self.cal.right.fx
+                                self.cal.lenses[0].fx, self.cal.lenses[1].fx
                             );
                         }
                         PhysicalKey::Code(KeyCode::Digit8) => {
                             // Decrease focal length - zoom out / wider
-                            self.cal.left.fx *= 0.98;
-                            self.cal.left.fy *= 0.98;
-                            self.cal.right.fx *= 0.98;
-                            self.cal.right.fy *= 0.98;
+                            self.cal.lenses[0].fx *= 0.98;
+                            self.cal.lenses[0].fy *= 0.98;
+                            self.cal.lenses[1].fx *= 0.98;
+                            self.cal.lenses[1].fy *= 0.98;
                             self.apply_calibration_change();
                             println!(
                                 "focal length: {:.1} / {:.1}",
-                                self.cal.left.fx, self.cal.right.fx
+                                self.cal.lenses[0].fx, self.cal.lenses[1].fx
                             );
                         }
                         PhysicalKey::Code(KeyCode::Digit9) => {
                             // Increase k1 distortion - more barrel
-                            self.cal.left.d[0] += 0.005;
-                            self.cal.right.d[0] += 0.005;
+                            self.cal.lenses[0].distortion[0] += 0.005;
+                            self.cal.lenses[1].distortion[0] += 0.005;
                             self.apply_calibration_change();
                             println!(
                                 "k1 distortion: {:.4} / {:.4}",
-                                self.cal.left.d[0], self.cal.right.d[0]
+                                self.cal.lenses[0].distortion[0], self.cal.lenses[1].distortion[0]
                             );
                         }
                         PhysicalKey::Code(KeyCode::Digit0) => {
                             // Decrease k1 distortion - less barrel / more pincushion
-                            self.cal.left.d[0] -= 0.005;
-                            self.cal.right.d[0] -= 0.005;
+                            self.cal.lenses[0].distortion[0] -= 0.005;
+                            self.cal.lenses[1].distortion[0] -= 0.005;
                             self.apply_calibration_change();
                             println!(
                                 "k1 distortion: {:.4} / {:.4}",
-                                self.cal.left.d[0], self.cal.right.d[0]
+                                self.cal.lenses[0].distortion[0], self.cal.lenses[1].distortion[0]
                             );
                         }
                         PhysicalKey::Code(KeyCode::KeyC) => {

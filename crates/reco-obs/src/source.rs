@@ -369,8 +369,8 @@ impl RecoSource {
         let viewport = ViewportConfig {
             width: self.output_width,
             height: self.output_height,
-            rig_tilt: calibration.rig_tilt as f32,
-            rig_roll: calibration.rig_roll as f32,
+            rig_tilt: calibration.framing.tilt as f32,
+            rig_roll: calibration.framing.roll as f32,
             ..ViewportConfig::default()
         };
 

@@ -588,8 +588,8 @@ impl StitchJob {
             width: out_w,
             height: out_h,
             blend_width: self.blend_width,
-            rig_tilt: cal.rig_tilt as f32,
-            rig_roll: cal.rig_roll as f32,
+            rig_tilt: cal.framing.tilt as f32,
+            rig_roll: cal.framing.roll as f32,
             ..Default::default()
         };
         let session_config = reco_core::session::types::SessionConfig {

@@ -36,7 +36,7 @@
 
 use std::path::Path;
 
-use reco_core::calibration::CameraParams;
+use reco_core::calibration::Lens;
 use reco_core::gpu::GpuContext;
 
 use crate::error::CalibrateError;
@@ -73,8 +73,8 @@ pub struct CalibrationPipeline {
     left_info: VideoInfo,
     right_info: VideoInfo,
     config: CalibrationConfig,
-    left_params: Option<CameraParams>,
-    right_params: Option<CameraParams>,
+    left_params: Option<Lens>,
+    right_params: Option<Lens>,
     /// Lens profile metadata for the left camera (populated by detect_profiles).
     left_profile_info: Option<LensProfileInfo>,
     /// Lens profile metadata for the right camera.
@@ -132,7 +132,7 @@ impl CalibrationPipeline {
     // ---------------------------------------------------------------
 
     /// Set lens profiles manually (loaded by the app from files, UI, etc.).
-    pub fn set_profiles(&mut self, left: CameraParams, right: CameraParams) {
+    pub fn set_profiles(&mut self, left: Lens, right: Lens) {
         self.left_params = Some(left);
         self.right_params = Some(right);
     }
@@ -149,7 +149,7 @@ impl CalibrationPipeline {
     /// newer GoPro) where each parse is 30-60s.
     ///
     /// Returns the detected profiles for logging/display.
-    pub fn detect_profiles(&mut self) -> Result<(CameraParams, CameraParams), CalibrateError> {
+    pub fn detect_profiles(&mut self) -> Result<(Lens, Lens), CalibrateError> {
         let db = lens_database::LensDatabase::load_embedded();
 
         // Use the fast metadata-only path for lens detection. The full
@@ -255,7 +255,7 @@ impl CalibrationPipeline {
         &mut self,
         left_path: &Path,
         right_path: Option<&Path>,
-    ) -> Result<(CameraParams, CameraParams), CalibrateError> {
+    ) -> Result<(Lens, Lens), CalibrateError> {
         let left_p = lens_database::load_from_file(left_path).map_err(|e| {
             CalibrateError::InvalidConfig(format!("failed to load left profile: {e}"))
         })?;
@@ -491,8 +491,8 @@ impl CalibrationPipeline {
         }
 
         let mut result = crate::calibrate(gpu, frames, left_params, right_params, &config)?;
-        result.calibration.rig_tilt = self.rig_tilt;
-        result.calibration.rig_roll = self.rig_roll;
+        result.calibration.framing.tilt = self.rig_tilt;
+        result.calibration.framing.roll = self.rig_roll;
         result.calibration.sync_offset = self.sync_offset_frames;
         result.left_lens_profile = self.left_profile_info.clone();
         result.right_lens_profile = self.right_profile_info.clone();
@@ -500,12 +500,12 @@ impl CalibrationPipeline {
     }
 
     /// Get the left camera lens profile (if set).
-    pub fn left_params(&self) -> Option<&CameraParams> {
+    pub fn left_params(&self) -> Option<&Lens> {
         self.left_params.as_ref()
     }
 
     /// Get the right camera lens profile (if set).
-    pub fn right_params(&self) -> Option<&CameraParams> {
+    pub fn right_params(&self) -> Option<&Lens> {
         self.right_params.as_ref()
     }
 

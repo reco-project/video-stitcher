@@ -15,7 +15,7 @@ pub mod preview;
 pub mod rig_correction;
 pub mod undistort;
 
-use crate::calibration::CameraParams;
+use crate::calibration::Lens;
 
 pub(crate) use kb4::kb4_forward_scale;
 
@@ -87,7 +87,7 @@ pub(crate) mod kb4 {
 ///
 /// # Returns
 /// A new pixel buffer of the same dimensions with the undistorted image.
-pub fn undistort_gray(data: &[u8], width: u32, height: u32, params: &CameraParams) -> Vec<u8> {
+pub fn undistort_gray(data: &[u8], width: u32, height: u32, params: &Lens) -> Vec<u8> {
     let w = width as f64;
     let h = height as f64;
 
@@ -125,7 +125,7 @@ pub fn undistort_gray(data: &[u8], width: u32, height: u32, params: &CameraParam
             let y = (out_y as f64 - out_cy) / out_fy;
             let r = (x * x + y * y).sqrt();
 
-            let scale = kb4_forward_scale(r, &params.d);
+            let scale = kb4_forward_scale(r, &params.distortion);
 
             // Source pixel in the distorted image using original intrinsics
             let src_x = fx * x * scale + cx;
@@ -159,7 +159,7 @@ pub fn undistorted_to_distorted(
     out_y: f64,
     width: u32,
     height: u32,
-    params: &CameraParams,
+    params: &Lens,
 ) -> (f64, f64) {
     let w = width as f64;
     let h = height as f64;
@@ -183,7 +183,7 @@ pub fn undistorted_to_distorted(
     let y = (out_y - out_cy) / out_fy;
     let r = (x * x + y * y).sqrt();
 
-    let scale = kb4_forward_scale(r, &params.d);
+    let scale = kb4_forward_scale(r, &params.distortion);
 
     // Source pixel in the distorted image
     (fx * x * scale + cx, fy * y * scale + cy)
@@ -453,15 +453,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         // With plane-fitted intrinsics, out_cx = (w + 2*cx) / 4.
         // For cx = w/2 this gives out_cx = w/2 (exact integer with even dims).
         // At the output center, ray = (0,0), scale = 1, src = (cx, cy).
-        let params = CameraParams {
-            width: 100,
-            height: 100,
-            fx: 50.0,
-            fy: 50.0,
-            cx: 50.0,
-            cy: 50.0,
-            d: [0.1, 0.05, -0.03, 0.01],
-        };
+        let params = Lens::fisheye(100, 100, 50.0, 50.0, 50.0, 50.0, [0.1, 0.05, -0.03, 0.01]);
 
         let mut data = vec![0u8; 100 * 100];
         data[50 * 100 + 50] = 255; // bright pixel at optical center

@@ -10,7 +10,7 @@
 
 use nalgebra::{Matrix3, Matrix4, Perspective3, Vector3};
 
-use crate::calibration::{Calibration, CameraParams};
+use crate::calibration::{Calibration, Lens};
 use crate::lens::kb4;
 use crate::render::renderer::{FAR_PLANE, NEAR_PLANE, opengl_to_wgpu_matrix, view_matrix};
 use crate::render::scene::SceneGeometry;
@@ -57,7 +57,7 @@ impl PlaneMap {
     fn new(
         model: Matrix4<f32>,
         view_projection: &Matrix4<f32>,
-        cam: &CameraParams,
+        cam: &Lens,
         out_w: u32,
         out_h: u32,
         plane_aspect: f64,
@@ -92,7 +92,7 @@ impl PlaneMap {
             fy_n: cam.fy / h,
             cx_n: cam.cx / w,
             cy_n: cam.cy / h,
-            d: cam.d,
+            d: cam.distortion,
             correction,
         }
     }
@@ -187,8 +187,8 @@ pub fn l_shape_plane_maps(
     pitch: f32,
 ) -> (PlaneMap, PlaneMap) {
     // Both planes share the camera aspect (a stereo rig's two cameras match).
-    let plane_aspect = calib.left.width as f32 / calib.left.height as f32;
-    let scene = SceneGeometry::from_layout_with_aspect(&calib.layout, plane_aspect);
+    let plane_aspect = calib.lenses[0].width as f32 / calib.lenses[0].height as f32;
+    let scene = SceneGeometry::new(&calib.topology, &calib.framing, plane_aspect);
 
     let out_aspect = config.width as f32 / config.height as f32;
     let projection = opengl_to_wgpu_matrix()
@@ -213,7 +213,7 @@ pub fn l_shape_plane_maps(
     let left = PlaneMap::new(
         scene.model_matrix_left(),
         &view_projection,
-        &calib.left,
+        &calib.lenses[0],
         config.width,
         config.height,
         aspect,
@@ -222,7 +222,7 @@ pub fn l_shape_plane_maps(
     let right = PlaneMap::new(
         scene.model_matrix_right(),
         &view_projection,
-        &calib.right,
+        &calib.lenses[1],
         config.width,
         config.height,
         aspect,

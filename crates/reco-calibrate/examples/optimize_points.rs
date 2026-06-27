@@ -42,14 +42,14 @@ fn main() {
     let config = CalibrationConfig::default();
 
     match optimizer::optimize(&points, &config) {
-        Ok((layout, residual)) => {
+        Ok((topology, framing, residual)) => {
             eprintln!("\nRust optimizer result:");
-            eprintln!("  cameraAxisOffset: {:.6}", layout.camera_axis_offset);
-            eprintln!("  intersect:        {:.6}", layout.intersect);
-            eprintln!("  xTy:              {:.6}", layout.x_ty);
-            eprintln!("  xRz:              {:.6}", layout.x_rz);
-            eprintln!("  zRx:              {:.6}", layout.z_rx);
-            eprintln!("  zRz:              {:.6}", layout.z_rz);
+            eprintln!("  cameraAxisOffset: {:.6}", framing.axis_offset);
+            eprintln!("  intersect:        {:.6}", topology.intersect);
+            eprintln!("  xTy:              {:.6}", topology.x_ty);
+            eprintln!("  xRz:              {:.6}", topology.x_rz);
+            eprintln!("  zRx:              {:.6}", topology.z_rx);
+            eprintln!("  zRz:              {:.6}", topology.z_rz);
             eprintln!("  residual:         {:.6}", residual);
 
             // Compare with v1 reference
@@ -80,12 +80,12 @@ fn main() {
                     "d": [0.034213889574164644, 0.06767320765357862, -0.07408969996955275, 0.029944425249175583]
                 },
                 "params": {
-                    "cameraAxisOffset": layout.camera_axis_offset,
-                    "intersect": layout.intersect,
-                    "xTy": layout.x_ty,
-                    "xRz": layout.x_rz,
-                    "zRx": layout.z_rx,
-                    "zRz": layout.z_rz,
+                    "cameraAxisOffset": framing.axis_offset,
+                    "intersect": topology.intersect,
+                    "xTy": topology.x_ty,
+                    "xRz": topology.x_rz,
+                    "zRx": topology.z_rx,
+                    "zRz": topology.z_rz,
                 },
                 "sync_offset": 67
             });

@@ -56,9 +56,14 @@ fn main() {
     let left_undistort = GpuUndistort::new(&gpu, lw, lh, lw as f32 / lh as f32);
     let right_undistort = GpuUndistort::new(&gpu, rw, rh, rw as f32 / rh as f32);
     let left_rgba =
-        left_undistort.undistort(&gpu, &left_yuv.y, &left_yuv.u, &left_yuv.v, &cal.left);
-    let right_rgba =
-        right_undistort.undistort(&gpu, &right_yuv.y, &right_yuv.u, &right_yuv.v, &cal.right);
+        left_undistort.undistort(&gpu, &left_yuv.y, &left_yuv.u, &left_yuv.v, &cal.lenses[0]);
+    let right_rgba = right_undistort.undistort(
+        &gpu,
+        &right_yuv.y,
+        &right_yuv.u,
+        &right_yuv.v,
+        &cal.lenses[1],
+    );
     println!("GPU undistort done");
 
     // AKAZE detect with overlap region filtering (same as calibration pipeline)

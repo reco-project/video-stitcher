@@ -26,7 +26,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use reco_core::calibration::CameraParams;
+use reco_core::calibration::Lens;
 use reco_core::gpu::{GpuContext, GpuError};
 use reco_io::ffmpeg::calibration_io::{self, CalibrationIoError};
 
@@ -55,9 +55,9 @@ pub struct CalibrateVideosOptions {
     ///
     /// Lets consumers that already resolved profiles (e.g. via
     /// `LensDatabase::candidates()`) skip the file round-trip.
-    pub left_params: Option<CameraParams>,
+    pub left_params: Option<Lens>,
     /// Pre-loaded right camera params. See [`Self::left_params`].
-    pub right_params: Option<CameraParams>,
+    pub right_params: Option<Lens>,
     /// Manual sync offset in frames. Auto-detects via IMU/audio if `None`.
     pub sync_offset: Option<i64>,
 }

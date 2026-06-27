@@ -27,7 +27,7 @@ pub use geometry::point_in_polygon;
 // Re-export virtual camera (pub(crate) visibility preserved).
 pub(crate) use virtual_camera::VirtualCamera;
 
-use crate::calibration::{Calibration, CameraParams};
+use crate::calibration::{Calibration, Lens};
 use crate::detect::detector::CameraId;
 use crate::detect::director::ViewportPosition;
 use crate::render::scene::SceneGeometry;
@@ -243,8 +243,8 @@ const CONVERGENCE_EPS: f64 = 1e-10;
 /// use reco_core::render::scene::SceneGeometry;
 ///
 /// # fn example(cal: &Calibration) {
-/// let aspect = cal.left.width as f32 / cal.left.height as f32;
-/// let scene = SceneGeometry::from_layout_with_aspect(&cal.layout, aspect);
+/// let aspect = cal.lenses[0].width as f32 / cal.lenses[0].height as f32;
+/// let scene = SceneGeometry::new(&cal.topology, &cal.framing, aspect);
 /// if let Some(pos) = camera_to_panorama(CameraId::Left, 0.5, 0.5, cal, &scene) {
 ///     println!("Center of left camera maps to yaw={:.3}, pitch={:.3}", pos.yaw, pos.pitch);
 /// }
@@ -258,8 +258,8 @@ pub fn camera_to_panorama(
     scene: &SceneGeometry,
 ) -> Option<ViewportPosition> {
     let params = match camera {
-        CameraId::Left => &calibration.left,
-        CameraId::Right => &calibration.right,
+        CameraId::Left => &calibration.lenses[0],
+        CameraId::Right => &calibration.lenses[1],
     };
 
     // Step 1: Inverse fisheye - camera pixel [0,1] -> plane UV (extended space)
@@ -294,8 +294,8 @@ pub fn panorama_to_camera(
     use nalgebra::{Point3, Vector3};
 
     let params = match camera {
-        CameraId::Left => &calibration.left,
-        CameraId::Right => &calibration.right,
+        CameraId::Left => &calibration.lenses[0],
+        CameraId::Right => &calibration.lenses[1],
     };
 
     // Step 1: yaw/pitch -> world ray direction, through the same
@@ -549,7 +549,7 @@ impl ViewportBounds {
 /// `uv * 2.0 - 0.5` remap output). The polynomial delegates to
 /// `reco_core::lens::kb4`, same canonical source as the
 /// Newton-Raphson step in [`inverse_fisheye`].
-fn forward_fisheye(uv_x: f64, uv_y: f64, params: &CameraParams) -> (f64, f64) {
+fn forward_fisheye(uv_x: f64, uv_y: f64, params: &Lens) -> (f64, f64) {
     let w = params.width as f64;
     let h = params.height as f64;
     let fx = params.fx / w;
@@ -565,7 +565,7 @@ fn forward_fisheye(uv_x: f64, uv_y: f64, params: &CameraParams) -> (f64, f64) {
         return (cx, cy);
     }
 
-    let scale = crate::lens::kb4::kb4_forward_scale(r, &params.d);
+    let scale = crate::lens::kb4::kb4_forward_scale(r, &params.distortion);
     (fx * x * scale + cx, fy * y * scale + cy)
 }
 
@@ -576,14 +576,14 @@ fn forward_fisheye(uv_x: f64, uv_y: f64, params: &CameraParams) -> (f64, f64) {
 /// theta_d = theta * (1 + k1*theta^2 + k2*theta^4 + k3*theta^6 + k4*theta^8)
 /// ```
 /// Uses Newton-Raphson to solve for theta given theta_d.
-fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &CameraParams) -> Option<(f64, f64)> {
+fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &Lens) -> Option<(f64, f64)> {
     let w = params.width as f64;
     let h = params.height as f64;
     let fx = params.fx / w;
     let fy = params.fy / h;
     let cx = params.cx / w;
     let cy = params.cy / h;
-    let k = params.d;
+    let k = params.distortion;
 
     // Normalized distorted coordinates
     let dx = (dist_x - cx) / fx;
@@ -717,49 +717,42 @@ pub(crate) fn yaw_pitch_to_direction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::calibration::{Calibration, CameraParams, PlaneLayout};
+    use crate::calibration::{Calibration, Framing, Lens, Topology};
 
     fn test_scene(cal: &Calibration) -> SceneGeometry {
-        let aspect = cal.left.width as f32 / cal.left.height as f32;
-        SceneGeometry::from_layout_with_aspect(&cal.layout, aspect)
+        let aspect = cal.lenses[0].width as f32 / cal.lenses[0].height as f32;
+        SceneGeometry::new(&cal.topology, &cal.framing, aspect)
     }
 
     fn test_calibration() -> Calibration {
-        Calibration {
-            left: CameraParams {
-                width: 3840,
-                height: 2160,
-                fx: 1796.32,
-                fy: 1797.22,
-                cx: 1919.37,
-                cy: 1063.17,
-                d: [0.0342, 0.0677, -0.0741, 0.0299],
-            },
-            right: CameraParams {
-                width: 3840,
-                height: 2160,
-                fx: 1796.32,
-                fy: 1797.22,
-                cx: 1919.37,
-                cy: 1063.17,
-                d: [0.0342, 0.0677, -0.0741, 0.0299],
-            },
-            layout: PlaneLayout {
-                camera_axis_offset: 0.2398,
+        let cam = || {
+            Lens::fisheye(
+                3840,
+                2160,
+                1796.32,
+                1797.22,
+                1919.37,
+                1063.17,
+                [0.0342, 0.0677, -0.0741, 0.0299],
+            )
+        };
+        Calibration::new(
+            vec![cam(), cam()],
+            Topology {
                 intersect: 0.5446,
                 x_ty: 0.00476,
                 x_rz: 0.00753,
                 z_rx: -0.00431,
                 x_rx: 0.0,
                 z_rz: 0.0,
+                blend_width: 0.05,
             },
-            rig_tilt: 0.0,
-            rig_roll: 0.0,
-            sync_offset: 0,
-            field_roi: None,
-            lens_correction_amount: 1.0,
-            blend_width: 0.05,
-        }
+            Framing {
+                axis_offset: 0.2398,
+                tilt: 0.0,
+                roll: 0.0,
+            },
+        )
     }
 
     #[test]
@@ -768,8 +761,8 @@ mod tests {
         let scene = test_scene(&cal);
 
         // Optical center of the left camera (cx/w, cy/h)
-        let cx = cal.left.cx as f32 / cal.left.width as f32;
-        let cy = cal.left.cy as f32 / cal.left.height as f32;
+        let cx = cal.lenses[0].cx as f32 / cal.lenses[0].width as f32;
+        let cy = cal.lenses[0].cy as f32 / cal.lenses[0].height as f32;
 
         let pos = camera_to_panorama(CameraId::Left, cx, cy, &cal, &scene);
         assert!(pos.is_some(), "optical center should map successfully");
@@ -899,15 +892,15 @@ mod tests {
         // a 10x10 grid inside the valid image area. Realistic KB4
         // coefficients (the GoPro HERO10 4K test calibration) make
         // this representative of shipping workloads.
-        let params = CameraParams {
-            width: 3840,
-            height: 2160,
-            fx: 1796.32,
-            fy: 1797.22,
-            cx: 1919.37,
-            cy: 1063.17,
-            d: [0.0342, 0.0677, -0.0741, 0.0299],
-        };
+        let params = Lens::fisheye(
+            3840,
+            2160,
+            1796.32,
+            1797.22,
+            1919.37,
+            1063.17,
+            [0.0342, 0.0677, -0.0741, 0.0299],
+        );
 
         let steps = 10;
         // Stay inside [0.1, 0.9] to avoid extreme fisheye corners where
@@ -989,15 +982,15 @@ mod tests {
 
     #[test]
     fn inverse_fisheye_roundtrip_at_center() {
-        let params = CameraParams {
-            width: 3840,
-            height: 2160,
-            fx: 1796.32,
-            fy: 1797.22,
-            cx: 1919.37,
-            cy: 1063.17,
-            d: [0.0342, 0.0677, -0.0741, 0.0299],
-        };
+        let params = Lens::fisheye(
+            3840,
+            2160,
+            1796.32,
+            1797.22,
+            1919.37,
+            1063.17,
+            [0.0342, 0.0677, -0.0741, 0.0299],
+        );
 
         // At the optical center, distortion should be zero
         let cx = params.cx / params.width as f64;
@@ -1066,15 +1059,7 @@ mod tests {
 
     #[test]
     fn zero_distortion_produces_identity_mapping() {
-        let params = CameraParams {
-            width: 1920,
-            height: 1080,
-            fx: 960.0,
-            fy: 540.0,
-            cx: 960.0,
-            cy: 540.0,
-            d: [0.0, 0.0, 0.0, 0.0],
-        };
+        let params = Lens::fisheye(1920, 1080, 960.0, 540.0, 960.0, 540.0, [0.0, 0.0, 0.0, 0.0]);
 
         // With zero distortion and fx=width/2, cx=width/2, the mapping
         // should be close to identity

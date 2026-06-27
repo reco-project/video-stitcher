@@ -26,7 +26,7 @@
 //! alias the same storage. Slint's texture pool / compositor makes
 //! per-frame allocation inexpensive; the driver reuses VRAM slabs.
 
-use reco_core::calibration::{Calibration, CameraParams};
+use reco_core::calibration::{Calibration, Lens};
 use reco_core::gpu::GpuContext;
 use reco_core::lens::preview::LensPreviewRenderer;
 use reco_core::render::pipeline::{PipelineError, YuvPlanes};
@@ -76,15 +76,15 @@ impl PreviewBridge {
         // Lens-correction strength is consumed by the pipeline, not the
         // viewport; capture it before `calibration` is moved into the
         // renderer below.
-        let lens_correction_amount = calibration.lens_correction_amount;
+        let lens_correction_amount = calibration.lenses[0].correction;
 
         let viewport = ViewportConfig {
             width: viewport_width,
             height: viewport_height,
             fov_degrees: 75.0,
-            blend_width: calibration.blend_width,
-            rig_tilt: calibration.rig_tilt as f32,
-            rig_roll: calibration.rig_roll as f32,
+            blend_width: calibration.topology.blend_width,
+            rig_tilt: calibration.framing.tilt as f32,
+            rig_roll: calibration.framing.roll as f32,
             ..ViewportConfig::default()
         };
 
@@ -193,7 +193,7 @@ impl PreviewBridge {
     pub fn render_lens_preview(
         &mut self,
         planes: &YuvPlanes<'_>,
-        params: &CameraParams,
+        params: &Lens,
         correction_amount: f32,
     ) -> Result<slint::Image, PipelineError> {
         let lp = self.lens_preview.get_or_insert_with(|| {

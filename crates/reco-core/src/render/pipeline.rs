@@ -124,8 +124,8 @@ impl StitchPipeline {
         }
 
         let output_format = output_format.into();
-        let aspect = calibration.left.width as f32 / calibration.left.height as f32;
-        let scene = SceneGeometry::from_layout_with_aspect(&calibration.layout, aspect);
+        let aspect = calibration.lenses[0].width as f32 / calibration.lenses[0].height as f32;
+        let scene = SceneGeometry::new(&calibration.topology, &calibration.framing, aspect);
         let renderer = Renderer::new(
             &gpu,
             viewport.width,
@@ -256,19 +256,23 @@ impl StitchPipeline {
     ///
     /// No GPU pipeline recreation needed - only the uniform data changes.
     pub fn update_calibration(&mut self, calibration: Calibration) {
-        let aspect = calibration.left.width as f32 / calibration.left.height as f32;
-        self.scene = SceneGeometry::from_layout_with_aspect(&calibration.layout, aspect);
+        let aspect = calibration.lenses[0].width as f32 / calibration.lenses[0].height as f32;
+        self.scene = SceneGeometry::new(&calibration.topology, &calibration.framing, aspect);
         self.calibration = calibration;
         log::debug!("Pipeline calibration updated");
     }
 
-    /// Update only the plane layout (convenience for slider adjustments).
-    ///
-    /// Equivalent to cloning the current calibration, replacing its layout,
-    /// and calling [`update_calibration`](Self::update_calibration).
-    pub fn update_layout(&mut self, layout: crate::calibration::PlaneLayout) {
+    /// Replace the topology (plane placement + seam), rebuilding the scene.
+    pub fn update_topology(&mut self, topology: crate::calibration::Topology) {
         let mut cal = self.calibration.clone();
-        cal.layout = layout;
+        cal.topology = topology;
+        self.update_calibration(cal);
+    }
+
+    /// Replace the framing (axis offset, tilt, roll), rebuilding the scene.
+    pub fn update_framing(&mut self, framing: crate::calibration::Framing) {
+        let mut cal = self.calibration.clone();
+        cal.framing = framing;
         self.update_calibration(cal);
     }
 
@@ -276,7 +280,7 @@ impl StitchPipeline {
     /// for one or both cameras without touching the plane layout or rig
     /// orientation.
     ///
-    /// Intended for interactive lens tweaking in a GUI: each `CameraParams`
+    /// Intended for interactive lens tweaking in a GUI: each `Lens`
     /// change is written into the shader's per-frame uniform buffer, so the
     /// next render call reflects the new values. No GPU pipeline or scene
     /// recreation is needed - cheap enough (~microseconds) to call on
@@ -284,7 +288,7 @@ impl StitchPipeline {
     ///
     /// `left`/`right` are `None` to leave that side untouched. If both are
     /// `None` this is a no-op. Passing `Some` for a side replaces that
-    /// side's `CameraParams` on the stored calibration; the next render
+    /// side's `Lens` on the stored calibration; the next render
     /// picks it up automatically.
     ///
     /// Does not recompute `SceneGeometry` because the plane layout is
@@ -292,17 +296,17 @@ impl StitchPipeline {
     /// calibration and are re-read each frame) need updating.
     pub fn update_camera_params(
         &mut self,
-        left: Option<crate::calibration::CameraParams>,
-        right: Option<crate::calibration::CameraParams>,
+        left: Option<crate::calibration::Lens>,
+        right: Option<crate::calibration::Lens>,
     ) {
         if left.is_none() && right.is_none() {
             return;
         }
         if let Some(l) = left {
-            self.calibration.left = l;
+            self.calibration.lenses[0] = l;
         }
         if let Some(r) = right {
-            self.calibration.right = r;
+            self.calibration.lenses[1] = r;
         }
         log::debug!("Pipeline camera params updated");
     }

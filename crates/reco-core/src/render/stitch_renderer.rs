@@ -94,8 +94,8 @@ impl StitchRenderer {
     ) -> Result<Self, PipelineError> {
         let render_format = Self::strip_srgb(surface_format);
 
-        let aspect = calibration.left.width as f32 / calibration.left.height as f32;
-        let scene = SceneGeometry::from_layout_with_aspect(&calibration.layout, aspect);
+        let aspect = calibration.lenses[0].width as f32 / calibration.lenses[0].height as f32;
+        let scene = SceneGeometry::new(&calibration.topology, &calibration.framing, aspect);
         let coverage = CoverageBoundary::from_calibration(&calibration, &scene);
 
         let pipeline = StitchPipeline::with_gpu(
@@ -384,11 +384,18 @@ impl StitchRenderer {
             CoverageBoundary::from_calibration(self.pipeline.calibration(), &self.pipeline.scene);
     }
 
-    /// Update only the plane layout and recompute coverage.
-    pub fn update_layout(&mut self, layout: crate::calibration::PlaneLayout) {
-        self.pipeline.update_layout(layout);
-        self.coverage =
-            CoverageBoundary::from_calibration(self.pipeline.calibration(), &self.pipeline.scene);
+    /// Replace the topology (plane placement + seam) and recompute coverage.
+    pub fn update_topology(&mut self, topology: crate::calibration::Topology) {
+        let mut cal = self.pipeline.calibration().clone();
+        cal.topology = topology;
+        self.update_calibration(cal);
+    }
+
+    /// Replace the framing (axis offset, tilt, roll) and recompute coverage.
+    pub fn update_framing(&mut self, framing: crate::calibration::Framing) {
+        let mut cal = self.pipeline.calibration().clone();
+        cal.framing = framing;
+        self.update_calibration(cal);
     }
 
     /// Replace one or both cameras' intrinsics (focal, principal point,
@@ -402,8 +409,8 @@ impl StitchRenderer {
     /// lens but not how the stitched planes are arranged in world space.
     pub fn update_camera_params(
         &mut self,
-        left: Option<crate::calibration::CameraParams>,
-        right: Option<crate::calibration::CameraParams>,
+        left: Option<crate::calibration::Lens>,
+        right: Option<crate::calibration::Lens>,
     ) {
         self.pipeline.update_camera_params(left, right);
     }

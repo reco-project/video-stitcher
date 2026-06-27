@@ -63,39 +63,39 @@ pub trait SurfaceMap {
 /// Shared test fixtures + GPU acquisition for the stitch test modules.
 #[cfg(test)]
 pub(crate) mod test_support {
-    use crate::calibration::{Calibration, CameraParams, PlaneLayout};
+    use crate::calibration::{Calibration, Framing, Lens, Topology};
     use crate::gpu::{GpuContext, GpuError};
 
     /// Two-camera calibration (shared dims, mild fisheye, centred) for tests.
     pub fn calib(w: u32, h: u32) -> Calibration {
-        let cam = || CameraParams {
-            width: w,
-            height: h,
-            fx: w as f64 * 0.5,
-            fy: w as f64 * 0.5,
-            cx: w as f64 * 0.5,
-            cy: h as f64 * 0.5,
-            d: [-0.02, 0.004, 0.0, 0.0],
+        let cam = || {
+            Lens::fisheye(
+                w,
+                h,
+                w as f64 * 0.5,
+                w as f64 * 0.5,
+                w as f64 * 0.5,
+                h as f64 * 0.5,
+                [-0.02, 0.004, 0.0, 0.0],
+            )
         };
-        Calibration {
-            left: cam(),
-            right: cam(),
-            layout: PlaneLayout {
-                camera_axis_offset: 0.25,
+        Calibration::new(
+            vec![cam(), cam()],
+            Topology {
                 intersect: 0.5,
                 x_ty: 0.0,
                 x_rz: 0.0,
                 z_rx: 0.0,
                 x_rx: 0.0,
                 z_rz: 0.0,
+                blend_width: 0.05,
             },
-            rig_tilt: 0.0,
-            rig_roll: 0.0,
-            sync_offset: 0,
-            field_roi: None,
-            lens_correction_amount: 1.0,
-            blend_width: 0.05,
-        }
+            Framing {
+                axis_offset: 0.25,
+                tilt: 0.0,
+                roll: 0.0,
+            },
+        )
     }
 
     /// Synthetic NV12 frame: a horizontal luma gradient + flat mid-grey chroma.
@@ -554,8 +554,8 @@ mod tests {
         };
         let calib_cx = |cx_off: f64| {
             let mut c = calib(cam_w, cam_h);
-            c.left.cx = cam_w as f64 * (0.5 + cx_off);
-            c.right.cx = cam_w as f64 * (0.5 + cx_off);
+            c.lenses[0].cx = cam_w as f64 * (0.5 + cx_off);
+            c.lenses[1].cx = cam_w as f64 * (0.5 + cx_off);
             c
         };
         let base = calib(cam_w, cam_h);
@@ -649,7 +649,7 @@ mod tests {
         let right = Nv12Planes { y: &ry, uv: &ruv };
         let axis = |off: f64| {
             let mut c = calib(cam_w, cam_h);
-            c.layout.camera_axis_offset = off;
+            c.framing.axis_offset = off;
             c
         };
         let cfg = |fov: f32| ViewportConfig {

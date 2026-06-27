@@ -20,12 +20,12 @@
 //!   Camera at [d, 0, d] where d = camera_axis_offset
 //! ```
 
-use crate::calibration::PlaneLayout;
+use crate::calibration::{Framing, Topology};
 use nalgebra::{Matrix4, Translation3, UnitQuaternion};
 
 /// Computed 3D positions and rotations for the two camera planes.
 ///
-/// Derived from a [`PlaneLayout`] by applying the intersection offset
+/// Derived from a [`Topology`] by applying the intersection offset
 /// and rotation corrections.
 #[derive(Debug, Clone)]
 pub struct SceneGeometry {
@@ -46,49 +46,28 @@ pub struct SceneGeometry {
 }
 
 impl SceneGeometry {
-    /// Compute the 3D scene geometry from a plane layout.
+    /// Derive the 3D scene geometry from the calibration's topology + framing.
     ///
-    /// Uses the deprecated [`PLANE_ASPECT`](crate::render::renderer::PLANE_ASPECT)
-    /// constant (16:9). Prefer [`from_layout_with_aspect`](Self::from_layout_with_aspect)
-    /// for new code, passing the actual camera aspect ratio.
-    #[deprecated(
-        since = "0.1.0",
-        note = "use `from_layout_with_aspect` with the camera's actual aspect ratio instead"
-    )]
-    pub fn from_layout(layout: &PlaneLayout) -> Self {
-        #[allow(deprecated)]
-        Self::from_layout_with_aspect(layout, super::renderer::PLANE_ASPECT)
-    }
-
-    /// Compute the 3D scene geometry from a plane layout with an explicit
-    /// aspect ratio.
-    ///
-    /// `aspect` is `width / height` of the camera frames (e.g. 16/9 for
-    /// 1920x1080, or the actual ratio from [`CameraParams`](crate::calibration::CameraParams)).
-    ///
-    /// This mirrors the v1 `VideoPlane` component positioning:
-    /// - Left plane: `position = [0, 0, (w/2) × (1 - intersect)]`,
-    ///   `rotation = [zRx, π/2, zRz]`
-    /// - Right plane: `position = [(w/2) × (1 - intersect), xTy, 0]`,
-    ///   `rotation = [xRx, 0, xRz]`
-    pub fn from_layout_with_aspect(layout: &PlaneLayout, aspect: f32) -> Self {
+    /// `aspect` is the source frame `width / height`. Mirrors the v1 plane
+    /// positioning:
+    /// - Left plane: `position = [0, 0, (w/2)(1 - intersect)]`, `rotation = [z_rx, π/2, z_rz]`
+    /// - Right plane: `position = [(w/2)(1 - intersect), x_ty, 0]`, `rotation = [x_rx, 0, x_rz]`
+    /// - Virtual camera at `[axis_offset, 0, axis_offset]`.
+    pub fn new(topology: &Topology, framing: &Framing, aspect: f32) -> Self {
         let plane_width: f32 = 1.0;
-        let half_offset = (plane_width / 2.0) * (1.0 - layout.intersect as f32);
+        let half_offset = (plane_width / 2.0) * (1.0 - topology.intersect as f32);
+        let axis = framing.axis_offset as f32;
 
         Self {
             left_position: [0.0, 0.0, half_offset],
             left_rotation: [
-                layout.z_rx as f32,
+                topology.z_rx as f32,
                 std::f32::consts::FRAC_PI_2,
-                layout.z_rz as f32,
+                topology.z_rz as f32,
             ],
-            right_position: [half_offset, layout.x_ty as f32, 0.0],
-            right_rotation: [layout.x_rx as f32, 0.0, layout.x_rz as f32],
-            camera_position: [
-                layout.camera_axis_offset as f32,
-                0.0,
-                layout.camera_axis_offset as f32,
-            ],
+            right_position: [half_offset, topology.x_ty as f32, 0.0],
+            right_rotation: [topology.x_rx as f32, 0.0, topology.x_rz as f32],
+            camera_position: [axis, 0.0, axis],
             plane_width,
             plane_aspect: aspect,
         }
@@ -141,21 +120,31 @@ impl SceneGeometry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::calibration::PlaneLayout;
+    use crate::calibration::{Framing, Topology};
 
-    #[test]
-    fn geometry_from_default_layout() {
-        let layout = PlaneLayout {
-            camera_axis_offset: 0.25,
-            intersect: 0.5,
+    fn topo(intersect: f64) -> Topology {
+        Topology {
+            intersect,
             x_ty: 0.0,
             x_rz: 0.0,
             z_rx: 0.0,
             x_rx: 0.0,
             z_rz: 0.0,
-        };
+            blend_width: 0.05,
+        }
+    }
 
-        let geom = SceneGeometry::from_layout_with_aspect(&layout, 16.0 / 9.0);
+    fn framing(axis_offset: f64) -> Framing {
+        Framing {
+            axis_offset,
+            tilt: 0.0,
+            roll: 0.0,
+        }
+    }
+
+    #[test]
+    fn geometry_from_default_layout() {
+        let geom = SceneGeometry::new(&topo(0.5), &framing(0.25), 16.0 / 9.0);
 
         // Half offset = 0.5 * (1 - 0.5) = 0.25
         assert!((geom.left_position[2] - 0.25).abs() < 1e-5);
@@ -167,19 +156,19 @@ mod tests {
 
     #[test]
     fn geometry_with_corrections() {
-        let layout = PlaneLayout {
-            camera_axis_offset: 0.24,
+        let topology = Topology {
             intersect: 0.55,
             x_ty: 0.005,
             x_rz: 0.008,
             z_rx: -0.004,
             x_rx: 0.0,
             z_rz: 0.0,
+            blend_width: 0.05,
         };
 
-        let geom = SceneGeometry::from_layout_with_aspect(&layout, 16.0 / 9.0);
+        let geom = SceneGeometry::new(&topology, &framing(0.24), 16.0 / 9.0);
 
-        // Right plane should have the xTy correction
+        // Right plane should have the x_ty correction
         assert!((geom.right_position[1] - 0.005).abs() < 1e-5);
         // Rotations should be applied
         assert!((geom.right_rotation[2] - 0.008).abs() < 1e-5);
@@ -188,18 +177,8 @@ mod tests {
 
     #[test]
     fn geometry_with_custom_aspect() {
-        let layout = PlaneLayout {
-            camera_axis_offset: 0.25,
-            intersect: 0.5,
-            x_ty: 0.0,
-            x_rz: 0.0,
-            z_rx: 0.0,
-            x_rx: 0.0,
-            z_rz: 0.0,
-        };
-
         let aspect_4_3 = 4.0 / 3.0;
-        let geom = SceneGeometry::from_layout_with_aspect(&layout, aspect_4_3);
+        let geom = SceneGeometry::new(&topo(0.5), &framing(0.25), aspect_4_3);
         assert!((geom.plane_aspect - aspect_4_3).abs() < 1e-5);
     }
 }

@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use super::StitchSession;
 use super::types::*;
-use crate::calibration::{Calibration, CameraParams, PlaneLayout};
+use crate::calibration::{Calibration, Framing, Lens, Topology};
 use crate::detect::detector::{CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector};
 use crate::detect::director::{MappedDetection, ViewportPosition};
 use crate::detect::panner::{PanContext, Panner};
@@ -28,34 +28,24 @@ const H: u32 = 64;
 
 /// Create a minimal valid calibration for 64x64 frames.
 fn test_calibration() -> Calibration {
-    let cam = CameraParams {
-        width: W,
-        height: H,
-        fx: 32.0,
-        fy: 32.0,
-        cx: 32.0,
-        cy: 32.0,
-        d: [0.0; 4],
-    };
-    Calibration {
-        left: cam.clone(),
-        right: cam,
-        layout: PlaneLayout {
-            camera_axis_offset: 0.25,
+    let cam = || Lens::fisheye(W, H, 32.0, 32.0, 32.0, 32.0, [0.0; 4]);
+    Calibration::new(
+        vec![cam(), cam()],
+        Topology {
             intersect: 0.5,
             x_ty: 0.0,
             x_rz: 0.0,
             z_rx: 0.0,
             x_rx: 0.0,
             z_rz: 0.0,
+            blend_width: 0.05,
         },
-        rig_tilt: 0.0,
-        rig_roll: 0.0,
-        sync_offset: 0,
-        field_roi: None,
-        lens_correction_amount: 1.0,
-        blend_width: 0.05,
-    }
+        Framing {
+            axis_offset: 0.25,
+            tilt: 0.0,
+            roll: 0.0,
+        },
+    )
 }
 
 /// Create a valid YUV420P stereo frame pair of solid gray.

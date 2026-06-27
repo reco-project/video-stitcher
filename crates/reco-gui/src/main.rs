@@ -258,9 +258,9 @@ struct AppState {
     export_thread: Option<std::thread::JoinHandle<()>>,
     /// Receives export completion notifications from the worker.
     export_rx: Option<std::sync::mpsc::Receiver<ExportOutcome>>,
-    /// Original PlaneLayout values — what auto-calibrate produced. Live
+    /// Original Topology values — what auto-calibrate produced. Live
     /// calibration sliders edit relative to this so Reset restores.
-    cal_baseline_layout: Option<reco_core::calibration::PlaneLayout>,
+    cal_baseline: Option<reco_core::calibration::Calibration>,
     /// Persisted user preferences (recent files, default export
     /// settings, AI model path). Loaded at startup from the reco-io
     /// settings namespace and saved on any change via the convenience
@@ -278,8 +278,8 @@ struct AppState {
     /// The Lens fine-tune sliders in the Controls panel edit these; the
     /// Reset Lens button restores them. `None` until auto-calibrate or a
     /// manual match.json load populates them.
-    cal_baseline_left_params: Option<reco_core::calibration::CameraParams>,
-    cal_baseline_right_params: Option<reco_core::calibration::CameraParams>,
+    cal_baseline_left_params: Option<reco_core::calibration::Lens>,
+    cal_baseline_right_params: Option<reco_core::calibration::Lens>,
     /// When true, `clamp_targets` pins yaw/pitch to the coverage boundary
     /// via `CoverageBoundary::safe_clamp` so the viewport never shows
     /// black margins. When false, pan/zoom is unrestricted - useful for
@@ -501,7 +501,7 @@ impl AppState {
             export_last_progress_at: Arc::new(Mutex::new(None)),
             export_thread: None,
             export_rx: None,
-            cal_baseline_layout: None,
+            cal_baseline: None,
             user_settings: {
                 let mut s = crate::settings::GuiSettings::load();
                 if s.telemetry_client_id.is_none() {
@@ -563,7 +563,7 @@ impl AppState {
             .ok_or("GPU not ready yet (Slint rendering not initialized)")?
             .clone();
         // Save baseline layout so Reset Calibration can restore it.
-        self.cal_baseline_layout = Some(cal.layout.clone());
+        self.cal_baseline = Some(cal.clone());
         PreviewBridge::new(
             gpu.device,
             gpu.queue,
@@ -577,14 +577,26 @@ impl AppState {
         .map_err(|e| format!("GPU init error: {e}"))
     }
 
-    /// Apply an edited PlaneLayout to the renderer. `preview_dirty`
+    /// Apply an edited Topology to the renderer. `preview_dirty`
     /// triggers a re-render on the next timer tick.
-    fn apply_layout(&mut self, layout: reco_core::calibration::PlaneLayout) {
+    fn apply_layout(&mut self, layout: reco_core::calibration::Topology) {
         if let Some(cal) = self.calibration.as_mut() {
-            cal.layout = layout.clone();
+            cal.topology = layout.clone();
         }
         if let Some(bridge) = self.bridge.as_mut() {
-            bridge.renderer_mut().update_layout(layout);
+            bridge.renderer_mut().update_topology(layout);
+            self.preview_dirty = true;
+        }
+        self.clamp_targets();
+    }
+
+    /// Apply edited framing (axis offset, tilt, roll) to the renderer.
+    fn apply_framing(&mut self, framing: reco_core::calibration::Framing) {
+        if let Some(cal) = self.calibration.as_mut() {
+            cal.framing = framing.clone();
+        }
+        if let Some(bridge) = self.bridge.as_mut() {
+            bridge.renderer_mut().update_framing(framing);
             self.preview_dirty = true;
         }
         self.clamp_targets();
@@ -601,12 +613,13 @@ impl AppState {
         // slider ticks stay cheap), so fold them in before writing - otherwise
         // hand-tuned lens and seam values are silently lost on reload.
         let mut out = cal.clone();
-        out.lens_correction_amount = self.lens_correction_amount;
+        out.lenses[0].correction = self.lens_correction_amount;
+        out.lenses[1].correction = self.lens_correction_amount;
         if let Some(bridge) = self.bridge.as_ref() {
             let pipeline = bridge.renderer().pipeline();
-            out.left = pipeline.calibration().left.clone();
-            out.right = pipeline.calibration().right.clone();
-            out.blend_width = pipeline.viewport().blend_width;
+            out.lenses[0] = pipeline.calibration().lenses[0].clone();
+            out.lenses[1] = pipeline.calibration().lenses[1].clone();
+            out.topology.blend_width = pipeline.viewport().blend_width;
         }
         let json = serde_json::to_string_pretty(&out).map_err(|e| format!("serialize: {e}"))?;
         std::fs::write(path, json).map_err(|e| format!("write {}: {e}", path.display()))?;
@@ -614,10 +627,11 @@ impl AppState {
         Ok(())
     }
 
-    /// Restore PlaneLayout to the values loaded at init (or after auto-cal).
+    /// Restore Topology to the values loaded at init (or after auto-cal).
     fn reset_calibration(&mut self) {
-        if let Some(layout) = self.cal_baseline_layout.clone() {
-            self.apply_layout(layout);
+        if let Some(base) = self.cal_baseline.clone() {
+            self.apply_layout(base.topology);
+            self.apply_framing(base.framing);
         }
     }
 
@@ -685,7 +699,7 @@ impl AppState {
     fn unload_pipeline(&mut self) {
         self.stop_recording();
         self.reset_pipeline();
-        self.cal_baseline_layout = None;
+        self.cal_baseline = None;
         self.cal_baseline_left_params = None;
         self.cal_baseline_right_params = None;
     }
@@ -784,9 +798,9 @@ impl AppState {
             let bridge = self.bridge.as_mut()?;
             let cal = bridge.renderer().pipeline().calibration();
             let (planes, params) = if self.lens_preview_side == "right" {
-                (&right, cal.right.clone())
+                (&right, cal.lenses[1].clone())
             } else {
-                (&left, cal.left.clone())
+                (&left, cal.lenses[0].clone())
             };
             return match bridge.render_lens_preview(planes, &params, self.lens_correction_amount) {
                 Ok(img) => Some(img),
@@ -924,7 +938,7 @@ impl AppState {
 
     fn set_rig_tilt(&mut self, deg: f32) {
         if let Some(cal) = self.calibration.as_mut() {
-            cal.rig_tilt = (deg as f64).to_radians();
+            cal.framing.tilt = (deg as f64).to_radians();
         }
         if let Some(bridge) = self.bridge.as_mut() {
             bridge.renderer_mut().set_rig_tilt(deg.to_radians());
@@ -984,7 +998,7 @@ impl AppState {
 
     fn set_rig_roll(&mut self, deg: f32) {
         if let Some(cal) = self.calibration.as_mut() {
-            cal.rig_roll = (deg as f64).to_radians();
+            cal.framing.roll = (deg as f64).to_radians();
         }
         if let Some(bridge) = self.bridge.as_mut() {
             bridge.renderer_mut().set_rig_roll(deg.to_radians());
@@ -1035,14 +1049,14 @@ impl AppState {
 
 /// Extract just the filename from a path for display.
 /// Seed the Slint lens-tune sliders and their display ranges from a
-/// pair of baseline `CameraParams`. Called after auto-calibrate completes
+/// pair of baseline `Lens`. Called after auto-calibrate completes
 /// and on Reset Lens. Ranges are chosen wide enough for meaningful
 /// manual tuning (fx/fy: +/-15%, cx/cy: +/-10% of image dim) but tight
 /// enough that the slider granularity is useful.
 fn set_lens_sliders(
     app: &RecoApp,
-    left: &reco_core::calibration::CameraParams,
-    right: &reco_core::calibration::CameraParams,
+    left: &reco_core::calibration::Lens,
+    right: &reco_core::calibration::Lens,
 ) {
     // Ranges are computed from the left camera's baseline. In stereo
     // rigs the two lenses are typically matched models, so a single
@@ -1069,19 +1083,19 @@ fn set_lens_sliders(
     app.set_lens_left_fy(left.fy as f32);
     app.set_lens_left_cx(left.cx as f32);
     app.set_lens_left_cy(left.cy as f32);
-    app.set_lens_left_k1(left.d[0] as f32);
-    app.set_lens_left_k2(left.d[1] as f32);
-    app.set_lens_left_k3(left.d[2] as f32);
-    app.set_lens_left_k4(left.d[3] as f32);
+    app.set_lens_left_k1(left.distortion[0] as f32);
+    app.set_lens_left_k2(left.distortion[1] as f32);
+    app.set_lens_left_k3(left.distortion[2] as f32);
+    app.set_lens_left_k4(left.distortion[3] as f32);
 
     app.set_lens_right_fx(right.fx as f32);
     app.set_lens_right_fy(right.fy as f32);
     app.set_lens_right_cx(right.cx as f32);
     app.set_lens_right_cy(right.cy as f32);
-    app.set_lens_right_k1(right.d[0] as f32);
-    app.set_lens_right_k2(right.d[1] as f32);
-    app.set_lens_right_k3(right.d[2] as f32);
-    app.set_lens_right_k4(right.d[3] as f32);
+    app.set_lens_right_k1(right.distortion[0] as f32);
+    app.set_lens_right_k2(right.distortion[1] as f32);
+    app.set_lens_right_k3(right.distortion[2] as f32);
+    app.set_lens_right_k4(right.distortion[3] as f32);
 }
 
 /// Human-readable description of how a lens profile was resolved.
@@ -2531,12 +2545,12 @@ fn main() -> anyhow::Result<()> {
                     log::info!(
                         "Re-calibrate: preserving current lens (left fx={:.1} cx={:.1}, \
                          right fx={:.1} cx={:.1})",
-                        cal.left.fx,
-                        cal.left.cx,
-                        cal.right.fx,
-                        cal.right.cx
+                        cal.lenses[0].fx,
+                        cal.lenses[0].cx,
+                        cal.lenses[1].fx,
+                        cal.lenses[1].cx
                     );
-                    (Some(cal.left.clone()), Some(cal.right.clone()))
+                    (Some(cal.lenses[0].clone()), Some(cal.lenses[1].clone()))
                 }
                 None => (
                     s.cal_baseline_left_params.clone(),
@@ -2802,7 +2816,7 @@ fn main() -> anyhow::Result<()> {
 
     // ── Live calibration editing callbacks ──
     //
-    // Each slider writes the corresponding field on the PlaneLayout,
+    // Each slider writes the corresponding field on the Topology,
     // pushes the edited layout into the renderer, and flips cal-dirty
     // so the Save button becomes enabled.
 
@@ -2810,7 +2824,7 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_changed_cal_intersect(move |v| {
         let mut s = state_ref.borrow_mut();
-        let Some(mut layout) = s.calibration.as_ref().map(|c| c.layout.clone()) else {
+        let Some(mut layout) = s.calibration.as_ref().map(|c| c.topology.clone()) else {
             return;
         };
         layout.intersect = v as f64;
@@ -2824,11 +2838,11 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_changed_cal_camera_axis_offset(move |v| {
         let mut s = state_ref.borrow_mut();
-        let Some(mut layout) = s.calibration.as_ref().map(|c| c.layout.clone()) else {
+        let Some(mut framing) = s.calibration.as_ref().map(|c| c.framing.clone()) else {
             return;
         };
-        layout.camera_axis_offset = v as f64;
-        s.apply_layout(layout);
+        framing.axis_offset = v as f64;
+        s.apply_framing(framing);
         if let Some(app) = app_weak.upgrade() {
             app.set_cal_dirty(true);
         }
@@ -2838,7 +2852,7 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_changed_cal_x_ty(move |v| {
         let mut s = state_ref.borrow_mut();
-        let Some(mut layout) = s.calibration.as_ref().map(|c| c.layout.clone()) else {
+        let Some(mut layout) = s.calibration.as_ref().map(|c| c.topology.clone()) else {
             return;
         };
         layout.x_ty = v as f64;
@@ -2883,10 +2897,10 @@ fn main() -> anyhow::Result<()> {
     app.on_reset_calibration(move || {
         let mut s = state_ref.borrow_mut();
         s.reset_calibration();
-        if let (Some(app), Some(layout)) = (app_weak.upgrade(), s.cal_baseline_layout.as_ref()) {
-            app.set_cal_intersect(layout.intersect as f32);
-            app.set_cal_camera_axis_offset(layout.camera_axis_offset as f32);
-            app.set_cal_x_ty(layout.x_ty as f32);
+        if let (Some(app), Some(layout)) = (app_weak.upgrade(), s.cal_baseline.as_ref()) {
+            app.set_cal_intersect(layout.topology.intersect as f32);
+            app.set_cal_camera_axis_offset(layout.framing.axis_offset as f32);
+            app.set_cal_x_ty(layout.topology.x_ty as f32);
             app.set_cal_dirty(false);
         }
     });
@@ -2895,7 +2909,7 @@ fn main() -> anyhow::Result<()> {
     //
     // Each slider emits `changed-lens-param` which asks Rust to read
     // the current fx/fy/cx/cy/k1-k4 from the UI properties for the
-    // selected camera, build a `CameraParams`, and push it through
+    // selected camera, build a `Lens`, and push it through
     // `update_camera_params`. Cheap per reco-core Batch F.
 
     let app_weak = app.as_weak();
@@ -2914,28 +2928,28 @@ fn main() -> anyhow::Result<()> {
             .map(|b| {
                 let c = b.renderer().pipeline().calibration();
                 (
-                    (c.left.width, c.left.height),
-                    (c.right.width, c.right.height),
+                    (c.lenses[0].width, c.lenses[0].height),
+                    (c.lenses[1].width, c.lenses[1].height),
                 )
             })
             .unwrap_or(((0, 0), (0, 0)));
 
         let (left_params, right_params) = match selected.as_str() {
             "right" => {
-                let p = reco_core::calibration::CameraParams {
-                    fx: app.get_lens_right_fx() as f64,
-                    fy: app.get_lens_right_fy() as f64,
-                    cx: app.get_lens_right_cx() as f64,
-                    cy: app.get_lens_right_cy() as f64,
-                    d: [
+                let p = reco_core::calibration::Lens::fisheye(
+                    right_wh.0,
+                    right_wh.1,
+                    app.get_lens_right_fx() as f64,
+                    app.get_lens_right_fy() as f64,
+                    app.get_lens_right_cx() as f64,
+                    app.get_lens_right_cy() as f64,
+                    [
                         app.get_lens_right_k1() as f64,
                         app.get_lens_right_k2() as f64,
                         app.get_lens_right_k3() as f64,
                         app.get_lens_right_k4() as f64,
                     ],
-                    width: right_wh.0,
-                    height: right_wh.1,
-                };
+                );
                 (None, Some(p))
             }
             "both" => {
@@ -2953,21 +2967,21 @@ fn main() -> anyhow::Result<()> {
                 app.set_lens_right_k2(app.get_lens_left_k2());
                 app.set_lens_right_k3(app.get_lens_left_k3());
                 app.set_lens_right_k4(app.get_lens_left_k4());
-                let left = reco_core::calibration::CameraParams {
-                    fx: app.get_lens_left_fx() as f64,
-                    fy: app.get_lens_left_fy() as f64,
-                    cx: app.get_lens_left_cx() as f64,
-                    cy: app.get_lens_left_cy() as f64,
-                    d: [
+                let left = reco_core::calibration::Lens::fisheye(
+                    left_wh.0,
+                    left_wh.1,
+                    app.get_lens_left_fx() as f64,
+                    app.get_lens_left_fy() as f64,
+                    app.get_lens_left_cx() as f64,
+                    app.get_lens_left_cy() as f64,
+                    [
                         app.get_lens_left_k1() as f64,
                         app.get_lens_left_k2() as f64,
                         app.get_lens_left_k3() as f64,
                         app.get_lens_left_k4() as f64,
                     ],
-                    width: left_wh.0,
-                    height: left_wh.1,
-                };
-                let right = reco_core::calibration::CameraParams {
+                );
+                let right = reco_core::calibration::Lens {
                     width: right_wh.0,
                     height: right_wh.1,
                     ..left.clone()
@@ -2975,20 +2989,20 @@ fn main() -> anyhow::Result<()> {
                 (Some(left), Some(right))
             }
             _ => {
-                let p = reco_core::calibration::CameraParams {
-                    fx: app.get_lens_left_fx() as f64,
-                    fy: app.get_lens_left_fy() as f64,
-                    cx: app.get_lens_left_cx() as f64,
-                    cy: app.get_lens_left_cy() as f64,
-                    d: [
+                let p = reco_core::calibration::Lens::fisheye(
+                    left_wh.0,
+                    left_wh.1,
+                    app.get_lens_left_fx() as f64,
+                    app.get_lens_left_fy() as f64,
+                    app.get_lens_left_cx() as f64,
+                    app.get_lens_left_cy() as f64,
+                    [
                         app.get_lens_left_k1() as f64,
                         app.get_lens_left_k2() as f64,
                         app.get_lens_left_k3() as f64,
                         app.get_lens_left_k4() as f64,
                     ],
-                    width: left_wh.0,
-                    height: left_wh.1,
-                };
+                );
                 (Some(p), None)
             }
         };
@@ -2997,10 +3011,10 @@ fn main() -> anyhow::Result<()> {
         // live renderer).
         if let Some(cal) = s.calibration.as_mut() {
             if let Some(l) = &left_params {
-                cal.left = l.clone();
+                cal.lenses[0] = l.clone();
             }
             if let Some(r) = &right_params {
-                cal.right = r.clone();
+                cal.lenses[1] = r.clone();
             }
         }
         if let Some(bridge) = s.bridge.as_mut() {
@@ -3086,15 +3100,15 @@ fn main() -> anyhow::Result<()> {
                 );
                 let scale_w = in_w as f64 / params.width as f64;
                 let scale_h = in_h as f64 / params.height as f64;
-                let scaled = reco_core::calibration::CameraParams {
-                    width: in_w,
-                    height: in_h,
-                    fx: params.fx * scale_w,
-                    fy: params.fy * scale_h,
-                    cx: params.cx * scale_w,
-                    cy: params.cy * scale_h,
-                    d: params.d,
-                };
+                let scaled = reco_core::calibration::Lens::fisheye(
+                    in_w,
+                    in_h,
+                    params.fx * scale_w,
+                    params.fy * scale_h,
+                    params.cx * scale_w,
+                    params.cy * scale_h,
+                    params.distortion,
+                );
                 let (apply_left, apply_right) = match side_str {
                     "left" => (Some(scaled.clone()), None),
                     "right" => (None, Some(scaled.clone())),
@@ -3105,10 +3119,10 @@ fn main() -> anyhow::Result<()> {
                 // renderer (the bug: picker updated only the renderer).
                 if let Some(cal) = s.calibration.as_mut() {
                     if side_str != "right" {
-                        cal.left = scaled.clone();
+                        cal.lenses[0] = scaled.clone();
                     }
                     if side_str != "left" {
-                        cal.right = scaled.clone();
+                        cal.lenses[1] = scaled.clone();
                     }
                 }
                 if let Some(bridge) = s.bridge.as_mut() {
@@ -3155,18 +3169,18 @@ fn main() -> anyhow::Result<()> {
                     } else {
                         1.0
                     };
-                    let scaled = reco_core::calibration::CameraParams {
-                        width: in_w,
-                        height: in_h,
-                        fx: params.fx * scale_w,
-                        fy: params.fy * scale_h,
-                        cx: params.cx * scale_w,
-                        cy: params.cy * scale_h,
-                        d: params.d,
-                    };
+                    let scaled = reco_core::calibration::Lens::fisheye(
+                        in_w,
+                        in_h,
+                        params.fx * scale_w,
+                        params.fy * scale_h,
+                        params.cx * scale_w,
+                        params.cy * scale_h,
+                        params.distortion,
+                    );
                     if let Some(cal) = s.calibration.as_mut() {
-                        cal.left = scaled.clone();
-                        cal.right = scaled.clone();
+                        cal.lenses[0] = scaled.clone();
+                        cal.lenses[1] = scaled.clone();
                     }
                     if let Some(bridge) = s.bridge.as_mut() {
                         bridge
@@ -4205,7 +4219,7 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
             }
             let img = s.render_current();
             // Seed calibration slider values from the baseline layout.
-            let layout = s.cal_baseline_layout.clone();
+            let layout = s.cal_baseline.clone();
 
             let (in_w, in_h) = s.playback.input_dimensions().unwrap_or((0, 0));
 
@@ -4214,7 +4228,7 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
             // this comes from the loaded calibration directly.
             let lens_baseline = s.bridge.as_ref().map(|b| {
                 let cal = b.renderer().pipeline().calibration();
-                (cal.left.clone(), cal.right.clone())
+                (cal.lenses[0].clone(), cal.lenses[1].clone())
             });
             if let Some((l, r)) = lens_baseline.as_ref() {
                 s.cal_baseline_left_params = Some(l.clone());
@@ -4236,7 +4250,7 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
             // Lens-correction strength came in via the loaded calibration and
             // the renderer was seeded with it at bridge creation; mirror it
             // into AppState so a later save re-persists the right value.
-            let lens_correction = s.calibration.as_ref().map(|c| c.lens_correction_amount);
+            let lens_correction = s.calibration.as_ref().map(|c| c.lenses[0].correction);
             if let Some(lc) = lens_correction {
                 s.lens_correction_amount = lc;
             }
@@ -4313,9 +4327,9 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                     app.set_preview_frame(img);
                 }
                 if let Some(layout) = layout {
-                    app.set_cal_intersect(layout.intersect as f32);
-                    app.set_cal_camera_axis_offset(layout.camera_axis_offset as f32);
-                    app.set_cal_x_ty(layout.x_ty as f32);
+                    app.set_cal_intersect(layout.topology.intersect as f32);
+                    app.set_cal_camera_axis_offset(layout.framing.axis_offset as f32);
+                    app.set_cal_x_ty(layout.topology.x_ty as f32);
                     app.set_cal_dirty(false);
                 }
                 if let Some(rt) = rig_tilt_rad {
@@ -4485,7 +4499,7 @@ fn handle_calibration_result(
                     // manual edits.
                     let lens_baseline = state.bridge.as_ref().map(|b| {
                         let cal = b.renderer().pipeline().calibration();
-                        (cal.left.clone(), cal.right.clone())
+                        (cal.lenses[0].clone(), cal.lenses[1].clone())
                     });
                     if let Some((l, r)) = lens_baseline.as_ref() {
                         state.cal_baseline_left_params = Some(l.clone());
@@ -4498,7 +4512,7 @@ fn handle_calibration_result(
                     // the preview looks correct while the sliders read
                     // 0; clicking any of them snaps the layout to ~0
                     // and destroys the calibration.
-                    let layout_baseline = state.cal_baseline_layout.clone();
+                    let layout_baseline = state.cal_baseline.clone();
                     // Same idea for rig tilt and blend width: read the
                     // calibrated values off the viewport so the View
                     // panel sliders match what the preview actually shows.
@@ -4519,7 +4533,7 @@ fn handle_calibration_result(
                         .as_ref()
                         .map(|b| b.renderer().pipeline().viewport().blend_width);
                     let lens_correction =
-                        state.calibration.as_ref().map(|c| c.lens_correction_amount);
+                        state.calibration.as_ref().map(|c| c.lenses[0].correction);
                     if let Some(lc) = lens_correction {
                         state.lens_correction_amount = lc;
                     }
@@ -4580,9 +4594,9 @@ fn handle_calibration_result(
                             app.set_preview_frame(img);
                         }
                         if let Some(layout) = layout_baseline.as_ref() {
-                            app.set_cal_intersect(layout.intersect as f32);
-                            app.set_cal_camera_axis_offset(layout.camera_axis_offset as f32);
-                            app.set_cal_x_ty(layout.x_ty as f32);
+                            app.set_cal_intersect(layout.topology.intersect as f32);
+                            app.set_cal_camera_axis_offset(layout.framing.axis_offset as f32);
+                            app.set_cal_x_ty(layout.topology.x_ty as f32);
                             app.set_cal_dirty(false);
                         }
                         if let Some(rt) = rig_tilt_rad {

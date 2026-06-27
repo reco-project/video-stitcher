@@ -227,48 +227,31 @@ pub(crate) fn dispatch(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::calibration::{Calibration, CameraParams, PlaneLayout};
+    use crate::calibration::{Calibration, Framing, Lens, Topology};
     use crate::detect::detector::CameraId;
     use crate::detect::tracker::{TrackState, TrackedEntity, WorldState};
 
     /// A fixture calibration shaped like the v1 test JSON without
     /// needing disk access or real lens data.
     fn test_calibration() -> Calibration {
-        Calibration {
-            left: CameraParams {
-                width: 1920,
-                height: 1080,
-                fx: 900.0,
-                fy: 900.0,
-                cx: 960.0,
-                cy: 540.0,
-                d: [0.0; 4],
-            },
-            right: CameraParams {
-                width: 1920,
-                height: 1080,
-                fx: 900.0,
-                fy: 900.0,
-                cx: 960.0,
-                cy: 540.0,
-                d: [0.0; 4],
-            },
-            layout: PlaneLayout {
-                camera_axis_offset: 0.24,
+        let cam = || Lens::fisheye(1920, 1080, 900.0, 900.0, 960.0, 540.0, [0.0; 4]);
+        Calibration::new(
+            vec![cam(), cam()],
+            Topology {
                 intersect: 0.54,
                 x_ty: 0.0,
                 x_rz: 0.0,
                 z_rx: 0.0,
                 x_rx: 0.0,
                 z_rz: 0.0,
+                blend_width: 0.05,
             },
-            rig_tilt: 0.0,
-            rig_roll: 0.0,
-            sync_offset: 0,
-            field_roi: None,
-            lens_correction_amount: 1.0,
-            blend_width: 0.05,
-        }
+            Framing {
+                axis_offset: 0.24,
+                tilt: 0.0,
+                roll: 0.0,
+            },
+        )
     }
 
     /// Minimal panner that echoes the ball's yaw/pitch when present.
