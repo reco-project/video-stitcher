@@ -38,8 +38,8 @@ fn calibrate_videos_matches_known_good() {
     .expect("calibrate_videos failed");
 
     // Load known-good calibration for comparison
-    let known: reco_core::calibration::MatchCalibration =
-        reco_core::calibration::MatchCalibration::from_file(Path::new(KNOWN_GOOD))
+    let known: reco_core::calibration::Calibration =
+        reco_core::calibration::Calibration::from_file(Path::new(KNOWN_GOOD))
             .expect("failed to load known-good calibration");
 
     // Sync offset should match exactly (both use IMU)

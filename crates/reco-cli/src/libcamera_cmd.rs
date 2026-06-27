@@ -64,7 +64,7 @@ pub fn run_libcamera(
         "Output path looks like a network URL ({output}). Only local file paths are supported.",
     );
 
-    let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration))?;
+    let cal = reco_core::calibration::Calibration::from_file(Path::new(calibration))?;
 
     let viewport = reco_core::render::viewport::ViewportConfig {
         width,

@@ -63,11 +63,11 @@ pub trait SurfaceMap {
 /// Shared test fixtures + GPU acquisition for the stitch test modules.
 #[cfg(test)]
 pub(crate) mod test_support {
-    use crate::calibration::{CameraParams, MatchCalibration, PlaneLayout};
+    use crate::calibration::{Calibration, CameraParams, PlaneLayout};
     use crate::gpu::{GpuContext, GpuError};
 
     /// Two-camera calibration (shared dims, mild fisheye, centred) for tests.
-    pub fn calib(w: u32, h: u32) -> MatchCalibration {
+    pub fn calib(w: u32, h: u32) -> Calibration {
         let cam = || CameraParams {
             width: w,
             height: h,
@@ -77,7 +77,7 @@ pub(crate) mod test_support {
             cy: h as f64 * 0.5,
             d: [-0.02, 0.004, 0.0, 0.0],
         };
-        MatchCalibration {
+        Calibration {
             left: cam(),
             right: cam(),
             layout: PlaneLayout {
@@ -222,7 +222,7 @@ pub(crate) mod test_support {
 mod tests {
     use super::test_support::{Agreement, AgreementBounds, calib, gpu_or_skip, nv12};
     use super::*;
-    use crate::calibration::MatchCalibration;
+    use crate::calibration::Calibration;
     use crate::render::planes::Nv12Planes;
     use crate::render::viewport::ViewportConfig;
 
@@ -489,7 +489,7 @@ mod tests {
     /// primitive: callers diff the buffers however they need (aggregate stats,
     /// coverage/black-region masks).
     fn gpu_cpu_rgba(
-        calib: &MatchCalibration,
+        calib: &Calibration,
         config: &ViewportConfig,
         cam: (u32, u32),
         left: &Nv12Planes,
@@ -563,7 +563,7 @@ mod tests {
         let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
-        let cases: [(&str, MatchCalibration, ViewportConfig, f32, f32, bool); 6] = [
+        let cases: [(&str, Calibration, ViewportConfig, f32, f32, bool); 6] = [
             (
                 "wide-pan",
                 base.clone(),
@@ -660,7 +660,7 @@ mod tests {
         };
         // Each case puts a plane within NEAR_PLANE of the virtual camera before
         // the fix: axis offset below ~0.012, or FOV near the projection limit.
-        let cases: [(&str, MatchCalibration, ViewportConfig); 3] = [
+        let cases: [(&str, Calibration, ViewportConfig); 3] = [
             ("axis-offset 0.005", axis(0.005), cfg(75.0)),
             ("axis-offset 0.012", axis(0.012), cfg(75.0)),
             ("fov 178", calib(cam_w, cam_h), cfg(178.0)),

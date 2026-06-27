@@ -112,7 +112,7 @@ enum CalibrationSource {
     /// Load from a JSON file path.
     File(PathBuf),
     /// Use an in-memory calibration (no file I/O).
-    Memory(Box<reco_core::calibration::MatchCalibration>),
+    Memory(Box<reco_core::calibration::Calibration>),
 }
 
 /// Input video file path(s), supporting chained/segmented recordings.
@@ -263,7 +263,7 @@ impl StitchJob {
     pub fn with_calibration(
         left: impl Into<InputPath>,
         right: impl Into<InputPath>,
-        calibration: reco_core::calibration::MatchCalibration,
+        calibration: reco_core::calibration::Calibration,
         output: impl AsRef<Path>,
     ) -> Self {
         let mut job = Self::new(left, right, Path::new(""), output);
@@ -548,7 +548,7 @@ impl StitchJob {
         // Load calibration
         let cal = match self.calibration {
             CalibrationSource::File(ref path) => {
-                reco_core::calibration::MatchCalibration::from_file(path)
+                reco_core::calibration::Calibration::from_file(path)
                     .map_err(|e| StitchError::Calibration(format!("{e}")))?
             }
             CalibrationSource::Memory(cal) => *cal,

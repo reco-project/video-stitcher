@@ -124,7 +124,7 @@ pub fn run_camera(
         "Output path looks like a network URL ({output}). Only local file paths are supported.",
     );
 
-    let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration))?;
+    let cal = reco_core::calibration::Calibration::from_file(Path::new(calibration))?;
     let field_roi = cal.field_roi.clone();
 
     let viewport = reco_core::render::viewport::ViewportConfig {
@@ -836,8 +836,7 @@ pub fn run_live_calibrate(
     // Preserve field_roi and rig_tilt from existing calibration file
     let mut cal = result.calibration;
     if let Ok(existing) = std::fs::read_to_string(output_path)
-        && let Ok(prev) =
-            serde_json::from_str::<reco_core::calibration::MatchCalibration>(&existing)
+        && let Ok(prev) = serde_json::from_str::<reco_core::calibration::Calibration>(&existing)
     {
         if prev.field_roi.is_some() {
             cal.field_roi = prev.field_roi;

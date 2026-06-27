@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use super::StitchSession;
 use super::types::*;
-use crate::calibration::{CameraParams, MatchCalibration, PlaneLayout};
+use crate::calibration::{Calibration, CameraParams, PlaneLayout};
 use crate::detect::detector::{CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector};
 use crate::detect::director::{MappedDetection, ViewportPosition};
 use crate::detect::panner::{PanContext, Panner};
@@ -27,7 +27,7 @@ const W: u32 = 64;
 const H: u32 = 64;
 
 /// Create a minimal valid calibration for 64x64 frames.
-fn test_calibration() -> MatchCalibration {
+fn test_calibration() -> Calibration {
     let cam = CameraParams {
         width: W,
         height: H,
@@ -37,7 +37,7 @@ fn test_calibration() -> MatchCalibration {
         cy: 32.0,
         d: [0.0; 4],
     };
-    MatchCalibration {
+    Calibration {
         left: cam.clone(),
         right: cam,
         layout: PlaneLayout {

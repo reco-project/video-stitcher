@@ -45,7 +45,7 @@ pub mod types;
 
 use std::time::{Duration, Instant};
 
-use crate::calibration::MatchCalibration;
+use crate::calibration::Calibration;
 use crate::detect::detector::UnifiedDetector;
 use crate::detect::director::{MappedDetection, ViewportPosition};
 use crate::detect::panner::Panner;
@@ -434,7 +434,7 @@ impl StitchCore {
     ///
     /// Re-derives the coverage boundary from the new calibration so
     /// subsequent `safe_clamp` calls respect the new no-black region.
-    pub fn update_calibration(&mut self, calibration: MatchCalibration) {
+    pub fn update_calibration(&mut self, calibration: Calibration) {
         self.pipeline.update_calibration(calibration);
         self.coverage = Some(CoverageBoundary::from_calibration(
             self.pipeline.calibration(),

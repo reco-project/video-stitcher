@@ -4,7 +4,7 @@
 //! the `StitchSession` implementation. Import types from
 //! `reco_core::session::types` (e.g. `reco_core::session::types::SessionConfig`).
 
-use crate::calibration::MatchCalibration;
+use crate::calibration::Calibration;
 use crate::core::types::StitchCoreError;
 use crate::encoder::{EncodeError, Encoder};
 use crate::gpu::nv12_converter::Nv12Error;
@@ -35,7 +35,7 @@ pub fn compute_frame_limit(duration_secs: Option<f64>, max_frames: Option<u64>, 
 #[derive(Debug)]
 pub struct SessionConfig {
     /// Camera calibration data.
-    pub calibration: MatchCalibration,
+    pub calibration: Calibration,
     /// Output viewport (dimensions, blend width, FOV).
     pub viewport: ViewportConfig,
     /// Input frame width in pixels.
@@ -193,7 +193,7 @@ const _: fn() = || {
 ///     .build()?;
 /// ```
 pub struct StitchSessionBuilder {
-    pub(super) calibration: Option<MatchCalibration>,
+    pub(super) calibration: Option<Calibration>,
     pub(super) viewport: Option<ViewportConfig>,
     pub(super) input_width: Option<u32>,
     pub(super) input_height: Option<u32>,
@@ -207,7 +207,7 @@ pub struct StitchSessionBuilder {
 
 impl StitchSessionBuilder {
     /// Set the camera calibration (required).
-    pub fn calibration(mut self, cal: MatchCalibration) -> Self {
+    pub fn calibration(mut self, cal: Calibration) -> Self {
         self.calibration = Some(cal);
         self
     }

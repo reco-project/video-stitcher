@@ -1,6 +1,6 @@
 //! Precomputed coverage boundary for "no-black" viewport constraining.
 
-use crate::calibration::MatchCalibration;
+use crate::calibration::Calibration;
 use crate::detect::detector::CameraId;
 use crate::render::scene::SceneGeometry;
 
@@ -106,7 +106,7 @@ impl CoverageBoundary {
     ///
     /// Densely samples both planes' edge loops and a sparse interior grid,
     /// projecting into (yaw, pitch) space and grouping into pitch slices.
-    pub fn from_calibration(calibration: &MatchCalibration, scene: &SceneGeometry) -> Self {
+    pub fn from_calibration(calibration: &Calibration, scene: &SceneGeometry) -> Self {
         let n_slices: usize = 400;
         let margin = 0.02_f32;
 

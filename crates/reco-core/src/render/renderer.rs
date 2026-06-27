@@ -25,7 +25,7 @@
 
 use super::scene::SceneGeometry;
 use super::viewport::ResolvedViewport;
-use crate::calibration::{CameraParams, MatchCalibration};
+use crate::calibration::{Calibration, CameraParams};
 use crate::gpu::GpuContext;
 
 use bytemuck::{Pod, Zeroable};
@@ -822,7 +822,7 @@ impl Renderer {
         &self,
         gpu: &GpuContext,
         scene: &SceneGeometry,
-        calibration: &MatchCalibration,
+        calibration: &Calibration,
         viewport: &ResolvedViewport,
         blend_width: f32,
         target_view: &wgpu::TextureView,
@@ -934,7 +934,7 @@ impl Renderer {
         &self,
         gpu: &GpuContext,
         scene: &SceneGeometry,
-        calibration: &MatchCalibration,
+        calibration: &Calibration,
         viewport: &ResolvedViewport,
         blend_width: f32,
     ) -> wgpu::CommandBuffer {
@@ -968,7 +968,7 @@ impl Renderer {
         &self,
         gpu: &GpuContext,
         scene: &SceneGeometry,
-        calibration: &MatchCalibration,
+        calibration: &Calibration,
         viewport: &ResolvedViewport,
         blend_width: f32,
         target_view: &wgpu::TextureView,

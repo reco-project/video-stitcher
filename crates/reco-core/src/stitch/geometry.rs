@@ -10,7 +10,7 @@
 
 use nalgebra::{Matrix3, Matrix4, Perspective3, Vector3};
 
-use crate::calibration::{CameraParams, MatchCalibration};
+use crate::calibration::{Calibration, CameraParams};
 use crate::lens::kb4;
 use crate::render::renderer::{FAR_PLANE, NEAR_PLANE, opengl_to_wgpu_matrix, view_matrix};
 use crate::render::scene::SceneGeometry;
@@ -181,7 +181,7 @@ impl SurfaceMap for PlaneMap {
 /// the GPU stitch pass, so the CPU and GPU sample the identical source UV for
 /// every output pixel (up to f32/f64 precision).
 pub fn l_shape_plane_maps(
-    calib: &MatchCalibration,
+    calib: &Calibration,
     config: &ViewportConfig,
     yaw: f32,
     pitch: f32,

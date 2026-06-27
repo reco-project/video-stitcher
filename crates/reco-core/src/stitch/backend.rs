@@ -15,7 +15,7 @@
 //! When `wgpu` becomes optional (Phase 3), [`GpuStitchBackend`] moves behind a
 //! feature; [`CpuStitchBackend`] stays unconditional.
 
-use crate::calibration::MatchCalibration;
+use crate::calibration::Calibration;
 use crate::gpu::GpuContext;
 use crate::gpu::rgba_readback::{RgbaReadback, RgbaReadbackError};
 use crate::render::pipeline::{PipelineError, StitchPipeline};
@@ -72,7 +72,7 @@ pub trait StitchBackend {
 
 /// CPU software backend - pure Rust, no GPU. The portable / GPU-less path.
 pub struct CpuStitchBackend {
-    calib: MatchCalibration,
+    calib: Calibration,
     config: ViewportConfig,
     cam: (u32, u32),
     full_range: bool,
@@ -81,7 +81,7 @@ pub struct CpuStitchBackend {
 impl CpuStitchBackend {
     /// Configure a CPU backend for a fixed source size and output viewport.
     pub fn new(
-        calib: MatchCalibration,
+        calib: Calibration,
         config: ViewportConfig,
         cam_w: u32,
         cam_h: u32,
@@ -152,7 +152,7 @@ impl GpuStitchBackend {
     /// [`GpuContext::new`].
     pub fn new(
         gpu: GpuContext,
-        calib: MatchCalibration,
+        calib: Calibration,
         config: ViewportConfig,
         cam_w: u32,
         cam_h: u32,

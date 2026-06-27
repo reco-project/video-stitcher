@@ -25,7 +25,7 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use reco_control::pose_control::{PoseControl, PoseControlConfig};
-use reco_core::calibration::MatchCalibration;
+use reco_core::calibration::Calibration;
 use reco_core::core::StitchCore;
 use reco_core::core::types::{RenderOutcome, StitchCoreConfig};
 use reco_core::detect::director::ViewportPosition;
@@ -145,7 +145,7 @@ struct RecoSource {
     diag_uploads: u64,
 
     /// Current calibration loaded from the config file.
-    calibration: Option<MatchCalibration>,
+    calibration: Option<Calibration>,
 
     /// Path to the calibration JSON file.
     config_path: String,
@@ -521,7 +521,7 @@ impl RecoSource {
         }
 
         let path = Path::new(&self.config_path);
-        match MatchCalibration::from_file(path) {
+        match Calibration::from_file(path) {
             Ok(cal) => {
                 log::info!("reco-obs: loaded calibration from {}", self.config_path);
                 self.calibration = Some(cal);

@@ -89,7 +89,7 @@ pub fn run_preview(
         rig_tilt_degrees,
     } = *config;
     // Load calibration first so we can use its sync_offset and rig_tilt
-    let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration_path))?;
+    let cal = reco_core::calibration::Calibration::from_file(Path::new(calibration_path))?;
 
     // Use calibration's sync offset unless the user explicitly overrode it
     let effective_sync = if sync_offset != 0 {
@@ -218,7 +218,7 @@ struct App {
     surface_format: reco_core::wgpu::TextureFormat,
     alpha_mode: reco_core::wgpu::CompositeAlphaMode,
     renderer: Option<StitchRenderer>,
-    cal: reco_core::calibration::MatchCalibration,
+    cal: reco_core::calibration::Calibration,
     input_width: u32,
     input_height: u32,
     width: u32,

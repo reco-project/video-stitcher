@@ -85,7 +85,7 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     // and pass the pre-loaded calibration to StitchJob. `field_roi` is
     // only consumed under the autocam feature; a leading underscore
     // silences the unused-var lint on `--no-default-features` builds.
-    let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(args.calibration))?;
+    let cal = reco_core::calibration::Calibration::from_file(Path::new(args.calibration))?;
     #[cfg_attr(not(feature = "autocam"), allow(unused_variables))]
     let field_roi = cal.field_roi.clone();
 

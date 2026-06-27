@@ -26,7 +26,7 @@
 //! alias the same storage. Slint's texture pool / compositor makes
 //! per-frame allocation inexpensive; the driver reuses VRAM slabs.
 
-use reco_core::calibration::{CameraParams, MatchCalibration};
+use reco_core::calibration::{Calibration, CameraParams};
 use reco_core::gpu::GpuContext;
 use reco_core::lens::preview::LensPreviewRenderer;
 use reco_core::render::pipeline::{PipelineError, YuvPlanes};
@@ -59,7 +59,7 @@ impl PreviewBridge {
         device: wgpu::Device,
         queue: wgpu::Queue,
         adapter_info: wgpu::AdapterInfo,
-        calibration: MatchCalibration,
+        calibration: Calibration,
         input_width: u32,
         input_height: u32,
         viewport_width: u32,

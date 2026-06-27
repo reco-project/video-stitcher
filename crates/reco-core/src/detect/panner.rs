@@ -21,7 +21,7 @@
 use super::director::{MappedDetection, ViewportPosition};
 use super::pipeline_event::{PipelineEvent, PipelineEventSink};
 use super::tracker::{Tracker, WorldState};
-use crate::calibration::MatchCalibration;
+use crate::calibration::Calibration;
 
 /// Per-frame context a [`Panner`] receives alongside the world state.
 ///
@@ -43,7 +43,7 @@ pub struct PanContext<'a> {
     /// Shared calibration for optional camera↔panorama projection.
     /// Borrowed for the duration of the [`decide`](Panner::decide)
     /// call; panners must not retain it.
-    pub calibration: &'a MatchCalibration,
+    pub calibration: &'a Calibration,
 }
 
 /// The contract implemented by every camera-motion policy.
@@ -96,7 +96,7 @@ pub(crate) struct DispatchContext<'a> {
     /// Raw mapped detections the trackers should consume this frame.
     pub detections: &'a [MappedDetection],
     /// Shared calibration handed to the panner via [`PanContext`].
-    pub calibration: &'a MatchCalibration,
+    pub calibration: &'a Calibration,
     /// Current frame index (0-based, monotonically increasing).
     pub frame_index: u64,
     /// Elapsed milliseconds since session start.
@@ -227,14 +227,14 @@ pub(crate) fn dispatch(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::calibration::{CameraParams, MatchCalibration, PlaneLayout};
+    use crate::calibration::{Calibration, CameraParams, PlaneLayout};
     use crate::detect::detector::CameraId;
     use crate::detect::tracker::{TrackState, TrackedEntity, WorldState};
 
     /// A fixture calibration shaped like the v1 test JSON without
     /// needing disk access or real lens data.
-    fn test_calibration() -> MatchCalibration {
-        MatchCalibration {
+    fn test_calibration() -> Calibration {
+        Calibration {
             left: CameraParams {
                 width: 1920,
                 height: 1080,

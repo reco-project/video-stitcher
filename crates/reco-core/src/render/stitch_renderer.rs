@@ -24,7 +24,7 @@ use super::pipeline::{Nv12Planes, PipelineError, StitchPipeline, YuvPlanes};
 use super::renderer::InputFormat;
 use super::scene::SceneGeometry;
 use super::viewport::ViewportConfig;
-use crate::calibration::MatchCalibration;
+use crate::calibration::Calibration;
 use crate::gpu::GpuContext;
 use crate::gpu::nv12_converter::Nv12Converter;
 use crate::gpu::rgba_readback::RgbaReadback;
@@ -84,7 +84,7 @@ impl StitchRenderer {
     ///   ([`Yuv420p`](InputFormat::Yuv420p) for file decode,
     ///   [`Nv12`](InputFormat::Nv12) for Jetson/NVDEC live input).
     pub fn new(
-        calibration: MatchCalibration,
+        calibration: Calibration,
         gpu: GpuContext,
         viewport: ViewportConfig,
         input_width: u32,
@@ -378,7 +378,7 @@ impl StitchRenderer {
     ///
     /// Takes effect on the next render call. Useful for interactive
     /// calibration preview where the user adjusts sliders.
-    pub fn update_calibration(&mut self, calibration: crate::calibration::MatchCalibration) {
+    pub fn update_calibration(&mut self, calibration: crate::calibration::Calibration) {
         self.pipeline.update_calibration(calibration);
         self.coverage =
             CoverageBoundary::from_calibration(self.pipeline.calibration(), &self.pipeline.scene);
@@ -422,7 +422,7 @@ impl StitchRenderer {
     }
 
     /// Access the current calibration (for saving after adjustments).
-    pub fn calibration(&self) -> &crate::calibration::MatchCalibration {
+    pub fn calibration(&self) -> &crate::calibration::Calibration {
         self.pipeline.calibration()
     }
 

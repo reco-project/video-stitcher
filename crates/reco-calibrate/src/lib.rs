@@ -94,7 +94,7 @@ pub use types::{
     ProfileSource, YuvFrame,
 };
 
-use reco_core::calibration::{CameraParams, MatchCalibration};
+use reco_core::calibration::{Calibration, CameraParams};
 use reco_core::gpu::GpuContext;
 use reco_core::lens::undistort::GpuUndistort;
 
@@ -471,7 +471,7 @@ pub fn calibrate_with(
         best_layout.z_rz
     );
 
-    let calibration = MatchCalibration {
+    let calibration = Calibration {
         left: left_params.clone(),
         right: right_params.clone(),
         layout: best_layout,

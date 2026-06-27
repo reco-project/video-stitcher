@@ -33,7 +33,7 @@ use std::time::{Duration, Instant};
 use reco_calibrate::{LensProfileInfo, ProfileSource};
 use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_control::{ControlIntent, IntentTranslator, PoseIntent};
-use reco_core::calibration::MatchCalibration;
+use reco_core::calibration::Calibration;
 use reco_core::detect::director::ViewportPosition;
 use reco_core::wgpu;
 
@@ -95,7 +95,7 @@ const SEEK_DEBOUNCE_MS: u64 = 120;
 /// so the GUI can tell the user "we auto-detected GoPro HERO10 Linear 4K"
 /// without re-running detection.
 struct CalibrationOutput {
-    calibration: MatchCalibration,
+    calibration: Calibration,
     confidence: f64,
     total_matches: usize,
     left_lens_profile: Option<LensProfileInfo>,
@@ -195,7 +195,7 @@ struct AppState {
     left_input: Option<reco_io::stitch_job::InputPath>,
     right_input: Option<reco_io::stitch_job::InputPath>,
     calibration_path: Option<PathBuf>,
-    calibration: Option<MatchCalibration>,
+    calibration: Option<Calibration>,
     playback: Playback,
     bridge: Option<PreviewBridge>,
     recording_tx: Option<std::sync::mpsc::SyncSender<RecordingFrame>>,
@@ -553,7 +553,7 @@ impl AppState {
     /// if the rendering notifier hasn't populated `shared_gpu` yet.
     fn build_bridge(
         &mut self,
-        cal: &MatchCalibration,
+        cal: &Calibration,
         input_w: u32,
         input_h: u32,
     ) -> Result<PreviewBridge, String> {
@@ -633,7 +633,7 @@ impl AppState {
             };
 
         // Load calibration.
-        let cal = MatchCalibration::from_file(&cal_path)
+        let cal = Calibration::from_file(&cal_path)
             .map_err(|e| format!("Calibration load error: {e}"))?;
 
         // Open video source.
@@ -655,7 +655,7 @@ impl AppState {
     }
 
     /// Initialize preview from a calibration result (no file needed).
-    fn init_with_calibration(&mut self, cal: MatchCalibration) -> Result<bool, String> {
+    fn init_with_calibration(&mut self, cal: Calibration) -> Result<bool, String> {
         let (left, right) = match (&self.left_input, &self.right_input) {
             (Some(l), Some(r)) => (l.clone(), r.clone()),
             _ => return Err("Both video inputs required".into()),
@@ -3906,7 +3906,7 @@ fn main() -> anyhow::Result<()> {
             {
                 s.roi_reload_pending = None;
                 if let Some(cal_path) = s.calibration_path.as_ref()
-                    && let Ok(cal) = MatchCalibration::from_file(cal_path)
+                    && let Ok(cal) = Calibration::from_file(cal_path)
                 {
                     let has_roi = cal
                         .field_roi

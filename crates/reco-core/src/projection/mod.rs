@@ -27,7 +27,7 @@ pub use geometry::point_in_polygon;
 // Re-export virtual camera (pub(crate) visibility preserved).
 pub(crate) use virtual_camera::VirtualCamera;
 
-use crate::calibration::{CameraParams, MatchCalibration};
+use crate::calibration::{Calibration, CameraParams};
 use crate::detect::detector::CameraId;
 use crate::detect::director::ViewportPosition;
 use crate::render::scene::SceneGeometry;
@@ -239,10 +239,10 @@ const CONVERGENCE_EPS: f64 = 1e-10;
 /// ```rust
 /// use reco_core::projection::camera_to_panorama;
 /// use reco_core::detect::detector::CameraId;
-/// use reco_core::calibration::MatchCalibration;
+/// use reco_core::calibration::Calibration;
 /// use reco_core::render::scene::SceneGeometry;
 ///
-/// # fn example(cal: &MatchCalibration) {
+/// # fn example(cal: &Calibration) {
 /// let aspect = cal.left.width as f32 / cal.left.height as f32;
 /// let scene = SceneGeometry::from_layout_with_aspect(&cal.layout, aspect);
 /// if let Some(pos) = camera_to_panorama(CameraId::Left, 0.5, 0.5, cal, &scene) {
@@ -254,7 +254,7 @@ pub fn camera_to_panorama(
     camera: CameraId,
     norm_x: f32,
     norm_y: f32,
-    calibration: &MatchCalibration,
+    calibration: &Calibration,
     scene: &SceneGeometry,
 ) -> Option<ViewportPosition> {
     let params = match camera {
@@ -288,7 +288,7 @@ pub fn panorama_to_camera(
     yaw: f32,
     pitch: f32,
     camera: CameraId,
-    calibration: &MatchCalibration,
+    calibration: &Calibration,
     scene: &SceneGeometry,
 ) -> Option<(f32, f32)> {
     use nalgebra::{Point3, Vector3};
@@ -362,7 +362,7 @@ pub fn panorama_to_camera(
 /// Returns `(min_yaw, max_yaw, min_pitch, max_pitch)` in radians.
 pub fn viewport_bounds(
     fov_degrees: f32,
-    calibration: &MatchCalibration,
+    calibration: &Calibration,
     scene: &SceneGeometry,
     aspect: f32,
 ) -> ViewportBounds {
@@ -717,15 +717,15 @@ pub(crate) fn yaw_pitch_to_direction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::calibration::{CameraParams, MatchCalibration, PlaneLayout};
+    use crate::calibration::{Calibration, CameraParams, PlaneLayout};
 
-    fn test_scene(cal: &MatchCalibration) -> SceneGeometry {
+    fn test_scene(cal: &Calibration) -> SceneGeometry {
         let aspect = cal.left.width as f32 / cal.left.height as f32;
         SceneGeometry::from_layout_with_aspect(&cal.layout, aspect)
     }
 
-    fn test_calibration() -> MatchCalibration {
-        MatchCalibration {
+    fn test_calibration() -> Calibration {
+        Calibration {
             left: CameraParams {
                 width: 3840,
                 height: 2160,

@@ -30,7 +30,7 @@ pub const MAX_DIM: u32 = 8192;
 /// zero-vector normalization in the stitching shaders.
 const EPSILON: f64 = 1e-6;
 
-/// Errors produced by [`MatchCalibration::validate`].
+/// Errors produced by [`Calibration::validate`].
 #[derive(Debug, Error)]
 pub enum CalibrationError {
     /// A required dimension (width or height) is zero.
@@ -252,7 +252,7 @@ pub struct FieldRoi {
 /// }
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MatchCalibration {
+pub struct Calibration {
     /// Left camera intrinsic parameters.
     #[serde(rename = "left_uniforms")]
     pub left: CameraParams,
@@ -314,13 +314,13 @@ pub struct MatchCalibration {
     pub blend_width: f32,
 }
 
-/// Backward-compatible default for [`MatchCalibration::lens_correction_amount`]
+/// Backward-compatible default for [`Calibration::lens_correction_amount`]
 /// when loading a calibration written before the field existed.
 fn default_lens_correction_amount() -> f32 {
     1.0
 }
 
-/// Backward-compatible default for [`MatchCalibration::blend_width`] when
+/// Backward-compatible default for [`Calibration::blend_width`] when
 /// loading a calibration written before the field existed.
 fn default_blend_width() -> f32 {
     0.05
@@ -329,7 +329,7 @@ fn default_blend_width() -> f32 {
 /// Maximum calibration file size (1 MB) to prevent loading unreasonably large files.
 const MAX_CALIBRATION_FILE_SIZE: u64 = 1_048_576;
 
-impl MatchCalibration {
+impl Calibration {
     /// Load and validate a calibration from a JSON file.
     ///
     /// Checks file size (max 1 MB), parses JSON, and runs
@@ -375,7 +375,7 @@ impl MatchCalibration {
 
     /// Serialize to pretty-printed JSON string.
     pub fn to_json_pretty(&self) -> String {
-        serde_json::to_string_pretty(self).expect("MatchCalibration is always serializable")
+        serde_json::to_string_pretty(self).expect("Calibration is always serializable")
     }
 
     /// Validates all calibration parameters before they are used by the GPU pipeline.
@@ -643,7 +643,7 @@ mod tests {
             }
         }"#;
 
-        let cal: MatchCalibration = serde_json::from_str(json).unwrap();
+        let cal: Calibration = serde_json::from_str(json).unwrap();
 
         assert_eq!(cal.left.width, 3840);
         assert_eq!(cal.left.d.len(), 4);
@@ -681,7 +681,7 @@ mod tests {
             }
         }"#;
 
-        let cal: MatchCalibration = serde_json::from_str(json).unwrap();
+        let cal: Calibration = serde_json::from_str(json).unwrap();
         let roi = cal.field_roi.as_ref().unwrap();
         assert_eq!(roi.left.len(), 3);
         assert_eq!(roi.right.len(), 3);
@@ -691,8 +691,8 @@ mod tests {
 
     // --- validation tests ---
 
-    fn valid_cal() -> MatchCalibration {
-        MatchCalibration {
+    fn valid_cal() -> Calibration {
+        Calibration {
             left: CameraParams {
                 width: 3840,
                 height: 2160,
@@ -871,7 +871,7 @@ mod tests {
 
     #[test]
     fn roundtrip_serialization() {
-        let cal = MatchCalibration {
+        let cal = Calibration {
             left: CameraParams {
                 width: 1920,
                 height: 1080,
@@ -910,7 +910,7 @@ mod tests {
         };
 
         let json = serde_json::to_string(&cal).unwrap();
-        let parsed: MatchCalibration = serde_json::from_str(&json).unwrap();
+        let parsed: Calibration = serde_json::from_str(&json).unwrap();
 
         assert_eq!(parsed.left.width, cal.left.width);
         assert!((parsed.layout.intersect - cal.layout.intersect).abs() < f64::EPSILON);
@@ -931,7 +931,7 @@ mod tests {
         obj.remove("lens_correction_amount");
         obj.remove("blend_width");
 
-        let parsed: MatchCalibration = serde_json::from_value(value).unwrap();
+        let parsed: Calibration = serde_json::from_value(value).unwrap();
         assert!((parsed.lens_correction_amount - 1.0).abs() < f32::EPSILON);
         assert!((parsed.blend_width - 0.05).abs() < f32::EPSILON);
     }

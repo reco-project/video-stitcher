@@ -25,7 +25,7 @@
 use super::renderer::{InputFormat, RenderError, Renderer};
 use super::scene::SceneGeometry;
 use super::viewport::{ResolvedViewport, ViewportConfig};
-use crate::calibration::MatchCalibration;
+use crate::calibration::Calibration;
 use crate::detect::director::ViewportPosition;
 use crate::gpu::{GpuContext, GpuError};
 
@@ -71,7 +71,7 @@ pub struct StitchPipeline {
     /// 3D scene layout computed from calibration.
     pub(crate) scene: SceneGeometry,
     /// Calibration data (camera intrinsics + layout).
-    pub(crate) calibration: MatchCalibration,
+    pub(crate) calibration: Calibration,
     /// Output viewport configuration.
     pub(crate) viewport: ViewportConfig,
     /// GPU renderer (textures, pipelines, bind groups).
@@ -98,7 +98,7 @@ impl StitchPipeline {
     /// and provides its own GPU context (selected with surface compatibility).
     pub fn with_gpu(
         gpu: GpuContext,
-        calibration: MatchCalibration,
+        calibration: Calibration,
         viewport: ViewportConfig,
         input_width: u32,
         input_height: u32,
@@ -169,7 +169,7 @@ impl StitchPipeline {
     }
 
     /// The calibration data this pipeline was created with.
-    pub fn calibration(&self) -> &MatchCalibration {
+    pub fn calibration(&self) -> &Calibration {
         &self.calibration
     }
 
@@ -255,7 +255,7 @@ impl StitchPipeline {
     /// each frame from the stored calibration and scene).
     ///
     /// No GPU pipeline recreation needed - only the uniform data changes.
-    pub fn update_calibration(&mut self, calibration: MatchCalibration) {
+    pub fn update_calibration(&mut self, calibration: Calibration) {
         let aspect = calibration.left.width as f32 / calibration.left.height as f32;
         self.scene = SceneGeometry::from_layout_with_aspect(&calibration.layout, aspect);
         self.calibration = calibration;

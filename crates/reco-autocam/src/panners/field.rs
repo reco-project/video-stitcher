@@ -1138,9 +1138,9 @@ mod tests {
         }
     }
 
-    fn cal() -> reco_core::calibration::MatchCalibration {
-        use reco_core::calibration::{CameraParams, MatchCalibration, PlaneLayout};
-        MatchCalibration {
+    fn cal() -> reco_core::calibration::Calibration {
+        use reco_core::calibration::{Calibration, CameraParams, PlaneLayout};
+        Calibration {
             left: CameraParams {
                 width: 1920,
                 height: 1080,
@@ -1177,10 +1177,7 @@ mod tests {
         }
     }
 
-    fn ctx<'a>(
-        frame_index: u64,
-        cal: &'a reco_core::calibration::MatchCalibration,
-    ) -> PanContext<'a> {
+    fn ctx<'a>(frame_index: u64, cal: &'a reco_core::calibration::Calibration) -> PanContext<'a> {
         PanContext {
             frame_index,
             timestamp_ms: frame_index as f64 * (1000.0 / 30.0),

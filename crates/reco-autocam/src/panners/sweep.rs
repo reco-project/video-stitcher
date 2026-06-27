@@ -94,10 +94,10 @@ impl Panner for SweepPanner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reco_core::calibration::{CameraParams, MatchCalibration, PlaneLayout};
+    use reco_core::calibration::{Calibration, CameraParams, PlaneLayout};
 
-    fn test_cal() -> MatchCalibration {
-        MatchCalibration {
+    fn test_cal() -> Calibration {
+        Calibration {
             left: CameraParams {
                 width: 1920,
                 height: 1080,
@@ -134,7 +134,7 @@ mod tests {
         }
     }
 
-    fn ctx<'a>(frame_index: u64, cal: &'a MatchCalibration) -> PanContext<'a> {
+    fn ctx<'a>(frame_index: u64, cal: &'a Calibration) -> PanContext<'a> {
         PanContext {
             frame_index,
             timestamp_ms: frame_index as f64 * (1000.0 / 30.0),

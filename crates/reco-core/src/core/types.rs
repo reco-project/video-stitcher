@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use thiserror::Error;
 
-use crate::calibration::MatchCalibration;
+use crate::calibration::Calibration;
 use crate::detect::director::ViewportPosition;
 use crate::gpu::rgba_readback::RgbaReadbackError;
 use crate::gpu::yuv_stack_packer::{PackerError, StackedAtlas};
@@ -77,7 +77,7 @@ pub struct ReplayFrame {
 /// `input_format`. Everything else has sensible defaults.
 pub struct StitchCoreConfig {
     /// Camera calibration data.
-    pub calibration: MatchCalibration,
+    pub calibration: Calibration,
     /// Output viewport (dimensions, blend width, FOV).
     pub viewport: ViewportConfig,
     /// Input frame width in pixels (per camera).
@@ -107,7 +107,7 @@ pub struct StitchCoreConfig {
 impl StitchCoreConfig {
     /// New config with required fields only; defaults everywhere else.
     pub fn new(
-        calibration: MatchCalibration,
+        calibration: Calibration,
         input_width: u32,
         input_height: u32,
         input_format: InputFormat,

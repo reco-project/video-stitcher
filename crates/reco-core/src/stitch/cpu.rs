@@ -8,7 +8,7 @@
 //! to ~1 LSB (the GPU blends through an 8-bit intermediate and uses
 //! implementation-defined unorm rounding), so it doubles as the agreement oracle.
 
-use crate::calibration::MatchCalibration;
+use crate::calibration::Calibration;
 use crate::render::planes::{Nv12Planes, YuvPlanes};
 use crate::render::viewport::ViewportConfig;
 
@@ -60,7 +60,7 @@ pub fn stitch_l_shape_rgba(
     left: &Nv12Planes,
     right: &Nv12Planes,
     cam: (u32, u32),
-    calib: &MatchCalibration,
+    calib: &Calibration,
     config: &ViewportConfig,
     yaw: f32,
     pitch: f32,
@@ -93,7 +93,7 @@ pub fn stitch_l_shape_rgba_yuv420p(
     left: &YuvPlanes,
     right: &YuvPlanes,
     cam: (u32, u32),
-    calib: &MatchCalibration,
+    calib: &Calibration,
     config: &ViewportConfig,
     yaw: f32,
     pitch: f32,
@@ -126,7 +126,7 @@ pub fn stitch_l_shape_rgba_yuv420p(
 /// the pixel format. Left plane is the opaque base; the right plane fades in
 /// over it with a smoothstep seam, matching the GPU's two-draw alpha blend.
 fn stitch_l_shape_with(
-    calib: &MatchCalibration,
+    calib: &Calibration,
     config: &ViewportConfig,
     yaw: f32,
     pitch: f32,
