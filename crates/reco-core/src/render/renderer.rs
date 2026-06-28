@@ -39,16 +39,6 @@ use wgpu::util::DeviceExt;
 pub(crate) const NEAR_PLANE: f32 = 0.01;
 /// Far clipping plane for the perspective projection.
 pub(crate) const FAR_PLANE: f32 = 5.0;
-/// Aspect ratio of scene planes (matches GoPro 16:9 capture).
-///
-/// Deprecated: derive the aspect ratio from camera parameters instead.
-/// Use [`SceneGeometry::from_layout_with_aspect`](crate::render::scene::SceneGeometry::from_layout_with_aspect)
-/// with `camera.width as f32 / camera.height as f32`.
-#[deprecated(
-    since = "0.1.0",
-    note = "derive aspect ratio from camera parameters (width/height) instead"
-)]
-pub const PLANE_ASPECT: f32 = 16.0 / 9.0;
 
 /// Errors from the renderer.
 #[derive(Debug, Clone, Error)]

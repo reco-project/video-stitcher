@@ -817,7 +817,7 @@ mod tests {
         // Step 1a: the two helpers must form an exact bijection on the
         // (yaw, pitch) grid used by panners and directors. All
         // shipping scenes set `camera_position = [d, 0, d]` (see
-        // SceneGeometry::from_layout_with_aspect), so eye.y = 0 is
+        // SceneGeometry::new), so eye.y = 0 is
         // the real invariant; test positions honor that. Pitch stays
         // clear of +-pi/2 where yaw is undefined.
         let camera_positions: [[f32; 3]; 3] = [[0.24, 0.0, 0.24], [0.3, 0.0, 0.2], [0.1, 0.0, 0.5]];

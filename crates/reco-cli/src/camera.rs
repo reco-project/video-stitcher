@@ -124,15 +124,13 @@ pub fn run_camera(
         "Output path looks like a network URL ({output}). Only local file paths are supported.",
     );
 
-    let cal = reco_core::calibration::Calibration::from_file(Path::new(calibration))?;
+    let mut cal = reco_core::calibration::Calibration::from_file(Path::new(calibration))?;
+    cal.topology.blend_width = blend;
     let field_roi = cal.field_roi.clone();
 
     let viewport = reco_core::render::viewport::ViewportConfig {
         width,
         height,
-        blend_width: blend,
-        rig_tilt: cal.framing.tilt as f32,
-        rig_roll: cal.framing.roll as f32,
         ..Default::default()
     };
 
@@ -772,15 +770,15 @@ pub fn run_live_calibrate(
         eprintln!("No lens profile found, using synthetic default (wide-angle)");
         let fw = w as f64;
         let fh = h as f64;
-        Ok(Lens {
-            width: w,
-            height: h,
-            fx: fw * 0.5,
-            fy: fw * 0.5,
-            cx: fw * 0.5,
-            cy: fh * 0.5,
-            d: [0.0; 4],
-        })
+        Ok(Lens::fisheye(
+            w,
+            h,
+            fw * 0.5,
+            fw * 0.5,
+            fw * 0.5,
+            fh * 0.5,
+            [0.0; 4],
+        ))
     };
     let left_params = load_or_default(left_profile, capture_width, capture_height)?;
     let right_params = load_or_default(right_profile, capture_width, capture_height)
