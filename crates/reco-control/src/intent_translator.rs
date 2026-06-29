@@ -1,94 +1,41 @@
-//! Central dispatch from [`ControlIntent`] to consumer-side state.
-//!
-//! See `~/Documents/knowledge/projects/video-stitcher/architecture/
-//! reco-control-design-2026-04-23.md` decisions #3, #5, #7.
+//! Central dispatch from [`ControlIntent`] to consumer-side pose state.
 //!
 //! # Purpose
 //!
 //! Every consumer (reco-gui, reco-cli preview, reco-obs) turns a
-//! transport's [`ControlIntent`] stream into calls on
-//! [`PoseControl`](crate::pose_control::PoseControl) plus domain-specific side effects (start encoder,
-//! swap detector model, change codec). Before this type, each
-//! consumer wrote that dispatch inline. [`IntentTranslator`] owns
+//! [`ControlIntent`] stream into calls on
+//! [`PoseControl`](crate::pose_control::PoseControl). Before this type,
+//! each consumer wrote that dispatch inline. [`IntentTranslator`] owns
 //! the translation once.
-//!
-//! Pose intents route directly to the borrowed [`PoseControl`](crate::pose_control::PoseControl).
-//! Non-pose intents (quality / capture / model-select) route to
-//! consumer-provided closures; those slots are `Option<Box<dyn FnMut>>`
-//! rather than trait objects on the translator itself, matching the
-//! Slint-callback shape most consumers already use.
 //!
 //! # Lifetime and threading
 //!
-//! Translators borrow `PoseControl` for a single dispatch tick and
-//! are not `Send`. Cross-thread intent forwarding goes through an
-//! mpsc channel of [`ControlIntent`] values (which *are* `Clone +
-//! Send`); the UI thread pulls and dispatches. This matches
-//! PoseControl's own non-`Sync` model.
+//! Translators borrow `PoseControl` for a single dispatch tick and are
+//! not `Send`. Cross-thread intent forwarding goes through an mpsc
+//! channel of [`ControlIntent`] values (which *are* `Clone + Send`); the
+//! UI thread pulls and dispatches. This matches PoseControl's own
+//! non-`Sync` model.
 
 use reco_core::detect::director::ViewportPosition;
 
 use crate::pose_control::{HotkeyIntent, PoseControl};
-use crate::{CaptureIntent, ControlIntent, ModelSelectIntent, PoseIntent, QualityIntent};
+use crate::{ControlIntent, PoseIntent};
 
-type QualityHandler = Box<dyn FnMut(&QualityIntent) + Send>;
-type CaptureHandler = Box<dyn FnMut(&CaptureIntent) + Send>;
-type ModelSelectHandler = Box<dyn FnMut(&ModelSelectIntent) + Send>;
-
-/// Dispatches [`ControlIntent`] values to a borrowed
-/// [`PoseControl`] and optional per-category closures.
+/// Dispatches [`ControlIntent`] values to a borrowed [`PoseControl`].
 ///
-/// Build with [`IntentTranslator::new`], optionally attach handlers
-/// with the `with_*_handler` methods, then call [`dispatch`] per
+/// Build with [`IntentTranslator::new`], then call [`dispatch`] per
 /// intent or [`dispatch_all`] over a slice.
 ///
 /// [`dispatch`]: Self::dispatch
 /// [`dispatch_all`]: Self::dispatch_all
 pub struct IntentTranslator<'a> {
     pose: &'a mut PoseControl,
-    on_quality: Option<QualityHandler>,
-    on_capture: Option<CaptureHandler>,
-    on_model_select: Option<ModelSelectHandler>,
 }
 
 impl<'a> IntentTranslator<'a> {
     /// Construct a translator borrowing the given [`PoseControl`].
-    /// Non-pose intents are dropped until the matching
-    /// `with_*_handler` is called.
     pub fn new(pose: &'a mut PoseControl) -> Self {
-        Self {
-            pose,
-            on_quality: None,
-            on_capture: None,
-            on_model_select: None,
-        }
-    }
-
-    /// Install a handler for [`ControlIntent::Quality`] intents.
-    pub fn with_quality_handler<F>(mut self, f: F) -> Self
-    where
-        F: FnMut(&QualityIntent) + Send + 'static,
-    {
-        self.on_quality = Some(Box::new(f));
-        self
-    }
-
-    /// Install a handler for [`ControlIntent::Capture`] intents.
-    pub fn with_capture_handler<F>(mut self, f: F) -> Self
-    where
-        F: FnMut(&CaptureIntent) + Send + 'static,
-    {
-        self.on_capture = Some(Box::new(f));
-        self
-    }
-
-    /// Install a handler for [`ControlIntent::ModelSelect`] intents.
-    pub fn with_model_select_handler<F>(mut self, f: F) -> Self
-    where
-        F: FnMut(&ModelSelectIntent) + Send + 'static,
-    {
-        self.on_model_select = Some(Box::new(f));
-        self
+        Self { pose }
     }
 
     /// Dispatch a single intent.
@@ -96,21 +43,6 @@ impl<'a> IntentTranslator<'a> {
         match intent {
             ControlIntent::Hotkey(h) => self.pose.apply_hotkey(h),
             ControlIntent::Pose(p) => self.dispatch_pose(p),
-            ControlIntent::Quality(q) => {
-                if let Some(h) = self.on_quality.as_mut() {
-                    h(&q);
-                }
-            }
-            ControlIntent::Capture(c) => {
-                if let Some(h) = self.on_capture.as_mut() {
-                    h(&c);
-                }
-            }
-            ControlIntent::ModelSelect(m) => {
-                if let Some(h) = self.on_model_select.as_mut() {
-                    h(&m);
-                }
-            }
         }
     }
 
@@ -158,7 +90,6 @@ impl<'a> IntentTranslator<'a> {
 mod tests {
     use super::*;
     use crate::pose_control::PoseControlConfig;
-    use std::sync::{Arc, Mutex};
 
     fn make_pose() -> PoseControl {
         PoseControl::new(PoseControlConfig::default())
@@ -226,37 +157,6 @@ mod tests {
             (pose.target_pose().yaw - rest).abs() < 1e-5,
             "Reset should restore yaw to rest_pose.yaw"
         );
-    }
-
-    #[test]
-    fn quality_intent_invokes_installed_handler() {
-        let mut pose = make_pose();
-        let captured = Arc::new(Mutex::new(None));
-        let captured_clone = Arc::clone(&captured);
-        {
-            let mut t = IntentTranslator::new(&mut pose).with_quality_handler(move |q| {
-                *captured_clone.lock().unwrap() = Some(q.clone());
-            });
-            t.dispatch(ControlIntent::Quality(QualityIntent::SetBitrate(5_000_000)));
-        }
-        assert_eq!(
-            *captured.lock().unwrap(),
-            Some(QualityIntent::SetBitrate(5_000_000)),
-        );
-    }
-
-    #[test]
-    fn capture_intent_without_handler_is_a_noop() {
-        let mut pose = make_pose();
-        let before = pose.target_pose();
-        {
-            let mut t = IntentTranslator::new(&mut pose);
-            t.dispatch(ControlIntent::Capture(CaptureIntent::Snapshot));
-        }
-        // No handler installed; dispatching should not touch pose.
-        let after = pose.target_pose();
-        assert_eq!(before.yaw, after.yaw);
-        assert_eq!(before.pitch, after.pitch);
     }
 
     #[test]
