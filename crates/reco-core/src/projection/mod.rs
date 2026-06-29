@@ -1220,7 +1220,7 @@ mod tests {
         let cal = test_calibration();
         let scene = test_scene(&cal);
         let coverage = CoverageBoundary::from_calibration(&cal, &scene);
-        let out = coverage.safe_clamp(f32::NAN, 0.0, 75.0, 16.0 / 9.0, 0.0);
+        let out = coverage.safe_clamp(f32::NAN, 0.0, 75.0, 16.0 / 9.0);
         assert!(out.yaw.is_finite(), "yaw must be finite, got {}", out.yaw);
         assert!(
             out.pitch.is_finite(),
@@ -1234,7 +1234,7 @@ mod tests {
         let cal = test_calibration();
         let scene = test_scene(&cal);
         let coverage = CoverageBoundary::from_calibration(&cal, &scene);
-        let out = coverage.safe_clamp(0.0, f32::NAN, 75.0, 16.0 / 9.0, 0.0);
+        let out = coverage.safe_clamp(0.0, f32::NAN, 75.0, 16.0 / 9.0);
         assert!(out.yaw.is_finite());
         assert!(out.pitch.is_finite());
     }
@@ -1244,7 +1244,7 @@ mod tests {
         let cal = test_calibration();
         let scene = test_scene(&cal);
         let coverage = CoverageBoundary::from_calibration(&cal, &scene);
-        let out = coverage.safe_clamp(0.0, 0.0, f32::NAN, 16.0 / 9.0, 0.0);
+        let out = coverage.safe_clamp(0.0, 0.0, f32::NAN, 16.0 / 9.0);
         assert!(out.yaw.is_finite());
         assert!(out.pitch.is_finite());
     }
@@ -1254,10 +1254,10 @@ mod tests {
         let cal = test_calibration();
         let scene = test_scene(&cal);
         let coverage = CoverageBoundary::from_calibration(&cal, &scene);
-        let out = coverage.safe_clamp(f32::INFINITY, 0.0, 75.0, 16.0 / 9.0, 0.0);
+        let out = coverage.safe_clamp(f32::INFINITY, 0.0, 75.0, 16.0 / 9.0);
         assert!(out.yaw.is_finite());
         assert!(out.pitch.is_finite());
-        let out = coverage.safe_clamp(0.0, f32::NEG_INFINITY, 75.0, 16.0 / 9.0, 0.0);
+        let out = coverage.safe_clamp(0.0, f32::NEG_INFINITY, 75.0, 16.0 / 9.0);
         assert!(out.yaw.is_finite());
         assert!(out.pitch.is_finite());
     }

@@ -366,9 +366,9 @@ impl PoseControl {
         self.current_fov_deg = self.current_fov_deg.min(max_fov);
 
         // target_*/current_* are world-space, as is the coverage
-        // boundary, so clamp directly (rig_tilt=0: no human<->world map).
+        // boundary, so clamp directly (no human<->world mapping).
         let clamp = |yaw: f32, pitch: f32, fov: f32| -> (f32, f32) {
-            let clamped = coverage.safe_clamp(yaw, pitch, fov, aspect, 0.0);
+            let clamped = coverage.safe_clamp(yaw, pitch, fov, aspect);
             (clamped.yaw, clamped.pitch)
         };
         let (ty, tp) = clamp(
