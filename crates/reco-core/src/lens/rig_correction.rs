@@ -18,7 +18,7 @@
 //! Derivation in vault at
 //! `architecture/rig-correction-v2-derivation-2026-04-23.md`.
 
-use crate::projection::VirtualCamera;
+use crate::projection::{CoverageBoundary, VirtualCamera};
 
 /// Compute the pitch to pass to `view_matrix` so the horizon stays
 /// level at the user's requested (yaw, user_pitch).
@@ -120,6 +120,45 @@ pub(crate) fn world_to_render_pose(
     // 4. Decompose using the un-tilted camera basis.
     let pos = cam.direction_to_yaw_pitch(&render_dir);
     (pos.yaw, pos.pitch)
+}
+
+/// Resolve a world-space target look-direction into the render-space
+/// `(yaw, pitch)` the `view_matrix` consumes.
+///
+/// This is the single pose-resolution authority. Every render site
+/// (auto/director, AI panner, and - once converged - interactive
+/// consumers) routes through it, so the coverage clamp and the rig
+/// tilt+roll correction can never drift apart into per-call copies.
+///
+/// It bridges the two halves of the geometry seam:
+/// 1. Clamp the world target to the coverage boundary. This stage is
+///    *projection-coupled*: `CoverageBoundary` and its clamp encode a
+///    bounded, non-wrapping panorama (today's L-shape) - a cylinder or
+///    sphere would need its own. `rig_tilt = 0` on purpose: the target
+///    is already world-space and coverage is panorama-native, so no
+///    human<->world mapping is wanted here.
+/// 2. Invert `view_matrix`'s tilt+roll basis via [`world_to_render_pose`]
+///    so the horizon stays level under pan. This stage *is* projection
+///    agnostic (pure virtual-camera orientation) and roll-aware, unlike
+///    the closed-form [`render_pitch`].
+///
+/// `fov` and `aspect` size the clamp margins; capping `fov` against
+/// `coverage.max_fov_degrees()` is the caller's policy, kept out of here.
+///
+/// (Steps 6-8 will dispatch stage 1 through the `Projection` trait so a
+/// new projection brings its own clamp; stage 2 stays shared.)
+pub(crate) fn resolve_render_pose(
+    coverage: &CoverageBoundary,
+    cam: &VirtualCamera,
+    rig_tilt: f32,
+    rig_roll: f32,
+    world_yaw: f32,
+    world_pitch: f32,
+    fov: f32,
+    aspect: f32,
+) -> (f32, f32) {
+    let clamped = coverage.safe_clamp(world_yaw, world_pitch, fov, aspect, 0.0);
+    world_to_render_pose(cam, clamped.yaw, clamped.pitch, rig_tilt, rig_roll)
 }
 
 #[cfg(test)]

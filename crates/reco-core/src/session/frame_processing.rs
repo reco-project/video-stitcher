@@ -35,23 +35,13 @@ impl StitchSession {
                 .unwrap_or_else(|| self.core.pipeline().fov());
             let aspect = self.core.pipeline().viewport().aspect_ratio();
             let rig_tilt = self.core.pipeline().calibration().framing.tilt as f32;
-            // Clamp in world space (rig_tilt=0 so coverage stays in
-            // the panorama's native coordinate system).
-            let clamped = coverage.safe_clamp(pos.yaw, pos.pitch, fov, aspect, 0.0);
-            pos.yaw = clamped.yaw;
-            // Convert world (yaw, pitch) to render-space via exact
-            // quaternion inversion of view_matrix's tilt+roll basis.
-            // Accounts for roll coupling at non-zero yaw that the
-            // closed-form render_pitch misses.
+            let rig_roll = self.core.pipeline().calibration().framing.roll as f32;
             let cam =
                 crate::projection::VirtualCamera::new(&self.core.pipeline().scene.camera_position);
-            let rig_roll = self.core.pipeline().calibration().framing.roll as f32;
-            let (ry, rp) = crate::lens::rig_correction::world_to_render_pose(
-                &cam,
-                clamped.yaw,
-                clamped.pitch,
-                rig_tilt,
-                rig_roll,
+            // Single pose-resolution authority: world-space coverage clamp
+            // then roll-aware tilt/roll basis inversion.
+            let (ry, rp) = crate::lens::rig_correction::resolve_render_pose(
+                coverage, &cam, rig_tilt, rig_roll, pos.yaw, pos.pitch, fov, aspect,
             );
             pos.yaw = ry;
             pos.pitch = rp;
