@@ -30,8 +30,8 @@
 //! // Per-frame smoothing tick:
 //! pose.tick();
 //! // (Optional) clamp current pose through the session's coverage:
-//! pose.clamp_via_coverage(core.coverage().unwrap(), aspect, rig_tilt);
-//! // Feed the renderer:
+//! pose.clamp_via_coverage(core.coverage().unwrap(), aspect);
+//! // Feed the renderer (world-space pose -> StitchRenderer::orient_pose):
 //! let vp = pose.current_pose();
 //! ```
 //!
@@ -176,6 +176,13 @@ impl Default for PoseControlConfig {
 /// Owns two poses: `target` (what the input layer just wanted) and
 /// `current` (what the renderer should draw this frame). Each `tick`
 /// eases current toward target by `config.smoothing`.
+///
+/// Poses are stored in **world space** (the panorama's native frame,
+/// matching the AI/director path). The rig tilt+roll correction that
+/// keeps the horizon level under pan is applied at the render site by
+/// [`StitchRenderer::orient_pose`](reco_core::render::stitch_renderer::StitchRenderer::orient_pose),
+/// not here; coverage clamping ([`Self::clamp_via_coverage`]) is also
+/// world-space.
 #[derive(Debug, Clone)]
 pub struct PoseControl {
     target_yaw_rad: f32,
@@ -343,14 +350,13 @@ impl PoseControl {
     /// Clamp both target and current pose through the session's
     /// coverage boundary, and narrow `config.fov_max_degrees` to
     /// `coverage.max_fov_degrees()`. This keeps the viewport inside
-    /// the no-black region the L-shape projection can actually
-    /// render. Safe to call every tick.
+    /// the no-black region the projection can render. Safe to call
+    /// every tick.
     ///
-    /// `rig_tilt` is the per-session tilt the renderer applies in
-    /// world space; PoseControl undoes that when writing the clamp
-    /// back so the target stays in user-space (matching how
-    /// `StitchCore::safe_clamp` returns it).
-    pub fn clamp_via_coverage(&mut self, coverage: &CoverageBoundary, aspect: f32, rig_tilt: f32) {
+    /// The stored poses are world-space (the panorama's native
+    /// coordinate frame, matching the AI/director path), so this is a
+    /// direct world-space clamp with no rig-tilt round-trip.
+    pub fn clamp_via_coverage(&mut self, coverage: &CoverageBoundary, aspect: f32) {
         // Coverage FOV ceiling for this pass, bounded by the configured
         // baseline. Applied transiently to target/current FOV; the config's
         // `fov_max_degrees` baseline is left untouched, so disabling
@@ -359,14 +365,10 @@ impl PoseControl {
         self.target_fov_deg = self.target_fov_deg.min(max_fov);
         self.current_fov_deg = self.current_fov_deg.min(max_fov);
 
-        // The inputs (target_*, current_*) are user-space. Coverage is
-        // world-space. `safe_clamp` with `rig_tilt` argument does the
-        // round-trip internally (simple `world = user + rig_tilt`
-        // offset, clamp, then `user = world - rig_tilt`). This matches
-        // the preview/GUI consumer pattern and the Model 3 render-site
-        // compensation in `render_pose`.
+        // target_*/current_* are world-space, as is the coverage
+        // boundary, so clamp directly (rig_tilt=0: no human<->world map).
         let clamp = |yaw: f32, pitch: f32, fov: f32| -> (f32, f32) {
-            let clamped = coverage.safe_clamp(yaw, pitch, fov, aspect, rig_tilt);
+            let clamped = coverage.safe_clamp(yaw, pitch, fov, aspect, 0.0);
             (clamped.yaw, clamped.pitch)
         };
         let (ty, tp) = clamp(
@@ -404,32 +406,6 @@ impl PoseControl {
         ViewportPosition {
             yaw: self.current_yaw_rad,
             pitch: self.current_pitch_rad,
-            fov_degrees: Some(self.current_fov_deg),
-        }
-    }
-
-    /// Current pose with Model 3 rig_tilt render-site compensation
-    /// applied: `pitch + rig_tilt * (1 - cos(yaw))`.
-    ///
-    /// The renderer applies `rig_tilt` as a quaternion rotation of the
-    /// reference frame (renderer.rs view_matrix). Without this
-    /// compensation, the quaternion folds the tilt into pitch at yaw=0
-    /// and into roll at yaw=±π/2, making the horizon dip as the camera
-    /// pans. Pre-adding `rig_tilt * (1 - cos(yaw))` to the rendered
-    /// pitch keeps the effective world pitch constant across yaw —
-    /// i.e. the horizon stays level under pan. Validated empirically
-    /// on rig_tilt=15° XTU footage 2026-04-20.
-    ///
-    /// Consumers pass this pose's `yaw` and returned `pitch` directly
-    /// to `StitchRenderer::render_yuv` / render_to_target.
-    pub fn render_pose(&self, rig_tilt: f32) -> ViewportPosition {
-        ViewportPosition {
-            yaw: self.current_yaw_rad,
-            pitch: reco_core::lens::rig_correction::render_pitch(
-                self.current_yaw_rad,
-                self.current_pitch_rad,
-                rig_tilt,
-            ),
             fov_degrees: Some(self.current_fov_deg),
         }
     }

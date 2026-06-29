@@ -4,34 +4,19 @@
 //! regardless of camera tilt) and "world space" (the panorama's
 //! native coordinate system).
 //!
-//! Two operations:
-//! - [`render_pitch`]: produces the pitch that `view_matrix` needs so
-//!   the rendered horizon stays level as yaw changes.
+//! Operations:
+//! - `world_to_render_pose` / `resolve_render_pose` (crate-internal):
+//!   produce the render-space pose `view_matrix` needs (roll-aware) so
+//!   the rendered horizon stays level as yaw changes. `world_to_render_pose`
+//!   is the orient leaf (exact quaternion inversion of the tilt+roll
+//!   basis); `resolve_render_pose` is the coverage-clamp + orient bridge.
 //! - [`human_to_world_pitch`] / [`world_to_human_pitch`]: bijective
-//!   mapping for safe_clamp so coverage is checked in world space.
-//!
-//! - `world_to_render_pose` (crate-internal): exact quaternion
-//!   inversion for the AI panner path. Given a world-space (yaw,
-//!   pitch), finds the (render_yaw, render_pitch) that makes
-//!   view_matrix point there.
+//!   pitch mapping for safe_clamp so coverage is checked in world space.
 //!
 //! Derivation in vault at
 //! `architecture/rig-correction-v2-derivation-2026-04-23.md`.
 
 use crate::projection::{CoverageBoundary, VirtualCamera};
-
-/// Compute the pitch to pass to `view_matrix` so the horizon stays
-/// level at the user's requested (yaw, user_pitch).
-///
-/// The view_matrix applies `rig_tilt` as a basis rotation. Without
-/// compensation, the horizon tilts as you pan. This function
-/// subtracts the yaw-dependent tilt offset to keep it level.
-pub fn render_pitch(user_yaw: f32, user_pitch: f32, rig_tilt: f32) -> f32 {
-    if rig_tilt.abs() < 1e-6 {
-        return user_pitch;
-    }
-    user_pitch - (user_yaw.cos() * rig_tilt.tan()).atan()
-}
 
 /// Map a human-frame (yaw, pitch) to world-space pitch.
 ///
@@ -73,8 +58,8 @@ fn coupling_factor(yaw: f32, rig_tilt: f32) -> f32 {
 /// Given a world-space (yaw, pitch) the panner wants to look at,
 /// returns the (render_yaw, render_pitch) that makes `view_matrix`
 /// point at that world direction. Uses quaternion inversion of the
-/// tilt+roll basis rotation, so it handles the roll coupling that
-/// the closed-form [`render_pitch`] misses at non-zero yaw.
+/// tilt+roll basis rotation, so it handles the tilt+roll coupling at
+/// non-zero yaw exactly (no closed-form approximation).
 pub(crate) fn world_to_render_pose(
     cam: &VirtualCamera,
     world_yaw: f32,
@@ -139,8 +124,8 @@ pub(crate) fn world_to_render_pose(
 ///    human<->world mapping is wanted here.
 /// 2. Invert `view_matrix`'s tilt+roll basis via [`world_to_render_pose`]
 ///    so the horizon stays level under pan. This stage *is* projection
-///    agnostic (pure virtual-camera orientation) and roll-aware, unlike
-///    the closed-form [`render_pitch`].
+///    agnostic (pure virtual-camera orientation) and roll-aware (exact
+///    quaternion inversion, no closed-form approximation).
 ///
 /// `fov` and `aspect` size the clamp margins; capping `fov` against
 /// `coverage.max_fov_degrees()` is the caller's policy, kept out of here.
@@ -164,52 +149,6 @@ pub(crate) fn resolve_render_pose(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn render_pitch_identity_when_no_tilt() {
-        for yaw_i in -10..=10 {
-            let yaw = yaw_i as f32 * 0.1;
-            for pitch_i in -5..=5 {
-                let pitch = pitch_i as f32 * 0.05;
-                let rp = render_pitch(yaw, pitch, 0.0);
-                assert!(
-                    (rp - pitch).abs() < 1e-6,
-                    "identity failed at ({yaw}, {pitch}): got {rp}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn render_pitch_compensates_tilt_at_yaw_zero() {
-        let tilt = 0.15_f32;
-        let rp = render_pitch(0.0, 0.0, tilt);
-        assert!(
-            (rp + tilt).abs() < 1e-4,
-            "at yaw=0, render_pitch should be -tilt={}, got {rp}",
-            -tilt
-        );
-    }
-
-    #[test]
-    fn render_pitch_no_compensation_at_yaw_90() {
-        let tilt = 0.15_f32;
-        let rp = render_pitch(std::f32::consts::FRAC_PI_2, 0.0, tilt);
-        assert!(
-            rp.abs() < 1e-4,
-            "at yaw=π/2, render_pitch should be ~0, got {rp}"
-        );
-    }
-
-    #[test]
-    fn render_pitch_positive_at_yaw_pi() {
-        let tilt = 0.15_f32;
-        let rp = render_pitch(std::f32::consts::PI, 0.0, tilt);
-        assert!(
-            (rp - tilt).abs() < 1e-4,
-            "at yaw=π, render_pitch should be +tilt={tilt}, got {rp}"
-        );
-    }
 
     #[test]
     fn human_to_world_identity_when_no_tilt() {

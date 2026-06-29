@@ -811,8 +811,7 @@ impl AppState {
             };
         }
 
-        let rig_tilt = bridge.renderer().pipeline().calibration().framing.tilt as f32;
-        let pose = self.pose.render_pose(rig_tilt);
+        let pose = bridge.renderer().orient_pose(self.pose.current_pose());
 
         let recording = self.is_recording();
         if recording {
@@ -908,9 +907,7 @@ impl AppState {
             let renderer = bridge.renderer();
             let (vw, vh) = bridge.viewport_size();
             let aspect = vw as f32 / vh as f32;
-            let rig_tilt = renderer.pipeline().calibration().framing.tilt as f32;
-            self.pose
-                .clamp_via_coverage(renderer.coverage(), aspect, rig_tilt);
+            self.pose.clamp_via_coverage(renderer.coverage(), aspect);
         }
         let after = self.pose.current_pose();
 
@@ -1027,9 +1024,7 @@ impl AppState {
         let renderer = bridge.renderer();
         let (vw, vh) = bridge.viewport_size();
         let aspect = vw as f32 / vh as f32;
-        let rig_tilt = renderer.pipeline().calibration().framing.tilt as f32;
-        self.pose
-            .clamp_via_coverage(renderer.coverage(), aspect, rig_tilt);
+        self.pose.clamp_via_coverage(renderer.coverage(), aspect);
     }
 
     /// Seek by a relative number of seconds (positive = forward).

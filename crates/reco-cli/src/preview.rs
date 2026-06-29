@@ -225,12 +225,10 @@ struct App {
     height: u32,
     current_left: YuvData,
     current_right: YuvData,
-    /// Unified pose state (target + current yaw/pitch/FOV with smoothing).
-    /// Drives every pan / zoom input; the renderer's pitch gets a
-    /// Model 3 compensation via `pose.render_pose(rig_tilt)` so the
-    /// horizon stays level as yaw changes. Replaced the hand-rolled
-    /// (target_yaw, target_pitch, target_fov, yaw, pitch) state
-    /// machine 2026-04-20.
+    /// Unified pose state (target + current yaw/pitch/FOV with smoothing),
+    /// stored in world space. Drives every pan / zoom input; the rig
+    /// tilt/roll correction that keeps the horizon level under pan is
+    /// applied at the render site via `StitchRenderer::orient_pose`.
     pose: reco_control::pose_control::PoseControl,
     frame_count: u64,
     playing: bool,
@@ -422,8 +420,7 @@ impl App {
         {
             let coverage = renderer.coverage();
             let aspect = self.width as f32 / self.height as f32;
-            self.pose
-                .clamp_via_coverage(coverage, aspect, self.rig_tilt);
+            self.pose.clamp_via_coverage(coverage, aspect);
         }
 
         if let Some(r) = &mut self.renderer {
@@ -834,10 +831,10 @@ impl ApplicationHandler for App {
 
                 let left = self.current_left.as_planes();
                 let right = self.current_right.as_planes();
-                // PoseControl::render_pose applies the Model 3
-                // rig_tilt yaw-pitch coupling so the horizon stays
-                // level as yaw changes. See pose_control.rs docs.
-                let render = self.pose.render_pose(self.rig_tilt);
+                // World-space pose -> render-space via the shared rig
+                // tilt/roll basis inversion (roll-aware; the horizon
+                // stays level under pan).
+                let render = renderer.orient_pose(self.pose.current_pose());
                 let (render_yaw, render_pitch) = (render.yaw, render.pitch);
                 if let Err(e) = renderer.render_yuv(&left, &right, render_yaw, render_pitch, &view)
                 {

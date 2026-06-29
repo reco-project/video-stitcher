@@ -25,10 +25,11 @@ use super::renderer::InputFormat;
 use super::scene::SceneGeometry;
 use super::viewport::ViewportConfig;
 use crate::calibration::Calibration;
+use crate::detect::director::ViewportPosition;
 use crate::gpu::GpuContext;
 use crate::gpu::nv12_converter::Nv12Converter;
 use crate::gpu::rgba_readback::RgbaReadback;
-use crate::projection::CoverageBoundary;
+use crate::projection::{CoverageBoundary, VirtualCamera};
 
 /// Where to render the stitched panorama.
 ///
@@ -332,23 +333,28 @@ impl StitchRenderer {
         &self.coverage
     }
 
-    /// Clamp a viewport pose to the coverage boundary, accounting for
-    /// the current rig tilt. Consumers should call this instead of
-    /// accessing coverage + rig_tilt separately.
-    pub fn clamp_pose(
-        &self,
-        yaw: f32,
-        pitch: f32,
-        fov_degrees: f32,
-        aspect: f32,
-    ) -> crate::projection::ClampedPosition {
-        self.coverage.safe_clamp(
+    /// Orient a world-space pose into the render-space `(yaw, pitch)` the
+    /// `view_matrix` consumes, applying the rig tilt+roll basis so the
+    /// horizon stays level under pan (roll-aware). This is the single
+    /// render-site entry interactive consumers (GUI, CLI preview) call.
+    ///
+    /// Coverage clamping is a separate, gated concern (see
+    /// `PoseControl::clamp_via_coverage`); this only orients.
+    pub fn orient_pose(&self, world: ViewportPosition) -> ViewportPosition {
+        let framing = &self.pipeline.calibration().framing;
+        let cam = VirtualCamera::new(&self.pipeline.scene.camera_position);
+        let (yaw, pitch) = crate::lens::rig_correction::world_to_render_pose(
+            &cam,
+            world.yaw,
+            world.pitch,
+            framing.tilt as f32,
+            framing.roll as f32,
+        );
+        ViewportPosition {
             yaw,
             pitch,
-            fov_degrees,
-            aspect,
-            self.pipeline.calibration().framing.tilt as f32,
-        )
+            fov_degrees: world.fov_degrees,
+        }
     }
 
     /// Maximum vertical FOV (degrees) that fits within the coverage area.
