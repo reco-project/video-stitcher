@@ -580,12 +580,26 @@ mod tests {
 
     #[test]
     fn json_round_trips() {
-        let cal: Calibration = serde_json::from_str(sample_json()).unwrap();
+        // Set every serde-defaulted field to a NON-default value so the
+        // round-trip actually catches a dropped or renamed field (a
+        // default-valued field survives even if serialization drops it).
+        let mut cal = valid_cal();
+        cal.lenses[0].correction = 0.0;
+        cal.topology.blend_width = 0.123;
+        cal.framing.tilt = 0.3;
+        cal.framing.roll = -0.12;
+        cal.sync_offset = 67;
+
         let json = cal.to_json_pretty();
         let back: Calibration = serde_json::from_str(&json).unwrap();
         assert_eq!(back.lenses.len(), cal.lenses.len());
+        assert!((back.lenses[0].correction - 0.0).abs() < 1e-6);
+        assert!((back.topology.blend_width - 0.123).abs() < 1e-6);
         assert!((back.topology.intersect - cal.topology.intersect).abs() < 1e-9);
         assert!((back.framing.axis_offset - cal.framing.axis_offset).abs() < 1e-9);
+        assert!((back.framing.tilt - 0.3).abs() < 1e-9);
+        assert!((back.framing.roll + 0.12).abs() < 1e-9);
+        assert_eq!(back.sync_offset, 67);
     }
 
     #[test]
@@ -749,5 +763,34 @@ mod tests {
             c.validate(),
             Err(CalibrationError::SyncOffsetOutOfRange { .. })
         ));
+    }
+
+    #[test]
+    fn rejects_sync_offset_just_past_cap() {
+        let mut c = valid_cal();
+        c.sync_offset = MAX_SYNC_OFFSET_FRAMES + 1;
+        assert!(matches!(
+            c.validate(),
+            Err(CalibrationError::SyncOffsetOutOfRange { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_sync_offset_i64_max() {
+        let mut c = valid_cal();
+        c.sync_offset = i64::MAX;
+        assert!(matches!(
+            c.validate(),
+            Err(CalibrationError::SyncOffsetOutOfRange { .. })
+        ));
+    }
+
+    #[test]
+    fn accepts_sync_offset_at_range_bounds() {
+        let mut c = valid_cal();
+        c.sync_offset = MAX_SYNC_OFFSET_FRAMES;
+        c.validate().unwrap();
+        c.sync_offset = -MAX_SYNC_OFFSET_FRAMES;
+        c.validate().unwrap();
     }
 }

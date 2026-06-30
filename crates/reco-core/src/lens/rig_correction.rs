@@ -152,4 +152,20 @@ mod tests {
             "correction must vary with yaw: ({ry0},{rp0}) vs ({ry1},{rp1})"
         );
     }
+
+    #[test]
+    fn world_to_render_exact_at_yaw_zero() {
+        // At yaw=0 the rig axis points straight ahead, so a tilt T must
+        // resolve to exactly render pitch -T (and unchanged yaw): the
+        // view_matrix then tilts the frame back up by T to level it.
+        let cam = cam();
+        let tilt = 0.2_f32;
+        let (ry, rp) = world_to_render_pose(&cam, 0.0, 0.0, tilt, 0.0);
+        assert!(ry.abs() < 1e-5, "yaw should stay 0 at yaw=0, got {ry}");
+        assert!(
+            (rp + tilt).abs() < 1e-4,
+            "render pitch should be -tilt={}, got {rp}",
+            -tilt
+        );
+    }
 }
