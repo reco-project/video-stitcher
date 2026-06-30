@@ -34,6 +34,10 @@ ignore = [
     # paste 1.0.15 — archived upstream. Transitively pulled by wgpu /
     # slint. Hard-deny once those upstreams migrate. Revisit at M8.
     "RUSTSEC-2024-0436",
+    # ttf-parser - unmaintained (2026-06). Transitive via slint's text
+    # rendering; no maintained drop-in. Maintenance status only, not a
+    # vulnerability. Revisit when slint migrates its font stack.
+    "RUSTSEC-2026-0192",
 ]
 
 # ---------------------------------------------------------------------------
