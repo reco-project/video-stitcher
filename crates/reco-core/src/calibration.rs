@@ -105,6 +105,17 @@ pub enum CalibrationError {
     #[error("calibration must have at least one lens")]
     NoLenses,
 
+    /// The lens count does not match what the topology can render.
+    ///
+    /// The L-shape topology (the only one today) indexes exactly two
+    /// lenses; any other count would panic at render time. This becomes
+    /// topology-aware once projections carry their own arity.
+    #[error("L-shape calibration needs exactly 2 lenses, got {found}")]
+    ExpectedTwoLenses {
+        /// Number of lenses actually present.
+        found: usize,
+    },
+
     /// `sync_offset` is outside a realistic range.
     ///
     /// Guards against pathological values (e.g. `i64::MIN`) that would hang the
@@ -314,7 +325,15 @@ impl Calibration {
             });
         }
 
-        let cal: Self = serde_json::from_str(&json).map_err(CalibrationLoadError::Parse)?;
+        let cal: Self = serde_json::from_str(&json).map_err(|e| {
+            // Transitional: surface a clear message for old v1 "match"
+            // files instead of a raw `missing field lenses`.
+            if json.contains("\"left_uniforms\"") || json.contains("\"cameraAxisOffset\"") {
+                CalibrationLoadError::LegacyV1
+            } else {
+                CalibrationLoadError::Parse(e)
+            }
+        })?;
         cal.validate()?;
         Ok(cal)
     }
@@ -336,6 +355,14 @@ impl Calibration {
     pub fn validate(&self) -> Result<(), CalibrationError> {
         if self.lenses.is_empty() {
             return Err(CalibrationError::NoLenses);
+        }
+        // The L-shape topology hard-indexes lenses[0] and lenses[1] at
+        // render time; reject any other count here with a typed error
+        // rather than panicking out-of-bounds downstream.
+        if self.lenses.len() != 2 {
+            return Err(CalibrationError::ExpectedTwoLenses {
+                found: self.lenses.len(),
+            });
         }
         for (i, lens) in self.lenses.iter().enumerate() {
             validate_lens(lens, i)?;
@@ -375,6 +402,16 @@ pub enum CalibrationLoadError {
     /// JSON parse error.
     #[error("invalid calibration JSON: {0}")]
     Parse(#[from] serde_json::Error),
+    /// A legacy v1 "match" calibration was detected. No longer supported.
+    ///
+    /// Transitional: we sniff the old wire shape only to give a clear
+    /// message instead of a raw `missing field lenses`. Remove a few
+    /// releases after the v1 cutover.
+    #[error(
+        "legacy v1 calibration ('match' format) is no longer supported; \
+         re-run `reco calibrate` to produce a current calibration file"
+    )]
+    LegacyV1,
     /// Calibration values are invalid.
     #[error(transparent)]
     Invalid(#[from] CalibrationError),
@@ -669,6 +706,39 @@ mod tests {
         let mut c = valid_cal();
         c.lenses.clear();
         assert!(matches!(c.validate(), Err(CalibrationError::NoLenses)));
+    }
+
+    #[test]
+    fn rejects_one_lens_with_typed_error_not_panic() {
+        let mut c = valid_cal();
+        c.lenses.pop();
+        assert!(matches!(
+            c.validate(),
+            Err(CalibrationError::ExpectedTwoLenses { found: 1 })
+        ));
+    }
+
+    #[test]
+    fn rejects_three_lenses() {
+        let mut c = valid_cal();
+        let extra = c.lenses[0].clone();
+        c.lenses.push(extra);
+        assert!(matches!(
+            c.validate(),
+            Err(CalibrationError::ExpectedTwoLenses { found: 3 })
+        ));
+    }
+
+    #[test]
+    fn legacy_v1_calibration_gives_clear_error() {
+        let path = std::env::temp_dir().join(format!("reco_v1_{}.json", std::process::id()));
+        std::fs::write(&path, r#"{"left_uniforms":{"width":100},"params":{}}"#).unwrap();
+        let err = Calibration::from_file(&path).unwrap_err();
+        let _ = std::fs::remove_file(&path);
+        assert!(
+            matches!(err, CalibrationLoadError::LegacyV1),
+            "expected LegacyV1, got {err:?}"
+        );
     }
 
     #[test]
