@@ -564,12 +564,21 @@ mod tests {
             c.lenses[1].cx = cam_w as f64 * (0.5 + cx_off);
             c
         };
+        // Non-zero rig tilt+roll: exercises the view_matrix basis rotation
+        // both executors apply - the headline roll-aware render path, which
+        // the other regimes (all tilt=roll=0) never touch.
+        let calib_tilt_roll = |tilt: f64, roll: f64| {
+            let mut c = calib(cam_w, cam_h);
+            c.framing.tilt = tilt;
+            c.framing.roll = roll;
+            c
+        };
         let base = calib(cam_w, cam_h);
         let (ly, luv) = textured_nv12(cam_w, cam_h, 0.0);
         let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
-        let cases: [(&str, Calibration, ViewportConfig, f32, f32, bool); 6] = [
+        let cases: [(&str, Calibration, ViewportConfig, f32, f32, bool); 7] = [
             (
                 "wide-pan",
                 base.clone(),
@@ -616,6 +625,14 @@ mod tests {
                 cfg(144, 108, 75.0),
                 0.1,
                 -0.05,
+                false,
+            ),
+            (
+                "tilt+roll-at-yaw",
+                calib_tilt_roll(0.26, 0.12),
+                cfg(192, 108, 75.0),
+                0.6,
+                0.0,
                 false,
             ),
         ];

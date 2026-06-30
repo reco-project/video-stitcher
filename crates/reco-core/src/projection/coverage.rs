@@ -30,10 +30,6 @@ pub struct CoverageBoundary {
     pub pitch_max: f32,
     /// Per-slice combined coverage: `(yaw_min, yaw_max)`.
     slices: Vec<(f32, f32)>,
-    /// Per-slice left-plane coverage: `(yaw_min, yaw_max)`.
-    left_slices: Vec<(f32, f32)>,
-    /// Per-slice right-plane coverage: `(yaw_min, yaw_max)`.
-    right_slices: Vec<(f32, f32)>,
     /// Minimum pitch range across all yaw positions.
     /// Determines the maximum safe FOV.
     min_pitch_range: f32,
@@ -160,8 +156,6 @@ impl CoverageBoundary {
                 pitch_min: 0.0,
                 pitch_max: 0.0,
                 slices: vec![(0.0, 0.0); n_slices],
-                left_slices: vec![(0.0, 0.0); n_slices],
-                right_slices: vec![(0.0, 0.0); n_slices],
                 min_pitch_range: 0.0,
             };
         }
@@ -278,8 +272,6 @@ impl CoverageBoundary {
             pitch_min: global_pitch_min,
             pitch_max: global_pitch_max,
             slices,
-            left_slices,
-            right_slices,
             min_pitch_range,
         }
     }
@@ -405,23 +397,5 @@ impl CoverageBoundary {
             return 20.0;
         }
         self.min_pitch_range.to_degrees()
-    }
-
-    /// Create a copy with all pitch values shifted by an offset.
-    ///
-    /// Used to create a tilt-adjusted boundary for the director, which
-    /// operates in pre-tilt space while the boundary is in world space.
-    /// The director calls `safe_clamp` on the shifted boundary without
-    /// needing to know about rig tilt.
-    pub fn with_pitch_offset(&self, offset: f32) -> Self {
-        Self {
-            n_slices: self.n_slices,
-            pitch_min: self.pitch_min + offset,
-            pitch_max: self.pitch_max + offset,
-            slices: self.slices.clone(),
-            left_slices: self.left_slices.clone(),
-            right_slices: self.right_slices.clone(),
-            min_pitch_range: self.min_pitch_range,
-        }
     }
 }

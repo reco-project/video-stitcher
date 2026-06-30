@@ -300,20 +300,6 @@ impl PoseControl {
         }
     }
 
-    /// Reset both target and current to the configured rest pose.
-    /// Snaps (no smoothing); use [`HotkeyIntent::Reset`] if you want
-    /// an eased return.
-    pub fn snap_to_rest(&mut self) {
-        let rest = self.config.rest_pose;
-        let fov = rest.fov_degrees.unwrap_or(self.current_fov_deg);
-        self.target_yaw_rad = rest.yaw;
-        self.target_pitch_rad = rest.pitch;
-        self.target_fov_deg = fov;
-        self.current_yaw_rad = rest.yaw;
-        self.current_pitch_rad = rest.pitch;
-        self.current_fov_deg = fov;
-    }
-
     /// Set the target FOV directly, in degrees. Clamped to the
     /// configured `[fov_min, fov_max]` range.
     pub fn set_target_fov(&mut self, fov_deg: f32) {
@@ -334,9 +320,8 @@ impl PoseControl {
         self.tick_with(s);
     }
 
-    /// Advance with an explicit smoothing factor. Useful for
-    /// consumers that vary smoothing with delta-time or pause.
-    pub fn tick_with(&mut self, smoothing: f32) {
+    /// Advance with an explicit smoothing factor (called by [`Self::tick`]).
+    fn tick_with(&mut self, smoothing: f32) {
         let s = smoothing.clamp(0.0, 1.0);
         self.current_yaw_rad += (self.target_yaw_rad - self.current_yaw_rad) * s;
         self.current_pitch_rad += (self.target_pitch_rad - self.current_pitch_rad) * s;
@@ -434,15 +419,6 @@ impl PoseControl {
     /// call [`PoseControl::clamp_via_coverage`] or [`PoseControl::tick`] afterward if needed.
     pub fn set_config(&mut self, config: PoseControlConfig) {
         self.config = config;
-    }
-
-    /// Set the max-FOV ceiling directly (e.g. after computing
-    /// `coverage.max_fov_degrees()` without running the full
-    /// [`PoseControl::clamp_via_coverage`]).
-    pub fn set_fov_max_degrees(&mut self, max_deg: f32) {
-        self.config.fov_max_degrees = max_deg;
-        self.target_fov_deg = self.target_fov_deg.min(max_deg);
-        self.current_fov_deg = self.current_fov_deg.min(max_deg);
     }
 }
 
@@ -637,33 +613,5 @@ mod tests {
         assert_eq!(p.current_yaw_rad, c0);
         assert_eq!(p.target_yaw_rad, 0.5);
         assert_eq!(p.target_fov_deg, 60.0);
-    }
-
-    // ---- snap_to_rest -------------------------------------------------
-
-    #[test]
-    fn snap_to_rest_zeroes_both_target_and_current() {
-        let mut p = fresh();
-        p.apply_drag(1000.0, 500.0);
-        for _ in 0..20 {
-            p.tick();
-        }
-        p.snap_to_rest();
-        let rest = p.config.rest_pose;
-        assert!((p.target_yaw_rad - rest.yaw).abs() < 1e-6);
-        assert!((p.current_yaw_rad - rest.yaw).abs() < 1e-6);
-    }
-
-    // ---- FOV max shrink -----------------------------------------------
-
-    #[test]
-    fn set_fov_max_clamps_existing_values() {
-        let mut p = fresh();
-        p.set_target_fov(100.0);
-        p.tick_with(1.0);
-        assert_eq!(p.current_fov_deg, 100.0);
-        p.set_fov_max_degrees(80.0);
-        assert_eq!(p.target_fov_deg, 80.0);
-        assert_eq!(p.current_fov_deg, 80.0);
     }
 }
