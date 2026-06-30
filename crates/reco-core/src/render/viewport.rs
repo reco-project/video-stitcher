@@ -20,34 +20,6 @@ pub struct ViewportConfig {
     /// of the panorama. Default: 75.0 (matches v1 Three.js camera FOV).
     /// Note: this is vertical FOV per nalgebra's `Perspective3` convention.
     pub fov_degrees: f32,
-    /// Seam blend width in UV space (0.0–1.0).
-    ///
-    /// Controls how much of the right plane's left edge fades in over the
-    /// left plane using a smoothstep alpha gradient. `0.0` = hard seam,
-    /// `0.15` = blend over 15% of the plane width. Default: 0.05 (tight
-    /// crossfade — the small value matches the live-production tests on
-    /// Jetson CSI IMX477, larger blends wash out ball tracking in the
-    /// overlap region).
-    pub blend_width: f32,
-    /// Rig tilt in radians (forward lean from vertical).
-    ///
-    /// Rotates the entire scene (both planes) to compensate for a
-    /// physically tilted camera rig. When panning, this creates a
-    /// natural roll correction that straightens vertical lines at the
-    /// edges. `0.0` = no correction. Default: 0.0.
-    pub rig_tilt: f32,
-    /// Rig roll in radians (lateral lean).
-    ///
-    /// Rotates the scene around the forward axis to compensate for a
-    /// laterally tilted camera rig. `0.0` = no correction. Default: 0.0.
-    pub rig_roll: f32,
-    /// Lens distortion correction amount (0.0 to 1.0).
-    ///
-    /// Controls how much KB4 correction the shader applies. `1.0`
-    /// (default) is full correction. `0.0` is pinhole projection.
-    /// Values between smoothly interpolate. This is a rendering
-    /// parameter - it does NOT affect calibration accuracy.
-    pub lens_correction_amount: f32,
 }
 
 impl Default for ViewportConfig {
@@ -56,10 +28,6 @@ impl Default for ViewportConfig {
             width: 1920,
             height: 1080,
             fov_degrees: 75.0,
-            blend_width: 0.05,
-            rig_tilt: 0.0,
-            rig_roll: 0.0,
-            lens_correction_amount: 1.0,
         }
     }
 }
@@ -89,12 +57,6 @@ impl ViewportConfig {
             return Err(format!(
                 "fov_degrees must be in (1, 179), got {}",
                 self.fov_degrees
-            ));
-        }
-        if !(0.0..=1.0).contains(&self.blend_width) {
-            return Err(format!(
-                "blend_width must be in [0, 1], got {}",
-                self.blend_width
             ));
         }
         Ok(())

@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use reco_control::pose_control::HotkeyIntent;
-use reco_control::{ControlIntent, IntentTranslator, PoseIntent};
+use reco_control::{ControlIntent, PoseIntent};
 use reco_core::encoder::{Encoder, OutputFrame, PixelFormat};
 use reco_core::render::stitch_renderer::StitchRenderer;
 use reco_core::source::{FrameSource, YuvData};
@@ -89,7 +89,7 @@ pub fn run_preview(
         rig_tilt_degrees,
     } = *config;
     // Load calibration first so we can use its sync_offset and rig_tilt
-    let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration_path))?;
+    let cal = reco_core::calibration::Calibration::from_file(Path::new(calibration_path))?;
 
     // Use calibration's sync offset unless the user explicitly overrode it
     let effective_sync = if sync_offset != 0 {
@@ -102,7 +102,7 @@ pub fn run_preview(
     let rig_tilt_degrees = if rig_tilt_degrees.abs() > 1e-6 {
         rig_tilt_degrees
     } else {
-        (cal.rig_tilt as f32).to_degrees()
+        (cal.framing.tilt as f32).to_degrees()
     };
 
     let mut source = reco_io::adapters::FfmpegFileSource::open_with_offset(
@@ -132,7 +132,7 @@ pub fn run_preview(
     let max_fov = {
         let aspect = info.width as f32 / info.height as f32;
         let scene =
-            reco_core::render::scene::SceneGeometry::from_layout_with_aspect(&cal.layout, aspect);
+            reco_core::render::scene::SceneGeometry::new(&cal.topology, &cal.framing, aspect);
         let coverage = reco_core::projection::CoverageBoundary::from_calibration(&cal, &scene);
         coverage.max_fov_degrees().min(FOV_MAX)
     };
@@ -141,7 +141,7 @@ pub fn run_preview(
 
     let fps_rational = info.fps_rational.unwrap_or((30, 1));
     let total_frames = source.total_frames();
-    let rig_roll = cal.rig_roll as f32;
+    let rig_roll = cal.framing.roll as f32;
 
     let mut app = App {
         source: Some(source),
@@ -218,19 +218,17 @@ struct App {
     surface_format: reco_core::wgpu::TextureFormat,
     alpha_mode: reco_core::wgpu::CompositeAlphaMode,
     renderer: Option<StitchRenderer>,
-    cal: reco_core::calibration::MatchCalibration,
+    cal: reco_core::calibration::Calibration,
     input_width: u32,
     input_height: u32,
     width: u32,
     height: u32,
     current_left: YuvData,
     current_right: YuvData,
-    /// Unified pose state (target + current yaw/pitch/FOV with smoothing).
-    /// Drives every pan / zoom input; the renderer's pitch gets a
-    /// Model 3 compensation via `pose.render_pose(rig_tilt)` so the
-    /// horizon stays level as yaw changes. Replaced the hand-rolled
-    /// (target_yaw, target_pitch, target_fov, yaw, pitch) state
-    /// machine 2026-04-20.
+    /// Unified pose state (target + current yaw/pitch/FOV with smoothing),
+    /// stored in world space. Drives every pan / zoom input; the rig
+    /// tilt/roll correction that keeps the horizon level under pan is
+    /// applied at the render site via `StitchRenderer::orient_pose`.
     pose: reco_control::pose_control::PoseControl,
     frame_count: u64,
     playing: bool,
@@ -422,8 +420,7 @@ impl App {
         {
             let coverage = renderer.coverage();
             let aspect = self.width as f32 / self.height as f32;
-            self.pose
-                .clamp_via_coverage(coverage, aspect, self.rig_tilt);
+            self.pose.clamp_via_coverage(coverage, aspect);
         }
 
         if let Some(r) = &mut self.renderer {
@@ -485,12 +482,14 @@ impl ApplicationHandler for App {
             },
         );
 
+        // Blend/rig live on the calibration now; seed them from the preview's
+        // current state before building the renderer.
+        self.cal.topology.blend_width = self.blend_width;
+        self.cal.framing.tilt = self.rig_tilt as f64;
+        self.cal.framing.roll = self.rig_roll as f64;
         let viewport = reco_core::render::viewport::ViewportConfig {
             width: self.width,
             height: self.height,
-            blend_width: self.blend_width,
-            rig_tilt: self.rig_tilt,
-            rig_roll: self.rig_roll,
             ..Default::default()
         };
 
@@ -578,27 +577,31 @@ impl ApplicationHandler for App {
                             event_loop.exit();
                         }
                         PhysicalKey::Code(KeyCode::ArrowLeft) => {
-                            IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(
-                                PoseIntent::DeltaYawRad(ARROW_PAN_STEP),
-                            ));
+                            self.pose
+                                .apply_intent(ControlIntent::Pose(PoseIntent::DeltaYawRad(
+                                    ARROW_PAN_STEP,
+                                )));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowRight) => {
-                            IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(
-                                PoseIntent::DeltaYawRad(-ARROW_PAN_STEP),
-                            ));
+                            self.pose
+                                .apply_intent(ControlIntent::Pose(PoseIntent::DeltaYawRad(
+                                    -ARROW_PAN_STEP,
+                                )));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowUp) => {
-                            IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(
-                                PoseIntent::DeltaPitchRad(ARROW_PAN_STEP),
-                            ));
+                            self.pose
+                                .apply_intent(ControlIntent::Pose(PoseIntent::DeltaPitchRad(
+                                    ARROW_PAN_STEP,
+                                )));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowDown) => {
-                            IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(
-                                PoseIntent::DeltaPitchRad(-ARROW_PAN_STEP),
-                            ));
+                            self.pose
+                                .apply_intent(ControlIntent::Pose(PoseIntent::DeltaPitchRad(
+                                    -ARROW_PAN_STEP,
+                                )));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Space) => {
@@ -623,51 +626,47 @@ impl ApplicationHandler for App {
                             }
                         }
                         PhysicalKey::Code(KeyCode::Equal | KeyCode::NumpadAdd) => {
-                            IntentTranslator::new(&mut self.pose)
-                                .dispatch(ControlIntent::Hotkey(HotkeyIntent::ZoomIn));
+                            self.pose
+                                .apply_intent(ControlIntent::Hotkey(HotkeyIntent::ZoomIn));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Minus | KeyCode::NumpadSubtract) => {
-                            IntentTranslator::new(&mut self.pose)
-                                .dispatch(ControlIntent::Hotkey(HotkeyIntent::ZoomOut));
+                            self.pose
+                                .apply_intent(ControlIntent::Hotkey(HotkeyIntent::ZoomOut));
                             self.needs_redraw = true;
                         }
                         // Calibration adjustment keys
                         PhysicalKey::Code(KeyCode::Digit1) => {
-                            self.cal.layout.intersect = (self.cal.layout.intersect + 0.01).min(1.0);
+                            self.cal.topology.intersect =
+                                (self.cal.topology.intersect + 0.01).min(1.0);
                             self.apply_calibration_change();
-                            println!("intersect: {:.4}", self.cal.layout.intersect);
+                            println!("intersect: {:.4}", self.cal.topology.intersect);
                         }
                         PhysicalKey::Code(KeyCode::Digit2) => {
-                            self.cal.layout.intersect = (self.cal.layout.intersect - 0.01).max(0.0);
+                            self.cal.topology.intersect =
+                                (self.cal.topology.intersect - 0.01).max(0.0);
                             self.apply_calibration_change();
-                            println!("intersect: {:.4}", self.cal.layout.intersect);
+                            println!("intersect: {:.4}", self.cal.topology.intersect);
                         }
                         PhysicalKey::Code(KeyCode::Digit3) => {
-                            self.cal.layout.camera_axis_offset += 0.005;
+                            self.cal.framing.axis_offset += 0.005;
                             self.apply_calibration_change();
-                            println!(
-                                "camera_axis_offset: {:.4}",
-                                self.cal.layout.camera_axis_offset
-                            );
+                            println!("camera_axis_offset: {:.4}", self.cal.framing.axis_offset);
                         }
                         PhysicalKey::Code(KeyCode::Digit4) => {
-                            self.cal.layout.camera_axis_offset -= 0.005;
+                            self.cal.framing.axis_offset -= 0.005;
                             self.apply_calibration_change();
-                            println!(
-                                "camera_axis_offset: {:.4}",
-                                self.cal.layout.camera_axis_offset
-                            );
+                            println!("camera_axis_offset: {:.4}", self.cal.framing.axis_offset);
                         }
                         PhysicalKey::Code(KeyCode::Digit5) => {
-                            self.cal.layout.x_ty += 0.005;
+                            self.cal.topology.x_ty += 0.005;
                             self.apply_calibration_change();
-                            println!("x_ty: {:.4}", self.cal.layout.x_ty);
+                            println!("x_ty: {:.4}", self.cal.topology.x_ty);
                         }
                         PhysicalKey::Code(KeyCode::Digit6) => {
-                            self.cal.layout.x_ty -= 0.005;
+                            self.cal.topology.x_ty -= 0.005;
                             self.apply_calibration_change();
-                            println!("x_ty: {:.4}", self.cal.layout.x_ty);
+                            println!("x_ty: {:.4}", self.cal.topology.x_ty);
                         }
                         PhysicalKey::Code(KeyCode::KeyB) => {
                             // Cycle blend width: 0.0 -> 0.05 -> 0.10 -> 0.15 -> 0.20 -> 0.0
@@ -684,46 +683,46 @@ impl ApplicationHandler for App {
                         }
                         PhysicalKey::Code(KeyCode::Digit7) => {
                             // Increase focal length (both cameras) - zoom in effect
-                            self.cal.left.fx *= 1.02;
-                            self.cal.left.fy *= 1.02;
-                            self.cal.right.fx *= 1.02;
-                            self.cal.right.fy *= 1.02;
+                            self.cal.lenses[0].fx *= 1.02;
+                            self.cal.lenses[0].fy *= 1.02;
+                            self.cal.lenses[1].fx *= 1.02;
+                            self.cal.lenses[1].fy *= 1.02;
                             self.apply_calibration_change();
                             println!(
                                 "focal length: {:.1} / {:.1}",
-                                self.cal.left.fx, self.cal.right.fx
+                                self.cal.lenses[0].fx, self.cal.lenses[1].fx
                             );
                         }
                         PhysicalKey::Code(KeyCode::Digit8) => {
                             // Decrease focal length - zoom out / wider
-                            self.cal.left.fx *= 0.98;
-                            self.cal.left.fy *= 0.98;
-                            self.cal.right.fx *= 0.98;
-                            self.cal.right.fy *= 0.98;
+                            self.cal.lenses[0].fx *= 0.98;
+                            self.cal.lenses[0].fy *= 0.98;
+                            self.cal.lenses[1].fx *= 0.98;
+                            self.cal.lenses[1].fy *= 0.98;
                             self.apply_calibration_change();
                             println!(
                                 "focal length: {:.1} / {:.1}",
-                                self.cal.left.fx, self.cal.right.fx
+                                self.cal.lenses[0].fx, self.cal.lenses[1].fx
                             );
                         }
                         PhysicalKey::Code(KeyCode::Digit9) => {
                             // Increase k1 distortion - more barrel
-                            self.cal.left.d[0] += 0.005;
-                            self.cal.right.d[0] += 0.005;
+                            self.cal.lenses[0].distortion[0] += 0.005;
+                            self.cal.lenses[1].distortion[0] += 0.005;
                             self.apply_calibration_change();
                             println!(
                                 "k1 distortion: {:.4} / {:.4}",
-                                self.cal.left.d[0], self.cal.right.d[0]
+                                self.cal.lenses[0].distortion[0], self.cal.lenses[1].distortion[0]
                             );
                         }
                         PhysicalKey::Code(KeyCode::Digit0) => {
                             // Decrease k1 distortion - less barrel / more pincushion
-                            self.cal.left.d[0] -= 0.005;
-                            self.cal.right.d[0] -= 0.005;
+                            self.cal.lenses[0].distortion[0] -= 0.005;
+                            self.cal.lenses[1].distortion[0] -= 0.005;
                             self.apply_calibration_change();
                             println!(
                                 "k1 distortion: {:.4} / {:.4}",
-                                self.cal.left.d[0], self.cal.right.d[0]
+                                self.cal.lenses[0].distortion[0], self.cal.lenses[1].distortion[0]
                             );
                         }
                         PhysicalKey::Code(KeyCode::KeyC) => {
@@ -836,10 +835,10 @@ impl ApplicationHandler for App {
 
                 let left = self.current_left.as_planes();
                 let right = self.current_right.as_planes();
-                // PoseControl::render_pose applies the Model 3
-                // rig_tilt yaw-pitch coupling so the horizon stays
-                // level as yaw changes. See pose_control.rs docs.
-                let render = self.pose.render_pose(self.rig_tilt);
+                // World-space pose -> render-space via the shared rig
+                // tilt/roll basis inversion (roll-aware; the horizon
+                // stays level under pan).
+                let render = renderer.orient_pose(self.pose.current_pose());
                 let (render_yaw, render_pitch) = (render.yaw, render.pitch);
                 if let Err(e) = renderer.render_yuv(&left, &right, render_yaw, render_pitch, &view)
                 {

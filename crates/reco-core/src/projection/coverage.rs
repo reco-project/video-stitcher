@@ -1,6 +1,6 @@
 //! Precomputed coverage boundary for "no-black" viewport constraining.
 
-use crate::calibration::MatchCalibration;
+use crate::calibration::Calibration;
 use crate::detect::detector::CameraId;
 use crate::render::scene::SceneGeometry;
 
@@ -30,17 +30,9 @@ pub struct CoverageBoundary {
     pub pitch_max: f32,
     /// Per-slice combined coverage: `(yaw_min, yaw_max)`.
     slices: Vec<(f32, f32)>,
-    /// Per-slice left-plane coverage: `(yaw_min, yaw_max)`.
-    left_slices: Vec<(f32, f32)>,
-    /// Per-slice right-plane coverage: `(yaw_min, yaw_max)`.
-    right_slices: Vec<(f32, f32)>,
     /// Minimum pitch range across all yaw positions.
     /// Determines the maximum safe FOV.
     min_pitch_range: f32,
-    /// Camera position from the scene geometry. Stored so
-    /// `safe_clamp` can construct a `VirtualCamera` for the exact
-    /// user-to-world rig correction mapping.
-    camera_position: [f32; 3],
 }
 
 /// Result of clamping a viewport position to the safe panning region.
@@ -106,7 +98,7 @@ impl CoverageBoundary {
     ///
     /// Densely samples both planes' edge loops and a sparse interior grid,
     /// projecting into (yaw, pitch) space and grouping into pitch slices.
-    pub fn from_calibration(calibration: &MatchCalibration, scene: &SceneGeometry) -> Self {
+    pub fn from_calibration(calibration: &Calibration, scene: &SceneGeometry) -> Self {
         let n_slices: usize = 400;
         let margin = 0.02_f32;
 
@@ -164,10 +156,7 @@ impl CoverageBoundary {
                 pitch_min: 0.0,
                 pitch_max: 0.0,
                 slices: vec![(0.0, 0.0); n_slices],
-                left_slices: vec![(0.0, 0.0); n_slices],
-                right_slices: vec![(0.0, 0.0); n_slices],
                 min_pitch_range: 0.0,
-                camera_position: scene.camera_position,
             };
         }
 
@@ -283,10 +272,7 @@ impl CoverageBoundary {
             pitch_min: global_pitch_min,
             pitch_max: global_pitch_max,
             slices,
-            left_slices,
-            right_slices,
             min_pitch_range,
-            camera_position: scene.camera_position,
         }
     }
 
@@ -352,42 +338,14 @@ impl CoverageBoundary {
         (lo.0 + frac * (hi.0 - lo.0), lo.1 + frac * (hi.1 - lo.1))
     }
 
-    /// Clamp a viewport position to the safe panning region for a given FOV.
+    /// Clamp a viewport center to the safe (no-black) panning region for
+    /// the given FOV, in world space, with perspective-correct margins.
     ///
-    /// `rig_tilt` (radians) accounts for the renderer's rig tilt rotation.
-    /// The caller passes user-space (yaw, pitch); this method transforms
-    /// to world space (+rig_tilt), clamps against coverage, then transforms
-    /// back. Pass 0.0 when there is no rig tilt.
-    ///
-    /// `self` must be the **world-space** coverage boundary.
-    pub fn safe_clamp(
-        &self,
-        yaw: f32,
-        pitch: f32,
-        fov_v_deg: f32,
-        aspect: f32,
-        rig_tilt: f32,
-    ) -> ClampedPosition {
-        let world_pitch = crate::lens::rig_correction::human_to_world_pitch(yaw, pitch, rig_tilt);
-        let clamped = self.safe_clamp_world(yaw, world_pitch, fov_v_deg, aspect);
-        ClampedPosition {
-            yaw: clamped.yaw,
-            pitch: crate::lens::rig_correction::world_to_human_pitch(
-                clamped.yaw,
-                clamped.pitch,
-                rig_tilt,
-            ),
-        }
-    }
-
-    /// Clamp viewport center to coverage with perspective-correct margins.
-    fn safe_clamp_world(
-        &self,
-        yaw: f32,
-        pitch: f32,
-        fov_v_deg: f32,
-        aspect: f32,
-    ) -> ClampedPosition {
+    /// Inputs and `self` are both world-space (the panorama's native
+    /// frame). Rig tilt/roll correction is a render-site concern applied
+    /// after clamping (see `rig_correction::world_to_render_pose`), so no
+    /// human<->world mapping happens here.
+    pub fn safe_clamp(&self, yaw: f32, pitch: f32, fov_v_deg: f32, aspect: f32) -> ClampedPosition {
         // B-30 defense: non-finite inputs would propagate through the
         // clamp / comparisons and emit NaN, which then flows into the
         // MVP matrix and produces a black or garbage frame. Upstream
@@ -439,24 +397,5 @@ impl CoverageBoundary {
             return 20.0;
         }
         self.min_pitch_range.to_degrees()
-    }
-
-    /// Create a copy with all pitch values shifted by an offset.
-    ///
-    /// Used to create a tilt-adjusted boundary for the director, which
-    /// operates in pre-tilt space while the boundary is in world space.
-    /// The director calls `safe_clamp` on the shifted boundary without
-    /// needing to know about rig tilt.
-    pub fn with_pitch_offset(&self, offset: f32) -> Self {
-        Self {
-            n_slices: self.n_slices,
-            pitch_min: self.pitch_min + offset,
-            pitch_max: self.pitch_max + offset,
-            slices: self.slices.clone(),
-            left_slices: self.left_slices.clone(),
-            right_slices: self.right_slices.clone(),
-            min_pitch_range: self.min_pitch_range,
-            camera_position: self.camera_position,
-        }
     }
 }

@@ -226,8 +226,8 @@ fn save_debug_frames(
     gpu: &GpuContext,
     left_frames: &[YuvFrame],
     right_frames: &[YuvFrame],
-    left_params: &reco_core::calibration::CameraParams,
-    right_params: &reco_core::calibration::CameraParams,
+    left_params: &reco_core::calibration::Lens,
+    right_params: &reco_core::calibration::Lens,
     dir: &str,
 ) -> anyhow::Result<()> {
     std::fs::create_dir_all(dir)?;
@@ -284,8 +284,11 @@ fn print_results(result: &reco_calibrate::CalibrationResult, output: &str, total
     eprintln!("  Confidence:      {:.1}%", result.confidence * 100.0);
     eprintln!("  Residual error:  {:.6}", result.residual_error);
     eprintln!("\nPlacement parameters:");
-    let l = &result.calibration.layout;
-    eprintln!("  cameraAxisOffset: {:.4}", l.camera_axis_offset);
+    let l = &result.calibration.topology;
+    eprintln!(
+        "  cameraAxisOffset: {:.4}",
+        result.calibration.framing.axis_offset
+    );
     eprintln!("  intersect:        {:.4}", l.intersect);
     eprintln!("  xTy:              {:.6}", l.x_ty);
     eprintln!("  xRz:              {:.6}", l.x_rz);

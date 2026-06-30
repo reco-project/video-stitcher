@@ -66,6 +66,13 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    # The GPU-execution tests (CPU-vs-GPU stitch agreement, KB4) run against a
+    # software Vulkan adapter (lavapipe) so they are actually exercised in CI
+    # instead of silently skipping on the GPU-less runner. RECO_REQUIRE_GPU
+    # turns "no adapter" into a hard failure, so a missing/broken adapter fails
+    # CI loudly rather than letting the agreement tests pass vacuously.
+    env:
+      RECO_REQUIRE_GPU: "1"
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: dtolnay/rust-toolchain@stable
@@ -73,6 +80,12 @@ jobs:
       - uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
         with:
           packages: ${{ env.APT_PACKAGES }}
+      - name: Install software Vulkan (lavapipe) for GPU-execution tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers vulkan-tools
+          echo "--- vulkaninfo --summary ---"
+          vulkaninfo --summary 2>&1 | head -40 || true
       - name: Run tests (default)
         run: cargo test --workspace
       - name: Run tests (with profiling)
@@ -91,8 +104,8 @@ jobs:
       - uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
         with:
           packages: ${{ env.APT_PACKAGES }}
-      - name: Build docs (profiling + gstreamer + load-dynamic + stacked-output + reco-control transports)
-        run: cargo doc --workspace --no-deps --features profiling,gstreamer,load-dynamic,stacked-output,keyboard,gopro
+      - name: Build docs (profiling + gstreamer + load-dynamic + stacked-output + gopro)
+        run: cargo doc --workspace --no-deps --features profiling,gstreamer,load-dynamic,stacked-output,gopro
         env:
           RUSTDOCFLAGS: "-D warnings"
 

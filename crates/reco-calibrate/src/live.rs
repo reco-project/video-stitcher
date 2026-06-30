@@ -60,7 +60,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use reco_core::calibration::CameraParams;
+use reco_core::calibration::Lens;
 use reco_core::gpu::GpuContext;
 
 use crate::error::CalibrateError;
@@ -176,8 +176,8 @@ pub enum CalibrateFromLiveError {
 pub fn calibrate_from_live(
     gpu: &GpuContext,
     source: &mut dyn LiveFramePairSource,
-    left_params: &CameraParams,
-    right_params: &CameraParams,
+    left_params: &Lens,
+    right_params: &Lens,
     options: &CalibrateFromLiveOptions,
     on_progress: &mut dyn FnMut(&CalibrationProgress),
     interrupted: &AtomicBool,

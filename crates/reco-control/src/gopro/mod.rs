@@ -1,9 +1,8 @@
 //! GoPro camera integration via the OpenGoPro protocol.
 //!
-//! This module is a *device helper* (Layer 4 of the reco-control
-//! architecture), not a [`ControlTransport`](crate::ControlTransport).
-//! A GoPro is a command target (start/stop recording, sync settings,
-//! query status), not a source of operator intents.
+//! This module is a *device helper*: a GoPro is a command target
+//! (start/stop recording, sync settings, query status), not a source of
+//! operator intents.
 //!
 //! # Communication channels
 //!

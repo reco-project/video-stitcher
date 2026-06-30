@@ -45,7 +45,7 @@ pub mod types;
 
 use std::time::{Duration, Instant};
 
-use crate::calibration::MatchCalibration;
+use crate::calibration::Calibration;
 use crate::detect::detector::UnifiedDetector;
 use crate::detect::director::{MappedDetection, ViewportPosition};
 use crate::detect::panner::Panner;
@@ -338,10 +338,9 @@ impl StitchCore {
     /// uses the pipeline's current FOV.
     ///
     /// Input is treated as world-space (matches the director-output
-    /// contract). Output is user-space via a simple
-    /// `user_pitch = world_pitch - rig_tilt` transform. The yaw-weighted
-    /// horizon correction is a render-site concern (see Model 3 in
-    /// `PoseControl::render_pose`).
+    /// contract). Output is render-space: resolved through the shared
+    /// `resolve_render_pose` authority (world-space clamp + roll-aware
+    /// tilt/roll basis inversion), identical to the export/director path.
     pub fn safe_clamp(&self, pose: ViewportPosition) -> ViewportPosition {
         let Some(coverage) = &self.coverage else {
             return pose;
@@ -351,11 +350,15 @@ impl StitchCore {
             .unwrap_or_else(|| self.pipeline.fov())
             .min(coverage.max_fov_degrees());
         let aspect = self.pipeline.viewport().aspect_ratio();
-        let clamped = coverage.safe_clamp(pose.yaw, pose.pitch, fov, aspect, 0.0);
-        let rig_tilt = self.pipeline.viewport().rig_tilt;
+        let rig_tilt = self.pipeline.calibration().framing.tilt as f32;
+        let rig_roll = self.pipeline.calibration().framing.roll as f32;
+        let cam = crate::projection::VirtualCamera::new(&self.pipeline.scene.camera_position);
+        let (yaw, pitch) = crate::lens::rig_correction::resolve_render_pose(
+            coverage, &cam, rig_tilt, rig_roll, pose.yaw, pose.pitch, fov, aspect,
+        );
         ViewportPosition {
-            yaw: clamped.yaw,
-            pitch: clamped.pitch - rig_tilt,
+            yaw,
+            pitch,
             fov_degrees: Some(fov),
         }
     }
@@ -434,7 +437,7 @@ impl StitchCore {
     ///
     /// Re-derives the coverage boundary from the new calibration so
     /// subsequent `safe_clamp` calls respect the new no-black region.
-    pub fn update_calibration(&mut self, calibration: MatchCalibration) {
+    pub fn update_calibration(&mut self, calibration: Calibration) {
         self.pipeline.update_calibration(calibration);
         self.coverage = Some(CoverageBoundary::from_calibration(
             self.pipeline.calibration(),

@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use reco_core::calibration::MatchCalibration;
+use reco_core::calibration::Calibration;
 use serde::{Deserialize, Serialize};
 
 /// A grayscale image frame for feature detection (8-bit, row-major, tightly packed).
@@ -447,7 +447,7 @@ pub struct LensProfileSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CalibrationResult {
     /// The computed calibration (ready to serialize as match.json).
-    pub calibration: MatchCalibration,
+    pub calibration: Calibration,
     /// Total number of matched point pairs across all frames.
     pub total_matches: usize,
     /// Number of frame pairs that produced usable matches.

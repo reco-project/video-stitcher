@@ -11,7 +11,7 @@
 use reco_calibrate::features::{self, DetectRegion};
 use reco_calibrate::geometry;
 use reco_calibrate::types::CalibrationConfig;
-use reco_core::calibration::MatchCalibration;
+use reco_core::calibration::Calibration;
 use reco_core::gpu::GpuContext;
 use reco_core::lens::undistort::GpuUndistort;
 
@@ -33,7 +33,7 @@ fn main() {
     let target_frame: u64 = args.get(6).and_then(|s| s.parse().ok()).unwrap_or(300);
 
     let json_str = std::fs::read_to_string(&args[3]).unwrap();
-    let cal: MatchCalibration = serde_json::from_str(&json_str).expect("invalid match.json");
+    let cal: Calibration = serde_json::from_str(&json_str).expect("invalid match.json");
 
     // Use calibration pipeline defaults for detection parameters
     let config = CalibrationConfig::default();
@@ -61,9 +61,14 @@ fn main() {
     let left_undistort = GpuUndistort::new(&gpu, lw, lh, lw as f32 / lh as f32);
     let right_undistort = GpuUndistort::new(&gpu, rw, rh, rw as f32 / rh as f32);
     let left_rgba =
-        left_undistort.undistort(&gpu, &left_yuv.y, &left_yuv.u, &left_yuv.v, &cal.left);
-    let right_rgba =
-        right_undistort.undistort(&gpu, &right_yuv.y, &right_yuv.u, &right_yuv.v, &cal.right);
+        left_undistort.undistort(&gpu, &left_yuv.y, &left_yuv.u, &left_yuv.v, &cal.lenses[0]);
+    let right_rgba = right_undistort.undistort(
+        &gpu,
+        &right_yuv.y,
+        &right_yuv.u,
+        &right_yuv.v,
+        &cal.lenses[1],
+    );
 
     // Detect features using pipeline defaults
     let left_region = DetectRegion {

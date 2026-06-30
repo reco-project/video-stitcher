@@ -24,7 +24,7 @@
 //! let (roll, pitch) = telemetry::differential_orientation(&left, &right);
 //! ```
 
-use reco_core::calibration::CameraParams;
+use reco_core::calibration::Lens;
 use std::path::Path;
 
 /// Extracted telemetry data (gyro, accel, lens profile) from a video file.
@@ -39,7 +39,7 @@ pub struct TelemetryData {
     /// Accelerometer samples (m/s^2, timestamped).
     pub accel: Vec<ImuSample>,
     /// Embedded lens profile if the camera provides one (DJI, Insta360).
-    pub lens_profile: Option<CameraParams>,
+    pub lens_profile: Option<Lens>,
     /// Orientation quaternions [w, x, y, z] (DJI, GoPro CORI).
     /// Represents rotation from camera frame to gravity-aligned world frame.
     pub quaternions: Vec<(f64, [f64; 4])>,
@@ -74,7 +74,7 @@ impl ImuSample {
 pub struct CameraMetadata {
     pub camera_type: String,
     pub camera_model: Option<String>,
-    pub lens_profile: Option<CameraParams>,
+    pub lens_profile: Option<Lens>,
     pub lens_info: Option<String>,
     /// Whether the camera records native gyroscope data (not derived
     /// from quaternions). Cameras with native gyro (GoPro, Insta360,
@@ -645,7 +645,7 @@ fn rig_tilt_from_quaternions(data: &TelemetryData) -> Option<f64> {
 /// in the Default group.
 fn extract_lens_from_clip_meta(
     tag_map: &telemetry_parser::tags_impl::GroupedTagMap,
-) -> Option<CameraParams> {
+) -> Option<Lens> {
     use telemetry_parser::tags_impl::*;
     // The ClipMeta JSON is stored in GroupId::Default / TagId::Metadata
     let default_map = tag_map.get(&GroupId::Default)?;
@@ -685,26 +685,26 @@ fn extract_lens_from_clip_meta(
         coeffs[3].as_f64().unwrap_or(0.0),
     );
 
-    Some(CameraParams {
+    Some(Lens {
+        id: String::new(),
         width,
         height,
         fx: focal,
         fy: focal,
         cx: half_w,
         cy: half_h,
-        d: [
+        distortion: [
             coeffs[0].as_f64().unwrap_or(0.0),
             coeffs[1].as_f64().unwrap_or(0.0),
             coeffs[2].as_f64().unwrap_or(0.0),
             coeffs[3].as_f64().unwrap_or(0.0),
         ],
+        correction: 1.0,
     })
 }
 
 /// Extract an embedded lens profile from a tag map (DJI, Insta360).
-fn extract_lens_from_tags(
-    tag_map: &telemetry_parser::tags_impl::GroupedTagMap,
-) -> Option<CameraParams> {
+fn extract_lens_from_tags(tag_map: &telemetry_parser::tags_impl::GroupedTagMap) -> Option<Lens> {
     use telemetry_parser::tags_impl::*;
     let lens_map = tag_map.get(&GroupId::Lens)?;
     let tag = lens_map.get(&TagId::Data)?;
@@ -718,8 +718,8 @@ fn extract_lens_from_tags(
 /// Parse an embedded lens profile JSON from telemetry-parser.
 ///
 /// DJI cameras embed focal_length + distortion_coeffs as JSON in the
-/// `Lens/Data` tag. This function converts to our `CameraParams` format.
-fn parse_embedded_lens_profile(json: &serde_json::Value) -> Option<CameraParams> {
+/// `Lens/Data` tag. This function converts to our `Lens` format.
+fn parse_embedded_lens_profile(json: &serde_json::Value) -> Option<Lens> {
     let cm = json.get("camera_matrix")?;
     let fx = cm.get("fx")?.as_f64()?;
     let fy = cm.get("fy")?.as_f64()?;
@@ -746,14 +746,16 @@ fn parse_embedded_lens_profile(json: &serde_json::Value) -> Option<CameraParams>
 
     log::info!("embedded lens profile: {width}x{height}, fx={fx:.2}, fy={fy:.2}");
 
-    Some(CameraParams {
+    Some(Lens {
+        id: String::new(),
         width,
         height,
         fx,
         fy,
         cx,
         cy,
-        d,
+        distortion: d,
+        correction: 1.0,
     })
 }
 

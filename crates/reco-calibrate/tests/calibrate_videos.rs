@@ -38,8 +38,8 @@ fn calibrate_videos_matches_known_good() {
     .expect("calibrate_videos failed");
 
     // Load known-good calibration for comparison
-    let known: reco_core::calibration::MatchCalibration =
-        reco_core::calibration::MatchCalibration::from_file(Path::new(KNOWN_GOOD))
+    let known: reco_core::calibration::Calibration =
+        reco_core::calibration::Calibration::from_file(Path::new(KNOWN_GOOD))
             .expect("failed to load known-good calibration");
 
     // Sync offset should match exactly (both use IMU)
@@ -50,38 +50,38 @@ fn calibrate_videos_matches_known_good() {
 
     // Placement parameters should be close (AKAZE/RANSAC have random elements)
     let tol = 0.01;
-    let got = &result.calibration.layout;
-    let exp = &known.layout;
+    let got = &result.calibration;
+    let exp = &known;
 
     assert!(
-        (got.camera_axis_offset - exp.camera_axis_offset).abs() < tol,
+        (got.framing.axis_offset - exp.framing.axis_offset).abs() < tol,
         "camera_axis_offset: got {}, expected {} (tol {tol})",
-        got.camera_axis_offset,
-        exp.camera_axis_offset,
+        got.framing.axis_offset,
+        exp.framing.axis_offset,
     );
     assert!(
-        (got.intersect - exp.intersect).abs() < tol,
+        (got.topology.intersect - exp.topology.intersect).abs() < tol,
         "intersect: got {}, expected {} (tol {tol})",
-        got.intersect,
-        exp.intersect,
+        got.topology.intersect,
+        exp.topology.intersect,
     );
     assert!(
-        (got.x_ty - exp.x_ty).abs() < tol,
+        (got.topology.x_ty - exp.topology.x_ty).abs() < tol,
         "x_ty: got {}, expected {} (tol {tol})",
-        got.x_ty,
-        exp.x_ty,
+        got.topology.x_ty,
+        exp.topology.x_ty,
     );
     assert!(
-        (got.x_rz - exp.x_rz).abs() < tol,
+        (got.topology.x_rz - exp.topology.x_rz).abs() < tol,
         "x_rz: got {}, expected {} (tol {tol})",
-        got.x_rz,
-        exp.x_rz,
+        got.topology.x_rz,
+        exp.topology.x_rz,
     );
     assert!(
-        (got.z_rx - exp.z_rx).abs() < tol,
+        (got.topology.z_rx - exp.topology.z_rx).abs() < tol,
         "z_rx: got {}, expected {} (tol {tol})",
-        got.z_rx,
-        exp.z_rx,
+        got.topology.z_rx,
+        exp.topology.z_rx,
     );
 
     // Quality metrics
@@ -102,6 +102,6 @@ fn calibrate_videos_matches_known_good() {
     println!("  confidence: {:.1}%", result.confidence * 100.0);
     println!("  frames_used: {}", result.frames_used);
     println!("  matches: {}", result.total_matches);
-    println!("  cam_d: {:.4}", got.camera_axis_offset);
-    println!("  intersect: {:.4}", got.intersect);
+    println!("  cam_d: {:.4}", got.framing.axis_offset);
+    println!("  intersect: {:.4}", got.topology.intersect);
 }

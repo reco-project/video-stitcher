@@ -14,7 +14,8 @@ src/
   interop/     - Platform zero-copy (CUDA, Vulkan, Metal, D3D11, DMA-buf)
   projection/  - Coordinate math, coverage boundary, virtual camera
   lens/        - KB4 fisheye model, undistortion, rig correction
-  calibration.rs - MatchCalibration (stereo camera parameters)
+  stitch/      - Projection-agnostic CPU/GPU stitch backends + agreement oracle
+  calibration.rs - Calibration (lenses, topology, framing)
   source.rs      - FrameSource trait, StereoFrame enum
   encoder.rs     - Encoder trait
   telemetry.rs   - Per-frame timing collection

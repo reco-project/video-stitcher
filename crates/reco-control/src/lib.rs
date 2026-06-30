@@ -1,83 +1,55 @@
 //! # reco-control
 //!
-//! Transport-agnostic control vocabulary for the Reco pipeline.
+//! Operator pose-control state machine and intent dispatch for the Reco
+//! pipeline.
 //!
-//! Consumers (reco-obs, reco-gui, reco-cli, future standalone
-//! livestream app) receive a stream of [`ControlIntent`] values and
-//! dispatch them to their local state (pose control, encoder, replay
-//! buffer, model selection). The transport — keyboard, gamepad, GoPro
-//! USB HID, mobile WebRTC control channel, WebSocket — is
-//! pluggable via the [`ControlTransport`] trait.
+//! Consumers (reco-gui, reco-cli preview, reco-obs) feed input events to
+//! a single [`pose_control::PoseControl`] and, where they speak a higher
+//! level vocabulary, apply [`ControlIntent`] values via
+//! [`PoseControl::apply_intent`](pose_control::PoseControl::apply_intent).
 //!
 //! # Why this crate
 //!
-//! The deep-review 2026-04-18 Agent 8 finding: consumer input paths
-//! are duplicated three ways across reco-cli/preview, reco-gui, and
-//! reco-obs (different key mappings, different pan sensitivity,
-//! different units). [`PoseControl`](pose_control::PoseControl)
-//! fixed the *state-machine* duplication; this crate fixes the
-//! *vocabulary* duplication. A single `ControlIntent` enum describes
-//! every operator action the pipeline cares about; transports
-//! translate their native input events into these intents.
-//!
-//! # Transports
-//!
-//! | Feature       | Transport                       | Status       |
-//! |---------------|----------------------------------|--------------|
-//! | `keyboard`    | [`keyboard::KeyboardTransport`] | shipped |
-//! | `gopro`       | `gopro` module                  | placeholder  |
+//! The deep-review 2026-04-18 Agent 8 finding: consumer input paths were
+//! duplicated three ways across reco-cli/preview, reco-gui, and reco-obs
+//! (different key mappings, different pan sensitivity, different units).
+//! [`PoseControl`](pose_control::PoseControl) fixes the state-machine
+//! duplication; [`ControlIntent`] fixes the dispatch-vocabulary
+//! duplication for the pose actions consumers share.
 
 #![deny(unsafe_code)]
 
 /// Unified pose-control primitive: `PoseControl` + `PoseControlConfig`
 /// + `HotkeyIntent`. Single source of truth for mouse/drag/wheel/
 /// keyboard -> yaw/pitch/FOV translation across consumers.
-/// Relocated from reco-core in Step 13 of the camera-stack plan.
 pub mod pose_control;
 
-/// Central dispatcher from [`ControlIntent`] to
-/// [`pose_control::PoseControl`] and consumer-supplied handlers for
-/// non-pose categories. See the Step 12 design note.
-pub mod intent_translator;
-
-pub use intent_translator::IntentTranslator;
 use pose_control::HotkeyIntent;
 
 // ---------------------------------------------------------------------------
 // Intent vocabulary
 // ---------------------------------------------------------------------------
 
-/// Every operator action the pipeline cares about, independent of
-/// how it was triggered. Transports translate their native events
-/// (keystrokes, game-pad buttons, GoPro REST commands, WebSocket
-/// messages) into these intents.
+/// An operator pose action, independent of how it was triggered.
+/// Consumers translate their native events (keystrokes, game-pad
+/// buttons, mobile touch) into these and apply them via
+/// [`PoseControl::apply_intent`](pose_control::PoseControl::apply_intent).
 ///
 /// `#[non_exhaustive]` so new intent categories can be added without
-/// breaking every consumer's match arm. Consumers already write
-/// `_ =>` fallbacks per Rust's non-exhaustive rule.
+/// breaking every consumer's match arm.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", content = "data", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum ControlIntent {
     /// Pan / zoom / reset driven by a hotkey binding. Wraps
-    /// [`HotkeyIntent`] so consumers that
-    /// already dispatch HotkeyIntents (via `PoseControl::apply_hotkey`)
-    /// can forward directly.
+    /// [`HotkeyIntent`] so consumers that already dispatch HotkeyIntents
+    /// (via `PoseControl::apply_hotkey`) can forward directly.
     Hotkey(HotkeyIntent),
 
-    /// Direct pose manipulation (set or delta). Used by input
-    /// devices that speak absolute values (sliders, game-pad axes,
-    /// mobile touch) rather than discrete keys.
+    /// Direct pose manipulation (set or delta). Used by input devices
+    /// that speak absolute values (sliders, game-pad axes, mobile touch)
+    /// rather than discrete keys.
     Pose(PoseIntent),
-
-    /// Encoder / output-quality adjustment.
-    Quality(QualityIntent),
-
-    /// Recording / replay / snapshot operations.
-    Capture(CaptureIntent),
-
-    /// AI detector / model selection.
-    ModelSelect(ModelSelectIntent),
 }
 
 /// Pose-direct intents. Angles in radians for yaw/pitch, degrees
@@ -103,100 +75,6 @@ pub enum PoseIntent {
     Reset,
 }
 
-/// Encoder / quality intents. String fields are the vocabulary the
-/// encoder crate (reco-io) understands (codec names, preset names);
-/// reco-control stays framework-agnostic.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "action", content = "value", rename_all = "snake_case")]
-#[non_exhaustive]
-pub enum QualityIntent {
-    /// Change the active codec (e.g. `"h264"`, `"hevc"`, `"av1"`).
-    SetCodec(String),
-    /// Set the target bitrate in bits per second.
-    SetBitrate(u64),
-    /// Change the output resolution.
-    SetResolution {
-        /// Width in pixels.
-        width: u32,
-        /// Height in pixels.
-        height: u32,
-    },
-    /// Change the encoder preset (e.g. `"fast"`, `"medium"`, `"slow"`).
-    SetPreset(String),
-    /// Set the constant rate factor (0-51 for H.264; lower is better).
-    SetCrf(u8),
-}
-
-/// Recording / replay / snapshot intents.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[non_exhaustive]
-pub enum CaptureIntent {
-    /// Begin encoding to the configured output path.
-    StartRecord,
-    /// Stop encoding; finalize the output file.
-    StopRecord,
-    /// Capture a single frame to disk (still image).
-    Snapshot,
-    /// Clear the replay ring buffer
-    /// ([`reco_core::core::replay_buffer::ReplayBuffer::clear`]).
-    ClearReplay,
-    /// Save the current replay ring buffer to a file and clear it
-    /// (maps to [`reco_core::core::replay_buffer::ReplayBuffer::take`] + encode).
-    SaveReplay,
-}
-
-/// Detector / model selection intents.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "action", content = "value", rename_all = "snake_case")]
-#[non_exhaustive]
-pub enum ModelSelectIntent {
-    /// Switch to a detector model at the given path (or bundle
-    /// name). Empty string disables detection.
-    SetDetectorModel(String),
-    /// Change how often detection runs (`1` = every frame).
-    SetDetectionInterval(u64),
-    /// Disable detection without changing the model path — useful
-    /// for low-power mode.
-    DisableDetection,
-}
-
-// ---------------------------------------------------------------------------
-// Transport trait
-// ---------------------------------------------------------------------------
-
-/// A source of control intents.
-///
-/// Transports pull pending intents from their native event stream
-/// and expose them as an iterator-like interface. The contract is
-/// `non-blocking` — `poll` returns immediately with whatever is
-/// available. Consumers call it each frame / tick and dispatch any
-/// returned intents to their local state.
-///
-/// `Send` so transports can live on a worker thread (e.g. a GoPro
-/// USB-HID reader loop that needs to block on `read`). Not `Sync`
-/// because most transports hold mutable device state.
-pub trait ControlTransport: Send {
-    /// Short human-readable name for logs + telemetry bundles
-    /// (e.g. `"keyboard"`, `"gopro-usb"`, `"websocket"`).
-    fn name(&self) -> &'static str;
-
-    /// Drain any currently-available intents into the supplied
-    /// buffer. Returns the number appended. Non-blocking.
-    ///
-    /// Implementations typically read from an internal mpsc /
-    /// ring buffer that a background thread fills from the
-    /// underlying transport (USB HID, WebSocket message, etc.).
-    fn poll(&mut self, out: &mut Vec<ControlIntent>) -> usize;
-}
-
-// ---------------------------------------------------------------------------
-// Transport implementations
-// ---------------------------------------------------------------------------
-
-#[cfg(feature = "keyboard")]
-pub mod keyboard;
-
 #[cfg(feature = "gopro")]
 pub mod gopro;
 
@@ -205,16 +83,11 @@ pub mod gopro;
 // ---------------------------------------------------------------------------
 
 // `ControlIntent` and its payloads are `Clone + Send` so a worker
-// thread can forward events to the UI thread through an mpsc
-// channel. Not `Sync` (immutable sharing across threads isn't the
-// typical use case), but `Send` is mandatory.
+// thread can forward events to the UI thread through an mpsc channel.
 const _: fn() = || {
     fn assert_clone_send<T: Clone + Send + 'static>() {}
     assert_clone_send::<ControlIntent>();
     assert_clone_send::<PoseIntent>();
-    assert_clone_send::<QualityIntent>();
-    assert_clone_send::<CaptureIntent>();
-    assert_clone_send::<ModelSelectIntent>();
 };
 
 #[cfg(test)]
@@ -238,36 +111,18 @@ mod tests {
     }
 
     #[test]
-    fn quality_intent_resolution_roundtrips() {
-        let q = QualityIntent::SetResolution {
-            width: 1920,
-            height: 1080,
-        };
-        let cloned = q.clone();
-        assert_eq!(q, cloned);
-    }
-
-    #[test]
-    fn capture_intent_variants_are_copy() {
-        // Copy-ness is useful for dispatch on the hot path.
-        let i: CaptureIntent = CaptureIntent::SaveReplay;
-        let j = i;
-        let _both = (i, j); // proof of Copy
-    }
-
-    #[test]
     fn non_exhaustive_allows_wildcard_match() {
-        // Regression guard: `#[non_exhaustive]` on ControlIntent
-        // forces downstream consumers to write a wildcard arm. This
-        // test compile-checks that idiom stays valid.
-        let intent = ControlIntent::Capture(CaptureIntent::Snapshot);
+        // Regression guard: `#[non_exhaustive]` on ControlIntent forces
+        // downstream consumers to write a wildcard arm. This test
+        // compile-checks that idiom stays valid.
+        let intent = ControlIntent::Pose(PoseIntent::Reset);
         fn handle(i: &ControlIntent) -> &'static str {
             match i {
-                ControlIntent::Capture(CaptureIntent::Snapshot) => "snapshot",
+                ControlIntent::Pose(PoseIntent::Reset) => "reset",
                 _ => "other",
             }
         }
-        assert_eq!(handle(&intent), "snapshot");
+        assert_eq!(handle(&intent), "reset");
     }
 
     #[test]
@@ -284,17 +139,6 @@ mod tests {
         let intent = ControlIntent::Pose(PoseIntent::DeltaYawRad(0.1));
         let json = serde_json::to_string(&intent).unwrap();
         assert!(json.contains("\"kind\":\"pose\""));
-        let back: ControlIntent = serde_json::from_str(&json).unwrap();
-        assert_eq!(intent, back);
-    }
-
-    #[test]
-    fn serde_roundtrip_quality_resolution() {
-        let intent = ControlIntent::Quality(QualityIntent::SetResolution {
-            width: 1920,
-            height: 1080,
-        });
-        let json = serde_json::to_string(&intent).unwrap();
         let back: ControlIntent = serde_json::from_str(&json).unwrap();
         assert_eq!(intent, back);
     }

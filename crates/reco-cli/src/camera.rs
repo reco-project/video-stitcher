@@ -124,15 +124,13 @@ pub fn run_camera(
         "Output path looks like a network URL ({output}). Only local file paths are supported.",
     );
 
-    let cal = reco_core::calibration::MatchCalibration::from_file(Path::new(calibration))?;
+    let mut cal = reco_core::calibration::Calibration::from_file(Path::new(calibration))?;
+    cal.topology.blend_width = blend;
     let field_roi = cal.field_roi.clone();
 
     let viewport = reco_core::render::viewport::ViewportConfig {
         width,
         height,
-        blend_width: blend,
-        rig_tilt: cal.rig_tilt as f32,
-        rig_roll: cal.rig_roll as f32,
         ..Default::default()
     };
 
@@ -747,16 +745,16 @@ pub fn run_live_calibrate(
     right_profile: Option<&str>,
     interrupted: &Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
-    use reco_core::calibration::CameraParams;
+    use reco_core::calibration::Lens;
 
     eprintln!(
         "Live calibration: capturing {num_pairs} frame pairs at {capture_width}x{capture_height}",
     );
 
-    let load_or_default = |path: Option<&str>, w: u32, h: u32| -> anyhow::Result<CameraParams> {
+    let load_or_default = |path: Option<&str>, w: u32, h: u32| -> anyhow::Result<Lens> {
         if let Some(p) = path {
             let json = std::fs::read_to_string(p)?;
-            let params: CameraParams = serde_json::from_str(&json)?;
+            let params: Lens = serde_json::from_str(&json)?;
             eprintln!("Lens profile: {p}");
             return Ok(params);
         }
@@ -764,7 +762,7 @@ pub fn run_live_calibrate(
             let convention = std::path::PathBuf::from(home).join("imx477_profile.json");
             if convention.exists() {
                 let json = std::fs::read_to_string(&convention)?;
-                let params: CameraParams = serde_json::from_str(&json)?;
+                let params: Lens = serde_json::from_str(&json)?;
                 eprintln!("Lens profile (auto): {}", convention.display());
                 return Ok(params);
             }
@@ -772,15 +770,15 @@ pub fn run_live_calibrate(
         eprintln!("No lens profile found, using synthetic default (wide-angle)");
         let fw = w as f64;
         let fh = h as f64;
-        Ok(CameraParams {
-            width: w,
-            height: h,
-            fx: fw * 0.5,
-            fy: fw * 0.5,
-            cx: fw * 0.5,
-            cy: fh * 0.5,
-            d: [0.0; 4],
-        })
+        Ok(Lens::fisheye(
+            w,
+            h,
+            fw * 0.5,
+            fw * 0.5,
+            fw * 0.5,
+            fh * 0.5,
+            [0.0; 4],
+        ))
     };
     let left_params = load_or_default(left_profile, capture_width, capture_height)?;
     let right_params = load_or_default(right_profile, capture_width, capture_height)
@@ -836,22 +834,21 @@ pub fn run_live_calibrate(
     // Preserve field_roi and rig_tilt from existing calibration file
     let mut cal = result.calibration;
     if let Ok(existing) = std::fs::read_to_string(output_path)
-        && let Ok(prev) =
-            serde_json::from_str::<reco_core::calibration::MatchCalibration>(&existing)
+        && let Ok(prev) = serde_json::from_str::<reco_core::calibration::Calibration>(&existing)
     {
         if prev.field_roi.is_some() {
             cal.field_roi = prev.field_roi;
             eprintln!("Preserved existing field_roi");
         }
-        if prev.rig_tilt.abs() > 1e-6 {
-            cal.rig_tilt = prev.rig_tilt;
+        if prev.framing.tilt.abs() > 1e-6 {
+            cal.framing.tilt = prev.framing.tilt;
             eprintln!(
                 "Preserved existing rig_tilt ({:.1} deg)",
-                prev.rig_tilt.to_degrees()
+                prev.framing.tilt.to_degrees()
             );
         }
-        if prev.rig_roll.abs() > 1e-6 {
-            cal.rig_roll = prev.rig_roll;
+        if prev.framing.roll.abs() > 1e-6 {
+            cal.framing.roll = prev.framing.roll;
         }
     }
     let json = serde_json::to_string_pretty(&cal)?;

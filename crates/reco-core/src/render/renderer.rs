@@ -25,7 +25,7 @@
 
 use super::scene::SceneGeometry;
 use super::viewport::ResolvedViewport;
-use crate::calibration::{CameraParams, MatchCalibration};
+use crate::calibration::{Calibration, Lens};
 use crate::gpu::GpuContext;
 
 use bytemuck::{Pod, Zeroable};
@@ -36,19 +36,9 @@ use wgpu::util::DeviceExt;
 // ---- Constants ----
 
 /// Near clipping plane for the perspective projection.
-const NEAR_PLANE: f32 = 0.01;
+pub(crate) const NEAR_PLANE: f32 = 0.01;
 /// Far clipping plane for the perspective projection.
-const FAR_PLANE: f32 = 5.0;
-/// Aspect ratio of scene planes (matches GoPro 16:9 capture).
-///
-/// Deprecated: derive the aspect ratio from camera parameters instead.
-/// Use [`SceneGeometry::from_layout_with_aspect`](crate::render::scene::SceneGeometry::from_layout_with_aspect)
-/// with `camera.width as f32 / camera.height as f32`.
-#[deprecated(
-    since = "0.1.0",
-    note = "derive aspect ratio from camera parameters (width/height) instead"
-)]
-pub const PLANE_ASPECT: f32 = 16.0 / 9.0;
+pub(crate) const FAR_PLANE: f32 = 5.0;
 
 /// Errors from the renderer.
 #[derive(Debug, Clone, Error)]
@@ -822,7 +812,7 @@ impl Renderer {
         &self,
         gpu: &GpuContext,
         scene: &SceneGeometry,
-        calibration: &MatchCalibration,
+        calibration: &Calibration,
         viewport: &ResolvedViewport,
         blend_width: f32,
         target_view: &wgpu::TextureView,
@@ -841,34 +831,33 @@ impl Renderer {
             &scene.camera_position,
             viewport.position.yaw,
             viewport.position.pitch,
-            viewport.config.rig_tilt,
-            viewport.config.rig_roll,
+            calibration.framing.tilt as f32,
+            calibration.framing.roll as f32,
         );
 
         let left_mvp = projection * view * scene.model_matrix_left();
-        let correction = viewport.config.lens_correction_amount;
         let mut left_uniforms = build_gpu_uniforms(
             &left_mvp,
-            &calibration.left,
+            &calibration.lenses[0],
             false,
             blend_width,
             self.input_format,
             self.flip_180[0],
             self.is_full_range,
         );
-        left_uniforms.lens_preview[0] = correction;
+        left_uniforms.lens_preview[0] = calibration.lenses[0].correction;
 
         let right_mvp = projection * view * scene.model_matrix_right();
         let mut right_uniforms = build_gpu_uniforms(
             &right_mvp,
-            &calibration.right,
+            &calibration.lenses[1],
             true,
             blend_width,
             self.input_format,
             self.flip_180[1],
             self.is_full_range,
         );
-        right_uniforms.lens_preview[0] = correction;
+        right_uniforms.lens_preview[0] = calibration.lenses[1].correction;
 
         gpu.queue.write_buffer(
             &self.left.uniform_buffer,
@@ -934,7 +923,7 @@ impl Renderer {
         &self,
         gpu: &GpuContext,
         scene: &SceneGeometry,
-        calibration: &MatchCalibration,
+        calibration: &Calibration,
         viewport: &ResolvedViewport,
         blend_width: f32,
     ) -> wgpu::CommandBuffer {
@@ -968,7 +957,7 @@ impl Renderer {
         &self,
         gpu: &GpuContext,
         scene: &SceneGeometry,
-        calibration: &MatchCalibration,
+        calibration: &Calibration,
         viewport: &ResolvedViewport,
         blend_width: f32,
         target_view: &wgpu::TextureView,
@@ -1174,7 +1163,7 @@ fn upload_nv12(
 /// planes meet) by default. This matches v1 Three.js where the OrbitControls
 /// target is `[0, 0, 0]`. `yaw` rotates around Y (left/right from center),
 /// `pitch` rotates around X (up/down).
-fn view_matrix(
+pub(crate) fn view_matrix(
     position: &[f32; 3],
     yaw: f32,
     pitch: f32,
@@ -1236,7 +1225,7 @@ fn view_matrix(
 /// buffer-reversal trick from the software decode path is not possible.
 pub(crate) fn build_gpu_uniforms(
     mvp: &Matrix4<f32>,
-    camera: &CameraParams,
+    camera: &Lens,
     is_right: bool,
     blend_width: f32,
     input_format: InputFormat,
@@ -1254,10 +1243,10 @@ pub(crate) fn build_gpu_uniforms(
             camera.cy as f32 / h,
         ],
         dist: [
-            camera.d[0] as f32,
-            camera.d[1] as f32,
-            camera.d[2] as f32,
-            camera.d[3] as f32,
+            camera.distortion[0] as f32,
+            camera.distortion[1] as f32,
+            camera.distortion[2] as f32,
+            camera.distortion[3] as f32,
         ],
         color_scale: [1.0, 1.0, 1.0, 0.0],
         color_offset_blend: [0.0, 0.0, 0.0, blend_width],
@@ -1308,15 +1297,15 @@ mod tests {
 
     #[test]
     fn uniforms_are_normalized() {
-        let camera = CameraParams {
-            width: 3840,
-            height: 2160,
-            fx: 1796.32,
-            fy: 1797.22,
-            cx: 1919.37,
-            cy: 1063.17,
-            d: [0.0342, 0.0677, -0.0741, 0.0299],
-        };
+        let camera = Lens::fisheye(
+            3840,
+            2160,
+            1796.32,
+            1797.22,
+            1919.37,
+            1063.17,
+            [0.0342, 0.0677, -0.0741, 0.0299],
+        );
         let mvp = Matrix4::identity();
         let u = build_gpu_uniforms(
             &mvp,

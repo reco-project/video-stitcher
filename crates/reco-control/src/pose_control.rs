@@ -30,8 +30,8 @@
 //! // Per-frame smoothing tick:
 //! pose.tick();
 //! // (Optional) clamp current pose through the session's coverage:
-//! pose.clamp_via_coverage(core.coverage().unwrap(), aspect, rig_tilt);
-//! // Feed the renderer:
+//! pose.clamp_via_coverage(core.coverage().unwrap(), aspect);
+//! // Feed the renderer (world-space pose -> StitchRenderer::orient_pose):
 //! let vp = pose.current_pose();
 //! ```
 //!
@@ -51,6 +51,8 @@
 
 use reco_core::detect::director::ViewportPosition;
 use reco_core::projection::CoverageBoundary;
+
+use crate::{ControlIntent, PoseIntent};
 
 /// Hotkey actions consumers bind to their input system (OBS hotkey
 /// API, Slint key events, CLI keyboard, future SDL3 game-pad sidecar,
@@ -176,6 +178,13 @@ impl Default for PoseControlConfig {
 /// Owns two poses: `target` (what the input layer just wanted) and
 /// `current` (what the renderer should draw this frame). Each `tick`
 /// eases current toward target by `config.smoothing`.
+///
+/// Poses are stored in **world space** (the panorama's native frame,
+/// matching the AI/director path). The rig tilt+roll correction that
+/// keeps the horizon level under pan is applied at the render site by
+/// [`StitchRenderer::orient_pose`](reco_core::render::stitch_renderer::StitchRenderer::orient_pose),
+/// not here; coverage clamping ([`Self::clamp_via_coverage`]) is also
+/// world-space.
 #[derive(Debug, Clone)]
 pub struct PoseControl {
     target_yaw_rad: f32,
@@ -281,6 +290,47 @@ impl PoseControl {
         }
     }
 
+    /// Apply a [`ControlIntent`]: hotkeys route through
+    /// [`Self::apply_hotkey`]; pose intents set or nudge the target.
+    pub fn apply_intent(&mut self, intent: ControlIntent) {
+        match intent {
+            ControlIntent::Hotkey(h) => self.apply_hotkey(h),
+            ControlIntent::Pose(p) => self.apply_pose_intent(p),
+        }
+    }
+
+    fn apply_pose_intent(&mut self, intent: PoseIntent) {
+        let current = self.target_pose();
+        match intent {
+            PoseIntent::SetYawRad(yaw) => self.set_target(ViewportPosition {
+                yaw,
+                pitch: current.pitch,
+                fov_degrees: None,
+            }),
+            PoseIntent::SetPitchRad(pitch) => self.set_target(ViewportPosition {
+                yaw: current.yaw,
+                pitch,
+                fov_degrees: None,
+            }),
+            PoseIntent::SetFovDeg(fov) => self.set_target_fov(fov),
+            PoseIntent::DeltaYawRad(dy) => self.set_target(ViewportPosition {
+                yaw: current.yaw + dy,
+                pitch: current.pitch,
+                fov_degrees: None,
+            }),
+            PoseIntent::DeltaPitchRad(dp) => self.set_target(ViewportPosition {
+                yaw: current.yaw,
+                pitch: current.pitch + dp,
+                fov_degrees: None,
+            }),
+            PoseIntent::DeltaFovDeg(df) => {
+                let fov = current.fov_degrees.unwrap_or(self.current_fov_deg());
+                self.set_target_fov(fov + df);
+            }
+            PoseIntent::Reset => self.apply_hotkey(HotkeyIntent::Reset),
+        }
+    }
+
     /// Replace the target pose outright. Used when an external
     /// source (an AI director, a calibration reset, a replay seek)
     /// produces a pose the UI layer did not; current still eases to
@@ -291,20 +341,6 @@ impl PoseControl {
         if let Some(fov) = pose.fov_degrees {
             self.set_target_fov(fov);
         }
-    }
-
-    /// Reset both target and current to the configured rest pose.
-    /// Snaps (no smoothing); use [`HotkeyIntent::Reset`] if you want
-    /// an eased return.
-    pub fn snap_to_rest(&mut self) {
-        let rest = self.config.rest_pose;
-        let fov = rest.fov_degrees.unwrap_or(self.current_fov_deg);
-        self.target_yaw_rad = rest.yaw;
-        self.target_pitch_rad = rest.pitch;
-        self.target_fov_deg = fov;
-        self.current_yaw_rad = rest.yaw;
-        self.current_pitch_rad = rest.pitch;
-        self.current_fov_deg = fov;
     }
 
     /// Set the target FOV directly, in degrees. Clamped to the
@@ -327,9 +363,8 @@ impl PoseControl {
         self.tick_with(s);
     }
 
-    /// Advance with an explicit smoothing factor. Useful for
-    /// consumers that vary smoothing with delta-time or pause.
-    pub fn tick_with(&mut self, smoothing: f32) {
+    /// Advance with an explicit smoothing factor (called by [`Self::tick`]).
+    fn tick_with(&mut self, smoothing: f32) {
         let s = smoothing.clamp(0.0, 1.0);
         self.current_yaw_rad += (self.target_yaw_rad - self.current_yaw_rad) * s;
         self.current_pitch_rad += (self.target_pitch_rad - self.current_pitch_rad) * s;
@@ -343,14 +378,13 @@ impl PoseControl {
     /// Clamp both target and current pose through the session's
     /// coverage boundary, and narrow `config.fov_max_degrees` to
     /// `coverage.max_fov_degrees()`. This keeps the viewport inside
-    /// the no-black region the L-shape projection can actually
-    /// render. Safe to call every tick.
+    /// the no-black region the projection can render. Safe to call
+    /// every tick.
     ///
-    /// `rig_tilt` is the per-session tilt the renderer applies in
-    /// world space; PoseControl undoes that when writing the clamp
-    /// back so the target stays in user-space (matching how
-    /// `StitchCore::safe_clamp` returns it).
-    pub fn clamp_via_coverage(&mut self, coverage: &CoverageBoundary, aspect: f32, rig_tilt: f32) {
+    /// The stored poses are world-space (the panorama's native
+    /// coordinate frame, matching the AI/director path), so this is a
+    /// direct world-space clamp with no rig-tilt round-trip.
+    pub fn clamp_via_coverage(&mut self, coverage: &CoverageBoundary, aspect: f32) {
         // Coverage FOV ceiling for this pass, bounded by the configured
         // baseline. Applied transiently to target/current FOV; the config's
         // `fov_max_degrees` baseline is left untouched, so disabling
@@ -359,14 +393,10 @@ impl PoseControl {
         self.target_fov_deg = self.target_fov_deg.min(max_fov);
         self.current_fov_deg = self.current_fov_deg.min(max_fov);
 
-        // The inputs (target_*, current_*) are user-space. Coverage is
-        // world-space. `safe_clamp` with `rig_tilt` argument does the
-        // round-trip internally (simple `world = user + rig_tilt`
-        // offset, clamp, then `user = world - rig_tilt`). This matches
-        // the preview/GUI consumer pattern and the Model 3 render-site
-        // compensation in `render_pose`.
+        // target_*/current_* are world-space, as is the coverage
+        // boundary, so clamp directly (no human<->world mapping).
         let clamp = |yaw: f32, pitch: f32, fov: f32| -> (f32, f32) {
-            let clamped = coverage.safe_clamp(yaw, pitch, fov, aspect, rig_tilt);
+            let clamped = coverage.safe_clamp(yaw, pitch, fov, aspect);
             (clamped.yaw, clamped.pitch)
         };
         let (ty, tp) = clamp(
@@ -408,32 +438,6 @@ impl PoseControl {
         }
     }
 
-    /// Current pose with Model 3 rig_tilt render-site compensation
-    /// applied: `pitch + rig_tilt * (1 - cos(yaw))`.
-    ///
-    /// The renderer applies `rig_tilt` as a quaternion rotation of the
-    /// reference frame (renderer.rs view_matrix). Without this
-    /// compensation, the quaternion folds the tilt into pitch at yaw=0
-    /// and into roll at yaw=±π/2, making the horizon dip as the camera
-    /// pans. Pre-adding `rig_tilt * (1 - cos(yaw))` to the rendered
-    /// pitch keeps the effective world pitch constant across yaw —
-    /// i.e. the horizon stays level under pan. Validated empirically
-    /// on rig_tilt=15° XTU footage 2026-04-20.
-    ///
-    /// Consumers pass this pose's `yaw` and returned `pitch` directly
-    /// to `StitchRenderer::render_yuv` / render_to_target.
-    pub fn render_pose(&self, rig_tilt: f32) -> ViewportPosition {
-        ViewportPosition {
-            yaw: self.current_yaw_rad,
-            pitch: reco_core::lens::rig_correction::render_pitch(
-                self.current_yaw_rad,
-                self.current_pitch_rad,
-                rig_tilt,
-            ),
-            fov_degrees: Some(self.current_fov_deg),
-        }
-    }
-
     /// Current yaw in radians.
     pub fn current_yaw_rad(&self) -> f32 {
         self.current_yaw_rad
@@ -458,15 +462,6 @@ impl PoseControl {
     /// call [`PoseControl::clamp_via_coverage`] or [`PoseControl::tick`] afterward if needed.
     pub fn set_config(&mut self, config: PoseControlConfig) {
         self.config = config;
-    }
-
-    /// Set the max-FOV ceiling directly (e.g. after computing
-    /// `coverage.max_fov_degrees()` without running the full
-    /// [`PoseControl::clamp_via_coverage`]).
-    pub fn set_fov_max_degrees(&mut self, max_deg: f32) {
-        self.config.fov_max_degrees = max_deg;
-        self.target_fov_deg = self.target_fov_deg.min(max_deg);
-        self.current_fov_deg = self.current_fov_deg.min(max_deg);
     }
 }
 
@@ -663,31 +658,29 @@ mod tests {
         assert_eq!(p.target_fov_deg, 60.0);
     }
 
-    // ---- snap_to_rest -------------------------------------------------
+    // ---- apply_intent -------------------------------------------------
 
     #[test]
-    fn snap_to_rest_zeroes_both_target_and_current() {
+    fn apply_intent_hotkey_routes_to_pose() {
         let mut p = fresh();
-        p.apply_drag(1000.0, 500.0);
-        for _ in 0..20 {
-            p.tick();
-        }
-        p.snap_to_rest();
-        let rest = p.config.rest_pose;
-        assert!((p.target_yaw_rad - rest.yaw).abs() < 1e-6);
-        assert!((p.current_yaw_rad - rest.yaw).abs() < 1e-6);
+        let before = p.target_yaw_rad;
+        p.apply_intent(ControlIntent::Hotkey(HotkeyIntent::YawRight));
+        assert!(p.target_yaw_rad > before);
     }
 
-    // ---- FOV max shrink -----------------------------------------------
+    #[test]
+    fn apply_intent_pose_delta_adds_to_target() {
+        let mut p = fresh();
+        let start = p.target_yaw_rad;
+        p.apply_intent(ControlIntent::Pose(PoseIntent::DeltaYawRad(0.1)));
+        assert!((p.target_yaw_rad - (start + 0.1)).abs() < 1e-5);
+    }
 
     #[test]
-    fn set_fov_max_clamps_existing_values() {
+    fn apply_intent_pose_reset_restores_rest() {
         let mut p = fresh();
-        p.set_target_fov(100.0);
-        p.tick_with(1.0);
-        assert_eq!(p.current_fov_deg, 100.0);
-        p.set_fov_max_degrees(80.0);
-        assert_eq!(p.target_fov_deg, 80.0);
-        assert_eq!(p.current_fov_deg, 80.0);
+        p.apply_intent(ControlIntent::Hotkey(HotkeyIntent::YawRight));
+        p.apply_intent(ControlIntent::Pose(PoseIntent::Reset));
+        assert!((p.target_yaw_rad - p.config.rest_pose.yaw).abs() < 1e-5);
     }
 }

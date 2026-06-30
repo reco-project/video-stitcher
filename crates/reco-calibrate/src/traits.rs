@@ -7,7 +7,7 @@
 //! ## Pipeline stages
 //!
 //! ```text
-//! Images -> FeatureDetector -> FeatureMatcher -> PointFilter -> CostFunction + Optimizer -> PlaneLayout
+//! Images -> FeatureDetector -> FeatureMatcher -> PointFilter -> CostFunction + Optimizer -> Topology
 //! ```
 //!
 //! ## Standalone usage

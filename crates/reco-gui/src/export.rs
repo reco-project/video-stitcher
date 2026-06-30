@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use reco_core::calibration::MatchCalibration;
+use reco_core::calibration::Calibration;
 
 use crate::RecoApp;
 
@@ -107,7 +107,7 @@ impl reco_core::telemetry::TelemetrySink for ExportTelemetrySink {
 pub fn run_export(
     left: reco_io::stitch_job::InputPath,
     right: reco_io::stitch_job::InputPath,
-    cal: MatchCalibration,
+    cal: Calibration,
     output: PathBuf,
     stream_url: Option<String>,
     replay_enabled: bool,

@@ -226,7 +226,7 @@ impl StitchSession {
     /// tweaking during preview or live operation. Delegates to
     /// `StitchCore::update_calibration` which re-derives the coverage
     /// boundary in one call.
-    pub fn update_calibration(&mut self, calibration: crate::calibration::MatchCalibration) {
+    pub fn update_calibration(&mut self, calibration: crate::calibration::Calibration) {
         self.core.update_calibration(calibration);
     }
 

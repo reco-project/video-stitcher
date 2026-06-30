@@ -6,6 +6,7 @@
 use reco_calibrate::geometry;
 use reco_calibrate::optimizer;
 use reco_calibrate::types::{CalibrationConfig, MatchedPoint};
+use reco_core::calibration::{Calibration, Lens};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -42,14 +43,14 @@ fn main() {
     let config = CalibrationConfig::default();
 
     match optimizer::optimize(&points, &config) {
-        Ok((layout, residual)) => {
+        Ok((topology, framing, residual)) => {
             eprintln!("\nRust optimizer result:");
-            eprintln!("  cameraAxisOffset: {:.6}", layout.camera_axis_offset);
-            eprintln!("  intersect:        {:.6}", layout.intersect);
-            eprintln!("  xTy:              {:.6}", layout.x_ty);
-            eprintln!("  xRz:              {:.6}", layout.x_rz);
-            eprintln!("  zRx:              {:.6}", layout.z_rx);
-            eprintln!("  zRz:              {:.6}", layout.z_rz);
+            eprintln!("  cameraAxisOffset: {:.6}", framing.axis_offset);
+            eprintln!("  intersect:        {:.6}", topology.intersect);
+            eprintln!("  xTy:              {:.6}", topology.x_ty);
+            eprintln!("  xRz:              {:.6}", topology.x_rz);
+            eprintln!("  zRx:              {:.6}", topology.z_rx);
+            eprintln!("  zRz:              {:.6}", topology.z_rz);
             eprintln!("  residual:         {:.6}", residual);
 
             // Compare with v1 reference
@@ -65,31 +66,25 @@ fn main() {
             let v1_err = geometry::angular_error(&points, &v1);
             eprintln!("\n  v1 reference residual: {:.6}", v1_err);
 
-            // Output as JSON
-            let json = serde_json::json!({
-                "left_uniforms": {
-                    "width": 3840, "height": 2160,
-                    "fx": 1796.3208206894308, "fy": 1797.22277342282,
-                    "cx": 1919.372365976781, "cy": 1063.171593155705,
-                    "d": [0.034213889574164644, 0.06767320765357862, -0.07408969996955275, 0.029944425249175583]
-                },
-                "right_uniforms": {
-                    "width": 3840, "height": 2160,
-                    "fx": 1796.3208206894308, "fy": 1797.22277342282,
-                    "cx": 1919.372365976781, "cy": 1063.171593155705,
-                    "d": [0.034213889574164644, 0.06767320765357862, -0.07408969996955275, 0.029944425249175583]
-                },
-                "params": {
-                    "cameraAxisOffset": layout.camera_axis_offset,
-                    "intersect": layout.intersect,
-                    "xTy": layout.x_ty,
-                    "xRz": layout.x_rz,
-                    "zRx": layout.z_rx,
-                    "zRz": layout.z_rz,
-                },
-                "sync_offset": 67
-            });
-            println!("{}", serde_json::to_string_pretty(&json).unwrap());
+            // Emit a current-schema calibration (loadable by `reco stitch -c`).
+            let lens = || {
+                Lens::fisheye(
+                    3840,
+                    2160,
+                    1796.3208206894308,
+                    1797.22277342282,
+                    1919.372365976781,
+                    1063.171593155705,
+                    [
+                        0.034213889574164644,
+                        0.06767320765357862,
+                        -0.07408969996955275,
+                        0.029944425249175583,
+                    ],
+                )
+            };
+            let cal = Calibration::new(vec![lens(), lens()], topology, framing);
+            println!("{}", cal.to_json_pretty());
         }
         Err(e) => eprintln!("Optimization failed: {e}"),
     }

@@ -24,11 +24,12 @@ use super::pipeline::{Nv12Planes, PipelineError, StitchPipeline, YuvPlanes};
 use super::renderer::InputFormat;
 use super::scene::SceneGeometry;
 use super::viewport::ViewportConfig;
-use crate::calibration::MatchCalibration;
+use crate::calibration::Calibration;
+use crate::detect::director::ViewportPosition;
 use crate::gpu::GpuContext;
 use crate::gpu::nv12_converter::Nv12Converter;
 use crate::gpu::rgba_readback::RgbaReadback;
-use crate::projection::CoverageBoundary;
+use crate::projection::{CoverageBoundary, VirtualCamera};
 
 /// Where to render the stitched panorama.
 ///
@@ -84,7 +85,7 @@ impl StitchRenderer {
     ///   ([`Yuv420p`](InputFormat::Yuv420p) for file decode,
     ///   [`Nv12`](InputFormat::Nv12) for Jetson/NVDEC live input).
     pub fn new(
-        calibration: MatchCalibration,
+        calibration: Calibration,
         gpu: GpuContext,
         viewport: ViewportConfig,
         input_width: u32,
@@ -94,8 +95,8 @@ impl StitchRenderer {
     ) -> Result<Self, PipelineError> {
         let render_format = Self::strip_srgb(surface_format);
 
-        let aspect = calibration.left.width as f32 / calibration.left.height as f32;
-        let scene = SceneGeometry::from_layout_with_aspect(&calibration.layout, aspect);
+        let aspect = calibration.lenses[0].width as f32 / calibration.lenses[0].height as f32;
+        let scene = SceneGeometry::new(&calibration.topology, &calibration.framing, aspect);
         let coverage = CoverageBoundary::from_calibration(&calibration, &scene);
 
         let pipeline = StitchPipeline::with_gpu(
@@ -332,23 +333,28 @@ impl StitchRenderer {
         &self.coverage
     }
 
-    /// Clamp a viewport pose to the coverage boundary, accounting for
-    /// the current rig tilt. Consumers should call this instead of
-    /// accessing coverage + rig_tilt separately.
-    pub fn clamp_pose(
-        &self,
-        yaw: f32,
-        pitch: f32,
-        fov_degrees: f32,
-        aspect: f32,
-    ) -> crate::projection::ClampedPosition {
-        self.coverage.safe_clamp(
+    /// Orient a world-space pose into the render-space `(yaw, pitch)` the
+    /// `view_matrix` consumes, applying the rig tilt+roll basis so the
+    /// horizon stays level under pan (roll-aware). This is the single
+    /// render-site entry interactive consumers (GUI, CLI preview) call.
+    ///
+    /// Coverage clamping is a separate, gated concern (see
+    /// `PoseControl::clamp_via_coverage`); this only orients.
+    pub fn orient_pose(&self, world: ViewportPosition) -> ViewportPosition {
+        let framing = &self.pipeline.calibration().framing;
+        let cam = VirtualCamera::new(&self.pipeline.scene.camera_position);
+        let (yaw, pitch) = crate::lens::rig_correction::world_to_render_pose(
+            &cam,
+            world.yaw,
+            world.pitch,
+            framing.tilt as f32,
+            framing.roll as f32,
+        );
+        ViewportPosition {
             yaw,
             pitch,
-            fov_degrees,
-            aspect,
-            self.pipeline.viewport.rig_tilt,
-        )
+            fov_degrees: world.fov_degrees,
+        }
     }
 
     /// Maximum vertical FOV (degrees) that fits within the coverage area.
@@ -378,17 +384,24 @@ impl StitchRenderer {
     ///
     /// Takes effect on the next render call. Useful for interactive
     /// calibration preview where the user adjusts sliders.
-    pub fn update_calibration(&mut self, calibration: crate::calibration::MatchCalibration) {
+    pub fn update_calibration(&mut self, calibration: crate::calibration::Calibration) {
         self.pipeline.update_calibration(calibration);
         self.coverage =
             CoverageBoundary::from_calibration(self.pipeline.calibration(), &self.pipeline.scene);
     }
 
-    /// Update only the plane layout and recompute coverage.
-    pub fn update_layout(&mut self, layout: crate::calibration::PlaneLayout) {
-        self.pipeline.update_layout(layout);
-        self.coverage =
-            CoverageBoundary::from_calibration(self.pipeline.calibration(), &self.pipeline.scene);
+    /// Replace the topology (plane placement + seam) and recompute coverage.
+    pub fn update_topology(&mut self, topology: crate::calibration::Topology) {
+        let mut cal = self.pipeline.calibration().clone();
+        cal.topology = topology;
+        self.update_calibration(cal);
+    }
+
+    /// Replace the framing (axis offset, tilt, roll) and recompute coverage.
+    pub fn update_framing(&mut self, framing: crate::calibration::Framing) {
+        let mut cal = self.pipeline.calibration().clone();
+        cal.framing = framing;
+        self.update_calibration(cal);
     }
 
     /// Replace one or both cameras' intrinsics (focal, principal point,
@@ -402,27 +415,27 @@ impl StitchRenderer {
     /// lens but not how the stitched planes are arranged in world space.
     pub fn update_camera_params(
         &mut self,
-        left: Option<crate::calibration::CameraParams>,
-        right: Option<crate::calibration::CameraParams>,
+        left: Option<crate::calibration::Lens>,
+        right: Option<crate::calibration::Lens>,
     ) {
         self.pipeline.update_camera_params(left, right);
     }
 
     /// Set the seam blend width (0.0 = hard edge, 0.15 = default smooth blend).
     pub fn set_blend_width(&mut self, w: f32) {
-        self.pipeline.viewport.blend_width = w;
+        self.pipeline.set_blend_width(w);
     }
 
     pub fn set_rig_tilt(&mut self, radians: f32) {
-        self.pipeline.viewport.rig_tilt = radians;
+        self.pipeline.set_rig_tilt(radians);
     }
 
     pub fn set_rig_roll(&mut self, radians: f32) {
-        self.pipeline.viewport.rig_roll = radians;
+        self.pipeline.set_rig_roll(radians);
     }
 
     /// Access the current calibration (for saving after adjustments).
-    pub fn calibration(&self) -> &crate::calibration::MatchCalibration {
+    pub fn calibration(&self) -> &crate::calibration::Calibration {
         self.pipeline.calibration()
     }
 

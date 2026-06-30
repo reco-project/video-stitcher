@@ -39,11 +39,11 @@
 //! ## Usage
 //!
 //! ```rust,no_run
-//! use reco_core::calibration::MatchCalibration;
+//! use reco_core::calibration::Calibration;
 //!
 //! // Load calibration from a v1-compatible JSON file
 //! let json = std::fs::read_to_string("match.json").unwrap();
-//! let calibration: MatchCalibration = serde_json::from_str(&json).unwrap();
+//! let calibration: Calibration = serde_json::from_str(&json).unwrap();
 //! ```
 
 /// Create a tracing span guard (no-op when `profiling` feature is disabled).
@@ -90,4 +90,5 @@ pub mod projection;
 pub mod render;
 pub mod session;
 pub mod source;
+pub mod stitch;
 pub mod telemetry;

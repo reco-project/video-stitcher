@@ -17,7 +17,7 @@
 //! 2. Aspect ratio: brand + model + same aspect ratio, closest resolution
 //! 3. Any: brand + model, any resolution (with scaling)
 
-use reco_core::calibration::CameraParams;
+use reco_core::calibration::Lens;
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
@@ -51,7 +51,7 @@ struct ProfileEntry {
     /// Calibration height.
     height: u32,
     /// Parsed camera parameters.
-    params: CameraParams,
+    params: Lens,
 }
 
 /// Lens profile database.
@@ -148,7 +148,7 @@ impl LensDatabase {
         width: u32,
         height: u32,
         lens_info: Option<&str>,
-    ) -> Option<(CameraParams, LensProfileInfo)> {
+    ) -> Option<(Lens, LensProfileInfo)> {
         let key = normalize_camera_key(brand, model);
         // Try exact model first, then strip variant suffixes to find the
         // parent model (e.g. "HERO11 Black Mini" -> "HERO11 Black").
@@ -275,14 +275,16 @@ impl LensDatabase {
                 p.lens_model,
                 p.source
             );
-            let params = CameraParams {
+            let params = Lens {
+                id: String::new(),
                 width,
                 height,
                 fx: p.params.fx * scale,
                 fy: p.params.fy * scale,
                 cx: p.params.cx * scale,
                 cy: p.params.cy * scale,
-                d: p.params.d, // distortion coeffs are scale-invariant
+                distortion: p.params.distortion, // scale-invariant
+                correction: 1.0,
             };
             let info = LensProfileInfo {
                 camera: format_camera_name(&p.brand, &p.model),
@@ -311,7 +313,7 @@ impl LensDatabase {
         width: u32,
         height: u32,
         lens_info: Option<&str>,
-    ) -> Option<(CameraParams, LensProfileInfo)> {
+    ) -> Option<(Lens, LensProfileInfo)> {
         let model = camera_model.unwrap_or(camera_type);
         self.find(camera_type, model, width, height, lens_info)
     }
@@ -321,11 +323,7 @@ impl LensDatabase {
     /// Searches all profiles for an exact resolution match. If multiple
     /// cameras share the same resolution, returns the first match.
     /// This is the last-resort fallback when telemetry extraction fails.
-    pub fn find_by_resolution(
-        &self,
-        width: u32,
-        height: u32,
-    ) -> Option<(CameraParams, LensProfileInfo)> {
+    pub fn find_by_resolution(&self, width: u32, height: u32) -> Option<(Lens, LensProfileInfo)> {
         for p in &self.profiles {
             if p.width == width && p.height == height {
                 log::warn!(
@@ -475,9 +473,9 @@ impl LensDatabase {
         models
     }
 
-    /// Load the full `CameraParams` for a profile identified by its
+    /// Load the full `Lens` for a profile identified by its
     /// summary fields. Returns `None` if no exact match is found.
-    pub fn load_by_summary(&self, summary: &LensProfileSummary) -> Option<CameraParams> {
+    pub fn load_by_summary(&self, summary: &LensProfileSummary) -> Option<Lens> {
         self.profiles
             .iter()
             .find(|p| {
@@ -562,19 +560,19 @@ fn format_lens_name(lens_model: &str, camera_setting: &str) -> String {
 /// - Gyroflow with fisheye_params wrapper
 ///
 /// This is the standard way to load a manually-specified lens profile.
-pub fn load_from_file(path: &Path) -> Result<CameraParams, LensLoadError> {
+pub fn load_from_file(path: &Path) -> Result<Lens, LensLoadError> {
     let json_str = std::fs::read_to_string(path).map_err(|e| LensLoadError::Io(e.to_string()))?;
     load_from_json(&json_str, path.display().to_string().as_str())
 }
 
 /// Load a camera profile from a JSON string.
-pub fn load_from_json(json_str: &str, source: &str) -> Result<CameraParams, LensLoadError> {
+pub fn load_from_json(json_str: &str, source: &str) -> Result<Lens, LensLoadError> {
     let v: serde_json::Value =
         serde_json::from_str(json_str).map_err(|e| LensLoadError::Parse(e.to_string()))?;
 
     // v1 uniforms format (flat with fx/fy/cx/cy/d)
     if v.get("fx").is_some() && v.get("d").is_some() {
-        return serde_json::from_str::<CameraParams>(json_str)
+        return serde_json::from_str::<Lens>(json_str)
             .map_err(|e| LensLoadError::Parse(e.to_string()));
     }
 
@@ -604,7 +602,7 @@ pub fn detect_profile(
     video_height: u32,
     db: &LensDatabase,
     cached_telemetry: Option<&crate::telemetry::TelemetryData>,
-) -> Option<(CameraParams, LensProfileInfo)> {
+) -> Option<(Lens, LensProfileInfo)> {
     let extracted: Option<crate::telemetry::TelemetryData> = if cached_telemetry.is_some() {
         None
     } else {
@@ -762,19 +760,21 @@ fn parse_profile_value(v: &serde_json::Value, source: &str) -> Option<ProfileEnt
         camera_setting,
         width,
         height,
-        params: CameraParams {
+        params: Lens {
+            id: String::new(),
             width,
             height,
             fx,
             fy,
             cx,
             cy,
-            d: [
+            distortion: [
                 dc[0].as_f64().unwrap_or(0.0),
                 dc[1].as_f64().unwrap_or(0.0),
                 dc[2].as_f64().unwrap_or(0.0),
                 dc[3].as_f64().unwrap_or(0.0),
             ],
+            correction: 1.0,
         },
     })
 }

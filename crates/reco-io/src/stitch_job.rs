@@ -112,7 +112,7 @@ enum CalibrationSource {
     /// Load from a JSON file path.
     File(PathBuf),
     /// Use an in-memory calibration (no file I/O).
-    Memory(Box<reco_core::calibration::MatchCalibration>),
+    Memory(Box<reco_core::calibration::Calibration>),
 }
 
 /// Input video file path(s), supporting chained/segmented recordings.
@@ -263,7 +263,7 @@ impl StitchJob {
     pub fn with_calibration(
         left: impl Into<InputPath>,
         right: impl Into<InputPath>,
-        calibration: reco_core::calibration::MatchCalibration,
+        calibration: reco_core::calibration::Calibration,
         output: impl AsRef<Path>,
     ) -> Self {
         let mut job = Self::new(left, right, Path::new(""), output);
@@ -546,9 +546,9 @@ impl StitchJob {
         let start = std::time::Instant::now();
 
         // Load calibration
-        let cal = match self.calibration {
+        let mut cal = match self.calibration {
             CalibrationSource::File(ref path) => {
-                reco_core::calibration::MatchCalibration::from_file(path)
+                reco_core::calibration::Calibration::from_file(path)
                     .map_err(|e| StitchError::Calibration(format!("{e}")))?
             }
             CalibrationSource::Memory(cal) => *cal,
@@ -583,13 +583,12 @@ impl StitchJob {
             reco_core::render::renderer::InputFormat::Yuv420p
         };
 
-        // Build session
+        // Build session. The job's blend width lives on the calibration now;
+        // rig tilt/roll are read straight from it by the stitch.
+        cal.topology.blend_width = self.blend_width;
         let viewport = reco_core::render::viewport::ViewportConfig {
             width: out_w,
             height: out_h,
-            blend_width: self.blend_width,
-            rig_tilt: cal.rig_tilt as f32,
-            rig_roll: cal.rig_roll as f32,
             ..Default::default()
         };
         let session_config = reco_core::session::types::SessionConfig {

@@ -30,12 +30,6 @@ remove per-call boilerplate across GUI and CLI.
 **Impact**: Low. `as_yuv420p()` returning `Option<(YuvPlanes, YuvPlanes)>`
 would centralize the destructure done in 5+ sites.
 
-### N15. PoseControl requires manual rig_tilt threading
-
-**Impact**: High. Caused a constrained-look regression. Consumers must
-pass rig_tilt to both `clamp_via_coverage` and `render_pose` on every
-tick. The renderer should own the pose state machine.
-
 ### N16. Recording lags preview and drops frames during panning
 
 **Impact**: High. NV12 readback runs on the UI thread, stalling the
