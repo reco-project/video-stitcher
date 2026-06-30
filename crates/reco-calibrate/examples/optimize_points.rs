@@ -6,6 +6,7 @@
 use reco_calibrate::geometry;
 use reco_calibrate::optimizer;
 use reco_calibrate::types::{CalibrationConfig, MatchedPoint};
+use reco_core::calibration::{Calibration, Lens};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -65,31 +66,25 @@ fn main() {
             let v1_err = geometry::angular_error(&points, &v1);
             eprintln!("\n  v1 reference residual: {:.6}", v1_err);
 
-            // Output as JSON
-            let json = serde_json::json!({
-                "left_uniforms": {
-                    "width": 3840, "height": 2160,
-                    "fx": 1796.3208206894308, "fy": 1797.22277342282,
-                    "cx": 1919.372365976781, "cy": 1063.171593155705,
-                    "d": [0.034213889574164644, 0.06767320765357862, -0.07408969996955275, 0.029944425249175583]
-                },
-                "right_uniforms": {
-                    "width": 3840, "height": 2160,
-                    "fx": 1796.3208206894308, "fy": 1797.22277342282,
-                    "cx": 1919.372365976781, "cy": 1063.171593155705,
-                    "d": [0.034213889574164644, 0.06767320765357862, -0.07408969996955275, 0.029944425249175583]
-                },
-                "params": {
-                    "cameraAxisOffset": framing.axis_offset,
-                    "intersect": topology.intersect,
-                    "xTy": topology.x_ty,
-                    "xRz": topology.x_rz,
-                    "zRx": topology.z_rx,
-                    "zRz": topology.z_rz,
-                },
-                "sync_offset": 67
-            });
-            println!("{}", serde_json::to_string_pretty(&json).unwrap());
+            // Emit a current-schema calibration (loadable by `reco stitch -c`).
+            let lens = || {
+                Lens::fisheye(
+                    3840,
+                    2160,
+                    1796.3208206894308,
+                    1797.22277342282,
+                    1919.372365976781,
+                    1063.171593155705,
+                    [
+                        0.034213889574164644,
+                        0.06767320765357862,
+                        -0.07408969996955275,
+                        0.029944425249175583,
+                    ],
+                )
+            };
+            let cal = Calibration::new(vec![lens(), lens()], topology, framing);
+            println!("{}", cal.to_json_pretty());
         }
         Err(e) => eprintln!("Optimization failed: {e}"),
     }

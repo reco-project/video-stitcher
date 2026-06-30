@@ -52,7 +52,7 @@ The project is a Cargo workspace with nine crates:
 - **reco-detect** - AI detection (ORT, TensorRT, NCNN, CoreML)
 - **reco-autocam** - AI camera control
 - **reco-calibrate** - Stereo calibration
-- **reco-control** - Input transport (keyboard, gamepad, mobile, WebSocket)
+- **reco-control** - Operator pose-control state machine + intent dispatch
 - **reco-cli** - CLI binary
 - **reco-gui** - Slint desktop GUI
 - **reco-obs** - OBS Studio source plugin

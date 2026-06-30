@@ -1,24 +1,24 @@
 # reco-control
 
-Transport-agnostic operator-intent vocabulary.
+Operator pose-control state machine and intent dispatch.
 
 ## Why it exists
 
-Every operator surface — keyboard shortcuts, GoPro USB buttons, a mobile companion app, a WebSocket bridge — translates raw input into the same set of intents: pan a bit, zoom in, toggle constrained-look, kick off capture, switch detection model. Duplicating that translation three times is the friction reco-control removes.
+The 2026-04-18 deep review found consumer input paths duplicated three ways across reco-cli/preview, reco-gui, and reco-obs: different key mappings, different pan sensitivity, different units. This crate removes that duplication so every surface drives the viewport the same way.
 
 ## What it owns
 
-- **`ControlIntent` enum** — `Hotkey`, `Pose`, `Quality`, `Capture`, `ModelSelect`, plus `Extension(Box<dyn Any>)` for forward-compat.
-- **`ControlTransport` trait** — any transport (keyboard, USB, mobile, WebSocket) is a stream of `ControlIntent`.
-- **`KeyboardTransport`** (`keyboard` feature, default) — the one shipping transport today: reco-obs and reco-gui key events become `ControlIntent`s, dispatched to `PoseControl` / `StitchCore` / encoder.
+- **`PoseControl`** - the unified mouse / drag / wheel / keyboard -> yaw / pitch / FOV state machine. Stores the pose in world space and eases `current` toward `target` each tick. The single source of truth for viewport panning across consumers. The rig tilt/roll correction that keeps the horizon level is applied at the render site by `reco_core::render::stitch_renderer::StitchRenderer::orient_pose`, not here.
+- **`ControlIntent`** - a small intent vocabulary (`Hotkey`, `Pose`) for surfaces that speak a higher level than raw mouse deltas.
+- **`IntentTranslator`** - dispatches a `ControlIntent` stream onto a borrowed `PoseControl`.
 
-## Placeholder transports
+## Optional: GoPro device helper
 
-`gopro`, `mobile`, `websocket` features each gate a module whose functions are `todo!()`. They exist so the feature-combo CI matrix exercises the gates and so future work has an obvious target path.
+The `gopro` feature (off by default) gates an OpenGoPro HTTP helper to drive a GoPro as a command target (start/stop recording, sync settings, query status). It is a device helper, not part of the pose-control core, and pulls in `reqwest`/`tokio`.
 
 ## Build
 
 ```bash
-cargo build -p reco-control                                    # keyboard only
-cargo build -p reco-control --features keyboard,gopro,mobile,websocket  # all placeholders
+cargo build -p reco-control                  # pose control + intent dispatch
+cargo build -p reco-control --features gopro # adds the GoPro device helper
 ```

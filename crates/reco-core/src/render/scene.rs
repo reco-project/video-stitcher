@@ -17,7 +17,7 @@
 //!             │  Camera  ││
 //!             └──────────┘│
 //!                         │
-//!   Camera at [d, 0, d] where d = camera_axis_offset
+//!   Camera at [d, 0, d] where d = framing.axis_offset
 //! ```
 
 use crate::calibration::{Framing, Topology};

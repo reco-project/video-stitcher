@@ -6,9 +6,9 @@
 //! `wgpu::Texture` per frame with `RENDER_ATTACHMENT | TEXTURE_BINDING`
 //! so the result can be handed to a UI framework as a zero-copy image.
 //!
-//! The `lens_correction_amount` parameter (0.0 to 1.0) lets users
-//! visually evaluate how much the lens profile contributes: 1.0 is
-//! full KB4 correction, 0.0 is raw (pinhole projection).
+//! The correction amount (0.0 to 1.0, the per-lens `Lens.correction`)
+//! lets users visually evaluate how much the lens profile contributes:
+//! 1.0 is full KB4 correction, 0.0 is raw (pinhole projection).
 
 use crate::calibration::Lens;
 use crate::gpu::GpuContext;

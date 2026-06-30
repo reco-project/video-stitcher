@@ -1,7 +1,7 @@
 //! Fuzz target: calibration JSON parser + validator.
 //!
-//! Feeds arbitrary bytes to `serde_json::from_slice::<MatchCalibration>`
-//! followed by `MatchCalibration::validate`. Exercises two attack
+//! Feeds arbitrary bytes to `serde_json::from_slice::<Calibration>`
+//! followed by `Calibration::validate`. Exercises two attack
 //! surfaces at once:
 //!
 //! 1. serde_json deserialization (zip bomb / depth / overflow parse).
@@ -21,8 +21,7 @@ fuzz_target!(|data: &[u8]| {
         // waste cycles on inputs we'd reject at the size check.
         return;
     }
-    if let Ok(parsed) = serde_json::from_slice::<reco_core::calibration::MatchCalibration>(data)
-    {
+    if let Ok(parsed) = serde_json::from_slice::<reco_core::calibration::Calibration>(data) {
         // validate() is the only non-parse-time invariant check. A
         // malicious calibration that parses cleanly but fails validate
         // must never panic here - only return the structured error.

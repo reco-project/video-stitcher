@@ -12,6 +12,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 reco-core = { path = "../crates/reco-core" }
 reco-detect = { path = "../crates/reco-detect" }
+serde_json = "1"
 
 # Intentionally not part of the main workspace - libfuzzer-sys uses
 # nightly-only compiler flags (SanitizerKind::Address, etc.) that
