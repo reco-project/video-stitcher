@@ -5,8 +5,8 @@
 //!
 //! Consumers (reco-gui, reco-cli preview, reco-obs) feed input events to
 //! a single [`pose_control::PoseControl`] and, where they speak a higher
-//! level vocabulary, dispatch [`ControlIntent`] values through
-//! [`IntentTranslator`] onto that pose control.
+//! level vocabulary, apply [`ControlIntent`] values via
+//! [`PoseControl::apply_intent`](pose_control::PoseControl::apply_intent).
 //!
 //! # Why this crate
 //!
@@ -14,8 +14,8 @@
 //! duplicated three ways across reco-cli/preview, reco-gui, and reco-obs
 //! (different key mappings, different pan sensitivity, different units).
 //! [`PoseControl`](pose_control::PoseControl) fixes the state-machine
-//! duplication; [`ControlIntent`] + [`IntentTranslator`] fix the
-//! dispatch-vocabulary duplication for the pose actions consumers share.
+//! duplication; [`ControlIntent`] fixes the dispatch-vocabulary
+//! duplication for the pose actions consumers share.
 
 #![deny(unsafe_code)]
 
@@ -24,11 +24,6 @@
 /// keyboard -> yaw/pitch/FOV translation across consumers.
 pub mod pose_control;
 
-/// Central dispatcher from [`ControlIntent`] to
-/// [`pose_control::PoseControl`].
-pub mod intent_translator;
-
-pub use intent_translator::IntentTranslator;
 use pose_control::HotkeyIntent;
 
 // ---------------------------------------------------------------------------
@@ -37,8 +32,8 @@ use pose_control::HotkeyIntent;
 
 /// An operator pose action, independent of how it was triggered.
 /// Consumers translate their native events (keystrokes, game-pad
-/// buttons, mobile touch) into these and dispatch them via
-/// [`IntentTranslator`].
+/// buttons, mobile touch) into these and apply them via
+/// [`PoseControl::apply_intent`](pose_control::PoseControl::apply_intent).
 ///
 /// `#[non_exhaustive]` so new intent categories can be added without
 /// breaking every consumer's match arm.

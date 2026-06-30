@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use reco_control::pose_control::HotkeyIntent;
-use reco_control::{ControlIntent, IntentTranslator, PoseIntent};
+use reco_control::{ControlIntent, PoseIntent};
 use reco_core::encoder::{Encoder, OutputFrame, PixelFormat};
 use reco_core::render::stitch_renderer::StitchRenderer;
 use reco_core::source::{FrameSource, YuvData};
@@ -577,27 +577,31 @@ impl ApplicationHandler for App {
                             event_loop.exit();
                         }
                         PhysicalKey::Code(KeyCode::ArrowLeft) => {
-                            IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(
-                                PoseIntent::DeltaYawRad(ARROW_PAN_STEP),
-                            ));
+                            self.pose
+                                .apply_intent(ControlIntent::Pose(PoseIntent::DeltaYawRad(
+                                    ARROW_PAN_STEP,
+                                )));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowRight) => {
-                            IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(
-                                PoseIntent::DeltaYawRad(-ARROW_PAN_STEP),
-                            ));
+                            self.pose
+                                .apply_intent(ControlIntent::Pose(PoseIntent::DeltaYawRad(
+                                    -ARROW_PAN_STEP,
+                                )));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowUp) => {
-                            IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(
-                                PoseIntent::DeltaPitchRad(ARROW_PAN_STEP),
-                            ));
+                            self.pose
+                                .apply_intent(ControlIntent::Pose(PoseIntent::DeltaPitchRad(
+                                    ARROW_PAN_STEP,
+                                )));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::ArrowDown) => {
-                            IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(
-                                PoseIntent::DeltaPitchRad(-ARROW_PAN_STEP),
-                            ));
+                            self.pose
+                                .apply_intent(ControlIntent::Pose(PoseIntent::DeltaPitchRad(
+                                    -ARROW_PAN_STEP,
+                                )));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Space) => {
@@ -622,13 +626,13 @@ impl ApplicationHandler for App {
                             }
                         }
                         PhysicalKey::Code(KeyCode::Equal | KeyCode::NumpadAdd) => {
-                            IntentTranslator::new(&mut self.pose)
-                                .dispatch(ControlIntent::Hotkey(HotkeyIntent::ZoomIn));
+                            self.pose
+                                .apply_intent(ControlIntent::Hotkey(HotkeyIntent::ZoomIn));
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Minus | KeyCode::NumpadSubtract) => {
-                            IntentTranslator::new(&mut self.pose)
-                                .dispatch(ControlIntent::Hotkey(HotkeyIntent::ZoomOut));
+                            self.pose
+                                .apply_intent(ControlIntent::Hotkey(HotkeyIntent::ZoomOut));
                             self.needs_redraw = true;
                         }
                         // Calibration adjustment keys

@@ -273,83 +273,6 @@ pub fn camera_to_panorama(
     Some(direction_to_yaw_pitch(&dir, &scene.camera_position))
 }
 
-/// Map a panorama position (yaw/pitch) back to a camera pixel coordinate.
-///
-/// This is the inverse of [`camera_to_panorama`]. Given a position in the
-/// panoramic view, returns the corresponding normalized pixel coordinate
-/// in the specified camera's image (or `None` if the position is outside
-/// that camera's field of view).
-///
-/// Useful for:
-/// - Projecting panorama-space detections back to camera images
-/// - Computing panorama-to-pitch coordinate transforms (consumer territory)
-/// - Overlay placement at specific panorama positions
-pub fn panorama_to_camera(
-    yaw: f32,
-    pitch: f32,
-    camera: CameraId,
-    calibration: &Calibration,
-    scene: &SceneGeometry,
-) -> Option<(f32, f32)> {
-    use nalgebra::{Point3, Vector3};
-
-    let params = match camera {
-        CameraId::Left => &calibration.lenses[0],
-        CameraId::Right => &calibration.lenses[1],
-    };
-
-    // Step 1: yaw/pitch -> world ray direction, through the same
-    // VirtualCamera basis camera_to_panorama uses. Step 2 replaced
-    // the previous naive "+Z forward" formula that broke the
-    // Forward A vs Forward C roundtrip.
-    let cam = VirtualCamera::new(&scene.camera_position);
-    let dir = cam.yaw_pitch_to_direction(yaw, pitch);
-    let cam_pos = Point3::from(cam.eye);
-
-    // Step 2: ray-plane intersection.
-    let model = match camera {
-        CameraId::Left => scene.model_matrix_left(),
-        CameraId::Right => scene.model_matrix_right(),
-    };
-    let plane_origin = model.transform_point(&Point3::new(0.0, 0.0, 0.0));
-    let plane_normal = model
-        .transform_vector(&Vector3::new(0.0, 0.0, 1.0))
-        .normalize();
-
-    let denom = plane_normal.dot(&dir);
-    if denom.abs() < 1e-6 {
-        return None; // Ray parallel to plane
-    }
-    let t = (plane_origin - cam_pos).dot(&plane_normal) / denom;
-    if t <= 0.0 {
-        return None; // Behind camera
-    }
-    let hit = cam_pos + dir * t;
-
-    // Step 3: world hit -> extended plane UV. Reject hits outside
-    // the plane's renderable region (texture UV [0, 1], equivalently
-    // extended UV [-0.5, 1.5] is the full valid range but the plane
-    // only covers [0, 1] inside that).
-    let (uv_x, uv_y) = world_to_plane_uv(hit, camera, scene)?;
-    let tex_u = (uv_x + 0.5) * 0.5;
-    let tex_v = (uv_y + 0.5) * 0.5;
-    if !(0.0..=1.0).contains(&tex_u) || !(0.0..=1.0).contains(&tex_v) {
-        return None;
-    }
-
-    // Step 4: extended plane UV -> distorted normalized pixel via
-    // the forward KB4 model. The previous implementation passed
-    // texture UV in [0, 1] to `lens::undistorted_to_distorted` which
-    // expects pixel coordinates; that blew up the lens math and
-    // filtered almost every in-coverage point back out as None.
-    let (norm_x, norm_y) = forward_fisheye(uv_x, uv_y, params);
-    if (0.0..=1.0).contains(&norm_x) && (0.0..=1.0).contains(&norm_y) {
-        Some((norm_x as f32, norm_y as f32))
-    } else {
-        None
-    }
-}
-
 // ---- Internal functions ----
 
 /// Forward KB4 fisheye: undistorted plane UV -> distorted camera pixel [0,1].
@@ -358,7 +281,10 @@ pub fn panorama_to_camera(
 /// convention and the same extended-UV plane space (the shader's
 /// `uv * 2.0 - 0.5` remap output). The polynomial delegates to
 /// `reco_core::lens::kb4`, same canonical source as the
-/// Newton-Raphson step in [`inverse_fisheye`].
+/// Newton-Raphson step in [`inverse_fisheye`]. Test-only: the
+/// production inverse path (`inverse_fisheye`) is the live direction;
+/// this exists to round-trip-verify it.
+#[cfg(test)]
 fn forward_fisheye(uv_x: f64, uv_y: f64, params: &Lens) -> (f64, f64) {
     let w = params.width as f64;
     let h = params.height as f64;
@@ -448,37 +374,6 @@ fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &Lens) -> Option<(f64, f64)
     Some((uv_x, uv_y))
 }
 
-/// Exact inverse of [`plane_uv_to_world`].
-///
-/// Given a world-space point that lies on the named camera's plane,
-/// returns its extended-UV coordinate (shader space `[-0.5, 1.5]`).
-/// Off-plane points project via the model-matrix inverse: the z
-/// component of the model-local position is discarded, so the result
-/// is the orthographic projection onto the plane, NOT the ray-plane
-/// intersection that `panorama_to_camera` does as a prior step.
-fn world_to_plane_uv(
-    world: nalgebra::Point3<f32>,
-    camera: CameraId,
-    scene: &SceneGeometry,
-) -> Option<(f64, f64)> {
-    let model = match camera {
-        CameraId::Left => scene.model_matrix_left(),
-        CameraId::Right => scene.model_matrix_right(),
-    };
-    let inv_model = model.try_inverse()?;
-    let local = inv_model.transform_point(&world);
-
-    // local -> texture UV [0,1] (inverse of plane_uv_to_world's inner
-    // texture->local step, with plane_width = 1.0 baked in).
-    let tex_u = local.x / scene.plane_width + 0.5;
-    let tex_v = 0.5 - local.y * scene.plane_aspect / scene.plane_width;
-
-    // Texture UV -> extended shader UV (inverse of `uv * 2.0 - 0.5`).
-    let uv_x = (tex_u * 2.0 - 0.5) as f64;
-    let uv_y = (tex_v * 2.0 - 0.5) as f64;
-    Some((uv_x, uv_y))
-}
-
 /// Convert a plane UV (in extended shader space) to a 3D world point.
 fn plane_uv_to_world(uv: (f64, f64), camera: CameraId, scene: &SceneGeometry) -> Point3<f32> {
     // Extended UV -> texture UV [0,1]
@@ -512,9 +407,8 @@ pub(crate) fn direction_to_yaw_pitch(
     VirtualCamera::new(camera_position).direction_to_yaw_pitch(dir)
 }
 
-/// Exact inverse of [`direction_to_yaw_pitch`]. Only called from
-/// tests today; production panorama_to_camera uses the method on
-/// [`VirtualCamera`] directly.
+/// Exact inverse of [`direction_to_yaw_pitch`]. Test-only helper;
+/// production paths call the method on [`VirtualCamera`] directly.
 #[cfg(test)]
 pub(crate) fn yaw_pitch_to_direction(
     yaw: f32,
@@ -662,40 +556,6 @@ mod tests {
     }
 
     #[test]
-    fn world_to_plane_uv_roundtrips_with_plane_uv_to_world() {
-        // Step 1b: extended UV -> world -> extended UV must be the
-        // identity. Covers both camera planes and a grid spanning the
-        // shader's extended range [-0.5, 1.5] (including points
-        // outside the [0,1] texture box so we catch any implicit
-        // clamp).
-        let cal = test_calibration();
-        let scene = test_scene(&cal);
-
-        let uv_steps = [-0.3_f64, -0.1, 0.0, 0.25, 0.5, 0.75, 1.0, 1.1, 1.4];
-
-        for &camera in &[CameraId::Left, CameraId::Right] {
-            for &u in &uv_steps {
-                for &v in &uv_steps {
-                    let world = plane_uv_to_world((u, v), camera, &scene);
-                    let back = world_to_plane_uv(world, camera, &scene)
-                        .expect("model matrix should be invertible");
-
-                    assert!(
-                        (back.0 - u).abs() < 1e-5,
-                        "uv.x mismatch for camera={camera:?}: sent {u}, got {} (world={world:?})",
-                        back.0
-                    );
-                    assert!(
-                        (back.1 - v).abs() < 1e-5,
-                        "uv.y mismatch for camera={camera:?}: sent {v}, got {} (world={world:?})",
-                        back.1
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
     fn inverse_fisheye_roundtrips_with_forward_fisheye_on_pixel_grid() {
         // Step 1c: normalized distorted pixel -> extended plane UV ->
         // back to normalized distorted pixel must be the identity on
@@ -736,56 +596,6 @@ mod tests {
                     (back_y - ny).abs() < 1e-6,
                     "y mismatch at ({nx}, {ny}): got {back_y}, plane_uv={plane_uv:?}"
                 );
-            }
-        }
-    }
-
-    #[test]
-    fn camera_to_panorama_roundtrips_with_panorama_to_camera() {
-        // Step 1d (un-ignored by Step 2): the full forward chain
-        // (camera_to_panorama) then backward chain (panorama_to_camera)
-        // must return the same normalized pixel position for points
-        // that lie unambiguously within one camera's coverage.
-        //
-        // Pre-Step-2 panorama_to_camera used a naive "+Z forward" ray
-        // (breaking the Forward A vs Forward C agreement) AND passed
-        // texture UV to a pixel-space lens helper (filtering
-        // in-coverage results back out as None). Step 2 replaced
-        // both with VirtualCamera + world_to_plane_uv + forward_fisheye.
-        let cal = test_calibration();
-        let scene = test_scene(&cal);
-
-        let steps = 5;
-        let lo = 0.3_f32;
-        let hi = 0.7_f32;
-
-        for &camera in &[CameraId::Left, CameraId::Right] {
-            for ix in 0..=steps {
-                for iy in 0..=steps {
-                    let nx = lo + (hi - lo) * (ix as f32 / steps as f32);
-                    let ny = lo + (hi - lo) * (iy as f32 / steps as f32);
-
-                    let pos = camera_to_panorama(camera, nx, ny, &cal, &scene)
-                        .expect("forward projection should succeed inside coverage");
-
-                    let back = panorama_to_camera(pos.yaw, pos.pitch, camera, &cal, &scene)
-                        .expect("backward projection should land on the same camera");
-
-                    assert!(
-                        (back.0 - nx).abs() < 1e-3,
-                        "x mismatch for camera={camera:?}: sent {nx}, got {} (yaw={}, pitch={})",
-                        back.0,
-                        pos.yaw,
-                        pos.pitch
-                    );
-                    assert!(
-                        (back.1 - ny).abs() < 1e-3,
-                        "y mismatch for camera={camera:?}: sent {ny}, got {} (yaw={}, pitch={})",
-                        back.1,
-                        pos.yaw,
-                        pos.pitch
-                    );
-                }
             }
         }
     }

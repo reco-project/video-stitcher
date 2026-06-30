@@ -52,6 +52,8 @@
 use reco_core::detect::director::ViewportPosition;
 use reco_core::projection::CoverageBoundary;
 
+use crate::{ControlIntent, PoseIntent};
+
 /// Hotkey actions consumers bind to their input system (OBS hotkey
 /// API, Slint key events, CLI keyboard, future SDL3 game-pad sidecar,
 /// remote `reco-control` transport).
@@ -285,6 +287,47 @@ impl PoseControl {
                 self.target_fov_deg = rest.fov_degrees.unwrap_or(self.target_fov_deg);
             }
             HotkeyIntent::ToggleConstrained => { /* consumer-side */ }
+        }
+    }
+
+    /// Apply a [`ControlIntent`]: hotkeys route through
+    /// [`Self::apply_hotkey`]; pose intents set or nudge the target.
+    pub fn apply_intent(&mut self, intent: ControlIntent) {
+        match intent {
+            ControlIntent::Hotkey(h) => self.apply_hotkey(h),
+            ControlIntent::Pose(p) => self.apply_pose_intent(p),
+        }
+    }
+
+    fn apply_pose_intent(&mut self, intent: PoseIntent) {
+        let current = self.target_pose();
+        match intent {
+            PoseIntent::SetYawRad(yaw) => self.set_target(ViewportPosition {
+                yaw,
+                pitch: current.pitch,
+                fov_degrees: None,
+            }),
+            PoseIntent::SetPitchRad(pitch) => self.set_target(ViewportPosition {
+                yaw: current.yaw,
+                pitch,
+                fov_degrees: None,
+            }),
+            PoseIntent::SetFovDeg(fov) => self.set_target_fov(fov),
+            PoseIntent::DeltaYawRad(dy) => self.set_target(ViewportPosition {
+                yaw: current.yaw + dy,
+                pitch: current.pitch,
+                fov_degrees: None,
+            }),
+            PoseIntent::DeltaPitchRad(dp) => self.set_target(ViewportPosition {
+                yaw: current.yaw,
+                pitch: current.pitch + dp,
+                fov_degrees: None,
+            }),
+            PoseIntent::DeltaFovDeg(df) => {
+                let fov = current.fov_degrees.unwrap_or(self.current_fov_deg());
+                self.set_target_fov(fov + df);
+            }
+            PoseIntent::Reset => self.apply_hotkey(HotkeyIntent::Reset),
         }
     }
 
@@ -613,5 +656,31 @@ mod tests {
         assert_eq!(p.current_yaw_rad, c0);
         assert_eq!(p.target_yaw_rad, 0.5);
         assert_eq!(p.target_fov_deg, 60.0);
+    }
+
+    // ---- apply_intent -------------------------------------------------
+
+    #[test]
+    fn apply_intent_hotkey_routes_to_pose() {
+        let mut p = fresh();
+        let before = p.target_yaw_rad;
+        p.apply_intent(ControlIntent::Hotkey(HotkeyIntent::YawRight));
+        assert!(p.target_yaw_rad > before);
+    }
+
+    #[test]
+    fn apply_intent_pose_delta_adds_to_target() {
+        let mut p = fresh();
+        let start = p.target_yaw_rad;
+        p.apply_intent(ControlIntent::Pose(PoseIntent::DeltaYawRad(0.1)));
+        assert!((p.target_yaw_rad - (start + 0.1)).abs() < 1e-5);
+    }
+
+    #[test]
+    fn apply_intent_pose_reset_restores_rest() {
+        let mut p = fresh();
+        p.apply_intent(ControlIntent::Hotkey(HotkeyIntent::YawRight));
+        p.apply_intent(ControlIntent::Pose(PoseIntent::Reset));
+        assert!((p.target_yaw_rad - p.config.rest_pose.yaw).abs() < 1e-5);
     }
 }

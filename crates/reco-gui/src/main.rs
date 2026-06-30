@@ -32,7 +32,7 @@ use std::time::{Duration, Instant};
 
 use reco_calibrate::{LensProfileInfo, ProfileSource};
 use reco_control::pose_control::{PoseControl, PoseControlConfig};
-use reco_control::{ControlIntent, IntentTranslator, PoseIntent};
+use reco_control::{ControlIntent, PoseIntent};
 use reco_core::calibration::Calibration;
 use reco_core::detect::director::ViewportPosition;
 use reco_core::wgpu;
@@ -880,16 +880,16 @@ impl AppState {
 
     /// Apply a FOV delta (degrees). Clamps the target; tick handles smoothing.
     fn apply_zoom(&mut self, delta_deg: f32) {
-        IntentTranslator::new(&mut self.pose)
-            .dispatch(ControlIntent::Pose(PoseIntent::DeltaFovDeg(delta_deg)));
+        self.pose
+            .apply_intent(ControlIntent::Pose(PoseIntent::DeltaFovDeg(delta_deg)));
         self.clamp_targets();
         self.preview_dirty = true;
     }
 
     /// Set FOV absolute (from the slider). Updates target; tick applies it.
     fn set_fov(&mut self, fov_deg: f32) {
-        IntentTranslator::new(&mut self.pose)
-            .dispatch(ControlIntent::Pose(PoseIntent::SetFovDeg(fov_deg)));
+        self.pose
+            .apply_intent(ControlIntent::Pose(PoseIntent::SetFovDeg(fov_deg)));
         self.clamp_targets();
         self.preview_dirty = true;
     }
@@ -1008,7 +1008,8 @@ impl AppState {
     /// the translator so the same intent path works for both Slint
     /// callbacks and future remote transports.
     fn reset_view(&mut self) {
-        IntentTranslator::new(&mut self.pose).dispatch(ControlIntent::Pose(PoseIntent::Reset));
+        self.pose
+            .apply_intent(ControlIntent::Pose(PoseIntent::Reset));
     }
 
     /// Clamp the pose through the coverage boundary so pan input
