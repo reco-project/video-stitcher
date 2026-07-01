@@ -32,7 +32,7 @@ use crate::detect::detector::CameraId;
 use crate::detect::director::ViewportPosition;
 use crate::render::scene::SceneGeometry;
 
-use nalgebra::{Point3, Vector3};
+use nalgebra::{Matrix4, Perspective3, Point3, UnitQuaternion, Vector3, Vector4};
 
 // ---------------------------------------------------------------------------
 // M3 foundation: Projection trait + LShapeProjection marker.
@@ -224,6 +224,7 @@ impl Projection for CylindricalProjection {
 const MAX_ITERATIONS: usize = 20;
 /// Convergence threshold for Newton-Raphson.
 const CONVERGENCE_EPS: f64 = 1e-10;
+const CLIP_W_EPSILON: f32 = 1e-6;
 
 /// Map a detection in camera pixel space to the yaw/pitch needed to
 /// center the virtual camera on it.
@@ -257,13 +258,36 @@ pub fn camera_to_panorama(
     calibration: &MatchCalibration,
     scene: &SceneGeometry,
 ) -> Option<ViewportPosition> {
+    camera_to_panorama_with_lens_correction(camera, norm_x, norm_y, calibration, scene, 1.0)
+}
+
+/// Map a distorted camera pixel into panorama space using the same lens
+/// correction amount as the render shader.
+///
+/// `lens_correction_amount` follows the stitch renderer convention:
+/// `1.0` is full KB4 correction, while `0.0` is the uncorrected/pinhole
+/// plane view. Use [`camera_to_panorama`] for the normal full-correction
+/// projection expected by detections and saved ROI data.
+pub fn camera_to_panorama_with_lens_correction(
+    camera: CameraId,
+    norm_x: f32,
+    norm_y: f32,
+    calibration: &MatchCalibration,
+    scene: &SceneGeometry,
+    lens_correction_amount: f32,
+) -> Option<ViewportPosition> {
     let params = match camera {
         CameraId::Left => &calibration.left,
         CameraId::Right => &calibration.right,
     };
 
     // Step 1: Inverse fisheye - camera pixel [0,1] -> plane UV (extended space)
-    let plane_uv = inverse_fisheye(norm_x as f64, norm_y as f64, params)?;
+    let plane_uv = inverse_fisheye_with_correction(
+        norm_x as f64,
+        norm_y as f64,
+        params,
+        lens_correction_amount,
+    )?;
 
     // Step 2: Plane UV -> 3D world point
     let world_point = plane_uv_to_world(plane_uv, camera, scene);
@@ -271,6 +295,27 @@ pub fn camera_to_panorama(
     // Step 3: World point -> yaw/pitch
     let dir = (world_point - Point3::from(Vector3::from(scene.camera_position))).normalize();
     Some(direction_to_yaw_pitch(&dir, &scene.camera_position))
+}
+
+/// Map a raw distorted camera pixel into the single-camera lens preview's
+/// displayed coordinate space for a given correction amount.
+///
+/// The lens preview shader draws a quad with source UV `[0,1]`, remaps it to
+/// extended plane UV `[-0.5,1.5]`, and then samples the raw frame through the
+/// KB4 model. This helper performs the inverse mapping for overlay vertices.
+pub fn camera_to_lens_preview(
+    norm_x: f32,
+    norm_y: f32,
+    params: &CameraParams,
+    lens_correction_amount: f32,
+) -> Option<(f32, f32)> {
+    let (uv_x, uv_y) = inverse_fisheye_with_correction(
+        norm_x as f64,
+        norm_y as f64,
+        params,
+        lens_correction_amount,
+    )?;
+    Some((((uv_x + 0.5) * 0.5) as f32, ((uv_y + 0.5) * 0.5) as f32))
 }
 
 /// Map a panorama position (yaw/pitch) back to a camera pixel coordinate.
@@ -348,6 +393,176 @@ pub fn panorama_to_camera(
     } else {
         None
     }
+}
+
+/// Project a panorama yaw/pitch position into the current rendered viewport.
+///
+/// Returns normalized screen coordinates in `[0, 1]` where `(0, 0)` is the
+/// top-left of the rendered viewport. Coordinates may be outside that range
+/// when the point is off-screen; `None` means the point is behind the virtual
+/// camera or the projection produced a non-finite result.
+#[allow(clippy::too_many_arguments)]
+pub fn panorama_to_viewport(
+    yaw: f32,
+    pitch: f32,
+    view_yaw: f32,
+    view_pitch: f32,
+    fov_degrees: f32,
+    aspect: f32,
+    rig_tilt: f32,
+    rig_roll: f32,
+    scene: &SceneGeometry,
+) -> Option<(f32, f32)> {
+    if !yaw.is_finite()
+        || !pitch.is_finite()
+        || !view_yaw.is_finite()
+        || !view_pitch.is_finite()
+        || !fov_degrees.is_finite()
+        || !aspect.is_finite()
+        || !rig_tilt.is_finite()
+        || !rig_roll.is_finite()
+        || aspect <= 0.0
+        || !(1.0..179.0).contains(&fov_degrees)
+    {
+        return None;
+    }
+
+    let cam = VirtualCamera::new(&scene.camera_position);
+    let dir = cam.yaw_pitch_to_direction(yaw, pitch);
+    let world_point = Point3::from(cam.eye + dir);
+
+    let projection =
+        Perspective3::new(aspect, fov_degrees.to_radians(), 0.01, 5.0).to_homogeneous();
+    let view = viewport_view_matrix(
+        &scene.camera_position,
+        view_yaw,
+        view_pitch,
+        rig_tilt,
+        rig_roll,
+    );
+
+    let clip = projection * view * world_point.to_homogeneous();
+    if clip.w <= 1e-6 || !clip.w.is_finite() {
+        return None;
+    }
+
+    let ndc_x = clip.x / clip.w;
+    let ndc_y = clip.y / clip.w;
+    if !ndc_x.is_finite() || !ndc_y.is_finite() {
+        return None;
+    }
+
+    Some(((ndc_x + 1.0) * 0.5, (1.0 - ndc_y) * 0.5))
+}
+
+/// Project a panorama-space segment into the current rendered viewport.
+///
+/// Unlike sampling intermediate yaw/pitch points, this projects the two
+/// endpoints through the same perspective camera used by the renderer and
+/// clips the resulting segment in homogeneous clip space. That keeps field
+/// lines visually straight and stable as the GUI viewport pans.
+#[allow(clippy::too_many_arguments)]
+pub fn panorama_segment_to_viewport(
+    a_yaw: f32,
+    a_pitch: f32,
+    b_yaw: f32,
+    b_pitch: f32,
+    view_yaw: f32,
+    view_pitch: f32,
+    fov_degrees: f32,
+    aspect: f32,
+    rig_tilt: f32,
+    rig_roll: f32,
+    scene: &SceneGeometry,
+) -> Option<((f32, f32), (f32, f32))> {
+    if !a_yaw.is_finite()
+        || !a_pitch.is_finite()
+        || !b_yaw.is_finite()
+        || !b_pitch.is_finite()
+        || !view_yaw.is_finite()
+        || !view_pitch.is_finite()
+        || !fov_degrees.is_finite()
+        || !aspect.is_finite()
+        || !rig_tilt.is_finite()
+        || !rig_roll.is_finite()
+        || aspect <= 0.0
+        || !(1.0..179.0).contains(&fov_degrees)
+    {
+        return None;
+    }
+
+    let camera = VirtualCamera::new(&scene.camera_position);
+    let projection =
+        Perspective3::new(aspect, fov_degrees.to_radians(), 0.01, 5.0).to_homogeneous();
+    let view = viewport_view_matrix(
+        &scene.camera_position,
+        view_yaw,
+        view_pitch,
+        rig_tilt,
+        rig_roll,
+    );
+    let projection_view = projection * view;
+
+    let a = panorama_point_to_clip(a_yaw, a_pitch, &camera, &projection_view)?;
+    let b = panorama_point_to_clip(b_yaw, b_pitch, &camera, &projection_view)?;
+    clip_homogeneous_segment_to_frustum(a, b)
+        .and_then(|(a, b)| Some((clip_to_screen(a)?, clip_to_screen(b)?)))
+}
+
+/// Convert a normalized rendered-viewport coordinate into stitched panorama
+/// yaw/pitch coordinates.
+///
+/// This is the inverse of [`panorama_to_viewport`] for points on the
+/// virtual camera's view ray. `screen_x` and `screen_y` are normalized
+/// `[0, 1]` coordinates where `(0, 0)` is the top-left of the rendered
+/// viewport.
+#[allow(clippy::too_many_arguments)]
+pub fn viewport_to_panorama(
+    screen_x: f32,
+    screen_y: f32,
+    view_yaw: f32,
+    view_pitch: f32,
+    fov_degrees: f32,
+    aspect: f32,
+    rig_tilt: f32,
+    rig_roll: f32,
+    scene: &SceneGeometry,
+) -> Option<ViewportPosition> {
+    if !screen_x.is_finite()
+        || !screen_y.is_finite()
+        || !view_yaw.is_finite()
+        || !view_pitch.is_finite()
+        || !fov_degrees.is_finite()
+        || !aspect.is_finite()
+        || !rig_tilt.is_finite()
+        || !rig_roll.is_finite()
+        || aspect <= 0.0
+        || !(1.0..179.0).contains(&fov_degrees)
+    {
+        return None;
+    }
+
+    let ndc_x = screen_x * 2.0 - 1.0;
+    let ndc_y = 1.0 - screen_y * 2.0;
+    let half_v = (fov_degrees * 0.5).to_radians().tan();
+    let camera_dir = Vector3::new(ndc_x * aspect * half_v, ndc_y * half_v, -1.0).normalize();
+
+    let view = viewport_view_matrix(
+        &scene.camera_position,
+        view_yaw,
+        view_pitch,
+        rig_tilt,
+        rig_roll,
+    );
+    let inv_view = view.try_inverse()?;
+    let dir = inv_view * Vector4::new(camera_dir.x, camera_dir.y, camera_dir.z, 0.0);
+    let world_dir = Vector3::new(dir.x, dir.y, dir.z).try_normalize(1e-6)?;
+    let pos = direction_to_yaw_pitch(&world_dir, &scene.camera_position);
+    Some(ViewportPosition {
+        yaw: pos.yaw,
+        pitch: pos.pitch,
+        fov_degrees: Some(fov_degrees),
+    })
 }
 
 /// Compute the valid yaw/pitch bounds for a given FOV where no black
@@ -569,6 +784,149 @@ fn forward_fisheye(uv_x: f64, uv_y: f64, params: &CameraParams) -> (f64, f64) {
     (fx * x * scale + cx, fy * y * scale + cy)
 }
 
+fn panorama_point_to_clip(
+    yaw: f32,
+    pitch: f32,
+    camera: &VirtualCamera,
+    projection_view: &Matrix4<f32>,
+) -> Option<Vector4<f32>> {
+    let dir = camera.yaw_pitch_to_direction(yaw, pitch);
+    let world_point = Point3::from(camera.eye + dir);
+    let clip = projection_view * world_point.to_homogeneous();
+    clip.iter().all(|v| v.is_finite()).then_some(clip)
+}
+
+fn clip_homogeneous_segment_to_frustum(
+    mut a: Vector4<f32>,
+    mut b: Vector4<f32>,
+) -> Option<(Vector4<f32>, Vector4<f32>)> {
+    for plane in [
+        ClipPlane::Front,
+        ClipPlane::Left,
+        ClipPlane::Right,
+        ClipPlane::Bottom,
+        ClipPlane::Top,
+        ClipPlane::Near,
+        ClipPlane::Far,
+    ] {
+        (a, b) = clip_segment_to_plane(a, b, plane)?;
+    }
+
+    Some((a, b))
+}
+
+#[derive(Clone, Copy)]
+enum ClipPlane {
+    Front,
+    Left,
+    Right,
+    Bottom,
+    Top,
+    Near,
+    Far,
+}
+
+impl ClipPlane {
+    fn distance(self, point: Vector4<f32>) -> f32 {
+        match self {
+            Self::Front => point.w - CLIP_W_EPSILON,
+            Self::Left => point.x + point.w,
+            Self::Right => point.w - point.x,
+            Self::Bottom => point.y + point.w,
+            Self::Top => point.w - point.y,
+            Self::Near => point.z + point.w,
+            Self::Far => point.w - point.z,
+        }
+    }
+}
+
+fn clip_segment_to_plane(
+    mut a: Vector4<f32>,
+    mut b: Vector4<f32>,
+    plane: ClipPlane,
+) -> Option<(Vector4<f32>, Vector4<f32>)> {
+    let da = plane.distance(a);
+    let db = plane.distance(b);
+    let a_inside = da >= 0.0;
+    let b_inside = db >= 0.0;
+
+    match (a_inside, b_inside) {
+        (true, true) => Some((a, b)),
+        (false, false) => None,
+        (false, true) => {
+            a = interpolate_clip_at_plane(a, b, da, db)?;
+            Some((a, b))
+        }
+        (true, false) => {
+            b = interpolate_clip_at_plane(a, b, da, db)?;
+            Some((a, b))
+        }
+    }
+}
+
+fn interpolate_clip_at_plane(
+    a: Vector4<f32>,
+    b: Vector4<f32>,
+    da: f32,
+    db: f32,
+) -> Option<Vector4<f32>> {
+    let denom = da - db;
+    if denom.abs() < f32::EPSILON {
+        return None;
+    }
+    let t = (da / denom).clamp(0.0, 1.0);
+    Some(a + (b - a) * t)
+}
+
+fn clip_to_screen(clip: Vector4<f32>) -> Option<(f32, f32)> {
+    if clip.w <= CLIP_W_EPSILON || !clip.w.is_finite() {
+        return None;
+    }
+    let ndc_x = clip.x / clip.w;
+    let ndc_y = clip.y / clip.w;
+    (ndc_x.is_finite() && ndc_y.is_finite()).then_some(((ndc_x + 1.0) * 0.5, (1.0 - ndc_y) * 0.5))
+}
+
+fn viewport_view_matrix(
+    position: &[f32; 3],
+    yaw: f32,
+    pitch: f32,
+    rig_tilt: f32,
+    rig_roll: f32,
+) -> Matrix4<f32> {
+    let cam = VirtualCamera::new(position);
+    let eye = Point3::from(cam.eye);
+    let mut base_forward = cam.base_forward;
+    let base_right = cam.base_right;
+    let mut world_up = VirtualCamera::world_up();
+
+    if rig_tilt.abs() > 1e-6 {
+        let tilt_q =
+            UnitQuaternion::from_axis_angle(&nalgebra::Unit::new_normalize(base_right), rig_tilt);
+        base_forward = tilt_q * base_forward;
+        world_up = tilt_q * world_up;
+    }
+
+    if rig_roll.abs() > 1e-6 {
+        let roll_q = UnitQuaternion::from_axis_angle(
+            &nalgebra::Unit::new_normalize(base_forward),
+            -rig_roll,
+        );
+        world_up = roll_q * world_up;
+    }
+
+    let up_axis = nalgebra::Unit::new_normalize(world_up);
+    let yaw_q = UnitQuaternion::from_axis_angle(&up_axis, yaw);
+    let right = yaw_q * base_right;
+    let pitch_q = UnitQuaternion::from_axis_angle(&nalgebra::Unit::new_normalize(right), pitch);
+    let rotation = pitch_q * yaw_q;
+    let forward = rotation * base_forward;
+    let up = rotation * world_up;
+    let target = Point3::from(eye.coords + forward);
+
+    nalgebra::Isometry3::look_at_rh(&eye, &target, &up).to_homogeneous()
+}
+
 /// Inverse KB4 fisheye: distorted camera pixel [0,1] -> undistorted plane UV.
 ///
 /// Inverts the forward KB4 model used in the shader:
@@ -576,7 +934,17 @@ fn forward_fisheye(uv_x: f64, uv_y: f64, params: &CameraParams) -> (f64, f64) {
 /// theta_d = theta * (1 + k1*theta^2 + k2*theta^4 + k3*theta^6 + k4*theta^8)
 /// ```
 /// Uses Newton-Raphson to solve for theta given theta_d.
+#[cfg(test)]
 fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &CameraParams) -> Option<(f64, f64)> {
+    inverse_fisheye_with_correction(dist_x, dist_y, params, 1.0)
+}
+
+fn inverse_fisheye_with_correction(
+    dist_x: f64,
+    dist_y: f64,
+    params: &CameraParams,
+    lens_correction_amount: f32,
+) -> Option<(f64, f64)> {
     let w = params.width as f64;
     let h = params.height as f64;
     let fx = params.fx / w;
@@ -589,18 +957,21 @@ fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &CameraParams) -> Option<(f
     let dx = (dist_x - cx) / fx;
     let dy = (dist_y - cy) / fy;
     let theta_d = (dx * dx + dy * dy).sqrt();
+    let correction = (lens_correction_amount as f64).clamp(0.0, 1.0);
 
     if theta_d < 1e-12 {
         // At the optical center - no distortion
         return Some((cx, cy));
     }
 
-    // Newton-Raphson: solve f(theta) = theta_d_poly(theta) - theta_d = 0, where
-    // theta_d_poly lives in `reco_core::lens::kb4` (SYNC_WITH WGSL).
+    // Newton-Raphson: solve f(theta) = mix(theta, theta_d_poly(theta), correction)
+    // - theta_d = 0, where theta_d_poly lives in `reco_core::lens::kb4`
+    // (SYNC_WITH WGSL).
     let mut theta = theta_d; // initial guess
     for _ in 0..MAX_ITERATIONS {
-        let f = crate::lens::kb4::theta_d(theta, &k) - theta_d;
-        let f_prime = crate::lens::kb4::theta_d_prime(theta, &k);
+        let theta_full = crate::lens::kb4::theta_d(theta, &k);
+        let f = (theta * (1.0 - correction) + theta_full * correction) - theta_d;
+        let f_prime = (1.0 - correction) + crate::lens::kb4::theta_d_prime(theta, &k) * correction;
 
         if f_prime.abs() < 1e-15 {
             return None; // degenerate
@@ -984,6 +1355,74 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn viewport_to_panorama_roundtrips_with_panorama_to_viewport() {
+        let cal = test_calibration();
+        let scene = test_scene(&cal);
+        let target = camera_to_panorama(CameraId::Left, 0.5, 0.5, &cal, &scene)
+            .expect("test target should project to panorama");
+        let fov = 75.0;
+        let aspect = 16.0 / 9.0;
+
+        let screen = panorama_to_viewport(
+            target.yaw,
+            target.pitch,
+            target.yaw,
+            target.pitch,
+            fov,
+            aspect,
+            0.0,
+            0.0,
+            &scene,
+        )
+        .expect("centered target should project to screen");
+        let back = viewport_to_panorama(
+            screen.0,
+            screen.1,
+            target.yaw,
+            target.pitch,
+            fov,
+            aspect,
+            0.0,
+            0.0,
+            &scene,
+        )
+        .expect("screen point should unproject to panorama");
+
+        assert!((back.yaw - target.yaw).abs() < 1e-5);
+        assert!((back.pitch - target.pitch).abs() < 1e-5);
+    }
+
+    #[test]
+    fn panorama_segment_to_viewport_clips_to_visible_edge() {
+        let cal = test_calibration();
+        let scene = test_scene(&cal);
+        let target = camera_to_panorama(CameraId::Left, 0.5, 0.5, &cal, &scene)
+            .expect("test target should project to panorama");
+        let fov = 50.0;
+        let aspect = 16.0 / 9.0;
+
+        let segment = panorama_segment_to_viewport(
+            target.yaw - 1.0,
+            target.pitch,
+            target.yaw + 1.0,
+            target.pitch,
+            target.yaw,
+            target.pitch,
+            fov,
+            aspect,
+            0.0,
+            0.0,
+            &scene,
+        )
+        .expect("segment crossing the viewport should clip");
+
+        for (x, y) in [segment.0, segment.1] {
+            assert!((0.0..=1.0).contains(&x), "x should be clipped: {x}");
+            assert!((0.0..=1.0).contains(&y), "y should be clipped: {y}");
         }
     }
 

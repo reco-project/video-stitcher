@@ -211,29 +211,25 @@ pub struct PlaneLayout {
     pub z_rz: f64,
 }
 
-/// Playing field region of interest for per-camera detection filtering.
+/// Playing field region of interest for detection filtering.
 ///
-/// Each camera has an optional polygon (normalized `[0,1]` coordinates)
-/// defining the visible playing field boundary. Detections outside this
-/// polygon are filtered before reaching the director, eliminating false
-/// positives from stands, scoreboards, and other non-field areas.
+/// A single polygon in stitched panorama coordinates, stored as
+/// `[yaw, pitch]` radians. Detections are projected from their source
+/// camera into this shared space before filtering.
 ///
 /// # JSON Format
 ///
 /// ```json
 /// "field_roi": {
-///     "left": [[0.49, 0.90], [0.33, 0.73], [0.42, 0.58]],
-///     "right": [[0.63, 0.85], [0.78, 0.68], [0.55, 0.60]]
+///     "points": [[-0.45, -0.12], [0.31, -0.10], [0.42, 0.18], [-0.52, 0.20]]
 /// }
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct FieldRoi {
-    /// Polygon vertices for the left camera, in normalized `[0,1]` coordinates.
+    /// Polygon vertices in stitched panorama `[yaw, pitch]` radians.
     #[serde(default)]
-    pub left: Vec<[f64; 2]>,
-    /// Polygon vertices for the right camera, in normalized `[0,1]` coordinates.
-    #[serde(default)]
-    pub right: Vec<[f64; 2]>,
+    pub points: Vec<[f64; 2]>,
 }
 
 /// Complete calibration data for a stereo match.
@@ -287,11 +283,10 @@ pub struct MatchCalibration {
     #[serde(default)]
     pub sync_offset: i64,
 
-    /// Optional playing field ROI polygons for per-camera detection filtering.
+    /// Optional playing field ROI polygon for detection filtering.
     ///
-    /// When present, detections outside the polygon for their camera are
-    /// discarded before reaching the director. This eliminates false positives
-    /// from stands, scoreboards, and other non-field areas.
+    /// When present, detections are projected into stitched panorama
+    /// coordinates and discarded when outside this polygon.
     #[serde(default)]
     pub field_roi: Option<FieldRoi>,
 
@@ -676,17 +671,15 @@ mod tests {
                 "zRx": -0.00431
             },
             "field_roi": {
-                "left": [[0.49, 0.90], [0.33, 0.73], [0.42, 0.58]],
-                "right": [[0.63, 0.85], [0.78, 0.68], [0.55, 0.60]]
+                "points": [[-0.49, -0.10], [0.33, -0.08], [0.42, 0.18]]
             }
         }"#;
 
         let cal: MatchCalibration = serde_json::from_str(json).unwrap();
         let roi = cal.field_roi.as_ref().unwrap();
-        assert_eq!(roi.left.len(), 3);
-        assert_eq!(roi.right.len(), 3);
-        assert!((roi.left[0][0] - 0.49).abs() < 1e-6);
-        assert!((roi.right[1][1] - 0.68).abs() < 1e-6);
+        assert_eq!(roi.points.len(), 3);
+        assert!((roi.points[0][0] - (-0.49)).abs() < 1e-6);
+        assert!((roi.points[2][1] - 0.18).abs() < 1e-6);
     }
 
     // --- validation tests ---

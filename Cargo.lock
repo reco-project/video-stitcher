@@ -5560,8 +5560,6 @@ version = "0.5.3-beta.2"
 dependencies = [
  "anyhow",
  "arboard",
- "base64",
- "image",
  "log",
  "open",
  "reco-autocam",
