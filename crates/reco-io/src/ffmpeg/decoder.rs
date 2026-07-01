@@ -241,6 +241,40 @@ impl Drop for VideoDecoder {
     }
 }
 
+fn container_duration_secs(path: &Path) -> Result<Option<f64>, DecodeError> {
+    let ictx = input(path)?;
+    let duration = ictx.duration();
+    if duration > 0 {
+        Ok(Some(duration as f64 / f64::from(ffmpeg::ffi::AV_TIME_BASE)))
+    } else {
+        Ok(None)
+    }
+}
+
+fn concat_seek_durations(paths: &[std::path::PathBuf]) -> Option<Vec<f64>> {
+    let mut durations = Vec::with_capacity(paths.len());
+    for path in paths {
+        match container_duration_secs(path) {
+            Ok(Some(duration)) => durations.push(duration),
+            Ok(None) => {
+                log::warn!(
+                    "Concat demuxer: duration unknown for {}; cross-segment seek may be unavailable",
+                    path.display()
+                );
+                return None;
+            }
+            Err(e) => {
+                log::warn!(
+                    "Concat demuxer: failed to probe duration for {} ({e}); cross-segment seek may be unavailable",
+                    path.display()
+                );
+                return None;
+            }
+        }
+    }
+    Some(durations)
+}
+
 impl VideoDecoder {
     /// Open a video file for decoding.
     ///
@@ -481,12 +515,17 @@ impl VideoDecoder {
             .suffix(".txt")
             .tempfile()
             .map_err(|e| DecodeError::Ffmpeg(format!("concat manifest: {e}")))?;
+        let durations = concat_seek_durations(paths);
 
         writeln!(manifest, "ffconcat version 1.0")
             .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
-        for p in paths {
+        for (idx, p) in paths.iter().enumerate() {
             writeln!(manifest, "file '{}'", p.display())
                 .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
+            if let Some(durations) = durations.as_ref() {
+                writeln!(manifest, "duration {:.6}", durations[idx])
+                    .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
+            }
         }
         manifest
             .flush()
