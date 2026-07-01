@@ -23,6 +23,7 @@ mod telemetry_client;
 mod toast;
 
 use std::cell::RefCell;
+use std::future::Future;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -108,6 +109,26 @@ struct CalibrationOutput {
 /// pattern-match specific failure modes (`Cancelled`, `NoFrames`,
 /// `Io(...)`, etc.) instead of parsing a stringified message.
 type CalibrationResult = Result<CalibrationOutput, reco_calibrate::video::CalibrateVideosError>;
+
+trait FileDialogAction: Send {
+    fn apply(self: Box<Self>, state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>);
+}
+
+struct SelectedFileDialog<T, A> {
+    selection: T,
+    apply: A,
+}
+
+impl<T, A> FileDialogAction for SelectedFileDialog<T, A>
+where
+    T: Send + 'static,
+    A: FnOnce(T, &Rc<RefCell<AppState>>, &slint::Weak<RecoApp>) + Send + 'static,
+{
+    fn apply(self: Box<Self>, state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) {
+        let Self { selection, apply } = *self;
+        apply(selection, state, app_weak);
+    }
+}
 
 /// Headless dev/test preload hook. When `RECO_AUTOLOAD` is set the GUI loads
 /// the given left/right videos and calibration on startup (and optionally
@@ -204,6 +225,12 @@ struct AppState {
     recording_frames: u64,
     /// Receives calibration results from the background thread.
     cal_rx: Option<std::sync::mpsc::Receiver<CalibrationResult>>,
+    /// Receives native file dialog selections after the OS dialog
+    /// completes on a background waiter.
+    file_dialog_rx: Option<std::sync::mpsc::Receiver<Option<Box<dyn FileDialogAction>>>>,
+    /// Prevents stacking multiple native pickers while the app window
+    /// remains responsive.
+    file_dialog_open: bool,
     /// wgpu handles captured from Slint's rendering notifier. `None`
     /// until the window has completed its first rendering setup.
     shared_gpu: Option<SharedGpu>,
@@ -467,6 +494,8 @@ impl AppState {
             recording_path: None,
             recording_frames: 0,
             cal_rx: None,
+            file_dialog_rx: None,
+            file_dialog_open: false,
             shared_gpu: None,
             #[cfg(feature = "automation")]
             autoload: AutoloadSpec::from_env(),
@@ -1031,6 +1060,77 @@ impl AppState {
         let fraction = target as f32 / total as f32;
         self.playback.seek(fraction).map_err(|e| format!("{e}"))
     }
+}
+
+fn begin_file_dialog<T, F, B, A>(
+    state: &Rc<RefCell<AppState>>,
+    app_weak: &slint::Weak<RecoApp>,
+    build: B,
+    apply: A,
+) where
+    T: Send + 'static,
+    F: Future<Output = Option<T>> + Send + 'static,
+    B: FnOnce() -> F,
+    A: FnOnce(T, &Rc<RefCell<AppState>>, &slint::Weak<RecoApp>) + Send + 'static,
+{
+    let (tx, rx) = std::sync::mpsc::channel();
+    {
+        let mut s = state.borrow_mut();
+        if s.file_dialog_open {
+            if let Some(app) = app_weak.upgrade() {
+                app.set_status_text("Finish the current file selection first".into());
+            }
+            return;
+        }
+        s.file_dialog_open = true;
+        s.file_dialog_rx = Some(rx);
+    }
+
+    let task = build();
+    std::thread::spawn(move || {
+        let action = pollster::block_on(task).map(|selection| {
+            Box::new(SelectedFileDialog { selection, apply }) as Box<dyn FileDialogAction>
+        });
+        if tx.send(action).is_err() {
+            log::debug!("File dialog result dropped because the GUI closed");
+        }
+    });
+}
+
+fn poll_file_dialog(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) -> bool {
+    let action = {
+        let mut s = state.borrow_mut();
+        let Some(rx) = s.file_dialog_rx.as_ref() else {
+            return false;
+        };
+        match rx.try_recv() {
+            Ok(action) => {
+                s.file_dialog_rx = None;
+                s.file_dialog_open = false;
+                action
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => return false,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                s.file_dialog_rx = None;
+                s.file_dialog_open = false;
+                log::warn!("File dialog worker disconnected before returning a selection");
+                None
+            }
+        }
+    };
+
+    if let Some(action) = action {
+        action.apply(state, app_weak);
+    }
+    true
+}
+
+fn file_handle_to_path(handle: rfd::FileHandle) -> PathBuf {
+    handle.path().to_path_buf()
+}
+
+fn file_handles_to_paths(handles: Vec<rfd::FileHandle>) -> Vec<PathBuf> {
+    handles.into_iter().map(file_handle_to_path).collect()
 }
 
 /// Extract just the filename from a path for display.
@@ -1603,176 +1703,210 @@ fn main() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     app.on_pick_left_video(move || {
-        let dialog = rfd::FileDialog::new()
-            .set_title("Select left camera video(s)")
-            .add_filter(
-                "Video",
-                &["mp4", "MP4", "mov", "MOV", "avi", "AVI", "mkv", "MKV"],
-            );
-        let mut paths = dialog.pick_files().unwrap_or_default();
-        if paths.is_empty() {
-            return;
-        }
-        paths.sort();
-        let input = {
-            let s = state_ref.borrow();
-            match &s.left_input {
-                Some(existing) => {
-                    let mut all = match existing {
-                        reco_io::stitch_job::InputPath::Single(p) => vec![p.clone()],
-                        reco_io::stitch_job::InputPath::Chained(ps) => ps.clone(),
-                    };
-                    all.extend(paths);
-                    log::info!("Left: appended to {} total segments", all.len());
-                    reco_io::stitch_job::InputPath::Chained(all)
+        begin_file_dialog(
+            &state_ref,
+            &app_weak,
+            || {
+                let task = rfd::AsyncFileDialog::new()
+                    .set_title("Select left camera video(s)")
+                    .add_filter(
+                        "Video",
+                        &["mp4", "MP4", "mov", "MOV", "avi", "AVI", "mkv", "MKV"],
+                    )
+                    .pick_files();
+                async move { task.await.map(file_handles_to_paths) }
+            },
+            |mut paths, state_ref, app_weak| {
+                if paths.is_empty() {
+                    return;
                 }
-                None => {
-                    if paths.len() == 1 {
-                        reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
-                    } else {
-                        log::info!(
-                            "Left: {} segments selected, chaining via concat demuxer",
-                            paths.len()
-                        );
-                        reco_io::stitch_job::InputPath::Chained(paths)
-                    }
-                }
-            }
-        };
-        let first = match &input {
-            reco_io::stitch_job::InputPath::Single(p) => p.clone(),
-            reco_io::stitch_job::InputPath::Chained(ps) => ps[0].clone(),
-        };
-        {
-            let mut s = state_ref.borrow_mut();
-            let changed = s.left_path.as_ref() != Some(&first);
-            if changed && s.bridge.is_some() {
-                s.unload_pipeline();
-                if let Some(app) = app_weak.upgrade() {
-                    app.set_files_loaded(false);
-                    app.set_status_text("File changed - re-calibrate or load calibration".into());
-                }
-            }
-            if let Some(app) = app_weak.upgrade() {
-                let label = match &input {
-                    reco_io::stitch_job::InputPath::Single(p) => display_name(p),
-                    reco_io::stitch_job::InputPath::Chained(ps) => {
-                        format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                paths.sort();
+                let input = {
+                    let s = state_ref.borrow();
+                    match &s.left_input {
+                        Some(existing) => {
+                            let mut all = match existing {
+                                reco_io::stitch_job::InputPath::Single(p) => vec![p.clone()],
+                                reco_io::stitch_job::InputPath::Chained(ps) => ps.clone(),
+                            };
+                            all.extend(paths);
+                            log::info!("Left: appended to {} total segments", all.len());
+                            reco_io::stitch_job::InputPath::Chained(all)
+                        }
+                        None => {
+                            if paths.len() == 1 {
+                                reco_io::stitch_job::InputPath::Single(
+                                    paths.into_iter().next().unwrap(),
+                                )
+                            } else {
+                                log::info!(
+                                    "Left: {} segments selected, chaining via concat demuxer",
+                                    paths.len()
+                                );
+                                reco_io::stitch_job::InputPath::Chained(paths)
+                            }
+                        }
                     }
                 };
-                app.set_left_path(label.into());
-            }
-            s.user_settings.push_left(first.clone());
-            if let Some(app) = app_weak.upgrade() {
-                sync_recent_paths(&s.user_settings, &app);
-            }
-            s.left_input = Some(input);
-            s.left_path = Some(first);
-            drop(s);
-            try_init_and_update(&state_ref, &app_weak);
-        }
+                let first = match &input {
+                    reco_io::stitch_job::InputPath::Single(p) => p.clone(),
+                    reco_io::stitch_job::InputPath::Chained(ps) => ps[0].clone(),
+                };
+                {
+                    let mut s = state_ref.borrow_mut();
+                    let changed = s.left_path.as_ref() != Some(&first);
+                    if changed && s.bridge.is_some() {
+                        s.unload_pipeline();
+                        if let Some(app) = app_weak.upgrade() {
+                            app.set_files_loaded(false);
+                            app.set_status_text(
+                                "File changed - re-calibrate or load calibration".into(),
+                            );
+                        }
+                    }
+                    if let Some(app) = app_weak.upgrade() {
+                        let label = match &input {
+                            reco_io::stitch_job::InputPath::Single(p) => display_name(p),
+                            reco_io::stitch_job::InputPath::Chained(ps) => {
+                                format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                            }
+                        };
+                        app.set_left_path(label.into());
+                    }
+                    s.user_settings.push_left(first.clone());
+                    if let Some(app) = app_weak.upgrade() {
+                        sync_recent_paths(&s.user_settings, &app);
+                    }
+                    s.left_input = Some(input);
+                    s.left_path = Some(first);
+                    drop(s);
+                    try_init_and_update(state_ref, app_weak);
+                }
+            },
+        );
     });
 
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     app.on_pick_right_video(move || {
-        let dialog = rfd::FileDialog::new()
-            .set_title("Select right camera video(s)")
-            .add_filter(
-                "Video",
-                &["mp4", "MP4", "mov", "MOV", "avi", "AVI", "mkv", "MKV"],
-            );
-        let mut paths = dialog.pick_files().unwrap_or_default();
-        if paths.is_empty() {
-            return;
-        }
-        paths.sort();
-        let input = {
-            let s = state_ref.borrow();
-            match &s.right_input {
-                Some(existing) => {
-                    let mut all = match existing {
-                        reco_io::stitch_job::InputPath::Single(p) => vec![p.clone()],
-                        reco_io::stitch_job::InputPath::Chained(ps) => ps.clone(),
-                    };
-                    all.extend(paths);
-                    log::info!("Right: appended to {} total segments", all.len());
-                    reco_io::stitch_job::InputPath::Chained(all)
+        begin_file_dialog(
+            &state_ref,
+            &app_weak,
+            || {
+                let task = rfd::AsyncFileDialog::new()
+                    .set_title("Select right camera video(s)")
+                    .add_filter(
+                        "Video",
+                        &["mp4", "MP4", "mov", "MOV", "avi", "AVI", "mkv", "MKV"],
+                    )
+                    .pick_files();
+                async move { task.await.map(file_handles_to_paths) }
+            },
+            |mut paths, state_ref, app_weak| {
+                if paths.is_empty() {
+                    return;
                 }
-                None => {
-                    if paths.len() == 1 {
-                        reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
-                    } else {
-                        log::info!(
-                            "Right: {} segments selected, chaining via concat demuxer",
-                            paths.len()
-                        );
-                        reco_io::stitch_job::InputPath::Chained(paths)
-                    }
-                }
-            }
-        };
-        let first = match &input {
-            reco_io::stitch_job::InputPath::Single(p) => p.clone(),
-            reco_io::stitch_job::InputPath::Chained(ps) => ps[0].clone(),
-        };
-        {
-            let mut s = state_ref.borrow_mut();
-            let changed = s.right_path.as_ref() != Some(&first);
-            if changed && s.bridge.is_some() {
-                s.unload_pipeline();
-                if let Some(app) = app_weak.upgrade() {
-                    app.set_files_loaded(false);
-                    app.set_status_text("File changed - re-calibrate or load calibration".into());
-                }
-            }
-            if let Some(app) = app_weak.upgrade() {
-                let label = match &input {
-                    reco_io::stitch_job::InputPath::Single(p) => display_name(p),
-                    reco_io::stitch_job::InputPath::Chained(ps) => {
-                        format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                paths.sort();
+                let input = {
+                    let s = state_ref.borrow();
+                    match &s.right_input {
+                        Some(existing) => {
+                            let mut all = match existing {
+                                reco_io::stitch_job::InputPath::Single(p) => vec![p.clone()],
+                                reco_io::stitch_job::InputPath::Chained(ps) => ps.clone(),
+                            };
+                            all.extend(paths);
+                            log::info!("Right: appended to {} total segments", all.len());
+                            reco_io::stitch_job::InputPath::Chained(all)
+                        }
+                        None => {
+                            if paths.len() == 1 {
+                                reco_io::stitch_job::InputPath::Single(
+                                    paths.into_iter().next().unwrap(),
+                                )
+                            } else {
+                                log::info!(
+                                    "Right: {} segments selected, chaining via concat demuxer",
+                                    paths.len()
+                                );
+                                reco_io::stitch_job::InputPath::Chained(paths)
+                            }
+                        }
                     }
                 };
-                app.set_right_path(label.into());
-            }
-            s.user_settings.push_right(first.clone());
-            if let Some(app) = app_weak.upgrade() {
-                sync_recent_paths(&s.user_settings, &app);
-            }
-            s.right_input = Some(input);
-            s.right_path = Some(first);
-            drop(s);
-            try_init_and_update(&state_ref, &app_weak);
-        }
+                let first = match &input {
+                    reco_io::stitch_job::InputPath::Single(p) => p.clone(),
+                    reco_io::stitch_job::InputPath::Chained(ps) => ps[0].clone(),
+                };
+                {
+                    let mut s = state_ref.borrow_mut();
+                    let changed = s.right_path.as_ref() != Some(&first);
+                    if changed && s.bridge.is_some() {
+                        s.unload_pipeline();
+                        if let Some(app) = app_weak.upgrade() {
+                            app.set_files_loaded(false);
+                            app.set_status_text(
+                                "File changed - re-calibrate or load calibration".into(),
+                            );
+                        }
+                    }
+                    if let Some(app) = app_weak.upgrade() {
+                        let label = match &input {
+                            reco_io::stitch_job::InputPath::Single(p) => display_name(p),
+                            reco_io::stitch_job::InputPath::Chained(ps) => {
+                                format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                            }
+                        };
+                        app.set_right_path(label.into());
+                    }
+                    s.user_settings.push_right(first.clone());
+                    if let Some(app) = app_weak.upgrade() {
+                        sync_recent_paths(&s.user_settings, &app);
+                    }
+                    s.right_input = Some(input);
+                    s.right_path = Some(first);
+                    drop(s);
+                    try_init_and_update(state_ref, app_weak);
+                }
+            },
+        );
     });
 
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     app.on_pick_calibration(move || {
-        let dialog = rfd::FileDialog::new()
-            .set_title("Select calibration JSON")
-            .add_filter("JSON", &["json", "JSON"]);
-        if let Some(path) = dialog.pick_file() {
-            let mut s = state_ref.borrow_mut();
-            let changed = s.calibration_path.as_ref() != Some(&path);
-            if changed && s.bridge.is_some() {
-                s.unload_pipeline();
-                if let Some(app) = app_weak.upgrade() {
-                    app.set_files_loaded(false);
-                    app.set_status_text("Calibration changed — reloading".into());
+        begin_file_dialog(
+            &state_ref,
+            &app_weak,
+            || {
+                let task = rfd::AsyncFileDialog::new()
+                    .set_title("Select calibration JSON")
+                    .add_filter("JSON", &["json", "JSON"])
+                    .pick_file();
+                async move { task.await.map(file_handle_to_path) }
+            },
+            |path, state_ref, app_weak| {
+                let mut s = state_ref.borrow_mut();
+                let changed = s.calibration_path.as_ref() != Some(&path);
+                if changed && s.bridge.is_some() {
+                    s.unload_pipeline();
+                    if let Some(app) = app_weak.upgrade() {
+                        app.set_files_loaded(false);
+                        app.set_status_text("Calibration changed - reloading".into());
+                    }
                 }
-            }
-            if let Some(app) = app_weak.upgrade() {
-                app.set_calibration_path(display_name(&path).into());
-            }
-            s.user_settings.push_calibration(path.clone());
-            if let Some(app) = app_weak.upgrade() {
-                sync_recent_paths(&s.user_settings, &app);
-            }
-            s.calibration_path = Some(path);
-            drop(s);
-            try_init_and_update(&state_ref, &app_weak);
-        }
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_calibration_path(display_name(&path).into());
+                }
+                s.user_settings.push_calibration(path.clone());
+                if let Some(app) = app_weak.upgrade() {
+                    sync_recent_paths(&s.user_settings, &app);
+                }
+                s.calibration_path = Some(path);
+                drop(s);
+                try_init_and_update(state_ref, app_weak);
+            },
+        );
     });
 
     // ── Recent-files dialog callbacks ──
@@ -2449,25 +2583,44 @@ fn main() -> anyhow::Result<()> {
     });
 
     let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
     app.on_pick_prefs_model(move || {
-        let dialog = rfd::FileDialog::new()
-            .set_title("Select YOLO ONNX model")
-            .add_filter("ONNX", &["onnx"]);
-        if let Some(path) = dialog.pick_file()
-            && let Some(app) = app_weak.upgrade()
-        {
-            app.set_prefs_ai_model_path(path.to_string_lossy().to_string().into());
-        }
+        begin_file_dialog(
+            &state_ref,
+            &app_weak,
+            || {
+                let task = rfd::AsyncFileDialog::new()
+                    .set_title("Select YOLO ONNX model")
+                    .add_filter("ONNX", &["onnx"])
+                    .pick_file();
+                async move { task.await.map(file_handle_to_path) }
+            },
+            |path, _, app_weak| {
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_prefs_ai_model_path(path.to_string_lossy().to_string().into());
+                }
+            },
+        );
     });
 
     let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
     app.on_pick_recording_folder(move || {
-        let dialog = rfd::FileDialog::new().set_title("Select default recording folder");
-        if let Some(folder) = dialog.pick_folder()
-            && let Some(app) = app_weak.upgrade()
-        {
-            app.set_recording_folder(folder.to_string_lossy().to_string().into());
-        }
+        begin_file_dialog(
+            &state_ref,
+            &app_weak,
+            || {
+                let task = rfd::AsyncFileDialog::new()
+                    .set_title("Select default recording folder")
+                    .pick_folder();
+                async move { task.await.map(file_handle_to_path) }
+            },
+            |path, _, app_weak| {
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_recording_folder(path.to_string_lossy().to_string().into());
+                }
+            },
+        );
     });
 
     let state_ref = Rc::clone(&state);
@@ -3137,11 +3290,17 @@ fn main() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     app.on_lens_pick_file(move || {
-        let dialog = rfd::FileDialog::new()
-            .set_title("Load lens profile JSON")
-            .add_filter("JSON", &["json"]);
-        if let Some(path) = dialog.pick_file() {
-            match reco_calibrate::lens_database::load_from_file(&path) {
+        begin_file_dialog(
+            &state_ref,
+            &app_weak,
+            || {
+                let task = rfd::AsyncFileDialog::new()
+                    .set_title("Load lens profile JSON")
+                    .add_filter("JSON", &["json"])
+                    .pick_file();
+                async move { task.await.map(file_handle_to_path) }
+            },
+            |path, state_ref, app_weak| match reco_calibrate::lens_database::load_from_file(&path) {
                 Ok(params) => {
                     let mut s = state_ref.borrow_mut();
                     let (in_w, in_h) = s.playback.input_dimensions().unwrap_or((0, 0));
@@ -3204,8 +3363,8 @@ fn main() -> anyhow::Result<()> {
                         crate::toast::sync_to_ui(&s.toasts, &app);
                     }
                 }
-            }
-        }
+            },
+        );
     });
 
     // Slint's <=> binding updates the use-constrained-look property but
@@ -3317,39 +3476,56 @@ fn main() -> anyhow::Result<()> {
     });
 
     let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
     app.on_pick_export_output(move || {
-        let dialog = rfd::FileDialog::new()
-            .set_title("Export stitched video to…")
-            .add_filter("MP4", &["mp4"])
-            .add_filter("MOV", &["mov"])
-            .add_filter("MKV", &["mkv"]);
-        if let Some(mut path) = dialog.save_file() {
-            // Ensure an extension — ffmpeg picks muxer by extension.
-            if path.extension().is_none() {
-                path.set_extension("mp4");
-            }
-            if let Some(app) = app_weak.upgrade() {
-                app.set_export_output_path(path.to_string_lossy().to_string().into());
-            }
-        }
+        begin_file_dialog(
+            &state_ref,
+            &app_weak,
+            || {
+                let task = rfd::AsyncFileDialog::new()
+                    .set_title("Export stitched video to...")
+                    .add_filter("MP4", &["mp4"])
+                    .add_filter("MOV", &["mov"])
+                    .add_filter("MKV", &["mkv"])
+                    .save_file();
+                async move { task.await.map(file_handle_to_path) }
+            },
+            |mut path, _, app_weak| {
+                // Ensure an extension - ffmpeg picks muxer by extension.
+                if path.extension().is_none() {
+                    path.set_extension("mp4");
+                }
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_export_output_path(path.to_string_lossy().to_string().into());
+                }
+            },
+        );
     });
 
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     app.on_pick_export_model(move || {
-        let dialog = rfd::FileDialog::new()
-            .set_title("Select YOLO ONNX model")
-            .add_filter("ONNX", &["onnx"]);
-        if let Some(path) = dialog.pick_file()
-            && let Some(app) = app_weak.upgrade()
-        {
-            app.set_export_model_path(path.to_string_lossy().to_string().into());
-            // Remember across sessions so the user doesn't re-pick
-            // the same ONNX every run. Save is best-effort.
-            let mut s = state_ref.borrow_mut();
-            s.user_settings.ai_model_path = Some(path);
-            s.user_settings.save();
-        }
+        begin_file_dialog(
+            &state_ref,
+            &app_weak,
+            || {
+                let task = rfd::AsyncFileDialog::new()
+                    .set_title("Select YOLO ONNX model")
+                    .add_filter("ONNX", &["onnx"])
+                    .pick_file();
+                async move { task.await.map(file_handle_to_path) }
+            },
+            |path, state_ref, app_weak| {
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_export_model_path(path.to_string_lossy().to_string().into());
+                    // Remember across sessions so the user doesn't re-pick
+                    // the same ONNX every run. Save is best-effort.
+                    let mut s = state_ref.borrow_mut();
+                    s.user_settings.ai_model_path = Some(path);
+                    s.user_settings.save();
+                }
+            },
+        );
     });
 
     let app_weak = app.as_weak();
@@ -3683,6 +3859,13 @@ fn main() -> anyhow::Result<()> {
                         run_autoload(&state_ref, &app_weak, spec);
                     }
                 }
+            }
+
+            // Poll native file dialogs. The OS dialog waits off the
+            // Slint event loop, but path application stays on this UI
+            // thread because AppState is Rc<RefCell<_>>.
+            if poll_file_dialog(&state_ref, &app_weak) {
+                return;
             }
 
             let mut s = state_ref.borrow_mut();
