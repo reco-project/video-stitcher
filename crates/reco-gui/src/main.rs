@@ -2751,7 +2751,9 @@ fn main() -> anyhow::Result<()> {
                 let img = s.render_current();
                 if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
                     app.set_preview_frame(img);
-                    app.set_current_frame(s.playback.frame_index() as i32);
+                    let fps = s.playback.fps();
+                    let total = s.playback.total_frames().unwrap_or(0);
+                    sync_frame_display(&app, s.playback.frame_index(), total, fps);
                 }
             }
             Ok(false) => {}
@@ -2781,7 +2783,9 @@ fn main() -> anyhow::Result<()> {
                 let img = s.render_current();
                 if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
                     app.set_preview_frame(img);
-                    app.set_current_frame(s.playback.frame_index() as i32);
+                    let fps = s.playback.fps();
+                    let total = s.playback.total_frames().unwrap_or(0);
+                    sync_frame_display(&app, s.playback.frame_index(), total, fps);
                 }
             }
             Err(e) => log::error!("Step backward error: {e}"),
@@ -2898,7 +2902,9 @@ fn main() -> anyhow::Result<()> {
         let img = s.render_current();
         if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
             app.set_preview_frame(img);
-            app.set_current_frame(s.playback.frame_index() as i32);
+            let fps = s.playback.fps();
+            let total = s.playback.total_frames().unwrap_or(0);
+            sync_frame_display(&app, s.playback.frame_index(), total, fps);
         }
     });
 
@@ -4032,7 +4038,9 @@ fn main() -> anyhow::Result<()> {
                         let img = s.render_current();
                         if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
                             app.set_preview_frame(img);
-                            app.set_current_frame(s.playback.frame_index() as i32);
+                            let fps = s.playback.fps();
+                            let total = s.playback.total_frames().unwrap_or(0);
+                            sync_frame_display(&app, s.playback.frame_index(), total, fps);
                             s.last_render_at = Some(Instant::now());
                         }
                     }
