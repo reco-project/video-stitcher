@@ -1,10 +1,12 @@
 //! Precomputed coverage boundary for "no-black" viewport constraining.
 
+use std::f32::consts::FRAC_PI_2;
+
 use crate::calibration::Calibration;
 use crate::detect::detector::CameraId;
 use crate::render::scene::SceneGeometry;
 
-use super::camera_to_panorama;
+use super::{VirtualCamera, camera_to_panorama};
 
 // -- Coverage Boundary --
 //
@@ -33,6 +35,15 @@ pub struct CoverageBoundary {
     /// Minimum pitch range across all yaw positions.
     /// Determines the maximum safe FOV.
     min_pitch_range: f32,
+    /// Rig tilt captured at construction (radians). Panning a tilted rig
+    /// rolls the rendered viewport against the panorama, so the clamp
+    /// must margin against the rotated rectangle, not an axis-aligned one.
+    rig_tilt: f32,
+    /// Rig roll captured at construction (radians). Same role as `rig_tilt`.
+    rig_roll: f32,
+    /// Virtual-camera basis of the scene the boundary was built from,
+    /// used to evaluate the viewport roll at a candidate pose.
+    cam: VirtualCamera,
 }
 
 /// Result of clamping a viewport position to the safe panning region.
@@ -101,6 +112,9 @@ impl CoverageBoundary {
     pub fn from_calibration(calibration: &Calibration, scene: &SceneGeometry) -> Self {
         let n_slices: usize = 400;
         let margin = 0.02_f32;
+        let rig_tilt = calibration.framing.tilt as f32;
+        let rig_roll = calibration.framing.roll as f32;
+        let cam = VirtualCamera::new(&scene.camera_position);
 
         let mut left_points: Vec<(f32, f32)> = Vec::new();
         let mut right_points: Vec<(f32, f32)> = Vec::new();
@@ -157,6 +171,9 @@ impl CoverageBoundary {
                 pitch_max: 0.0,
                 slices: vec![(0.0, 0.0); n_slices],
                 min_pitch_range: 0.0,
+                rig_tilt,
+                rig_roll,
+                cam,
             };
         }
 
@@ -273,6 +290,9 @@ impl CoverageBoundary {
             pitch_max: global_pitch_max,
             slices,
             min_pitch_range,
+            rig_tilt,
+            rig_roll,
+            cam,
         }
     }
 
@@ -366,17 +386,56 @@ impl CoverageBoundary {
         let half_vfov = (fov_v_deg * 0.5).to_radians();
         let half_hfov = (aspect * half_vfov.tan()).atan();
 
-        // Pitch: global bounds with vertical FOV margin
-        let clamped_pitch = if self.pitch_min + half_vfov <= self.pitch_max - half_vfov {
-            pitch.clamp(self.pitch_min + half_vfov, self.pitch_max - half_vfov)
+        // First pass: axis-aligned viewport margins.
+        let first = self.clamp_with_margins(yaw, pitch, half_vfov, half_hfov);
+        if self.rig_tilt.abs() < 1e-6 && self.rig_roll.abs() < 1e-6 {
+            return first;
+        }
+
+        // Panning a tilted/rolled rig rolls the rendered viewport against
+        // the panorama, so its corners overhang the axis-aligned margin
+        // box (measured 4-9% black leak at ~19 deg tilt before this).
+        // Evaluate the roll at the first-pass pose - it varies slowly, so
+        // one refinement pass suffices - and re-clamp with the rotated
+        // rectangle's extents as margins.
+        let vroll = crate::lens::rig_correction::render_viewport_roll(
+            &self.cam,
+            first.yaw,
+            first.pitch,
+            self.rig_tilt,
+            self.rig_roll,
+        )
+        .abs()
+        .min(FRAC_PI_2);
+        let (sin_r, cos_r) = (vroll.sin(), vroll.cos());
+        self.clamp_with_margins(
+            yaw,
+            pitch,
+            half_hfov * sin_r + half_vfov * cos_r,
+            half_hfov * cos_r + half_vfov * sin_r,
+        )
+    }
+
+    /// One clamp pass with explicit half-viewport margins: pitch against
+    /// the global bounds, then yaw against the coverage range at that
+    /// pitch. Degenerate ranges (viewport taller/wider than the coverage)
+    /// fall back to the range midpoint.
+    fn clamp_with_margins(
+        &self,
+        yaw: f32,
+        pitch: f32,
+        half_v: f32,
+        half_h: f32,
+    ) -> ClampedPosition {
+        let clamped_pitch = if self.pitch_min + half_v <= self.pitch_max - half_v {
+            pitch.clamp(self.pitch_min + half_v, self.pitch_max - half_v)
         } else {
             (self.pitch_min + self.pitch_max) * 0.5
         };
 
-        // Yaw: coverage range at clamped pitch with horizontal FOV margin
         let (yaw_lo, yaw_hi) = self.yaw_range_at(clamped_pitch);
-        let clamped_yaw = if yaw_lo + half_hfov <= yaw_hi - half_hfov {
-            yaw.clamp(yaw_lo + half_hfov, yaw_hi - half_hfov)
+        let clamped_yaw = if yaw_lo + half_h <= yaw_hi - half_h {
+            yaw.clamp(yaw_lo + half_h, yaw_hi - half_h)
         } else {
             (yaw_lo + yaw_hi) * 0.5
         };

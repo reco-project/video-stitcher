@@ -118,6 +118,47 @@ pub(crate) fn world_to_render_pose(
     (yaw, pitch)
 }
 
+/// Signed roll of the rendered viewport relative to the panorama's
+/// upright frame at a world-space pose: the angle between `view_matrix`'s
+/// rendered up vector and the zero-roll up for that look direction.
+///
+/// Zero on a level rig (panning never rolls the frame); grows with pan
+/// on a tilted/rolled rig - the intentional "natural roll" `view_matrix`
+/// documents. [`CoverageBoundary::safe_clamp`] uses it to size its
+/// margins against the *rotated* viewport rectangle instead of an
+/// axis-aligned one, which under tilt leaked black corners past the
+/// clamp.
+pub(crate) fn render_viewport_roll(
+    cam: &VirtualCamera,
+    world_yaw: f32,
+    world_pitch: f32,
+    rig_tilt: f32,
+    rig_roll: f32,
+) -> f32 {
+    if rig_tilt.abs() < 1e-6 && rig_roll.abs() < 1e-6 {
+        return 0.0;
+    }
+    let (ry, rp) = world_to_render_pose(cam, world_yaw, world_pitch, rig_tilt, rig_roll);
+    let (u, f0) = rig_frame(cam, rig_tilt, rig_roll);
+    // Rebuild view_matrix's rotation at the render pose.
+    let yaw_q = UnitQuaternion::from_axis_angle(&Unit::new_normalize(u), ry);
+    let pitch_q = UnitQuaternion::from_axis_angle(&Unit::new_normalize(yaw_q * cam.base_right), rp);
+    let rotation = pitch_q * yaw_q;
+    let fwd = (rotation * f0).normalize();
+    // Both ups orthogonalized against the look direction (look_at_rh does
+    // the same internally), then the signed angle between them around it.
+    let perp = |v: Vector3<f32>| v - fwd * v.dot(&fwd);
+    let up_rendered = perp(rotation * u);
+    let up_ref = perp(VirtualCamera::world_up());
+    if up_rendered.norm() < 1e-6 || up_ref.norm() < 1e-6 {
+        return 0.0; // looking along an up axis: roll reference undefined
+    }
+    up_ref
+        .cross(&up_rendered)
+        .dot(&fwd)
+        .atan2(up_ref.dot(&up_rendered))
+}
+
 /// Resolve a world-space target look-direction into the render-space
 /// `(yaw, pitch)` the `view_matrix` consumes.
 ///

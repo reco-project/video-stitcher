@@ -217,6 +217,89 @@ mod tests {
     use super::*;
     use crate::stitch::test_support::{Agreement, AgreementBounds, calib, gpu_or_skip, nv12};
 
+    /// The no-black guarantee, end to end: flat mid-grey input pushed
+    /// through the real render path (`safe_clamp` -> `world_to_render_pose`
+    /// -> CPU stitch) must not produce black (uncovered) pixels, even at
+    /// extreme clamped targets on tilted/rolled rigs. Before the
+    /// roll-aware clamp margins, the axis-aligned margin model leaked
+    /// 4-9% black at ~19 deg tilt (worse zoomed in); the residual bound
+    /// here covers slice-resolution imprecision only (#334, measured
+    /// 0.34% worst-case independent of tilt/roll).
+    ///
+    /// CPU-only on purpose: the property is about the clamp + pose
+    /// geometry, which the GPU shares verbatim via `l_shape_plane_maps`.
+    #[test]
+    fn clamped_poses_render_no_black_edges() {
+        use crate::lens::rig_correction::world_to_render_pose;
+        use crate::projection::{CoverageBoundary, VirtualCamera};
+        use crate::render::scene::SceneGeometry;
+
+        let (cam_w, cam_h) = (256u32, 144u32);
+        let (out_w, out_h) = (192u32, 108u32);
+        let gray_y = vec![128u8; (cam_w * cam_h) as usize];
+        let gray_uv = vec![128u8; (cam_w * (cam_h / 2)) as usize];
+        let planes = Nv12Planes {
+            y: &gray_y,
+            uv: &gray_uv,
+        };
+        let aspect_out = out_w as f32 / out_h as f32;
+        let black_frac = |rgba: &[u8]| {
+            let black = rgba
+                .chunks_exact(4)
+                .filter(|p| p[0] < 2 && p[1] < 2 && p[2] < 2)
+                .count();
+            black as f64 / (out_w * out_h) as f64
+        };
+
+        // (tilt, roll, fov as a fraction of the coverage max): level rig,
+        // moderate and gameday tilt, tilt+roll, and the zoomed-in regime
+        // where the rotated-corner overhang is proportionally largest.
+        for &(tilt, roll, fov_factor) in &[
+            (0.0f64, 0.0f64, 0.9f32),
+            (0.15, 0.0, 0.9),
+            (0.33, 0.0, 0.9),
+            (0.33, 0.12, 0.9),
+            (0.33, 0.12, 0.5),
+        ] {
+            let mut cal = calib(cam_w, cam_h);
+            cal.framing.tilt = tilt;
+            cal.framing.roll = roll;
+            let plane_aspect = cal.lenses[0].width as f32 / cal.lenses[0].height as f32;
+            let scene = SceneGeometry::new(&cal.topology, &cal.framing, plane_aspect);
+            let coverage = CoverageBoundary::from_calibration(&cal, &scene);
+            let cam = VirtualCamera::new(&scene.camera_position);
+            let fov = (coverage.max_fov_degrees() * fov_factor).min(60.0);
+            let config = ViewportConfig {
+                width: out_w,
+                height: out_h,
+                fov_degrees: fov,
+            };
+            let mut backend =
+                CpuStitchBackend::new(cal.clone(), config, cam_w, cam_h, false).expect("cpu");
+
+            for &(wy, wp) in &[
+                (0.0f32, 0.0f32),
+                (-3.0, -1.5),
+                (-3.0, 1.5),
+                (3.0, -1.5),
+                (3.0, 1.5),
+                (0.0, -1.5),
+                (0.0, 1.5),
+                (-3.0, 0.0),
+                (3.0, 0.0),
+            ] {
+                let cl = coverage.safe_clamp(wy, wp, fov, aspect_out);
+                let (ry, rp) =
+                    world_to_render_pose(&cam, cl.yaw, cl.pitch, tilt as f32, roll as f32);
+                let frac = black_frac(&backend.stitch(&planes, &planes, ry, rp).unwrap());
+                assert!(
+                    frac < 0.01,
+                    "black fraction {frac:.4} at tilt={tilt} roll={roll} fov={fov:.1} target=({wy},{wp})"
+                );
+            }
+        }
+    }
+
     #[test]
     fn cpu_backend_reports_dims_and_name() {
         let (w, h) = (64u32, 36u32);
