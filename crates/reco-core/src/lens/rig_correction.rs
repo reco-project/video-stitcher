@@ -5,22 +5,64 @@
 //! rendered horizon stays level under pan on a tilted/rolled rig.
 //!
 //! - `world_to_render_pose` (crate-internal): the orient leaf - exact
-//!   quaternion inversion of the tilt+roll basis.
+//!   inverse of `view_matrix`'s yaw/pitch composition in the tilted+rolled
+//!   reference frame.
 //! - `resolve_render_pose` (crate-internal): coverage-clamp + orient,
 //!   the combined authority for the auto/AI path.
 //!
 //! Derivation in vault at
 //! `architecture/rig-correction-v2-derivation-2026-04-23.md`.
 
+use std::f32::consts::{FRAC_PI_2, PI, TAU};
+
+use nalgebra::{Unit, UnitQuaternion, Vector3};
+
 use crate::projection::{CoverageBoundary, VirtualCamera};
 
-/// Exact world-to-render mapping for the AI panner path.
+/// The tilted+rolled reference frame `view_matrix` composes before applying
+/// yaw/pitch: the yaw axis `u` (world up after tilt, then roll) and the rest
+/// forward `f0` (base forward after tilt; roll rotates *around* it, so roll
+/// leaves it unchanged). Must mirror `view_matrix`'s construction exactly -
+/// the round-trip test in this module is the guard.
+pub(crate) fn rig_frame(
+    cam: &VirtualCamera,
+    rig_tilt: f32,
+    rig_roll: f32,
+) -> (Vector3<f32>, Vector3<f32>) {
+    let mut f0 = cam.base_forward;
+    let mut u = VirtualCamera::world_up();
+    if rig_tilt.abs() > 1e-6 {
+        let tilt_q =
+            UnitQuaternion::from_axis_angle(&Unit::new_normalize(cam.base_right), rig_tilt);
+        f0 = tilt_q * f0;
+        u = tilt_q * u;
+    }
+    if rig_roll.abs() > 1e-6 {
+        let roll_q = UnitQuaternion::from_axis_angle(&Unit::new_normalize(f0), -rig_roll);
+        u = roll_q * u;
+    }
+    (u, f0)
+}
+
+/// Exact world-to-render mapping for every render site.
 ///
-/// Given a world-space (yaw, pitch) the panner wants to look at,
-/// returns the (render_yaw, render_pitch) that makes `view_matrix`
-/// point at that world direction. Uses quaternion inversion of the
-/// tilt+roll basis rotation, so it handles the tilt+roll coupling at
-/// non-zero yaw exactly (no closed-form approximation).
+/// Given a world-space (yaw, pitch) to look at, returns the
+/// (render_yaw, render_pitch) that makes `view_matrix` point at that
+/// world direction. `view_matrix` composes yaw around the tilted+rolled
+/// up axis and pitch around the yaw-rotated (unrolled) right axis, so the
+/// two axes do not form the frame a single quaternion conjugation can
+/// invert; instead this solves the composition directly:
+///
+/// 1. The look direction always stays perpendicular to the pitch axis
+///    `R(u, yaw) * base_right`, which pins yaw to
+///    `A cos(yaw) + B sin(yaw) + C = 0` (Rodrigues expansion) - solved in
+///    closed form, keeping the root that faces the target.
+/// 2. Pitch is then the signed angle from the yawed rest-forward to the
+///    target around that pitch axis.
+///
+/// Exact for any tilt+roll (the round-trip test against `view_matrix`
+/// is the guard); the previous quaternion-conjugation inverse was exact
+/// for tilt but drifted up to ~4 deg under combined tilt+roll.
 pub(crate) fn world_to_render_pose(
     cam: &VirtualCamera,
     world_yaw: f32,
@@ -32,40 +74,48 @@ pub(crate) fn world_to_render_pose(
         return (world_yaw, world_pitch);
     }
 
-    // 1. Get the 3D direction the panner wants (in world space).
-    let world_dir = cam.yaw_pitch_to_direction(world_yaw, world_pitch);
+    let d = cam.yaw_pitch_to_direction(world_yaw, world_pitch);
+    let (u, f0) = rig_frame(cam, rig_tilt, rig_roll);
+    let br = cam.base_right;
 
-    // 2. Build the same tilt+roll quaternion that view_matrix applies.
-    let base_right = cam.base_right;
-    let mut base_forward = cam.base_forward;
-    let mut world_up = VirtualCamera::world_up();
-
-    let mut combined_q = nalgebra::UnitQuaternion::identity();
-    if rig_tilt.abs() > 1e-6 {
-        let tilt_q = nalgebra::UnitQuaternion::from_axis_angle(
-            &nalgebra::Unit::new_normalize(base_right),
-            rig_tilt,
-        );
-        base_forward = tilt_q * base_forward;
-        world_up = tilt_q * world_up;
-        combined_q = tilt_q;
-    }
-    if rig_roll.abs() > 1e-6 {
-        let roll_q = nalgebra::UnitQuaternion::from_axis_angle(
-            &nalgebra::Unit::new_normalize(base_forward),
-            -rig_roll,
-        );
-        let _ = roll_q * world_up;
-        combined_q = roll_q * combined_q;
+    // d . (R(u, yaw) * br) = 0, Rodrigues-expanded:
+    let a = d.dot(&br) - u.dot(&br) * d.dot(&u);
+    let b = d.dot(&u.cross(&br));
+    let c = u.dot(&br) * d.dot(&u);
+    let r = (a * a + b * b).sqrt();
+    if r < 1e-9 {
+        // Target (anti)parallel to the yaw axis: yaw is ill-defined (a
+        // clamped pose never reaches the pole). Keep the requested yaw
+        // and aim the pitch at the pole.
+        let pole = if d.dot(&u) >= 0.0 {
+            FRAC_PI_2
+        } else {
+            -FRAC_PI_2
+        };
+        return (world_yaw, pole);
     }
 
-    // 3. Invert: the un-tilted direction that view_matrix's
-    //    tilt rotation will map to world_dir.
-    let render_dir = combined_q.inverse() * world_dir;
+    // A cos(yaw) + B sin(yaw) = -C  =>  yaw = atan2(B, A) +- acos(-C / r).
+    let phi = b.atan2(a);
+    let delta = (-c / r).clamp(-1.0, 1.0).acos();
 
-    // 4. Decompose using the un-tilted camera basis.
-    let pos = cam.direction_to_yaw_pitch(&render_dir);
-    (pos.yaw, pos.pitch)
+    // Two roots: camera facing toward the target, or away from it with
+    // pitch flipped past the pole. Keep the toward-facing one.
+    let mut best = (f32::NEG_INFINITY, 0.0_f32, 0.0_f32);
+    for yaw in [phi + delta, phi - delta] {
+        let yaw_q = UnitQuaternion::from_axis_angle(&Unit::new_normalize(u), yaw);
+        let g = yaw_q * f0;
+        let along = g.dot(&d);
+        if along > best.0 {
+            let p_axis = yaw_q * br;
+            let pitch = g.cross(&d).dot(&p_axis).atan2(along);
+            best = (along, yaw, pitch);
+        }
+    }
+    let (_, yaw, pitch) = best;
+    // Principal yaw for downstream clamps.
+    let yaw = (yaw + PI).rem_euclid(TAU) - PI;
+    (yaw, pitch)
 }
 
 /// Resolve a world-space target look-direction into the render-space
@@ -84,10 +134,10 @@ pub(crate) fn world_to_render_pose(
 ///    bounded, non-wrapping panorama (today's L-shape) - a cylinder or
 ///    sphere would need its own. The target is already world-space and
 ///    coverage is panorama-native, so the clamp is pure world-space.
-/// 2. Invert `view_matrix`'s tilt+roll basis via [`world_to_render_pose`]
-///    so the horizon stays level under pan. This stage *is* projection
-///    agnostic (pure virtual-camera orientation) and roll-aware (exact
-///    quaternion inversion, no closed-form approximation).
+/// 2. Invert `view_matrix`'s tilt+roll composition via
+///    [`world_to_render_pose`] so the horizon stays level under pan. This
+///    stage *is* projection agnostic (pure virtual-camera orientation)
+///    and roll-aware (exact solve, guarded by the round-trip test).
 ///
 /// `fov` and `aspect` size the clamp margins; capping `fov` against
 /// `coverage.max_fov_degrees()` is the caller's policy, kept out of here.
@@ -128,6 +178,52 @@ mod tests {
                     (ry - yaw).abs() < 1e-6 && (rp - pitch).abs() < 1e-6,
                     "identity failed at ({yaw}, {pitch}): got ({ry}, {rp})"
                 );
+            }
+        }
+    }
+
+    /// The round-trip guard for the orient leaf: feeding the resolved
+    /// (render_yaw, render_pitch) to `view_matrix` must aim the camera
+    /// exactly at the requested world direction, for any tilt+roll.
+    ///
+    /// This is the only oracle pose resolution can have: the CPU/GPU
+    /// agreement suite feeds both executors the SAME resolved pose, so
+    /// it can never see a resolution error (both agree while both point
+    /// the wrong way).
+    #[test]
+    fn world_to_render_inverts_view_matrix_under_tilt_and_roll() {
+        use crate::render::renderer::view_matrix;
+        let position = [1.0_f32, 0.0, 1.0];
+        let cam = VirtualCamera::new(&position);
+        for &(tilt, roll) in &[
+            (0.0_f32, 0.0_f32),
+            (0.15, 0.0),
+            (0.33, 0.0),
+            (0.0, 0.12),
+            (0.33, 0.12),
+            (0.26, -0.1),
+        ] {
+            for yaw_i in -4..=4i32 {
+                let wy = yaw_i as f32 * 0.22;
+                for pitch_i in -3..=3i32 {
+                    let wp = pitch_i as f32 * 0.11;
+                    let (ry, rp) = world_to_render_pose(&cam, wy, wp, tilt, roll);
+                    let view = view_matrix(&position, ry, rp, tilt, roll);
+                    let dir = cam.yaw_pitch_to_direction(wy, wp);
+                    let target = nalgebra::Vector4::new(
+                        position[0] + dir.x,
+                        position[1] + dir.y,
+                        position[2] + dir.z,
+                        1.0,
+                    );
+                    let c = view * target;
+                    // Angular error between camera -Z and the target.
+                    let err = (c.x * c.x + c.y * c.y).sqrt().atan2(-c.z);
+                    assert!(
+                        err.abs() < 5e-4,
+                        "pointing error {err} rad at tilt={tilt} roll={roll} yaw={wy} pitch={wp}"
+                    );
+                }
             }
         }
     }
