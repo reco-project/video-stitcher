@@ -6,7 +6,9 @@ use crate::calibration::Calibration;
 use crate::detect::detector::CameraId;
 use crate::render::scene::SceneGeometry;
 
-use super::{VirtualCamera, camera_to_panorama};
+use crate::geometry::VirtualCamera;
+
+use super::camera_to_panorama;
 
 // -- Coverage Boundary --
 //
@@ -410,7 +412,7 @@ impl CoverageBoundary {
         // Evaluate the roll at the first-pass pose - it varies slowly, so
         // one refinement pass suffices - and re-clamp with the rotated
         // rectangle's extents as margins.
-        let vroll = crate::lens::rig_correction::render_viewport_roll(
+        let vroll = crate::geometry::render_viewport_roll(
             &self.cam,
             first.yaw,
             first.pitch,

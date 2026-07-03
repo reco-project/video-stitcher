@@ -15,7 +15,6 @@
 
 mod coverage;
 mod geometry;
-mod virtual_camera;
 
 // Re-export coverage types so external code can still use
 // `crate::projection::CoverageBoundary` etc.
@@ -24,12 +23,10 @@ pub use coverage::{ClampedPosition, CoverageBoundary, PanoramaExtent};
 // Re-export geometry utility.
 pub use geometry::point_in_polygon;
 
-// Re-export virtual camera (pub(crate) visibility preserved).
-pub(crate) use virtual_camera::VirtualCamera;
-
 use crate::calibration::{Calibration, Lens};
 use crate::detect::detector::CameraId;
 use crate::detect::director::ViewportPosition;
+use crate::geometry::VirtualCamera;
 use crate::render::scene::SceneGeometry;
 use crate::stitch::{BlendRule, SurfaceMap};
 

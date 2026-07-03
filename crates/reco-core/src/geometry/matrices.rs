@@ -25,50 +25,22 @@ pub(crate) fn view_matrix(
     rig_tilt: f32,
     rig_roll: f32,
 ) -> Matrix4<f32> {
-    // Basis is owned by VirtualCamera so view_matrix and the yaw/pitch
-    // decomposition in projection.rs share a single source of truth.
-    // The right-handed `(base_forward, base_right, world_up)` triple
-    // makes view_matrix's yaw sign agree with
-    // `direction_to_yaw_pitch` without any downstream sign reconciliation.
-    let cam = crate::projection::VirtualCamera::new(position);
+    // One basis for the whole crate: the tilted+rolled reference frame
+    // comes from the same rig_frame the pose inverse and the viewport-roll
+    // margin computation use, so the three can never drift. The
+    // world_to_render_pose round-trip test locks the pair together.
+    let cam = super::virtual_camera::VirtualCamera::new(position);
     let eye = Point3::from(cam.eye);
-    let mut base_forward = cam.base_forward;
-    let base_right = cam.base_right;
-    let mut world_up = crate::projection::VirtualCamera::world_up();
+    let (up_frame, rest_forward) = super::rig_correction::rig_frame(&cam, rig_tilt, rig_roll);
 
-    // Rig tilt: rotate the entire reference frame around the base right axis.
-    // This tilts "up" and "forward" so that yaw/pitch operate in the tilted
-    // coordinate system. Panning in this tilted frame naturally introduces
-    // roll that compensates for edge distortion from a tilted camera rig.
-    if rig_tilt.abs() > 1e-6 {
-        let tilt_q =
-            UnitQuaternion::from_axis_angle(&nalgebra::Unit::new_normalize(base_right), rig_tilt);
-        base_forward = tilt_q * base_forward;
-        world_up = tilt_q * world_up;
-    }
-
-    // Rig roll: rotate around the forward axis to correct lateral lean.
-    // Negated because roll describes the camera's lean direction, and we
-    // need to rotate the opposite way to straighten the horizon.
-    // (Tilt is not negated because it shifts the view center to match
-    // where the camera points, which is the same direction.)
-    if rig_roll.abs() > 1e-6 {
-        let roll_q = UnitQuaternion::from_axis_angle(
-            &nalgebra::Unit::new_normalize(base_forward),
-            -rig_roll,
-        );
-        world_up = roll_q * world_up;
-    }
-
-    // Yaw: rotate around the (possibly tilted) up axis
-    let up_axis = nalgebra::Unit::new_normalize(world_up);
-    let yaw_q = UnitQuaternion::from_axis_angle(&up_axis, yaw);
-    // Pitch: rotate around the yaw-rotated right axis
-    let right = yaw_q * base_right;
+    // Yaw rotates around the (tilted+rolled) up axis; pitch around the
+    // yaw-rotated right axis.
+    let yaw_q = UnitQuaternion::from_axis_angle(&nalgebra::Unit::new_normalize(up_frame), yaw);
+    let right = yaw_q * cam.base_right;
     let pitch_q = UnitQuaternion::from_axis_angle(&nalgebra::Unit::new_normalize(right), pitch);
     let rotation = pitch_q * yaw_q;
-    let forward = rotation * base_forward;
-    let up = rotation * world_up;
+    let forward = rotation * rest_forward;
+    let up = rotation * up_frame;
     let target = Point3::from(eye.coords + forward);
     nalgebra::Isometry3::look_at_rh(&eye, &target, &up).to_homogeneous()
 }

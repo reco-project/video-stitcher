@@ -24,8 +24,9 @@ use nalgebra::Vector3;
 /// regression test locked that bug in; this type's yaw convention
 /// un-ignores it.
 ///
-/// Rig tilt and rig roll are NOT part of this type. `view_matrix`
-/// layers them on top; Step 4 unifies them under `RigCorrection`.
+/// Rig tilt and rig roll are NOT part of this type: `rig_frame` layers
+/// them on top, and `view_matrix` + `world_to_render_pose` both compose
+/// through that one construction.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct VirtualCamera {
     /// World-space camera eye position (copy of `camera_position`).

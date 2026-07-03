@@ -17,7 +17,9 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
 use nalgebra::{Unit, UnitQuaternion, Vector3};
 
-use crate::projection::{CoverageBoundary, VirtualCamera};
+use crate::projection::CoverageBoundary;
+
+use super::virtual_camera::VirtualCamera;
 
 /// The tilted+rolled reference frame `view_matrix` composes before applying
 /// yaw/pitch: the yaw axis `u` (world up after tilt, then roll) and the rest
@@ -233,7 +235,7 @@ mod tests {
     /// the wrong way).
     #[test]
     fn world_to_render_inverts_view_matrix_under_tilt_and_roll() {
-        use crate::geometry::view_matrix;
+        use crate::geometry::matrices::view_matrix;
         let position = [1.0_f32, 0.0, 1.0];
         let cam = VirtualCamera::new(&position);
         for &(tilt, roll) in &[

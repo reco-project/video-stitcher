@@ -12,7 +12,6 @@
 //! (undistorted) space.
 
 pub mod preview;
-pub mod rig_correction;
 pub mod undistort;
 
 use crate::calibration::Lens;

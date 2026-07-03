@@ -359,8 +359,8 @@ impl StitchCore {
         let aspect = self.pipeline.viewport().aspect_ratio();
         let rig_tilt = self.pipeline.calibration().framing.tilt as f32;
         let rig_roll = self.pipeline.calibration().framing.roll as f32;
-        let cam = crate::projection::VirtualCamera::new(&self.pipeline.scene.camera_position);
-        let (yaw, pitch) = crate::lens::rig_correction::resolve_render_pose(
+        let cam = crate::geometry::VirtualCamera::new(&self.pipeline.scene.camera_position);
+        let (yaw, pitch) = crate::geometry::resolve_render_pose(
             coverage, &cam, rig_tilt, rig_roll, pose.yaw, pose.pitch, fov, aspect,
         );
         ViewportPosition {
@@ -377,8 +377,8 @@ impl StitchCore {
     /// disables horizon leveling.
     pub fn orient_pose(&self, world: ViewportPosition) -> ViewportPosition {
         let framing = &self.pipeline.calibration().framing;
-        let cam = crate::projection::VirtualCamera::new(&self.pipeline.scene.camera_position);
-        let (yaw, pitch) = crate::lens::rig_correction::world_to_render_pose(
+        let cam = crate::geometry::VirtualCamera::new(&self.pipeline.scene.camera_position);
+        let (yaw, pitch) = crate::geometry::world_to_render_pose(
             &cam,
             world.yaw,
             world.pitch,

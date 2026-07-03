@@ -244,8 +244,9 @@ mod tests {
     /// geometry, which the GPU shares verbatim via `l_shape_plane_maps`.
     #[test]
     fn clamped_poses_render_no_black_edges() {
-        use crate::lens::rig_correction::resolve_render_pose;
-        use crate::projection::{CoverageBoundary, VirtualCamera};
+        use crate::geometry::VirtualCamera;
+        use crate::geometry::resolve_render_pose;
+        use crate::projection::CoverageBoundary;
         use crate::render::scene::SceneGeometry;
 
         let (cam_w, cam_h) = (256u32, 144u32);
