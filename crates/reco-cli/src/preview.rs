@@ -69,7 +69,8 @@ pub struct PreviewConfig<'a> {
     pub width: u32,
     pub height: u32,
     pub sync_offset: i64,
-    pub blend_width: f32,
+    /// Overrides the calibration's saved seam blend when set.
+    pub blend_width: Option<f32>,
     pub rig_tilt_degrees: f32,
 }
 
@@ -89,7 +90,17 @@ pub fn run_preview(
         rig_tilt_degrees,
     } = *config;
     // Load calibration first so we can use its sync_offset and rig_tilt
-    let cal = reco_core::calibration::Calibration::from_file(Path::new(calibration_path))?;
+    let mut cal = reco_core::calibration::Calibration::from_file(Path::new(calibration_path))?;
+    // Blend lives on the calibration document; --blend is an explicit
+    // override, otherwise the saved value is used (and hotkey edits
+    // mutate the document directly - no shadow copy).
+    if let Some(b) = blend_width {
+        eprintln!(
+            "Seam blend: --blend {b} overrides the calibration's {}",
+            cal.topology.blend_width
+        );
+        cal.topology.blend_width = b;
+    }
 
     // Use calibration's sync offset unless the user explicitly overrode it
     let effective_sync = if sync_offset != 0 {
@@ -190,7 +201,6 @@ pub fn run_preview(
         last_frame_time: Instant::now(),
         mouse_dragging: false,
         last_mouse_pos: None,
-        blend_width,
         rig_tilt: rig_tilt_degrees.to_radians(),
         rig_roll,
         max_fov,
@@ -238,7 +248,6 @@ struct App {
     // Mouse drag state
     mouse_dragging: bool,
     last_mouse_pos: Option<(f64, f64)>,
-    blend_width: f32,
     rig_tilt: f32,
     rig_roll: f32,
     /// Maximum FOV from coverage (cached from coverage.max_fov_degrees()).
@@ -482,9 +491,9 @@ impl ApplicationHandler for App {
             },
         );
 
-        // Blend/rig live on the calibration now; seed them from the preview's
-        // current state before building the renderer.
-        self.cal.topology.blend_width = self.blend_width;
+        // Rig tilt/roll live on the calibration now; seed them from the
+        // preview's resolved startup state before building the renderer.
+        // (Blend was already resolved onto self.cal at load.)
         self.cal.framing.tilt = self.rig_tilt as f64;
         self.cal.framing.roll = self.rig_roll as f64;
         let viewport = reco_core::render::viewport::ViewportConfig {
@@ -669,16 +678,15 @@ impl ApplicationHandler for App {
                             println!("x_ty: {:.4}", self.cal.topology.x_ty);
                         }
                         PhysicalKey::Code(KeyCode::KeyB) => {
-                            // Cycle blend width: 0.0 -> 0.05 -> 0.10 -> 0.15 -> 0.20 -> 0.0
-                            self.blend_width = if self.blend_width >= 0.19 {
-                                0.0
-                            } else {
-                                self.blend_width + 0.05
-                            };
+                            // Cycle blend width: 0.0 -> 0.05 -> 0.10 -> 0.15 -> 0.20 -> 0.0.
+                            // Mutate the calibration document (single home) so
+                            // other hotkeys' update_calibration cannot revert it.
+                            let b = self.cal.topology.blend_width;
+                            self.cal.topology.blend_width = if b >= 0.19 { 0.0 } else { b + 0.05 };
                             if let Some(ref mut r) = self.renderer {
-                                r.set_blend_width(self.blend_width);
+                                r.set_blend_width(self.cal.topology.blend_width);
                             }
-                            println!("blend_width: {:.2}", self.blend_width);
+                            println!("blend_width: {:.2}", self.cal.topology.blend_width);
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Digit7) => {

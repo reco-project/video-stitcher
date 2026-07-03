@@ -30,7 +30,7 @@ pub struct CameraRunConfig<'a> {
     pub output: &'a str,
     pub width: u32,
     pub height: u32,
-    pub blend: f32,
+    pub blend: Option<f32>,
     pub encoder_name: Option<String>,
     pub codec: &'a str,
     pub quality: &'a str,
@@ -125,7 +125,13 @@ pub fn run_camera(
     );
 
     let mut cal = reco_core::calibration::Calibration::from_file(Path::new(calibration))?;
-    cal.topology.blend_width = blend;
+    if let Some(b) = blend {
+        eprintln!(
+            "Seam blend: --blend {b} overrides the calibration's {}",
+            cal.topology.blend_width
+        );
+        cal.topology.blend_width = b;
+    }
     let field_roi = cal.field_roi.clone();
 
     let viewport = reco_core::render::viewport::ViewportConfig {

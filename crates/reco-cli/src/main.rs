@@ -171,10 +171,10 @@ enum Commands {
         #[arg(long, default_value = "balanced")]
         quality: String,
 
-        /// Seam blend width (0.0–1.0). Controls how much the two camera views
-        /// are blended at the seam. 0 = hard edge, 0.15 = smooth transition.
-        #[arg(long, default_value_t = 0.15, value_parser = parse_blend)]
-        blend: f32,
+        /// Seam blend width (0.0–1.0). 0 = hard edge. Overrides the
+        /// calibration's saved value; when omitted, the calibration decides.
+        #[arg(long, value_parser = parse_blend)]
+        blend: Option<f32>,
 
         /// Frame offset for temporal sync between cameras.
         /// Positive: skip N right frames (right started first).
@@ -305,9 +305,10 @@ enum Commands {
         #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
         sync_offset: i64,
 
-        /// Seam blend width (0.0 = hard cut, 0.15 = default smooth blend).
-        #[arg(long, default_value_t = 0.15)]
-        blend: f32,
+        /// Seam blend width (0.0 = hard cut). Overrides the calibration's
+        /// saved value; when omitted, the calibration decides.
+        #[arg(long, value_parser = parse_blend)]
+        blend: Option<f32>,
 
         /// Rig tilt in degrees. Rotates the entire scene to compensate for
         /// a tilted camera rig, straightening vertical lines at the edges.
@@ -366,9 +367,10 @@ enum Commands {
         #[arg(long, default_value = "fast")]
         quality: String,
 
-        /// Seam blend width (0.0-1.0).
-        #[arg(long, default_value_t = 0.15, value_parser = parse_blend)]
-        blend: f32,
+        /// Seam blend width (0.0-1.0). Overrides the calibration's saved
+        /// value; when omitted, the calibration decides.
+        #[arg(long, value_parser = parse_blend)]
+        blend: Option<f32>,
 
         /// Maximum number of frames to capture.
         #[arg(long)]
@@ -540,9 +542,10 @@ enum Commands {
         #[arg(long, default_value = "fast")]
         quality: String,
 
-        /// Seam blend width (0.0-1.0).
-        #[arg(long, default_value_t = 0.15, value_parser = parse_blend)]
-        blend: f32,
+        /// Seam blend width (0.0-1.0). Overrides the calibration's saved
+        /// value; when omitted, the calibration decides.
+        #[arg(long, value_parser = parse_blend)]
+        blend: Option<f32>,
 
         /// Maximum number of frames to capture.
         #[arg(long)]

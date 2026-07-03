@@ -24,7 +24,7 @@ pub struct LibcameraRunConfig<'a> {
     pub output: &'a str,
     pub width: u32,
     pub height: u32,
-    pub blend: f32,
+    pub blend: Option<f32>,
     pub encoder_name: Option<String>,
     pub codec: &'a str,
     pub quality: &'a str,
@@ -64,14 +64,18 @@ pub fn run_libcamera(
         "Output path looks like a network URL ({output}). Only local file paths are supported.",
     );
 
-    let cal = reco_core::calibration::Calibration::from_file(Path::new(calibration))?;
+    let mut cal = reco_core::calibration::Calibration::from_file(Path::new(calibration))?;
+    if let Some(b) = blend {
+        eprintln!(
+            "Seam blend: --blend {b} overrides the calibration's {}",
+            cal.topology.blend_width
+        );
+        cal.topology.blend_width = b;
+    }
 
     let viewport = reco_core::render::viewport::ViewportConfig {
         width,
         height,
-        blend_width: blend,
-        rig_tilt: cal.framing.tilt as f32,
-        rig_roll: cal.framing.roll as f32,
         ..Default::default()
     };
 
@@ -162,7 +166,9 @@ pub fn run_libcamera(
 
     // Warm up: discard first frame (camera ISP init)
     if let Some(frame) = source.next_frame()? {
-        session.detect_and_update_director(&frame, start.elapsed());
+        if let Err(e) = session.detect_and_update_director(&frame, start.elapsed()) {
+            log::warn!("detection failed on this frame: {e}");
+        }
         let pos = session.director_position();
         session.process_frame(&frame, pos.yaw, pos.pitch)?;
         println!("Warmup complete, starting capture...");
@@ -179,7 +185,9 @@ pub fn run_libcamera(
             }
         };
 
-        session.detect_and_update_director(&frame, start.elapsed());
+        if let Err(e) = session.detect_and_update_director(&frame, start.elapsed()) {
+            log::warn!("detection failed on this frame: {e}");
+        }
         let pos = session.director_position();
         session.process_frame(&frame, pos.yaw, pos.pitch)?;
         frame_count += 1;
