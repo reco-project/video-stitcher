@@ -491,10 +491,14 @@ impl Executor {
         }
     }
 
-    /// Set the vertical field of view in degrees.
+    /// Set the vertical field of view in degrees, clamped to
+    /// `[1.0, 179.0]` on both arms (the CPU projection math degenerates
+    /// at 0/180 exactly like the GPU perspective matrix would).
     pub fn set_fov(&mut self, fov_degrees: f32) {
         match self {
-            Executor::Cpu(c) => c.config.fov_degrees = fov_degrees,
+            // Mirrors StitchPipeline::set_fov's clamp so the executors
+            // cannot diverge on out-of-range input.
+            Executor::Cpu(c) => c.config.fov_degrees = fov_degrees.clamp(1.0, 179.0),
             #[cfg(feature = "gpu")]
             Executor::Gpu(g) => g.pipeline.set_fov(fov_degrees),
         }

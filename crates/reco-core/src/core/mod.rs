@@ -453,15 +453,33 @@ impl StitchCore {
         self.executor.fov()
     }
 
-    /// Resize the output viewport. Returns the previous `(width, height)`
-    /// when the size actually changed (see [`StitchPipeline::resize`]).
+    /// Resize the output viewport. Returns the accepted `(width, height)`,
+    /// or `None` when the request was rejected (zero dimension).
+    ///
+    /// A resize is a stream discontinuity for the delivery machinery:
+    /// the GPU streaming readback ring is rebuilt at the new size
+    /// (frames in flight in the old ring are dropped) and the lazy NV12
+    /// preview converter re-creates itself on next use.
     pub fn resize(&mut self, width: u32, height: u32) -> Option<(u32, u32)> {
-        let prev = self.executor.resize(width, height);
-        if prev.is_some() {
+        let accepted = self.executor.resize(width, height);
+        if accepted.is_some() {
             self.output_width = width;
             self.output_height = height;
+            #[cfg(feature = "gpu")]
+            if let Some(gpu) = self.executor.gpu() {
+                // Infallible here: `Executor::resize` already rejected
+                // zero dimensions, the ring's only construction error.
+                self.readback = Some(
+                    RgbaReadback::new(gpu.pipeline.gpu(), width, height)
+                        .expect("resize validated non-zero dimensions"),
+                );
+                self.preview_nv12 = None;
+                log::info!(
+                    "StitchCore: delivery machinery rebuilt for the {width}x{height} resize"
+                );
+            }
         }
-        prev
+        accepted
     }
 
     /// Set the seam blend width (per-frame uniform; coverage unaffected).
@@ -890,6 +908,14 @@ mod tests {
         // Live setters dispatch to the CPU arm (document mutation).
         core.set_fov(50.0);
         assert!((core.fov() - 50.0).abs() < f32::EPSILON);
+        // Out-of-range FOV clamps on the CPU arm exactly like the GPU
+        // pipeline does - the executors must not diverge here.
+        core.set_fov(0.0);
+        assert!(
+            (core.fov() - 1.0).abs() < f32::EPSILON,
+            "CPU arm clamps FOV to the valid range"
+        );
+        core.set_fov(50.0);
         core.set_blend_width(0.1);
         assert!((core.calibration().topology.blend_width - 0.1).abs() < 1e-6);
         core.set_rig_tilt(0.2);
@@ -1023,6 +1049,63 @@ mod tests {
         assert_eq!(cpu_rgba.len(), gpu_rgba.len());
         Agreement::compare(&gpu_rgba, &cpu_rgba)
             .assert_within(AgreementBounds::DEFAULT, "engine cpu-vs-gpu submit_nv12");
+    }
+
+    /// Resize is a delivery-machinery discontinuity: the streaming
+    /// readback ring must follow the new size, so a submit after a
+    /// resize yields frames at the resized dimensions (the review of
+    /// the executor spine caught the ring staying at construction
+    /// size, which fails wgpu copy validation on the next submit).
+    #[test]
+    #[cfg(feature = "gpu")]
+    fn resize_then_submit_yields_resized_frames() {
+        use crate::core::StitchCore;
+        use crate::core::types::RenderOutcome;
+        use crate::render::planes::Nv12Planes;
+        use crate::render::renderer::InputFormat;
+        use crate::render::viewport::ViewportConfig;
+        use crate::stitch::test_support::{calib, gpu_or_skip, nv12};
+        use crate::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
+
+        let Some(gpu) = gpu_or_skip() else {
+            return;
+        };
+        let (cam_w, cam_h) = (192u32, 108u32);
+        let exec = GpuExecutor::new(
+            gpu,
+            GpuExecutorConfig {
+                viewport: ViewportConfig {
+                    width: 160,
+                    height: 90,
+                    ..Default::default()
+                },
+                ..GpuExecutorConfig::new(calib(cam_w, cam_h), cam_w, cam_h, InputFormat::Nv12)
+            },
+        )
+        .expect("gpu executor");
+        let mut core = StitchCore::new(Executor::Gpu(Box::new(exec))).expect("engine");
+
+        let (ly, luv) = nv12(cam_w, cam_h, 0);
+        let (ry, ruv) = nv12(cam_w, cam_h, 30);
+        let left = Nv12Planes { y: &ly, uv: &luv };
+        let right = Nv12Planes { y: &ry, uv: &ruv };
+
+        // Warm the ring at the original size, then resize.
+        let _ = core.submit_frame_nv12(&left, &right).expect("submit");
+        assert_eq!(core.resize(128, 72), Some((128, 72)));
+
+        // The rebuilt ring delivers frames at the new size by the
+        // third post-resize submit.
+        let mut delivered = None;
+        for _ in 0..3 {
+            if let RenderOutcome::Rgba(bytes) =
+                core.submit_frame_nv12(&left, &right).expect("submit")
+            {
+                delivered = Some(bytes.len());
+                break;
+            }
+        }
+        assert_eq!(delivered, Some((128 * 72 * 4) as usize));
     }
 
     /// `StitchCoreError` is `std::error::Error` (so downstream

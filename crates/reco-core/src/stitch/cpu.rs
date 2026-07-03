@@ -155,7 +155,17 @@ fn composite_rgba(
     out_w: u32,
     out_h: u32,
 ) -> Vec<u8> {
-    debug_assert_eq!(surfaces.len(), samplers.len());
+    // A real assert (not debug): a length mismatch would make the zip
+    // silently truncate in release and composite a wrong image with no
+    // error. Once per frame, so the check is free next to the per-pixel
+    // work.
+    assert_eq!(
+        surfaces.len(),
+        samplers.len(),
+        "projection emitted {} surfaces but the kernel supplied {} samplers",
+        surfaces.len(),
+        samplers.len()
+    );
     let mut out = vec![0u8; (out_w * out_h * 4) as usize];
     for py in 0..out_h {
         for px in 0..out_w {

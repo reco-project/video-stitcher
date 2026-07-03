@@ -495,14 +495,15 @@ fn compute_frame_limit_negative_fps_uses_fallback() {
     assert_eq!(result, 300);
 }
 
-/// The 9B-i property guard: the push (`StitchCore::submit_frame_yuv`)
-/// and pull (`StitchSession::run`) entry points drive ONE AI stack.
-/// The same scripted detector + tracker + panner, fed the same frames
-/// through each entry point, must see identical inputs in identical
-/// order - identical frame indices, identical previous-pose threading,
-/// identical detector call counts. This is what the fold could have
-/// silently broken and what a re-grown session-side stack would break
-/// again.
+/// The 9B-i property guard, in two halves. (1) Entry-point parity:
+/// the same scripted detector + tracker + panner, fed the same frames
+/// through `StitchCore::submit_frame_yuv` and `StitchSession::run`,
+/// must see identical inputs in identical order - frame indices,
+/// previous-pose threading, detector call counts. (2) The pull side
+/// must have driven the ENGINE's stack, observed through the core's
+/// own detection cache: a session-side shadow component could still
+/// produce a matching log, but it would leave the engine's state
+/// untouched.
 #[test]
 #[ignore] // requires GPU
 fn push_and_pull_share_one_ai_brain() {
@@ -540,6 +541,15 @@ fn push_and_pull_share_one_ai_brain() {
     session
         .run(&mut MockSource::new(FRAMES), u64::MAX, &interrupted, None)
         .expect("run");
+
+    // Half (2): the session's detection wrote the ENGINE's cache
+    // (one entry per camera). A shadow session-side detection stack
+    // would leave this empty even with a matching panner log.
+    assert_eq!(
+        session.core().last_detections().len(),
+        2,
+        "session detection must land in the engine's cache"
+    );
 
     // Push side: the same frames submitted straight to an engine.
     let Some(gpu) = crate::stitch::test_support::gpu_or_skip() else {
