@@ -82,8 +82,7 @@ impl StitchSession {
         &mut self,
         sink: Box<dyn crate::detect::pipeline_event::PipelineEventSink>,
     ) {
-        log::info!("StitchSession: event sink attached");
-        self.event_sink = Some(sink);
+        self.core.set_event_sink(sink);
     }
 
     /// Attach a singleton ball tracker. See

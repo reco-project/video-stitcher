@@ -31,7 +31,7 @@ impl StitchSession {
 
         // Trace: PosePresented. This is the pose the renderer will
         // actually consume for this frame (post-clamp, post-FOV-cap).
-        if let Some(sink) = self.event_sink.as_deref_mut() {
+        if let Some(sink) = self.core.event_sink.as_deref_mut() {
             sink.emit(
                 crate::detect::pipeline_event::PipelineEvent::PosePresented {
                     frame_index: self.frame_count,

@@ -45,9 +45,7 @@ impl super::StitchCore {
             self.player_tracker.as_mut(),
             self.ball_tracker.as_mut(),
             &mut self.previous_panner_pose,
-            // StitchCore does not own an event sink. StitchSession
-            // does the tracing when it is the active entry point.
-            None,
+            self.event_sink.as_deref_mut(),
             &[],
             crate::detect::panner::DispatchContext {
                 detections: &self.last_detections,

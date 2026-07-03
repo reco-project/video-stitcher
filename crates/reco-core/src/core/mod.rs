@@ -122,6 +122,12 @@ pub struct StitchCore {
     /// compute first-order motion deltas statelessly.
     pub(crate) previous_panner_pose: ViewportPosition,
 
+    /// Structured observability sink for the detect -> track -> pan
+    /// chain (see [`crate::detect::pipeline_event`]). Owned by the
+    /// engine so push consumers (`submit_frame_*`) and the pull
+    /// session trace through the same slot.
+    pub(crate) event_sink: Option<Box<dyn crate::detect::pipeline_event::PipelineEventSink>>,
+
     pub(crate) detector: Option<Box<dyn UnifiedDetector>>,
     /// How often detection runs. 1 = every frame (default), higher =
     /// skip frames. On skipped frames the director still ticks with
@@ -228,6 +234,7 @@ impl StitchCore {
             player_tracker: None,
             panner: None,
             previous_panner_pose: ViewportPosition::default(),
+            event_sink: None,
             detector: None,
             detection_interval: 1,
             last_detections: Vec::new(),
@@ -304,6 +311,21 @@ impl StitchCore {
     pub fn clear_panner(&mut self) {
         log::info!("StitchCore: panner detached");
         self.panner = None;
+    }
+
+    /// Attach a pipeline event sink for structured observability.
+    ///
+    /// The sink receives the detect -> track -> pan event stream
+    /// (see [`crate::detect::pipeline_event`]) from every pose
+    /// dispatch, whichever entry point drives it (push `submit_*`
+    /// or the pull session). There is deliberately no clear method -
+    /// in a <1.0.0 codebase the engine is re-created for that.
+    pub fn set_event_sink(
+        &mut self,
+        sink: Box<dyn crate::detect::pipeline_event::PipelineEventSink>,
+    ) {
+        log::info!("StitchCore: event sink attached");
+        self.event_sink = Some(sink);
     }
 
     /// Attach a unified-trait detector. Replaces any existing one.

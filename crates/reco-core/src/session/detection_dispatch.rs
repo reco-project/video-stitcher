@@ -332,7 +332,7 @@ impl StitchSession {
         let timestamp_ms = elapsed.as_secs_f64() * 1000.0;
 
         // Trace: DetectionsRaw. Only clones when an event sink is attached.
-        if let Some(sink) = self.event_sink.as_deref_mut() {
+        if let Some(sink) = self.core.event_sink.as_deref_mut() {
             sink.emit(
                 crate::detect::pipeline_event::PipelineEvent::DetectionsRaw {
                     frame_index: self.frame_count,
@@ -342,17 +342,24 @@ impl StitchSession {
         }
 
         let _ = fresh_detection;
-        let calibration = self.core.pipeline().calibration();
+        // Field-path destructure: the dispatch call borrows the core's
+        // sink mutably while the context borrows the core's calibration -
+        // disjoint fields the borrow checker only splits this way.
+        let crate::core::StitchCore {
+            event_sink,
+            executor,
+            ..
+        } = &mut self.core;
         let dispatch_result = crate::detect::panner::dispatch(
             self.panner.as_mut(),
             self.player_tracker.as_mut(),
             self.ball_tracker.as_mut(),
             &mut self.previous_panner_pose,
-            self.event_sink.as_deref_mut(),
+            event_sink.as_deref_mut(),
             &self.lookahead_world_states,
             crate::detect::panner::DispatchContext {
                 detections: &self.detection.last_detections,
-                calibration,
+                calibration: executor.calibration(),
                 frame_index: self.frame_count,
                 timestamp_ms,
                 caller: "StitchSession",

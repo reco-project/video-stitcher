@@ -120,7 +120,6 @@ pub struct StitchSession {
     pub(crate) error_policy: ErrorPolicy,
     /// Dropped frame counter (for metrics).
     frames_dropped: u64,
-    pub(crate) event_sink: Option<Box<dyn crate::detect::pipeline_event::PipelineEventSink>>,
     pub(crate) telemetry: crate::telemetry::TelemetryCollector,
     /// Sub-timing from the last `submit_render_output` call.
     /// Used by `process_frame_any` to split "stitch" into
@@ -288,7 +287,6 @@ impl StitchSession {
             session_start: None,
             error_policy: ErrorPolicy::default(),
             frames_dropped: 0,
-            event_sink: None,
             telemetry: crate::telemetry::TelemetryCollector::new(),
             last_readback_time: std::time::Duration::ZERO,
             last_submit_time: std::time::Duration::ZERO,
