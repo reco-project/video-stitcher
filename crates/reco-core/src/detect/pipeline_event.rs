@@ -27,8 +27,9 @@
 //! 4. [`PanDecision`](crate::detect::pipeline_event::PipelineEvent::PanDecision) - panner produced the raw viewport pose.
 //! 5. [`PosePresented`](crate::detect::pipeline_event::PipelineEvent::PosePresented) - post-clamp pose the renderer saw.
 
-use super::director::{MappedDetection, ViewportPosition};
+use super::director::MappedDetection;
 use super::tracker::TrackedEntity;
+use crate::geometry::ViewportPosition;
 
 /// A single observable event from the stitch pipeline.
 ///

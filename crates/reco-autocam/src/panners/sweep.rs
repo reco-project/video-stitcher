@@ -6,9 +6,9 @@
 //! [`WorldState`] entirely. Useful for verifying stitch quality across
 //! the full FOV and for smoke-testing panner dispatch paths.
 
-use reco_core::detect::director::ViewportPosition;
 use reco_core::detect::panner::{PanContext, Panner};
 use reco_core::detect::tracker::WorldState;
+use reco_core::geometry::ViewportPosition;
 
 /// A debugging panner that sweeps the virtual camera left-right.
 ///
@@ -175,7 +175,7 @@ mod tests {
                 confidence: 1.0,
                 state: reco_core::detect::tracker::TrackState::Tracking,
                 age_frames: 1,
-                origin: reco_core::detect::detector::CameraId::Left,
+                origin: reco_core::geometry::CameraId::Left,
             }),
             players: Vec::new(),
         };

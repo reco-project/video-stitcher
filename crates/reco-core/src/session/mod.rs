@@ -55,7 +55,7 @@ pub use zero_copy_linux::SharedTextureSet;
 use crate::async_encode::AsyncEncodeThread;
 use crate::core::StitchCore;
 use crate::core::types::StitchCoreConfig;
-use crate::detect::director::ViewportPosition;
+use crate::geometry::ViewportPosition;
 use crate::gpu::nv12_converter::Nv12Converter;
 use crate::gpu::{GpuContext, OutputFormat};
 use crate::render::pipeline::StitchPipeline;

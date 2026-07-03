@@ -5,7 +5,7 @@
 //! [`crate::detect::panner::Panner`] emits the per-frame yaw/pitch that
 //! positions this rectangle.
 
-use crate::detect::director::ViewportPosition;
+use crate::geometry::ViewportPosition;
 
 /// Configuration for the output viewport.
 #[derive(Debug, Clone)]

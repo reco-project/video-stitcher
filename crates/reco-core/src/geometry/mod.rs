@@ -9,10 +9,12 @@
 
 mod matrices;
 mod rig_correction;
+mod types;
 mod virtual_camera;
 
 pub(crate) use matrices::{
     FAR_PLANE, NEAR_PLANE, matrix4_to_columns, opengl_to_wgpu_matrix, view_matrix,
 };
 pub(crate) use rig_correction::{render_viewport_roll, resolve_render_pose, world_to_render_pose};
+pub use types::{CameraId, ViewportPosition};
 pub(crate) use virtual_camera::VirtualCamera;

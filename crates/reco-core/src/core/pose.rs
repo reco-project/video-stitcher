@@ -5,8 +5,10 @@
 //! the detection schedule (`should_run_detection`), YUV detection
 //! dispatch, panorama-coordinate mapping, and session-start anchoring.
 
-use crate::detect::detector::{CameraId, ChromaFormat, Detection, DetectorFrame, RawFrame};
-use crate::detect::director::{MappedDetection, ViewportPosition};
+use crate::detect::detector::{ChromaFormat, Detection, DetectorFrame, RawFrame};
+use crate::detect::director::MappedDetection;
+use crate::geometry::CameraId;
+use crate::geometry::ViewportPosition;
 use crate::projection;
 use crate::render::pipeline::YuvPlanes;
 

@@ -124,7 +124,7 @@ impl PreviewBridge {
         &mut self,
         left: &YuvPlanes<'_>,
         right: &YuvPlanes<'_>,
-        pose: reco_core::detect::director::ViewportPosition,
+        pose: reco_core::geometry::ViewportPosition,
     ) -> Result<slint::Image, StitchCoreError> {
         let device = self.engine.gpu().device();
 

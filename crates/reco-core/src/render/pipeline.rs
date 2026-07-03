@@ -26,7 +26,7 @@ use super::renderer::{InputFormat, RenderError, Renderer};
 use super::scene::SceneGeometry;
 use super::viewport::{ResolvedViewport, ViewportConfig};
 use crate::calibration::Calibration;
-use crate::detect::director::ViewportPosition;
+use crate::geometry::ViewportPosition;
 use crate::gpu::{GpuContext, GpuError};
 
 use thiserror::Error;

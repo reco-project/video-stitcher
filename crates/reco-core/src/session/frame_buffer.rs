@@ -103,7 +103,7 @@ mod tests {
                     confidence: 0.9,
                     state: TrackState::Tracking,
                     age_frames: 1,
-                    origin: crate::detect::detector::CameraId::Left,
+                    origin: crate::geometry::CameraId::Left,
                 }),
                 players: vec![],
             },

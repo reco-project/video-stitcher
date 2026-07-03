@@ -28,7 +28,7 @@ use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_core::calibration::Calibration;
 use reco_core::core::StitchCore;
 use reco_core::core::types::{RenderOutcome, StitchCoreConfig};
-use reco_core::detect::director::ViewportPosition;
+use reco_core::geometry::ViewportPosition;
 use reco_core::gpu::GpuContext;
 use reco_core::render::pipeline::{BgraPlanes, FramePlaneView, StridedYuvPlanes};
 use reco_core::render::renderer::InputFormat;

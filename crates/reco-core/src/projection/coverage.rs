@@ -3,7 +3,7 @@
 use std::f32::consts::FRAC_PI_2;
 
 use crate::calibration::Calibration;
-use crate::detect::detector::CameraId;
+use crate::geometry::CameraId;
 use crate::render::scene::SceneGeometry;
 
 use crate::geometry::VirtualCamera;

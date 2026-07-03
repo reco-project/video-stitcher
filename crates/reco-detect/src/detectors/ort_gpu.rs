@@ -24,8 +24,9 @@ use ort::memory::{AllocationDevice, AllocatorType, MemoryInfo, MemoryType};
 use ort::session::Session;
 use ort::value::{Shape, TensorRefMut};
 use reco_core::detect::detector::{
-    CameraId, Detection, DetectorError, DetectorFrame, GpuNv12Frame, UnifiedDetector,
+    Detection, DetectorError, DetectorFrame, GpuNv12Frame, UnifiedDetector,
 };
+use reco_core::geometry::CameraId;
 use reco_core::interop::cuda::{
     CUdeviceptr, cuda_ensure_context, cuda_mem_alloc, cuda_mem_free, cuda_memset_d8,
 };

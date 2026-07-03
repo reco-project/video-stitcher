@@ -5,9 +5,8 @@
 //! the `WgpuPreprocessor` compute shader before delegating to the
 //! inner detector with `DetectorFrame::PreprocessedChw`.
 
-use reco_core::detect::detector::{
-    CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector,
-};
+use reco_core::detect::detector::{Detection, DetectorError, DetectorFrame, UnifiedDetector};
+use reco_core::geometry::CameraId;
 use reco_detect::wgpu_preprocess::WgpuPreprocessor;
 
 /// Detector wrapper that adds wgpu NV12 preprocessing.

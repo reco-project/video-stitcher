@@ -32,8 +32,8 @@
 //! - No implementations here. `BallTracker`, `ClassProvider`, and
 //!   future tracker variants ship in `reco-autocam::trackers`.
 
-use super::detector::CameraId;
 use super::director::MappedDetection;
+use crate::geometry::CameraId;
 
 /// A tri-valued lifecycle flag attached to every [`TrackedEntity`].
 ///

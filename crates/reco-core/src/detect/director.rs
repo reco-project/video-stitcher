@@ -13,42 +13,11 @@
 //! trait is gone; only these value types remain. Rename deferred to
 //! avoid a repo-wide import churn.
 
-use super::detector::CameraId;
+use crate::geometry::CameraId;
+use crate::geometry::ViewportPosition;
 
 /// The viewport position output by a director.
 ///
-/// Specifies the yaw, pitch, and field of view of the virtual camera.
-/// The FOV allows directors to express zoom: narrow FOV = zoomed in on
-/// action, wide FOV = zoomed out for context.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub struct ViewportPosition {
-    /// Horizontal pan angle in radians.
-    ///
-    /// `0.0` = centered on the seam between cameras.
-    pub yaw: f32,
-
-    /// Vertical tilt angle in radians.
-    ///
-    /// `0.0` = level. Positive = looking up.
-    pub pitch: f32,
-
-    /// Field of view in degrees, or `None` to use the pipeline's
-    /// default FOV.
-    ///
-    /// Typical range: 30.0 (zoomed in) to 120.0 (wide). The pipeline
-    /// default is 75.0.
-    pub fov_degrees: Option<f32>,
-}
-
-impl Default for ViewportPosition {
-    fn default() -> Self {
-        Self {
-            yaw: 0.0,
-            pitch: 0.0,
-            fov_degrees: None,
-        }
-    }
-}
 
 /// A detection mapped to panorama coordinates.
 ///

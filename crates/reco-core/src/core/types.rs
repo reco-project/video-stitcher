@@ -8,7 +8,7 @@ use std::time::Duration;
 use thiserror::Error;
 
 use crate::calibration::Calibration;
-use crate::detect::director::ViewportPosition;
+use crate::geometry::ViewportPosition;
 use crate::gpu::rgba_readback::RgbaReadbackError;
 use crate::gpu::yuv_stack_packer::{PackerError, StackedAtlas};
 use crate::projection::Projection;

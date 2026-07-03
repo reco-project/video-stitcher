@@ -47,9 +47,10 @@ use std::time::{Duration, Instant};
 
 use crate::calibration::Calibration;
 use crate::detect::detector::UnifiedDetector;
-use crate::detect::director::{MappedDetection, ViewportPosition};
+use crate::detect::director::MappedDetection;
 use crate::detect::panner::Panner;
 use crate::detect::tracker::Tracker;
+use crate::geometry::ViewportPosition;
 use crate::gpu::GpuContext;
 use crate::gpu::rgba_readback::RgbaReadback;
 use crate::gpu::yuv_stack_packer::YuvStackPacker;
@@ -668,7 +669,7 @@ mod tests {
 
     use crate::core::replay_buffer::ReplayBuffer;
     use crate::core::types::{RenderOutcome, ReplayFrame, StitchCoreError};
-    use crate::detect::director::ViewportPosition;
+    use crate::geometry::ViewportPosition;
 
     /// Assert `ReplayBuffer` trims old frames as the newest ages past
     /// `max_duration`. This is the core guarantee OBS A16 relies on:

@@ -4,7 +4,7 @@
 //! tick the director, and read back RGBA) and the low-level
 //! `render_*_at_pose` methods (GPU-only, no readback).
 
-use crate::detect::director::ViewportPosition;
+use crate::geometry::ViewportPosition;
 use crate::render::pipeline::{BgraPlanes, YuvPlanes};
 
 use super::types::{RenderOutcome, ReplayFrame, StitchCoreError};

@@ -28,9 +28,9 @@
 //! emits a log line so an operator can reconstruct the camera's
 //! decisions from the log alone.
 
-use reco_core::detect::director::ViewportPosition;
 use reco_core::detect::panner::{PanContext, Panner};
 use reco_core::detect::tracker::{TrackState, TrackedEntity, WorldState};
+use reco_core::geometry::ViewportPosition;
 use serde::{Deserialize, Serialize};
 
 const LOG_INTERVAL: u64 = 30;
@@ -1053,7 +1053,7 @@ impl Panner for FieldPanner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reco_core::detect::detector::CameraId;
+    use reco_core::geometry::CameraId;
 
     #[test]
     fn sanitized_orders_inverted_fov_and_no_panic() {

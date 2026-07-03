@@ -3,7 +3,7 @@
 //! The intelligence layer. [`trackers`] turn noisy per-frame detections
 //! into a clean [`WorldState`](reco_core::detect::tracker::WorldState) with
 //! stable identities and lifecycle flags; [`panners`] turn that world
-//! state into a virtual-camera [`ViewportPosition`](reco_core::detect::director::ViewportPosition).
+//! state into a virtual-camera [`ViewportPosition`](reco_core::geometry::ViewportPosition).
 //! Detector backends live in [`reco_detect`] and are re-exported at
 //! crate root for convenience but are not owned here.
 //!

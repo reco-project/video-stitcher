@@ -24,8 +24,8 @@ pub use coverage::{ClampedPosition, CoverageBoundary, PanoramaExtent};
 pub use geometry::point_in_polygon;
 
 use crate::calibration::{Calibration, Lens};
-use crate::detect::detector::CameraId;
-use crate::detect::director::ViewportPosition;
+use crate::geometry::CameraId;
+use crate::geometry::ViewportPosition;
 use crate::geometry::VirtualCamera;
 use crate::render::scene::SceneGeometry;
 use crate::stitch::{BlendRule, SurfaceMap};
@@ -243,7 +243,7 @@ const CONVERGENCE_EPS: f64 = 1e-10;
 ///
 /// ```rust
 /// use reco_core::projection::camera_to_panorama;
-/// use reco_core::detect::detector::CameraId;
+/// use reco_core::geometry::CameraId;
 /// use reco_core::calibration::Calibration;
 /// use reco_core::render::scene::SceneGeometry;
 ///

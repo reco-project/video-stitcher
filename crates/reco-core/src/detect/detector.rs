@@ -12,23 +12,7 @@
 //! they must run on the original camera frames before stitching.
 //! The slight wide-angle distortion is negligible for detection accuracy.
 
-/// Which camera produced this frame.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum CameraId {
-    /// Left camera (plane in X-Z space).
-    Left,
-    /// Right camera (plane in X-Y space).
-    Right,
-}
-
-impl std::fmt::Display for CameraId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Left => f.write_str("L"),
-            Self::Right => f.write_str("R"),
-        }
-    }
-}
+use crate::geometry::CameraId;
 
 /// Raw camera frame data for detection.
 ///

@@ -24,9 +24,8 @@
 use std::collections::HashMap;
 
 use reco_core::calibration::FieldRoi;
-use reco_core::detect::detector::{
-    CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector,
-};
+use reco_core::detect::detector::{Detection, DetectorError, DetectorFrame, UnifiedDetector};
+use reco_core::geometry::CameraId;
 use reco_core::projection::point_in_polygon;
 
 /// Where on a detection's bounding box the ROI test samples.
@@ -179,7 +178,8 @@ impl UnifiedDetector for RoiFilteredDetector {
 mod tests {
     use super::*;
     use reco_core::calibration::FieldRoi;
-    use reco_core::detect::detector::{CameraId, Detection};
+    use reco_core::detect::detector::Detection;
+    use reco_core::geometry::CameraId;
 
     fn make_detection(camera: CameraId, cx: f32, cy: f32, w: f32, h: f32) -> Detection {
         make_detection_class(camera, 0, cx, cy, w, h)

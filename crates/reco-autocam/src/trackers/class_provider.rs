@@ -80,8 +80,8 @@ impl Tracker for ClassProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reco_core::detect::detector::CameraId;
-    use reco_core::detect::director::ViewportPosition;
+    use reco_core::geometry::CameraId;
+    use reco_core::geometry::ViewportPosition;
 
     fn det(camera: CameraId, yaw: f32, pitch: f32, conf: f32) -> MappedDetection {
         MappedDetection {

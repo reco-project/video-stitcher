@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use std::io::BufRead;
 use std::path::Path;
 
-use reco_core::detect::director::ViewportPosition;
 use reco_core::detect::panner::{PanContext, Panner};
 use reco_core::detect::tracker::WorldState;
+use reco_core::geometry::ViewportPosition;
 
 /// Replays precomputed poses from a CSV file.
 pub struct FilePanner {

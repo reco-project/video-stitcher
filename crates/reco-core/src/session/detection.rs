@@ -19,8 +19,9 @@
 //! detection without the full stitch+encode pipeline (e.g. the
 //! analyze CLI path, Python SDKs, analytics workers).
 
-use crate::detect::detector::{CameraId, Detection, DetectorError, DetectorFrame, UnifiedDetector};
+use crate::detect::detector::{Detection, DetectorError, DetectorFrame, UnifiedDetector};
 use crate::detect::director::MappedDetection;
+use crate::geometry::CameraId;
 
 /// Detection pipeline owning a unified-trait detector, interval,
 /// and cached detections.

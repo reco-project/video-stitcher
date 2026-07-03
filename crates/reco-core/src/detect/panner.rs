@@ -18,10 +18,11 @@
 //!   left-right within coverage bounds.
 //! - `FilePanner` - replays a precomputed pose trajectory from CSV.
 
-use super::director::{MappedDetection, ViewportPosition};
+use super::director::MappedDetection;
 use super::pipeline_event::{PipelineEvent, PipelineEventSink};
 use super::tracker::{Tracker, WorldState};
 use crate::calibration::Calibration;
+use crate::geometry::ViewportPosition;
 
 /// Per-frame context a [`Panner`] receives alongside the world state.
 ///
@@ -228,8 +229,8 @@ pub(crate) fn dispatch(
 mod tests {
     use super::*;
     use crate::calibration::{Calibration, Framing, Lens, Topology};
-    use crate::detect::detector::CameraId;
     use crate::detect::tracker::{TrackState, TrackedEntity, WorldState};
+    use crate::geometry::CameraId;
 
     /// A fixture calibration shaped like the v1 test JSON without
     /// needing disk access or real lens data.

@@ -81,7 +81,7 @@ pub mod calibration;
 pub mod core;
 pub mod detect;
 pub mod encoder;
-pub(crate) mod geometry;
+pub mod geometry;
 pub mod gpu;
 pub mod interop;
 pub mod lens;

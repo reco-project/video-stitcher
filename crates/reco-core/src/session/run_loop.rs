@@ -23,10 +23,10 @@ use crate::source::FrameSource;
 /// boundary regime. This is acceptable (no future data exists past EOF);
 /// it is documented so the boundary behavior is not mistaken for a bug.
 fn centered_smooth(
-    raw_pose: crate::detect::director::ViewportPosition,
-    ahead: impl Iterator<Item = crate::detect::director::ViewportPosition>,
-    past: impl Iterator<Item = crate::detect::director::ViewportPosition>,
-) -> crate::detect::director::ViewportPosition {
+    raw_pose: crate::geometry::ViewportPosition,
+    ahead: impl Iterator<Item = crate::geometry::ViewportPosition>,
+    past: impl Iterator<Item = crate::geometry::ViewportPosition>,
+) -> crate::geometry::ViewportPosition {
     let mut sum_yaw = raw_pose.yaw;
     let mut sum_pitch = raw_pose.pitch;
     let mut sum_fov = raw_pose.fov_degrees.unwrap_or(0.0);
@@ -41,7 +41,7 @@ fn centered_smooth(
         }
         n += 1;
     }
-    crate::detect::director::ViewportPosition {
+    crate::geometry::ViewportPosition {
         yaw: sum_yaw / n as f32,
         pitch: sum_pitch / n as f32,
         fov_degrees: (fov_n > 0).then(|| sum_fov / fov_n as f32),
@@ -190,7 +190,7 @@ impl StitchSession {
     fn render_buffered_frame(
         &mut self,
         oldest: super::frame_buffer::BufferedFrame,
-        smoothed_pose: crate::detect::director::ViewportPosition,
+        smoothed_pose: crate::geometry::ViewportPosition,
         start: std::time::Instant,
         ctx: &crate::session::types::FrameLoopContext,
         on_progress: &mut Option<ProgressCallback>,
@@ -420,9 +420,9 @@ impl StitchSession {
         // using the centered average of past + current + future poses.
         let mut pose_queue: std::collections::VecDeque<(
             BufferedFrame,
-            crate::detect::director::ViewportPosition,
+            crate::geometry::ViewportPosition,
         )> = std::collections::VecDeque::new();
-        let mut past_poses: std::collections::VecDeque<crate::detect::director::ViewportPosition> =
+        let mut past_poses: std::collections::VecDeque<crate::geometry::ViewportPosition> =
             std::collections::VecDeque::new();
         let mut panner_frame_idx: u64 = 0;
 
@@ -432,7 +432,7 @@ impl StitchSession {
                                buffer: &mut FrameBuffer,
                                pose_queue: &mut std::collections::VecDeque<(
             BufferedFrame,
-            crate::detect::director::ViewportPosition,
+            crate::geometry::ViewportPosition,
         )>,
                                panner_frame_idx: &mut u64| {
             if let Some(frame) = buffer.pop() {

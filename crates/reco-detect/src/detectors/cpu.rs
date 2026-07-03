@@ -19,8 +19,9 @@ use std::path::Path;
 use ort::session::Session;
 use ort::value::TensorRef;
 use reco_core::detect::detector::{
-    CameraId, ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame, UnifiedDetector,
+    ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame, UnifiedDetector,
 };
+use reco_core::geometry::CameraId;
 
 use super::{postprocess, postprocess_balldet};
 

@@ -39,9 +39,9 @@
 //!
 //! [`MappedDetection::position`]: reco_core::detect::director::MappedDetection::position
 
-use reco_core::detect::detector::CameraId;
 use reco_core::detect::director::MappedDetection;
 use reco_core::detect::tracker::{TrackState, TrackedEntity, Tracker};
+use reco_core::geometry::CameraId;
 
 use crate::trackers::filters::{CoastStatus, Coaster};
 
@@ -114,7 +114,7 @@ impl BallTracker {
     /// Detections whose panorama yaw/pitch is further than this from
     /// the last accepted position are rejected. Cross-camera and
     /// same-camera candidates use the same gate because the
-    /// underlying [`ViewportPosition`](reco_core::detect::director::ViewportPosition)
+    /// underlying [`ViewportPosition`](reco_core::geometry::ViewportPosition)
     /// yaw/pitch coordinate system is camera-agnostic.
     pub fn with_max_jump_rad(mut self, rad: f32) -> Self {
         self.max_jump_rad = rad.max(0.0);
@@ -347,7 +347,7 @@ impl Tracker for BallTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reco_core::detect::director::ViewportPosition;
+    use reco_core::geometry::ViewportPosition;
 
     fn det(camera: CameraId, yaw: f32, pitch: f32, conf: f32, cx: f32, cy: f32) -> MappedDetection {
         MappedDetection {

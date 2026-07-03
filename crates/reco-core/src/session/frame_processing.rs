@@ -4,7 +4,7 @@
 //! convert to NV12, and fan out to attached encoders.
 
 use super::StitchSession;
-use crate::detect::director::ViewportPosition;
+use crate::geometry::ViewportPosition;
 use crate::session::types::{FrameLoopContext, SessionError};
 use crate::source::StereoFrame;
 
