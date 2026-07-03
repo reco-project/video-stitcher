@@ -570,10 +570,18 @@ pub fn load_from_json(json_str: &str, source: &str) -> Result<Lens, LensLoadErro
     let v: serde_json::Value =
         serde_json::from_str(json_str).map_err(|e| LensLoadError::Parse(e.to_string()))?;
 
-    // v1 uniforms format (flat with fx/fy/cx/cy/d)
-    if v.get("fx").is_some() && v.get("d").is_some() {
-        return serde_json::from_str::<Lens>(json_str)
-            .map_err(|e| LensLoadError::Parse(e.to_string()));
+    // Flat lens format (fx/fy/cx/cy + distortion). This branch is the
+    // designated adapter for the legacy wire shape too: old profile files
+    // named the distortion array `d`, so rename that one key here rather
+    // than carrying a serde alias on the Lens schema itself.
+    if v.get("fx").is_some() && (v.get("distortion").is_some() || v.get("d").is_some()) {
+        let mut v = v;
+        if let Some(obj) = v.as_object_mut()
+            && let Some(d) = obj.remove("d")
+        {
+            obj.entry("distortion").or_insert(d);
+        }
+        return serde_json::from_value::<Lens>(v).map_err(|e| LensLoadError::Parse(e.to_string()));
     }
 
     // Gyroflow/reco profile format
@@ -811,6 +819,23 @@ fn load_dir_recursive(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn flat_profile_loads_current_and_legacy_key() {
+        // Current shape names the array `distortion`; legacy profile files
+        // named it `d`. Both must load through the flat branch (the GUI
+        // lens picker and `reco camera live-calibrate` feed files here).
+        let current = r#"{"width":3840,"height":2160,"fx":1796.3,"fy":1797.2,
+                          "cx":1919.4,"cy":1063.2,"distortion":[0.03,0.07,-0.07,0.03]}"#;
+        let legacy = r#"{"width":3840,"height":2160,"fx":1796.3,"fy":1797.2,
+                         "cx":1919.4,"cy":1063.2,"d":[0.03,0.07,-0.07,0.03]}"#;
+        for (label, json) in [("current", current), ("legacy", legacy)] {
+            let lens = load_from_json(json, label)
+                .unwrap_or_else(|e| panic!("{label} flat profile must load: {e}"));
+            assert_eq!(lens.width, 3840, "{label}");
+            assert!((lens.distortion[0] - 0.03).abs() < 1e-12, "{label}");
+        }
+    }
 
     #[test]
     fn embedded_singleton_returns_same_ref() {
