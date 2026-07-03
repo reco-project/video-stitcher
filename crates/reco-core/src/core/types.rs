@@ -7,22 +7,23 @@ use std::time::Duration;
 
 use thiserror::Error;
 
-use crate::calibration::Calibration;
 use crate::geometry::ViewportPosition;
 use crate::gpu::rgba_readback::RgbaReadbackError;
 use crate::gpu::yuv_stack_packer::{PackerError, StackedAtlas};
-use crate::projection::Projection;
 use crate::render::pipeline::PipelineError;
 use crate::render::planes::YuvPlanes;
-use crate::render::renderer::InputFormat;
-use crate::render::viewport::ViewportConfig;
-use crate::source::CameraInput;
+use crate::stitch::StitchError;
 
 /// Errors from [`super::StitchCore`]. `Clone + Send + Sync` so consumers
 /// posting render results to worker-thread channels carry the typed
 /// error instead of stringifying at the boundary.
 #[derive(Debug, Clone, Error)]
 pub enum StitchCoreError {
+    /// Executor construction or stitch error. The `From` impl lets
+    /// consumers `?` a [`GpuExecutor`](crate::stitch::GpuExecutor)
+    /// build straight into the engine's error type.
+    #[error("executor: {0}")]
+    Executor(#[from] StitchError),
     /// GPU pipeline error (upload, render, or state mismatch).
     #[error("pipeline: {0}")]
     Pipeline(#[from] PipelineError),
@@ -69,65 +70,6 @@ pub struct ReplayFrame {
     /// Viewport pose the frame was rendered with. Useful for replay
     /// overlays that want to annotate where the camera pointed.
     pub pose: ViewportPosition,
-}
-
-/// Configuration for building a [`super::StitchCore`].
-///
-/// Required fields: `calibration`, `input_width`, `input_height`,
-/// `input_format`. Everything else has sensible defaults.
-pub struct StitchCoreConfig {
-    /// Camera calibration data.
-    pub calibration: Calibration,
-    /// Output viewport (dimensions, blend width, FOV).
-    pub viewport: ViewportConfig,
-    /// Input frame width in pixels (per camera).
-    pub input_width: u32,
-    /// Input frame height in pixels (per camera).
-    pub input_height: u32,
-    /// GPU render target format. `Rgba8Unorm` is the default and is
-    /// what every compositor consumer needs; `Bgra8Unorm` matches
-    /// native Windows DirectX surfaces for consumers that prefer to
-    /// swizzle on upload instead of on readback.
-    pub output_format: wgpu::TextureFormat,
-    /// Input pixel format.
-    pub input_format: InputFormat,
-    /// Optional custom projection. Defaults to
-    /// [`LShapeProjection`](crate::projection::LShapeProjection) - the
-    /// 2-plane L-shape that matches today's geometric model.
-    pub projection: Option<Box<dyn Projection>>,
-    /// Optional camera-input marker. Defaults to
-    /// [`StereoCameraInput`](crate::source::StereoCameraInput); future
-    /// mono / N-input builds pick a different impl here.
-    pub camera_input: Option<Box<dyn CameraInput>>,
-    /// Opt-in replay ring buffer duration. `None` (default) keeps no
-    /// history and allocates nothing for replay.
-    pub replay_buffer_duration: Option<Duration>,
-}
-
-impl StitchCoreConfig {
-    /// New config with required fields only; defaults everywhere else.
-    pub fn new(
-        calibration: Calibration,
-        input_width: u32,
-        input_height: u32,
-        input_format: InputFormat,
-    ) -> Self {
-        Self {
-            calibration,
-            viewport: ViewportConfig {
-                width: 1920,
-                height: 1080,
-                ..Default::default()
-            },
-            input_width,
-            input_height,
-            output_format: wgpu::TextureFormat::Rgba8Unorm,
-            input_format,
-            projection: None,
-            camera_input: None,
-            replay_buffer_duration: None,
-        }
-    }
 }
 
 /// Recorder hook for the push-API replay backend (FRICTION A18 /

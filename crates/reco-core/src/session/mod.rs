@@ -54,12 +54,13 @@ pub use zero_copy_linux::SharedTextureSet;
 
 use crate::async_encode::AsyncEncodeThread;
 use crate::core::StitchCore;
-use crate::core::types::StitchCoreConfig;
+use crate::core::types::StitchCoreError;
 use crate::geometry::ViewportPosition;
 use crate::gpu::nv12_converter::Nv12Converter;
 use crate::gpu::{GpuContext, OutputFormat};
 use crate::render::pipeline::StitchPipeline;
 use crate::render::renderer::InputFormat;
+use crate::stitch::{GpuExecutor, GpuExecutorConfig};
 
 /// Callback type for the NV12 tap: receives `(nv12_data, width, height)`.
 pub type Nv12TapFn = Box<dyn FnMut(&[u8], u32, u32) + Send>;
@@ -236,35 +237,36 @@ impl StitchSession {
         let output_height = config.viewport.height;
 
         // Build a `StitchCore` as the session's rendering foundation.
-        // Core owns the pipeline + readback + coverage + projection +
-        // camera_input. The session layers on NV12 conversion, async
-        // encoding, lookahead, and the legacy per-platform detection
-        // pipeline (until the unified-detector migration of the
-        // session body completes).
+        // The executor owns the pipeline + projection; the core layers
+        // readback + coverage on top. The session layers on NV12
+        // conversion, async encoding, lookahead, and the legacy
+        // per-platform detection pipeline (until the unified-detector
+        // migration of the session body completes).
         //
         // Rotation is NOT applied here. It's handled by:
         // - CPU path: decoder reverses buffers in extract_yuv()
         // - GPU path: configure_from_source() sets shader UV flip in run()
         // SessionConfig.left_rotation/right_rotation are kept for Layer 1
         // consumers who call set_flip_180() manually.
-        let core = StitchCore::new(
+        let executor = GpuExecutor::new(
             gpu,
-            StitchCoreConfig {
+            GpuExecutorConfig {
                 calibration: config.calibration,
                 viewport: config.viewport,
                 input_width: config.input_width,
                 input_height: config.input_height,
+                input_format: config.input_format,
                 // `OutputFormat` -> `wgpu::TextureFormat` via the
                 // `From` impl in `crate::gpu`; covers all three
                 // session-facing variants (Rgba8Unorm, Rgba8UnormSrgb,
                 // Bgra8UnormSrgb).
                 output_format: config.output_format.into(),
-                input_format: config.input_format,
                 projection: None,
-                camera_input: None,
-                replay_buffer_duration: None,
+                full_range: false,
             },
-        )?;
+        )
+        .map_err(StitchCoreError::from)?;
+        let core = StitchCore::new(executor)?;
 
         let nv12_converter = Nv12Converter::new(core.gpu(), output_width, output_height)?;
 

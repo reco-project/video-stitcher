@@ -27,12 +27,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_core::calibration::Calibration;
 use reco_core::core::StitchCore;
-use reco_core::core::types::{RenderOutcome, StitchCoreConfig};
+use reco_core::core::types::RenderOutcome;
 use reco_core::geometry::ViewportPosition;
 use reco_core::gpu::GpuContext;
 use reco_core::render::pipeline::{BgraPlanes, FramePlaneView, StridedYuvPlanes};
 use reco_core::render::renderer::InputFormat;
 use reco_core::render::viewport::ViewportConfig;
+use reco_core::stitch::{GpuExecutor, GpuExecutorConfig};
 
 use crate::ffi;
 
@@ -372,20 +373,32 @@ impl RecoSource {
             ..ViewportConfig::default()
         };
 
-        match StitchCore::new(
+        let executor = GpuExecutor::new(
             gpu,
-            StitchCoreConfig {
+            GpuExecutorConfig {
                 calibration,
                 viewport,
                 input_width: self.input_width,
                 input_height: self.input_height,
-                output_format: reco_core::wgpu::TextureFormat::Rgba8Unorm,
                 input_format: self.input_format,
+                output_format: reco_core::wgpu::TextureFormat::Rgba8Unorm,
                 projection: None,
-                camera_input: None,
-                replay_buffer_duration: None,
+                full_range: false,
             },
-        ) {
+        );
+        let executor = match executor {
+            Ok(executor) => executor,
+            Err(e) => {
+                log::error!("reco-obs: failed to create executor: {e}");
+                self.core = None;
+                #[cfg(feature = "replay")]
+                {
+                    self.replay_recorder_attached = false;
+                }
+                return;
+            }
+        };
+        match StitchCore::new(executor) {
             Ok(session) => {
                 log::info!(
                     "reco-obs: session initialized ({}x{} output, {}x{} input, format={:?})",

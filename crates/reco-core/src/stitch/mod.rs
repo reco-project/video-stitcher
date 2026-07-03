@@ -1,8 +1,11 @@
-//! CPU stitching backend (projection-agnostic).
+//! Stitch executors (L2): the CPU software path and the GPU pipeline owner.
 //!
-//! A pure-Rust, no-wgpu software stitcher that mirrors the GPU fisheye shader
-//! (`shaders/fisheye.wgsl`, the fragment stage in [`crate::render`]) per output
-//! pixel. It serves two roles:
+//! [`GpuExecutor`] owns the wgpu render pipeline;
+//! [`StitchCore`](crate::core::StitchCore) embeds one as its render
+//! substrate. The rest of this module is the pure-Rust, no-wgpu software
+//! stitcher that mirrors the GPU fisheye shader (`shaders/fisheye.wgsl`,
+//! the fragment stage in [`crate::render`]) per output pixel. The CPU
+//! path serves two roles:
 //!
 //! 1. **Correctness oracle** for the GPU path. The geometry reuses
 //!    `crate::lens::kb4` and the same view/projection matrices as
@@ -25,15 +28,18 @@
 //! memory-tuned specialisation and NV12-direct output are deliberate later
 //! additions, gated on profiling (see the cpu-stitch portability work).
 
-// The executors have no production consumer until Step 12 wires
-// `reco stitch --cpu` / the L3 engine; the CPU/GPU agreement oracle
-// (and the no-black property test) keep the whole chain exercised in
-// the meantime. Deliberate scaffolding, not forgotten code.
+// The CPU executor has no production consumer until Step 12 wires
+// `reco stitch --cpu`; the CPU/GPU agreement oracle (and the no-black
+// property test) keep the CPU chain exercised in the meantime.
+// Deliberate scaffolding, not forgotten code. The GPU executor is
+// live: it owns the pipeline the engine renders through.
 #![allow(dead_code)]
 
 mod cpu;
 mod executor;
 pub(crate) mod geometry;
+
+pub use executor::{GpuExecutor, GpuExecutorConfig, StitchError};
 
 /// How one projection surface composites over the surfaces before it.
 ///

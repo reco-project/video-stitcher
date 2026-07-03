@@ -16,9 +16,6 @@
 use crate::geometry::CameraId;
 use crate::geometry::ViewportPosition;
 
-/// The viewport position output by a director.
-///
-
 /// A detection mapped to panorama coordinates.
 ///
 /// Consumed by every [`Tracker`](super::tracker::Tracker) each frame.

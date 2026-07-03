@@ -4,15 +4,16 @@
 //! "NV12 planes + pan -> RGBA bytes" - the common denominator both backends
 //! produce naturally. It does NOT try to unify the GPU pipeline's specialised
 //! paths (zero-copy import, triple-buffered streaming readback, GUI texture
-//! handoff); those keep their dedicated route through [`crate::core`]. This
-//! trait covers the headless "give me stitched RGBA, GPU or CPU" case - cloud
-//! encode, edge devices, CLI - where the two backends converge on RGBA.
+//! handoff); those are GPU-only by nature and stay inherent to
+//! [`GpuExecutor`], reached through [`crate::core::StitchCore`], which owns
+//! one executor as its render substrate.
 //!
 //! - [`CpuExecutor`] binds a [`Projection`] and drives the pure-Rust gather.
-//! - [`GpuExecutor`] wraps the wgpu [`StitchPipeline`], absorbing its own
-//!   render + blocking-readback so it satisfies the synchronous contract.
+//! - [`GpuExecutor`] owns the wgpu [`StitchPipeline`] (there is no other
+//!   owner) plus a private blocking-readback ring for the synchronous
+//!   contract.
 //!
-//! When `wgpu` becomes optional (Phase 3), [`GpuExecutor`] moves behind a
+//! When `wgpu` becomes optional, [`GpuExecutor`] moves behind the `gpu`
 //! feature; [`CpuExecutor`] stays unconditional.
 
 use crate::calibration::Calibration;
@@ -27,8 +28,11 @@ use crate::projection::Projection;
 
 use super::cpu::stitch_rgba;
 
-/// Errors a [`StitchExecutor`] can return.
-#[derive(Debug, thiserror::Error)]
+/// Errors a stitch executor can return.
+///
+/// `Clone` so the engine's error type (which wraps this) can stay
+/// `Clone + Send + Sync` for worker-thread channels.
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum StitchError {
     /// The GPU pipeline failed to record or upload a frame.
     #[error("gpu pipeline: {0}")]
@@ -152,54 +156,121 @@ impl StitchExecutor for CpuExecutor {
     }
 }
 
-/// GPU backend - wraps the wgpu [`StitchPipeline`]. Renders one frame and
-/// blocks on readback so it satisfies the synchronous [`StitchExecutor`]
-/// contract. Streaming consumers that want pipelined throughput should use
-/// [`crate::core`] directly instead.
+/// Configuration for building a [`GpuExecutor`].
+///
+/// Owns everything the GPU pipeline needs to know about the frames it
+/// will stitch: the calibration document, the output viewport, source
+/// dimensions and pixel formats, and the projection. Engine-level
+/// concerns (detection, trackers, replay) deliberately live on
+/// [`StitchCore`](crate::core::StitchCore), not here.
+pub struct GpuExecutorConfig {
+    /// Camera calibration document.
+    pub calibration: Calibration,
+    /// Output viewport (dimensions, FOV).
+    pub viewport: ViewportConfig,
+    /// Input frame width in pixels (per camera).
+    pub input_width: u32,
+    /// Input frame height in pixels (per camera).
+    pub input_height: u32,
+    /// Input pixel format.
+    pub input_format: InputFormat,
+    /// GPU render-target format. `Rgba8Unorm` suits every compositor
+    /// consumer; `Bgra8Unorm` matches native Windows DirectX surfaces
+    /// for consumers that prefer to swizzle on upload instead of on
+    /// readback.
+    pub output_format: wgpu::TextureFormat,
+    /// Projection to stitch through. `None` selects the two-camera
+    /// L-shape ([`LShapeProjection`](crate::projection::LShapeProjection)).
+    pub projection: Option<Box<dyn Projection>>,
+    /// Whether source YUV uses full-range (JPEG) quantization.
+    pub full_range: bool,
+}
+
+impl GpuExecutorConfig {
+    /// New config with required fields only; defaults everywhere else
+    /// (1080p viewport, `Rgba8Unorm` output, L-shape projection,
+    /// limited-range YUV).
+    pub fn new(
+        calibration: Calibration,
+        input_width: u32,
+        input_height: u32,
+        input_format: InputFormat,
+    ) -> Self {
+        Self {
+            calibration,
+            viewport: ViewportConfig {
+                width: 1920,
+                height: 1080,
+                ..Default::default()
+            },
+            input_width,
+            input_height,
+            input_format,
+            output_format: wgpu::TextureFormat::Rgba8Unorm,
+            projection: None,
+            full_range: false,
+        }
+    }
+}
+
+/// GPU executor - the sole owner of the wgpu [`StitchPipeline`] and of
+/// the [`Projection`] bound to it.
+///
+/// [`StitchCore`](crate::core::StitchCore) holds one of these as its
+/// render substrate and drives the streaming paths (pipelined readback,
+/// zero-copy imports, preview-to-view) through it. The synchronous
+/// `stitch()` path (crate-internal until the executor trait goes
+/// public) renders one frame and blocks on a private readback ring,
+/// for callers that want "planes in, RGBA out" with no pipelining.
 pub struct GpuExecutor {
-    pipeline: StitchPipeline,
-    readback: RgbaReadback,
-    dims: (u32, u32),
+    pub(crate) pipeline: StitchPipeline,
+    /// The bound projection: supplied the pipeline's GPU program at
+    /// construction and dispatches coverage construction for the engine.
+    pub(crate) projection: Box<dyn Projection>,
+    /// Readback ring for the synchronous [`StitchExecutor::stitch`]
+    /// path, created on first use so engine-embedded executors (which
+    /// read back through the engine's own pipelined ring) never
+    /// allocate it. Keyed by the output dims it was built for so a
+    /// resize recreates it.
+    sync_readback: Option<(RgbaReadback, (u32, u32))>,
 }
 
 impl GpuExecutor {
-    /// Configure a GPU backend. `gpu` is injected so reco-core does not pull an
-    /// async runtime into non-test code; callers create it via
+    /// Build a GPU executor. `gpu` is injected so reco-core does not
+    /// pull an async runtime into non-test code; callers create it via
     /// [`GpuContext::new`].
-    pub fn new(
-        projection: Box<dyn Projection>,
-        gpu: GpuContext,
-        calib: Calibration,
-        config: ViewportConfig,
-        cam_w: u32,
-        cam_h: u32,
-        full_range: bool,
-    ) -> Result<Self, StitchError> {
-        if usize::from(projection.camera_count()) != calib.lenses.len() {
+    pub fn new(gpu: GpuContext, config: GpuExecutorConfig) -> Result<Self, StitchError> {
+        let projection: Box<dyn Projection> = config
+            .projection
+            .unwrap_or_else(|| Box::new(crate::projection::LShapeProjection));
+        if usize::from(projection.camera_count()) != config.calibration.lenses.len() {
             return Err(StitchError::InvalidConfig(format!(
                 "projection '{}' consumes {} cameras but the calibration has {} lenses",
                 projection.name(),
                 projection.camera_count(),
-                calib.lenses.len()
+                config.calibration.lenses.len()
             )));
         }
+        log::info!(
+            "GpuExecutor: projection '{}' supplies the GPU program and coverage",
+            projection.name()
+        );
         // Calibration validation happens once, inside with_gpu.
         let mut pipeline = StitchPipeline::with_gpu(
             gpu,
             &projection.gpu_program(),
-            calib,
-            config.clone(),
-            cam_w,
-            cam_h,
-            wgpu::TextureFormat::Rgba8Unorm,
-            InputFormat::Nv12,
+            config.calibration,
+            config.viewport,
+            config.input_width,
+            config.input_height,
+            config.output_format,
+            config.input_format,
         )?;
-        pipeline.set_full_range(full_range);
-        let readback = RgbaReadback::new(pipeline.gpu(), config.width, config.height)?;
+        pipeline.set_full_range(config.full_range);
         Ok(Self {
             pipeline,
-            readback,
-            dims: (config.width, config.height),
+            projection,
+            sync_readback: None,
         })
     }
 }
@@ -212,23 +283,40 @@ impl StitchExecutor for GpuExecutor {
         yaw: f32,
         pitch: f32,
     ) -> Result<Vec<u8>, StitchError> {
+        // The synchronous contract is NV12-specific; the underlying
+        // upload only debug-asserts the format, so guard it here with
+        // a typed error instead of corrupting textures in release.
+        if self.pipeline.input_format() != InputFormat::Nv12 {
+            return Err(StitchError::InvalidConfig(format!(
+                "stitch() consumes NV12 planes but the executor was built \
+                 for {:?} input",
+                self.pipeline.input_format()
+            )));
+        }
+        // (Re)create the private ring on first use or after a resize.
+        let dims = self.output_dims();
+        if !matches!(&self.sync_readback, Some((_, d)) if *d == dims) {
+            let ring = RgbaReadback::new(self.pipeline.gpu(), dims.0, dims.1)?;
+            self.sync_readback = Some((ring, dims));
+        }
         // Record the frame, submit it via the readback, then drain it
         // synchronously: one render in, this frame's RGBA out.
         let cmd = self
             .pipeline
             .render_to_target_nv12(left, right, yaw, pitch)?;
         let tex = self.pipeline.render_target();
-        self.readback.readback(self.pipeline.gpu(), tex, cmd)?;
+        let (ring, _) = self.sync_readback.as_mut().expect("created above");
+        ring.readback(self.pipeline.gpu(), tex, cmd)?;
         // A frame was just submitted, so flush_pending always drains it.
-        let frame = self
-            .readback
+        let frame = ring
             .flush_pending(self.pipeline.gpu())?
             .expect("flush_pending yields the just-submitted frame");
         Ok(frame.to_vec())
     }
 
     fn output_dims(&self) -> (u32, u32) {
-        self.dims
+        let v = self.pipeline.viewport();
+        (v.width, v.height)
     }
 
     fn name(&self) -> &'static str {
@@ -417,13 +505,11 @@ mod tests {
         )
         .expect("cpu backend");
         let mut gpu = GpuExecutor::new(
-            Box::new(crate::projection::LShapeProjection),
             gpu,
-            calib,
-            config,
-            cam_w,
-            cam_h,
-            false,
+            GpuExecutorConfig {
+                viewport: config,
+                ..GpuExecutorConfig::new(calib, cam_w, cam_h, InputFormat::Nv12)
+            },
         )
         .expect("gpu backend");
 

@@ -17,17 +17,15 @@
 //!
 //! - [`crate::projection::Projection`] - camera-geometry contract; today's
 //!   L-shape is [`LShapeProjection`](crate::projection::LShapeProjection).
-//! - [`crate::source::CameraInput`] - input-camera-count contract;
-//!   [`StereoCameraInput`](crate::source::StereoCameraInput) is the
-//!   current impl.
+//!   Bound to the executor at construction (see
+//!   [`GpuExecutorConfig`](crate::stitch::GpuExecutorConfig)); the
+//!   engine reads it back for coverage construction.
 //! - [`crate::detect::detector::UnifiedDetector`] - collapsed CPU/CUDA/Metal
 //!   detector contract with `DetectorError` for remote-inference futures.
-//!
-//! The first two are consumed at construction (see `StitchCoreConfig`).
-//! `UnifiedDetector` is wired via `StitchCore::set_detector`; detection
-//! runs on every `submit_frame_*` whose frame count is a multiple of
-//! `StitchCore::detection_interval`, and raw detections are mapped to
-//! panorama coordinates before reaching the director.
+//!   Wired via `StitchCore::set_detector`; detection runs on every
+//!   `submit_frame_*` whose frame count is a multiple of
+//!   `StitchCore::detection_interval`, and raw detections are mapped to
+//!   panorama coordinates before reaching the director.
 //!
 //! ## Sub-modules
 //!
@@ -54,24 +52,22 @@ use crate::geometry::ViewportPosition;
 use crate::gpu::GpuContext;
 use crate::gpu::rgba_readback::RgbaReadback;
 use crate::gpu::yuv_stack_packer::YuvStackPacker;
-use crate::projection::{CoverageBoundary, LShapeProjection, PanoramaExtent, Projection};
+use crate::projection::{CoverageBoundary, PanoramaExtent};
 use crate::render::pipeline::StitchPipeline;
-use crate::source::{CameraInput, StereoCameraInput};
+use crate::stitch::GpuExecutor;
 
 use self::replay_buffer::ReplayBuffer;
-use self::types::{
-    StackedReplayGpuRecorder, StackedReplayRecorder, StitchCoreConfig, StitchCoreError,
-};
+use self::types::{StackedReplayGpuRecorder, StackedReplayRecorder, StitchCoreError};
 
 /// Canonical push-first stitching core.
 ///
 /// See the module-level docs for design rationale. `StitchCore` owns:
 ///
-/// - A [`StitchPipeline`] for the GPU render work.
+/// - A [`GpuExecutor`] - the render substrate, which itself owns the
+///   GPU pipeline and the active
+///   [`Projection`](crate::projection::Projection).
 /// - An [`RgbaReadback`] triple-buffered staging ring for CPU delivery.
 /// - A coverage boundary precomputed from calibration for `safe_clamp`.
-/// - The active [`Projection`] and [`CameraInput`] (for future
-///   N-input / alt-projection variants).
 /// - Optional [`Tracker`]s and an optional [`Panner`] that together
 ///   drive the viewport pose, plus a pipeline-stage chain.
 /// - An optional [`ReplayBuffer`].
@@ -84,13 +80,11 @@ use self::types::{
 /// attached director each submit; directors see a non-empty
 /// `detections` slice on detection frames, empty otherwise.
 pub struct StitchCore {
-    pub(crate) pipeline: StitchPipeline,
+    pub(crate) executor: GpuExecutor,
     pub(crate) readback: RgbaReadback,
     pub(crate) output_width: u32,
     pub(crate) output_height: u32,
 
-    pub(crate) projection: Box<dyn Projection>,
-    pub(crate) camera_input: Box<dyn CameraInput>,
     pub(crate) coverage: Option<CoverageBoundary>,
 
     /// Per-class trackers that feed a shared [`WorldState`](crate::detect::tracker::WorldState)
@@ -168,57 +162,32 @@ pub struct StitchCore {
 }
 
 impl StitchCore {
-    /// Build a new core. Owns the supplied [`GpuContext`].
-    pub fn new(gpu: GpuContext, config: StitchCoreConfig) -> Result<Self, StitchCoreError> {
-        let output_width = config.viewport.width;
-        let output_height = config.viewport.height;
-
-        let projection: Box<dyn Projection> = config
-            .projection
-            .unwrap_or_else(|| Box::new(LShapeProjection));
-        log::info!(
-            "StitchCore: projection '{}' supplies the GPU program and coverage",
-            projection.name()
-        );
-
-        let pipeline = StitchPipeline::with_gpu(
-            gpu,
-            &projection.gpu_program(),
-            config.calibration,
-            config.viewport,
-            config.input_width,
-            config.input_height,
-            config.output_format,
-            config.input_format,
-        )?;
-
-        let readback = RgbaReadback::new(pipeline.gpu(), output_width, output_height)?;
+    /// Build a new core around an executor.
+    ///
+    /// The executor owns the GPU pipeline and the projection (see
+    /// [`GpuExecutorConfig`](crate::stitch::GpuExecutorConfig) for the
+    /// frame-plumbing knobs); the engine layers orchestration on top:
+    /// detection, pose resolution, coverage clamping, replay, and
+    /// pipelined RGBA delivery. Enable the replay ring after
+    /// construction via [`Self::enable_replay_buffer`].
+    pub fn new(executor: GpuExecutor) -> Result<Self, StitchCoreError> {
+        let (output_width, output_height) = {
+            let viewport = executor.pipeline.viewport();
+            (viewport.width, viewport.height)
+        };
+        let readback = RgbaReadback::new(executor.pipeline.gpu(), output_width, output_height)?;
 
         // The projection owns coverage construction: a new projection
         // brings its own boundary representation with it.
-        let coverage = projection.coverage(pipeline.calibration(), &pipeline.scene);
-        let camera_input: Box<dyn CameraInput> = config
-            .camera_input
-            .unwrap_or_else(|| Box::new(StereoCameraInput));
-
-        if camera_input.camera_count() != projection.camera_count() {
-            return Err(StitchCoreError::Config(format!(
-                "camera_input.camera_count() = {} but projection.camera_count() = {}; \
-                 these must match so StitchCore receives one frame per camera plane",
-                camera_input.camera_count(),
-                projection.camera_count(),
-            )));
-        }
-
-        let replay = config.replay_buffer_duration.map(ReplayBuffer::new);
+        let coverage = executor
+            .projection
+            .coverage(executor.pipeline.calibration(), &executor.pipeline.scene);
 
         Ok(Self {
-            pipeline,
+            executor,
             readback,
             output_width,
             output_height,
-            projection,
-            camera_input,
             coverage: Some(coverage),
             ball_tracker: None,
             player_tracker: None,
@@ -227,7 +196,7 @@ impl StitchCore {
             detector: None,
             detection_interval: 1,
             last_detections: Vec::new(),
-            replay,
+            replay: None,
             preview_nv12: None,
             stacked_recorder: None,
             stacked_packer: None,
@@ -361,12 +330,13 @@ impl StitchCore {
         };
         let fov = pose
             .fov_degrees
-            .unwrap_or_else(|| self.pipeline.fov())
+            .unwrap_or_else(|| self.executor.pipeline.fov())
             .min(coverage.max_fov_degrees());
-        let aspect = self.pipeline.viewport().aspect_ratio();
-        let rig_tilt = self.pipeline.calibration().framing.tilt as f32;
-        let rig_roll = self.pipeline.calibration().framing.roll as f32;
-        let cam = crate::geometry::VirtualCamera::new(&self.pipeline.scene.camera_position);
+        let aspect = self.executor.pipeline.viewport().aspect_ratio();
+        let rig_tilt = self.executor.pipeline.calibration().framing.tilt as f32;
+        let rig_roll = self.executor.pipeline.calibration().framing.roll as f32;
+        let cam =
+            crate::geometry::VirtualCamera::new(&self.executor.pipeline.scene.camera_position);
         let (yaw, pitch) = crate::geometry::resolve_render_pose(
             coverage, &cam, rig_tilt, rig_roll, pose.yaw, pose.pitch, fov, aspect,
         );
@@ -383,8 +353,9 @@ impl StitchCore {
     /// the unconstrained render path uses it so disabling the clamp never
     /// disables horizon leveling.
     pub fn orient_pose(&self, world: ViewportPosition) -> ViewportPosition {
-        let framing = &self.pipeline.calibration().framing;
-        let cam = crate::geometry::VirtualCamera::new(&self.pipeline.scene.camera_position);
+        let framing = &self.executor.pipeline.calibration().framing;
+        let cam =
+            crate::geometry::VirtualCamera::new(&self.executor.pipeline.scene.camera_position);
         let (yaw, pitch) = crate::geometry::world_to_render_pose(
             &cam,
             world.yaw,
@@ -405,23 +376,23 @@ impl StitchCore {
 
     /// The active calibration document.
     pub fn calibration(&self) -> &Calibration {
-        self.pipeline.calibration()
+        self.executor.pipeline.calibration()
     }
 
     /// Set the vertical field of view in degrees.
     pub fn set_fov(&mut self, fov_degrees: f32) {
-        self.pipeline.set_fov(fov_degrees);
+        self.executor.pipeline.set_fov(fov_degrees);
     }
 
     /// Current vertical field of view in degrees.
     pub fn fov(&self) -> f32 {
-        self.pipeline.fov()
+        self.executor.pipeline.fov()
     }
 
     /// Resize the output viewport. Returns the previous `(width, height)`
     /// when the size actually changed (see [`StitchPipeline::resize`]).
     pub fn resize(&mut self, width: u32, height: u32) -> Option<(u32, u32)> {
-        let prev = self.pipeline.resize(width, height);
+        let prev = self.executor.pipeline.resize(width, height);
         if prev.is_some() {
             self.output_width = width;
             self.output_height = height;
@@ -431,13 +402,13 @@ impl StitchCore {
 
     /// Set the seam blend width (per-frame uniform; coverage unaffected).
     pub fn set_blend_width(&mut self, width: f32) {
-        self.pipeline.set_blend_width(width);
+        self.executor.pipeline.set_blend_width(width);
     }
 
     /// Set the lens-correction strength on every lens (`0` = pinhole,
     /// `1` = full KB4).
     pub fn set_lens_correction_amount(&mut self, amount: f32) {
-        self.pipeline.set_lens_correction_amount(amount);
+        self.executor.pipeline.set_lens_correction_amount(amount);
     }
 
     /// Set rig tilt in radians, keeping the coverage clamp in sync.
@@ -447,30 +418,30 @@ impl StitchCore {
     /// tilt-invariant (a view-time basis rotation), so this is a scalar
     /// update, not a dense resample.
     pub fn set_rig_tilt(&mut self, radians: f32) {
-        let mut framing = self.pipeline.calibration().framing.clone();
+        let mut framing = self.executor.pipeline.calibration().framing.clone();
         framing.tilt = radians as f64;
-        self.pipeline.update_framing(framing);
+        self.executor.pipeline.update_framing(framing);
         self.refresh_coverage_orientation();
     }
 
     /// Set rig roll in radians, keeping the coverage clamp in sync.
     /// See [`Self::set_rig_tilt`] for why no dense rebuild is needed.
     pub fn set_rig_roll(&mut self, radians: f32) {
-        let mut framing = self.pipeline.calibration().framing.clone();
+        let mut framing = self.executor.pipeline.calibration().framing.clone();
         framing.roll = radians as f64;
-        self.pipeline.update_framing(framing);
+        self.executor.pipeline.update_framing(framing);
         self.refresh_coverage_orientation();
     }
 
     /// Replace the topology (plane placement + seam) and recompute coverage.
     pub fn update_topology(&mut self, topology: crate::calibration::Topology) {
-        self.pipeline.update_topology(topology);
+        self.executor.pipeline.update_topology(topology);
         self.rebuild_coverage();
     }
 
     /// Replace the framing (axis offset, tilt, roll) and recompute coverage.
     pub fn update_framing(&mut self, framing: crate::calibration::Framing) {
-        self.pipeline.update_framing(framing);
+        self.executor.pipeline.update_framing(framing);
         self.rebuild_coverage();
     }
 
@@ -482,7 +453,7 @@ impl StitchCore {
         left: Option<crate::calibration::Lens>,
         right: Option<crate::calibration::Lens>,
     ) {
-        self.pipeline.update_camera_params(left, right);
+        self.executor.pipeline.update_camera_params(left, right);
         self.rebuild_coverage();
     }
 
@@ -493,14 +464,14 @@ impl StitchCore {
     }
 
     fn rebuild_coverage(&mut self) {
-        self.coverage = Some(
-            self.projection
-                .coverage(self.pipeline.calibration(), &self.pipeline.scene),
-        );
+        self.coverage = Some(self.executor.projection.coverage(
+            self.executor.pipeline.calibration(),
+            &self.executor.pipeline.scene,
+        ));
     }
 
     fn refresh_coverage_orientation(&mut self) {
-        let framing = &self.pipeline.calibration().framing;
+        let framing = &self.executor.pipeline.calibration().framing;
         let (tilt, roll) = (framing.tilt as f32, framing.roll as f32);
         if let Some(coverage) = self.coverage.as_mut() {
             coverage.set_rig_orientation(tilt, roll);
@@ -567,14 +538,14 @@ impl StitchCore {
 
     /// Short name of the active projection (for logs + UI labels).
     pub fn projection_name(&self) -> &'static str {
-        self.projection.name()
+        self.executor.projection.name()
     }
 
-    /// Camera count of the active input configuration. For today's
-    /// stereo L-shape this is `2`; future mono / N-input builds expose
-    /// different values.
+    /// Camera count the active projection consumes (one submitted frame
+    /// per camera plane). For today's stereo L-shape this is `2`; a
+    /// mono projection exposes `1`.
     pub fn camera_count(&self) -> u8 {
-        self.camera_input.camera_count()
+        self.executor.projection.camera_count()
     }
 
     /// Hot-swap the calibration. Takes effect on the next submit.
@@ -582,7 +553,7 @@ impl StitchCore {
     /// Re-derives the coverage boundary from the new calibration so
     /// subsequent `safe_clamp` calls respect the new no-black region.
     pub fn update_calibration(&mut self, calibration: Calibration) {
-        self.pipeline.update_calibration(calibration);
+        self.executor.pipeline.update_calibration(calibration);
         self.rebuild_coverage();
     }
 
@@ -630,18 +601,18 @@ impl StitchCore {
 
     /// Shared access to the underlying pipeline.
     pub fn pipeline(&self) -> &StitchPipeline {
-        &self.pipeline
+        &self.executor.pipeline
     }
 
     /// Mutable access to the pipeline for advanced callers that need
     /// to tweak viewport / FOV / zero-copy bind groups directly.
     pub fn pipeline_mut(&mut self) -> &mut StitchPipeline {
-        &mut self.pipeline
+        &mut self.executor.pipeline
     }
 
     /// The GPU context owning every resource.
     pub fn gpu(&self) -> &GpuContext {
-        self.pipeline.gpu()
+        self.executor.pipeline.gpu()
     }
 }
 

@@ -244,6 +244,7 @@ impl Renderer {
     ///
     /// `input_format` selects between YUV420P (3 separate planes) and
     /// NV12 (Y + interleaved UV). NV12 is the native NVDEC output format.
+    #[allow(clippy::too_many_arguments)] // construction-only plumbing
     pub fn new(
         gpu: &GpuContext,
         program: &crate::render::GpuProgram,
@@ -327,7 +328,7 @@ impl Renderer {
                 module: &shader,
                 entry_point: Some(program.vs_entry),
                 compilation_options: Default::default(),
-                buffers: &[program.vertex_layout.clone()],
+                buffers: std::slice::from_ref(&program.vertex_layout),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,

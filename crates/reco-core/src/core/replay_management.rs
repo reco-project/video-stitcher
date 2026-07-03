@@ -81,7 +81,7 @@ impl super::StitchCore {
         layout: StackGridLayout,
         output_size: OutputTileSize,
     ) -> Result<(), StitchCoreError> {
-        let source_format = match self.pipeline.input_format() {
+        let source_format = match self.executor.pipeline.input_format() {
             InputFormat::Yuv420p => SourceFormat::Yuv420p,
             InputFormat::Nv12 => SourceFormat::Nv12,
             InputFormat::Bgra => {
@@ -92,7 +92,12 @@ impl super::StitchCore {
                 ));
             }
         };
-        let packer = YuvStackPacker::new(self.pipeline.gpu(), layout, output_size, source_format)?;
+        let packer = YuvStackPacker::new(
+            self.executor.pipeline.gpu(),
+            layout,
+            output_size,
+            source_format,
+        )?;
         let (atlas_w, atlas_h) = packer.atlas_dims();
         log::info!(
             "reco-core: replay pack path = GPU shader (tiles {}x{} out, N={}, atlas {}x{}, source_format={:?})",
@@ -191,7 +196,7 @@ impl super::StitchCore {
     /// No-op when the packer isn't enabled.
     ///
     /// Hard-coded to the two-camera stereo layout today; extend
-    /// when `CameraInput::camera_count() > 2` lands.
+    /// when a projection with `camera_count() > 2` lands.
     pub fn pack_gpu_stacked_replay_from_views(
         &mut self,
         left: StackedPackSource<'_>,
@@ -201,7 +206,7 @@ impl super::StitchCore {
         let Some(ref mut packer) = self.stacked_packer else {
             return;
         };
-        let gpu = self.pipeline.gpu();
+        let gpu = self.executor.pipeline.gpu();
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -253,10 +258,10 @@ impl super::StitchCore {
         // StackedPackSource variant matching the packer's
         // configured source format - the packer will route to the
         // right shader kernel internally.
-        let (ly, lu, lv) = self.pipeline.left_plane_views();
-        let (ry, ru, rv) = self.pipeline.right_plane_views();
+        let (ly, lu, lv) = self.executor.pipeline.left_plane_views();
+        let (ry, ru, rv) = self.executor.pipeline.right_plane_views();
         // Keep bindings alive across the pack call via locals.
-        let (left, right) = match self.pipeline.input_format() {
+        let (left, right) = match self.executor.pipeline.input_format() {
             InputFormat::Yuv420p => (
                 StackedPackSource::Yuv420p {
                     y: &ly,

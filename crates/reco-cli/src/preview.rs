@@ -24,9 +24,9 @@ use std::time::Instant;
 use reco_control::pose_control::HotkeyIntent;
 use reco_control::{ControlIntent, PoseIntent};
 use reco_core::core::StitchCore;
-use reco_core::core::types::StitchCoreConfig;
 use reco_core::encoder::{Encoder, OutputFrame, PixelFormat};
 use reco_core::source::{FrameSource, YuvData};
+use reco_core::stitch::{GpuExecutor, GpuExecutorConfig};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -501,21 +501,21 @@ impl ApplicationHandler for App {
             ..Default::default()
         };
 
-        let renderer = StitchCore::new(
+        let executor = GpuExecutor::new(
             gpu,
-            StitchCoreConfig {
+            GpuExecutorConfig {
                 calibration: self.cal.clone(),
                 viewport,
                 input_width: self.input_width,
                 input_height: self.input_height,
-                output_format: reco_core::render::strip_srgb(surface_format),
                 input_format: reco_core::render::renderer::InputFormat::Yuv420p,
+                output_format: reco_core::render::strip_srgb(surface_format),
                 projection: None,
-                camera_input: None,
-                replay_buffer_duration: None,
+                full_range: false,
             },
         )
-        .expect("create engine");
+        .expect("create executor");
+        let renderer = StitchCore::new(executor).expect("create engine");
 
         println!(
             "Preview ready: GPU = {}, format = {:?}",

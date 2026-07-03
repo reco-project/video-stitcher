@@ -28,11 +28,12 @@
 
 use reco_core::calibration::{Calibration, Lens};
 use reco_core::core::StitchCore;
-use reco_core::core::types::{StitchCoreConfig, StitchCoreError};
+use reco_core::core::types::StitchCoreError;
 use reco_core::gpu::GpuContext;
 use reco_core::lens::preview::LensPreviewRenderer;
 use reco_core::render::pipeline::{PipelineError, YuvPlanes};
 use reco_core::render::viewport::ViewportConfig;
+use reco_core::stitch::{GpuExecutor, GpuExecutorConfig};
 use reco_core::wgpu;
 
 /// Bridges reco-core GPU rendering to Slint via a shared wgpu device.
@@ -89,20 +90,20 @@ impl PreviewBridge {
         // the safe common denominator across backends (Vulkan/Metal/DX12).
         let texture_format = wgpu::TextureFormat::Rgba8Unorm;
 
-        let mut engine = StitchCore::new(
+        let executor = GpuExecutor::new(
             gpu,
-            StitchCoreConfig {
+            GpuExecutorConfig {
                 calibration,
                 viewport,
                 input_width,
                 input_height,
-                output_format: texture_format,
                 input_format: reco_core::render::renderer::InputFormat::Yuv420p,
+                output_format: texture_format,
                 projection: None,
-                camera_input: None,
-                replay_buffer_duration: None,
+                full_range: false,
             },
         )?;
+        let mut engine = StitchCore::new(executor)?;
         // Honour a persisted lens-correction strength (e.g. correction
         // saved off) instead of the full-correction default.
         engine.set_lens_correction_amount(lens_correction_amount);
