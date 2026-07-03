@@ -5,10 +5,14 @@
 //! GPU-pack path ([`YuvStackPacker`](crate::gpu::yuv_stack_packer::YuvStackPacker)
 //! + [`StackedReplayGpuRecorder`](super::types::StackedReplayGpuRecorder)).
 
-use super::types::{StackedReplayGpuRecorder, StackedReplayRecorder, StitchCoreError};
+use super::types::StackedReplayRecorder;
+#[cfg(feature = "gpu")]
+use super::types::{StackedReplayGpuRecorder, StitchCoreError};
+#[cfg(feature = "gpu")]
 use crate::gpu::yuv_stack_packer::{
     OutputTileSize, SourceFormat, StackGridLayout, StackedPackSource, YuvStackPacker,
 };
+#[cfg(feature = "gpu")]
 use crate::render::renderer::InputFormat;
 
 impl super::StitchCore {
@@ -76,6 +80,7 @@ impl super::StitchCore {
     /// Returns `StitchCoreError::Config` when the pipeline's input
     /// format is BGRA (the pack shader only handles YUV420P / NV12)
     /// or when the layout / output dims violate YUV420P alignment.
+    #[cfg(feature = "gpu")]
     pub fn enable_gpu_stacked_replay(
         &mut self,
         layout: StackGridLayout,
@@ -120,6 +125,7 @@ impl super::StitchCore {
     /// Disable the GPU-pack replay path and drop the packer.
     /// Also calls `finish` on any attached GPU recorder so its file
     /// is finalized. No-op when the path was not enabled.
+    #[cfg(feature = "gpu")]
     pub fn disable_gpu_stacked_replay(&mut self) {
         if self.stacked_packer.take().is_some() {
             log::info!("StitchCore: GPU stacked replay disabled");
@@ -131,6 +137,7 @@ impl super::StitchCore {
     /// [`Self::enable_gpu_stacked_replay`] for the pack output to
     /// reach disk - without a recorder the packer still runs but
     /// the readback bytes are dropped.
+    #[cfg(feature = "gpu")]
     pub fn set_stacked_gpu_recorder(&mut self, recorder: Box<dyn StackedReplayGpuRecorder>) {
         if self.stacked_gpu_recorder.is_some() {
             log::warn!(
@@ -151,6 +158,7 @@ impl super::StitchCore {
 
     /// Drop the GPU-pack atlas recorder, calling `finish` so the
     /// output file is finalized. No-op if no recorder is attached.
+    #[cfg(feature = "gpu")]
     pub fn clear_stacked_gpu_recorder(&mut self) {
         if let Some(mut recorder) = self.stacked_gpu_recorder.take() {
             recorder.finish();
@@ -160,6 +168,7 @@ impl super::StitchCore {
 
     /// Flush the GPU recorder's buffered bytes to disk. No-op if no
     /// recorder is attached.
+    #[cfg(feature = "gpu")]
     pub fn flush_stacked_gpu_recorder(&mut self) {
         if let Some(ref mut recorder) = self.stacked_gpu_recorder {
             recorder.flush();
@@ -169,6 +178,7 @@ impl super::StitchCore {
     /// Atlas dimensions `(width, height)` the current packer produces,
     /// or `None` when GPU stacked replay is not enabled. Consumers
     /// use this to open an encoder sized for the atlas.
+    #[cfg(feature = "gpu")]
     pub fn stacked_atlas_dims(&self) -> Option<(u32, u32)> {
         self.stacked_packer.as_ref().map(|p| p.atlas_dims())
     }
@@ -195,6 +205,7 @@ impl super::StitchCore {
     ///
     /// Hard-coded to the two-camera stereo layout today; extend
     /// when a projection with `camera_count() > 2` lands.
+    #[cfg(feature = "gpu")]
     pub fn pack_gpu_stacked_replay_from_views(
         &mut self,
         left: StackedPackSource<'_>,
@@ -253,6 +264,7 @@ impl super::StitchCore {
     /// every entry point shares behavior.
     ///
     /// No-op when the packer isn't enabled.
+    #[cfg(feature = "gpu")]
     pub(crate) fn pack_replay_from_pipeline(&mut self) {
         crate::profile_scope!("replay_drive_pack");
         if self.stacked_packer.is_none() {

@@ -10,7 +10,7 @@ use crate::detect::director::MappedDetection;
 use crate::geometry::CameraId;
 use crate::geometry::ViewportPosition;
 use crate::projection;
-use crate::render::pipeline::YuvPlanes;
+use crate::render::planes::YuvPlanes;
 
 impl super::StitchCore {
     pub(super) fn anchor_session_start(&mut self) {

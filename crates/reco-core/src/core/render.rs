@@ -5,7 +5,9 @@
 //! `render_*_at_pose` methods (GPU-only, no readback).
 
 use crate::geometry::ViewportPosition;
-use crate::render::pipeline::{BgraPlanes, YuvPlanes};
+#[cfg(feature = "gpu")]
+use crate::render::planes::BgraPlanes;
+use crate::render::planes::YuvPlanes;
 use crate::stitch::Executor;
 
 use super::types::{RenderOutcome, ReplayFrame, StitchCoreError};
@@ -50,14 +52,44 @@ impl super::StitchCore {
         }
 
         let pose = self.resolve_current_pose(ran_detection);
+        match &self.executor {
+            Executor::Cpu(_) => self.submit_cpu_yuv(left, right, pose),
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(_) => self.submit_gpu_yuv(left, right, pose),
+        }
+    }
+
+    /// CPU arm of the YUV submits: synchronous software stitch - RGBA
+    /// immediately, no staging ring, no warmup.
+    fn submit_cpu_yuv(
+        &mut self,
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
+        pose: ViewportPosition,
+    ) -> Result<RenderOutcome<'_>, StitchCoreError> {
+        // Infallible on wgpu-free builds (single-variant enum); the gpu
+        // build adds the second arm.
+        #[allow(clippy::infallible_destructuring_match)]
+        let cpu = match &self.executor {
+            Executor::Cpu(cpu) => cpu,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(_) => unreachable!("routed from the CPU arm"),
+        };
+        let rgba = cpu.stitch_yuv(left, right, pose.yaw, pose.pitch)?;
+        Ok(self.deliver_cpu_frame(rgba, pose))
+    }
+
+    /// GPU arm of the YUV submits: pipelined render + triple-buffered
+    /// readback.
+    #[cfg(feature = "gpu")]
+    fn submit_gpu_yuv(
+        &mut self,
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
+        pose: ViewportPosition,
+    ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         let Executor::Gpu(gpu) = &self.executor else {
-            // CPU arm: synchronous software stitch - RGBA immediately,
-            // no staging ring, no warmup.
-            let Executor::Cpu(cpu) = &self.executor else {
-                unreachable!("executor is CPU here");
-            };
-            let rgba = cpu.stitch_yuv(left, right, pose.yaw, pose.pitch)?;
-            return Ok(self.deliver_cpu_frame(rgba, pose));
+            unreachable!("routed from the GPU arm");
         };
         let cmd = gpu
             .pipeline
@@ -78,7 +110,7 @@ impl super::StitchCore {
         // fields are disjoint.
         let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
         let Executor::Gpu(gpu) = &self.executor else {
-            return Err(StitchCoreError::RequiresGpu);
+            unreachable!("routed from the GPU arm");
         };
         let rgba = self
             .readback
@@ -140,47 +172,16 @@ impl super::StitchCore {
             self.last_detections = self.map_detections_to_panorama(dets);
         }
 
-        let Executor::Gpu(gpu) = &self.executor else {
-            let Executor::Cpu(cpu) = &self.executor else {
-                unreachable!("executor is CPU here");
-            };
-            let rgba = cpu.stitch_yuv(left, right, yaw, pitch)?;
-            let pose = ViewportPosition {
-                yaw,
-                pitch,
-                fov_degrees: None,
-            };
-            return Ok(self.deliver_cpu_frame(rgba, pose));
+        let pose = ViewportPosition {
+            yaw,
+            pitch,
+            fov_degrees: None,
         };
-        let cmd = gpu.pipeline.render_to_target(left, right, yaw, pitch)?;
-        // GPU stacked-replay pack - see `submit_frame_yuv` for
-        // ordering rationale. No-op when not enabled.
-        self.pack_replay_from_pipeline();
-        let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
-        let Executor::Gpu(gpu) = &self.executor else {
-            return Err(StitchCoreError::RequiresGpu);
-        };
-        let rgba = self
-            .readback
-            .as_mut()
-            .expect("gpu engine owns the readback ring")
-            .readback(gpu.pipeline.gpu(), gpu.pipeline.render_target(), cmd)?;
-        self.frame_count += 1;
-        if let (Some(replay), Some(bytes)) = (self.replay.as_mut(), rgba) {
-            replay.push(ReplayFrame {
-                rgba: bytes.to_vec(),
-                captured_at,
-                pose: ViewportPosition {
-                    yaw,
-                    pitch,
-                    fov_degrees: None,
-                },
-            });
+        match &self.executor {
+            Executor::Cpu(_) => self.submit_cpu_yuv(left, right, pose),
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(_) => self.submit_gpu_yuv(left, right, pose),
         }
-        Ok(match rgba {
-            Some(bytes) => RenderOutcome::Rgba(bytes),
-            None => RenderOutcome::Warmup,
-        })
     }
 
     /// Submit a stereo BGRA frame pair at an explicit pose. See
@@ -188,6 +189,7 @@ impl super::StitchCore {
     ///
     /// Does not run detection (BGRA backends are not yet supported;
     /// see [`Self::submit_frame_bgra`] for the rationale).
+    #[cfg(feature = "gpu")]
     pub fn submit_frame_bgra_at_pose(
         &mut self,
         left: &BgraPlanes<'_>,
@@ -234,6 +236,7 @@ impl super::StitchCore {
     ///
     /// Requires the core to have been built with `InputFormat::Bgra`.
     /// See [`Self::submit_frame_yuv`] for return semantics.
+    #[cfg(feature = "gpu")]
     pub fn submit_frame_bgra(
         &mut self,
         left: &BgraPlanes<'_>,
@@ -311,12 +314,33 @@ impl super::StitchCore {
         }
 
         let pose = self.resolve_current_pose(ran_detection);
+        match &self.executor {
+            Executor::Cpu(_) => {
+                // See submit_cpu_yuv for the wgpu-free lint note.
+                #[allow(clippy::infallible_destructuring_match)]
+                let cpu = match &self.executor {
+                    Executor::Cpu(cpu) => cpu,
+                    #[cfg(feature = "gpu")]
+                    Executor::Gpu(_) => unreachable!("routed from the CPU arm"),
+                };
+                let rgba = cpu.stitch_nv12(left, right, pose.yaw, pose.pitch)?;
+                Ok(self.deliver_cpu_frame(rgba, pose))
+            }
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(_) => self.submit_gpu_nv12(left, right, pose),
+        }
+    }
+
+    /// GPU arm of [`Self::submit_frame_nv12`].
+    #[cfg(feature = "gpu")]
+    fn submit_gpu_nv12(
+        &mut self,
+        left: &crate::render::planes::Nv12Planes<'_>,
+        right: &crate::render::planes::Nv12Planes<'_>,
+        pose: ViewportPosition,
+    ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         let Executor::Gpu(gpu) = &self.executor else {
-            let Executor::Cpu(cpu) = &self.executor else {
-                unreachable!("executor is CPU here");
-            };
-            let rgba = cpu.stitch_nv12(left, right, pose.yaw, pose.pitch)?;
-            return Ok(self.deliver_cpu_frame(rgba, pose));
+            unreachable!("routed from the GPU arm");
         };
         let cmd = gpu
             .pipeline
@@ -324,7 +348,7 @@ impl super::StitchCore {
         self.pack_replay_from_pipeline();
         let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
         let Executor::Gpu(gpu) = &self.executor else {
-            return Err(StitchCoreError::RequiresGpu);
+            unreachable!("routed from the GPU arm");
         };
         let rgba = self
             .readback
@@ -366,6 +390,7 @@ impl super::StitchCore {
     ///
     /// Useful at shutdown to collect the 1-2 frames still in-flight in
     /// the triple-buffered staging pipeline.
+    #[cfg(feature = "gpu")]
     pub fn flush(&mut self) -> Result<Option<&[u8]>, StitchCoreError> {
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
@@ -388,6 +413,7 @@ impl super::StitchCore {
     /// The full pose is the render parameter: when `pose.fov_degrees` is
     /// set it applies for this frame, so an out-of-tick FOV clamp can
     /// never leave the view rendering a stale cached value (FRICTION N19).
+    #[cfg(feature = "gpu")]
     pub fn render_to_view(
         &mut self,
         left: &YuvPlanes<'_>,
@@ -411,6 +437,7 @@ impl super::StitchCore {
     /// two calls, then data from two frames ago. Drain the tail with
     /// [`Self::flush_nv12`] after the loop. The converter is created
     /// lazily on first use (dimensions rounded to NV12-safe values).
+    #[cfg(feature = "gpu")]
     pub fn render_and_readback_nv12(
         &mut self,
         left: &YuvPlanes<'_>,
@@ -445,6 +472,7 @@ impl super::StitchCore {
 
     /// Drain one pending NV12 frame from the preview recording tap.
     /// Returns `None` when nothing remains (or the tap was never used).
+    #[cfg(feature = "gpu")]
     pub fn flush_nv12(&mut self) -> Result<Option<&[u8]>, StitchCoreError> {
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
@@ -486,6 +514,7 @@ impl super::StitchCore {
     /// rendered texture (via [`Self::pipeline`] + `render_target()`)
     /// or submitting the returned command buffer to chain further
     /// GPU work.
+    #[cfg(feature = "gpu")]
     pub fn render_yuv_at_pose(
         &self,
         left: &YuvPlanes<'_>,
@@ -501,6 +530,7 @@ impl super::StitchCore {
 
     /// Render a stereo packed-RGBA/BGRA frame at an explicit pose.
     /// See [`Self::render_yuv_at_pose`] for semantics.
+    #[cfg(feature = "gpu")]
     pub fn render_bgra_at_pose(
         &self,
         left: &BgraPlanes<'_>,
@@ -521,6 +551,7 @@ impl super::StitchCore {
     /// Copies the demosaiced textures into the stitch pipeline's input
     /// planes (GPU-to-GPU blit), then renders the stitch. Returns the
     /// render command buffer for `submit_render_output`.
+    #[cfg(feature = "gpu")]
     pub fn render_gpu_rgba_at_pose(
         &self,
         left_rgba: &wgpu::Texture,
@@ -544,6 +575,7 @@ impl super::StitchCore {
     /// `MetalResident` variant is NOT handled here; use
     /// [`Self::render_imported_textures_at_pose`] after importing the
     /// `CVPixelBuffer` via `MetalTextureCache`.
+    #[cfg(feature = "gpu")]
     pub fn render_stereo_frame_at_pose(
         &self,
         frame: &crate::source::StereoFrame,
@@ -562,6 +594,7 @@ impl super::StitchCore {
     /// planes are imported as wgpu textures via `MetalTextureCache`
     /// (in `interop::metal`), and the Linux zero-copy path that shares
     /// textures through the bind-group variant below.
+    #[cfg(feature = "gpu")]
     pub fn render_imported_textures_at_pose(
         &mut self,
         left_y: &wgpu::Texture,
@@ -582,6 +615,7 @@ impl super::StitchCore {
     ///
     /// Used by the D3D11VA zero-copy path where NV12 plane views are
     /// created with `TextureAspect::Plane0` / `Plane1`.
+    #[cfg(feature = "gpu")]
     pub fn render_imported_views_at_pose(
         &mut self,
         left_y: &wgpu::TextureView,
@@ -605,7 +639,7 @@ impl super::StitchCore {
     /// `StitchPipeline::render_gpu_frame`.
     /// Consumers must have already called
     /// `StitchPipeline::configure_gpu_source` via [`Self::pipeline_mut`].
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "gpu"))]
     pub fn render_gpu_frame_at_pose(
         &mut self,
         bind_groups: &crate::render::pipeline::GpuSourceBindGroups,

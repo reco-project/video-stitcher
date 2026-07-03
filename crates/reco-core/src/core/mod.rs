@@ -49,15 +49,21 @@ use crate::detect::director::MappedDetection;
 use crate::detect::panner::Panner;
 use crate::detect::tracker::Tracker;
 use crate::geometry::ViewportPosition;
+#[cfg(feature = "gpu")]
 use crate::gpu::GpuContext;
+#[cfg(feature = "gpu")]
 use crate::gpu::rgba_readback::RgbaReadback;
+#[cfg(feature = "gpu")]
 use crate::gpu::yuv_stack_packer::YuvStackPacker;
 use crate::projection::{CoverageBoundary, PanoramaExtent};
+#[cfg(feature = "gpu")]
 use crate::render::pipeline::StitchPipeline;
 use crate::stitch::{Executor, StitchExecutor};
 
 use self::replay_buffer::ReplayBuffer;
-use self::types::{StackedReplayGpuRecorder, StackedReplayRecorder, StitchCoreError};
+#[cfg(feature = "gpu")]
+use self::types::StackedReplayGpuRecorder;
+use self::types::{StackedReplayRecorder, StitchCoreError};
 
 /// Canonical push-first stitching core.
 ///
@@ -85,6 +91,7 @@ pub struct StitchCore {
     /// Pipelined RGBA delivery ring - GPU executors only (`Some` iff
     /// the executor is [`Executor::Gpu`]). The CPU path returns owned
     /// bytes synchronously and never allocates it.
+    #[cfg(feature = "gpu")]
     pub(crate) readback: Option<RgbaReadback>,
     /// The last CPU-stitched frame - the synchronous dual of the GPU
     /// staging ring. [`RenderOutcome::Rgba`](self::types::RenderOutcome)
@@ -129,6 +136,7 @@ pub struct StitchCore {
     /// NV12 converter for the preview-mode recording tap
     /// ([`Self::render_and_readback_nv12`]); lazy so pure display
     /// consumers never pay for the staging ring.
+    #[cfg(feature = "gpu")]
     pub(crate) preview_nv12: Option<crate::gpu::nv12_converter::Nv12Converter>,
 
     /// Optional stacked-video replay recorder attached via
@@ -143,6 +151,7 @@ pub struct StitchCore {
     /// [`Self::enable_gpu_stacked_replay`]. Holds the compute
     /// pipelines and triple-buffered staging ring. `None` when the
     /// session runs on a CPU-pack (or no replay) path.
+    #[cfg(feature = "gpu")]
     pub(crate) stacked_packer: Option<YuvStackPacker>,
 
     /// Optional GPU-pack atlas recorder attached via
@@ -151,6 +160,7 @@ pub struct StitchCore {
     /// completed readback slot. `None` means the pack still runs
     /// (if enabled) but the bytes are dropped - useful when a
     /// consumer wants to attach the recorder lazily.
+    #[cfg(feature = "gpu")]
     pub(crate) stacked_gpu_recorder: Option<Box<dyn StackedReplayGpuRecorder>>,
 
     /// Whether `resolve_current_pose` clamps output through the
@@ -186,6 +196,7 @@ impl StitchCore {
         };
         // The pipelined RGBA ring is GPU delivery machinery; the CPU
         // executor returns owned bytes and needs none.
+        #[cfg(feature = "gpu")]
         let readback = match executor.gpu() {
             Some(gpu) => Some(RgbaReadback::new(
                 gpu.pipeline.gpu(),
@@ -207,6 +218,7 @@ impl StitchCore {
 
         Ok(Self {
             executor,
+            #[cfg(feature = "gpu")]
             readback,
             cpu_frame: Vec::new(),
             output_width,
@@ -220,9 +232,12 @@ impl StitchCore {
             detection_interval: 1,
             last_detections: Vec::new(),
             replay: None,
+            #[cfg(feature = "gpu")]
             preview_nv12: None,
             stacked_recorder: None,
+            #[cfg(feature = "gpu")]
             stacked_packer: None,
+            #[cfg(feature = "gpu")]
             stacked_gpu_recorder: None,
             constrained_look: true,
             frame_count: 0,
@@ -626,6 +641,7 @@ impl StitchCore {
     /// GPU-executor reach-through (dies with the pipeline demotion in
     /// 9B). Panics when the engine runs the CPU executor - CPU engines
     /// have no pipeline; use the engine's own setters and submit paths.
+    #[cfg(feature = "gpu")]
     pub fn pipeline(&self) -> &StitchPipeline {
         &self
             .executor
@@ -637,6 +653,7 @@ impl StitchCore {
     /// Mutable access to the pipeline for advanced callers that need
     /// to tweak viewport / FOV / zero-copy bind groups directly.
     /// See [`Self::pipeline`] for the CPU-executor caveat.
+    #[cfg(feature = "gpu")]
     pub fn pipeline_mut(&mut self) -> &mut StitchPipeline {
         &mut self
             .executor
@@ -647,11 +664,13 @@ impl StitchCore {
 
     /// The GPU context owning every resource. See [`Self::pipeline`]
     /// for the CPU-executor caveat.
+    #[cfg(feature = "gpu")]
     pub fn gpu(&self) -> &GpuContext {
         self.pipeline().gpu()
     }
 }
 
+#[cfg(feature = "gpu")]
 impl crate::detect::DetectionTarget for StitchCore {
     fn set_detector(&mut self, detector: Box<dyn crate::detect::detector::UnifiedDetector>) {
         self.set_detector(detector);
@@ -808,7 +827,7 @@ mod tests {
     #[test]
     fn engine_over_cpu_executor_pure_logic_works() {
         use crate::core::StitchCore;
-        use crate::render::pipeline::YuvPlanes;
+        use crate::render::planes::YuvPlanes;
         use crate::render::viewport::ViewportConfig;
         use crate::stitch::{CpuExecutor, Executor, test_support::calib};
 
@@ -877,16 +896,20 @@ mod tests {
         }
         assert_eq!(core.frame_count(), 1);
 
-        // Genuinely GPU-only paths stay typed errors, not panics.
-        assert!(matches!(
-            core.flush().unwrap_err(),
-            StitchCoreError::RequiresGpu
-        ));
-        assert!(matches!(
-            core.render_yuv_at_pose(&planes, &planes, 0.0, 0.0)
-                .unwrap_err(),
-            StitchCoreError::RequiresGpu
-        ));
+        // Genuinely GPU-only paths stay typed errors, not panics
+        // (the methods exist only when the gpu feature compiles them).
+        #[cfg(feature = "gpu")]
+        {
+            assert!(matches!(
+                core.flush().unwrap_err(),
+                StitchCoreError::RequiresGpu
+            ));
+            assert!(matches!(
+                core.render_yuv_at_pose(&planes, &planes, 0.0, 0.0)
+                    .unwrap_err(),
+                StitchCoreError::RequiresGpu
+            ));
+        }
     }
 
     /// Engine-level executor agreement: the same submit API

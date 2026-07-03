@@ -8,8 +8,11 @@ use std::time::Duration;
 use thiserror::Error;
 
 use crate::geometry::ViewportPosition;
+#[cfg(feature = "gpu")]
 use crate::gpu::rgba_readback::RgbaReadbackError;
+#[cfg(feature = "gpu")]
 use crate::gpu::yuv_stack_packer::{PackerError, StackedAtlas};
+#[cfg(feature = "gpu")]
 use crate::render::pipeline::PipelineError;
 use crate::render::planes::YuvPlanes;
 use crate::stitch::StitchError;
@@ -25,9 +28,11 @@ pub enum StitchCoreError {
     #[error("executor: {0}")]
     Executor(#[from] StitchError),
     /// GPU pipeline error (upload, render, or state mismatch).
+    #[cfg(feature = "gpu")]
     #[error("pipeline: {0}")]
     Pipeline(#[from] PipelineError),
     /// Readback staging / mapping error.
+    #[cfg(feature = "gpu")]
     #[error("readback: {0}")]
     Readback(#[from] RgbaReadbackError),
     /// Caller-facing configuration error (e.g. unsupported combination).
@@ -39,6 +44,7 @@ pub enum StitchCoreError {
     #[error("operation requires the GPU executor; this engine runs the CPU executor")]
     RequiresGpu,
     /// GPU stacked-replay packer error (shader pipeline build, dim check).
+    #[cfg(feature = "gpu")]
     #[error("stacked packer: {0}")]
     StackedPacker(#[from] PackerError),
 }
@@ -145,6 +151,7 @@ pub trait StackedReplayRecorder: Send {
 /// # Thread safety
 ///
 /// Owned by `StitchCore` on the render thread; `Send` is enough.
+#[cfg(feature = "gpu")]
 pub trait StackedReplayGpuRecorder: Send {
     /// Receive a packed YUV420P atlas. The bytes live in
     /// `atlas.y / u / v`; dimensions are `atlas.width x atlas.height`

@@ -18,14 +18,9 @@
 //!   left-right within coverage bounds.
 //! - `FilePanner` - replays a precomputed pose trajectory from CSV.
 
-#[cfg(feature = "gpu")]
 use super::director::MappedDetection;
-use super::pipeline_event::PipelineEvent;
-#[cfg(feature = "gpu")]
-use super::pipeline_event::PipelineEventSink;
-#[cfg(feature = "gpu")]
-use super::tracker::Tracker;
-use super::tracker::WorldState;
+use super::pipeline_event::{PipelineEvent, PipelineEventSink};
+use super::tracker::{Tracker, WorldState};
 use crate::calibration::Calibration;
 use crate::geometry::ViewportPosition;
 
@@ -98,7 +93,6 @@ pub trait Panner: Send {
 /// `Option<&mut Box<dyn …>>` slots are the only moving parts per
 /// caller; everything else fits here.
 #[derive(Clone, Copy)]
-#[cfg(feature = "gpu")]
 pub(crate) struct DispatchContext<'a> {
     /// Raw mapped detections the trackers should consume this frame.
     pub detections: &'a [MappedDetection],
@@ -136,7 +130,7 @@ pub(crate) struct DispatchContext<'a> {
 /// [`PipelineEvent::WorldState`] right before `panner.decide` and a
 /// [`PipelineEvent::PanDecision`] right after. Both sites are part
 /// of the Step 6 trace vocabulary.
-#[cfg(feature = "gpu")]
+#[cfg_attr(not(feature = "gpu"), allow(dead_code))] // session (gpu-gated) reads these
 pub(crate) struct DispatchResult {
     pub pose: ViewportPosition,
     pub world_state: WorldState,
@@ -145,7 +139,6 @@ pub(crate) struct DispatchResult {
 }
 
 /// Run trackers only (no panner). Returns the WorldState for buffering.
-#[cfg(feature = "gpu")]
 pub(crate) fn dispatch_detect_only(
     player_tracker: Option<&mut Box<dyn Tracker>>,
     ball_tracker: Option<&mut Box<dyn Tracker>>,
@@ -176,7 +169,6 @@ pub(crate) fn dispatch_detect_only(
     world
 }
 
-#[cfg(feature = "gpu")]
 pub(crate) fn dispatch(
     panner: Option<&mut Box<dyn Panner>>,
     player_tracker: Option<&mut Box<dyn Tracker>>,
