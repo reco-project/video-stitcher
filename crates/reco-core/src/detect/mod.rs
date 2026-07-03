@@ -14,7 +14,6 @@ pub mod tracker;
 /// configuration. Implemented by both [`StitchCore`](crate::core::StitchCore)
 /// and [`StitchSession`](crate::session::StitchSession), so consumers like
 /// `reco_autocam::setup_autocam` can configure either without duplication.
-#[cfg(feature = "gpu")]
 pub trait DetectionTarget {
     /// Attach a detector backend.
     fn set_detector(&mut self, detector: Box<dyn detector::UnifiedDetector>);
@@ -26,8 +25,12 @@ pub trait DetectionTarget {
     fn set_player_tracker(&mut self, tracker: Box<dyn tracker::Tracker>);
     /// Attach a panner that resolves viewport pose from tracked state.
     fn set_panner(&mut self, panner: Box<dyn panner::Panner>);
-    /// Shared reference to the pipeline (for source_info, calibration).
-    fn pipeline(&self) -> &crate::render::pipeline::StitchPipeline;
-    /// Shared reference to the GPU context.
-    fn gpu(&self) -> &crate::gpu::GpuContext;
+    /// Source frame dimensions `(width, height)` per camera.
+    fn source_info(&self) -> (u32, u32);
+    /// The GPU context, when the target renders on a GPU executor.
+    /// `None` on CPU engines; GPU-dependent detector setups (zero-copy
+    /// imports, wgpu preprocessing) skip themselves so the caller falls
+    /// back to CPU inference.
+    #[cfg(feature = "gpu")]
+    fn gpu(&self) -> Option<&crate::gpu::GpuContext>;
 }

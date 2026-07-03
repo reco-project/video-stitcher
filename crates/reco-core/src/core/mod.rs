@@ -631,6 +631,11 @@ impl StitchCore {
         (self.output_width, self.output_height)
     }
 
+    /// Source frame dimensions `(width, height)` per camera.
+    pub fn source_info(&self) -> (u32, u32) {
+        self.executor.source_info()
+    }
+
     /// Number of frames submitted so far.
     pub fn frame_count(&self) -> u64 {
         self.frame_count
@@ -670,7 +675,6 @@ impl StitchCore {
     }
 }
 
-#[cfg(feature = "gpu")]
 impl crate::detect::DetectionTarget for StitchCore {
     fn set_detector(&mut self, detector: Box<dyn crate::detect::detector::UnifiedDetector>) {
         self.set_detector(detector);
@@ -687,11 +691,12 @@ impl crate::detect::DetectionTarget for StitchCore {
     fn set_panner(&mut self, panner: Box<dyn crate::detect::panner::Panner>) {
         self.set_panner(panner);
     }
-    fn pipeline(&self) -> &crate::render::pipeline::StitchPipeline {
-        self.pipeline()
+    fn source_info(&self) -> (u32, u32) {
+        self.source_info()
     }
-    fn gpu(&self) -> &crate::gpu::GpuContext {
-        self.gpu()
+    #[cfg(feature = "gpu")]
+    fn gpu(&self) -> Option<&crate::gpu::GpuContext> {
+        self.executor.gpu().map(|g| g.pipeline.gpu())
     }
 }
 

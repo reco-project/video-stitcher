@@ -475,10 +475,10 @@ impl crate::detect::DetectionTarget for StitchSession {
     fn set_panner(&mut self, panner: Box<dyn crate::detect::panner::Panner>) {
         self.set_panner(panner);
     }
-    fn pipeline(&self) -> &crate::render::pipeline::StitchPipeline {
-        self.pipeline()
+    fn source_info(&self) -> (u32, u32) {
+        self.core.source_info()
     }
-    fn gpu(&self) -> &crate::gpu::GpuContext {
-        self.gpu()
+    fn gpu(&self) -> Option<&crate::gpu::GpuContext> {
+        Some(self.core.gpu())
     }
 }
