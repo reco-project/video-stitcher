@@ -22,7 +22,6 @@
 
 use super::pipeline::{Nv12Planes, PipelineError, StitchPipeline, YuvPlanes};
 use super::renderer::InputFormat;
-use super::scene::SceneGeometry;
 use super::viewport::ViewportConfig;
 use crate::calibration::Calibration;
 use crate::detect::director::ViewportPosition;
@@ -95,10 +94,8 @@ impl StitchRenderer {
     ) -> Result<Self, PipelineError> {
         let render_format = Self::strip_srgb(surface_format);
 
-        let aspect = calibration.lenses[0].width as f32 / calibration.lenses[0].height as f32;
-        let scene = SceneGeometry::new(&calibration.topology, &calibration.framing, aspect);
-        let coverage = CoverageBoundary::from_calibration(&calibration, &scene);
-
+        // Build the pipeline first: with_gpu validates the calibration, so
+        // the lens indexing and coverage construction below are safe.
         let pipeline = StitchPipeline::with_gpu(
             gpu,
             calibration,
@@ -108,6 +105,7 @@ impl StitchRenderer {
             render_format,
             input_format,
         )?;
+        let coverage = CoverageBoundary::from_calibration(pipeline.calibration(), &pipeline.scene);
 
         Ok(Self {
             pipeline,

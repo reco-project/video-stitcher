@@ -276,7 +276,6 @@ impl LensDatabase {
                 p.source
             );
             let params = Lens {
-                id: String::new(),
                 width,
                 height,
                 fx: p.params.fx * scale,
@@ -769,7 +768,6 @@ fn parse_profile_value(v: &serde_json::Value, source: &str) -> Option<ProfileEnt
         width,
         height,
         params: Lens {
-            id: String::new(),
             width,
             height,
             fx,

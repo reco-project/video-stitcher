@@ -686,7 +686,6 @@ fn extract_lens_from_clip_meta(
     );
 
     Some(Lens {
-        id: String::new(),
         width,
         height,
         fx: focal,
@@ -747,7 +746,6 @@ fn parse_embedded_lens_profile(json: &serde_json::Value) -> Option<Lens> {
     log::info!("embedded lens profile: {width}x{height}, fx={fx:.2}, fy={fy:.2}");
 
     Some(Lens {
-        id: String::new(),
         width,
         height,
         fx,

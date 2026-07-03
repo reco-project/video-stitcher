@@ -41,6 +41,10 @@ pub enum PipelineError {
     #[error("GPU error: {0}")]
     Gpu(#[from] GpuError),
 
+    /// The calibration document is invalid.
+    #[error("invalid calibration: {0}")]
+    Calibration(#[from] crate::calibration::CalibrationError),
+
     /// Render error.
     #[error("render error: {0}")]
     Render(#[from] RenderError),
@@ -105,7 +109,13 @@ impl StitchPipeline {
         output_format: impl Into<wgpu::TextureFormat>,
         input_format: InputFormat,
     ) -> Result<Self, PipelineError> {
-        // Validate inputs before GPU resource creation.
+        // Validate inputs before GPU resource creation. This is THE
+        // enforcement boundary for in-memory calibrations: every
+        // constructor (StitchRenderer, StitchCore, StitchSession,
+        // StitchJob) funnels through here, so a wrong lens count or a
+        // NaN surfaces as a typed error instead of an index panic or a
+        // GPU hang further down.
+        calibration.validate()?;
         if let Err(e) = viewport.validate() {
             return Err(PipelineError::InvalidConfig { reason: e });
         }

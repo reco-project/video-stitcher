@@ -7,8 +7,7 @@
 //! the runtime, and the derived objects are never serialized.
 //!
 //! It decomposes into three concerns, one per stitch stage:
-//! - [`Lens`] (per source) - undistortion: intrinsics + distortion model + an
-//!   `id` naming the lens *model* so a profile is reusable across cameras.
+//! - [`Lens`] (per source) - undistortion: intrinsics + distortion model.
 //! - [`Topology`] - 3D placement of the source planes plus the overlap seam.
 //! - [`Framing`] - the virtual camera's calibrated coordinate frame; panning
 //!   (yaw/pitch) and output framing (fov/size) are runtime, NOT stored here.
@@ -39,8 +38,20 @@ fn default_schema_version() -> u32 {
 }
 
 /// Errors produced by [`Calibration::validate`].
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum CalibrationError {
+    /// A value is outside its documented range.
+    #[error("{field} must be in [{min}, {max}], got {value}")]
+    OutOfRange {
+        /// Field path, e.g. `lens[0].correction`.
+        field: String,
+        /// The offending value.
+        value: f64,
+        /// Inclusive lower bound.
+        min: f64,
+        /// Inclusive upper bound.
+        max: f64,
+    },
     /// A required dimension (width or height) is zero.
     #[error("lens[{index}] {field} must be > 0, got {value}")]
     ZeroDimension {
@@ -134,17 +145,12 @@ pub enum CalibrationError {
 /// Maximum realistic sync_offset in frames (~28 minutes at 60fps).
 const MAX_SYNC_OFFSET_FRAMES: i64 = 100_000;
 
-/// One source's optical model: intrinsics + KB4 distortion, plus an `id` that
-/// names the lens *model* (e.g. `"gopro-h11-wide-4k"`).
+/// One source's optical model: intrinsics + KB4 distortion.
 ///
-/// The `id` identifies a reusable profile - two cameras of the same model share
-/// the same `Lens` content (and `id`); a mixed rig has different ones. It is the
-/// CPU/GPU-independent record both executors derive their runtime form from.
+/// It is the CPU/GPU-independent record both executors derive their runtime
+/// form from. Two cameras of the same model share the same `Lens` content.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lens {
-    /// Lens-model identity (reusable profile key). Empty = unknown.
-    #[serde(default)]
-    pub id: String,
     /// Calibration frame width in pixels.
     pub width: u32,
     /// Calibration frame height in pixels.
@@ -170,7 +176,7 @@ fn default_correction() -> f32 {
 }
 
 impl Lens {
-    /// A fisheye (KB4) lens at full correction, with no model id.
+    /// A fisheye (KB4) lens at full correction.
     pub fn fisheye(
         width: u32,
         height: u32,
@@ -181,7 +187,6 @@ impl Lens {
         distortion: [f64; 4],
     ) -> Self {
         Self {
-            id: String::new(),
             width,
             height,
             fx,
@@ -224,8 +229,12 @@ pub struct Topology {
     pub blend_width: f32,
 }
 
+/// Default seam blend width for calibrations that do not specify one.
+/// The single source for every constructor and serde default.
+pub const DEFAULT_BLEND_WIDTH: f32 = 0.05;
+
 fn default_blend_width() -> f32 {
-    0.05
+    DEFAULT_BLEND_WIDTH
 }
 
 /// The virtual camera's calibrated coordinate frame: the axis/orientation that
@@ -327,15 +336,36 @@ impl Calibration {
             });
         }
 
-        let cal: Self = serde_json::from_str(&json).map_err(|e| {
-            // Transitional: surface a clear message for old "match" format
-            // files instead of a raw `missing field lenses`.
-            if json.contains("\"left_uniforms\"") || json.contains("\"cameraAxisOffset\"") {
-                CalibrationLoadError::LegacyMatchFormat
-            } else {
-                CalibrationLoadError::Parse(e)
+        let value: serde_json::Value = serde_json::from_str(&json)?;
+        if let Some(obj) = value.as_object() {
+            // Legacy 'match' document, detected by its top-level keys (a
+            // substring scan would false-positive on nested strings and
+            // mask real parse errors).
+            if obj.contains_key("left_uniforms") || obj.contains_key("params") {
+                return Err(CalibrationLoadError::LegacyMatchFormat);
             }
-        })?;
+            // A current-format document carrying stray legacy keys would
+            // otherwise parse cleanly with the real fields silently
+            // defaulted to zero (serde ignores unknown keys) - the seam
+            // alignment would vanish with no diagnostics. Fail loud.
+            const LEGACY_TOPOLOGY_KEYS: [&str; 5] = ["xTy", "xRz", "zRx", "xRx", "zRz"];
+            let topology_keys = obj.get("topology").and_then(|t| t.as_object());
+            let stray = LEGACY_TOPOLOGY_KEYS
+                .iter()
+                .find(|k| topology_keys.is_some_and(|t| t.contains_key(**k)))
+                .or_else(|| {
+                    ["rig_tilt", "rig_roll", "cameraAxisOffset"]
+                        .iter()
+                        .find(|k| obj.contains_key(**k))
+                        .map(|k| k as _)
+                });
+            if let Some(key) = stray {
+                return Err(CalibrationLoadError::LegacyKey {
+                    key: (*key).to_owned(),
+                });
+            }
+        }
+        let cal: Self = serde_json::from_value(value)?;
         // Fail loud on files from a newer reco rather than silently
         // misreading fields a future schema revision may have reshaped.
         if cal.schema_version != SCHEMA_VERSION {
@@ -424,6 +454,17 @@ pub enum CalibrationLoadError {
          re-run `reco calibrate` to produce a current calibration file"
     )]
     LegacyMatchFormat,
+    /// A current-format document carries a legacy key that serde would
+    /// silently ignore, defaulting the real field to zero.
+    #[error(
+        "calibration contains the legacy key '{key}', which the current \
+         schema would silently ignore; rename it to its snake_case \
+         equivalent or re-run `reco calibrate`"
+    )]
+    LegacyKey {
+        /// The offending key as found in the file.
+        key: String,
+    },
     /// The file declares a schema version this build does not understand.
     #[error(
         "calibration schema version {found} is newer than this reco \
@@ -498,6 +539,17 @@ fn validate_lens(lens: &Lens, index: usize) -> Result<(), CalibrationError> {
             value: format!("{}", lens.correction),
         });
     }
+    // The shader interprets negative correction as its raw-bypass debug
+    // mode and the CPU path would extrapolate the KB4 lerp - reject
+    // anything outside the documented [0, 1] blend range.
+    if !(0.0..=1.0).contains(&lens.correction) {
+        return Err(CalibrationError::OutOfRange {
+            field: format!("lens[{index}].correction"),
+            value: lens.correction as f64,
+            min: 0.0,
+            max: 1.0,
+        });
+    }
 
     Ok(())
 }
@@ -533,6 +585,16 @@ fn validate_topology(t: &Topology) -> Result<(), CalibrationError> {
         return Err(CalibrationError::NonFiniteFloat {
             field: "topology.blend_width".to_owned(),
             value: format!("{}", t.blend_width),
+        });
+    }
+    // The seam smoothstep needs ordered edges; outside [0, 1] the blend
+    // is meaningless (the old ViewportConfig::validate enforced this).
+    if !(0.0..=1.0).contains(&t.blend_width) {
+        return Err(CalibrationError::OutOfRange {
+            field: "topology.blend_width".to_owned(),
+            value: t.blend_width as f64,
+            min: 0.0,
+            max: 1.0,
         });
     }
 
@@ -639,7 +701,6 @@ mod tests {
 
     fn valid_cal() -> Calibration {
         let lens = || Lens {
-            id: "test".to_string(),
             width: 1920,
             height: 1080,
             fx: 960.0,
@@ -773,6 +834,26 @@ mod tests {
         assert!(
             matches!(err, CalibrationLoadError::LegacyMatchFormat),
             "expected LegacyMatchFormat, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn stray_legacy_key_gives_clear_error() {
+        // A hand-migrated file keeping old camelCase keys must not load
+        // with the seam alignment silently zeroed.
+        let mut cal = valid_cal();
+        cal.topology.x_ty = 0.0048;
+        let mut v: serde_json::Value = serde_json::from_str(&cal.to_json_pretty()).unwrap();
+        let topo = v["topology"].as_object_mut().unwrap();
+        topo.remove("x_ty");
+        topo.insert("xTy".into(), serde_json::json!(0.0048));
+        let path = std::env::temp_dir().join(format!("reco_stray_{}.json", std::process::id()));
+        std::fs::write(&path, serde_json::to_string_pretty(&v).unwrap()).unwrap();
+        let err = Calibration::from_file(&path).unwrap_err();
+        let _ = std::fs::remove_file(&path);
+        assert!(
+            matches!(err, CalibrationLoadError::LegacyKey { ref key } if key == "xTy"),
+            "expected LegacyKey(xTy), got {err:?}"
         );
     }
 

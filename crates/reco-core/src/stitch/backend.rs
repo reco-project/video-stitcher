@@ -158,9 +158,7 @@ impl GpuStitchBackend {
         cam_h: u32,
         full_range: bool,
     ) -> Result<Self, StitchError> {
-        calib
-            .validate()
-            .map_err(|e| StitchError::InvalidConfig(e.to_string()))?;
+        // Calibration validation happens once, inside with_gpu.
         let mut pipeline = StitchPipeline::with_gpu(
             gpu,
             calib,
