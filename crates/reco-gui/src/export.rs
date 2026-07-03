@@ -133,6 +133,10 @@ pub fn run_export(
 
     #[cfg(feature = "autocam")]
     let field_roi = cal.field_roi.clone();
+    let enable_roi_stabilization = cal
+        .field_roi
+        .as_ref()
+        .is_some_and(|roi| roi.points.len() >= 2);
 
     let post_status = |text: String| {
         let weak = app_weak.clone();
@@ -250,6 +254,11 @@ pub fn run_export(
     if let Some(ref ep) = events_path {
         log::info!("Pipeline events: {}", ep.display());
         job = job.events(ep);
+    }
+
+    if enable_roi_stabilization {
+        log::info!("Export: ROI stabilization enabled");
+        job = job.roi_stabilization(true);
     }
 
     let finalizing_weak = app_weak.clone();

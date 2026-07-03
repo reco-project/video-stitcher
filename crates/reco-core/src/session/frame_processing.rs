@@ -17,7 +17,44 @@ impl StitchSession {
     /// roll-aware basis inversion), the `PosePresented` trace, and the
     /// FOV write-back. Panners output unconstrained positions.
     pub fn director_position(&mut self) -> ViewportPosition {
-        self.core.presented_clamped_pose(self.frame_count)
+        if self.stabilizer.is_none() {
+            return self.core.presented_clamped_pose(self.frame_count);
+        }
+
+        let mut pos = self.core.previous_panner_pose;
+
+        // Stabilization operates in the panner's world-space pose
+        // contract. It runs before coverage clamping so the normal
+        // no-black boundary still constrains the corrected pose.
+        let stabilization_fov = pos.fov_degrees.unwrap_or_else(|| self.core.fov());
+        let stabilization_aspect = self.core.viewport().aspect_ratio();
+        let stabilization_scene = self.core.scene();
+        if let Some(stabilizer) = self.stabilizer.as_mut() {
+            let ctx = crate::session::stabilization::StabilizationContext {
+                frame_index: self.frame_count,
+                fov_degrees: stabilization_fov,
+                aspect: stabilization_aspect,
+                // `pos` is still in panorama/world space here. Rig
+                // tilt/roll are applied later when converting to the
+                // renderer's pose basis, so anchor projection uses the
+                // same native world frame.
+                rig_tilt: 0.0,
+                rig_roll: 0.0,
+                scene: stabilization_scene,
+            };
+            let (stabilized, correction) = stabilizer.stabilize_pose(pos, ctx);
+            if correction.yaw != 0.0 || correction.pitch != 0.0 {
+                log::trace!(
+                    "stabilization correction frame={} yaw={:.5} pitch={:.5}",
+                    self.frame_count,
+                    correction.yaw,
+                    correction.pitch,
+                );
+            }
+            pos = stabilized;
+        }
+
+        self.core.presented_clamped_pose_from(self.frame_count, pos)
     }
 
     /// Full per-frame pipeline: detect, pose, render, replay, telemetry.

@@ -32,6 +32,8 @@ pub(crate) mod frame_buffer;
 mod frame_processing;
 /// Batch processing entry points (run, run_immediate, setup_gpu_source).
 mod run_loop;
+/// Viewport stabilization helpers.
+pub mod stabilization;
 /// Configuration wiring (set/clear/attach methods).
 mod wiring;
 
@@ -72,6 +74,9 @@ pub struct StitchSession {
     pub(crate) skip_detection: bool,
     /// Number of lookahead frames (0 = disabled).
     pub(crate) lookahead_frames: usize,
+    /// Optional viewport stabilization applied after panner output and
+    /// before coverage clamping.
+    pub(crate) stabilizer: Option<stabilization::ViewportStabilizer>,
     pub(crate) frame_count: u64,
     /// Session start time for metrics computation.
     session_start: Option<std::time::Instant>,
@@ -180,6 +185,7 @@ impl StitchSession {
             sinks: Vec::new(),
             skip_detection: false,
             lookahead_frames: 0,
+            stabilizer: None,
             frame_count: 0,
             session_start: None,
             error_policy: ErrorPolicy::default(),

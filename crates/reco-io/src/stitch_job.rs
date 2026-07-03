@@ -86,6 +86,10 @@ pub struct StitchJob {
     /// decodes N frames ahead to give the panner future context.
     lookahead_secs: f64,
 
+    /// Stabilize the viewport pose using calibration `field_roi`
+    /// points as anchors.
+    roi_stabilization: bool,
+
     /// Path for pipeline event JSONL output. When set, attaches a
     /// `JsonlSink` to the session that records every detection,
     /// filter decision, and pan decision for offline analysis.
@@ -264,6 +268,7 @@ impl StitchJob {
             force_cpu_decode: false,
             cpu_stitch: false,
             lookahead_secs: 0.0,
+            roi_stabilization: false,
             events_path: None,
         }
     }
@@ -506,6 +511,16 @@ impl StitchJob {
         self
     }
 
+    /// Enable or disable ROI-anchor viewport stabilization.
+    ///
+    /// When enabled, the job reads `field_roi` from the calibration and
+    /// attaches a session stabilizer before rendering. At least two ROI
+    /// points are required.
+    pub fn roi_stabilization(mut self, enabled: bool) -> Self {
+        self.roi_stabilization = enabled;
+        self
+    }
+
     /// Record pipeline events (detections, filter decisions, pan
     /// decisions) to a JSONL file for offline analysis.
     pub fn events(mut self, path: impl AsRef<Path>) -> Self {
@@ -604,6 +619,7 @@ impl StitchJob {
         if self.sync_offset.is_none() && cal.sync_offset != 0 {
             log::info!("Sync offset: {} frames (from calibration)", effective_sync);
         }
+        let field_roi_for_stabilization = cal.field_roi.clone();
 
         // Input arity must match the calibration's topology before any
         // decoder spins up.
@@ -735,6 +751,19 @@ impl StitchJob {
 
         session.telemetry_mut().set_gpu_name(gpu_name.clone());
         session.telemetry_mut().set_decode_mode(decode_mode.clone());
+
+        if self.roi_stabilization {
+            let roi = field_roi_for_stabilization.ok_or_else(|| {
+                StitchError::Other(
+                    "ROI stabilization requested, but calibration has no field_roi".into(),
+                )
+            })?;
+            let point_count = roi.points.len();
+            session.set_roi_stabilization(
+                reco_core::session::stabilization::RoiStabilizationConfig::new(roi),
+            )?;
+            log::info!("ROI stabilization: enabled ({point_count} anchors)");
+        }
 
         // Configure GPU bind groups if source is GPU-resident
         #[cfg(target_os = "linux")]

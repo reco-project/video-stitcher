@@ -61,6 +61,8 @@ pub struct StitchArgs<'a> {
     pub cpu: bool,
     /// Path for pipeline event JSONL output.
     pub events_path: Option<&'a str>,
+    /// Stabilize panner output using calibration field ROI points as anchors.
+    pub stabilize_roi: bool,
     /// Precomputed trajectory CSV (overrides AI panner).
     pub trajectory_path: Option<&'a str>,
     /// FieldPanner tuning JSON (field mode); only present keys override.
@@ -172,6 +174,9 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     }
     if let Some(path) = args.events_path {
         job = job.events(path);
+    }
+    if args.stabilize_roi {
+        job = job.roi_stabilization(true);
     }
     if let Some(ref enc) = args.encoder_name {
         job = job.encoder_name(enc);

@@ -266,6 +266,12 @@ enum Commands {
         #[arg(long)]
         events: Option<String>,
 
+        /// Stabilize the panner output using calibration field ROI
+        /// points as fixed anchors. Requires at least two saved ROI
+        /// points in the calibration JSON.
+        #[arg(long = "stabilize-roi", default_value_t = false)]
+        stabilize_roi: bool,
+
         /// Precomputed trajectory CSV (frame,yaw,pitch,fov). Overrides
         /// AI tracking with poses read from the file.
         #[arg(long)]
@@ -804,6 +810,7 @@ fn main() -> anyhow::Result<()> {
             no_zero_copy,
             cpu,
             events,
+            stabilize_roi,
             trajectory,
             panner_config,
             panner_preset,
@@ -836,6 +843,7 @@ fn main() -> anyhow::Result<()> {
                 no_zero_copy,
                 cpu,
                 events_path: events.as_deref(),
+                stabilize_roi,
                 trajectory_path: trajectory.as_deref(),
                 panner_config_path: panner_config.as_deref(),
                 panner_preset: panner_preset.as_deref(),

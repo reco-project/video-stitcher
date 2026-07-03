@@ -104,6 +104,45 @@ impl StitchSession {
         self.core.set_panner(panner);
     }
 
+    /// Enable ROI-anchor viewport stabilization.
+    ///
+    /// The stabilizer uses selected field ROI points as fixed panorama
+    /// anchors and applies short-frame yaw/pitch corrections before
+    /// coverage clamping. This smooths jitter in the virtual-camera pose
+    /// without changing detector filtering or the panner itself.
+    pub fn set_roi_stabilization(
+        &mut self,
+        config: crate::session::stabilization::RoiStabilizationConfig,
+    ) -> Result<(), crate::session::types::SessionError> {
+        let point_count = config.roi.points.len();
+        let roi = crate::session::stabilization::RoiStabilizer::new(config)
+            .map_err(crate::session::types::SessionError::Config)?;
+        let stabilizer = self
+            .stabilizer
+            .get_or_insert_with(crate::session::stabilization::ViewportStabilizer::default);
+        stabilizer.set_roi(roi);
+        log::info!("StitchSession: ROI stabilization attached ({point_count} anchors)");
+        Ok(())
+    }
+
+    /// Attach a frame-indexed stabilization correction track.
+    pub fn set_stabilization_track(
+        &mut self,
+        track: crate::session::stabilization::StabilizationTrack,
+    ) {
+        let frame_count = track.len();
+        let stabilizer = self
+            .stabilizer
+            .get_or_insert_with(crate::session::stabilization::ViewportStabilizer::default);
+        stabilizer.set_track(track);
+        log::info!("StitchSession: stabilization track attached ({frame_count} frames)");
+    }
+
+    /// Disable all viewport stabilization.
+    pub fn clear_stabilization(&mut self) {
+        self.stabilizer = None;
+    }
+
     /// Set the lookahead buffer depth in frames.
     pub fn set_lookahead(&mut self, frames: usize) {
         self.lookahead_frames = frames;
