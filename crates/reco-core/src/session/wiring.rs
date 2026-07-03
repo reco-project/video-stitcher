@@ -47,7 +47,7 @@ impl StitchSession {
     /// detector; backends return `UnsupportedFrameKind` for residencies
     /// they cannot handle and session logs+drops those at the boundary.
     pub fn set_detector(&mut self, detector: Box<dyn crate::detect::detector::UnifiedDetector>) {
-        self.detection.set_detector(detector);
+        self.core.set_detector(detector);
     }
 
     /// Set the detection interval (run detection every N frames).
@@ -56,7 +56,7 @@ impl StitchSession {
     /// at the cost of tracking responsiveness. The director still receives
     /// the last known tracked objects on skipped frames.
     pub fn set_detection_interval(&mut self, interval: u64) {
-        self.detection.set_detection_interval(interval);
+        self.core.set_detection_interval(interval);
     }
 
     /// Attach a pipeline event sink for structured observability.
@@ -90,29 +90,20 @@ impl StitchSession {
     /// for semantics - the session mirrors the core's API so push
     /// and pull consumers stay symmetric.
     pub fn set_ball_tracker(&mut self, tracker: Box<dyn crate::detect::tracker::Tracker>) {
-        log::info!(
-            "StitchSession: ball tracker attached (class_id={})",
-            tracker.class_id()
-        );
-        self.ball_tracker = Some(tracker);
+        self.core.set_ball_tracker(tracker);
     }
 
     /// Attach a multi-entity player tracker. Mirror of
     /// [`StitchCore::set_player_tracker`](crate::core::StitchCore::set_player_tracker).
     pub fn set_player_tracker(&mut self, tracker: Box<dyn crate::detect::tracker::Tracker>) {
-        log::info!(
-            "StitchSession: player tracker attached (class_id={})",
-            tracker.class_id()
-        );
-        self.player_tracker = Some(tracker);
+        self.core.set_player_tracker(tracker);
     }
 
     /// Attach a panner. When set, the tracker/panner path owns
     /// pose resolution each frame; without a panner the pose stays at
     /// the pipeline default.
     pub fn set_panner(&mut self, panner: Box<dyn crate::detect::panner::Panner>) {
-        log::info!("StitchSession: panner attached");
-        self.panner = Some(panner);
+        self.core.set_panner(panner);
     }
 
     /// Set the lookahead buffer depth in frames.

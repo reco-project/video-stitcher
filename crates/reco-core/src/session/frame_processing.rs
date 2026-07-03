@@ -11,39 +11,13 @@ use crate::source::StereoFrame;
 impl StitchSession {
     /// Get the current viewport position from the director, or default.
     ///
-    /// Clamps the panner's raw output to the coverage boundary (no-black
-    /// region) and applies FOV limits. This keeps all viewport
-    /// constraining in the session, so panners can output unconstrained
-    /// positions.
+    /// The engine resolves it: the panner's latest world-space decision
+    /// through [`StitchCore::safe_clamp`](crate::core::StitchCore::safe_clamp)
+    /// (the single pose-resolution authority - FOV cap, coverage clamp,
+    /// roll-aware basis inversion), the `PosePresented` trace, and the
+    /// FOV write-back. Panners output unconstrained positions.
     pub fn director_position(&mut self) -> ViewportPosition {
-        // Source the raw pre-clamp pose from the panner's most recent
-        // decision. When no panner is attached the previous pose stays
-        // at its default (identity) value so the viewport centers.
-        let mut pos = self.previous_panner_pose;
-
-        // The panner outputs world-space coordinates (from detections
-        // mapped via camera_to_panorama). StitchCore::safe_clamp is the
-        // single pose-resolution authority: FOV cap, world-space coverage
-        // clamp, then roll-aware tilt/roll basis inversion. The session
-        // must not re-derive any of that (a drifted FOV-cap copy lived
-        // here once).
-        pos = self.core.safe_clamp(pos);
-
-        // Trace: PosePresented. This is the pose the renderer will
-        // actually consume for this frame (post-clamp, post-FOV-cap).
-        if let Some(sink) = self.core.event_sink.as_deref_mut() {
-            sink.emit(
-                crate::detect::pipeline_event::PipelineEvent::PosePresented {
-                    frame_index: self.frame_count,
-                    pose: pos,
-                },
-            );
-        }
-
-        if let Some(fov) = pos.fov_degrees {
-            self.core.pipeline_mut().set_fov(fov);
-        }
-        pos
+        self.core.presented_clamped_pose(self.frame_count)
     }
 
     /// Full per-frame pipeline: detect, pose, render, replay, telemetry.
@@ -74,8 +48,7 @@ impl StitchSession {
         let (ran_detection, detect_time) = if self.skip_detection {
             (false, std::time::Duration::ZERO)
         } else {
-            let scheduled_detection =
-                self.detection.has_detector() && self.detection.should_detect(self.frame_count);
+            let due = self.core.detection_due(self.frame_count);
             let detect_t0 = std::time::Instant::now();
             let ran_detection = match frame {
                 #[cfg(target_os = "linux")]
@@ -83,7 +56,7 @@ impl StitchSession {
                     left_slot,
                     right_slot,
                 } => {
-                    if self.detection.needs_cuda_frames() {
+                    if self.core.detector_needs_cuda_frames() {
                         if self.frame_count == 0 {
                             log::info!("GpuResident detection: CUDA path (TensorRT/ORT-CUDA)");
                         }
@@ -95,7 +68,7 @@ impl StitchSession {
                                 *right_slot,
                                 elapsed,
                             )?;
-                            scheduled_detection
+                            due
                         } else {
                             if self.frame_count == 0 {
                                 log::warn!(
@@ -114,24 +87,23 @@ impl StitchSession {
                         }
                         let ls = *left_slot as usize;
                         let rs = *right_slot as usize;
-                        let (w, h) = self.core.pipeline().source_info();
-                        let lr = self.left_rotation;
-                        let rr = self.right_rotation;
-                        if scheduled_detection {
-                            let detections = self.detection.run_detection_wgpu_nv12(
+                        if due {
+                            crate::profile_scope!("detect_wgpu_nv12");
+                            let (w, h) = self.core.source_info();
+                            let frames = super::detection_dispatch::wgpu_nv12_frames(
                                 &views[ls * 2],
                                 &views[ls * 2 + 1],
                                 &views[4 + rs * 2],
                                 &views[4 + rs * 2 + 1],
                                 w,
                                 h,
-                                lr,
-                                rr,
+                                self.left_rotation,
+                                self.right_rotation,
                             );
-                            self.detection.last_detections = self.map_detections(detections);
+                            self.core.run_detection_frames(&frames);
                         }
-                        self.fire_sink_and_update_director(elapsed, scheduled_detection)?;
-                        scheduled_detection
+                        self.fire_sink_and_update_director(elapsed, due)?;
+                        due
                     } else {
                         if self.frame_count == 0 {
                             log::warn!(
@@ -147,12 +119,14 @@ impl StitchSession {
                     // Immediate (non-lookahead) NVMM detection: letterbox via
                     // NvBufSurfTransform, then detect. (The buffered path runs
                     // detection during produce and skips this whole step.)
-                    if scheduled_detection {
-                        let detections = self.nvmm_run_detection(left, right);
-                        self.detection.last_detections = self.map_detections(detections);
+                    if due {
+                        crate::profile_scope!("detect_preletterboxed_total");
+                        if let Some(frames) = self.nvmm_detector_frames(left, right) {
+                            self.core.run_detection_frames(&frames);
+                        }
                     }
-                    self.fire_sink_and_update_director(elapsed, scheduled_detection)?;
-                    scheduled_detection
+                    self.fire_sink_and_update_director(elapsed, due)?;
+                    due
                 }
                 #[cfg(any(target_os = "macos", target_os = "ios"))]
                 StereoFrame::MetalResident { left, right } => {
@@ -163,34 +137,31 @@ impl StitchSession {
                         left.height(),
                         elapsed,
                     )?;
-                    scheduled_detection
+                    due
                 }
                 #[cfg(target_os = "windows")]
                 StereoFrame::D3d11Resident { .. } => {
                     if self.d3d11_staging_pool.is_some() {
                         let left_slot = self.frame_count as usize % 2;
                         let right_slot = left_slot + 2;
-                        let (w, h) = self.core.pipeline().source_info();
-                        let lr = self.left_rotation;
-                        let rr = self.right_rotation;
-                        let should_detect = self.detection.has_detector()
-                            && self.detection.should_detect(self.frame_count);
-                        if should_detect {
+                        if due {
+                            crate::profile_scope!("detect_wgpu_nv12");
+                            let (w, h) = self.core.source_info();
                             let pool = self.d3d11_staging_pool.as_ref().unwrap();
-                            let detections = self.detection.run_detection_wgpu_nv12(
+                            let frames = super::detection_dispatch::wgpu_nv12_frames(
                                 pool.y_view(left_slot),
                                 pool.uv_view(left_slot),
                                 pool.y_view(right_slot),
                                 pool.uv_view(right_slot),
                                 w,
                                 h,
-                                lr,
-                                rr,
+                                self.left_rotation,
+                                self.right_rotation,
                             );
-                            self.detection.last_detections = self.map_detections(detections);
+                            self.core.run_detection_frames(&frames);
                         }
-                        self.fire_sink_and_update_director(elapsed, should_detect)?;
-                        scheduled_detection
+                        self.fire_sink_and_update_director(elapsed, due)?;
+                        due
                     } else {
                         self.update_director(elapsed)?;
                         false
@@ -198,7 +169,7 @@ impl StitchSession {
                 }
                 _ => {
                     self.detect_and_update_director(frame, elapsed)?;
-                    scheduled_detection
+                    due
                 }
             };
             let detect_time = detect_t0.elapsed();
@@ -569,8 +540,8 @@ impl StitchSession {
     ) -> Result<bool, SessionError> {
         let first_frame = self.d3d11_staging_pool.is_none();
         if first_frame {
-            let (w, h) = self.core.pipeline().source_info();
-            let needs_cuda = self.detection.needs_cuda_frames();
+            let (w, h) = self.core.source_info();
+            let needs_cuda = self.core.detector_needs_cuda_frames();
             // For lookahead, size slots to the max frames simultaneously
             // in flight (decoded but not yet rendered), x2 for left+right.
             // Peak occupancy is n + post_smooth_half + 1 (buffer hits n+1

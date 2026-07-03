@@ -363,6 +363,12 @@ impl StitchCore {
         self.detection_interval
     }
 
+    /// The most recent panorama-mapped detections (cached across
+    /// skipped frames so the director keeps context).
+    pub fn last_detections(&self) -> &[MappedDetection] {
+        &self.last_detections
+    }
+
     /// The resolved viewport pose for the next render, already clamped
     /// through coverage + FOV limits. Exposed so interactive consumers
     /// (OBS pan/zoom, GUI drag) can preview where the core *would*
@@ -1041,5 +1047,121 @@ mod tests {
             RenderOutcome::Warmup => {}
             RenderOutcome::Rgba(_) => unreachable!("built a Warmup"),
         }
+    }
+
+    /// A stub detector returning no detections - just enough for
+    /// scheduling assertions.
+    struct NullDetector;
+
+    impl crate::detect::detector::UnifiedDetector for NullDetector {
+        fn name(&self) -> &'static str {
+            "null"
+        }
+        fn detect(
+            &mut self,
+            _camera: crate::geometry::CameraId,
+            _frame: &crate::detect::detector::DetectorFrame<'_>,
+        ) -> Result<Vec<crate::detect::detector::Detection>, crate::detect::detector::DetectorError>
+        {
+            Ok(Vec::new())
+        }
+    }
+
+    fn cpu_engine(w: u32, h: u32) -> crate::core::StitchCore {
+        use crate::render::viewport::ViewportConfig;
+        use crate::stitch::{CpuExecutor, Executor, test_support::calib};
+        let executor = CpuExecutor::new(
+            Box::new(crate::projection::LShapeProjection),
+            calib(w, h),
+            ViewportConfig {
+                width: w,
+                height: h,
+                ..Default::default()
+            },
+            w,
+            h,
+            false,
+        )
+        .expect("cpu executor");
+        crate::core::StitchCore::new(Executor::Cpu(Box::new(executor))).expect("cpu engine")
+    }
+
+    /// Detection scheduling: no detector means never due; with one,
+    /// the interval gates and the setter clamps to >= 1.
+    #[test]
+    fn detection_due_needs_detector_and_respects_interval() {
+        let mut core = cpu_engine(64, 36);
+        assert!(!core.detection_due(0), "no detector attached");
+
+        core.set_detector(Box::new(NullDetector));
+        assert!(core.detection_due(0));
+        assert!(core.detection_due(1));
+
+        core.set_detection_interval(3);
+        assert!(core.detection_due(0));
+        assert!(!core.detection_due(1));
+        assert!(!core.detection_due(2));
+        assert!(core.detection_due(3));
+
+        core.set_detection_interval(0);
+        assert!(core.detection_due(1), "interval clamps to 1");
+    }
+
+    /// `run_detection_frames` dispatches once per camera and caches
+    /// the panorama-mapped results for the director.
+    #[test]
+    fn run_detection_frames_dispatches_both_cameras() {
+        use crate::detect::detector::{
+            ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame, UnifiedDetector,
+        };
+        use crate::geometry::CameraId;
+
+        struct RecordingDetector;
+        impl UnifiedDetector for RecordingDetector {
+            fn name(&self) -> &'static str {
+                "recording"
+            }
+            fn detect(
+                &mut self,
+                camera: CameraId,
+                frame: &DetectorFrame<'_>,
+            ) -> Result<Vec<Detection>, DetectorError> {
+                match frame {
+                    DetectorFrame::Cpu(_) => Ok(vec![Detection {
+                        camera,
+                        class_id: 0,
+                        confidence: 0.9,
+                        center_x: 0.5,
+                        center_y: 0.5,
+                        width: 0.1,
+                        height: 0.1,
+                    }]),
+                    _ => Err(DetectorError::UnsupportedFrameKind),
+                }
+            }
+        }
+
+        let mut core = cpu_engine(64, 36);
+        core.set_detector(Box::new(RecordingDetector));
+
+        let y = vec![0u8; 8];
+        let uv = vec![128u8; 2];
+        let frame = |cam| {
+            (
+                cam,
+                DetectorFrame::Cpu(RawFrame {
+                    y: &y,
+                    chroma: ChromaFormat::Yuv420p { u: &uv, v: &uv },
+                    width: 4,
+                    height: 2,
+                }),
+            )
+        };
+        core.run_detection_frames(&[frame(CameraId::Left), frame(CameraId::Right)]);
+
+        let dets = core.last_detections();
+        assert_eq!(dets.len(), 2);
+        assert_eq!(dets[0].camera, CameraId::Left);
+        assert_eq!(dets[1].camera, CameraId::Right);
     }
 }

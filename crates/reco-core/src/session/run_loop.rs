@@ -218,7 +218,7 @@ impl StitchSession {
             });
         }
 
-        self.previous_panner_pose = smoothed_pose;
+        self.core.set_previous_panner_pose(smoothed_pose);
         self.skip_detection = true;
         self.current_vram_slot = oldest.vram_slot;
 
@@ -373,7 +373,7 @@ impl StitchSession {
             let vram_slot = session.copy_to_vram_pool(&frame, *produce_count)?;
 
             let world_state = session.detect_and_track_only(&frame, elapsed, *produce_count)?;
-            let detections = session.detection.last_detections.clone();
+            let detections = session.core.last_detections().to_vec();
 
             // Detection has now read the decode slot; it is safe to hand
             // it back to the decode thread for reuse. Releasing earlier
@@ -427,7 +427,8 @@ impl StitchSession {
         let mut panner_frame_idx: u64 = 0;
 
         // Helper: run the panner on the oldest buffered frame, push
-        // the (frame, pose) pair into the pose queue.
+        // the (frame, pose) pair into the pose queue. The engine owns
+        // the panner; the buffer supplies the future WorldState window.
         let run_panner_once = |session: &mut StitchSession,
                                buffer: &mut FrameBuffer,
                                pose_queue: &mut std::collections::VecDeque<(
@@ -436,24 +437,13 @@ impl StitchSession {
         )>,
                                panner_frame_idx: &mut u64| {
             if let Some(frame) = buffer.pop() {
-                session.lookahead_world_states = buffer.future_world_states();
-                let pose = if let Some(panner) = session.panner.as_mut() {
-                    let pan_ctx = crate::detect::panner::PanContext {
-                        frame_index: *panner_frame_idx,
-                        timestamp_ms: frame.elapsed_ms,
-                        previous_position: session.previous_panner_pose,
-                        calibration: session.core.pipeline().calibration(),
-                    };
-                    let p = panner.decide_with_lookahead(
-                        &frame.world_state,
-                        &session.lookahead_world_states,
-                        &pan_ctx,
-                    );
-                    session.previous_panner_pose = p;
-                    p
-                } else {
-                    session.previous_panner_pose
-                };
+                let futures = buffer.future_world_states();
+                let pose = session.core.decide_pose_with_lookahead(
+                    &frame.world_state,
+                    &futures,
+                    *panner_frame_idx,
+                    frame.elapsed_ms,
+                );
                 *panner_frame_idx += 1;
                 pose_queue.push_back((frame, pose));
                 true
@@ -533,7 +523,6 @@ impl StitchSession {
         }
 
         self.skip_detection = false;
-        self.lookahead_world_states.clear();
         Ok(self.frame_count)
     }
 

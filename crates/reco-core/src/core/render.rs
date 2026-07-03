@@ -44,11 +44,10 @@ impl super::StitchCore {
         // Detection first, so the director's `update` tick in
         // resolve_current_pose sees the latest tracked objects. Skipped
         // frames reuse last_detections so the director still has context.
-        let ran_detection = self.detector.is_some() && self.should_run_detection();
+        let ran_detection = self.detection_due(self.frame_count);
         if ran_detection {
             let (src_w, src_h) = self.executor.source_info();
-            let dets = self.run_yuv_detection(left, right, src_w, src_h);
-            self.last_detections = self.map_detections_to_panorama(dets);
+            self.run_yuv_detection(left, right, src_w, src_h);
         }
 
         let pose = self.resolve_current_pose(ran_detection);
@@ -166,10 +165,9 @@ impl super::StitchCore {
         // provides the pose directly), but detection still runs on the
         // schedule so directors stay populated for a later `current_pose()`
         // peek or a regular `submit_frame_yuv` submit.
-        if self.detector.is_some() && self.should_run_detection() {
+        if self.detection_due(self.frame_count) {
             let (src_w, src_h) = self.executor.source_info();
-            let dets = self.run_yuv_detection(left, right, src_w, src_h);
-            self.last_detections = self.map_detections_to_panorama(dets);
+            self.run_yuv_detection(left, right, src_w, src_h);
         }
 
         let pose = ViewportPosition {
@@ -306,11 +304,10 @@ impl super::StitchCore {
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         self.anchor_session_start();
 
-        let ran_detection = self.detector.is_some() && self.should_run_detection();
+        let ran_detection = self.detection_due(self.frame_count);
         if ran_detection {
             let (src_w, src_h) = self.executor.source_info();
-            let dets = self.run_nv12_detection(left, right, src_w, src_h);
-            self.last_detections = self.map_detections_to_panorama(dets);
+            self.run_nv12_detection(left, right, src_w, src_h);
         }
 
         let pose = self.resolve_current_pose(ran_detection);

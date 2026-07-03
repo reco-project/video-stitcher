@@ -314,9 +314,7 @@ impl StitchSessionBuilder {
         };
 
         let mut session = super::StitchSession::with_gpu(gpu, config)?;
-        session
-            .detection
-            .set_detection_interval(self.detection_interval);
+        session.set_detection_interval(self.detection_interval);
 
         if let Some((enc, buf_count)) = self.encoder {
             session.set_encoder(enc, buf_count);

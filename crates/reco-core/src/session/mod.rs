@@ -19,8 +19,6 @@
 /// Session type definitions, error types, and builder.
 pub mod types;
 
-/// Detection pipeline - also usable standalone without StitchSession.
-pub mod detection;
 /// Detection dispatch entry points (detect_and_update_director_* variants).
 mod detection_dispatch;
 /// Lookahead frame buffer for temporal-aware processing.
@@ -55,7 +53,6 @@ pub use zero_copy_linux::SharedTextureSet;
 use crate::async_encode::AsyncEncodeThread;
 use crate::core::StitchCore;
 use crate::core::types::StitchCoreError;
-use crate::geometry::ViewportPosition;
 use crate::gpu::nv12_converter::Nv12Converter;
 use crate::gpu::{GpuContext, OutputFormat};
 use crate::render::pipeline::StitchPipeline;
@@ -67,8 +64,6 @@ pub type Nv12TapFn = Box<dyn FnMut(&[u8], u32, u32) + Send>;
 
 use types::{ErrorPolicy, SessionConfig, SessionError, SessionMetrics, StitchSessionBuilder};
 
-use detection::DetectionPipeline;
-
 /// A high-level stitching session that owns the GPU pipeline, NV12
 /// converter, and optionally an async encoder.
 ///
@@ -79,35 +74,16 @@ use detection::DetectionPipeline;
 /// Call [`finish`](Self::finish) to flush the last frame and finalize
 /// encoding.
 pub struct StitchSession {
-    /// The canonical push-first core. Owns the `StitchPipeline`,
-    /// readback staging, coverage boundary, and director slot. The
-    /// session's director + legacy-detector path delegates pose +
-    /// coverage decisions to `self.core` during the plan-step-2
-    /// transition; later tranches will migrate the legacy
-    /// `DetectionPipeline` into the core too.
+    /// The canonical push-first engine. Owns the render substrate,
+    /// readback staging, coverage boundary, and the single AI stack
+    /// (detector, trackers, panner, event sink). The session is the
+    /// pull-loop orchestrator over it: frame buffering, encode
+    /// fan-out, telemetry, progress.
     pub(crate) core: StitchCore,
     pub(crate) nv12_converter: Nv12Converter,
     pub(crate) encoder: Option<AsyncEncodeThread>,
     /// Additional encoders for multi-output (stream + record).
     pub(crate) extra_encoders: Vec<AsyncEncodeThread>,
-    /// Detection backends, interval, callback, and cached detections.
-    pub(crate) detection: DetectionPipeline,
-    /// Tracker/panner pose resolution. When `panner` is set, it owns
-    /// pose resolution each frame; when unset the pose stays at the
-    /// pipeline default. Trackers are wired here rather than inside
-    /// the panner so multiple panners can share the same tracker
-    /// output (e.g. replay + live from the same WorldState).
-    pub(crate) ball_tracker: Option<Box<dyn crate::detect::tracker::Tracker>>,
-    pub(crate) player_tracker: Option<Box<dyn crate::detect::tracker::Tracker>>,
-    pub(crate) panner: Option<Box<dyn crate::detect::panner::Panner>>,
-    /// Previous frame's resolved pose (post-clamping), handed to the
-    /// panner via [`PanContext::previous_position`](crate::detect::panner::PanContext::previous_position).
-    pub(crate) previous_panner_pose: ViewportPosition,
-    /// Future WorldStates from the lookahead buffer, passed to the
-    /// panner via `decide_with_lookahead`. Empty when lookahead is off.
-    pub(crate) lookahead_world_states: Vec<crate::detect::tracker::WorldState>,
-    /// Last WorldState produced by dispatch, captured for the buffer.
-    pub(crate) last_world_state: crate::detect::tracker::WorldState,
     /// When true, `process_frame_any` skips detection (the produce phase
     /// already ran it and stored the WorldState in the buffer).
     pub(crate) skip_detection: bool,
@@ -273,13 +249,6 @@ impl StitchSession {
             core,
             nv12_converter,
             encoder: None,
-            detection: DetectionPipeline::new(),
-            ball_tracker: None,
-            player_tracker: None,
-            panner: None,
-            previous_panner_pose: ViewportPosition::default(),
-            lookahead_world_states: Vec::new(),
-            last_world_state: crate::detect::tracker::WorldState::default(),
             skip_detection: false,
             lookahead_frames: 0,
             frame_count: 0,
