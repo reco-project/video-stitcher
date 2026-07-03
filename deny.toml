@@ -38,6 +38,15 @@ ignore = [
     # rendering; no maintained drop-in. Maintenance status only, not a
     # vulnerability. Revisit when slint migrates its font stack.
     "RUSTSEC-2026-0192",
+    # quick-xml < 0.41 - DoS-class XML parsing issues (quadratic duplicate
+    # attribute check / NsReader allocation). Transitive only, in the Linux
+    # GUI stack: zbus_xml 5.1 (slint accessibility, parses local D-Bus
+    # introspection) and wayland-scanner 0.31 (build-time proc-macro over
+    # in-crate protocol XML). No remote attacker-controlled XML reaches
+    # either. Parents pin < 0.41; drop these when zbus_xml/wayland-scanner
+    # move to quick-xml 0.41+. Mirror of the audit-job ignore in rust.yml.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
 ]
 
 # ---------------------------------------------------------------------------

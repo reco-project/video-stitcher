@@ -137,6 +137,10 @@ jobs:
       - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          # quick-xml DoS advisories: transitive via the Linux GUI stack
+          # (zbus_xml / wayland-scanner), local-input only. Justified in
+          # deny.toml; keep the two lists in sync.
+          ignore: RUSTSEC-2026-0194, RUSTSEC-2026-0195
 
   # ===========================================================================
   # msrv — the Rust toolchain we officially support.
