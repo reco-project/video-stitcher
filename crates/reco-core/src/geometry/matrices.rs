@@ -46,6 +46,7 @@ pub fn view_matrix(
 }
 
 /// Convert a nalgebra `Matrix4` to column-major `[[f32; 4]; 4]` for wgpu.
+#[cfg(feature = "gpu")]
 pub(crate) fn matrix4_to_columns(m: &Matrix4<f32>) -> [[f32; 4]; 4] {
     let s = m.as_slice();
     [

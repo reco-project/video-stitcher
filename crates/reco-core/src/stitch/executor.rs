@@ -13,14 +13,19 @@
 //!   owner) plus a private blocking-readback ring for the synchronous
 //!   contract.
 //!
-//! When `wgpu` becomes optional, [`GpuExecutor`] moves behind the `gpu`
-//! feature; [`CpuExecutor`] stays unconditional.
+//! [`GpuExecutor`] lives behind the `gpu` feature (default-on);
+//! [`CpuExecutor`] is unconditional - it is the render path for
+//! wgpu-free builds.
 
 use crate::calibration::Calibration;
+#[cfg(feature = "gpu")]
 use crate::gpu::GpuContext;
+#[cfg(feature = "gpu")]
 use crate::gpu::rgba_readback::{RgbaReadback, RgbaReadbackError};
+#[cfg(feature = "gpu")]
 use crate::render::pipeline::{PipelineError, StitchPipeline};
 use crate::render::planes::Nv12Planes;
+#[cfg(feature = "gpu")]
 use crate::render::renderer::InputFormat;
 use crate::render::viewport::ViewportConfig;
 
@@ -35,9 +40,11 @@ use super::cpu::stitch_rgba;
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum StitchError {
     /// The GPU pipeline failed to record or upload a frame.
+    #[cfg(feature = "gpu")]
     #[error("gpu pipeline: {0}")]
     Pipeline(#[from] PipelineError),
     /// The GPU readback failed.
+    #[cfg(feature = "gpu")]
     #[error("gpu readback: {0}")]
     Readback(#[from] RgbaReadbackError),
     /// Backend configuration is invalid (e.g. degenerate dimensions).
@@ -163,6 +170,7 @@ impl StitchExecutor for CpuExecutor {
 /// dimensions and pixel formats, and the projection. Engine-level
 /// concerns (detection, trackers, replay) deliberately live on
 /// [`StitchCore`](crate::core::StitchCore), not here.
+#[cfg(feature = "gpu")]
 pub struct GpuExecutorConfig {
     /// Camera calibration document.
     pub calibration: Calibration,
@@ -186,6 +194,7 @@ pub struct GpuExecutorConfig {
     pub full_range: bool,
 }
 
+#[cfg(feature = "gpu")]
 impl GpuExecutorConfig {
     /// New config with required fields only; defaults everywhere else
     /// (1080p viewport, `Rgba8Unorm` output, L-shape projection,
@@ -222,6 +231,7 @@ impl GpuExecutorConfig {
 /// `stitch()` path (crate-internal until the executor trait goes
 /// public) renders one frame and blocks on a private readback ring,
 /// for callers that want "planes in, RGBA out" with no pipelining.
+#[cfg(feature = "gpu")]
 pub struct GpuExecutor {
     pub(crate) pipeline: StitchPipeline,
     /// The bound projection: supplied the pipeline's GPU program at
@@ -235,6 +245,7 @@ pub struct GpuExecutor {
     sync_readback: Option<(RgbaReadback, (u32, u32))>,
 }
 
+#[cfg(feature = "gpu")]
 impl GpuExecutor {
     /// Build a GPU executor. `gpu` is injected so reco-core does not
     /// pull an async runtime into non-test code; callers create it via
@@ -275,6 +286,7 @@ impl GpuExecutor {
     }
 }
 
+#[cfg(feature = "gpu")]
 impl StitchExecutor for GpuExecutor {
     fn stitch(
         &mut self,
@@ -327,7 +339,9 @@ impl StitchExecutor for GpuExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::stitch::test_support::{Agreement, AgreementBounds, calib, gpu_or_skip, nv12};
+    use crate::stitch::test_support::calib;
+    #[cfg(feature = "gpu")]
+    use crate::stitch::test_support::{Agreement, AgreementBounds, gpu_or_skip, nv12};
 
     /// The no-black guarantee, end to end: flat mid-grey input pushed
     /// through the real render path (`safe_clamp` -> `world_to_render_pose`
@@ -476,6 +490,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gpu")]
     fn cpu_and_gpu_backends_agree() {
         let Some(gpu) = gpu_or_skip() else {
             return;

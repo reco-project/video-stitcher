@@ -81,6 +81,7 @@ pub trait Projection: Send + Sync {
     /// pipeline compiles and binds exactly what the descriptor says -
     /// the GPU dual of [`surface_maps`](Self::surface_maps), gated by
     /// the same CPU/GPU agreement oracle.
+    #[cfg(feature = "gpu")]
     fn gpu_program(&self) -> crate::render::GpuProgram;
 
     /// Build the coverage boundary for this projection's panorama.
@@ -130,6 +131,7 @@ impl Projection for LShapeProjection {
         ]
     }
 
+    #[cfg(feature = "gpu")]
     fn gpu_program(&self) -> crate::render::GpuProgram {
         crate::render::GpuProgram {
             wgsl: include_str!("../shaders/fisheye.wgsl"),
@@ -249,6 +251,7 @@ impl Projection for CylindricalProjection {
         Vec::new()
     }
 
+    #[cfg(feature = "gpu")]
     fn gpu_program(&self) -> crate::render::GpuProgram {
         crate::render::GpuProgram {
             wgsl: include_str!("../shaders/cylindrical_mono.wgsl"),

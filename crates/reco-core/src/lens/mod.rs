@@ -11,7 +11,9 @@
 //! calibration pipeline, which needs to match features in rectilinear
 //! (undistorted) space.
 
+#[cfg(feature = "gpu")]
 pub mod preview;
+#[cfg(feature = "gpu")]
 pub mod undistort;
 
 use crate::calibration::Lens;
@@ -253,6 +255,7 @@ mod tests {
     // will pull both behind a single `reco_core::lens::kb4` module
     // so the duplication collapses.
     #[test]
+    #[cfg(feature = "gpu")]
     fn wgsl_kb4_matches_rust_kb4_on_theta_grid() {
         use wgpu::util::DeviceExt;
 

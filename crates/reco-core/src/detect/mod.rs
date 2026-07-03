@@ -14,6 +14,7 @@ pub mod tracker;
 /// configuration. Implemented by both [`StitchCore`](crate::core::StitchCore)
 /// and [`StitchSession`](crate::session::StitchSession), so consumers like
 /// `reco_autocam::setup_autocam` can configure either without duplication.
+#[cfg(feature = "gpu")]
 pub trait DetectionTarget {
     /// Attach a detector backend.
     fn set_detector(&mut self, detector: Box<dyn detector::UnifiedDetector>);

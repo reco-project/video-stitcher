@@ -204,7 +204,7 @@ pub enum DetectorFrame<'a> {
     },
 
     /// CUDA device-pointer RGBA frame (zero-copy from Bayer demosaic).
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "gpu"))]
     CudaRgba {
         /// CUDA device pointer to packed RGBA data.
         ptr: crate::interop::cuda::CUdeviceptr,
@@ -222,7 +222,7 @@ pub enum DetectorFrame<'a> {
     /// conversion, and letterbox padding are done in a single hardware-
     /// accelerated operation. The detector skips NPP resize and only
     /// runs the normalize kernel + inference.
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "gpu"))]
     CudaRgbaLetterboxed {
         /// CUDA device pointer to letterboxed RGBA data at model size.
         ptr: crate::interop::cuda::CUdeviceptr,
@@ -249,6 +249,7 @@ pub enum DetectorFrame<'a> {
     /// `WgpuPreprocessor` that converts these views to float32 CHW
     /// via a compute shader, then delegates to the inner detector
     /// with `PreprocessedChw`.
+    #[cfg(feature = "gpu")]
     WgpuNv12 {
         /// Y plane view (R8Unorm, full resolution).
         y_view: &'a wgpu::TextureView,
@@ -272,12 +273,15 @@ impl DetectorFrame<'_> {
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             Self::Cuda(_) => "Cuda",
             #[cfg(any(target_os = "linux", target_os = "windows"))]
+            #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "gpu"))]
             Self::CudaRgba { .. } => "CudaRgba",
             #[cfg(any(target_os = "linux", target_os = "windows"))]
+            #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "gpu"))]
             Self::CudaRgbaLetterboxed { .. } => "CudaRgbaLetterboxed",
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             Self::Metal { .. } => "Metal",
             Self::PreprocessedChw { .. } => "PreprocessedChw",
+            #[cfg(feature = "gpu")]
             Self::WgpuNv12 { .. } => "WgpuNv12",
         }
     }

@@ -305,6 +305,7 @@ impl CoverageBoundary {
     /// boundary samples (`SceneGeometry` consumes only `axis_offset`).
     /// Only the roll-aware clamp margins read these scalars, so a live
     /// tilt/roll change needs no dense re-projection.
+    #[cfg_attr(not(feature = "gpu"), allow(dead_code))] // live-orientation engine hook
     pub(crate) fn set_rig_orientation(&mut self, rig_tilt: f32, rig_roll: f32) {
         self.rig_tilt = rig_tilt;
         self.rig_roll = rig_roll;

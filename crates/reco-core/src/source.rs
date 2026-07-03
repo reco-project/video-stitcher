@@ -423,6 +423,7 @@ pub trait FrameSource: Send {
     ///
     /// Only meaningful when [`is_gpu_resident`](Self::is_gpu_resident) returns `true`.
     /// Determines shared texture formats (R8Unorm for NV12, R16Unorm for P010).
+    #[cfg(feature = "gpu")]
     fn gpu_pixel_format(&self) -> crate::render::renderer::GpuPixelFormat {
         crate::render::renderer::GpuPixelFormat::Nv12
     }

@@ -39,7 +39,9 @@ mod cpu;
 mod executor;
 pub(crate) mod geometry;
 
-pub use executor::{GpuExecutor, GpuExecutorConfig, StitchError};
+pub use executor::StitchError;
+#[cfg(feature = "gpu")]
+pub use executor::{GpuExecutor, GpuExecutorConfig};
 
 /// How one projection surface composites over the surfaces before it.
 ///
@@ -103,6 +105,7 @@ pub trait SurfaceMap {
 #[cfg(test)]
 pub(crate) mod test_support {
     use crate::calibration::{Calibration, Framing, Lens, Topology};
+    #[cfg(feature = "gpu")]
     use crate::gpu::{GpuContext, GpuError};
 
     /// Two-camera calibration (shared dims, mild fisheye, centred) for tests.
@@ -151,6 +154,7 @@ pub(crate) mod test_support {
     /// `RECO_REQUIRE_GPU` is set, in which case a missing adapter is a hard
     /// failure (so CI with a software adapter cannot silently skip the
     /// agreement tests).
+    #[cfg(feature = "gpu")]
     pub fn gpu_or_skip() -> Option<GpuContext> {
         match pollster::block_on(GpuContext::new()) {
             Ok(g) => Some(g),
@@ -259,10 +263,19 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use crate::projection::{LShapeProjection, Projection};
+    use crate::projection::LShapeProjection;
+    #[cfg(feature = "gpu")]
+    use crate::projection::Projection;
 
-    use super::cpu::{stitch_rgba, stitch_rgba_yuv420p};
-    use super::test_support::{Agreement, AgreementBounds, calib, gpu_or_skip, nv12};
+    use super::cpu::stitch_rgba;
+    #[cfg(feature = "gpu")]
+    use super::cpu::stitch_rgba_yuv420p;
+    #[cfg(feature = "gpu")]
+    use super::test_support::gpu_or_skip;
+    #[cfg(feature = "gpu")]
+    use super::test_support::{Agreement, AgreementBounds};
+    use super::test_support::{calib, nv12};
+    #[cfg(feature = "gpu")]
     use crate::calibration::Calibration;
     use crate::render::planes::Nv12Planes;
     use crate::render::viewport::ViewportConfig;
@@ -354,6 +367,7 @@ mod tests {
     /// `lens::kb4`, the only differences are f32-vs-f64 and hardware-vs-software
     /// bilinear - so the RGB match should be tight. Skips when no GPU adapter.
     #[test]
+    #[cfg(feature = "gpu")]
     fn cpu_matches_gpu_within_tolerance() {
         use crate::render::renderer::InputFormat;
 
@@ -442,6 +456,7 @@ mod tests {
     /// YUV420p planar input must agree with the GPU's YUV420p path too,
     /// validating the separate-plane chroma sampler against the shader.
     #[test]
+    #[cfg(feature = "gpu")]
     fn cpu_yuv420p_matches_gpu_within_tolerance() {
         use crate::render::planes::YuvPlanes;
         use crate::render::renderer::InputFormat;
@@ -565,6 +580,7 @@ mod tests {
     /// cpu_rgba)`, or `None` if there is no GPU adapter. The shared agreement
     /// primitive: callers diff the buffers however they need (aggregate stats,
     /// coverage/black-region masks).
+    #[cfg(feature = "gpu")]
     fn gpu_cpu_rgba(
         calib: &Calibration,
         config: &ViewportConfig,
@@ -631,6 +647,7 @@ mod tests {
     /// GPU (a geometry divergence blows mean and the >16 fraction far past these
     /// bounds - the original bugs gave 35-68% wrong pixels here).
     #[test]
+    #[cfg(feature = "gpu")]
     fn cpu_matches_gpu_across_regimes() {
         let (cam_w, cam_h) = (256u32, 144u32);
         let cfg = |w: u32, h: u32, fov: f32| ViewportConfig {
@@ -752,6 +769,7 @@ mod tests {
     /// the GPU discards - a large coverage divergence (mean in the hundreds,
     /// most channels off by >16). Regression guard for the near-plane clip.
     #[test]
+    #[cfg(feature = "gpu")]
     fn cpu_matches_gpu_near_plane_clip() {
         let (cam_w, cam_h) = (256u32, 144u32);
         let (ly, luv) = textured_nv12(cam_w, cam_h, 0.0);
@@ -802,6 +820,7 @@ mod tests {
     /// because sharp edges produce isolated f32/f64 + texture-filter-precision
     /// spikes; a real convention bug would blow the mean into the tens.
     #[test]
+    #[cfg(feature = "gpu")]
     fn cpu_matches_gpu_high_frequency() {
         let (cam_w, cam_h) = (256u32, 144u32);
         let cal = calib(cam_w, cam_h);
@@ -835,6 +854,7 @@ mod tests {
     /// deliberate future opt-in for *both* backends, not an accidental CPU-only
     /// divergence.)
     #[test]
+    #[cfg(feature = "gpu")]
     fn cpu_black_region_matches_gpu() {
         let (cam_w, cam_h) = (256u32, 144u32);
         let cal = calib(cam_w, cam_h);
@@ -887,6 +907,7 @@ mod tests {
     /// near-plane clip divergence was). Uses the offset-sensitive ramp scene; a
     /// flat scene would hide the misregistration.
     #[test]
+    #[cfg(feature = "gpu")]
     fn agreement_oracle_detects_subpixel_offset() {
         let (cam_w, cam_h) = (256u32, 144u32);
         let cal = calib(cam_w, cam_h);

@@ -22,5 +22,7 @@ pub use rig_correction::{resolve_render_pose, world_to_render_pose};
 pub use types::{CameraId, ViewportPosition};
 pub use virtual_camera::VirtualCamera;
 
-pub(crate) use matrices::{matrix4_to_columns, opengl_to_wgpu_matrix};
+#[cfg(feature = "gpu")]
+pub(crate) use matrices::matrix4_to_columns;
+pub(crate) use matrices::opengl_to_wgpu_matrix;
 pub(crate) use rig_correction::render_viewport_roll;
