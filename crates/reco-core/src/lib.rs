@@ -41,7 +41,7 @@
 //! ```rust,no_run
 //! use reco_core::calibration::Calibration;
 //!
-//! // Load calibration from a v1-compatible JSON file
+//! // Load calibration from a JSON file
 //! let json = std::fs::read_to_string("match.json").unwrap();
 //! let calibration: Calibration = serde_json::from_str(&json).unwrap();
 //! ```

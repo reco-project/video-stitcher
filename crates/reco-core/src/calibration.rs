@@ -264,7 +264,9 @@ pub struct FieldRoi {
 /// data - the runtime objects are derived from it (see the module docs).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Calibration {
-    /// Document schema version, for clean future migrations.
+    /// Document schema version. Counts revisions of this format family
+    /// (the retired "match" format predates versioning); `from_file`
+    /// rejects versions this build does not understand.
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
     /// Per-source optical models, one per camera (index 0 = left, 1 = right for
@@ -326,14 +328,21 @@ impl Calibration {
         }
 
         let cal: Self = serde_json::from_str(&json).map_err(|e| {
-            // Transitional: surface a clear message for old v1 "match"
+            // Transitional: surface a clear message for old "match" format
             // files instead of a raw `missing field lenses`.
             if json.contains("\"left_uniforms\"") || json.contains("\"cameraAxisOffset\"") {
-                CalibrationLoadError::LegacyV1
+                CalibrationLoadError::LegacyMatchFormat
             } else {
                 CalibrationLoadError::Parse(e)
             }
         })?;
+        // Fail loud on files from a newer reco rather than silently
+        // misreading fields a future schema revision may have reshaped.
+        if cal.schema_version != SCHEMA_VERSION {
+            return Err(CalibrationLoadError::UnsupportedSchemaVersion {
+                found: cal.schema_version,
+            });
+        }
         cal.validate()?;
         Ok(cal)
     }
@@ -402,16 +411,28 @@ pub enum CalibrationLoadError {
     /// JSON parse error.
     #[error("invalid calibration JSON: {0}")]
     Parse(#[from] serde_json::Error),
-    /// A legacy v1 "match" calibration was detected. No longer supported.
+    /// A legacy "match" format calibration was detected. That pre-versioning
+    /// wire shape (`left_uniforms`/`cameraAxisOffset`) is no longer
+    /// supported; `schema_version` counts revisions of the current format
+    /// family and starts at 1.
     ///
     /// Transitional: we sniff the old wire shape only to give a clear
     /// message instead of a raw `missing field lenses`. Remove a few
-    /// releases after the v1 cutover.
+    /// releases after the cutover.
     #[error(
-        "legacy v1 calibration ('match' format) is no longer supported; \
+        "legacy 'match' format calibration is no longer supported; \
          re-run `reco calibrate` to produce a current calibration file"
     )]
-    LegacyV1,
+    LegacyMatchFormat,
+    /// The file declares a schema version this build does not understand.
+    #[error(
+        "calibration schema version {found} is newer than this reco \
+         supports ({SCHEMA_VERSION}); upgrade reco or re-run `reco calibrate`"
+    )]
+    UnsupportedSchemaVersion {
+        /// The `schema_version` the file declared.
+        found: u32,
+    },
     /// Calibration values are invalid.
     #[error(transparent)]
     Invalid(#[from] CalibrationError),
@@ -744,14 +765,33 @@ mod tests {
     }
 
     #[test]
-    fn legacy_v1_calibration_gives_clear_error() {
-        let path = std::env::temp_dir().join(format!("reco_v1_{}.json", std::process::id()));
+    fn legacy_match_format_gives_clear_error() {
+        let path = std::env::temp_dir().join(format!("reco_legacy_{}.json", std::process::id()));
         std::fs::write(&path, r#"{"left_uniforms":{"width":100},"params":{}}"#).unwrap();
         let err = Calibration::from_file(&path).unwrap_err();
         let _ = std::fs::remove_file(&path);
         assert!(
-            matches!(err, CalibrationLoadError::LegacyV1),
-            "expected LegacyV1, got {err:?}"
+            matches!(err, CalibrationLoadError::LegacyMatchFormat),
+            "expected LegacyMatchFormat, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn newer_schema_version_gives_clear_error() {
+        // A file from a future reco must fail loud, not load through the
+        // current-schema path with silently misread fields.
+        let mut cal = valid_cal();
+        cal.schema_version = 99;
+        let path = std::env::temp_dir().join(format!("reco_v99_{}.json", std::process::id()));
+        std::fs::write(&path, cal.to_json_pretty()).unwrap();
+        let err = Calibration::from_file(&path).unwrap_err();
+        let _ = std::fs::remove_file(&path);
+        assert!(
+            matches!(
+                err,
+                CalibrationLoadError::UnsupportedSchemaVersion { found: 99 }
+            ),
+            "expected UnsupportedSchemaVersion, got {err:?}"
         );
     }
 

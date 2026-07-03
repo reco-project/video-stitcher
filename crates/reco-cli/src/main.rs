@@ -131,7 +131,7 @@ enum Commands {
         /// Path to the right camera video file.
         right: String,
 
-        /// Path to the calibration JSON file (v1-compatible match format).
+        /// Path to the calibration JSON file.
         #[arg(short, long)]
         calibration: String,
 
@@ -287,7 +287,7 @@ enum Commands {
         /// Path to the right camera video file.
         right: String,
 
-        /// Path to the calibration JSON file (v1-compatible match format).
+        /// Path to the calibration JSON file.
         #[arg(short, long)]
         calibration: String,
 
