@@ -8,7 +8,7 @@
 //! trait covers the headless "give me stitched RGBA, GPU or CPU" case - cloud
 //! encode, edge devices, CLI - where the two backends converge on RGBA.
 //!
-//! - [`CpuExecutor`] wraps the pure-Rust [`stitch_l_shape_rgba`].
+//! - [`CpuExecutor`] binds a [`Projection`] and drives the pure-Rust gather.
 //! - [`GpuExecutor`] wraps the wgpu [`StitchPipeline`], absorbing its own
 //!   render + blocking-readback so it satisfies the synchronous contract.
 //!
@@ -23,7 +23,9 @@ use crate::render::planes::Nv12Planes;
 use crate::render::renderer::InputFormat;
 use crate::render::viewport::ViewportConfig;
 
-use super::cpu::stitch_l_shape_rgba;
+use crate::projection::Projection;
+
+use super::cpu::stitch_rgba;
 
 /// Errors a [`StitchExecutor`] can return.
 #[derive(Debug, thiserror::Error)]
@@ -72,6 +74,8 @@ pub trait StitchExecutor {
 
 /// CPU software backend - pure Rust, no GPU. The portable / GPU-less path.
 pub struct CpuExecutor {
+    /// The bound projection: dispatches the per-frame surface maps.
+    projection: Box<dyn Projection>,
     calib: Calibration,
     config: ViewportConfig,
     cam: (u32, u32),
@@ -79,8 +83,10 @@ pub struct CpuExecutor {
 }
 
 impl CpuExecutor {
-    /// Configure a CPU backend for a fixed source size and output viewport.
+    /// Configure a CPU executor: bind a projection to a fixed source size
+    /// and output viewport.
     pub fn new(
+        projection: Box<dyn Projection>,
         calib: Calibration,
         config: ViewportConfig,
         cam_w: u32,
@@ -91,12 +97,21 @@ impl CpuExecutor {
             .validate()
             .map_err(|e| StitchError::InvalidConfig(e.to_string()))?;
         config.validate().map_err(StitchError::InvalidConfig)?;
+        if usize::from(projection.camera_count()) != calib.lenses.len() {
+            return Err(StitchError::InvalidConfig(format!(
+                "projection '{}' consumes {} cameras but the calibration has {} lenses",
+                projection.name(),
+                projection.camera_count(),
+                calib.lenses.len()
+            )));
+        }
         if cam_w < 2 || cam_h < 2 {
             return Err(StitchError::InvalidConfig(format!(
                 "source dimensions must be >= 2, got {cam_w}x{cam_h}"
             )));
         }
         Ok(Self {
+            projection,
             calib,
             config,
             cam: (cam_w, cam_h),
@@ -113,9 +128,10 @@ impl StitchExecutor for CpuExecutor {
         yaw: f32,
         pitch: f32,
     ) -> Result<Vec<u8>, StitchError> {
-        // Plane-size + dimension validation lives in stitch_l_shape_rgba, which
+        // Plane-size + dimension validation lives in stitch_rgba, which
         // returns a typed error instead of panicking on a short/truncated frame.
-        stitch_l_shape_rgba(
+        stitch_rgba(
+            self.projection.as_ref(),
             left,
             right,
             self.cam,
@@ -272,8 +288,15 @@ mod tests {
                 height: out_h,
                 fov_degrees: fov,
             };
-            let mut backend =
-                CpuExecutor::new(cal.clone(), config, cam_w, cam_h, false).expect("cpu");
+            let mut backend = CpuExecutor::new(
+                Box::new(crate::projection::LShapeProjection),
+                cal.clone(),
+                config,
+                cam_w,
+                cam_h,
+                false,
+            )
+            .expect("cpu");
 
             for &(wy, wp) in &[
                 (0.0f32, 0.0f32),
@@ -311,6 +334,7 @@ mod tests {
     fn cpu_backend_reports_dims_and_name() {
         let (w, h) = (64u32, 36u32);
         let backend = CpuExecutor::new(
+            Box::new(crate::projection::LShapeProjection),
             calib(w, h),
             ViewportConfig {
                 width: w,
@@ -330,6 +354,7 @@ mod tests {
     fn cpu_backend_rejects_undersized_planes() {
         let (w, h) = (64u32, 36u32);
         let mut backend = CpuExecutor::new(
+            Box::new(crate::projection::LShapeProjection),
             calib(w, h),
             ViewportConfig {
                 width: w,
@@ -371,8 +396,15 @@ mod tests {
         let right = Nv12Planes { y: &ry, uv: &ruv };
         let (yaw, pitch) = (0.08f32, -0.04f32);
 
-        let mut cpu = CpuExecutor::new(calib.clone(), config.clone(), cam_w, cam_h, false)
-            .expect("cpu backend");
+        let mut cpu = CpuExecutor::new(
+            Box::new(crate::projection::LShapeProjection),
+            calib.clone(),
+            config.clone(),
+            cam_w,
+            cam_h,
+            false,
+        )
+        .expect("cpu backend");
         let mut gpu =
             GpuExecutor::new(gpu, calib, config, cam_w, cam_h, false).expect("gpu backend");
 

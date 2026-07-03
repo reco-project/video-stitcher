@@ -22,3 +22,32 @@ pub fn strip_srgb(format: wgpu::TextureFormat) -> wgpu::TextureFormat {
         other => other,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::strip_srgb;
+
+    #[test]
+    fn strip_srgb_converts_known_formats() {
+        assert_eq!(
+            strip_srgb(wgpu::TextureFormat::Rgba8UnormSrgb),
+            wgpu::TextureFormat::Rgba8Unorm,
+        );
+        assert_eq!(
+            strip_srgb(wgpu::TextureFormat::Bgra8UnormSrgb),
+            wgpu::TextureFormat::Bgra8Unorm,
+        );
+    }
+
+    #[test]
+    fn strip_srgb_passes_through_non_srgb() {
+        assert_eq!(
+            strip_srgb(wgpu::TextureFormat::Rgba8Unorm),
+            wgpu::TextureFormat::Rgba8Unorm,
+        );
+        assert_eq!(
+            strip_srgb(wgpu::TextureFormat::Rgba16Float),
+            wgpu::TextureFormat::Rgba16Float,
+        );
+    }
+}

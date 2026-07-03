@@ -9,11 +9,11 @@
 //! implementation-defined unorm rounding), so it doubles as the agreement oracle.
 
 use crate::calibration::Calibration;
+use crate::projection::Projection;
 use crate::render::planes::{Nv12Planes, YuvPlanes};
 use crate::render::viewport::ViewportConfig;
 
 use super::executor::StitchError;
-use super::geometry::l_shape_plane_maps;
 use super::{BlendRule, SurfaceMap};
 
 /// Reject degenerate source dimensions that would underflow chroma indexing.
@@ -56,7 +56,8 @@ fn check_plane(plane: &[u8], expected: usize) -> Result<(), StitchError> {
 /// rather than panicking - this is the GPU-less render path, so callers (e.g.
 /// the X5) get a typed error instead of an out-of-bounds panic.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn stitch_l_shape_rgba(
+pub(crate) fn stitch_rgba(
+    projection: &dyn Projection,
     left: &Nv12Planes,
     right: &Nv12Planes,
     cam: (u32, u32),
@@ -73,7 +74,8 @@ pub(crate) fn stitch_l_shape_rgba(
     check_plane(left.uv, w * (h / 2))?;
     check_plane(right.y, w * h)?;
     check_plane(right.uv, w * (h / 2))?;
-    Ok(stitch_l_shape_with(
+    Ok(stitch_with(
+        projection,
         calib,
         config,
         yaw,
@@ -85,11 +87,12 @@ pub(crate) fn stitch_l_shape_rgba(
 
 /// Stitch two YUV420p (planar) camera frames into an RGBA panorama on the CPU.
 ///
-/// Identical to [`stitch_l_shape_rgba`] but for the software-decode planar
+/// Identical to [`stitch_rgba`] but for the software-decode planar
 /// format (separate Y, U, V planes). Useful as the GPU-less rendering path on
 /// desktop/cloud where FFmpeg software decode yields YUV420p.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn stitch_l_shape_rgba_yuv420p(
+pub(crate) fn stitch_rgba_yuv420p(
+    projection: &dyn Projection,
     left: &YuvPlanes,
     right: &YuvPlanes,
     cam: (u32, u32),
@@ -109,7 +112,8 @@ pub(crate) fn stitch_l_shape_rgba_yuv420p(
     check_plane(right.y, w * h)?;
     check_plane(right.u, chroma)?;
     check_plane(right.v, chroma)?;
-    Ok(stitch_l_shape_with(
+    Ok(stitch_with(
+        projection,
         calib,
         config,
         yaw,
@@ -119,14 +123,14 @@ pub(crate) fn stitch_l_shape_rgba_yuv420p(
     ))
 }
 
-/// Format-agnostic gather and composite over an ordered surface list.
+/// Format-agnostic gather and composite driven by the projection.
 ///
-/// `sample_left` / `sample_right` map a normalised camera UV to sRGB-domain
-/// RGB for their respective source frame; the loop itself knows nothing about
-/// the pixel format. The L-shape emits two surfaces: the left plane as the
-/// opaque base, the right fading in with a smoothstep seam - matching the
-/// GPU's two-draw alpha blend byte for byte.
-fn stitch_l_shape_with(
+/// The surface list comes from [`Projection::surface_maps`] - this is the
+/// L1 dispatch made real. `sample_left` / `sample_right` map a normalised
+/// camera UV to sRGB-domain RGB for their respective source frame; the
+/// loop itself knows nothing about the pixel format.
+fn stitch_with(
+    projection: &dyn Projection,
     calib: &Calibration,
     config: &ViewportConfig,
     yaw: f32,
@@ -134,14 +138,7 @@ fn stitch_l_shape_with(
     sample_left: impl Fn(f64, f64) -> [f64; 3],
     sample_right: impl Fn(f64, f64) -> [f64; 3],
 ) -> Vec<u8> {
-    let (lmap, rmap) = l_shape_plane_maps(calib, config, yaw, pitch);
-    let surfaces: Vec<(Box<dyn SurfaceMap>, BlendRule)> = vec![
-        (Box::new(lmap), BlendRule::Opaque),
-        (
-            Box::new(rmap),
-            BlendRule::Smoothstep(calib.topology.blend_width as f64),
-        ),
-    ];
+    let surfaces = projection.surface_maps(calib, config, yaw, pitch);
     let samplers: [&dyn Fn(f64, f64) -> [f64; 3]; 2] = [&sample_left, &sample_right];
     composite_rgba(&surfaces, &samplers, config.width, config.height)
 }

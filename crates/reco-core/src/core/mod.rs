@@ -184,11 +184,12 @@ impl StitchCore {
 
         let readback = RgbaReadback::new(pipeline.gpu(), output_width, output_height)?;
 
-        let coverage = CoverageBoundary::from_calibration(pipeline.calibration(), &pipeline.scene);
-
         let projection: Box<dyn Projection> = config
             .projection
             .unwrap_or_else(|| Box::new(LShapeProjection));
+        // The projection owns coverage construction: a new projection
+        // brings its own boundary representation with it.
+        let coverage = projection.coverage(pipeline.calibration(), &pipeline.scene);
         let camera_input: Box<dyn CameraInput> = config
             .camera_input
             .unwrap_or_else(|| Box::new(StereoCameraInput));
@@ -485,10 +486,10 @@ impl StitchCore {
     }
 
     fn rebuild_coverage(&mut self) {
-        self.coverage = Some(CoverageBoundary::from_calibration(
-            self.pipeline.calibration(),
-            &self.pipeline.scene,
-        ));
+        self.coverage = Some(
+            self.projection
+                .coverage(self.pipeline.calibration(), &self.pipeline.scene),
+        );
     }
 
     fn refresh_coverage_orientation(&mut self) {
@@ -575,10 +576,7 @@ impl StitchCore {
     /// subsequent `safe_clamp` calls respect the new no-black region.
     pub fn update_calibration(&mut self, calibration: Calibration) {
         self.pipeline.update_calibration(calibration);
-        self.coverage = Some(CoverageBoundary::from_calibration(
-            self.pipeline.calibration(),
-            &self.pipeline.scene,
-        ));
+        self.rebuild_coverage();
     }
 
     // -----------------------------------------------------------------

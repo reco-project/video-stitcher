@@ -31,33 +31,30 @@ use crate::calibration::{Calibration, Lens};
 use crate::detect::detector::CameraId;
 use crate::detect::director::ViewportPosition;
 use crate::render::scene::SceneGeometry;
+use crate::stitch::{BlendRule, SurfaceMap};
 
 use nalgebra::{Point3, Vector3};
 
 // ---------------------------------------------------------------------------
-// M3 foundation: Projection trait + LShapeProjection marker.
+// The Projection trait: L1 geometry dispatch.
 // ---------------------------------------------------------------------------
 //
-// Plan-execution §2.5 + §7 decision 8: the future StitchCore takes a
-// `Box<dyn Projection>` instead of hardcoding the 2-plane L-shape
-// geometry. This makes alt-projections (cylindrical / flat-mixing-
-// shader / mono-single-plane / equirect / N-camera panoramic) drop-in
-// additions later without reshaping the core session API.
-//
-// This commit lands the trait + a marker implementation for today's
-// L-shape geometry. It does NOT move the existing `camera_to_panorama`
-// etc. free functions into the trait - that migration happens when
-// StitchCore is being written and the real method set emerges from
-// usage. Landing the shape first lets parallel design work on a
-// second projection (§7 decision 8, user-chosen form) start without
-// re-plumbing reco-core.
+// StitchCore holds a `Box<dyn Projection>` so alt-projections (the mono
+// cylinder next, N-camera later) are drop-in additions without reshaping
+// the core API. The trait dispatches the CPU surface maps and coverage
+// construction today; the GPU program descriptor joins at the
+// projection-shader step, and the detection-side forward maps
+// (`camera_to_panorama`) fold in once their `CameraId`/`ViewportPosition`
+// currency moves out of the detect layer.
 
 /// A panoramic projection geometry.
 ///
-/// Implemented by concrete projections (today's 2-plane L-shape,
-/// future cylindrical / flat-mix / mono / N-camera). Dispatched
-/// dynamically by StitchCore so swapping projections at session
-/// construction time does not require recompilation.
+/// Implemented by concrete projections (today's 2-plane L-shape, the
+/// mono cylinder next). Dispatched dynamically by StitchCore so swapping
+/// projections at session construction time does not require
+/// recompilation. The CPU geometry dispatches through
+/// [`surface_maps`](Self::surface_maps); the GPU program dispatch lands
+/// with the projection-shader step.
 ///
 /// # Bounds
 ///
@@ -71,27 +68,35 @@ pub trait Projection: Send + Sync {
     /// 2 for today's L-shape stereo, N>2 for future panoramic rigs.
     fn camera_count(&self) -> u8;
 
-    /// WGSL fragment shader source for the composite pass that
-    /// transforms per-camera undistorted textures into the final
-    /// panorama output.
+    /// The ordered surface list for one frame: each surface's inverse
+    /// map paired with how it blends over the surfaces before it.
+    /// Surface `i` samples source camera `i`; the first surface lays
+    /// the base. The CPU composite drives these directly.
+    fn surface_maps(
+        &self,
+        calibration: &Calibration,
+        config: &crate::render::viewport::ViewportConfig,
+        yaw: f32,
+        pitch: f32,
+    ) -> Vec<(Box<dyn SurfaceMap>, BlendRule)>;
+
+    /// Build the coverage boundary for this projection's panorama.
     ///
-    /// Returned as a string so wgpu can compile it at pipeline
-    /// creation. Today's L-shape geometry returns an empty string:
-    /// its shader is still embedded in the render pipeline. The
-    /// migration happens when StitchCore takes over rendering and
-    /// dispatches composite via this trait.
-    fn wgsl_composite_source(&self) -> &str {
-        ""
+    /// Representation and clamp are one coupled unit: the default is the
+    /// sampled-slice model (bounded, non-wrapping - today's L-shape). A
+    /// projection that cannot reuse it overrides with its own at the
+    /// topology step.
+    fn coverage(&self, calibration: &Calibration, scene: &SceneGeometry) -> CoverageBoundary {
+        CoverageBoundary::from_calibration(calibration, scene)
     }
 }
 
-/// Marker type for today's 2-plane L-shape stereo projection.
+/// Today's 2-plane L-shape stereo projection.
 ///
-/// The geometry is documented in [`scene::SceneGeometry`](crate::render::scene::SceneGeometry).
-/// All the real math still lives in the free functions below and in
-/// the render pipeline; this struct carries no state today. It is
-/// here to make StitchCore's `Box<dyn Projection>` slot have a
-/// concrete default that matches shipping behavior.
+/// The plane placement is documented in
+/// [`scene::SceneGeometry`](crate::render::scene::SceneGeometry); the
+/// per-plane inverse maps come from the stitch geometry module. The
+/// struct carries no state - the calibration document parameterizes it.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct LShapeProjection;
 
@@ -102,6 +107,24 @@ impl Projection for LShapeProjection {
 
     fn camera_count(&self) -> u8 {
         2
+    }
+
+    fn surface_maps(
+        &self,
+        calibration: &Calibration,
+        config: &crate::render::viewport::ViewportConfig,
+        yaw: f32,
+        pitch: f32,
+    ) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {
+        let (left, right) =
+            crate::stitch::geometry::l_shape_plane_maps(calibration, config, yaw, pitch);
+        vec![
+            (Box::new(left), BlendRule::Opaque),
+            (
+                Box::new(right),
+                BlendRule::Smoothstep(calibration.topology.blend_width as f64),
+            ),
+        ]
     }
 }
 
@@ -126,7 +149,7 @@ impl Projection for LShapeProjection {
 //     mirror actionstitch's (focal_length=2400, sweep=PI = 180deg,
 //     screen_rotation=0, video_height sourced from the input).
 //   - A WGSL shader at `shaders/cylindrical_mono.wgsl` returned
-//     verbatim from `wgsl_composite_source()`.
+//     at `shaders/cylindrical_mono.wgsl` (wired at the cylinder step).
 //   - camera_count() = 1.
 //
 // Deliberately NOT wired into `StitchCore` / `StitchPipeline` in this
@@ -202,10 +225,6 @@ impl CylindricalProjection {
     }
 }
 
-/// WGSL source for the cylindrical-mono composite pass. Embedded at
-/// compile time so `wgsl_composite_source()` can return `&'static str`.
-const CYLINDRICAL_MONO_WGSL: &str = include_str!("../shaders/cylindrical_mono.wgsl");
-
 impl Projection for CylindricalProjection {
     fn name(&self) -> &'static str {
         "cylindrical-mono-1camera"
@@ -215,8 +234,18 @@ impl Projection for CylindricalProjection {
         1
     }
 
-    fn wgsl_composite_source(&self) -> &str {
-        CYLINDRICAL_MONO_WGSL
+    /// Not wired yet: the mono cylinder's inverse map lands at the
+    /// cylinder-topology step (its WGSL lives at
+    /// `shaders/cylindrical_mono.wgsl`). Unreachable through StitchCore
+    /// today - construction rejects the camera-count mismatch.
+    fn surface_maps(
+        &self,
+        _calibration: &Calibration,
+        _config: &crate::render::viewport::ViewportConfig,
+        _yaw: f32,
+        _pitch: f32,
+    ) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {
+        Vec::new()
     }
 }
 
@@ -852,12 +881,18 @@ mod tests {
     }
 
     #[test]
-    fn l_shape_projection_wgsl_composite_is_placeholder() {
-        // Today the composite shader is embedded in the render pipeline.
-        // LShapeProjection returns "" until StitchCore migration
-        // moves that shader source out through this trait.
-        let p = LShapeProjection;
-        assert!(p.wgsl_composite_source().is_empty());
+    fn l_shape_surface_maps_dispatch_two_ordered_surfaces() {
+        // The L-shape emits exactly two surfaces: the opaque left base,
+        // then the right fading in with the calibration's seam width.
+        let cal = test_calibration();
+        let config = crate::render::viewport::ViewportConfig::default();
+        let surfaces = LShapeProjection.surface_maps(&cal, &config, 0.0, 0.0);
+        assert_eq!(surfaces.len(), 2);
+        assert_eq!(surfaces[0].1, crate::stitch::BlendRule::Opaque);
+        assert_eq!(
+            surfaces[1].1,
+            crate::stitch::BlendRule::Smoothstep(cal.topology.blend_width as f64)
+        );
     }
 
     // ---- CylindricalProjection (plan step 9) -------------------------------
@@ -902,20 +937,6 @@ mod tests {
         });
         // 90-deg: theta_start = PI/2 - PI/4 = PI/4.
         assert!((p90.theta_start_rad() - std::f32::consts::FRAC_PI_4).abs() < 1e-6);
-    }
-
-    #[test]
-    fn cylindrical_wgsl_source_is_nonempty_and_has_expected_entrypoints() {
-        // Sanity-check the embedded shader compiles in spirit: it must
-        // declare both the vertex + fragment entry points the composite
-        // pass expects. Full wgpu compilation lives in an integration
-        // test behind the GPU gate.
-        let p = CylindricalProjection::default();
-        let src = p.wgsl_composite_source();
-        assert!(!src.is_empty());
-        assert!(src.contains("fn vs_fullscreen"));
-        assert!(src.contains("fn fs_cylindrical_mono"));
-        assert!(src.contains("CylUniforms"));
     }
 
     #[test]

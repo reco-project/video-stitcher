@@ -33,14 +33,14 @@
 
 mod cpu;
 mod executor;
-mod geometry;
+pub(crate) mod geometry;
 
 /// How one projection surface composites over the surfaces before it.
 ///
 /// Paired with a [`SurfaceMap`] in the ordered surface list a projection
 /// emits: the first surface lays the base, later ones blend over it.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum BlendRule {
+pub enum BlendRule {
     /// Fully replaces whatever is underneath wherever this surface covers.
     Opaque,
     /// Fades in over `[0, width]` of the surface's [`SurfaceUv::edge`]
@@ -68,7 +68,7 @@ fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
 
 /// A source-camera sample location produced by a [`SurfaceMap`].
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SurfaceUv {
+pub struct SurfaceUv {
     /// Normalised camera UV in `[0, 1]`. Multiply by the frame dimensions for
     /// pixel coordinates.
     pub u: f64,
@@ -87,7 +87,7 @@ pub(crate) struct SurfaceUv {
 /// that cover a pixel. The L-shape composite loop is two-surface today; this
 /// trait is the seam future N-surface projections build on. It is the CPU dual
 /// of the GPU rasterizer's per-fragment plane-UV interpolation.
-pub(crate) trait SurfaceMap {
+pub trait SurfaceMap {
     /// Map an output pixel centre to its source-camera UV, or `None` when this
     /// surface does not cover the pixel (the GPU shader's bounds discard).
     fn sample_uv(&self, out_x: u32, out_y: u32) -> Option<SurfaceUv>;
@@ -253,7 +253,9 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use super::cpu::{stitch_l_shape_rgba, stitch_l_shape_rgba_yuv420p};
+    use crate::projection::LShapeProjection;
+
+    use super::cpu::{stitch_rgba, stitch_rgba_yuv420p};
     use super::test_support::{Agreement, AgreementBounds, calib, gpu_or_skip, nv12};
     use crate::calibration::Calibration;
     use crate::render::planes::Nv12Planes;
@@ -273,8 +275,18 @@ mod tests {
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
 
-        let out =
-            stitch_l_shape_rgba(&left, &right, (w, h), &calib, &cfg, 0.0, 0.0, false).unwrap();
+        let out = stitch_rgba(
+            &LShapeProjection,
+            &left,
+            &right,
+            (w, h),
+            &calib,
+            &cfg,
+            0.0,
+            0.0,
+            false,
+        )
+        .unwrap();
         assert_eq!(out.len(), (w * h * 4) as usize);
         // Alpha channel is fully opaque.
         assert!(out.iter().skip(3).step_by(4).all(|&a| a == 255));
@@ -294,8 +306,30 @@ mod tests {
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
 
-        let a = stitch_l_shape_rgba(&left, &right, (w, h), &calib, &cfg, 0.0, 0.0, false).unwrap();
-        let b = stitch_l_shape_rgba(&left, &right, (w, h), &calib, &cfg, 0.0, 0.0, false).unwrap();
+        let a = stitch_rgba(
+            &LShapeProjection,
+            &left,
+            &right,
+            (w, h),
+            &calib,
+            &cfg,
+            0.0,
+            0.0,
+            false,
+        )
+        .unwrap();
+        let b = stitch_rgba(
+            &LShapeProjection,
+            &left,
+            &right,
+            (w, h),
+            &calib,
+            &cfg,
+            0.0,
+            0.0,
+            false,
+        )
+        .unwrap();
         assert_eq!(a, b, "stitch must be deterministic");
 
         // Some pixels are covered (non-black) - the planes are in view.
@@ -366,7 +400,8 @@ mod tests {
         let gpu_rgba = gpu_rgba.expect("gpu should produce a frame after 3 renders");
 
         // CPU reference on the same inputs (limited range, matching the GPU default).
-        let cpu_rgba = stitch_l_shape_rgba(
+        let cpu_rgba = stitch_rgba(
+            &LShapeProjection,
             &left,
             &right,
             (cam_w, cam_h),
@@ -458,7 +493,8 @@ mod tests {
         }
         let gpu_rgba = gpu_rgba.expect("gpu should produce a frame after 3 renders");
 
-        let cpu_rgba = stitch_l_shape_rgba_yuv420p(
+        let cpu_rgba = stitch_rgba_yuv420p(
+            &LShapeProjection,
             &left,
             &right,
             (cam_w, cam_h),
@@ -565,8 +601,18 @@ mod tests {
             }
         }
         let gpu_rgba = gpu_rgba.expect("gpu frame");
-        let cpu_rgba =
-            stitch_l_shape_rgba(left, right, cam, calib, config, yaw, pitch, full_range).unwrap();
+        let cpu_rgba = stitch_rgba(
+            &LShapeProjection,
+            left,
+            right,
+            cam,
+            calib,
+            config,
+            yaw,
+            pitch,
+            full_range,
+        )
+        .unwrap();
         Some((gpu_rgba, cpu_rgba))
     }
 
@@ -863,7 +909,8 @@ mod tests {
         good.assert_within(AgreementBounds::DEFAULT, "probe-correct");
 
         // ~1px of output (fov 75 over 192px ~= 0.007 rad/px); 0.01 rad is decisive.
-        let perturbed = stitch_l_shape_rgba(
+        let perturbed = stitch_rgba(
+            &LShapeProjection,
             &left,
             &right,
             (cam_w, cam_h),
