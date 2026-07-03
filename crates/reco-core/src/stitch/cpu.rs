@@ -91,9 +91,6 @@ pub(crate) fn stitch_rgba(
 /// format (separate Y, U, V planes). Useful as the GPU-less rendering path on
 /// desktop/cloud where FFmpeg software decode yields YUV420p.
 #[allow(clippy::too_many_arguments)]
-// Consumed by the engine's CPU YUV420P submit path (Step 12); until
-// that lands, only the gpu-gated agreement test exercises it.
-#[allow(dead_code)]
 pub(crate) fn stitch_rgba_yuv420p(
     projection: &dyn Projection,
     left: &YuvPlanes,
@@ -210,7 +207,6 @@ fn sample_nv12(
 
 /// Sample a YUV420p frame at normalised UV (bilinear Y + separate U, V planes).
 #[inline]
-#[allow(dead_code)] // reached via stitch_rgba_yuv420p (see note there)
 fn sample_yuv420p(
     planes: &YuvPlanes,
     cam_w: u32,

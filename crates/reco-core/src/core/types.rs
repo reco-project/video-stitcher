@@ -46,11 +46,13 @@ pub enum StitchCoreError {
 /// Returned from every [`super::StitchCore::submit_frame_yuv`] /
 /// [`super::StitchCore::submit_frame_bgra`] call.
 ///
-/// The pipeline triple-buffers readback, so the first two calls produce
-/// [`RenderOutcome::Warmup`] while the GPU fills the staging ring; from
-/// the third call onward every submit produces
+/// On the GPU executor, readback is triple-buffered: the first two
+/// calls produce [`RenderOutcome::Warmup`] while the staging ring
+/// fills; from the third call onward every submit produces
 /// [`RenderOutcome::Rgba`] holding the tight RGBA bytes of the frame
-/// submitted two frames ago.
+/// submitted two frames ago. On the CPU executor the stitch is
+/// synchronous: every submit returns [`RenderOutcome::Rgba`] for the
+/// frame just submitted - `Warmup` never occurs.
 pub enum RenderOutcome<'a> {
     /// Pipeline warm-up - submit more frames before expecting output.
     /// Only returned on the first two submit calls after construction.

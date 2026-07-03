@@ -51,7 +51,13 @@ impl super::StitchCore {
 
         let pose = self.resolve_current_pose(ran_detection);
         let Executor::Gpu(gpu) = &self.executor else {
-            return Err(StitchCoreError::RequiresGpu);
+            // CPU arm: synchronous software stitch - RGBA immediately,
+            // no staging ring, no warmup.
+            let Executor::Cpu(cpu) = &self.executor else {
+                unreachable!("executor is CPU here");
+            };
+            let rgba = cpu.stitch_yuv(left, right, pose.yaw, pose.pitch)?;
+            return Ok(self.deliver_cpu_frame(rgba, pose));
         };
         let cmd = gpu
             .pipeline
@@ -135,7 +141,16 @@ impl super::StitchCore {
         }
 
         let Executor::Gpu(gpu) = &self.executor else {
-            return Err(StitchCoreError::RequiresGpu);
+            let Executor::Cpu(cpu) = &self.executor else {
+                unreachable!("executor is CPU here");
+            };
+            let rgba = cpu.stitch_yuv(left, right, yaw, pitch)?;
+            let pose = ViewportPosition {
+                yaw,
+                pitch,
+                fov_degrees: None,
+            };
+            return Ok(self.deliver_cpu_frame(rgba, pose));
         };
         let cmd = gpu.pipeline.render_to_target(left, right, yaw, pitch)?;
         // GPU stacked-replay pack - see `submit_frame_yuv` for
@@ -268,6 +283,83 @@ impl super::StitchCore {
             Some(bytes) => RenderOutcome::Rgba(bytes),
             None => RenderOutcome::Warmup,
         })
+    }
+
+    /// Submit a stereo NV12 frame pair and render the current pose.
+    ///
+    /// Works on both executors. The CPU arm stitches synchronously
+    /// (RGBA available immediately, no warmup); the GPU arm requires a
+    /// pipeline built with `InputFormat::Nv12` and follows the
+    /// triple-buffered readback semantics of
+    /// [`Self::submit_frame_yuv`]. NV12 is the native camera / NVDEC /
+    /// X5 format, so this is the day-1 submit path for live sources.
+    ///
+    /// The stacked replay recorder is YUV420P-native and does not tap
+    /// NV12 submits today.
+    pub fn submit_frame_nv12(
+        &mut self,
+        left: &crate::render::planes::Nv12Planes<'_>,
+        right: &crate::render::planes::Nv12Planes<'_>,
+    ) -> Result<RenderOutcome<'_>, StitchCoreError> {
+        self.anchor_session_start();
+
+        let ran_detection = self.detector.is_some() && self.should_run_detection();
+        if ran_detection {
+            let (src_w, src_h) = self.executor.source_info();
+            let dets = self.run_nv12_detection(left, right, src_w, src_h);
+            self.last_detections = self.map_detections_to_panorama(dets);
+        }
+
+        let pose = self.resolve_current_pose(ran_detection);
+        let Executor::Gpu(gpu) = &self.executor else {
+            let Executor::Cpu(cpu) = &self.executor else {
+                unreachable!("executor is CPU here");
+            };
+            let rgba = cpu.stitch_nv12(left, right, pose.yaw, pose.pitch)?;
+            return Ok(self.deliver_cpu_frame(rgba, pose));
+        };
+        let cmd = gpu
+            .pipeline
+            .render_to_target_nv12(left, right, pose.yaw, pose.pitch)?;
+        self.pack_replay_from_pipeline();
+        let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
+        let Executor::Gpu(gpu) = &self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        let rgba = self
+            .readback
+            .as_mut()
+            .expect("gpu engine owns the readback ring")
+            .readback(gpu.pipeline.gpu(), gpu.pipeline.render_target(), cmd)?;
+        self.frame_count += 1;
+        if let (Some(replay), Some(bytes)) = (self.replay.as_mut(), rgba) {
+            replay.push(ReplayFrame {
+                rgba: bytes.to_vec(),
+                captured_at,
+                pose,
+            });
+        }
+        Ok(match rgba {
+            Some(bytes) => RenderOutcome::Rgba(bytes),
+            None => RenderOutcome::Warmup,
+        })
+    }
+
+    /// Store a CPU-stitched frame and hand out the borrowed outcome -
+    /// the synchronous dual of the GPU readback tail (replay push +
+    /// frame accounting).
+    fn deliver_cpu_frame(&mut self, rgba: Vec<u8>, pose: ViewportPosition) -> RenderOutcome<'_> {
+        let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
+        self.frame_count += 1;
+        if let Some(replay) = self.replay.as_mut() {
+            replay.push(ReplayFrame {
+                rgba: rgba.clone(),
+                captured_at,
+                pose,
+            });
+        }
+        self.cpu_frame = rgba;
+        RenderOutcome::Rgba(&self.cpu_frame)
     }
 
     /// Drain one pending readback slot without submitting a new frame.

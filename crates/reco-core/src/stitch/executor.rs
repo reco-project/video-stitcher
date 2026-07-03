@@ -24,7 +24,7 @@ use crate::gpu::GpuContext;
 use crate::gpu::rgba_readback::{RgbaReadback, RgbaReadbackError};
 #[cfg(feature = "gpu")]
 use crate::render::pipeline::{PipelineError, StitchPipeline};
-use crate::render::planes::Nv12Planes;
+use crate::render::planes::{Nv12Planes, YuvPlanes};
 #[cfg(feature = "gpu")]
 use crate::render::renderer::InputFormat;
 use crate::render::scene::SceneGeometry;
@@ -136,6 +136,55 @@ impl CpuExecutor {
             scene,
         })
     }
+
+    /// Stitch one NV12 frame pair to RGBA at the configured output
+    /// size. `&self` on purpose: the CPU stitch is stateless per call
+    /// (the [`StitchExecutor`] trait's `&mut self` accommodates the
+    /// GPU arm's readback ring).
+    pub fn stitch_nv12(
+        &self,
+        left: &Nv12Planes<'_>,
+        right: &Nv12Planes<'_>,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<Vec<u8>, StitchError> {
+        stitch_rgba(
+            self.projection.as_ref(),
+            left,
+            right,
+            self.cam,
+            &self.calib,
+            &self.config,
+            yaw,
+            pitch,
+            self.full_range,
+        )
+    }
+
+    /// Stitch one YUV420P frame pair to RGBA at the configured output
+    /// size. The CPU kernel is format-flexible per call (unlike the
+    /// GPU pipeline, which fixes its input format at construction);
+    /// the [`StitchExecutor`] trait covers the NV12 contract, this
+    /// inherent entry covers planar YUV sources (file decode).
+    pub fn stitch_yuv(
+        &self,
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<Vec<u8>, StitchError> {
+        super::cpu::stitch_rgba_yuv420p(
+            self.projection.as_ref(),
+            left,
+            right,
+            self.cam,
+            &self.calib,
+            &self.config,
+            yaw,
+            pitch,
+            self.full_range,
+        )
+    }
 }
 
 /// Plane-placement geometry for a calibration document (both stereo
@@ -157,17 +206,7 @@ impl StitchExecutor for CpuExecutor {
     ) -> Result<Vec<u8>, StitchError> {
         // Plane-size + dimension validation lives in stitch_rgba, which
         // returns a typed error instead of panicking on a short/truncated frame.
-        stitch_rgba(
-            self.projection.as_ref(),
-            left,
-            right,
-            self.cam,
-            &self.calib,
-            &self.config,
-            yaw,
-            pitch,
-            self.full_range,
-        )
+        self.stitch_nv12(left, right, yaw, pitch)
     }
 
     fn output_dims(&self) -> (u32, u32) {

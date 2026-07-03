@@ -92,20 +92,71 @@ impl super::StitchCore {
         source_width: u32,
         source_height: u32,
     ) -> Vec<Detection> {
+        self.run_cpu_detection([
+            (
+                CameraId::Left,
+                RawFrame {
+                    y: left.y,
+                    chroma: ChromaFormat::Yuv420p {
+                        u: left.u,
+                        v: left.v,
+                    },
+                    width: source_width,
+                    height: source_height,
+                },
+            ),
+            (
+                CameraId::Right,
+                RawFrame {
+                    y: right.y,
+                    chroma: ChromaFormat::Yuv420p {
+                        u: right.u,
+                        v: right.v,
+                    },
+                    width: source_width,
+                    height: source_height,
+                },
+            ),
+        ])
+    }
+
+    /// NV12 sibling of [`Self::run_yuv_detection`] - same dispatch,
+    /// interleaved-chroma frames (camera and X5 sources are NV12-native).
+    pub(super) fn run_nv12_detection(
+        &mut self,
+        left: &crate::render::planes::Nv12Planes<'_>,
+        right: &crate::render::planes::Nv12Planes<'_>,
+        source_width: u32,
+        source_height: u32,
+    ) -> Vec<Detection> {
+        self.run_cpu_detection([
+            (
+                CameraId::Left,
+                RawFrame {
+                    y: left.y,
+                    chroma: ChromaFormat::Nv12 { uv: left.uv },
+                    width: source_width,
+                    height: source_height,
+                },
+            ),
+            (
+                CameraId::Right,
+                RawFrame {
+                    y: right.y,
+                    chroma: ChromaFormat::Nv12 { uv: right.uv },
+                    width: source_width,
+                    height: source_height,
+                },
+            ),
+        ])
+    }
+
+    fn run_cpu_detection(&mut self, frames: [(CameraId, RawFrame<'_>); 2]) -> Vec<Detection> {
         let Some(ref mut detector) = self.detector else {
             return Vec::new();
         };
         let mut out = Vec::new();
-        for (camera, planes) in [(CameraId::Left, left), (CameraId::Right, right)] {
-            let raw = RawFrame {
-                y: planes.y,
-                chroma: ChromaFormat::Yuv420p {
-                    u: planes.u,
-                    v: planes.v,
-                },
-                width: source_width,
-                height: source_height,
-            };
+        for (camera, raw) in frames {
             match detector.detect(camera, &DetectorFrame::Cpu(raw)) {
                 Ok(v) => out.extend(v),
                 Err(e) => log::warn!("StitchCore detector '{}' {camera:?}: {e}", detector.name()),

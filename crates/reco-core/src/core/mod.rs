@@ -86,6 +86,10 @@ pub struct StitchCore {
     /// the executor is [`Executor::Gpu`]). The CPU path returns owned
     /// bytes synchronously and never allocates it.
     pub(crate) readback: Option<RgbaReadback>,
+    /// The last CPU-stitched frame - the synchronous dual of the GPU
+    /// staging ring. [`RenderOutcome::Rgba`](self::types::RenderOutcome)
+    /// borrows from it on the CPU arm; empty on GPU engines.
+    pub(crate) cpu_frame: Vec<u8>,
     pub(crate) output_width: u32,
     pub(crate) output_height: u32,
 
@@ -204,6 +208,7 @@ impl StitchCore {
         Ok(Self {
             executor,
             readback,
+            cpu_frame: Vec::new(),
             output_width,
             output_height,
             coverage: Some(coverage),
@@ -852,7 +857,8 @@ mod tests {
             "clamp actually constrained the pose"
         );
 
-        // GPU-only streaming paths: typed error, not a panic.
+        // The YUV submit path works on the CPU arm - synchronously
+        // (no warmup), at the resized output dimensions.
         let y = vec![0u8; (w * h) as usize];
         let uv = vec![128u8; (w * h / 4) as usize];
         let planes = YuvPlanes {
@@ -860,14 +866,107 @@ mod tests {
             u: &uv,
             v: &uv,
         };
-        let Err(err) = core.submit_frame_yuv(&planes, &planes) else {
-            panic!("CPU engine must refuse the GPU streaming submit");
-        };
-        assert!(matches!(err, StitchCoreError::RequiresGpu));
+        match core.submit_frame_yuv(&planes, &planes) {
+            Ok(crate::core::types::RenderOutcome::Rgba(bytes)) => {
+                assert_eq!(bytes.len(), 48 * 26 * 4);
+            }
+            Ok(crate::core::types::RenderOutcome::Warmup) => {
+                panic!("CPU submit is synchronous - no warmup")
+            }
+            Err(e) => panic!("cpu submit failed: {e}"),
+        }
+        assert_eq!(core.frame_count(), 1);
+
+        // Genuinely GPU-only paths stay typed errors, not panics.
         assert!(matches!(
             core.flush().unwrap_err(),
             StitchCoreError::RequiresGpu
         ));
+        assert!(matches!(
+            core.render_yuv_at_pose(&planes, &planes, 0.0, 0.0)
+                .unwrap_err(),
+            StitchCoreError::RequiresGpu
+        ));
+    }
+
+    /// Engine-level executor agreement: the same submit API
+    /// (`submit_frame_nv12`) driven over a CPU engine and a GPU engine
+    /// produces the same frame within the established oracle bounds.
+    /// The Step-12 guarantee: swapping the executor does not change
+    /// the picture.
+    #[test]
+    #[cfg(feature = "gpu")]
+    fn cpu_and_gpu_engines_agree_via_submit_nv12() {
+        use crate::core::StitchCore;
+        use crate::core::types::RenderOutcome;
+        use crate::render::planes::Nv12Planes;
+        use crate::render::renderer::InputFormat;
+        use crate::render::viewport::ViewportConfig;
+        use crate::stitch::test_support::{Agreement, AgreementBounds, calib, gpu_or_skip, nv12};
+        use crate::stitch::{CpuExecutor, Executor, GpuExecutor, GpuExecutorConfig};
+
+        let Some(gpu) = gpu_or_skip() else {
+            return;
+        };
+        let (cam_w, cam_h) = (192u32, 108u32);
+        let (out_w, out_h) = (160u32, 90u32);
+        let config = ViewportConfig {
+            width: out_w,
+            height: out_h,
+            ..Default::default()
+        };
+        let (ly, luv) = nv12(cam_w, cam_h, 0);
+        let (ry, ruv) = nv12(cam_w, cam_h, 30);
+        let left = Nv12Planes { y: &ly, uv: &luv };
+        let right = Nv12Planes { y: &ry, uv: &ruv };
+
+        let cpu_exec = CpuExecutor::new(
+            Box::new(crate::projection::LShapeProjection),
+            calib(cam_w, cam_h),
+            config.clone(),
+            cam_w,
+            cam_h,
+            false,
+        )
+        .expect("cpu executor");
+        let mut cpu_core = StitchCore::new(Executor::Cpu(Box::new(cpu_exec))).expect("cpu engine");
+
+        let gpu_exec = GpuExecutor::new(
+            gpu,
+            GpuExecutorConfig {
+                viewport: config,
+                ..GpuExecutorConfig::new(calib(cam_w, cam_h), cam_w, cam_h, InputFormat::Nv12)
+            },
+        )
+        .expect("gpu executor");
+        let mut gpu_core = StitchCore::new(Executor::Gpu(Box::new(gpu_exec))).expect("gpu engine");
+
+        // CPU: synchronous - the first submit yields the frame.
+        let cpu_rgba = match cpu_core
+            .submit_frame_nv12(&left, &right)
+            .expect("cpu submit")
+        {
+            RenderOutcome::Rgba(bytes) => bytes.to_vec(),
+            RenderOutcome::Warmup => panic!("CPU submit is synchronous - no warmup"),
+        };
+
+        // GPU: triple-buffered - the ring yields the first frame by
+        // the third submit. Every submit renders the identical frame
+        // (same input, same resolved pose), so any yielded frame works.
+        let mut gpu_rgba = None;
+        for _ in 0..3 {
+            if let RenderOutcome::Rgba(bytes) = gpu_core
+                .submit_frame_nv12(&left, &right)
+                .expect("gpu submit")
+            {
+                gpu_rgba = Some(bytes.to_vec());
+                break;
+            }
+        }
+        let gpu_rgba = gpu_rgba.expect("gpu produced a frame by the third submit");
+        assert_eq!(cpu_rgba.len(), gpu_rgba.len());
+        Agreement::compare(&gpu_rgba, &cpu_rgba)
+            .assert_within(AgreementBounds::DEFAULT, "engine cpu-vs-gpu submit_nv12");
     }
 
     /// `StitchCoreError` is `std::error::Error` (so downstream
