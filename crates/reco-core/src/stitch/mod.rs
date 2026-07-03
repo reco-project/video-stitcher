@@ -25,17 +25,19 @@
 //! memory-tuned specialisation and NV12-direct output are deliberate later
 //! additions, gated on profiling (see the cpu-stitch portability work).
 
-mod backend;
-mod cpu;
-mod geometry;
+// The executors have no production consumer until Step 12 wires
+// `reco stitch --cpu` / the L3 engine; the CPU/GPU agreement oracle
+// (and the no-black property test) keep the whole chain exercised in
+// the meantime. Deliberate scaffolding, not forgotten code.
+#![allow(dead_code)]
 
-pub use backend::{CpuStitchBackend, GpuStitchBackend, StitchBackend, StitchError};
-pub use cpu::{stitch_l_shape_rgba, stitch_l_shape_rgba_yuv420p};
-pub use geometry::{PlaneMap, l_shape_plane_maps};
+mod cpu;
+mod executor;
+mod geometry;
 
 /// A source-camera sample location produced by a [`SurfaceMap`].
 #[derive(Debug, Clone, Copy)]
-pub struct SurfaceUv {
+pub(crate) struct SurfaceUv {
     /// Normalised camera UV in `[0, 1]`. Multiply by the frame dimensions for
     /// pixel coordinates.
     pub u: f64,
@@ -54,7 +56,7 @@ pub struct SurfaceUv {
 /// that cover a pixel. The L-shape composite loop is two-surface today; this
 /// trait is the seam future N-surface projections build on. It is the CPU dual
 /// of the GPU rasterizer's per-fragment plane-UV interpolation.
-pub trait SurfaceMap {
+pub(crate) trait SurfaceMap {
     /// Map an output pixel centre to its source-camera UV, or `None` when this
     /// surface does not cover the pixel (the GPU shader's bounds discard).
     fn sample_uv(&self, out_x: u32, out_y: u32) -> Option<SurfaceUv>;
@@ -220,8 +222,8 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
+    use super::cpu::{stitch_l_shape_rgba, stitch_l_shape_rgba_yuv420p};
     use super::test_support::{Agreement, AgreementBounds, calib, gpu_or_skip, nv12};
-    use super::*;
     use crate::calibration::Calibration;
     use crate::render::planes::Nv12Planes;
     use crate::render::viewport::ViewportConfig;

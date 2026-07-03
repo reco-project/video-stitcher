@@ -1,6 +1,6 @@
-//! Backend selection: one interface to stitch a frame on the GPU or the CPU.
+//! Executor selection: one interface to stitch a frame on the GPU or the CPU.
 //!
-//! [`StitchBackend`] is a deliberately narrow, synchronous contract -
+//! [`StitchExecutor`] is a deliberately narrow, synchronous contract -
 //! "NV12 planes + pan -> RGBA bytes" - the common denominator both backends
 //! produce naturally. It does NOT try to unify the GPU pipeline's specialised
 //! paths (zero-copy import, triple-buffered streaming readback, GUI texture
@@ -8,12 +8,12 @@
 //! trait covers the headless "give me stitched RGBA, GPU or CPU" case - cloud
 //! encode, edge devices, CLI - where the two backends converge on RGBA.
 //!
-//! - [`CpuStitchBackend`] wraps the pure-Rust [`stitch_l_shape_rgba`].
-//! - [`GpuStitchBackend`] wraps the wgpu [`StitchPipeline`], absorbing its own
+//! - [`CpuExecutor`] wraps the pure-Rust [`stitch_l_shape_rgba`].
+//! - [`GpuExecutor`] wraps the wgpu [`StitchPipeline`], absorbing its own
 //!   render + blocking-readback so it satisfies the synchronous contract.
 //!
-//! When `wgpu` becomes optional (Phase 3), [`GpuStitchBackend`] moves behind a
-//! feature; [`CpuStitchBackend`] stays unconditional.
+//! When `wgpu` becomes optional (Phase 3), [`GpuExecutor`] moves behind a
+//! feature; [`CpuExecutor`] stays unconditional.
 
 use crate::calibration::Calibration;
 use crate::gpu::GpuContext;
@@ -23,9 +23,9 @@ use crate::render::planes::Nv12Planes;
 use crate::render::renderer::InputFormat;
 use crate::render::viewport::ViewportConfig;
 
-use super::stitch_l_shape_rgba;
+use super::cpu::stitch_l_shape_rgba;
 
-/// Errors a [`StitchBackend`] can return.
+/// Errors a [`StitchExecutor`] can return.
 #[derive(Debug, thiserror::Error)]
 pub enum StitchError {
     /// The GPU pipeline failed to record or upload a frame.
@@ -53,7 +53,7 @@ pub enum StitchError {
 /// construction; [`stitch`](Self::stitch) takes only the per-frame planes and
 /// pan. Output is `width * height * 4` sRGB-domain RGBA, identical in layout
 /// across backends (the GPU and CPU agree to ~1 LSB).
-pub trait StitchBackend {
+pub trait StitchExecutor {
     /// Stitch one NV12 frame pair to RGBA at the configured output size.
     fn stitch(
         &mut self,
@@ -71,14 +71,14 @@ pub trait StitchBackend {
 }
 
 /// CPU software backend - pure Rust, no GPU. The portable / GPU-less path.
-pub struct CpuStitchBackend {
+pub struct CpuExecutor {
     calib: Calibration,
     config: ViewportConfig,
     cam: (u32, u32),
     full_range: bool,
 }
 
-impl CpuStitchBackend {
+impl CpuExecutor {
     /// Configure a CPU backend for a fixed source size and output viewport.
     pub fn new(
         calib: Calibration,
@@ -105,7 +105,7 @@ impl CpuStitchBackend {
     }
 }
 
-impl StitchBackend for CpuStitchBackend {
+impl StitchExecutor for CpuExecutor {
     fn stitch(
         &mut self,
         left: &Nv12Planes,
@@ -137,16 +137,16 @@ impl StitchBackend for CpuStitchBackend {
 }
 
 /// GPU backend - wraps the wgpu [`StitchPipeline`]. Renders one frame and
-/// blocks on readback so it satisfies the synchronous [`StitchBackend`]
+/// blocks on readback so it satisfies the synchronous [`StitchExecutor`]
 /// contract. Streaming consumers that want pipelined throughput should use
 /// [`crate::core`] directly instead.
-pub struct GpuStitchBackend {
+pub struct GpuExecutor {
     pipeline: StitchPipeline,
     readback: RgbaReadback,
     dims: (u32, u32),
 }
 
-impl GpuStitchBackend {
+impl GpuExecutor {
     /// Configure a GPU backend. `gpu` is injected so reco-core does not pull an
     /// async runtime into non-test code; callers create it via
     /// [`GpuContext::new`].
@@ -178,7 +178,7 @@ impl GpuStitchBackend {
     }
 }
 
-impl StitchBackend for GpuStitchBackend {
+impl StitchExecutor for GpuExecutor {
     fn stitch(
         &mut self,
         left: &Nv12Planes,
@@ -273,7 +273,7 @@ mod tests {
                 fov_degrees: fov,
             };
             let mut backend =
-                CpuStitchBackend::new(cal.clone(), config, cam_w, cam_h, false).expect("cpu");
+                CpuExecutor::new(cal.clone(), config, cam_w, cam_h, false).expect("cpu");
 
             for &(wy, wp) in &[
                 (0.0f32, 0.0f32),
@@ -310,7 +310,7 @@ mod tests {
     #[test]
     fn cpu_backend_reports_dims_and_name() {
         let (w, h) = (64u32, 36u32);
-        let backend = CpuStitchBackend::new(
+        let backend = CpuExecutor::new(
             calib(w, h),
             ViewportConfig {
                 width: w,
@@ -329,7 +329,7 @@ mod tests {
     #[test]
     fn cpu_backend_rejects_undersized_planes() {
         let (w, h) = (64u32, 36u32);
-        let mut backend = CpuStitchBackend::new(
+        let mut backend = CpuExecutor::new(
             calib(w, h),
             ViewportConfig {
                 width: w,
@@ -371,13 +371,13 @@ mod tests {
         let right = Nv12Planes { y: &ry, uv: &ruv };
         let (yaw, pitch) = (0.08f32, -0.04f32);
 
-        let mut cpu = CpuStitchBackend::new(calib.clone(), config.clone(), cam_w, cam_h, false)
+        let mut cpu = CpuExecutor::new(calib.clone(), config.clone(), cam_w, cam_h, false)
             .expect("cpu backend");
         let mut gpu =
-            GpuStitchBackend::new(gpu, calib, config, cam_w, cam_h, false).expect("gpu backend");
+            GpuExecutor::new(gpu, calib, config, cam_w, cam_h, false).expect("gpu backend");
 
         // Drive both through the trait object to prove selection works.
-        let backends: [&mut dyn StitchBackend; 2] = [&mut cpu, &mut gpu];
+        let backends: [&mut dyn StitchExecutor; 2] = [&mut cpu, &mut gpu];
         let mut outputs = Vec::new();
         for b in backends {
             assert_eq!(b.output_dims(), (out_w, out_h));

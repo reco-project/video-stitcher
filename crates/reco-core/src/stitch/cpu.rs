@@ -12,8 +12,8 @@ use crate::calibration::Calibration;
 use crate::render::planes::{Nv12Planes, YuvPlanes};
 use crate::render::viewport::ViewportConfig;
 
-use super::StitchError;
 use super::SurfaceMap;
+use super::executor::StitchError;
 use super::geometry::l_shape_plane_maps;
 
 /// Reject degenerate source dimensions that would underflow chroma indexing.
@@ -56,7 +56,7 @@ fn check_plane(plane: &[u8], expected: usize) -> Result<(), StitchError> {
 /// rather than panicking - this is the GPU-less render path, so callers (e.g.
 /// the X5) get a typed error instead of an out-of-bounds panic.
 #[allow(clippy::too_many_arguments)]
-pub fn stitch_l_shape_rgba(
+pub(crate) fn stitch_l_shape_rgba(
     left: &Nv12Planes,
     right: &Nv12Planes,
     cam: (u32, u32),
@@ -89,7 +89,7 @@ pub fn stitch_l_shape_rgba(
 /// format (separate Y, U, V planes). Useful as the GPU-less rendering path on
 /// desktop/cloud where FFmpeg software decode yields YUV420p.
 #[allow(clippy::too_many_arguments)]
-pub fn stitch_l_shape_rgba_yuv420p(
+pub(crate) fn stitch_l_shape_rgba_yuv420p(
     left: &YuvPlanes,
     right: &YuvPlanes,
     cam: (u32, u32),
