@@ -13,9 +13,9 @@
 //!
 //! ## Projection seam
 //!
-//! [`SurfaceMap`] is the only projection-specific piece: it maps an output
+//! `SurfaceMap` is the only projection-specific piece: it maps an output
 //! pixel to a source-camera UV. The two-plane L-shape provides one
-//! [`PlaneMap`] per camera. The gather loop in `cpu` is currently specialised
+//! `PlaneMap` per camera. The gather loop in `cpu` is currently specialised
 //! to the two-surface L-shape composite; the trait is the seam that N-surface
 //! projections (cylinder, N-camera) build on.
 //!

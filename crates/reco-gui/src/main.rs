@@ -779,7 +779,6 @@ impl AppState {
     /// sync vs async distinction.
     fn render_current(&mut self) -> Option<slint::Image> {
         let frame = self.playback.current_frame()?;
-        let bridge = self.bridge.as_ref()?;
 
         let left = frame.left.as_planes();
         let right = frame.right.as_planes();
@@ -802,7 +801,11 @@ impl AppState {
             };
         }
 
-        let pose = bridge.engine().orient_pose(self.pose.current_pose());
+        let pose = self
+            .bridge
+            .as_ref()?
+            .engine()
+            .orient_pose(self.pose.current_pose());
 
         let recording = self.is_recording();
         if recording {
@@ -814,7 +817,7 @@ impl AppState {
             // only stitch render per frame - no separate display render.
             match bridge
                 .engine_mut()
-                .render_and_readback_nv12(&left, &right, pose.yaw, pose.pitch)
+                .render_and_readback_nv12(&left, &right, pose)
             {
                 Ok(Some(nv12)) => {
                     if let Some(tx) = self.recording_tx.as_ref() {
@@ -838,15 +841,15 @@ impl AppState {
             // The display render is cheap compared to the NV12 readback
             // but we skip most frames to keep encoding smooth.
             if self.recording_frames.is_multiple_of(5) {
-                let bridge = self.bridge.as_ref().unwrap();
-                match bridge.render_frame(&left, &right, pose.yaw, pose.pitch) {
+                let bridge = self.bridge.as_mut().unwrap();
+                match bridge.render_frame(&left, &right, pose) {
                     Ok(img) => return Some(img),
                     Err(e) => log::error!("Preview render error: {e}"),
                 }
             }
             None
         } else {
-            match bridge.render_frame(&left, &right, pose.yaw, pose.pitch) {
+            match self.bridge.as_mut()?.render_frame(&left, &right, pose) {
                 Ok(img) => Some(img),
                 Err(e) => {
                     log::error!("Render error: {e}");
@@ -908,13 +911,8 @@ impl AppState {
         let pitch_changed = (before.pitch - after.pitch).abs() > f32::EPSILON;
         let fov_changed = before.fov_degrees != after.fov_degrees;
 
-        if fov_changed
-            && let Some(fov) = after.fov_degrees
-            && let Some(bridge) = self.bridge.as_mut()
-        {
-            bridge.engine_mut().set_fov(fov);
-        }
-
+        // FOV rides the pose into every render_frame call, so no cached
+        // push is needed here - the render can never see a stale value.
         yaw_changed || pitch_changed || fov_changed
     }
 

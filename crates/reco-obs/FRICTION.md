@@ -94,8 +94,3 @@ metadata. Finalized files scrub normally.
 Mismatched dims silently freeze output. Should auto-detect from first
 frame and rebuild the pipeline.
 
-### N9. FOV accessors require pipeline_mut()
-
-**Impact**: Low. No StitchCore::set_fov/fov_degrees shortcut. Consumers
-detour through core.pipeline_mut().set_fov(v). Should match the
-set_rig_tilt pattern.

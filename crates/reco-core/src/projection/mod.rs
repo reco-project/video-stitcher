@@ -77,7 +77,7 @@ pub trait Projection: Send + Sync {
     ///
     /// Returned as a string so wgpu can compile it at pipeline
     /// creation. Today's L-shape geometry returns an empty string:
-    /// its shader is still embedded in `stitch_renderer.rs`. The
+    /// its shader is still embedded in the render pipeline. The
     /// migration happens when StitchCore takes over rendering and
     /// dispatches composite via this trait.
     fn wgsl_composite_source(&self) -> &str {
@@ -89,7 +89,7 @@ pub trait Projection: Send + Sync {
 ///
 /// The geometry is documented in [`scene::SceneGeometry`](crate::render::scene::SceneGeometry).
 /// All the real math still lives in the free functions below and in
-/// `stitch_renderer.rs`; this struct carries no state today. It is
+/// the render pipeline; this struct carries no state today. It is
 /// here to make StitchCore's `Box<dyn Projection>` slot have a
 /// concrete default that matches shipping behavior.
 #[derive(Debug, Default, Clone, Copy)]
@@ -853,7 +853,7 @@ mod tests {
 
     #[test]
     fn l_shape_projection_wgsl_composite_is_placeholder() {
-        // Today the composite shader is embedded in stitch_renderer.
+        // Today the composite shader is embedded in the render pipeline.
         // LShapeProjection returns "" until StitchCore migration
         // moves that shader source out through this trait.
         let p = LShapeProjection;

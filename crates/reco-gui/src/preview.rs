@@ -1,4 +1,4 @@
-//! Zero-copy GPU preview bridge: reco-core StitchRenderer -> Slint Image.
+//! Zero-copy GPU preview bridge: reco-core StitchCore -> Slint Image.
 //!
 //! Shares the wgpu device and queue with Slint via its `unstable-wgpu-28`
 //! feature. Renders directly into a `wgpu::Texture` allocated on Slint's
@@ -12,7 +12,7 @@
 //! 2. A `set_rendering_notifier` callback fires with
 //!    `GraphicsAPI::WGPU28 { device, queue, .. }` on `RenderingSetup`.
 //! 3. Those handles are passed to `PreviewBridge::new`, which builds a
-//!    `GpuContext::from_device_queue` and a `StitchRenderer`.
+//!    `GpuContext::from_device_queue` and a `StitchCore`.
 //! 4. Each frame allocates a fresh `wgpu::Texture` on the shared device
 //!    with `RENDER_ATTACHMENT | TEXTURE_BINDING`, renders into it, and
 //!    moves it into `slint::Image::try_from`.
@@ -121,11 +121,10 @@ impl PreviewBridge {
     /// Render a YUV420P stereo pair, return a Slint image backed by a
     /// GPU texture on the shared device.
     pub fn render_frame(
-        &self,
+        &mut self,
         left: &YuvPlanes<'_>,
         right: &YuvPlanes<'_>,
-        yaw: f32,
-        pitch: f32,
+        pose: reco_core::detect::director::ViewportPosition,
     ) -> Result<slint::Image, StitchCoreError> {
         let device = self.engine.gpu().device();
 
@@ -151,7 +150,7 @@ impl PreviewBridge {
 
         // Render into Slint's own device — commands submit on the shared
         // queue, no copies, no synchronization round-trip.
-        self.engine.render_to_view(left, right, yaw, pitch, &view)?;
+        self.engine.render_to_view(left, right, pose, &view)?;
 
         // Hand the texture to Slint. ownership transfers; Slint releases
         // it when the Image is no longer referenced by any UI property.

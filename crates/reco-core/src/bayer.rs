@@ -2,7 +2,7 @@
 //!
 //! Converts raw 10-bit RGGB Bayer data (e.g. IMX477 via direct V4L2)
 //! into an RGBA GPU texture that can be copied directly into the stitch
-//! pipeline's input plane via `StitchRenderer::copy_texture_to_left`.
+//! pipeline's input plane via the render pipeline's texture copy.
 //! No CPU readback in the hot path.
 
 use crate::gpu::GpuContext;

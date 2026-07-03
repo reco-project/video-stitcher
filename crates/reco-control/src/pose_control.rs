@@ -31,7 +31,7 @@
 //! pose.tick();
 //! // (Optional) clamp current pose through the session's coverage:
 //! pose.clamp_via_coverage(core.coverage().unwrap(), aspect);
-//! // Feed the renderer (world-space pose -> StitchRenderer::orient_pose):
+//! // Feed the engine (world-space pose -> StitchCore::orient_pose):
 //! let vp = pose.current_pose();
 //! ```
 //!
@@ -182,7 +182,7 @@ impl Default for PoseControlConfig {
 /// Poses are stored in **world space** (the panorama's native frame,
 /// matching the AI/director path). The rig tilt+roll correction that
 /// keeps the horizon level under pan is applied at the render site by
-/// [`StitchRenderer::orient_pose`](reco_core::render::stitch_renderer::StitchRenderer::orient_pose),
+/// [`StitchCore::orient_pose`](reco_core::core::StitchCore::orient_pose),
 /// not here; coverage clamping ([`Self::clamp_via_coverage`]) is also
 /// world-space.
 #[derive(Debug, Clone)]

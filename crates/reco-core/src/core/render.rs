@@ -252,17 +252,23 @@ impl super::StitchCore {
     /// Render a stereo YUV420P frame directly to a surface view - the
     /// interactive preview path (GUI/CLI). No detection, no director, no
     /// readback; the caller supplies the (already oriented) pose.
+    ///
+    /// The full pose is the render parameter: when `pose.fov_degrees` is
+    /// set it applies for this frame, so an out-of-tick FOV clamp can
+    /// never leave the view rendering a stale cached value (FRICTION N19).
     pub fn render_to_view(
-        &self,
+        &mut self,
         left: &YuvPlanes<'_>,
         right: &YuvPlanes<'_>,
-        yaw: f32,
-        pitch: f32,
+        pose: ViewportPosition,
         view: &wgpu::TextureView,
     ) -> Result<(), StitchCoreError> {
+        if let Some(fov) = pose.fov_degrees {
+            self.pipeline.set_fov(fov);
+        }
         Ok(self
             .pipeline
-            .render_to_view(left, right, yaw, pitch, view)?)
+            .render_to_view(left, right, pose.yaw, pose.pitch, view)?)
     }
 
     /// Render a stereo frame and read back NV12 bytes for encoding - the
@@ -274,9 +280,12 @@ impl super::StitchCore {
         &mut self,
         left: &YuvPlanes<'_>,
         right: &YuvPlanes<'_>,
-        yaw: f32,
-        pitch: f32,
+        pose: ViewportPosition,
     ) -> Result<Option<&[u8]>, StitchCoreError> {
+        if let Some(fov) = pose.fov_degrees {
+            self.pipeline.set_fov(fov);
+        }
+        let (yaw, pitch) = (pose.yaw, pose.pitch);
         if self.preview_nv12.is_none() {
             let w = self.pipeline.viewport().width & !3;
             let h = self.pipeline.viewport().height & !1;

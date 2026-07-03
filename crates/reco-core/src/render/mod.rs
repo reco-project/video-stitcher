@@ -7,7 +7,6 @@ pub mod pipeline;
 pub mod planes;
 pub mod renderer;
 pub mod scene;
-pub mod stitch_renderer;
 pub mod viewport;
 
 /// Strip sRGB encoding from a texture format.

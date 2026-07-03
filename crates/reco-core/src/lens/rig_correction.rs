@@ -166,7 +166,7 @@ pub(crate) fn render_viewport_roll(
 /// route through this, so their coverage clamp and rig tilt+roll
 /// correction can never drift into per-call copies. Interactive
 /// consumers clamp ([`CoverageBoundary::safe_clamp`] via
-/// `PoseControl`) and orient (`StitchRenderer::orient_pose`) as separate
+/// `PoseControl`) and orient (`StitchCore::orient_pose`) as separate
 /// steps, sharing the same [`world_to_render_pose`] leaf.
 ///
 /// It bridges the two halves of the geometry seam:

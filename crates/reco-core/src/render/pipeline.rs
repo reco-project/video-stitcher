@@ -111,7 +111,7 @@ impl StitchPipeline {
     ) -> Result<Self, PipelineError> {
         // Validate inputs before GPU resource creation. This is THE
         // enforcement boundary for in-memory calibrations: every
-        // constructor (StitchRenderer, StitchCore, StitchSession,
+        // constructor (StitchCore, StitchSession, the preview bridge,
         // StitchJob) funnels through here, so a wrong lens count or a
         // NaN surfaces as a typed error instead of an index panic or a
         // GPU hang further down.

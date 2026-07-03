@@ -140,7 +140,7 @@ pub fn run_preview(
     let frame_duration = std::time::Duration::from_secs_f64(1.0 / info.fps);
 
     // Precompute max FOV from coverage boundary using calibration metadata.
-    // The actual CoverageBoundary is computed inside StitchRenderer::new().
+    // The actual CoverageBoundary is computed inside StitchCore::new().
     let max_fov = {
         let aspect = info.width as f32 / info.height as f32;
         let scene =
@@ -433,10 +433,8 @@ impl App {
             self.pose.clamp_via_coverage(coverage, aspect);
         }
 
-        if let Some(r) = &mut self.renderer {
-            let target_fov = self.pose.current_fov_deg();
-            r.set_fov(target_fov.clamp(1.0, FOV_MAX));
-        }
+        // FOV rides the pose into every render call (render_to_view /
+        // render_and_readback_nv12), so no cached push is needed here.
 
         let after = self.pose.current_pose();
         let dy = (after.yaw - before.yaw).abs();
@@ -853,18 +851,14 @@ impl ApplicationHandler for App {
                 // tilt/roll basis inversion (roll-aware; the horizon
                 // stays level under pan).
                 let render = renderer.orient_pose(self.pose.current_pose());
-                let (render_yaw, render_pitch) = (render.yaw, render.pitch);
-                if let Err(e) =
-                    renderer.render_to_view(&left, &right, render_yaw, render_pitch, &view)
-                {
+                if let Err(e) = renderer.render_to_view(&left, &right, render, &view) {
                     log::error!("Render failed: {e}");
                     return;
                 }
 
                 // Record: render to internal target + NV12 readback.
                 if self.recording.is_some() {
-                    match renderer.render_and_readback_nv12(&left, &right, render_yaw, render_pitch)
-                    {
+                    match renderer.render_and_readback_nv12(&left, &right, render) {
                         Ok(Some(nv12)) => {
                             let pts_us =
                                 (self.recording_frames as f64 / self.fps * 1_000_000.0) as i64;
