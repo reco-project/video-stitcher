@@ -3293,10 +3293,7 @@ fn main() -> anyhow::Result<()> {
         if !s.lens_preview_active
             && let Some(bridge) = s.bridge.as_mut()
         {
-            bridge
-                .engine_mut()
-                .pipeline_mut()
-                .set_lens_correction_amount(clamped);
+            bridge.engine_mut().set_lens_correction_amount(clamped);
         }
         s.preview_dirty = true;
         if let Some(app) = app_weak.upgrade() {

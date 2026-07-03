@@ -734,7 +734,7 @@ impl RecoSource {
                 let pitch = self.pose.current_pitch_rad();
                 let fov = self.pose.current_fov_deg();
                 if let Some(core) = self.core.as_mut() {
-                    core.pipeline_mut().set_fov(fov);
+                    core.set_fov(fov);
                 }
                 let result = match self.input_format {
                     InputFormat::Yuv420p => {

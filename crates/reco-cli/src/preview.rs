@@ -574,7 +574,7 @@ impl ApplicationHandler for App {
                             view_formats,
                         },
                     );
-                    renderer.pipeline_mut().resize(self.width, self.height);
+                    renderer.resize(self.width, self.height);
                     self.needs_redraw = true;
                 }
             }
