@@ -81,7 +81,10 @@ impl super::StitchCore {
         layout: StackGridLayout,
         output_size: OutputTileSize,
     ) -> Result<(), StitchCoreError> {
-        let source_format = match self.executor.pipeline.input_format() {
+        let Some(gpu) = self.executor.gpu() else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        let source_format = match gpu.pipeline.input_format() {
             InputFormat::Yuv420p => SourceFormat::Yuv420p,
             InputFormat::Nv12 => SourceFormat::Nv12,
             InputFormat::Bgra => {
@@ -92,12 +95,7 @@ impl super::StitchCore {
                 ));
             }
         };
-        let packer = YuvStackPacker::new(
-            self.executor.pipeline.gpu(),
-            layout,
-            output_size,
-            source_format,
-        )?;
+        let packer = YuvStackPacker::new(gpu.pipeline.gpu(), layout, output_size, source_format)?;
         let (atlas_w, atlas_h) = packer.atlas_dims();
         log::info!(
             "reco-core: replay pack path = GPU shader (tiles {}x{} out, N={}, atlas {}x{}, source_format={:?})",
@@ -206,7 +204,14 @@ impl super::StitchCore {
         let Some(ref mut packer) = self.stacked_packer else {
             return;
         };
-        let gpu = self.executor.pipeline.gpu();
+        // The packer can only be enabled on a GPU engine (see
+        // enable_gpu_stacked_replay), so this expect is an invariant.
+        let gpu = self
+            .executor
+            .gpu()
+            .expect("stacked packer implies the GPU executor")
+            .pipeline
+            .gpu();
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -258,10 +263,15 @@ impl super::StitchCore {
         // StackedPackSource variant matching the packer's
         // configured source format - the packer will route to the
         // right shader kernel internally.
-        let (ly, lu, lv) = self.executor.pipeline.left_plane_views();
-        let (ry, ru, rv) = self.executor.pipeline.right_plane_views();
+        let pipeline = &self
+            .executor
+            .gpu()
+            .expect("stacked packer implies the GPU executor")
+            .pipeline;
+        let (ly, lu, lv) = pipeline.left_plane_views();
+        let (ry, ru, rv) = pipeline.right_plane_views();
         // Keep bindings alive across the pack call via locals.
-        let (left, right) = match self.executor.pipeline.input_format() {
+        let (left, right) = match pipeline.input_format() {
             InputFormat::Yuv420p => (
                 StackedPackSource::Yuv420p {
                     y: &ly,

@@ -33,7 +33,7 @@ use reco_core::gpu::GpuContext;
 use reco_core::render::pipeline::{BgraPlanes, FramePlaneView, StridedYuvPlanes};
 use reco_core::render::renderer::InputFormat;
 use reco_core::render::viewport::ViewportConfig;
-use reco_core::stitch::{GpuExecutor, GpuExecutorConfig};
+use reco_core::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 
 use crate::ffi;
 
@@ -398,7 +398,7 @@ impl RecoSource {
                 return;
             }
         };
-        match StitchCore::new(executor) {
+        match StitchCore::new(Executor::Gpu(Box::new(executor))) {
             Ok(session) => {
                 log::info!(
                     "reco-obs: session initialized ({}x{} output, {}x{} input, format={:?})",

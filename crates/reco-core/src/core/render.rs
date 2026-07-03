@@ -6,6 +6,7 @@
 
 use crate::geometry::ViewportPosition;
 use crate::render::pipeline::{BgraPlanes, YuvPlanes};
+use crate::stitch::Executor;
 
 use super::types::{RenderOutcome, ReplayFrame, StitchCoreError};
 
@@ -34,7 +35,7 @@ impl super::StitchCore {
         // never propagate them - a failing recorder must not break
         // the live stitch output.
         if let Some(ref mut recorder) = self.stacked_recorder {
-            let (src_w, src_h) = self.executor.pipeline.source_info();
+            let (src_w, src_h) = self.executor.source_info();
             recorder.record_yuv(left, right, src_w, src_h);
         }
 
@@ -43,14 +44,16 @@ impl super::StitchCore {
         // frames reuse last_detections so the director still has context.
         let ran_detection = self.detector.is_some() && self.should_run_detection();
         if ran_detection {
-            let (src_w, src_h) = self.executor.pipeline.source_info();
+            let (src_w, src_h) = self.executor.source_info();
             let dets = self.run_yuv_detection(left, right, src_w, src_h);
             self.last_detections = self.map_detections_to_panorama(dets);
         }
 
         let pose = self.resolve_current_pose(ran_detection);
-        let cmd = self
-            .executor
+        let Executor::Gpu(gpu) = &self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        let cmd = gpu
             .pipeline
             .render_to_target(left, right, pose.yaw, pose.pitch)?;
         // GPU stacked-replay pack runs before the readback so the
@@ -68,11 +71,14 @@ impl super::StitchCore {
         // `&mut self` on a helper) lets the borrow checker see the
         // fields are disjoint.
         let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
-        let rgba = self.readback.readback(
-            self.executor.pipeline.gpu(),
-            self.executor.pipeline.render_target(),
-            cmd,
-        )?;
+        let Executor::Gpu(gpu) = &self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        let rgba = self
+            .readback
+            .as_mut()
+            .expect("gpu engine owns the readback ring")
+            .readback(gpu.pipeline.gpu(), gpu.pipeline.render_target(), cmd)?;
         self.frame_count += 1;
         if let (Some(replay), Some(bytes)) = (self.replay.as_mut(), rgba) {
             replay.push(ReplayFrame {
@@ -95,7 +101,7 @@ impl super::StitchCore {
     /// RGBA, pushes into the replay buffer, increments frame_count -
     /// but bypasses the director and uses the caller-supplied
     /// `(yaw, pitch)` directly. The FOV stays at whatever the
-    /// pipeline currently has (set via [`Self::pipeline_mut`] or
+    /// pipeline currently has (set via [`Self::set_fov`] or
     /// `update_calibration`).
     ///
     /// This is the canonical submit path for interactive UIs (OBS
@@ -114,7 +120,7 @@ impl super::StitchCore {
         // rationale (record-before-render so the file exactly
         // matches what the pipeline consumed).
         if let Some(ref mut recorder) = self.stacked_recorder {
-            let (src_w, src_h) = self.executor.pipeline.source_info();
+            let (src_w, src_h) = self.executor.source_info();
             recorder.record_yuv(left, right, src_w, src_h);
         }
 
@@ -123,24 +129,27 @@ impl super::StitchCore {
         // schedule so directors stay populated for a later `current_pose()`
         // peek or a regular `submit_frame_yuv` submit.
         if self.detector.is_some() && self.should_run_detection() {
-            let (src_w, src_h) = self.executor.pipeline.source_info();
+            let (src_w, src_h) = self.executor.source_info();
             let dets = self.run_yuv_detection(left, right, src_w, src_h);
             self.last_detections = self.map_detections_to_panorama(dets);
         }
 
-        let cmd = self
-            .executor
-            .pipeline
-            .render_to_target(left, right, yaw, pitch)?;
+        let Executor::Gpu(gpu) = &self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        let cmd = gpu.pipeline.render_to_target(left, right, yaw, pitch)?;
         // GPU stacked-replay pack - see `submit_frame_yuv` for
         // ordering rationale. No-op when not enabled.
         self.pack_replay_from_pipeline();
         let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
-        let rgba = self.readback.readback(
-            self.executor.pipeline.gpu(),
-            self.executor.pipeline.render_target(),
-            cmd,
-        )?;
+        let Executor::Gpu(gpu) = &self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        let rgba = self
+            .readback
+            .as_mut()
+            .expect("gpu engine owns the readback ring")
+            .readback(gpu.pipeline.gpu(), gpu.pipeline.render_target(), cmd)?;
         self.frame_count += 1;
         if let (Some(replay), Some(bytes)) = (self.replay.as_mut(), rgba) {
             replay.push(ReplayFrame {
@@ -172,16 +181,21 @@ impl super::StitchCore {
         pitch: f32,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         self.anchor_session_start();
-        let cmd = self
-            .executor
+        let Executor::Gpu(gpu) = &self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        let cmd = gpu
             .pipeline
             .render_to_target_bgra(left, right, yaw, pitch)?;
         let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
-        let rgba = self.readback.readback(
-            self.executor.pipeline.gpu(),
-            self.executor.pipeline.render_target(),
-            cmd,
-        )?;
+        let Executor::Gpu(gpu) = &self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        let rgba = self
+            .readback
+            .as_mut()
+            .expect("gpu engine owns the readback ring")
+            .readback(gpu.pipeline.gpu(), gpu.pipeline.render_target(), cmd)?;
         self.frame_count += 1;
         if let (Some(replay), Some(bytes)) = (self.replay.as_mut(), rgba) {
             replay.push(ReplayFrame {
@@ -227,16 +241,21 @@ impl super::StitchCore {
         // "reusing cached detections" even on interval ticks, otherwise
         // hysteresis counters over-fire.
         let pose = self.resolve_current_pose(false);
-        let cmd = self
-            .executor
+        let Executor::Gpu(gpu) = &self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        let cmd = gpu
             .pipeline
             .render_to_target_bgra(left, right, pose.yaw, pose.pitch)?;
         let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
-        let rgba = self.readback.readback(
-            self.executor.pipeline.gpu(),
-            self.executor.pipeline.render_target(),
-            cmd,
-        )?;
+        let Executor::Gpu(gpu) = &self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        let rgba = self
+            .readback
+            .as_mut()
+            .expect("gpu engine owns the readback ring")
+            .readback(gpu.pipeline.gpu(), gpu.pipeline.render_target(), cmd)?;
         self.frame_count += 1;
         if let (Some(replay), Some(bytes)) = (self.replay.as_mut(), rgba) {
             replay.push(ReplayFrame {
@@ -256,7 +275,14 @@ impl super::StitchCore {
     /// Useful at shutdown to collect the 1-2 frames still in-flight in
     /// the triple-buffered staging pipeline.
     pub fn flush(&mut self) -> Result<Option<&[u8]>, StitchCoreError> {
-        Ok(self.readback.flush_pending(self.executor.pipeline.gpu())?)
+        let Executor::Gpu(gpu) = &self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        Ok(self
+            .readback
+            .as_mut()
+            .expect("gpu engine owns the readback ring")
+            .flush_pending(gpu.pipeline.gpu())?)
     }
 
     // -----------------------------------------------------------------
@@ -278,10 +304,12 @@ impl super::StitchCore {
         view: &wgpu::TextureView,
     ) -> Result<(), StitchCoreError> {
         if let Some(fov) = pose.fov_degrees {
-            self.executor.pipeline.set_fov(fov);
+            self.executor.set_fov(fov);
         }
-        Ok(self
-            .executor
+        let Executor::Gpu(gpu) = &self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        Ok(gpu
             .pipeline
             .render_to_view(left, right, pose.yaw, pose.pitch, view)?)
     }
@@ -298,32 +326,27 @@ impl super::StitchCore {
         pose: ViewportPosition,
     ) -> Result<Option<&[u8]>, StitchCoreError> {
         if let Some(fov) = pose.fov_degrees {
-            self.executor.pipeline.set_fov(fov);
+            self.executor.set_fov(fov);
         }
         let (yaw, pitch) = (pose.yaw, pose.pitch);
+        let Executor::Gpu(gpu) = &self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
         if self.preview_nv12.is_none() {
-            let w = self.executor.pipeline.viewport().width & !3;
-            let h = self.executor.pipeline.viewport().height & !1;
+            let w = gpu.pipeline.viewport().width & !3;
+            let h = gpu.pipeline.viewport().height & !1;
             let converter =
-                crate::gpu::nv12_converter::Nv12Converter::new(self.executor.pipeline.gpu(), w, h)
-                    .map_err(|e| {
-                        StitchCoreError::Config(format!("NV12 preview readback init: {e}"))
-                    })?;
+                crate::gpu::nv12_converter::Nv12Converter::new(gpu.pipeline.gpu(), w, h).map_err(
+                    |e| StitchCoreError::Config(format!("NV12 preview readback init: {e}")),
+                )?;
             log::info!("StitchCore: NV12 preview readback initialized ({w}x{h})");
             self.preview_nv12 = Some(converter);
         }
 
-        let cmd = self
-            .executor
-            .pipeline
-            .render_to_target(left, right, yaw, pitch)?;
+        let cmd = gpu.pipeline.render_to_target(left, right, yaw, pitch)?;
         let converter = self.preview_nv12.as_mut().expect("initialized above");
         let data = converter
-            .convert_and_readback(
-                self.executor.pipeline.gpu(),
-                self.executor.pipeline.render_target(),
-                cmd,
-            )
+            .convert_and_readback(gpu.pipeline.gpu(), gpu.pipeline.render_target(), cmd)
             .map_err(|e| StitchCoreError::Config(format!("NV12 preview readback: {e}")))?;
         Ok(data)
     }
@@ -331,9 +354,12 @@ impl super::StitchCore {
     /// Drain one pending NV12 frame from the preview recording tap.
     /// Returns `None` when nothing remains (or the tap was never used).
     pub fn flush_nv12(&mut self) -> Result<Option<&[u8]>, StitchCoreError> {
+        let Executor::Gpu(gpu) = &self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
         match self.preview_nv12.as_mut() {
             Some(converter) => converter
-                .flush_pending(self.executor.pipeline.gpu())
+                .flush_pending(gpu.pipeline.gpu())
                 .map_err(|e| StitchCoreError::Config(format!("NV12 preview flush: {e}"))),
             None => Ok(None),
         }
@@ -375,10 +401,10 @@ impl super::StitchCore {
         yaw: f32,
         pitch: f32,
     ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
-        Ok(self
-            .executor
-            .pipeline
-            .render_to_target(left, right, yaw, pitch)?)
+        let Executor::Gpu(gpu) = &self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        Ok(gpu.pipeline.render_to_target(left, right, yaw, pitch)?)
     }
 
     /// Render a stereo packed-RGBA/BGRA frame at an explicit pose.
@@ -390,8 +416,10 @@ impl super::StitchCore {
         yaw: f32,
         pitch: f32,
     ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
-        Ok(self
-            .executor
+        let Executor::Gpu(gpu) = &self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        Ok(gpu
             .pipeline
             .render_to_target_bgra(left, right, yaw, pitch)?)
     }
@@ -409,6 +437,8 @@ impl super::StitchCore {
         pitch: f32,
     ) -> wgpu::CommandBuffer {
         self.executor
+            .gpu()
+            .expect("zero-copy render paths require the GPU executor")
             .pipeline
             .render_from_gpu_rgba(left_rgba, right_rgba, yaw, pitch)
     }
@@ -428,10 +458,10 @@ impl super::StitchCore {
         yaw: f32,
         pitch: f32,
     ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
-        Ok(self
-            .executor
-            .pipeline
-            .render_stereo_frame(frame, yaw, pitch)?)
+        let Executor::Gpu(gpu) = &self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        Ok(gpu.pipeline.render_stereo_frame(frame, yaw, pitch)?)
     }
 
     /// Render from four pre-imported textures at an explicit pose.
@@ -450,6 +480,8 @@ impl super::StitchCore {
         pitch: f32,
     ) -> wgpu::CommandBuffer {
         self.executor
+            .gpu_mut()
+            .expect("zero-copy render paths require the GPU executor")
             .pipeline
             .render_imported_textures(left_y, left_uv, right_y, right_uv, yaw, pitch)
     }
@@ -468,6 +500,8 @@ impl super::StitchCore {
         pitch: f32,
     ) -> wgpu::CommandBuffer {
         self.executor
+            .gpu_mut()
+            .expect("zero-copy render paths require the GPU executor")
             .pipeline
             .render_imported_views(left_y, left_uv, right_y, right_uv, yaw, pitch)
     }
@@ -489,6 +523,8 @@ impl super::StitchCore {
         pitch: f32,
     ) -> wgpu::CommandBuffer {
         self.executor
+            .gpu_mut()
+            .expect("zero-copy render paths require the GPU executor")
             .pipeline
             .render_gpu_frame(bind_groups, left_slot, right_slot, yaw, pitch)
     }

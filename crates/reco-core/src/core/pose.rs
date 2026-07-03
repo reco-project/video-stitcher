@@ -51,7 +51,7 @@ impl super::StitchCore {
             &[],
             crate::detect::panner::DispatchContext {
                 detections: &self.last_detections,
-                calibration: &self.executor.pipeline.calibration,
+                calibration: self.executor.calibration(),
                 frame_index: self.frame_count,
                 timestamp_ms,
                 caller: "StitchCore",
@@ -68,7 +68,7 @@ impl super::StitchCore {
             self.orient_pose(raw)
         };
         if let Some(fov) = clamped.fov_degrees {
-            self.executor.pipeline.set_fov(fov);
+            self.executor.set_fov(fov);
         }
         clamped
     }
@@ -120,8 +120,8 @@ impl super::StitchCore {
         &self,
         detections: Vec<Detection>,
     ) -> Vec<MappedDetection> {
-        let calibration = self.executor.pipeline.calibration();
-        let scene = &self.executor.pipeline.scene;
+        let calibration = self.executor.calibration();
+        let scene = self.executor.scene();
         detections
             .into_iter()
             .map(|d| {

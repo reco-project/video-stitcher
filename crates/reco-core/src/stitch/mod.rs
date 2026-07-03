@@ -28,18 +28,11 @@
 //! memory-tuned specialisation and NV12-direct output are deliberate later
 //! additions, gated on profiling (see the cpu-stitch portability work).
 
-// The CPU executor has no production consumer until Step 12 wires
-// `reco stitch --cpu`; the CPU/GPU agreement oracle (and the no-black
-// property test) keep the CPU chain exercised in the meantime.
-// Deliberate scaffolding, not forgotten code. The GPU executor is
-// live: it owns the pipeline the engine renders through.
-#![allow(dead_code)]
-
 mod cpu;
 mod executor;
 pub(crate) mod geometry;
 
-pub use executor::StitchError;
+pub use executor::{CpuExecutor, Executor, StitchError, StitchExecutor};
 #[cfg(feature = "gpu")]
 pub use executor::{GpuExecutor, GpuExecutorConfig};
 
@@ -104,6 +97,11 @@ pub trait SurfaceMap {
 /// Shared test fixtures + GPU acquisition for the stitch test modules.
 #[cfg(test)]
 pub(crate) mod test_support {
+    // The agreement types + pattern generators only run under the gpu
+    // feature (they gate GPU-vs-CPU comparisons); keep them compiled
+    // either way so the fixtures stay in sync.
+    #![cfg_attr(not(feature = "gpu"), allow(dead_code))]
+
     use crate::calibration::{Calibration, Framing, Lens, Topology};
     #[cfg(feature = "gpu")]
     use crate::gpu::{GpuContext, GpuError};
@@ -263,6 +261,8 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
+    #![cfg_attr(not(feature = "gpu"), allow(dead_code))]
+
     use crate::projection::LShapeProjection;
     #[cfg(feature = "gpu")]
     use crate::projection::Projection;

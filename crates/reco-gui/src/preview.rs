@@ -33,7 +33,7 @@ use reco_core::gpu::GpuContext;
 use reco_core::lens::preview::LensPreviewRenderer;
 use reco_core::render::pipeline::{PipelineError, YuvPlanes};
 use reco_core::render::viewport::ViewportConfig;
-use reco_core::stitch::{GpuExecutor, GpuExecutorConfig};
+use reco_core::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 use reco_core::wgpu;
 
 /// Bridges reco-core GPU rendering to Slint via a shared wgpu device.
@@ -103,7 +103,7 @@ impl PreviewBridge {
                 full_range: false,
             },
         )?;
-        let mut engine = StitchCore::new(executor)?;
+        let mut engine = StitchCore::new(Executor::Gpu(Box::new(executor)))?;
         // Honour a persisted lens-correction strength (e.g. correction
         // saved off) instead of the full-correction default.
         engine.set_lens_correction_amount(lens_correction_amount);

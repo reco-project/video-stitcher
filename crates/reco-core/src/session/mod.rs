@@ -60,7 +60,7 @@ use crate::gpu::nv12_converter::Nv12Converter;
 use crate::gpu::{GpuContext, OutputFormat};
 use crate::render::pipeline::StitchPipeline;
 use crate::render::renderer::InputFormat;
-use crate::stitch::{GpuExecutor, GpuExecutorConfig};
+use crate::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 
 /// Callback type for the NV12 tap: receives `(nv12_data, width, height)`.
 pub type Nv12TapFn = Box<dyn FnMut(&[u8], u32, u32) + Send>;
@@ -266,7 +266,7 @@ impl StitchSession {
             },
         )
         .map_err(StitchCoreError::from)?;
-        let core = StitchCore::new(executor)?;
+        let core = StitchCore::new(Executor::Gpu(Box::new(executor)))?;
 
         let nv12_converter = Nv12Converter::new(core.gpu(), output_width, output_height)?;
 

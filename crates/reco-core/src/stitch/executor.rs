@@ -17,7 +17,7 @@
 //! [`CpuExecutor`] is unconditional - it is the render path for
 //! wgpu-free builds.
 
-use crate::calibration::Calibration;
+use crate::calibration::{Calibration, Framing, Lens, Topology};
 #[cfg(feature = "gpu")]
 use crate::gpu::GpuContext;
 #[cfg(feature = "gpu")]
@@ -27,6 +27,7 @@ use crate::render::pipeline::{PipelineError, StitchPipeline};
 use crate::render::planes::Nv12Planes;
 #[cfg(feature = "gpu")]
 use crate::render::renderer::InputFormat;
+use crate::render::scene::SceneGeometry;
 use crate::render::viewport::ViewportConfig;
 
 use crate::projection::Projection;
@@ -86,11 +87,15 @@ pub trait StitchExecutor {
 /// CPU software backend - pure Rust, no GPU. The portable / GPU-less path.
 pub struct CpuExecutor {
     /// The bound projection: dispatches the per-frame surface maps.
-    projection: Box<dyn Projection>,
-    calib: Calibration,
-    config: ViewportConfig,
-    cam: (u32, u32),
-    full_range: bool,
+    pub(crate) projection: Box<dyn Projection>,
+    pub(crate) calib: Calibration,
+    pub(crate) config: ViewportConfig,
+    pub(crate) cam: (u32, u32),
+    pub(crate) full_range: bool,
+    /// Plane-placement geometry derived from `calib`, cached for the
+    /// engine's coverage construction (the stitch kernel re-derives its
+    /// own per call). Rebuilt by the [`Executor`] mutation methods.
+    pub(crate) scene: SceneGeometry,
 }
 
 impl CpuExecutor {
@@ -121,14 +126,25 @@ impl CpuExecutor {
                 "source dimensions must be >= 2, got {cam_w}x{cam_h}"
             )));
         }
+        let scene = derive_scene(&calib);
         Ok(Self {
             projection,
             calib,
             config,
             cam: (cam_w, cam_h),
             full_range,
+            scene,
         })
     }
+}
+
+/// Plane-placement geometry for a calibration document (both stereo
+/// cameras share the lens aspect). One derivation, shared by the CPU
+/// executor's cache and its mutation paths - mirrors what
+/// `StitchPipeline::update_calibration` does on the GPU side.
+fn derive_scene(calib: &Calibration) -> SceneGeometry {
+    let aspect = calib.lenses[0].width as f32 / calib.lenses[0].height as f32;
+    SceneGeometry::new(&calib.topology, &calib.framing, aspect)
 }
 
 impl StitchExecutor for CpuExecutor {
@@ -333,6 +349,242 @@ impl StitchExecutor for GpuExecutor {
 
     fn name(&self) -> &'static str {
         "gpu"
+    }
+}
+
+/// The closed executor set the engine dispatches over (L2): one CPU
+/// software path, one GPU pipeline owner.
+///
+/// [`StitchCore`](crate::core::StitchCore) holds exactly one and
+/// resolves every render + live-config operation through it. The
+/// GPU-only streaming surface (command-buffer renders, resident-frame
+/// imports, readback rings) is reached via [`Executor::gpu`] /
+/// [`Executor::gpu_mut`] - a typed accessor, no downcasting.
+///
+/// The live-config methods dispatch per arm: the GPU arm forwards to
+/// the pipeline's update machinery (uniforms, scene rebuild), the CPU
+/// arm mutates the executor's own document and rebuilds its cached
+/// scene - the stitch kernel reads the document per call, so there is
+/// no second copy to drift.
+pub enum Executor {
+    /// Pure-Rust software stitch - the GPU-less path. Boxed (like the
+    /// GPU arm) so the enum itself stays pointer-sized inside the
+    /// engine.
+    Cpu(Box<CpuExecutor>),
+    /// wgpu pipeline owner - the streaming path. Boxed: the pipeline
+    /// state dwarfs the CPU variant and the enum lives inside every
+    /// engine.
+    #[cfg(feature = "gpu")]
+    Gpu(Box<GpuExecutor>),
+}
+
+impl Executor {
+    /// The GPU executor, when this is the GPU strategy - the typed
+    /// accessor to the streaming/zero-copy surface.
+    #[cfg(feature = "gpu")]
+    pub fn gpu(&self) -> Option<&GpuExecutor> {
+        match self {
+            Executor::Gpu(g) => Some(g),
+            Executor::Cpu(_) => None,
+        }
+    }
+
+    /// Mutable [`Self::gpu`].
+    #[cfg(feature = "gpu")]
+    pub fn gpu_mut(&mut self) -> Option<&mut GpuExecutor> {
+        match self {
+            Executor::Gpu(g) => Some(g),
+            Executor::Cpu(_) => None,
+        }
+    }
+
+    /// The active calibration document.
+    pub fn calibration(&self) -> &Calibration {
+        match self {
+            Executor::Cpu(c) => &c.calib,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.calibration(),
+        }
+    }
+
+    /// The output viewport (dimensions + FOV).
+    pub fn viewport(&self) -> &ViewportConfig {
+        match self {
+            Executor::Cpu(c) => &c.config,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.viewport(),
+        }
+    }
+
+    /// The derived plane-placement geometry for the active calibration.
+    pub fn scene(&self) -> &SceneGeometry {
+        match self {
+            Executor::Cpu(c) => &c.scene,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => &g.pipeline.scene,
+        }
+    }
+
+    /// The bound projection.
+    pub fn projection(&self) -> &dyn Projection {
+        match self {
+            Executor::Cpu(c) => c.projection.as_ref(),
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.projection.as_ref(),
+        }
+    }
+
+    /// Source frame dimensions `(width, height)` per camera.
+    pub fn source_info(&self) -> (u32, u32) {
+        match self {
+            Executor::Cpu(c) => c.cam,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.source_info(),
+        }
+    }
+
+    /// Current vertical field of view in degrees.
+    pub fn fov(&self) -> f32 {
+        match self {
+            Executor::Cpu(c) => c.config.fov_degrees,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.fov(),
+        }
+    }
+
+    /// Set the vertical field of view in degrees.
+    pub fn set_fov(&mut self, fov_degrees: f32) {
+        match self {
+            Executor::Cpu(c) => c.config.fov_degrees = fov_degrees,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.set_fov(fov_degrees),
+        }
+    }
+
+    /// Resize the output viewport. Returns the accepted `(width,
+    /// height)`, or `None` when the request was rejected (zero dim).
+    pub fn resize(&mut self, width: u32, height: u32) -> Option<(u32, u32)> {
+        match self {
+            Executor::Cpu(c) => {
+                if width == 0 || height == 0 {
+                    log::warn!("resize({width}, {height}) ignored: dimensions must be non-zero");
+                    return None;
+                }
+                c.config.width = width;
+                c.config.height = height;
+                Some((width, height))
+            }
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.resize(width, height),
+        }
+    }
+
+    /// Set the seam blend width (document field; no geometry rebuild).
+    pub fn set_blend_width(&mut self, width: f32) {
+        match self {
+            Executor::Cpu(c) => c.calib.topology.blend_width = width,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.set_blend_width(width),
+        }
+    }
+
+    /// Set the lens-correction strength on every lens, clamped to `[0, 1]`.
+    pub fn set_lens_correction_amount(&mut self, amount: f32) {
+        match self {
+            Executor::Cpu(c) => {
+                let amount = amount.clamp(0.0, 1.0);
+                for lens in &mut c.calib.lenses {
+                    lens.correction = amount;
+                }
+            }
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.set_lens_correction_amount(amount),
+        }
+    }
+
+    /// Replace the whole calibration document, rebuilding derived geometry.
+    pub fn update_calibration(&mut self, calibration: Calibration) {
+        match self {
+            Executor::Cpu(c) => {
+                c.scene = derive_scene(&calibration);
+                c.calib = calibration;
+            }
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.update_calibration(calibration),
+        }
+    }
+
+    /// Replace the topology (plane placement + seam), rebuilding geometry.
+    pub fn update_topology(&mut self, topology: Topology) {
+        match self {
+            Executor::Cpu(c) => {
+                c.calib.topology = topology;
+                c.scene = derive_scene(&c.calib);
+            }
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.update_topology(topology),
+        }
+    }
+
+    /// Replace the framing (axis offset, tilt, roll), rebuilding geometry.
+    pub fn update_framing(&mut self, framing: Framing) {
+        match self {
+            Executor::Cpu(c) => {
+                c.calib.framing = framing;
+                c.scene = derive_scene(&c.calib);
+            }
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.update_framing(framing),
+        }
+    }
+
+    /// Replace one or both cameras' intrinsics, rebuilding geometry.
+    pub fn update_camera_params(&mut self, left: Option<Lens>, right: Option<Lens>) {
+        match self {
+            Executor::Cpu(c) => {
+                if let Some(l) = left {
+                    c.calib.lenses[0] = l;
+                }
+                if let Some(r) = right {
+                    c.calib.lenses[1] = r;
+                }
+                c.scene = derive_scene(&c.calib);
+            }
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.update_camera_params(left, right),
+        }
+    }
+}
+
+impl StitchExecutor for Executor {
+    fn stitch(
+        &mut self,
+        left: &Nv12Planes,
+        right: &Nv12Planes,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<Vec<u8>, StitchError> {
+        match self {
+            Executor::Cpu(c) => c.stitch(left, right, yaw, pitch),
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.stitch(left, right, yaw, pitch),
+        }
+    }
+
+    fn output_dims(&self) -> (u32, u32) {
+        match self {
+            Executor::Cpu(c) => c.output_dims(),
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.output_dims(),
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        match self {
+            Executor::Cpu(c) => c.name(),
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.name(),
+        }
     }
 }
 

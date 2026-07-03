@@ -33,6 +33,11 @@ pub enum StitchCoreError {
     /// Caller-facing configuration error (e.g. unsupported combination).
     #[error("config: {0}")]
     Config(String),
+    /// The operation needs the GPU executor (streaming render,
+    /// zero-copy import, GPU readback) but the engine is running the
+    /// CPU executor. Route through the byte submit paths instead.
+    #[error("operation requires the GPU executor; this engine runs the CPU executor")]
+    RequiresGpu,
     /// GPU stacked-replay packer error (shader pipeline build, dim check).
     #[error("stacked packer: {0}")]
     StackedPacker(#[from] PackerError),

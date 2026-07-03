@@ -26,7 +26,7 @@ use reco_control::{ControlIntent, PoseIntent};
 use reco_core::core::StitchCore;
 use reco_core::encoder::{Encoder, OutputFrame, PixelFormat};
 use reco_core::source::{FrameSource, YuvData};
-use reco_core::stitch::{GpuExecutor, GpuExecutorConfig};
+use reco_core::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -515,7 +515,7 @@ impl ApplicationHandler for App {
             },
         )
         .expect("create executor");
-        let renderer = StitchCore::new(executor).expect("create engine");
+        let renderer = StitchCore::new(Executor::Gpu(Box::new(executor))).expect("create engine");
 
         println!(
             "Preview ready: GPU = {}, format = {:?}",
