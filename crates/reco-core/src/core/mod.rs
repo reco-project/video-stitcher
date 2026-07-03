@@ -123,6 +123,11 @@ pub struct StitchCore {
 
     pub(crate) replay: Option<ReplayBuffer>,
 
+    /// NV12 converter for the preview-mode recording tap
+    /// ([`Self::render_and_readback_nv12`]); lazy so pure display
+    /// consumers never pay for the staging ring.
+    pub(crate) preview_nv12: Option<crate::gpu::nv12_converter::Nv12Converter>,
+
     /// Optional stacked-video replay recorder attached via
     /// [`Self::set_stacked_recorder`]. Fires on every successful
     /// YUV submit (not BGRA - see [`StackedReplayRecorder`] docs).
@@ -215,6 +220,7 @@ impl StitchCore {
             detection_interval: 1,
             last_detections: Vec::new(),
             replay,
+            preview_nv12: None,
             stacked_recorder: None,
             stacked_packer: None,
             stacked_gpu_recorder: None,
@@ -382,6 +388,114 @@ impl StitchCore {
             yaw,
             pitch,
             fov_degrees: world.fov_degrees,
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // Live render parameters (first-class - no pipeline reach-through)
+    // -----------------------------------------------------------------
+
+    /// The active calibration document.
+    pub fn calibration(&self) -> &Calibration {
+        self.pipeline.calibration()
+    }
+
+    /// Set the vertical field of view in degrees.
+    pub fn set_fov(&mut self, fov_degrees: f32) {
+        self.pipeline.set_fov(fov_degrees);
+    }
+
+    /// Current vertical field of view in degrees.
+    pub fn fov(&self) -> f32 {
+        self.pipeline.fov()
+    }
+
+    /// Resize the output viewport. Returns the previous `(width, height)`
+    /// when the size actually changed (see [`StitchPipeline::resize`]).
+    pub fn resize(&mut self, width: u32, height: u32) -> Option<(u32, u32)> {
+        let prev = self.pipeline.resize(width, height);
+        if prev.is_some() {
+            self.output_width = width;
+            self.output_height = height;
+        }
+        prev
+    }
+
+    /// Set the seam blend width (per-frame uniform; coverage unaffected).
+    pub fn set_blend_width(&mut self, width: f32) {
+        self.pipeline.set_blend_width(width);
+    }
+
+    /// Set the lens-correction strength on every lens (`0` = pinhole,
+    /// `1` = full KB4).
+    pub fn set_lens_correction_amount(&mut self, amount: f32) {
+        self.pipeline.set_lens_correction_amount(amount);
+    }
+
+    /// Set rig tilt in radians, keeping the coverage clamp in sync.
+    ///
+    /// The boundary's roll-aware clamp margins read the rig tilt/roll, so
+    /// a live change must refresh them. The sampled boundary itself is
+    /// tilt-invariant (a view-time basis rotation), so this is a scalar
+    /// update, not a dense resample.
+    pub fn set_rig_tilt(&mut self, radians: f32) {
+        let mut framing = self.pipeline.calibration().framing.clone();
+        framing.tilt = radians as f64;
+        self.pipeline.update_framing(framing);
+        self.refresh_coverage_orientation();
+    }
+
+    /// Set rig roll in radians, keeping the coverage clamp in sync.
+    /// See [`Self::set_rig_tilt`] for why no dense rebuild is needed.
+    pub fn set_rig_roll(&mut self, radians: f32) {
+        let mut framing = self.pipeline.calibration().framing.clone();
+        framing.roll = radians as f64;
+        self.pipeline.update_framing(framing);
+        self.refresh_coverage_orientation();
+    }
+
+    /// Replace the topology (plane placement + seam) and recompute coverage.
+    pub fn update_topology(&mut self, topology: crate::calibration::Topology) {
+        self.pipeline.update_topology(topology);
+        self.rebuild_coverage();
+    }
+
+    /// Replace the framing (axis offset, tilt, roll) and recompute coverage.
+    pub fn update_framing(&mut self, framing: crate::calibration::Framing) {
+        self.pipeline.update_framing(framing);
+        self.rebuild_coverage();
+    }
+
+    /// Replace one or both cameras' intrinsics and recompute the coverage
+    /// boundary - it samples the frame edges through the lens model, so
+    /// intrinsics changes move the no-black region.
+    pub fn update_camera_params(
+        &mut self,
+        left: Option<crate::calibration::Lens>,
+        right: Option<crate::calibration::Lens>,
+    ) {
+        self.pipeline.update_camera_params(left, right);
+        self.rebuild_coverage();
+    }
+
+    /// Maximum vertical FOV (degrees) that fits inside the coverage, or
+    /// `None` when the calibration produced a degenerate boundary.
+    pub fn max_fov_degrees(&self) -> Option<f32> {
+        self.coverage.as_ref().map(|c| c.max_fov_degrees())
+    }
+
+    fn rebuild_coverage(&mut self) {
+        self.coverage = Some(CoverageBoundary::from_calibration(
+            self.pipeline.calibration(),
+            &self.pipeline.scene,
+        ));
+    }
+
+    fn refresh_coverage_orientation(&mut self) {
+        let framing = &self.pipeline.calibration().framing;
+        let (tilt, roll) = (framing.tilt as f32, framing.roll as f32);
+        if let Some(coverage) = self.coverage.as_mut() {
+            coverage.set_rig_orientation(tilt, roll);
         }
     }
 

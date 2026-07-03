@@ -246,6 +246,68 @@ impl super::StitchCore {
     }
 
     // -----------------------------------------------------------------
+    // Preview mode (engine renders straight to a caller-supplied view)
+    // -----------------------------------------------------------------
+
+    /// Render a stereo YUV420P frame directly to a surface view - the
+    /// interactive preview path (GUI/CLI). No detection, no director, no
+    /// readback; the caller supplies the (already oriented) pose.
+    pub fn render_to_view(
+        &self,
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
+        yaw: f32,
+        pitch: f32,
+        view: &wgpu::TextureView,
+    ) -> Result<(), StitchCoreError> {
+        Ok(self
+            .pipeline
+            .render_to_view(left, right, yaw, pitch, view)?)
+    }
+
+    /// Render a stereo frame and read back NV12 bytes for encoding - the
+    /// preview-mode recording tap. Triple-buffered: `None` on the first
+    /// two calls, then data from two frames ago. Drain the tail with
+    /// [`Self::flush_nv12`] after the loop. The converter is created
+    /// lazily on first use (dimensions rounded to NV12-safe values).
+    pub fn render_and_readback_nv12(
+        &mut self,
+        left: &YuvPlanes<'_>,
+        right: &YuvPlanes<'_>,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<Option<&[u8]>, StitchCoreError> {
+        if self.preview_nv12.is_none() {
+            let w = self.pipeline.viewport().width & !3;
+            let h = self.pipeline.viewport().height & !1;
+            let converter =
+                crate::gpu::nv12_converter::Nv12Converter::new(self.pipeline.gpu(), w, h).map_err(
+                    |e| StitchCoreError::Config(format!("NV12 preview readback init: {e}")),
+                )?;
+            log::info!("StitchCore: NV12 preview readback initialized ({w}x{h})");
+            self.preview_nv12 = Some(converter);
+        }
+
+        let cmd = self.pipeline.render_to_target(left, right, yaw, pitch)?;
+        let converter = self.preview_nv12.as_mut().expect("initialized above");
+        let data = converter
+            .convert_and_readback(self.pipeline.gpu(), self.pipeline.render_target(), cmd)
+            .map_err(|e| StitchCoreError::Config(format!("NV12 preview readback: {e}")))?;
+        Ok(data)
+    }
+
+    /// Drain one pending NV12 frame from the preview recording tap.
+    /// Returns `None` when nothing remains (or the tap was never used).
+    pub fn flush_nv12(&mut self) -> Result<Option<&[u8]>, StitchCoreError> {
+        match self.preview_nv12.as_mut() {
+            Some(converter) => converter
+                .flush_pending(self.pipeline.gpu())
+                .map_err(|e| StitchCoreError::Config(format!("NV12 preview flush: {e}"))),
+            None => Ok(None),
+        }
+    }
+
+    // -----------------------------------------------------------------
     // Low-level render-at-pose methods
     //
     // These produce a `wgpu::CommandBuffer` at a **caller-supplied pose**
