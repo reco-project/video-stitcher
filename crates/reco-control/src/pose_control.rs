@@ -504,7 +504,7 @@ mod tests {
     #[test]
     fn drag_right_decreases_yaw() {
         // Drag right = pan camera right = yaw decreases (camera looks
-        // further left of the scene; matches actionstitch convention).
+        // further left of the scene; the grab-the-world drag convention).
         let mut p = fresh();
         let y0 = p.target_yaw_rad;
         p.apply_drag(100.0, 0.0);

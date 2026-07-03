@@ -135,45 +135,31 @@ impl Projection for LShapeProjection {
 // Models a single video as a texture painted on the inside of a
 // cylinder of radius `focal_length`. The virtual camera sits on the
 // cylinder axis and looks outward; pan/tilt/zoom rotate the camera and
-// scale FOV. Matches the `gilbertchen/actionstitch-player` projection
-// (MIT-licensed 180-degree cylindrical video player) enough that
-// calibration files from that ecosystem could be consumed with small
-// adapter code.
+// scale FOV. This is the standard projection for pre-stitched 180-degree
+// action-camera footage, so files from that ecosystem deproject with
+// small adapter code. Defaults (focal_length=2400, sweep=180deg) match
+// the convention such players established.
 //
-// Design goal of landing this here (not just as a shader file):
-// proves the plan's claim that the `Projection` trait supports
-// camera_count() != 2 so future mono / N-camera / alt-projection
-// impls can plug in without reshaping StitchCore's API. Ships with:
-//
-//   - A configurable `CylindricalProjection` with defaults that
-//     mirror actionstitch's (focal_length=2400, sweep=PI = 180deg,
-//     screen_rotation=0, video_height sourced from the input).
-//   - A WGSL shader at `shaders/cylindrical_mono.wgsl` returned
-//     at `shaders/cylindrical_mono.wgsl` (wired at the cylinder step).
-//   - camera_count() = 1.
-//
-// Deliberately NOT wired into `StitchCore` / `StitchPipeline` in this
-// commit - that migration is a follow-up that needs a mono submit
-// path (`submit_frame_yuv_mono`) and a different bind group layout.
-// The trait-side contract is the deliverable here.
+// Proves the `Projection` trait supports camera_count() != 2. The
+// inverse map + WGSL wiring into StitchCore land at the cylinder step
+// (needs a mono submit path and a different bind group layout); the
+// shader draft lives at `shaders/cylindrical_mono.wgsl`.
 
 /// Configuration for a [`CylindricalProjection`]. Defaults match the
-/// `actionstitch-player` projection (180-degree sweep, 2400px focal
+/// established 180-degree cylindrical-player convention (2400px focal
 /// length, no screen rotation).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CylindricalProjectionConfig {
     /// Cylinder radius in world units. Larger values = narrower
     /// cylindrical wrap per pixel, so the panorama feels flatter.
-    /// `actionstitch` defaults to `2400` and exposes a slider from
-    /// 1000 to 5000.
+    /// Conventional range is 1000-5000 with 2400 as the default.
     pub focal_length: f32,
     /// Full horizontal angular sweep in radians. `std::f32::consts::PI`
     /// (180 degrees) is the canonical action-camera case; 2π would be
     /// a full 360-degree cylinder.
     pub angular_sweep_rad: f32,
-    /// Screen tilt around the view axis in radians. `actionstitch`
-    /// exposes this as a ±30-degree slider labelled "Screen tilt" and
-    /// uses it to correct for a rig that is not level side-to-side.
+    /// Screen tilt around the view axis in radians (typically within
+    /// ±30 degrees), correcting a rig that is not level side-to-side.
     pub screen_rotation_rad: f32,
     /// Video height in world units. Defaults to `1.0` (normalized);
     /// consumers with a known camera height can pass the actual value
@@ -198,15 +184,9 @@ impl Default for CylindricalProjectionConfig {
 /// painted on the inside of a cylinder of radius `config.focal_length`.
 /// The virtual camera sits on the cylinder axis.
 ///
-/// Attribution: the projection geometry (focal-length, angular-sweep,
-/// and screen-rotation tilt) is the one used by
-/// `gilbertchen/actionstitch-player` (MIT-licensed 180-degree
-/// cylindrical video player). The WGSL shader here is a from-scratch
-/// reimplementation of that model for wgpu; no code is copied.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CylindricalProjection {
-    /// Projection parameters. `Default` uses `actionstitch`-matching
-    /// values (see [`CylindricalProjectionConfig::default`]).
+    /// Projection parameters (see [`CylindricalProjectionConfig::default`]).
     pub config: CylindricalProjectionConfig,
 }
 
@@ -217,9 +197,8 @@ impl CylindricalProjection {
     }
 
     /// Compute the cylinder's `theta_start` angle in radians:
-    /// `PI/2 - angular_sweep/2`. This is where the video's left edge
-    /// lands on the cylinder surface and matches actionstitch's
-    /// `THREE.CylinderGeometry(..., Math.PI / 2 - s / 2, s)`.
+    /// `PI/2 - angular_sweep/2` - where the video's left edge lands on
+    /// the cylinder surface (the sweep centers on the +Z view axis).
     pub fn theta_start_rad(&self) -> f32 {
         std::f32::consts::FRAC_PI_2 - self.config.angular_sweep_rad * 0.5
     }
@@ -898,10 +877,10 @@ mod tests {
     // ---- CylindricalProjection (plan step 9) -------------------------------
 
     #[test]
-    fn cylindrical_defaults_match_actionstitch() {
-        // Reference values are the actionstitch-player defaults (focal
-        // length 2400, 180-deg sweep, no screen tilt, normalized video
-        // height). Regresses if someone silently changes the defaults.
+    fn cylindrical_defaults_match_convention() {
+        // Reference values are the established cylindrical-player
+        // convention (focal length 2400, 180-deg sweep, no screen tilt,
+        // normalized height). Regresses if the defaults silently change.
         let c = CylindricalProjectionConfig::default();
         assert_eq!(c.focal_length, 2400.0);
         assert!((c.angular_sweep_rad - std::f32::consts::PI).abs() < 1e-6);
@@ -921,9 +900,9 @@ mod tests {
     }
 
     #[test]
-    fn cylindrical_theta_start_matches_actionstitch_formula() {
-        // actionstitch's CylinderGeometry uses thetaStart = PI/2 - s/2
-        // where s is the angular sweep. Verify for 180-deg (default)
+    fn cylindrical_theta_start_centers_the_sweep() {
+        // theta_start = PI/2 - s/2 where s is the angular sweep, so the
+        // sweep centers on the view axis. Verify for 180-deg (default)
         // and for a 90-deg cylinder (quarter sweep).
         let p180 = CylindricalProjection::default();
         assert!(
