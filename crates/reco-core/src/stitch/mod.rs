@@ -35,6 +35,37 @@ mod cpu;
 mod executor;
 mod geometry;
 
+/// How one projection surface composites over the surfaces before it.
+///
+/// Paired with a [`SurfaceMap`] in the ordered surface list a projection
+/// emits: the first surface lays the base, later ones blend over it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum BlendRule {
+    /// Fully replaces whatever is underneath wherever this surface covers.
+    Opaque,
+    /// Fades in over `[0, width]` of the surface's [`SurfaceUv::edge`]
+    /// coordinate (the GPU's seam smoothstep). A non-positive width
+    /// renders fully opaque wherever the surface covers.
+    Smoothstep(f64),
+}
+
+impl BlendRule {
+    /// Blend factor for a covered pixel with the given edge coordinate.
+    pub(crate) fn alpha(&self, edge: f64) -> f64 {
+        match *self {
+            BlendRule::Opaque => 1.0,
+            BlendRule::Smoothstep(width) if width > 0.0 => smoothstep(0.0, width, edge),
+            BlendRule::Smoothstep(_) => 1.0,
+        }
+    }
+}
+
+/// GLSL-compatible smoothstep (SYNC_WITH `fisheye.wgsl`'s seam blend).
+fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
 /// A source-camera sample location produced by a [`SurfaceMap`].
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct SurfaceUv {

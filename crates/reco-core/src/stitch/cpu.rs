@@ -12,9 +12,9 @@ use crate::calibration::Calibration;
 use crate::render::planes::{Nv12Planes, YuvPlanes};
 use crate::render::viewport::ViewportConfig;
 
-use super::SurfaceMap;
 use super::executor::StitchError;
 use super::geometry::l_shape_plane_maps;
+use super::{BlendRule, SurfaceMap};
 
 /// Reject degenerate source dimensions that would underflow chroma indexing.
 fn check_source_dims(cw: u32, ch: u32) -> Result<(), StitchError> {
@@ -119,12 +119,13 @@ pub(crate) fn stitch_l_shape_rgba_yuv420p(
     ))
 }
 
-/// Format-agnostic L-shape gather and composite.
+/// Format-agnostic gather and composite over an ordered surface list.
 ///
 /// `sample_left` / `sample_right` map a normalised camera UV to sRGB-domain
 /// RGB for their respective source frame; the loop itself knows nothing about
-/// the pixel format. Left plane is the opaque base; the right plane fades in
-/// over it with a smoothstep seam, matching the GPU's two-draw alpha blend.
+/// the pixel format. The L-shape emits two surfaces: the left plane as the
+/// opaque base, the right fading in with a smoothstep seam - matching the
+/// GPU's two-draw alpha blend byte for byte.
 fn stitch_l_shape_with(
     calib: &Calibration,
     config: &ViewportConfig,
@@ -133,32 +134,46 @@ fn stitch_l_shape_with(
     sample_left: impl Fn(f64, f64) -> [f64; 3],
     sample_right: impl Fn(f64, f64) -> [f64; 3],
 ) -> Vec<u8> {
-    let (out_w, out_h) = (config.width, config.height);
     let (lmap, rmap) = l_shape_plane_maps(calib, config, yaw, pitch);
-    let blend_width = calib.topology.blend_width as f64;
+    let surfaces: Vec<(Box<dyn SurfaceMap>, BlendRule)> = vec![
+        (Box::new(lmap), BlendRule::Opaque),
+        (
+            Box::new(rmap),
+            BlendRule::Smoothstep(calib.topology.blend_width as f64),
+        ),
+    ];
+    let samplers: [&dyn Fn(f64, f64) -> [f64; 3]; 2] = [&sample_left, &sample_right];
+    composite_rgba(&surfaces, &samplers, config.width, config.height)
+}
 
+/// Composite an ordered surface list into an opaque RGBA buffer.
+///
+/// Surface `i` samples source `i` through `samplers[i]`. Surfaces apply in
+/// order: the first covered surface lays the base, later ones blend over it
+/// per their [`BlendRule`]. This is the projection-agnostic core the
+/// N-surface projections (mono cylinder next) drive.
+fn composite_rgba(
+    surfaces: &[(Box<dyn SurfaceMap>, BlendRule)],
+    samplers: &[&dyn Fn(f64, f64) -> [f64; 3]],
+    out_w: u32,
+    out_h: u32,
+) -> Vec<u8> {
+    debug_assert_eq!(surfaces.len(), samplers.len());
     let mut out = vec![0u8; (out_w * out_h * 4) as usize];
     for py in 0..out_h {
         for px in 0..out_w {
-            let left_rgb = lmap.sample_uv(px, py).map(|s| sample_left(s.u, s.v));
-            let right_s = rmap.sample_uv(px, py);
-            let right_rgb = right_s.map(|s| sample_right(s.u, s.v));
-            let right_alpha = match right_s {
-                Some(s) if blend_width > 0.0 => smoothstep(0.0, blend_width, s.edge),
-                Some(_) => 1.0,
-                None => 0.0,
-            };
-
-            let base = left_rgb.unwrap_or([0.0; 3]);
-            let rgb = match right_rgb {
-                Some(r) => [
-                    base[0] + (r[0] - base[0]) * right_alpha,
-                    base[1] + (r[1] - base[1]) * right_alpha,
-                    base[2] + (r[2] - base[2]) * right_alpha,
-                ],
-                None => base,
-            };
-
+            let mut rgb = [0.0f64; 3];
+            for ((map, rule), sample) in surfaces.iter().zip(samplers) {
+                if let Some(s) = map.sample_uv(px, py) {
+                    let alpha = rule.alpha(s.edge);
+                    let src = sample(s.u, s.v);
+                    rgb = [
+                        rgb[0] + (src[0] - rgb[0]) * alpha,
+                        rgb[1] + (src[1] - rgb[1]) * alpha,
+                        rgb[2] + (src[2] - rgb[2]) * alpha,
+                    ];
+                }
+            }
             let i = ((py * out_w + px) * 4) as usize;
             out[i] = to_u8(rgb[0]);
             out[i + 1] = to_u8(rgb[1]);
@@ -272,13 +287,6 @@ fn bilinear_chroma(uv: &[u8], stride: usize, cw: usize, ch: usize, fx: f64, fy: 
     (lerp(0), lerp(1))
 }
 
-/// Hermite smoothstep, matching WGSL `smoothstep`.
-#[inline]
-fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
-    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
-}
-
 /// Quantise an sRGB-domain channel in `[0, 1]` to a `u8` (round-to-nearest).
 /// The GPU's `Rgba8Unorm` unorm rounding is implementation-defined, so this
 /// agrees to ~1 LSB rather than bit-exactly.
@@ -293,6 +301,7 @@ mod tests {
 
     #[test]
     fn smoothstep_endpoints_and_midpoint() {
+        use crate::stitch::smoothstep;
         assert_eq!(smoothstep(0.0, 1.0, -1.0), 0.0);
         assert_eq!(smoothstep(0.0, 1.0, 2.0), 1.0);
         assert!((smoothstep(0.0, 1.0, 0.5) - 0.5).abs() < 1e-12);
