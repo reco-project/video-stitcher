@@ -77,6 +77,12 @@ pub trait Projection: Send + Sync {
         pitch: f32,
     ) -> Vec<(Box<dyn SurfaceMap>, BlendRule)>;
 
+    /// The GPU program this projection composites with. The render
+    /// pipeline compiles and binds exactly what the descriptor says -
+    /// the GPU dual of [`surface_maps`](Self::surface_maps), gated by
+    /// the same CPU/GPU agreement oracle.
+    fn gpu_program(&self) -> crate::render::GpuProgram;
+
     /// Build the coverage boundary for this projection's panorama.
     ///
     /// Representation and clamp are one coupled unit: the default is the
@@ -122,6 +128,25 @@ impl Projection for LShapeProjection {
                 BlendRule::Smoothstep(calibration.topology.blend_width as f64),
             ),
         ]
+    }
+
+    fn gpu_program(&self) -> crate::render::GpuProgram {
+        crate::render::GpuProgram {
+            wgsl: include_str!("../shaders/fisheye.wgsl"),
+            vs_entry: "vs_main",
+            fs_entry: "fs_main",
+            // Seam transition: the right plane's smoothstep alpha blends
+            // over the opaque left base (matches BlendRule ordering).
+            blend: wgpu::BlendState {
+                color: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::SrcAlpha,
+                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                    operation: wgpu::BlendOperation::Add,
+                },
+                alpha: wgpu::BlendComponent::OVER,
+            },
+            vertex_layout: crate::render::renderer::Vertex::LAYOUT,
+        }
     }
 }
 
@@ -222,6 +247,20 @@ impl Projection for CylindricalProjection {
         _pitch: f32,
     ) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {
         Vec::new()
+    }
+
+    fn gpu_program(&self) -> crate::render::GpuProgram {
+        crate::render::GpuProgram {
+            wgsl: include_str!("../shaders/cylindrical_mono.wgsl"),
+            vs_entry: "vs_fullscreen",
+            fs_entry: "fs_cylindrical_mono",
+            // Mono: single surface, nothing to blend over.
+            blend: wgpu::BlendState::REPLACE,
+            // Placeholder until the cylinder is wired: its composite is a
+            // fullscreen pass, and its real vertex/bind layout lands with
+            // the cylinder-topology step.
+            vertex_layout: crate::render::renderer::Vertex::LAYOUT,
+        }
     }
 }
 

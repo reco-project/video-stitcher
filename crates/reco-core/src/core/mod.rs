@@ -173,8 +173,17 @@ impl StitchCore {
         let output_width = config.viewport.width;
         let output_height = config.viewport.height;
 
+        let projection: Box<dyn Projection> = config
+            .projection
+            .unwrap_or_else(|| Box::new(LShapeProjection));
+        log::info!(
+            "StitchCore: projection '{}' supplies the GPU program and coverage",
+            projection.name()
+        );
+
         let pipeline = StitchPipeline::with_gpu(
             gpu,
+            &projection.gpu_program(),
             config.calibration,
             config.viewport,
             config.input_width,
@@ -185,9 +194,6 @@ impl StitchCore {
 
         let readback = RgbaReadback::new(pipeline.gpu(), output_width, output_height)?;
 
-        let projection: Box<dyn Projection> = config
-            .projection
-            .unwrap_or_else(|| Box::new(LShapeProjection));
         // The projection owns coverage construction: a new projection
         // brings its own boundary representation with it.
         let coverage = projection.coverage(pipeline.calibration(), &pipeline.scene);

@@ -102,6 +102,7 @@ impl StitchPipeline {
     /// and provides its own GPU context (selected with surface compatibility).
     pub fn with_gpu(
         gpu: GpuContext,
+        program: &crate::render::GpuProgram,
         calibration: Calibration,
         viewport: ViewportConfig,
         input_width: u32,
@@ -138,6 +139,7 @@ impl StitchPipeline {
         let scene = SceneGeometry::new(&calibration.topology, &calibration.framing, aspect);
         let renderer = Renderer::new(
             &gpu,
+            program,
             viewport.width,
             viewport.height,
             input_width,

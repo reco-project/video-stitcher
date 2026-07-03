@@ -253,7 +253,7 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use crate::projection::LShapeProjection;
+    use crate::projection::{LShapeProjection, Projection};
 
     use super::cpu::{stitch_rgba, stitch_rgba_yuv420p};
     use super::test_support::{Agreement, AgreementBounds, calib, gpu_or_skip, nv12};
@@ -373,6 +373,7 @@ mod tests {
         // render the same frame three times to drain one result.
         let pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
             gpu,
+            &crate::projection::LShapeProjection.gpu_program(),
             calib.clone(),
             config.clone(),
             cam_w,
@@ -467,6 +468,7 @@ mod tests {
 
         let pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
             gpu,
+            &crate::projection::LShapeProjection.gpu_program(),
             calib.clone(),
             config.clone(),
             cam_w,
@@ -572,6 +574,7 @@ mod tests {
         let (cam_w, cam_h) = cam;
         let mut pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
             gpu,
+            &crate::projection::LShapeProjection.gpu_program(),
             calib.clone(),
             config.clone(),
             cam_w,

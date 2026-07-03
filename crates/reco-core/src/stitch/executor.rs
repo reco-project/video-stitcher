@@ -167,6 +167,7 @@ impl GpuExecutor {
     /// async runtime into non-test code; callers create it via
     /// [`GpuContext::new`].
     pub fn new(
+        projection: Box<dyn Projection>,
         gpu: GpuContext,
         calib: Calibration,
         config: ViewportConfig,
@@ -174,9 +175,18 @@ impl GpuExecutor {
         cam_h: u32,
         full_range: bool,
     ) -> Result<Self, StitchError> {
+        if usize::from(projection.camera_count()) != calib.lenses.len() {
+            return Err(StitchError::InvalidConfig(format!(
+                "projection '{}' consumes {} cameras but the calibration has {} lenses",
+                projection.name(),
+                projection.camera_count(),
+                calib.lenses.len()
+            )));
+        }
         // Calibration validation happens once, inside with_gpu.
         let mut pipeline = StitchPipeline::with_gpu(
             gpu,
+            &projection.gpu_program(),
             calib,
             config.clone(),
             cam_w,
@@ -406,8 +416,16 @@ mod tests {
             false,
         )
         .expect("cpu backend");
-        let mut gpu =
-            GpuExecutor::new(gpu, calib, config, cam_w, cam_h, false).expect("gpu backend");
+        let mut gpu = GpuExecutor::new(
+            Box::new(crate::projection::LShapeProjection),
+            gpu,
+            calib,
+            config,
+            cam_w,
+            cam_h,
+            false,
+        )
+        .expect("gpu backend");
 
         // Drive both through the trait object to prove selection works.
         let backends: [&mut dyn StitchExecutor; 2] = [&mut cpu, &mut gpu];

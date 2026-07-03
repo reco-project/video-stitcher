@@ -9,6 +9,26 @@ pub mod renderer;
 pub mod scene;
 pub mod viewport;
 
+/// The GPU half of a projection: what the stitch pipeline compiles and
+/// binds. Uniforms stay the crate-wide `GpuUniforms` interface (which
+/// carries the per-camera colour terms); a projection supplies its
+/// shader, entry points, seam blend state, and vertex layout. A second
+/// uniform layout joins the descriptor when the first projection that
+/// needs one (the mono cylinder) is wired.
+pub struct GpuProgram {
+    /// WGSL source, compiled at pipeline creation.
+    pub wgsl: &'static str,
+    /// Vertex entry point in `wgsl`.
+    pub vs_entry: &'static str,
+    /// Fragment entry point in `wgsl`.
+    pub fs_entry: &'static str,
+    /// Blend state for the composite draws (the GPU dual of the CPU
+    /// side's `BlendRule` ordering).
+    pub blend: wgpu::BlendState,
+    /// Vertex buffer layout the vertex stage consumes.
+    pub vertex_layout: wgpu::VertexBufferLayout<'static>,
+}
+
 /// Strip sRGB encoding from a texture format.
 ///
 /// The stitch shader outputs sRGB-encoded values directly (BT.709 YCbCr

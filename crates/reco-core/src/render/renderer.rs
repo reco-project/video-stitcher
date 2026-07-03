@@ -64,13 +64,13 @@ pub(crate) struct GpuUniforms {
 /// Vertex with 3D position and UV coordinates.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
-struct Vertex {
+pub(crate) struct Vertex {
     position: [f32; 3],
     uv: [f32; 2],
 }
 
 impl Vertex {
-    const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
+    pub(crate) const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<Vertex>() as u64,
         step_mode: wgpu::VertexStepMode::Vertex,
         attributes: &[
@@ -246,6 +246,7 @@ impl Renderer {
     /// NV12 (Y + interleaved UV). NV12 is the native NVDEC output format.
     pub fn new(
         gpu: &GpuContext,
+        program: &crate::render::GpuProgram,
         output_width: u32,
         output_height: u32,
         input_width: u32,
@@ -256,10 +257,11 @@ impl Renderer {
     ) -> Self {
         let device = &gpu.device;
 
-        // Shader
+        // Shader: compiled from the projection's GPU program descriptor -
+        // the render pipeline builds exactly what the projection declares.
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("fisheye"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/fisheye.wgsl").into()),
+            label: Some("projection_composite"),
+            source: wgpu::ShaderSource::Wgsl(program.wgsl.into()),
         });
 
         // Vertex buffer (quad for both planes — same shape, different model matrices)
@@ -323,24 +325,17 @@ impl Renderer {
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: Some("vs_main"),
+                entry_point: Some(program.vs_entry),
                 compilation_options: Default::default(),
-                buffers: &[Vertex::LAYOUT],
+                buffers: &[program.vertex_layout.clone()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: Some("fs_main"),
+                entry_point: Some(program.fs_entry),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: output_format,
-                    blend: Some(wgpu::BlendState {
-                        color: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::SrcAlpha,
-                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                            operation: wgpu::BlendOperation::Add,
-                        },
-                        alpha: wgpu::BlendComponent::OVER,
-                    }),
+                    blend: Some(program.blend),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
