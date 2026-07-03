@@ -66,6 +66,20 @@ pub(crate) mod kb4 {
         }
         theta_d(r.atan(), d) / r
     }
+
+    /// Forward scale blended between the pinhole projection and full KB4
+    /// by `correction` in `[0, 1]` - the CPU dual of the shader's
+    /// `mix(theta, theta_d, correction)` per-pixel lerp (SYNC_WITH
+    /// `fisheye.wgsl`). `0` = pure pinhole, `1` = full KB4.
+    #[inline]
+    pub fn kb4_forward_scale_with_correction(r: f64, d: &[f64; 4], correction: f64) -> f64 {
+        if r < 1e-10 {
+            return 1.0;
+        }
+        let pinhole = r.atan() / r;
+        let full = kb4_forward_scale(r, d);
+        pinhole + (full - pinhole) * correction
+    }
 }
 
 /// Undistort a grayscale frame using the KB4 fisheye model.

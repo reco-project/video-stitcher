@@ -422,16 +422,32 @@ impl StitchRenderer {
     }
 
     /// Set the seam blend width (0.0 = hard edge, 0.15 = default smooth blend).
+    ///
+    /// Per-frame uniform only - blend does not affect the coverage
+    /// boundary, so no rebuild is needed (unlike tilt/roll below).
     pub fn set_blend_width(&mut self, w: f32) {
         self.pipeline.set_blend_width(w);
     }
 
+    /// Set rig tilt in radians and recompute the coverage boundary.
+    ///
+    /// The boundary's roll-aware clamp margins are derived from the rig
+    /// tilt/roll captured at construction, so a live tilt change must
+    /// rebuild it - clamping with stale margins re-opens the black-corner
+    /// leak the roll-aware clamp exists to prevent. The rebuild is cheap
+    /// (~1ms) relative to any interactive slider rate.
     pub fn set_rig_tilt(&mut self, radians: f32) {
-        self.pipeline.set_rig_tilt(radians);
+        let mut framing = self.pipeline.calibration().framing.clone();
+        framing.tilt = radians as f64;
+        self.update_framing(framing);
     }
 
+    /// Set rig roll in radians and recompute the coverage boundary.
+    /// See [`Self::set_rig_tilt`] for why the rebuild is required.
     pub fn set_rig_roll(&mut self, radians: f32) {
-        self.pipeline.set_rig_roll(radians);
+        let mut framing = self.pipeline.calibration().framing.clone();
+        framing.roll = radians as f64;
+        self.update_framing(framing);
     }
 
     /// Access the current calibration (for saving after adjustments).

@@ -230,7 +230,7 @@ mod tests {
     /// geometry, which the GPU shares verbatim via `l_shape_plane_maps`.
     #[test]
     fn clamped_poses_render_no_black_edges() {
-        use crate::lens::rig_correction::world_to_render_pose;
+        use crate::lens::rig_correction::resolve_render_pose;
         use crate::projection::{CoverageBoundary, VirtualCamera};
         use crate::render::scene::SceneGeometry;
 
@@ -288,9 +288,18 @@ mod tests {
                 (-3.0, 0.0),
                 (3.0, 0.0),
             ] {
-                let cl = coverage.safe_clamp(wy, wp, fov, aspect_out);
-                let (ry, rp) =
-                    world_to_render_pose(&cam, cl.yaw, cl.pitch, tilt as f32, roll as f32);
+                // Through the real authority (clamp + orient in one call),
+                // so this test tracks any stage it grows in Steps 6-8.
+                let (ry, rp) = resolve_render_pose(
+                    &coverage,
+                    &cam,
+                    tilt as f32,
+                    roll as f32,
+                    wy,
+                    wp,
+                    fov,
+                    aspect_out,
+                );
                 let frac = black_frac(&backend.stitch(&planes, &planes, ry, rp).unwrap());
                 assert!(
                     frac < 0.01,

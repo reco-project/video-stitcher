@@ -150,15 +150,9 @@ impl SurfaceMap for PlaneMap {
         let xn = (euv_x - self.cx_n) / self.fx_n;
         let yn = (euv_y - self.cy_n) / self.fy_n;
         let r = (xn * xn + yn * yn).sqrt();
-        let scale = if r < 1e-9 {
-            1.0
-        } else {
-            // `mix(theta, theta_d, correction) / r`, matching the shader's
-            // per-pixel correction lerp between pinhole and full KB4.
-            let pinhole = r.atan() / r;
-            let full = kb4::kb4_forward_scale(r, &self.d);
-            pinhole + (full - pinhole) * self.correction
-        };
+        // The shader's per-pixel correction lerp between pinhole and full
+        // KB4, from the single canonical source in `lens::kb4`.
+        let scale = kb4::kb4_forward_scale_with_correction(r, &self.d, self.correction);
         let du = self.fx_n * xn * scale + self.cx_n;
         let dv = self.fy_n * yn * scale + self.cy_n;
 
