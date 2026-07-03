@@ -218,6 +218,30 @@ impl Encoder for MockEncoder {
     }
 }
 
+// ─── Recording Panner ──────────────────────────────────────────────────
+
+/// Panner that logs the dispatch inputs it sees (frame index +
+/// previous-pose threading) and answers a deterministic pose per
+/// frame. Two entry points driving one AI stack must produce
+/// identical logs.
+struct RecordingPanner {
+    log: Arc<Mutex<Vec<(u64, ViewportPosition)>>>,
+}
+
+impl Panner for RecordingPanner {
+    fn decide(&mut self, _world: &WorldState, ctx: &PanContext<'_>) -> ViewportPosition {
+        self.log
+            .lock()
+            .unwrap()
+            .push((ctx.frame_index, ctx.previous_position));
+        ViewportPosition {
+            yaw: 0.001 * ctx.frame_index as f32,
+            pitch: -0.0005 * ctx.frame_index as f32,
+            fov_degrees: None,
+        }
+    }
+}
+
 // ─── NaN Panner ────────────────────────────────────────────────────────
 
 /// Panner that returns NaN yaw/pitch to test coverage clamping resilience.
@@ -469,4 +493,115 @@ fn compute_frame_limit_negative_fps_uses_fallback() {
     // Negative fps should also trigger the 30.0 fallback.
     let result = compute_frame_limit(Some(10.0), None, -1.0);
     assert_eq!(result, 300);
+}
+
+/// The 9B-i property guard: the push (`StitchCore::submit_frame_yuv`)
+/// and pull (`StitchSession::run`) entry points drive ONE AI stack.
+/// The same scripted detector + tracker + panner, fed the same frames
+/// through each entry point, must see identical inputs in identical
+/// order - identical frame indices, identical previous-pose threading,
+/// identical detector call counts. This is what the fold could have
+/// silently broken and what a re-grown session-side stack would break
+/// again.
+#[test]
+#[ignore] // requires GPU
+fn push_and_pull_share_one_ai_brain() {
+    const FRAMES: u64 = 6;
+    let canned = vec![Detection {
+        camera: CameraId::Left,
+        class_id: 0,
+        confidence: 0.9,
+        center_x: 0.5,
+        center_y: 0.5,
+        width: 0.1,
+        height: 0.1,
+    }];
+
+    // Pull side: session.run over a mock source.
+    let pull_calls = Arc::new(AtomicU64::new(0));
+    let pull_log = Arc::new(Mutex::new(Vec::new()));
+    let mut session = build_test_session(
+        None,
+        Some(Box::new(MockDetector::new(
+            canned.clone(),
+            Arc::clone(&pull_calls),
+        ))),
+        1,
+    )
+    .expect("session build");
+    session.set_ball_tracker(Box::new(MockTracker::new(
+        0,
+        Arc::new(Mutex::new(Vec::new())),
+    )));
+    session.set_panner(Box::new(RecordingPanner {
+        log: Arc::clone(&pull_log),
+    }));
+    let interrupted = AtomicBool::new(false);
+    session
+        .run(&mut MockSource::new(FRAMES), u64::MAX, &interrupted, None)
+        .expect("run");
+
+    // Push side: the same frames submitted straight to an engine.
+    let Some(gpu) = crate::stitch::test_support::gpu_or_skip() else {
+        return;
+    };
+    let executor = crate::stitch::GpuExecutor::new(
+        gpu,
+        crate::stitch::GpuExecutorConfig {
+            viewport: ViewportConfig {
+                width: 64,
+                height: 64,
+                fov_degrees: 75.0,
+            },
+            ..crate::stitch::GpuExecutorConfig::new(
+                test_calibration(),
+                W,
+                H,
+                crate::render::renderer::InputFormat::Yuv420p,
+            )
+        },
+    )
+    .expect("gpu executor");
+    let mut core = crate::core::StitchCore::new(crate::stitch::Executor::Gpu(Box::new(executor)))
+        .expect("engine");
+    let push_calls = Arc::new(AtomicU64::new(0));
+    let push_log = Arc::new(Mutex::new(Vec::new()));
+    core.set_detector(Box::new(MockDetector::new(canned, Arc::clone(&push_calls))));
+    core.set_ball_tracker(Box::new(MockTracker::new(
+        0,
+        Arc::new(Mutex::new(Vec::new())),
+    )));
+    core.set_panner(Box::new(RecordingPanner {
+        log: Arc::clone(&push_log),
+    }));
+
+    for _ in 0..FRAMES {
+        let StereoFrame::Yuv420p(pair) = solid_frame() else {
+            unreachable!("solid_frame is YUV420P")
+        };
+        let left = crate::render::planes::YuvPlanes {
+            y: &pair.left.y,
+            u: &pair.left.u,
+            v: &pair.left.v,
+        };
+        let right = crate::render::planes::YuvPlanes {
+            y: &pair.right.y,
+            u: &pair.right.u,
+            v: &pair.right.v,
+        };
+        core.submit_frame_yuv(&left, &right).expect("submit");
+    }
+
+    let pull = pull_log.lock().unwrap();
+    let push = push_log.lock().unwrap();
+    assert_eq!(pull.len() as u64, FRAMES, "pull dispatched once per frame");
+    assert_eq!(
+        *pull, *push,
+        "push and pull panner inputs diverged - the AI stack has two brains again"
+    );
+    assert_eq!(
+        pull_calls.load(Ordering::Relaxed),
+        push_calls.load(Ordering::Relaxed),
+        "detector call-count parity"
+    );
 }

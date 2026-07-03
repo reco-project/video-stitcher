@@ -9,7 +9,7 @@
 /// Specifies the yaw, pitch, and field of view of the virtual camera.
 /// The FOV allows directors to express zoom: narrow FOV = zoomed in on
 /// action, wide FOV = zoomed out for context.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ViewportPosition {
     /// Horizontal pan angle in radians.
     ///
