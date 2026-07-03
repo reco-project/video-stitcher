@@ -363,6 +363,28 @@ impl StitchCore {
         }
     }
 
+    /// Orient a world-space pose into the render-space `(yaw, pitch)` the
+    /// `view_matrix` consumes - the rig tilt/roll basis inversion without
+    /// any coverage clamping. The orient half of [`Self::safe_clamp`];
+    /// the unconstrained render path uses it so disabling the clamp never
+    /// disables horizon leveling.
+    pub fn orient_pose(&self, world: ViewportPosition) -> ViewportPosition {
+        let framing = &self.pipeline.calibration().framing;
+        let cam = crate::projection::VirtualCamera::new(&self.pipeline.scene.camera_position);
+        let (yaw, pitch) = crate::lens::rig_correction::world_to_render_pose(
+            &cam,
+            world.yaw,
+            world.pitch,
+            framing.tilt as f32,
+            framing.roll as f32,
+        );
+        ViewportPosition {
+            yaw,
+            pitch,
+            fov_degrees: world.fov_degrees,
+        }
+    }
+
     // -----------------------------------------------------------------
     // Coverage / calibration / projection introspection
     // -----------------------------------------------------------------

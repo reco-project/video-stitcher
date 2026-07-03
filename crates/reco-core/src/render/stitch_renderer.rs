@@ -384,39 +384,42 @@ impl StitchRenderer {
     /// calibration preview where the user adjusts sliders.
     pub fn update_calibration(&mut self, calibration: crate::calibration::Calibration) {
         self.pipeline.update_calibration(calibration);
-        self.coverage =
-            CoverageBoundary::from_calibration(self.pipeline.calibration(), &self.pipeline.scene);
+        self.rebuild_coverage();
     }
 
     /// Replace the topology (plane placement + seam) and recompute coverage.
     pub fn update_topology(&mut self, topology: crate::calibration::Topology) {
-        let mut cal = self.pipeline.calibration().clone();
-        cal.topology = topology;
-        self.update_calibration(cal);
+        self.pipeline.update_topology(topology);
+        self.rebuild_coverage();
     }
 
     /// Replace the framing (axis offset, tilt, roll) and recompute coverage.
     pub fn update_framing(&mut self, framing: crate::calibration::Framing) {
-        let mut cal = self.pipeline.calibration().clone();
-        cal.framing = framing;
-        self.update_calibration(cal);
+        self.pipeline.update_framing(framing);
+        self.rebuild_coverage();
     }
 
     /// Replace one or both cameras' intrinsics (focal, principal point,
-    /// distortion) without rebuilding the pipeline or touching the layout.
+    /// distortion) and recompute the coverage boundary.
     ///
     /// Intended for interactive lens-parameter tweaking in a GUI. See
     /// [`StitchPipeline::update_camera_params`] for the full contract.
-    /// Coverage boundary is not recomputed because the layout (and thus
-    /// the panorama extent) is unchanged - only the per-camera undistort
-    /// uniforms shift, which affects what each camera "sees" through its
-    /// lens but not how the stitched planes are arranged in world space.
+    /// The rebuild is required: the boundary samples the frame edges
+    /// through the lens model (fx/fy/cx/cy/distortion), so intrinsics
+    /// changes move the no-black region even though the plane layout is
+    /// untouched.
     pub fn update_camera_params(
         &mut self,
         left: Option<crate::calibration::Lens>,
         right: Option<crate::calibration::Lens>,
     ) {
         self.pipeline.update_camera_params(left, right);
+        self.rebuild_coverage();
+    }
+
+    fn rebuild_coverage(&mut self) {
+        self.coverage =
+            CoverageBoundary::from_calibration(self.pipeline.calibration(), &self.pipeline.scene);
     }
 
     /// Set the seam blend width (0.0 = hard edge, 0.15 = default smooth blend).
@@ -427,25 +430,31 @@ impl StitchRenderer {
         self.pipeline.set_blend_width(w);
     }
 
-    /// Set rig tilt in radians and recompute the coverage boundary.
+    /// Set rig tilt in radians, keeping the coverage clamp in sync.
     ///
-    /// The boundary's roll-aware clamp margins are derived from the rig
-    /// tilt/roll captured at construction, so a live tilt change must
-    /// rebuild it - clamping with stale margins re-opens the black-corner
-    /// leak the roll-aware clamp exists to prevent. The rebuild is cheap
-    /// (~1ms) relative to any interactive slider rate.
+    /// The boundary's roll-aware clamp margins read the rig tilt/roll, so
+    /// a live change must refresh them - clamping with stale values
+    /// re-opens the black-corner leak the roll-aware clamp prevents. The
+    /// sampled boundary itself is tilt-invariant (tilt is a view-time
+    /// basis rotation), so this is a scalar update, not a dense resample.
     pub fn set_rig_tilt(&mut self, radians: f32) {
         let mut framing = self.pipeline.calibration().framing.clone();
         framing.tilt = radians as f64;
-        self.update_framing(framing);
+        self.pipeline.update_framing(framing);
+        let framing = &self.pipeline.calibration().framing;
+        self.coverage
+            .set_rig_orientation(framing.tilt as f32, framing.roll as f32);
     }
 
-    /// Set rig roll in radians and recompute the coverage boundary.
-    /// See [`Self::set_rig_tilt`] for why the rebuild is required.
+    /// Set rig roll in radians, keeping the coverage clamp in sync.
+    /// See [`Self::set_rig_tilt`] for why no dense rebuild is needed.
     pub fn set_rig_roll(&mut self, radians: f32) {
         let mut framing = self.pipeline.calibration().framing.clone();
         framing.roll = radians as f64;
-        self.update_framing(framing);
+        self.pipeline.update_framing(framing);
+        let framing = &self.pipeline.calibration().framing;
+        self.coverage
+            .set_rig_orientation(framing.tilt as f32, framing.roll as f32);
     }
 
     /// Access the current calibration (for saving after adjustments).

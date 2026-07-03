@@ -296,6 +296,18 @@ impl CoverageBoundary {
         }
     }
 
+    /// Refresh the captured rig orientation without resampling.
+    ///
+    /// The sampled slices are tilt/roll-invariant: rig tilt and roll are
+    /// view-time basis rotations and never move the plane geometry the
+    /// boundary samples (`SceneGeometry` consumes only `axis_offset`).
+    /// Only the roll-aware clamp margins read these scalars, so a live
+    /// tilt/roll change needs no dense re-projection.
+    pub(crate) fn set_rig_orientation(&mut self, rig_tilt: f32, rig_roll: f32) {
+        self.rig_tilt = rig_tilt;
+        self.rig_roll = rig_roll;
+    }
+
     /// Global yaw coverage range across the full panorama (radians).
     ///
     /// Returns `(yaw_min, yaw_max)`, the widest-point extremes of the

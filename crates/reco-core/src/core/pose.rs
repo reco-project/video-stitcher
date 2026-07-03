@@ -57,10 +57,13 @@ impl super::StitchCore {
         )
         .map(|r| r.pose)
         .unwrap_or_default();
+        // The toggle gates only the coverage clamp; the tilt/roll basis
+        // inversion is unconditional - a tilted rig must render level
+        // whether or not the viewport is constrained.
         let clamped = if self.constrained_look {
             self.safe_clamp(raw)
         } else {
-            raw
+            self.orient_pose(raw)
         };
         if let Some(fov) = clamped.fov_degrees {
             self.pipeline.set_fov(fov);

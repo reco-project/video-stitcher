@@ -22,30 +22,12 @@ impl StitchSession {
         let mut pos = self.previous_panner_pose;
 
         // The panner outputs world-space coordinates (from detections
-        // mapped via camera_to_panorama). Clamp in world space, then
-        // convert to the user-space pitch the renderer expects (the
-        // view_matrix applies rig_tilt as a basis rotation, so the
-        // render-site pitch must compensate via rig_correction).
-        if let Some(coverage) = self.core.coverage() {
-            if let Some(ref mut fov) = pos.fov_degrees {
-                *fov = fov.min(coverage.max_fov_degrees());
-            }
-            let fov = pos
-                .fov_degrees
-                .unwrap_or_else(|| self.core.pipeline().fov());
-            let aspect = self.core.pipeline().viewport().aspect_ratio();
-            let rig_tilt = self.core.pipeline().calibration().framing.tilt as f32;
-            let rig_roll = self.core.pipeline().calibration().framing.roll as f32;
-            let cam =
-                crate::projection::VirtualCamera::new(&self.core.pipeline().scene.camera_position);
-            // Single pose-resolution authority: world-space coverage clamp
-            // then roll-aware tilt/roll basis inversion.
-            let (ry, rp) = crate::lens::rig_correction::resolve_render_pose(
-                coverage, &cam, rig_tilt, rig_roll, pos.yaw, pos.pitch, fov, aspect,
-            );
-            pos.yaw = ry;
-            pos.pitch = rp;
-        }
+        // mapped via camera_to_panorama). StitchCore::safe_clamp is the
+        // single pose-resolution authority: FOV cap, world-space coverage
+        // clamp, then roll-aware tilt/roll basis inversion. The session
+        // must not re-derive any of that (a drifted FOV-cap copy lived
+        // here once).
+        pos = self.core.safe_clamp(pos);
 
         // Trace: PosePresented. This is the pose the renderer will
         // actually consume for this frame (post-clamp, post-FOV-cap).

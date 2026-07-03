@@ -269,16 +269,6 @@ impl StitchPipeline {
         self.calibration.topology.blend_width = width;
     }
 
-    /// Set rig tilt in radians (per-frame view correction; no scene rebuild).
-    pub fn set_rig_tilt(&mut self, radians: f32) {
-        self.calibration.framing.tilt = radians as f64;
-    }
-
-    /// Set rig roll in radians (per-frame view correction; no scene rebuild).
-    pub fn set_rig_roll(&mut self, radians: f32) {
-        self.calibration.framing.roll = radians as f64;
-    }
-
     /// Update calibration parameters. Recomputes [`SceneGeometry`] from the
     /// new layout. Takes effect on the next render call (uniforms are rebuilt
     /// each frame from the stored calibration and scene).
