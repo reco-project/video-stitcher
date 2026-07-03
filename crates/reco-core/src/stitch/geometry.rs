@@ -11,8 +11,8 @@
 use nalgebra::{Matrix3, Matrix4, Perspective3, Vector3};
 
 use crate::calibration::{Calibration, Lens};
+use crate::geometry::{FAR_PLANE, NEAR_PLANE, opengl_to_wgpu_matrix, view_matrix};
 use crate::lens::kb4;
-use crate::render::renderer::{FAR_PLANE, NEAR_PLANE, opengl_to_wgpu_matrix, view_matrix};
 use crate::render::scene::SceneGeometry;
 use crate::render::viewport::ViewportConfig;
 

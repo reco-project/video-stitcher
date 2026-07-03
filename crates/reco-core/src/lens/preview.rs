@@ -11,9 +11,10 @@
 //! 1.0 is full KB4 correction, 0.0 is raw (pinhole projection).
 
 use crate::calibration::Lens;
+use crate::geometry::opengl_to_wgpu_matrix;
 use crate::gpu::GpuContext;
 use crate::render::pipeline::YuvPlanes;
-use crate::render::renderer::{InputFormat, build_gpu_uniforms, opengl_to_wgpu_matrix};
+use crate::render::renderer::{InputFormat, build_gpu_uniforms};
 
 use bytemuck::Pod;
 use nalgebra::Orthographic3;

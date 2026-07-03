@@ -6,8 +6,9 @@
 //! mapping 1:1 to the plane UV space.
 
 use crate::calibration::Lens;
+use crate::geometry::opengl_to_wgpu_matrix;
 use crate::gpu::GpuContext;
-use crate::render::renderer::{InputFormat, build_gpu_uniforms, opengl_to_wgpu_matrix};
+use crate::render::renderer::{InputFormat, build_gpu_uniforms};
 
 use bytemuck::Pod;
 use nalgebra::Orthographic3;
