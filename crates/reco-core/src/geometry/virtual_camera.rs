@@ -28,7 +28,7 @@ use nalgebra::Vector3;
 /// them on top, and `view_matrix` + `world_to_render_pose` both compose
 /// through that one construction.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct VirtualCamera {
+pub struct VirtualCamera {
     /// World-space camera eye position (copy of `camera_position`).
     pub eye: Vector3<f32>,
     /// Unit vector from eye toward the scene origin (the L-shape corner).

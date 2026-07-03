@@ -65,7 +65,7 @@ pub(crate) fn rig_frame(
 /// Exact for any tilt+roll (the round-trip test against `view_matrix`
 /// is the guard); the previous quaternion-conjugation inverse was exact
 /// for tilt but drifted up to ~4 deg under combined tilt+roll.
-pub(crate) fn world_to_render_pose(
+pub fn world_to_render_pose(
     cam: &VirtualCamera,
     world_yaw: f32,
     world_pitch: f32,
@@ -187,7 +187,7 @@ pub(crate) fn render_viewport_roll(
 ///
 /// (Steps 6-8 will dispatch stage 1 through the `Projection` trait so a
 /// new projection brings its own clamp; stage 2 stays shared.)
-pub(crate) fn resolve_render_pose(
+pub fn resolve_render_pose(
     coverage: &CoverageBoundary,
     cam: &VirtualCamera,
     rig_tilt: f32,

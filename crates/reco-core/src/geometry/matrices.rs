@@ -8,9 +8,9 @@
 use nalgebra::{Matrix4, Point3, UnitQuaternion};
 
 /// Near clipping plane for the perspective projection.
-pub(crate) const NEAR_PLANE: f32 = 0.01;
+pub const NEAR_PLANE: f32 = 0.01;
 /// Far clipping plane for the perspective projection.
-pub(crate) const FAR_PLANE: f32 = 5.0;
+pub const FAR_PLANE: f32 = 5.0;
 
 /// Build the view matrix for the virtual camera.
 ///
@@ -18,7 +18,7 @@ pub(crate) const FAR_PLANE: f32 = 5.0;
 /// planes meet) by default. This matches v1 Three.js where the OrbitControls
 /// target is `[0, 0, 0]`. `yaw` rotates around Y (left/right from center),
 /// `pitch` rotates around X (up/down).
-pub(crate) fn view_matrix(
+pub fn view_matrix(
     position: &[f32; 3],
     yaw: f32,
     pitch: f32,

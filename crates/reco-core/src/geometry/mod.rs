@@ -12,9 +12,15 @@ mod rig_correction;
 mod types;
 mod virtual_camera;
 
-pub(crate) use matrices::{
-    FAR_PLANE, NEAR_PLANE, matrix4_to_columns, opengl_to_wgpu_matrix, view_matrix,
-};
-pub(crate) use rig_correction::{render_viewport_roll, resolve_render_pose, world_to_render_pose};
+// The deliberate public surface: the pose currency, the camera basis,
+// and the orient chain a thin consumer needs to reason about (or
+// reproduce) the virtual camera without the GPU. The rasterization
+// internals (clip-space correction, column packing) stay crate-private
+// until a consumer demonstrates the need.
+pub use matrices::{FAR_PLANE, NEAR_PLANE, view_matrix};
+pub use rig_correction::{resolve_render_pose, world_to_render_pose};
 pub use types::{CameraId, ViewportPosition};
-pub(crate) use virtual_camera::VirtualCamera;
+pub use virtual_camera::VirtualCamera;
+
+pub(crate) use matrices::{matrix4_to_columns, opengl_to_wgpu_matrix};
+pub(crate) use rig_correction::render_viewport_roll;
