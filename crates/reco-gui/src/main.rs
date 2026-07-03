@@ -355,7 +355,7 @@ fn build_bug_report(state: &AppState, app_weak: &slint::Weak<RecoApp>) -> String
         .bridge
         .as_ref()
         .map(|b| {
-            let g = b.renderer().gpu();
+            let g = b.engine().gpu();
             format!("{} ({:?})", g.gpu_name(), g.backend_name())
         })
         .unwrap_or_else(|| "no GPU context".into());
@@ -584,7 +584,7 @@ impl AppState {
             cal.topology = layout.clone();
         }
         if let Some(bridge) = self.bridge.as_mut() {
-            bridge.renderer_mut().update_topology(layout);
+            bridge.engine_mut().update_topology(layout);
             self.preview_dirty = true;
         }
         self.clamp_targets();
@@ -596,7 +596,7 @@ impl AppState {
             cal.framing = framing.clone();
         }
         if let Some(bridge) = self.bridge.as_mut() {
-            bridge.renderer_mut().update_framing(framing);
+            bridge.engine_mut().update_framing(framing);
             self.preview_dirty = true;
         }
         self.clamp_targets();
@@ -787,7 +787,7 @@ impl AppState {
         // Lens preview mode: render single camera flat
         if self.lens_preview_active {
             let bridge = self.bridge.as_mut()?;
-            let cal = bridge.renderer().pipeline().calibration();
+            let cal = bridge.engine().calibration();
             let (planes, params) = if self.lens_preview_side == "right" {
                 (&right, cal.lenses[1].clone())
             } else {
@@ -802,7 +802,7 @@ impl AppState {
             };
         }
 
-        let pose = bridge.renderer().orient_pose(self.pose.current_pose());
+        let pose = bridge.engine().orient_pose(self.pose.current_pose());
 
         let recording = self.is_recording();
         if recording {
@@ -813,7 +813,7 @@ impl AppState {
             // NV12 readback for the encoder on every frame. This is the
             // only stitch render per frame - no separate display render.
             match bridge
-                .renderer_mut()
+                .engine_mut()
                 .render_and_readback_nv12(&left, &right, pose.yaw, pose.pitch)
             {
                 Ok(Some(nv12)) => {
@@ -895,10 +895,12 @@ impl AppState {
         if self.use_constrained_look
             && let Some(bridge) = self.bridge.as_ref()
         {
-            let renderer = bridge.renderer();
+            let renderer = bridge.engine();
             let (vw, vh) = bridge.viewport_size();
             let aspect = vw as f32 / vh as f32;
-            self.pose.clamp_via_coverage(renderer.coverage(), aspect);
+            if let Some(coverage) = renderer.coverage() {
+                self.pose.clamp_via_coverage(coverage, aspect);
+            }
         }
         let after = self.pose.current_pose();
 
@@ -910,7 +912,7 @@ impl AppState {
             && let Some(fov) = after.fov_degrees
             && let Some(bridge) = self.bridge.as_mut()
         {
-            bridge.renderer_mut().pipeline_mut().set_fov(fov);
+            bridge.engine_mut().set_fov(fov);
         }
 
         yaw_changed || pitch_changed || fov_changed
@@ -926,7 +928,7 @@ impl AppState {
             cal.topology.blend_width = w;
         }
         if let Some(bridge) = self.bridge.as_mut() {
-            bridge.renderer_mut().set_blend_width(w);
+            bridge.engine_mut().set_blend_width(w);
             self.preview_dirty = true;
         }
     }
@@ -936,7 +938,7 @@ impl AppState {
             cal.framing.tilt = (deg as f64).to_radians();
         }
         if let Some(bridge) = self.bridge.as_mut() {
-            bridge.renderer_mut().set_rig_tilt(deg.to_radians());
+            bridge.engine_mut().set_rig_tilt(deg.to_radians());
             self.preview_dirty = true;
         }
         self.clamp_targets();
@@ -996,7 +998,7 @@ impl AppState {
             cal.framing.roll = (deg as f64).to_radians();
         }
         if let Some(bridge) = self.bridge.as_mut() {
-            bridge.renderer_mut().set_rig_roll(deg.to_radians());
+            bridge.engine_mut().set_rig_roll(deg.to_radians());
             self.preview_dirty = true;
         }
         self.clamp_targets();
@@ -1020,10 +1022,12 @@ impl AppState {
         let Some(bridge) = self.bridge.as_ref() else {
             return;
         };
-        let renderer = bridge.renderer();
+        let renderer = bridge.engine();
         let (vw, vh) = bridge.viewport_size();
         let aspect = vw as f32 / vh as f32;
-        self.pose.clamp_via_coverage(renderer.coverage(), aspect);
+        if let Some(coverage) = renderer.coverage() {
+            self.pose.clamp_via_coverage(coverage, aspect);
+        }
     }
 
     /// Seek by a relative number of seconds (positive = forward).
@@ -2929,7 +2933,7 @@ fn main() -> anyhow::Result<()> {
             .map(|c| (c.lenses[0].clone(), c.lenses[1].clone()))
             .or_else(|| {
                 s.bridge.as_ref().map(|b| {
-                    let c = b.renderer().pipeline().calibration();
+                    let c = b.engine().calibration();
                     (c.lenses[0].clone(), c.lenses[1].clone())
                 })
             })
@@ -3022,7 +3026,7 @@ fn main() -> anyhow::Result<()> {
         }
         if let Some(bridge) = s.bridge.as_mut() {
             bridge
-                .renderer_mut()
+                .engine_mut()
                 .update_camera_params(left_params, right_params);
         }
         s.preview_dirty = true;
@@ -3052,7 +3056,7 @@ fn main() -> anyhow::Result<()> {
             }
             if let Some(bridge) = s.bridge.as_mut() {
                 bridge
-                    .renderer_mut()
+                    .engine_mut()
                     .update_camera_params(Some(left.clone()), Some(right.clone()));
             }
             s.preview_dirty = true;
@@ -3139,7 +3143,7 @@ fn main() -> anyhow::Result<()> {
                 }
                 if let Some(bridge) = s.bridge.as_mut() {
                     bridge
-                        .renderer_mut()
+                        .engine_mut()
                         .update_camera_params(apply_left, apply_right);
                 }
                 s.preview_dirty = true;
@@ -3198,7 +3202,7 @@ fn main() -> anyhow::Result<()> {
                     }
                     if let Some(bridge) = s.bridge.as_mut() {
                         bridge
-                            .renderer_mut()
+                            .engine_mut()
                             .update_camera_params(Some(scaled.clone()), Some(scaled.clone()));
                     }
                     s.preview_dirty = true;
@@ -3292,7 +3296,7 @@ fn main() -> anyhow::Result<()> {
             && let Some(bridge) = s.bridge.as_mut()
         {
             bridge
-                .renderer_mut()
+                .engine_mut()
                 .pipeline_mut()
                 .set_lens_correction_amount(clamped);
         }
@@ -4238,7 +4242,7 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
             s.clamp_targets();
             let clamped_fov = s.pose.current_fov_deg();
             if let Some(bridge) = s.bridge.as_mut() {
-                bridge.renderer_mut().pipeline_mut().set_fov(clamped_fov);
+                bridge.engine_mut().set_fov(clamped_fov);
             }
             let img = s.render_current();
             // Seed calibration slider values from the baseline layout.
@@ -4250,7 +4254,7 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
             // Reset Lens can restore them. For manual match.json loads
             // this comes from the loaded calibration directly.
             let lens_baseline = s.bridge.as_ref().map(|b| {
-                let cal = b.renderer().pipeline().calibration();
+                let cal = b.engine().calibration();
                 (cal.lenses[0].clone(), cal.lenses[1].clone())
             });
             if let Some((l, r)) = lens_baseline.as_ref() {
@@ -4261,15 +4265,15 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
             let rig_tilt_rad = s
                 .bridge
                 .as_ref()
-                .map(|b| b.renderer().pipeline().calibration().framing.tilt as f32);
+                .map(|b| b.engine().calibration().framing.tilt as f32);
             let rig_roll_rad = s
                 .bridge
                 .as_ref()
-                .map(|b| b.renderer().pipeline().calibration().framing.roll as f32);
+                .map(|b| b.engine().calibration().framing.roll as f32);
             let blend_width = s
                 .bridge
                 .as_ref()
-                .map(|b| b.renderer().pipeline().calibration().topology.blend_width);
+                .map(|b| b.engine().calibration().topology.blend_width);
             // Lens-correction strength came in via the loaded calibration and
             // the renderer was seeded with it at bridge creation; mirror it
             // into AppState so a later save re-persists the right value.
@@ -4289,7 +4293,7 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 match s
                     .bridge
                     .as_ref()
-                    .and_then(|b| b.renderer().gpu().available_vram())
+                    .and_then(|b| b.engine().gpu().available_vram())
                 {
                     Some((free, total)) if total > 0 && in_w > 0 && in_h > 0 => {
                         let budget = budget_for_lookahead(free, total);
@@ -4402,7 +4406,7 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                         .bridge
                         .as_ref()
                         .map(|b| {
-                            let g = b.renderer().gpu();
+                            let g = b.engine().gpu();
                             format!("{} ({:?})", g.gpu_name(), g.backend_name())
                         })
                         .unwrap_or_else(|| "unknown".into());
@@ -4512,7 +4516,7 @@ fn handle_calibration_result(
                     state.clamp_targets();
                     let clamped_fov = state.pose.current_fov_deg();
                     if let Some(bridge) = state.bridge.as_mut() {
-                        bridge.renderer_mut().pipeline_mut().set_fov(clamped_fov);
+                        bridge.engine_mut().set_fov(clamped_fov);
                     }
                     let img = state.render_current();
                     let (in_w, in_h) = state.playback.input_dimensions().unwrap_or((0, 0));
@@ -4521,7 +4525,7 @@ fn handle_calibration_result(
                     // baseline so Reset Lens can restore them after
                     // manual edits.
                     let lens_baseline = state.bridge.as_ref().map(|b| {
-                        let cal = b.renderer().pipeline().calibration();
+                        let cal = b.engine().calibration();
                         (cal.lenses[0].clone(), cal.lenses[1].clone())
                     });
                     if let Some((l, r)) = lens_baseline.as_ref() {
@@ -4542,7 +4546,7 @@ fn handle_calibration_result(
                     let rig_tilt_rad = state
                         .bridge
                         .as_ref()
-                        .map(|b| b.renderer().pipeline().calibration().framing.tilt as f32);
+                        .map(|b| b.engine().calibration().framing.tilt as f32);
                     // rig_roll was previously omitted here (only the manual
                     // load restored it), so an auto-calibrated roll left the
                     // slider at 0 while the preview was corrected - touching
@@ -4550,11 +4554,11 @@ fn handle_calibration_result(
                     let rig_roll_rad = state
                         .bridge
                         .as_ref()
-                        .map(|b| b.renderer().pipeline().calibration().framing.roll as f32);
+                        .map(|b| b.engine().calibration().framing.roll as f32);
                     let blend_width = state
                         .bridge
                         .as_ref()
-                        .map(|b| b.renderer().pipeline().calibration().topology.blend_width);
+                        .map(|b| b.engine().calibration().topology.blend_width);
                     let lens_correction =
                         state.calibration.as_ref().map(|c| c.lenses[0].correction);
                     if let Some(lc) = lens_correction {
