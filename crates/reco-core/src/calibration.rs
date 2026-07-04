@@ -361,9 +361,11 @@ pub struct CylinderTopology {
     /// ±30), correcting a rig that is not level side-to-side.
     #[serde(default)]
     pub screen_rotation_deg: f64,
-    /// Video height in world units (`1.0` = normalized).
-    #[serde(default = "default_video_height")]
-    pub video_height: f64,
+    /// Painted height in the same units as `focal_length` (source
+    /// pixels). Omitted = the source video's pixel height, which is
+    /// the convention's default.
+    #[serde(default)]
+    pub video_height: Option<f64>,
 }
 
 impl Default for CylinderTopology {
@@ -372,7 +374,7 @@ impl Default for CylinderTopology {
             focal_length: default_focal_length(),
             sweep_deg: default_sweep_deg(),
             screen_rotation_deg: 0.0,
-            video_height: default_video_height(),
+            video_height: None,
         }
     }
 }
@@ -383,10 +385,6 @@ fn default_focal_length() -> f64 {
 
 fn default_sweep_deg() -> f64 {
     180.0
-}
-
-fn default_video_height() -> f64 {
-    1.0
 }
 
 /// Default seam blend width for calibrations that do not specify one.
@@ -746,7 +744,8 @@ fn validate_cylinder(t: &CylinderTopology) -> Result<(), CalibrationError> {
         ),
         (
             "topology.video_height",
-            t.video_height,
+            // Omitted = the source pixel height, always valid.
+            t.video_height.unwrap_or(1.0),
             f64::MIN_POSITIVE,
             f64::MAX,
         ),
@@ -1031,7 +1030,7 @@ mod tests {
         assert!(bad(|t| t.focal_length = 0.0).is_err());
         assert!(bad(|t| t.sweep_deg = 361.0).is_err());
         assert!(bad(|t| t.sweep_deg = 0.0).is_err());
-        assert!(bad(|t| t.video_height = f64::NAN).is_err());
+        assert!(bad(|t| t.video_height = Some(f64::NAN)).is_err());
     }
 
     #[test]

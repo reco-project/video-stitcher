@@ -29,6 +29,7 @@
 //! additions, gated on profiling (see the cpu-stitch portability work).
 
 mod cpu;
+pub(crate) mod cylinder;
 mod executor;
 pub(crate) mod geometry;
 #[cfg(feature = "gpu")]

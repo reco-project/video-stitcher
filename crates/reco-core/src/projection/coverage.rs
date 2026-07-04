@@ -111,6 +111,25 @@ impl CoverageBoundary {
     ///
     /// Densely samples both planes' edge loops and a sparse interior grid,
     /// projecting into (yaw, pitch) space and grouping into pitch slices.
+    /// Analytic rectangular coverage: the same yaw range at every
+    /// pitch. The mono cylinder's panorama is exactly rectangular in
+    /// (yaw, pitch) space, so no boundary sampling is needed. The
+    /// camera basis is the mono convention (on the cylinder axis,
+    /// forward `-Z`); rig tilt/roll margining does not apply.
+    pub fn rectangular(yaw_min: f32, yaw_max: f32, pitch_min: f32, pitch_max: f32) -> Self {
+        let n_slices: usize = 16;
+        Self {
+            n_slices,
+            pitch_min,
+            pitch_max,
+            slices: vec![(yaw_min, yaw_max); n_slices],
+            min_pitch_range: pitch_max - pitch_min,
+            rig_tilt: 0.0,
+            rig_roll: 0.0,
+            cam: VirtualCamera::new(&[0.0, 0.0, 1.0]),
+        }
+    }
+
     pub fn from_calibration(calibration: &Calibration, scene: &SceneGeometry) -> Self {
         let n_slices: usize = 400;
         let margin = 0.02_f32;
