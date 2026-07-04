@@ -132,10 +132,9 @@ impl StitchSession {
     /// Use this when the caller needs to control GPU selection (e.g.
     /// for zero-copy decode where the GPU must match the CUDA device).
     pub fn with_gpu(gpu: GpuContext, config: SessionConfig) -> Result<Self, SessionError> {
-        // Build a `StitchCore` as the session's rendering foundation.
         // The executor owns the pipeline + projection + NV12 delivery;
         // the core layers readback + coverage on top. The session
-        // layers on async encoding, lookahead, and the per-platform
+        // layers on sink delivery, lookahead, and the per-platform
         // frame dispatch.
         //
         // Rotation is NOT applied here. It's handled by:
@@ -161,7 +160,20 @@ impl StitchSession {
             },
         )
         .map_err(StitchCoreError::from)?;
-        let core = StitchCore::new(Executor::Gpu(Box::new(executor)))?;
+        Self::with_executor(Executor::Gpu(Box::new(executor)))
+    }
+
+    /// Create a session over an already-configured executor.
+    ///
+    /// The primitive constructor: [`Self::with_gpu`] is the GPU
+    /// convenience that builds the executor from a [`SessionConfig`].
+    /// With a [`CpuExecutor`](crate::stitch::CpuExecutor) arm the
+    /// session runs the software stitch loop ([`Self::run`] dispatches
+    /// per arm) and needs no GPU at all; the GPU-only entry points
+    /// (resident-frame submits, [`Self::submit_render_output`]) panic
+    /// on the CPU arm - batch consumers drive [`Self::run`].
+    pub fn with_executor(executor: Executor) -> Result<Self, SessionError> {
+        let core = StitchCore::new(executor)?;
 
         Ok(Self {
             core,
@@ -254,9 +266,19 @@ impl StitchSession {
 
     /// Shared reference to the GPU context, for consumers that create
     /// auxiliary resources on the session's device (demosaic kernels,
-    /// preview textures).
+    /// preview textures). Panics on a CPU-executor session - use
+    /// [`DetectionTarget::gpu`](crate::detect::DetectionTarget::gpu)
+    /// for executor-agnostic access.
     pub fn gpu(&self) -> &GpuContext {
         self.gpu_exec_ref().pipeline.gpu()
+    }
+
+    /// NV12 delivery dimensions for the current output viewport:
+    /// the shared rounding rule over the executor-agnostic viewport,
+    /// so CPU and GPU sessions hand sinks identically-sized frames.
+    pub(crate) fn nv12_delivery_dims(&self) -> (u32, u32) {
+        let vp = self.core.executor.viewport();
+        crate::render::nv12_cpu::nv12_dims(vp.width, vp.height)
     }
 
     /// The name of the GPU this session is running on.
@@ -301,29 +323,30 @@ impl StitchSession {
         &mut self.telemetry
     }
 
-    /// Flush the NV12 triple-buffer and finalize every sink.
+    /// Flush any pending delivery frames and finalize every sink.
     ///
-    /// Drains all pending frames from the triple-buffer pipeline and
-    /// fans them out to the attached sinks, then calls
+    /// The GPU arm's NV12 delivery is triple-buffered, so its last two
+    /// frames are drained here and fanned out to the attached sinks;
+    /// the CPU arm delivers synchronously and has nothing pending.
+    /// Then calls
     /// [`OutputSink::finish`](crate::sink::OutputSink::finish) on each
-    /// in attach order. Must be called after the frame loop ends.
+    /// sink in attach order. Must be called after the frame loop ends.
     pub fn finish(&mut self) -> Result<(), SessionError> {
-        // Flush remaining frames from the NV12 triple-buffer. Field-path
-        // borrow: `nv12_data` borrows the executor inside `core` while
-        // the fan-out feeds the session-owned sinks.
+        // Field-path borrow: `nv12_data` borrows the executor inside
+        // `core` while the fan-out feeds the session-owned sinks.
         //
         // An Abort error here skips `finish_all`, but no output is left
         // without its trailer: dropping a SinkThread disconnects its
         // channel and the worker runs the sink's own `finish` on exit,
         // and inline sinks finalize in their Drop impls.
-        let (nv12_width, nv12_height) = self.gpu_exec_ref().nv12_dims();
-        while let Some(nv12_data) = self
-            .core
-            .executor
-            .gpu_mut()
-            .expect("the streaming session runs on the GPU executor")
-            .flush_nv12()?
-        {
+        let (nv12_width, nv12_height) = self.nv12_delivery_dims();
+        loop {
+            let Some(exec) = self.core.executor.gpu_mut() else {
+                break;
+            };
+            let Some(nv12_data) = exec.flush_nv12()? else {
+                break;
+            };
             sinks::deliver_frame(
                 &mut self.sinks,
                 nv12_data,
@@ -360,6 +383,6 @@ impl crate::detect::DetectionTarget for StitchSession {
         self.core.source_info()
     }
     fn gpu(&self) -> Option<&crate::gpu::GpuContext> {
-        Some(self.gpu())
+        self.core.executor.gpu().map(|g| g.pipeline.gpu())
     }
 }

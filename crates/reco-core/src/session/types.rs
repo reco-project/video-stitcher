@@ -136,9 +136,13 @@ pub enum SessionError {
     #[error("core: {0}")]
     Core(#[from] StitchCoreError),
 
-    /// NV12 conversion error.
+    /// NV12 conversion error (GPU converter).
     #[error("NV12 converter: {0}")]
     Nv12(#[from] Nv12Error),
+
+    /// NV12 conversion error (CPU kernel).
+    #[error("CPU NV12 conversion: {0}")]
+    CpuNv12(#[from] crate::render::nv12_cpu::Nv12CpuError),
 
     /// Output sink error.
     #[error("sink: {0}")]
@@ -175,6 +179,7 @@ const _: fn() = || {
     assert_clone_send_sync::<PipelineError>();
     assert_clone_send_sync::<StitchCoreError>();
     assert_clone_send_sync::<Nv12Error>();
+    assert_clone_send_sync::<crate::render::nv12_cpu::Nv12CpuError>();
     assert_clone_send_sync::<SinkError>();
     assert_clone_send_sync::<SourceError>();
     assert_clone_send_sync::<crate::detect::detector::DetectorError>();

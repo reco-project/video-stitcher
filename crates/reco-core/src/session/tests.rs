@@ -623,3 +623,140 @@ fn push_and_pull_share_one_ai_brain() {
         "detector call-count parity"
     );
 }
+
+// ─── CPU-executor session ──────────────────────────────────────────────
+
+/// Build a session over the CPU executor - no GPU anywhere.
+fn build_cpu_session() -> StitchSession {
+    let executor = crate::stitch::CpuExecutor::new(
+        Box::new(crate::projection::LShapeProjection),
+        test_calibration(),
+        ViewportConfig {
+            width: 64,
+            height: 64,
+            fov_degrees: 75.0,
+        },
+        W,
+        H,
+        false,
+    )
+    .expect("cpu executor");
+    StitchSession::with_executor(crate::stitch::Executor::Cpu(Box::new(executor)))
+        .expect("cpu session")
+}
+
+/// Inline sink asserting every delivered frame is a well-formed NV12
+/// buffer at the session's delivery dimensions.
+struct Nv12CheckingSink {
+    frames: Arc<AtomicU64>,
+}
+
+impl OutputSink for Nv12CheckingSink {
+    fn name(&self) -> &str {
+        "nv12-check"
+    }
+    fn wants(&self) -> SinkInput {
+        SinkInput::CpuBytes(crate::sink::PixelFormat::Nv12)
+    }
+    fn consume(&mut self, frame: OutputFrame<'_>) -> Result<(), SinkError> {
+        assert_eq!(frame.format, crate::sink::PixelFormat::Nv12);
+        assert_eq!(
+            frame.data.len(),
+            (frame.width * frame.height * 3 / 2) as usize,
+            "NV12 layout: Y plane + half-size interleaved UV"
+        );
+        self.frames.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+    fn finish(&mut self) -> Result<(), SinkError> {
+        Ok(())
+    }
+}
+
+/// The full batch path over the software stitch: source -> engine
+/// submit (detection + pose + CPU stitch) -> CPU NV12 -> sink fan-out.
+/// Runs in the default suite - the session's first GPU-free
+/// end-to-end test.
+#[test]
+fn cpu_session_runs_end_to_end_without_gpu() {
+    const FRAMES: u64 = 5;
+    let mut session = build_cpu_session();
+
+    let encoded = Arc::new(AtomicU64::new(0));
+    session
+        .add_sink(
+            Box::new(MockEncoder::new(Arc::clone(&encoded))),
+            crate::session::SinkOptions::threaded(2),
+        )
+        .expect("attach threaded sink");
+    let checked = Arc::new(AtomicU64::new(0));
+    session
+        .add_sink(
+            Box::new(Nv12CheckingSink {
+                frames: Arc::clone(&checked),
+            }),
+            crate::session::SinkOptions::inline_lossy(),
+        )
+        .expect("attach inline sink");
+
+    let detections = Arc::new(AtomicU64::new(0));
+    session.set_detector(Box::new(MockDetector::new(vec![], Arc::clone(&detections))));
+    session.set_detection_interval(1);
+
+    let mut source = MockSource::new(FRAMES);
+    let interrupted = AtomicBool::new(false);
+    let frames = session
+        .run(&mut source, u64::MAX, &interrupted, None)
+        .expect("cpu run");
+    session.finish().expect("finish");
+
+    assert_eq!(frames, FRAMES);
+    assert_eq!(
+        encoded.load(Ordering::SeqCst),
+        FRAMES,
+        "every frame reached the threaded sink"
+    );
+    assert_eq!(
+        checked.load(Ordering::SeqCst),
+        FRAMES,
+        "every frame reached the inline sink"
+    );
+    assert!(
+        detections.load(Ordering::SeqCst) >= FRAMES,
+        "detection ran inside the CPU submit path"
+    );
+}
+
+/// Zero-copy frames cannot be consumed by the software stitch; the
+/// loop rejects them with a typed error instead of panicking.
+#[test]
+fn cpu_session_rejects_gpu_resident_frames() {
+    struct ResidentSource;
+    impl FrameSource for ResidentSource {
+        fn info(&self) -> SourceInfo {
+            SourceInfo {
+                width: W,
+                height: H,
+                fps: 30.0,
+                fps_rational: Some((30, 1)),
+                total_frames: None,
+            }
+        }
+        fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+            Ok(Some(StereoFrame::GpuResident {
+                left_slot: 0,
+                right_slot: 0,
+            }))
+        }
+    }
+
+    let mut session = build_cpu_session();
+    let interrupted = AtomicBool::new(false);
+    let err = session
+        .run(&mut ResidentSource, u64::MAX, &interrupted, None)
+        .expect_err("resident frames must be rejected on the CPU executor");
+    assert!(
+        matches!(err, SessionError::Config(_)),
+        "expected a typed config error, got: {err}"
+    );
+}

@@ -30,7 +30,7 @@ impl StitchSession {
         options: SinkOptions,
     ) -> Result<(), SessionError> {
         validate_sink_input(sink.wants(), sink.name()).map_err(SessionError::Config)?;
-        let (width, height) = self.gpu_exec_ref().nv12_dims();
+        let (width, height) = self.nv12_delivery_dims();
         self.sinks
             .push(AttachedSink::new(sink, options, width, height));
         Ok(())

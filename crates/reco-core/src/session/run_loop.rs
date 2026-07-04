@@ -114,6 +114,12 @@ impl StitchSession {
         interrupted: &AtomicBool,
         mut on_progress: Option<ProgressCallback>,
     ) -> Result<u64, SessionError> {
+        // The CPU arm runs its own synchronous loop: no GPU source
+        // configuration, no staging, no zero-copy.
+        if self.core.executor.gpu().is_none() {
+            return self.run_cpu(source, frame_limit, interrupted, &mut on_progress);
+        }
+
         self.configure_from_source(source);
 
         let result = if self.lookahead_frames > 0 {
@@ -521,6 +527,122 @@ impl StitchSession {
 
             self.process_frame_any(&frame, start.elapsed(), decode_time, frame_t0, &ctx)?;
 
+            if let Some(cb) = on_progress.as_mut() {
+                cb(&FrameProgress {
+                    frames_completed: self.frame_count,
+                    elapsed: start.elapsed(),
+                });
+            }
+        }
+
+        Ok(self.frame_count)
+    }
+
+    /// Batch loop over the CPU executor: synchronous software stitch.
+    ///
+    /// Decode, submit (detection + pose + stitch run inside the
+    /// engine's `submit_frame_*`), convert to NV12 on the CPU, fan out
+    /// to the sinks. No staging ring, no warmup, no zero-copy - the
+    /// engine returns RGBA for the submitted frame immediately.
+    fn run_cpu(
+        &mut self,
+        source: &mut dyn FrameSource,
+        frame_limit: u64,
+        interrupted: &AtomicBool,
+        on_progress: &mut Option<ProgressCallback>,
+    ) -> Result<u64, SessionError> {
+        use crate::source::StereoFrame;
+
+        let start = std::time::Instant::now();
+        if self.lookahead_frames > 0 {
+            log::warn!(
+                "Lookahead ({} frames) is not implemented on the CPU executor; \
+                 running the immediate loop",
+                self.lookahead_frames
+            );
+        }
+        let (nv12_w, nv12_h) = self.nv12_delivery_dims();
+        let render_w = self.core.executor.viewport().width;
+        log::info!(
+            "CPU stitch loop: software render at {}x{}, NV12 delivery {nv12_w}x{nv12_h}",
+            render_w,
+            self.core.executor.viewport().height
+        );
+
+        let mut nv12 = Vec::new();
+        while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+            let frame_t0 = std::time::Instant::now();
+            let frame = {
+                crate::profile_scope!("wait_decode");
+                match source.next_frame()? {
+                    Some(f) => f,
+                    None => break,
+                }
+            };
+            let decode_time = frame_t0.elapsed();
+
+            if let Some(sink) = self.core.event_sink.as_deref_mut() {
+                sink.emit(crate::detect::pipeline_event::PipelineEvent::FrameStart {
+                    frame_index: self.frame_count,
+                    timestamp_ms: start.elapsed().as_secs_f64() * 1000.0,
+                });
+            }
+
+            let stitch_t0 = std::time::Instant::now();
+            let outcome = match &frame {
+                StereoFrame::Yuv420p(pair) => self
+                    .core
+                    .submit_frame_yuv(&pair.left.as_planes(), &pair.right.as_planes())?,
+                StereoFrame::Nv12(pair) => {
+                    let left = crate::render::planes::Nv12Planes {
+                        y: &pair.left.y,
+                        uv: &pair.left.uv,
+                    };
+                    let right = crate::render::planes::Nv12Planes {
+                        y: &pair.right.y,
+                        uv: &pair.right.uv,
+                    };
+                    self.core.submit_frame_nv12(&left, &right)?
+                }
+                _ => {
+                    return Err(SessionError::Config(
+                        "the CPU session consumes CPU-resident frames only (YUV420P / \
+                         NV12); zero-copy sources need the GPU executor"
+                            .into(),
+                    ));
+                }
+            };
+            let crate::core::types::RenderOutcome::Rgba(rgba) = outcome else {
+                unreachable!("the CPU executor stitches synchronously - no warmup");
+            };
+            let stitch_time = stitch_t0.elapsed();
+
+            let convert_t0 = std::time::Instant::now();
+            crate::render::nv12_cpu::rgba_to_nv12_into(rgba, render_w, nv12_w, nv12_h, &mut nv12)?;
+            let convert_time = convert_t0.elapsed();
+
+            let submit_t0 = std::time::Instant::now();
+            super::sinks::deliver_frame(
+                &mut self.sinks,
+                &nv12,
+                nv12_w,
+                nv12_h,
+                self.frame_count as i64,
+            )?;
+            let submit_time = submit_t0.elapsed();
+
+            self.telemetry.record_frame(crate::telemetry::FrameTiming {
+                decode: Some(decode_time),
+                stitch: Some(stitch_time),
+                // The CPU conversion is this arm's counterpart of the
+                // GPU readback slot.
+                readback: Some(convert_time),
+                submit: Some(submit_time),
+                total: Some(frame_t0.elapsed()),
+                ..Default::default()
+            });
+
+            self.frame_count += 1;
             if let Some(cb) = on_progress.as_mut() {
                 cb(&FrameProgress {
                     frames_completed: self.frame_count,
