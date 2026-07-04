@@ -253,6 +253,12 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         no_zero_copy: bool,
 
+        /// Stitch entirely on the CPU: software render + CPU decode,
+        /// no GPU touched. Much slower; for GPU-less machines and for
+        /// verifying output without GPU variance.
+        #[arg(long, default_value_t = false)]
+        cpu: bool,
+
         /// Record pipeline events (detections, filter decisions, pan
         /// decisions) to a JSONL file for offline analysis.
         #[arg(long)]
@@ -794,6 +800,7 @@ fn main() -> anyhow::Result<()> {
             replay_scale,
             allow_no_tracking,
             no_zero_copy,
+            cpu,
             events,
             trajectory,
             panner_config,
@@ -825,6 +832,7 @@ fn main() -> anyhow::Result<()> {
                 replay_scale,
                 allow_no_tracking,
                 no_zero_copy,
+                cpu,
                 events_path: events.as_deref(),
                 trajectory_path: trajectory.as_deref(),
                 panner_config_path: panner_config.as_deref(),

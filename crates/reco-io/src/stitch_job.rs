@@ -75,6 +75,11 @@ pub struct StitchJob {
     /// CPU detection is wanted but TensorRT is not available.
     force_cpu_decode: bool,
 
+    /// Stitch on the CPU executor: software render, CPU decode, no
+    /// GPU touched at all. The GPU-less path (headless boxes, CI,
+    /// X5-class boards).
+    cpu_stitch: bool,
+
     /// Lookahead buffer depth in seconds. When > 0, the session
     /// decodes N frames ahead to give the panner future context.
     lookahead_secs: f64,
@@ -255,6 +260,7 @@ impl StitchJob {
             #[cfg(feature = "stacked-output")]
             replay_recording: None,
             force_cpu_decode: false,
+            cpu_stitch: false,
             lookahead_secs: 0.0,
             events_path: None,
         }
@@ -455,6 +461,14 @@ impl StitchJob {
         self
     }
 
+    /// Stitch on the CPU executor: software render + CPU decode, no
+    /// GPU initialized. Implies [`Self::force_cpu_decode`] (there is
+    /// no GPU to decode into).
+    pub fn cpu(mut self) -> Self {
+        self.cpu_stitch = true;
+        self
+    }
+
     /// Set the lookahead buffer depth in seconds.
     pub fn lookahead(mut self, seconds: f64) -> Self {
         self.lookahead_secs = seconds;
@@ -560,16 +574,39 @@ impl StitchJob {
             log::info!("Sync offset: {} frames (from calibration)", effective_sync);
         }
 
-        // Initialize GPU
-        let gpu = reco_core::gpu::GpuContext::new_blocking()?;
-        let gpu_name = gpu.gpu_name().to_string();
-
-        log::debug!("StitchJob::run: force_cpu_decode={}", self.force_cpu_decode);
-        let mut source = if self.force_cpu_decode {
-            log::info!("Force CPU decode: zero-copy disabled by --no-zero-copy");
-            crate::SmartFileSource::open_cpu_only(&self.left, &self.right, effective_sync)?
+        // Decode + render strategy. --cpu never touches the GPU;
+        // otherwise the GPU renders and decode is zero-copy unless
+        // forced off.
+        log::debug!(
+            "StitchJob::run: cpu_stitch={} force_cpu_decode={}",
+            self.cpu_stitch,
+            self.force_cpu_decode
+        );
+        let (gpu, mut source) = if self.cpu_stitch {
+            log::info!("CPU stitch: software render + software decode, no GPU touched (--cpu)");
+            (
+                None,
+                crate::SmartFileSource::open_cpu_only(
+                    &self.left,
+                    &self.right,
+                    effective_sync,
+                    true,
+                )?,
+            )
         } else {
-            crate::SmartFileSource::open(&self.left, &self.right, &gpu, effective_sync)?
+            let gpu = reco_core::gpu::GpuContext::new_blocking()?;
+            let source = if self.force_cpu_decode {
+                log::info!("Force CPU decode: zero-copy disabled by --no-zero-copy");
+                crate::SmartFileSource::open_cpu_only(
+                    &self.left,
+                    &self.right,
+                    effective_sync,
+                    false,
+                )?
+            } else {
+                crate::SmartFileSource::open(&self.left, &self.right, &gpu, effective_sync)?
+            };
+            (Some(gpu), source)
         };
         let info = source.info();
         let (out_w, out_h) = self.resolution.unwrap_or((1920, 1080));
@@ -577,13 +614,6 @@ impl StitchJob {
             log::info!("Output resolution not specified, defaulting to {out_w}x{out_h}");
         }
         let decode_mode = source.decode_mode().to_string();
-
-        // Determine input format from source capabilities
-        let input_format = if source.is_gpu_resident() {
-            reco_core::render::renderer::InputFormat::Nv12
-        } else {
-            reco_core::render::renderer::InputFormat::Yuv420p
-        };
 
         // Build session. Blend lives on the calibration; an explicit job
         // override replaces it, otherwise the saved value renders as-is.
@@ -604,17 +634,45 @@ impl StitchJob {
             height: out_h,
             ..Default::default()
         };
-        let session_config = reco_core::session::types::SessionConfig {
-            calibration: cal,
-            viewport,
-            input_width: info.width,
-            input_height: info.height,
-            output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
-            input_format,
-            left_rotation: source.left_rotation(),
-            right_rotation: source.right_rotation(),
+        let gpu_name;
+        let mut session = match gpu {
+            Some(gpu) => {
+                gpu_name = gpu.gpu_name().to_string();
+                // Input format follows source capabilities: zero-copy
+                // decoders hand the pipeline NV12 textures.
+                let input_format = if source.is_gpu_resident() {
+                    reco_core::render::renderer::InputFormat::Nv12
+                } else {
+                    reco_core::render::renderer::InputFormat::Yuv420p
+                };
+                let session_config = reco_core::session::types::SessionConfig {
+                    calibration: cal,
+                    viewport,
+                    input_width: info.width,
+                    input_height: info.height,
+                    output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
+                    input_format,
+                    left_rotation: source.left_rotation(),
+                    right_rotation: source.right_rotation(),
+                };
+                reco_core::session::StitchSession::with_gpu(gpu, session_config)?
+            }
+            None => {
+                gpu_name = "software (CPU)".to_string();
+                let executor = reco_core::stitch::CpuExecutor::new(
+                    Box::new(reco_core::projection::LShapeProjection),
+                    cal,
+                    viewport,
+                    info.width,
+                    info.height,
+                    false,
+                )
+                .map_err(|e| StitchError::Other(format!("CPU executor: {e}")))?;
+                reco_core::session::StitchSession::with_executor(reco_core::stitch::Executor::Cpu(
+                    Box::new(executor),
+                ))?
+            }
         };
-        let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 
         session.telemetry_mut().set_gpu_name(gpu_name.clone());
         session.telemetry_mut().set_decode_mode(decode_mode.clone());
@@ -663,11 +721,7 @@ impl StitchJob {
             Bitrate::Quality(q) => crate::ffmpeg::encoder::Quality::from(*q),
             Bitrate::Crf(_) => crate::ffmpeg::encoder::Quality::Balanced,
         };
-        let fps = if info.fps > 0.0 {
-            info.fps as f64
-        } else {
-            30.0
-        };
+        let fps = if info.fps > 0.0 { info.fps } else { 30.0 };
         let start_secs = self
             .start_time
             .filter(|secs| secs.is_finite() && *secs > 0.0)
@@ -685,8 +739,17 @@ impl StitchJob {
             AudioMode::Disabled => None,
         };
 
+        // --cpu defaults the encoder to software so the whole run keeps
+        // its no-GPU promise; an explicit encoder choice still wins.
+        let encoder_name = match (&self.encoder_name, self.cpu_stitch) {
+            (None, true) => {
+                log::info!("CPU stitch: defaulting to the libx264 software encoder");
+                Some("libx264".to_string())
+            }
+            (name, _) => name.clone(),
+        };
         let enc_config = crate::ffmpeg::encoder::EncoderConfig {
-            encoder_name: self.encoder_name.clone(),
+            encoder_name,
             codec: self.codec.into(),
             quality_preset: quality,
             quality: self.quality_value,

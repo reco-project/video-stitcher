@@ -255,6 +255,28 @@ impl VideoDecoder {
         Self::from_input_context(ictx)
     }
 
+    /// Open with software decode, skipping the hardware-acceleration
+    /// probe entirely. The typed form of `RECO_NO_HWACCEL` for callers
+    /// that must not touch a GPU (e.g. `reco stitch --cpu`).
+    pub fn open_software(path: &Path) -> Result<Self, DecodeError> {
+        crate::init();
+        let ictx = input(path)?;
+        Self::from_input_context_inner(ictx, None, true)
+    }
+
+    /// [`Self::open_input`] with software decode forced (see
+    /// [`Self::open_software`]).
+    pub fn open_input_software(
+        input_path: &crate::stitch_job::InputPath,
+    ) -> Result<Self, DecodeError> {
+        match input_path {
+            crate::stitch_job::InputPath::Single(p) => Self::open_software(p),
+            crate::stitch_job::InputPath::Chained(paths) => {
+                Self::open_chained_impl(paths, None, true)
+            }
+        }
+    }
+
     /// Open from an `InputPath` (single file or chained segments).
     pub fn open_input(input_path: &crate::stitch_job::InputPath) -> Result<Self, DecodeError> {
         match input_path {
@@ -283,25 +305,26 @@ impl VideoDecoder {
             // other device's texture -> cross-device fault (DEVICE_REMOVED on
             // desktop NVIDIA, driver hang on laptops). See open_chained_impl.
             crate::stitch_job::InputPath::Chained(paths) => {
-                Self::open_chained_impl(paths, Some(shared))
+                Self::open_chained_impl(paths, Some(shared), false)
             }
         }
     }
 
     fn from_input_context(ictx: ffmpeg::format::context::Input) -> Result<Self, DecodeError> {
-        Self::from_input_context_inner(ictx, None)
+        Self::from_input_context_inner(ictx, None, false)
     }
 
     fn from_input_context_with_shared(
         ictx: ffmpeg::format::context::Input,
         shared: &SharedHwDevice,
     ) -> Result<Self, DecodeError> {
-        Self::from_input_context_inner(ictx, Some(shared))
+        Self::from_input_context_inner(ictx, Some(shared), false)
     }
 
     fn from_input_context_inner(
         ictx: ffmpeg::format::context::Input,
         shared_device: Option<&SharedHwDevice>,
+        force_software: bool,
     ) -> Result<Self, DecodeError> {
         let stream = ictx
             .streams()
@@ -315,7 +338,10 @@ impl VideoDecoder {
         threading.count = 0;
         context.set_threading(threading);
 
-        let (backend, hw_device_ref) = if std::env::var("RECO_NO_HWACCEL").is_ok() {
+        let (backend, hw_device_ref) = if force_software {
+            log::info!("Software decode: forced by the caller");
+            (DecodeBackend::Software, ptr::null_mut())
+        } else if std::env::var("RECO_NO_HWACCEL").is_ok() {
             log::info!("Hardware acceleration disabled via RECO_NO_HWACCEL");
             (DecodeBackend::Software, ptr::null_mut())
         } else if let Some(shared) = shared_device {
@@ -450,7 +476,7 @@ impl VideoDecoder {
     /// Timestamps are rebased, hardware acceleration works across
     /// segment boundaries, and seeking spans the full duration.
     pub fn open_chained(paths: &[std::path::PathBuf]) -> Result<Self, DecodeError> {
-        Self::open_chained_impl(paths, None)
+        Self::open_chained_impl(paths, None, false)
     }
 
     /// Chained open that optionally attaches a pre-created shared hw device.
@@ -463,6 +489,7 @@ impl VideoDecoder {
     fn open_chained_impl(
         paths: &[std::path::PathBuf],
         shared: Option<&SharedHwDevice>,
+        force_software: bool,
     ) -> Result<Self, DecodeError> {
         use std::io::Write;
 
@@ -472,6 +499,7 @@ impl VideoDecoder {
             let p = paths.first().map(|p| p.as_path()).unwrap_or(Path::new(""));
             return match shared {
                 Some(s) => Self::from_input_context_with_shared(input(p)?, s),
+                None if force_software => Self::open_software(p),
                 None => Self::open(p),
             };
         }
@@ -515,7 +543,7 @@ impl VideoDecoder {
             _ => return Err(DecodeError::Ffmpeg("expected input context".into())),
         };
 
-        let mut dec = Self::from_input_context_inner(ictx, shared)?;
+        let mut dec = Self::from_input_context_inner(ictx, shared, force_software)?;
         dec._manifest = Some(manifest);
         Ok(dec)
     }

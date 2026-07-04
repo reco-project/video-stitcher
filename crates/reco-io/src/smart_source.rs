@@ -209,6 +209,7 @@ impl SmartFileSource {
                 left,
                 right,
                 sync_offset,
+                false,
                 info,
                 pixel_format,
                 full_range,
@@ -222,6 +223,7 @@ impl SmartFileSource {
         left: &crate::stitch_job::InputPath,
         right: &crate::stitch_job::InputPath,
         sync_offset: i64,
+        software_decode: bool,
     ) -> Result<Self, SourceError> {
         let left_probe_path = left.first_path();
 
@@ -255,6 +257,7 @@ impl SmartFileSource {
             left,
             right,
             sync_offset,
+            software_decode,
             info,
             pixel_format,
             full_range,
@@ -263,17 +266,24 @@ impl SmartFileSource {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn open_cpu(
         left: &crate::stitch_job::InputPath,
         right: &crate::stitch_job::InputPath,
         sync_offset: i64,
+        software_decode: bool,
         info: SourceInfo,
         pixel_format: GpuPixelFormat,
         full_range: bool,
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
-        let source = crate::adapters::FfmpegFileSource::open_from_inputs(left, right, sync_offset)?;
+        let source = crate::adapters::FfmpegFileSource::open_from_inputs(
+            left,
+            right,
+            sync_offset,
+            software_decode,
+        )?;
         log::info!(
             "SmartFileSource: CPU decode ({}x{}, {pixel_format:?}{})",
             info.width,

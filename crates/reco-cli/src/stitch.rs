@@ -58,6 +58,7 @@ pub struct StitchArgs<'a> {
     pub allow_no_tracking: bool,
     /// Force CPU decode to enable ORT CPU detection without TensorRT.
     pub no_zero_copy: bool,
+    pub cpu: bool,
     /// Path for pipeline event JSONL output.
     pub events_path: Option<&'a str>,
     /// Precomputed trajectory CSV (overrides AI panner).
@@ -139,6 +140,9 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     }
     if args.no_zero_copy {
         job = job.force_cpu_decode();
+    }
+    if args.cpu {
+        job = job.cpu();
     }
     // Lookahead only helps when an AI panner drives the camera: it buffers
     // future frames so the panner can lead and the loop can centered-smooth.

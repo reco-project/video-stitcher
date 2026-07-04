@@ -73,6 +73,8 @@ pub struct FfmpegFileSource {
     left_input: crate::stitch_job::InputPath,
     right_input: crate::stitch_job::InputPath,
     sync_offset: i64,
+    /// Software decode forced at open; seek respawns must reuse it.
+    software_decode: bool,
     /// Total frame count (estimated from duration * fps).
     total_frame_count: Option<u64>,
     /// Current frame position (incremented on each next_frame).
@@ -105,6 +107,7 @@ impl FfmpegFileSource {
             &crate::stitch_job::InputPath::Single(left_path.to_path_buf()),
             &crate::stitch_job::InputPath::Single(right_path.to_path_buf()),
             sync_offset,
+            false,
         )
     }
 
@@ -116,6 +119,7 @@ impl FfmpegFileSource {
         left: &crate::stitch_job::InputPath,
         right: &crate::stitch_job::InputPath,
         sync_offset: i64,
+        software_decode: bool,
     ) -> Result<Self, SourceError> {
         let left_probe_path = left.first_path();
         let right_probe_path = right.first_path();
@@ -173,6 +177,7 @@ impl FfmpegFileSource {
             right_owned.clone(),
             sync_offset,
             None,
+            software_decode,
         );
 
         Ok(Self {
@@ -185,6 +190,7 @@ impl FfmpegFileSource {
             left_input: left_owned,
             right_input: right_owned,
             sync_offset,
+            software_decode,
             total_frame_count,
             current_frame: 0,
             exhausted: false,
@@ -250,13 +256,19 @@ impl FfmpegFileSource {
         input: crate::stitch_job::InputPath,
         label: &'static str,
         seek_secs: Option<f64>,
+        software_decode: bool,
     ) -> std::sync::mpsc::Receiver<YuvData> {
         let (tx, rx) = std::sync::mpsc::sync_channel::<YuvData>(4);
 
         std::thread::Builder::new()
             .name(format!("decode_{label}"))
             .spawn(move || {
-                let mut dec = match ffmpeg::decoder::VideoDecoder::open_input(&input) {
+                let open = if software_decode {
+                    ffmpeg::decoder::VideoDecoder::open_input_software
+                } else {
+                    ffmpeg::decoder::VideoDecoder::open_input
+                };
+                let mut dec = match open(&input) {
                     Ok(d) => {
                         log::info!(
                             "{label} decoder: {} ({}x{})",
@@ -333,9 +345,10 @@ impl FfmpegFileSource {
         right: crate::stitch_job::InputPath,
         sync_offset: i64,
         seek_secs: Option<f64>,
+        software_decode: bool,
     ) -> std::sync::mpsc::Receiver<FramePair> {
-        let left_rx = Self::spawn_single_decoder_at(left, "left", seek_secs);
-        let right_rx = Self::spawn_single_decoder_at(right, "right", seek_secs);
+        let left_rx = Self::spawn_single_decoder_at(left, "left", seek_secs, software_decode);
+        let right_rx = Self::spawn_single_decoder_at(right, "right", seek_secs, software_decode);
 
         let (tx, rx) = std::sync::mpsc::sync_channel::<FramePair>(4);
 
@@ -461,6 +474,7 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
             self.right_input.clone(),
             self.sync_offset,
             Some(secs),
+            self.software_decode,
         );
         self.current_frame = frame;
         self.exhausted = false;
