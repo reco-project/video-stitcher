@@ -391,18 +391,18 @@ pub fn run_camera(
         reco_core::session::SinkOptions::threaded(2),
     )?;
 
-    // Snapshot writer for live preview (gameday panel). Taps the NV12
-    // readback after each frame and writes a JPEG every N frames on a
-    // background thread; held alive until the function returns. Gated
-    // behind the `snapshot` build feature.
-    #[cfg(feature = "snapshot")]
-    let mut _snapshot_writer: Option<SnapshotWriter> = None;
+    // Snapshot sink for live preview (gameday panel): writes a JPEG
+    // every N frames on a background thread. Inline delivery - its
+    // consume never blocks the frame loop. Gated behind the
+    // `snapshot` build feature.
     #[cfg(feature = "snapshot")]
     if let Some(dir) = snapshot_dir {
-        let (writer, tap) = SnapshotWriter::new(Path::new(dir), snapshot_interval)?;
-        session.set_nv12_tap(tap);
+        let writer = SnapshotWriter::new(Path::new(dir), snapshot_interval)?;
+        session.add_sink(
+            Box::new(writer),
+            reco_core::session::SinkOptions::inline_lossy(),
+        )?;
         println!("Snapshots: {dir}/snapshot.jpg (every {snapshot_interval} frames)");
-        _snapshot_writer = Some(writer);
     }
 
     let frame_limit =

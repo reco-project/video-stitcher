@@ -43,9 +43,6 @@ use crate::gpu::{GpuContext, OutputFormat};
 use crate::render::renderer::InputFormat;
 use crate::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 
-/// Callback type for the NV12 tap: receives `(nv12_data, width, height)`.
-pub type Nv12TapFn = Box<dyn FnMut(&[u8], u32, u32) + Send>;
-
 use types::{ErrorPolicy, SessionConfig, SessionError, SessionMetrics, StitchSessionBuilder};
 
 /// A high-level stitching session: a pull-loop orchestrator over the
@@ -102,10 +99,6 @@ pub struct StitchSession {
     pub(crate) gpu_pixel_format: crate::render::renderer::GpuPixelFormat,
     /// Full-range YUV (0-255) vs limited range (16-235).
     pub(crate) is_full_range: bool,
-    /// Optional callback invoked with NV12 data after each frame.
-    /// Used by reco-cli's snapshot writer for periodic JPEG output.
-    /// The callback receives `(nv12_data, width, height)`.
-    pub(crate) nv12_tap: Option<Nv12TapFn>,
 }
 
 impl StitchSession {
@@ -186,7 +179,6 @@ impl StitchSession {
             right_rotation: 0,
             gpu_pixel_format: crate::render::renderer::GpuPixelFormat::Nv12,
             is_full_range: false,
-            nv12_tap: None,
         })
     }
 

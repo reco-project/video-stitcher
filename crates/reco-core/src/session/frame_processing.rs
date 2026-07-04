@@ -579,12 +579,6 @@ impl StitchSession {
                 nv12_height,
                 self.frame_count as i64,
             )?;
-            // NV12 tap for snapshot / preview hooks (reco-cli's periodic
-            // JPEG writer). Runs after sink delivery; the callback is
-            // expected to be non-blocking (try_send on a channel).
-            if let Some(ref mut tap) = self.nv12_tap {
-                tap(data, nv12_width, nv12_height);
-            }
         }
         self.last_submit_time = submit_t0.elapsed();
 
