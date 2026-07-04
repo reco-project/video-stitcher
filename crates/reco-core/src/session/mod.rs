@@ -43,13 +43,6 @@ mod zero_copy_linux;
 #[cfg(target_os = "linux")]
 pub use zero_copy_linux::SharedTextureSet;
 
-// `LiveStitchSession` + `LiveSessionConfig` + `LiveSessionError` were
-// deleted 2026-04-19 (plan-execution §3 M3 step 3). Consumers that
-// previously held a `LiveStitchSession` migrate to `StitchCore` (via
-// `reco_core::core::StitchCore`) and call `submit_frame_*_at_pose`
-// for explicit-pose inputs. reco-obs completed the migration in the
-// same commit.
-
 use crate::async_encode::AsyncEncodeThread;
 use crate::core::StitchCore;
 use crate::core::types::StitchCoreError;

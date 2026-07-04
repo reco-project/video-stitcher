@@ -16,8 +16,7 @@ use crate::gpu::yuv_stack_packer::{
 use crate::render::renderer::InputFormat;
 
 impl super::StitchCore {
-    /// Attach a stacked-video replay recorder (M6.5 item 3, push
-    /// side).
+    /// Attach a stacked-video replay recorder.
     ///
     /// Every subsequent YUV submit feeds the recorder before
     /// rendering. Errors inside the recorder are swallowed so a
@@ -60,7 +59,7 @@ impl super::StitchCore {
         }
     }
 
-    /// Enable the GPU-pack replay path (M7 pivot item 1).
+    /// Enable the GPU-pack replay path.
     ///
     /// Builds a [`YuvStackPacker`] sized for `layout` x `output_size`
     /// and wires it into subsequent YUV submit calls. The packer's

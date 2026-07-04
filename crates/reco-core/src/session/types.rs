@@ -161,7 +161,7 @@ pub enum SessionError {
     Config(String),
 }
 
-// Compile-time assertion (plan step 7): every error type reachable
+// Compile-time assertion: every error type reachable
 // from the public session API is `Clone + Send + Sync`, so consumers
 // that post results to worker-thread channels (reco-gui export
 // thread, reco-obs async init) carry the typed error across the

@@ -118,8 +118,7 @@ impl StitchSession {
     /// GStreamer bridge) that wire this get the same replay-recording
     /// ergonomics the pull-side `StitchJob::with_replay_recording`
     /// already provides: one method call, the session handles the
-    /// per-frame tap + encoder lifecycle internally. Closes FRICTION
-    /// A18 on the reco-obs side.
+    /// per-frame tap + encoder lifecycle internally.
     ///
     /// # Example
     ///
@@ -155,7 +154,7 @@ impl StitchSession {
         self.core.flush_stacked_recorder();
     }
 
-    /// Enable the GPU-pack replay path (M7 pivot item 1).
+    /// Enable the GPU-pack replay path.
     ///
     /// Forwards to [`crate::core::StitchCore::enable_gpu_stacked_replay`].
     /// After enabling, attach a

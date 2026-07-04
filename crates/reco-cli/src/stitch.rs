@@ -43,14 +43,13 @@ pub struct StitchArgs<'a> {
     pub container: Option<&'a str>,
     /// Optional replay-recording output path. When `Some`, the
     /// stitch job writes a stacked-video copy of the source frames
-    /// alongside the stitched output (M6.5 feature, `replay`
-    /// feature flag on reco-cli).
+    /// alongside the stitched output (requires the `replay` feature
+    /// flag on reco-cli).
     pub replay_path: Option<&'a str>,
     /// Optional replay-tile downscale `(width, height)`. When
-    /// `Some`, the GPU pack shader produces smaller replay tiles
-    /// (FRICTION reco-obs A19). Has no effect without
-    /// [`Self::replay_path`]. GPU path only — CPU-resident
-    /// sources log a warn and record at source dims.
+    /// `Some`, the GPU pack shader produces smaller replay tiles.
+    /// Has no effect without [`Self::replay_path`]. GPU path only -
+    /// CPU-resident sources log a warn and record at source dims.
     pub replay_scale: Option<(u32, u32)>,
     /// When true, silently continue without tracking if detection
     /// cannot run (e.g. zero-copy mode without TensorRT). Default

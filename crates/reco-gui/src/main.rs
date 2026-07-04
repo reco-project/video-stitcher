@@ -103,10 +103,10 @@ struct CalibrationOutput {
 }
 
 /// Result sent from the calibration background thread. The error is
-/// the typed [`reco_calibrate::video::CalibrateVideosError`] now that
-/// it is `Clone + Send + Sync` (plan step 7), so the UI thread can
-/// pattern-match specific failure modes (`Cancelled`, `NoFrames`,
-/// `Io(...)`, etc.) instead of parsing a stringified message.
+/// the typed [`reco_calibrate::video::CalibrateVideosError`] (which
+/// is `Clone + Send + Sync`), so the UI thread can pattern-match
+/// specific failure modes (`Cancelled`, `NoFrames`, `Io(...)`, etc.)
+/// instead of parsing a stringified message.
 type CalibrationResult = Result<CalibrationOutput, reco_calibrate::video::CalibrateVideosError>;
 
 /// Headless dev/test preload hook. When `RECO_AUTOLOAD` is set the GUI loads
@@ -1235,8 +1235,6 @@ fn sync_roi_points(state: &AppState, app: &RecoApp) {
 /// from reco-core / reco-io / reco-calibrate into tracing so user bug
 /// reports arrive as one structured event stream instead of two
 /// loggers writing to the same stderr.
-///
-/// M2 migration (deep-review-2026-04-18 decision 11).
 fn init_tracing() {
     use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 

@@ -80,30 +80,18 @@ pub struct Detection {
     pub height: f32,
 }
 
-// `trait Detector` / `trait GpuDetector` / `trait MetalDetector` were
-// deleted 2026-04-19 (plan-execution §3 M3 step 4 final cleanup).
-// Every reco-detect backend and every session consumer now uses
-// [`UnifiedDetector`] below. `RawFrame`, `ChromaFormat`,
-// `GpuNv12Frame`, and `CameraId` remain as parameter types for
-// [`DetectorFrame`] variants and the unified trait's inputs.
-
 // ---------------------------------------------------------------------------
-// M3 foundation: unified detector error + frame variants.
+// Unified detector error + frame variants.
 // ---------------------------------------------------------------------------
 //
-// Added 2026-04-18 as part of the plan-execution M3 foundation. Not yet
-// used by a trait impl in this commit - the existing per-platform
-// `Detector` / `GpuDetector` / `MetalDetector` traits keep returning
-// `Vec<Detection>`. A later tranche will introduce the unified
-// `UnifiedDetector` trait that returns `Result<Vec<Detection>,
-// DetectorError>` so remote + timeout-able inference stops being a
-// per-backend problem.
+// `RawFrame`, `ChromaFormat`, and `GpuNv12Frame` are the parameter
+// types for [`DetectorFrame`] variants and the unified trait's inputs.
 //
-// The plan-execution doc §2.7 + §8 row "Distributed AI inference"
-// captures why these types exist: remote inference (GoPro / mobile /
-// future gRPC workers) needs an error surface that in-process Vec
-// cannot express. Baking that in now means the trait shape does not
-// need a second breaking change when the first remote backend lands.
+// The trait returns `Result<Vec<Detection>, DetectorError>` rather
+// than a bare `Vec` because remote inference (mobile companions,
+// network workers) needs an error surface that an in-process `Vec`
+// cannot express; carrying it from the start means the first remote
+// backend lands without a breaking trait change.
 
 /// Reasons a detector call can fail.
 ///
@@ -156,16 +144,11 @@ impl std::fmt::Display for DetectorError {
 
 impl std::error::Error for DetectorError {}
 
-/// Unified frame input for the future [`UnifiedDetector`] trait.
+/// Unified frame input for the [`UnifiedDetector`] trait.
 ///
 /// Each variant describes a different memory residency. The CPU
 /// variant is the only one shippable over the network (for future
-/// remote backends); CUDA / Metal variants are local-only.
-///
-/// Not yet wired up in this crate - the current in-tree detectors
-/// still take `RawFrame` / CUDA ptrs / `CVPixelBufferRef` directly.
-/// The M3 StitchCore refactor will collapse the three platform traits
-/// into one that accepts this enum.
+/// remote backends); CUDA / Metal / wgpu variants are local-only.
 #[non_exhaustive]
 pub enum DetectorFrame<'a> {
     /// CPU-resident YUV420P frame. The only variant that can cross
@@ -297,12 +280,11 @@ impl DetectorFrame<'_> {
 ///
 /// # Rationale
 ///
-/// Per the plan-execution-2026-04-18 doc §2.7 and deep-review-2026-
-/// 04-18 Agent 5 finding: today's split into three separate traits
-/// forces consumers (reco-cli, reco-gui, reco-obs) to know which
-/// backend they have and wire it into a per-platform `set_*_detector`
-/// method. A unified trait moves platform dispatch behind the
-/// backend constructor, where it belongs.
+/// A split into per-platform traits would force consumers (reco-cli,
+/// reco-gui, reco-obs) to know which backend they have and wire it
+/// into a per-platform `set_*_detector` method. The unified trait
+/// moves platform dispatch behind the backend constructor, where it
+/// belongs.
 ///
 /// # Async-ready via `Result`
 ///

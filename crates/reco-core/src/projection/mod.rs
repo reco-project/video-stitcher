@@ -153,7 +153,7 @@ impl Projection for LShapeProjection {
 }
 
 // ---------------------------------------------------------------------------
-// Cylindrical single-input projection (plan step 9, second Projection impl).
+// Cylindrical single-input projection.
 // ---------------------------------------------------------------------------
 //
 // Models a single video as a texture painted on the inside of a
@@ -878,7 +878,7 @@ mod tests {
         assert!(out.pitch.is_finite());
     }
 
-    // -- M3 foundation: Projection trait tests --
+    // -- Projection trait tests --
 
     #[test]
     fn l_shape_projection_identifies_itself() {
@@ -913,7 +913,7 @@ mod tests {
         );
     }
 
-    // ---- CylindricalProjection (plan step 9) -------------------------------
+    // ---- CylindricalProjection ---------------------------------------------
 
     #[test]
     fn cylindrical_defaults_match_convention() {

@@ -64,8 +64,8 @@ const NPPI_AXIS_BOTH: i32 = 2;
 /// NPP stream context for `_Ctx` API variants.
 ///
 /// NPP 13 removed the non-Ctx functions; all calls require this struct.
-/// Prior to 2026-04-19 we passed a zeroed context, which uses the
-/// **default (NULL) CUDA stream**. That causes every NPP call to
+/// A zeroed context must not be passed: it selects the
+/// **default (NULL) CUDA stream**, which causes every NPP call to
 /// implicitly serialize with all other CUDA work on every other
 /// stream — specifically the NVDEC decode stream — producing the
 /// "waving" 4K decode throughput pattern (100→60→100→70→100→50%)

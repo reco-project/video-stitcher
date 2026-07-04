@@ -1,12 +1,10 @@
 //! `StitchCore` - push-first canonical entry point for the stitching engine.
 //!
-//! `StitchCore` is the M3 unification of what used to be two parallel
-//! session APIs: `StitchSession` (pull, batch-oriented) and the former
-//! `LiveStitchSession` (push, live-oriented, since deleted). Live sports
-//! production is the primary use case, so the canonical API is push-based:
-//! consumers call `StitchCore::submit_frame_yuv` / `submit_frame_bgra`
-//! whenever a new frame pair is ready, and the core owns the pipeline,
-//! readback, director, detection, coverage, and replay ring buffer.
+//! Live sports production is the primary use case, so the canonical
+//! API is push-based: consumers call `StitchCore::submit_frame_yuv` /
+//! `submit_frame_bgra` whenever a new frame pair is ready, and the
+//! core owns the render substrate, readback, detection, pose
+//! resolution, coverage, and the replay ring buffer.
 //!
 //! Batch file processing layers a thin pull-adapter on top
 //! ([`StitchSession`](crate::session::StitchSession)::run).
@@ -170,11 +168,11 @@ pub struct StitchCore {
     pub(crate) stacked_gpu_recorder: Option<Box<dyn StackedReplayGpuRecorder>>,
 
     /// Whether `resolve_current_pose` clamps output through the
-    /// coverage boundary (FRICTION A13 - "constrained look"). `true`
-    /// by default so the viewport never reveals black panorama
-    /// edges; toggle off when the user wants to explore the raw
-    /// panorama space (e.g. to find the edge of coverage during
-    /// debugging or a cinematographic effect).
+    /// coverage boundary ("constrained look"). `true` by default so
+    /// the viewport never reveals black panorama edges; toggle off
+    /// when the user wants to explore the raw panorama space (e.g. to
+    /// find the edge of coverage during debugging or a cinematographic
+    /// effect).
     ///
     /// The public [`Self::safe_clamp`] method remains available
     /// regardless of this flag - it's the primitive consumers use
@@ -573,7 +571,7 @@ impl StitchCore {
     }
 
     /// Whether the render loop's pose resolution clamps through the
-    /// coverage boundary (FRICTION A13). `true` by default. Consumers
+    /// coverage boundary. `true` by default. Consumers
     /// expose this as a UI toggle ("Constrained look") so users can
     /// choose between "never show black edges" (on) and "unrestricted
     /// panning" (off).
@@ -689,9 +687,10 @@ impl StitchCore {
 
     /// Shared access to the underlying pipeline.
     ///
-    /// GPU-executor reach-through (dies with the pipeline demotion in
-    /// 9B). Panics when the engine runs the CPU executor - CPU engines
-    /// have no pipeline; use the engine's own setters and submit paths.
+    /// GPU-executor reach-through, kept only until the platform
+    /// residency machinery moves onto the executor. Panics when the
+    /// engine runs the CPU executor - CPU engines have no pipeline;
+    /// use the engine's own setters and submit paths.
     #[cfg(feature = "gpu")]
     pub fn pipeline(&self) -> &StitchPipeline {
         &self
@@ -871,10 +870,10 @@ mod tests {
         );
     }
 
-    /// The keystone-B contract: the SAME engine constructs over the
-    /// CPU executor - pure-logic surfaces (coverage, clamp, live
-    /// setters, introspection) work identically, and the GPU-only
-    /// streaming paths return the typed error instead of panicking.
+    /// The SAME engine constructs over the CPU executor - pure-logic
+    /// surfaces (coverage, clamp, live setters, introspection) work
+    /// identically, and the GPU-only streaming paths return the typed
+    /// error instead of panicking.
     #[test]
     fn engine_over_cpu_executor_pure_logic_works() {
         use crate::core::StitchCore;
@@ -1053,9 +1052,9 @@ mod tests {
 
     /// Resize is a delivery-machinery discontinuity: the streaming
     /// readback ring must follow the new size, so a submit after a
-    /// resize yields frames at the resized dimensions (the review of
-    /// the executor spine caught the ring staying at construction
-    /// size, which fails wgpu copy validation on the next submit).
+    /// resize yields frames at the resized dimensions. A ring left at
+    /// the construction size fails wgpu copy validation on the next
+    /// submit.
     #[test]
     #[cfg(feature = "gpu")]
     fn resize_then_submit_yields_resized_frames() {

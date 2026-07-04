@@ -37,8 +37,8 @@ pub struct CpuYoloDetector {
     confidence_threshold: f32,
     labels: Vec<String>,
     /// Pre-allocated preprocess scratch for `3 * input_size * input_size`
-    /// f32 (4.9 MB at sz=640). Fresh allocation per frame was one of the
-    /// M7 plan §M7.5 hotspots; this buffer is filled in place and handed
+    /// f32 (4.9 MB at sz=640). A fresh allocation per frame is a
+    /// measurable hotspot; this buffer is filled in place and handed
     /// to `TensorRef::from_array_view` without moving ownership.
     rgb_chw_buf: Vec<f32>,
 }
@@ -239,7 +239,7 @@ impl CpuYoloDetector {
 
         // Borrow the output tensor's backing buffer instead of cloning
         // it into a Vec. `outputs` owns it; postprocess finishes before
-        // the drop below. (plan M7 item 5)
+        // the drop below.
         // Stock YOLO exports one [1,N,6] end-to-end-NMS output; the
         // external ball detector emits multiple (boxes + seg heads) with a
         // raw pre-NMS, cxcywh, conf-in-col-5 layout. Pick the decoder by
@@ -408,7 +408,7 @@ pub(crate) fn parse_onnx_names(session: &Session) -> Option<Vec<String>> {
 
 /// Maximum class count accepted when building a dense label vector.
 ///
-/// N-C1 (deep-review-2026-04-18): the ONNX `names` metadata is
+/// The ONNX `names` metadata is
 /// attacker-controlled (user-supplied model file). A crafted entry
 /// like `{9999999999: 'ball'}` would drive a multi-GB
 /// `Vec::with_capacity` and a matching loop. Cap the dense index at
@@ -418,8 +418,8 @@ pub(crate) fn parse_onnx_names(session: &Session) -> Option<Vec<String>> {
 const MAX_CLASS_COUNT: usize = 10_000;
 
 /// Fuzz entry point: drives [`parse_names_dict_string`] without
-/// requiring a real ONNX session. See `fuzz/fuzz_targets/onnx_names.rs`
-/// and the N-C1 OOM cap fix. `__` prefix + `doc(hidden)` keeps this
+/// requiring a real ONNX session. See `fuzz/fuzz_targets/onnx_names.rs`.
+/// `__` prefix + `doc(hidden)` keeps this
 /// out of the normal public API.
 #[doc(hidden)]
 pub fn __fuzz_parse_names_dict_string(names_str: &str) -> Option<Vec<String>> {
@@ -495,7 +495,7 @@ mod tests {
 
     #[test]
     fn parse_names_dict_string_rejects_oom_index() {
-        // N-C1 regression: attacker-crafted ONNX metadata with an
+        // Attacker-crafted ONNX metadata with an
         // enormous class index would drive Vec::with_capacity(idx+1)
         // into a multi-GB allocation and a billion-iteration loop.
         // Guard rejects the dense build instead of allocating.

@@ -84,7 +84,7 @@ pub(crate) mod async_encode;
 #[cfg(feature = "gpu")]
 pub mod bayer;
 pub mod calibration;
-/// M3 push-first `StitchCore` shell — the canonical entry point.
+/// Push-first `StitchCore` engine - the canonical entry point.
 /// See [`core::StitchCore`] for details. Engine orchestration is
 /// wgpu-free; only its GPU streaming surface is gated on `gpu`.
 pub mod core;

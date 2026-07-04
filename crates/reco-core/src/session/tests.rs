@@ -495,7 +495,7 @@ fn compute_frame_limit_negative_fps_uses_fallback() {
     assert_eq!(result, 300);
 }
 
-/// The 9B-i property guard, in two halves. (1) Entry-point parity:
+/// The one-AI-stack guard, in two halves. (1) Entry-point parity:
 /// the same scripted detector + tracker + panner, fed the same frames
 /// through `StitchCore::submit_frame_yuv` and `StitchSession::run`,
 /// must see identical inputs in identical order - frame indices,

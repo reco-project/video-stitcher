@@ -5,8 +5,8 @@
 //! engine ([`StitchCore::run_detection_frames`]), which owns the
 //! detector, the schedule, panorama mapping, and the tracker/panner
 //! chain. The session-side job is purely "wrap residency handles into
-//! frames"; that machinery relocates onto the GPU executor with the
-//! 9B-ii residency migration.
+//! frames"; these wrappers live beside the platform residency state
+//! they read and move wherever that state moves.
 
 use super::StitchSession;
 use crate::core::StitchCore;

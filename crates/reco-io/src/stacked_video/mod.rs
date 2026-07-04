@@ -1,4 +1,4 @@
-//! Stacked-video packing and unpacking (plan M6.5 items 1 + 2).
+//! Stacked-video packing and unpacking.
 //!
 //! Maps N logical YUV420P camera frames into a single grid-layout
 //! frame (and back). Used by:
@@ -55,8 +55,8 @@
 //!   blits N source textures into one render-target atlas. Textures
 //!   are already on the GPU from the stitch pipeline's readback
 //!   stage, so the CPU roundtrip disappears.
-//! - The atlas texture feeds straight into the GPU-resident encoder
-//!   (future M7 NVENC path / VideoToolbox path), never touching
+//! - The atlas texture feeds straight into a GPU-resident encoder
+//!   (future NVENC / VideoToolbox path), never touching
 //!   the CPU side.
 //! - Conversely, the unpack direction is a single shader that
 //!   samples the atlas into N separate destination textures, fed

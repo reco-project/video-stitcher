@@ -61,7 +61,7 @@ pub struct CameraRunConfig<'a> {
     /// Disable coverage-boundary clamp on the director output.
     /// Useful in sweep mode to cover the full panorama width.
     pub unconstrained: bool,
-    /// Optional path for M7 stacked-replay recording. Same feature
+    /// Optional path for stacked-replay recording. Same feature
     /// as `StitchJob::with_replay_recording`. Requires the `replay`
     /// feature flag on reco-cli.
     pub replay_path: Option<&'a str>,
@@ -166,9 +166,8 @@ pub fn run_camera(
     };
     let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 
-    // Constrained-look clamp (FRICTION A13). Default on; `--unconstrained`
-    // flips it off so sweep / debug views can pan past the coverage
-    // boundary.
+    // Constrained-look clamp. Default on; `--unconstrained` flips it
+    // off so sweep / debug views can pan past the coverage boundary.
     if unconstrained {
         session.core_mut().set_constrained_look(false);
         log::info!("constrained_look: disabled (unconstrained viewport)");
@@ -264,7 +263,7 @@ pub fn run_camera(
         height
     );
 
-    // M7 replay recording on live cams (closes #273). Live capture
+    // Replay recording on live cams. Live capture
     // runs through `session.process_frame` → CPU-upload render
     // path; the GPU pack tap in `process_frame` reads from the
     // renderer's internal plane textures (populated by

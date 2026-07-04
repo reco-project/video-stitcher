@@ -23,7 +23,6 @@
 //!
 //! - OpenGoPro repo: `../external/OpenGoPro`
 //! - Official docs: <https://gopro.github.io/OpenGoPro/>
-//! - Vault design note: `architecture/gopro-transport-2026-04-23.md`
 
 pub mod constants;
 pub mod error;

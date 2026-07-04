@@ -65,7 +65,7 @@ pub struct StitchJob {
     // complex composition but Vec<FnOnce> is sufficient for now.
     session_hooks: Vec<SessionCallback>,
 
-    // Replay recording (M6.5 stacked-video). Opt-in, gated by the
+    // Replay recording (stacked-video). Opt-in, gated by the
     // `stacked-output` feature so consumers not building it pay
     // nothing.
     #[cfg(feature = "stacked-output")]
@@ -97,9 +97,8 @@ struct ReplayRecordingConfig {
     /// `None`, replay tiles match the source tile dims. When
     /// `Some`, the GPU pack shader downscales each tile via the
     /// sampler's linear filter (free on the GPU path) and the CPU
-    /// decorator rejects the config with a warn (CPU path has no
-    /// free downscale today; use the GPU path for A19). FRICTION
-    /// reco-obs A19.
+    /// decorator rejects the config with a warn (the CPU path has no
+    /// free downscale).
     scale: Option<(u32, u32)>,
 }
 
@@ -374,7 +373,7 @@ impl StitchJob {
         self
     }
 
-    // ── Replay recording (M6.5 stacked-video) ──
+    // ── Replay recording (stacked-video) ──
 
     /// Record pre-stitch source frames to a stacked-video file at
     /// `path` while the job runs. The file is a grid-layout video
@@ -430,7 +429,7 @@ impl StitchJob {
         self
     }
 
-    /// Set the replay tile downscale (FRICTION reco-obs A19). Must
+    /// Set the replay tile downscale. Must
     /// be called AFTER [`Self::with_replay_recording`] — no-op with
     /// a warn if replay recording wasn't enabled first.
     ///

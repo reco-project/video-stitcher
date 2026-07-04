@@ -1,7 +1,7 @@
 //! Unified pose control: mouse / drag / wheel / keyboard → yaw / pitch / FOV.
 //!
-//! Solves the three divergent implementations the 2026-04-18 deep
-//! review found across consumers (reco-cli/preview, reco-gui, reco-obs):
+//! Replaces three divergent per-consumer implementations
+//! (reco-cli/preview, reco-gui, reco-obs):
 //! each had its own units (radians vs degrees), FOV clamp
 //! (20-150deg in two of them, no clamp at all in reco-obs), drag
 //! sensitivity (hand-tuned differently), and smoothing factor
@@ -37,7 +37,7 @@
 //!
 //! # Units
 //!
-//! Per plan-execution §3 M4: **radians internal** for yaw/pitch;
+//! **Radians internal** for yaw/pitch;
 //! **degrees** for FOV (matches the rest of the reco-core pipeline
 //! and the viewport config). Conversion helpers live on
 //! `apply_drag` / `apply_wheel` where the UI layer hands over pixel or

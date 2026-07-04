@@ -9,9 +9,6 @@
 //!   reference frame.
 //! - `resolve_render_pose` (crate-internal): coverage-clamp + orient,
 //!   the combined authority for the auto/AI path.
-//!
-//! Derivation in vault at
-//! `architecture/rig-correction-v2-derivation-2026-04-23.md`.
 
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 

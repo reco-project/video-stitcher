@@ -39,8 +39,6 @@ fn init_profiling() -> tracing_chrome::FlushGuard {
 /// reco-calibrate into the tracing pipeline so a single structured
 /// source of truth carries every event. Reads `RUST_LOG` for level
 /// filtering; defaults to `info` if unset.
-///
-/// M2 migration: replaces the previous `env_logger::init()`.
 #[cfg(not(feature = "profiling"))]
 fn init_tracing() {
     use tracing_subscriber::{EnvFilter, fmt, prelude::*};
@@ -76,9 +74,6 @@ fn quiet_libva_info_by_default() {
 /// hook runs. When a user reports a bug post-deployment with a log
 /// file, the panic context is immediately searchable alongside regular
 /// log lines.
-///
-/// M2 addition: required for the post-deployment diagnostic story the
-/// user flagged during the plan iteration on 2026-04-18.
 fn install_panic_hook() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -439,15 +434,15 @@ enum Commands {
         #[arg(long, default_value = "field")]
         tracking: String,
 
-        /// Disable the constrained-look coverage clamp
-        /// (FRICTION A13). When off, the viewport can pan into
-        /// black panorama edges — useful for sweeping the full
-        /// coverage or debugging the coverage boundary itself.
+        /// Disable the constrained-look coverage clamp. When off,
+        /// the viewport can pan into black panorama edges — useful
+        /// for sweeping the full coverage or debugging the coverage
+        /// boundary itself.
         #[arg(long, default_value_t = false)]
         unconstrained: bool,
 
         /// Record pre-stitch source frames to this path as a
-        /// stacked-video file. Same M7 replay feature as
+        /// stacked-video file. Same replay feature as
         /// `stitch --replay`. Requires `--features replay`.
         #[arg(long)]
         replay: Option<String>,

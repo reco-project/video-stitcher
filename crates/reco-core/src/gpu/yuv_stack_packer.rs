@@ -1,11 +1,11 @@
-//! GPU YUV420P stacked-video packer (M7 pivot item).
+//! GPU YUV420P stacked-video packer.
 //!
 //! Produces a grid-packed YUV420P atlas from N source tiles that are
 //! already GPU-resident, skipping the CPU memcpy that
 //! `reco_io::stacked_video::pack_yuv420p` would otherwise do on
 //! inputs that flow CPU-side (~8 ms/frame at 4K). Optional linear
-//! downscale is free because the sampler handles it — so this also
-//! subsumes FRICTION reco-obs A19 (replay resolution dropdown).
+//! downscale is free because the sampler handles it, so replay tiles
+//! can be recorded at a reduced resolution with no extra pass.
 //!
 //! # When to use this vs the CPU pack
 //!
@@ -764,8 +764,8 @@ impl YuvStackPacker {
     /// slot whose `map_async` was already issued, the next frame
     /// can't re-map it without tripping wgpu's
     /// "map called on in-flight buffer" panic, and the atlas is
-    /// lost (observed 2026-04-19: 0 atlases recorded across 60
-    /// frames with pure non-blocking poll).
+    /// lost (a pure non-blocking poll records zero atlases once
+    /// the ring saturates).
     pub fn poll_ready(&mut self, gpu: &GpuContext) -> Option<StackedAtlas> {
         // Read slot lags the write slot by 2 (current_slot already
         // advanced post-copy). Equivalent to `(current_slot + 1) % 3`.

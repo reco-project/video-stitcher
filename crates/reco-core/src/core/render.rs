@@ -409,7 +409,7 @@ impl super::StitchCore {
     ///
     /// The full pose is the render parameter: when `pose.fov_degrees` is
     /// set it applies for this frame, so an out-of-tick FOV clamp can
-    /// never leave the view rendering a stale cached value (FRICTION N19).
+    /// never leave the view rendering a stale cached value.
     #[cfg(feature = "gpu")]
     pub fn render_to_view(
         &mut self,
@@ -492,12 +492,10 @@ impl super::StitchCore {
     // (NV12 conversion for encoding, compositor texture import) can
     // drive the core without paying for readback.
     //
-    // The M3 `StitchSession::run` pull-adapter (plan step 2) uses these
-    // to route its encode loop through `StitchCore`: session owns its
-    // own director + detection pipeline during the transition and
-    // passes the resolved pose explicitly here. Once the session
-    // migration completes, these remain as the "render primitives" for
-    // multi-output consumers (record + stream, zero-copy compositor).
+    // The `StitchSession::run` pull-adapter routes its encode loop
+    // through these, passing the pose it resolved through the engine's
+    // dispatch. They are also the render primitives for multi-output
+    // consumers (record + stream, zero-copy compositor).
     // -----------------------------------------------------------------
 
     /// Render a stereo YUV420P frame at an explicit pose.

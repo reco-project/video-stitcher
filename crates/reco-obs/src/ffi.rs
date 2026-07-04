@@ -4,8 +4,8 @@
 //! from `bindgen` running against the installed libobs headers at build
 //! time (see `build.rs`). This replaces ~600 lines of hand-written,
 //! drift-prone `#[repr(C)]` definitions that previously lived here and
-//! were the root cause of the T-2 / C2 bug in the 2026-04-18 deep
-//! review: `obs_source_frame::refs` was declared `AtomicI32` (4 bytes)
+//! drifted from the real headers - the worst instance:
+//! `obs_source_frame::refs` was declared `AtomicI32` (4 bytes)
 //! but libobs defines it as `volatile long` (8 bytes on LP64 Linux),
 //! leaving `prev_frame` at the wrong offset. bindgen now pulls
 //! `refs: c_long` straight from the header so every struct in this
@@ -47,7 +47,7 @@ unsafe impl Send for obs_source_info {}
 unsafe impl Sync for obs_source_info {}
 
 // ---------------------------------------------------------------------------
-// C2 regression guard (deep-review-2026-04-18 T-2)
+// Layout regression guard
 // ---------------------------------------------------------------------------
 
 // These compile-time assertions document the specific bug class that

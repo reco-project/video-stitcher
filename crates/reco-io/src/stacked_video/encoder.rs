@@ -8,8 +8,7 @@
 //!
 //! Consumers can override any of these via the [`StackedEncoderConfig`]
 //! builder. Hardware-encoded stacked output would need an NV12
-//! pack variant; not implemented in this cut (see the vault note
-//! `architecture/stacked-video-replay-2026-04-19.md`).
+//! pack variant; not implemented.
 use super::{GridLayout, StackError, pack_yuv420p};
 use crate::ffmpeg::encoder::{
     Container, EncodeError, EncoderConfig, Quality, VideoCodec, VideoEncoder,
@@ -176,7 +175,7 @@ impl StackedEncoder {
     }
 
     /// Write pre-packed YUV420P atlas bytes directly, bypassing
-    /// the per-tile pack step. Used by the M7 GPU-pack path
+    /// the per-tile pack step. Used by the GPU-pack path
     /// where the shader produces the final atlas and the
     /// encoder just needs to receive the bytes.
     ///

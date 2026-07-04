@@ -88,7 +88,7 @@ pub enum CalibrateVideosError {
     Cancelled,
 }
 
-// Compile-time assertion (plan step 7 tail): `CalibrateVideosError`
+// Compile-time assertion: `CalibrateVideosError`
 // and its transitive inner types are `Clone + Send + Sync`. Regresses
 // if a future variant introduces a non-Clone `#[from]` wrap.
 const _: fn() = || {
@@ -108,7 +108,7 @@ fn check_interrupted(interrupted: &AtomicBool) -> Result<(), CalibrateVideosErro
 
 /// Try audio cross-correlation sync, logging each failure reason.
 ///
-/// N-1 (deep-review-2026-04-18): this used to swallow three distinct
+/// This used to swallow three distinct
 /// error paths (extract_audio_pcm for left, for right, and
 /// pipeline.audio_sync itself) via `let (Ok, Ok) = ...` +
 /// `let _ = audio_sync`. A silent fall-through to sync_offset=0 made
@@ -257,8 +257,8 @@ pub fn calibrate_videos(
         log::info!("sync: manual override {offset} frames");
         pipeline.set_sync_offset(offset);
     } else {
-        // N-1 (deep-review-2026-04-18): the fallback used to drop every
-        // error silently and leave sync_offset at 0, producing visibly
+        // The fallback must not drop
+        // errors silently and leave sync_offset at 0 - that produces visibly
         // blurry calibration with no explanation in the logs. Surface
         // each failure so post-deployment diagnostic bundles carry the
         // reason.

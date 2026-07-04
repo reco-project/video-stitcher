@@ -43,7 +43,7 @@ use serde::{Serialize, de::DeserializeOwned};
 
 /// Errors from the settings module. `Clone + Send + Sync` so
 /// consumers posting results to worker-thread channels carry the
-/// typed error instead of stringifying (matches plan step 7).
+/// typed error instead of stringifying.
 /// `std::io::Error` and `serde_json::Error` are not `Clone`, so
 /// both are flattened to `String` at the `From` boundary with the
 /// original error's `kind()` / `Display` preserved in the message.

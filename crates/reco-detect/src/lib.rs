@@ -22,7 +22,7 @@ pub mod probe;
 // used to live in reco-core but are detection-only concerns (YOLO
 // input preprocess + CoreML inference wrap); hosting them here makes
 // reco-core's responsibilities narrower and removes an unnecessary
-// split. See plan M5 revised analysis (commit 42d54af message).
+// split.
 //
 // Types used by these that remain in reco-core:
 //   - `reco_core::interop::cuda::*` — CUDA FFI + context mgmt; shared
@@ -72,7 +72,7 @@ pub use probe::{AiProbeResult, probe_execution_providers};
 ///
 /// `__` prefix + `doc(hidden)` keeps this out of the public API while
 /// letting the `reco-fuzz` subcrate drive the parser directly. See
-/// `fuzz/fuzz_targets/onnx_names.rs` and the N-C1 OOM cap fix.
+/// `fuzz/fuzz_targets/onnx_names.rs`.
 #[cfg(feature = "ort")]
 #[doc(hidden)]
 pub fn __fuzz_parse_names_dict_string(names: &str) -> Option<Vec<String>> {

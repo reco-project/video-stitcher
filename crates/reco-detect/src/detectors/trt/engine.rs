@@ -178,7 +178,7 @@ impl TrtEngine {
             let raw_dtype = unsafe { sys::trt_get_binding_data_type(self.engine, i) };
             let data_type = TrtDataType::from_raw(raw_dtype)?;
 
-            // N-C2 (deep-review-2026-04-18): TRT binding dims come from
+            // TRT binding dims come from
             // a loaded engine file; a crafted or corrupt engine could
             // carry dims whose `product()` overflows usize. Silent wrap
             // would yield a tiny `byte_size`, then a too-small GPU

@@ -416,8 +416,7 @@ impl App {
 
     /// Step PoseControl one tick + optional coverage clamp + push
     /// the resolved FOV onto the pipeline. Returns `true` if the
-    /// pose moved (needs redraw). Replaces the hand-rolled
-    /// target/current lerp 2026-04-20.
+    /// pose moved (needs redraw).
     fn smooth_camera(&mut self) -> bool {
         const EPSILON: f32 = 0.0001;
         const FOV_EPSILON: f32 = 0.01;

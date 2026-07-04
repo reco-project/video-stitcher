@@ -15,7 +15,7 @@
 //!   post-production.
 //! - `calibrate_from_live` (stream-based) when you want to
 //!   calibrate **in the middle of a live session** — the OBS
-//!   "Calibrate from current sources" workflow (FRICTION A14),
+//!   "Calibrate from current sources" workflow,
 //!   Jetson on-device calibration with the cameras already
 //!   streaming, mobile "re-calibrate" button.
 //! - `calibrate` / `calibrate_with` directly when you have your

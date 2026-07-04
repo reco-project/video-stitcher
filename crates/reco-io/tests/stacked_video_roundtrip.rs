@@ -1,7 +1,7 @@
 //! Integration tests for the stacked-video encoder / source.
 //!
-//! Covers M6.5 item 3's load-bearing requirement: a reader opened
-//! on the same path while the writer is still writing must see
+//! Covers replay-during-recording's load-bearing requirement: a reader
+//! opened on the same path while the writer is still writing must see
 //! already-flushed fragments. Enabled only when the `stacked-output`
 //! feature is on; run with:
 //!
@@ -86,8 +86,7 @@ fn encoder_config(container: Container) -> StackedEncoderConfig {
 /// (write_trailer returns AVERROR -162 even with the canonical
 /// movflags recipe that ffmpeg CLI accepts). Kept `#[ignore]`d as
 /// the regression fixture for the eventual fix; see the
-/// `Container` docstring and the architecture note
-/// `stacked-video-replay-2026-04-19.md` for context.
+/// `Container` docstring for context.
 #[test]
 #[ignore]
 fn roundtrip_fmp4_recovers_tiles() {
@@ -160,7 +159,8 @@ fn roundtrip_matroska_recovers_tiles() {
 /// `tune=zerolatency` (our Quality::Fast default) uses short GOPs,
 /// so we expect the first fragment to appear within a handful of
 /// frames.
-/// Matroska write-while-read: the load-bearing M6.5-item-3 guarantee.
+/// Matroska write-while-read: the guarantee replay-during-recording
+/// stands on.
 /// A reader opened on the same file while the writer is still pushing
 /// frames must see already-flushed clusters. Matroska flushes clusters
 /// periodically (roughly every keyframe with a short GOP), and the
@@ -225,11 +225,11 @@ fn matroska_reader_sees_partial_writes() {
     assert_eq!(total, N_FRAMES, "final file should hold all pushed frames");
 }
 
-/// Push-API recorder (FRICTION A18 close): verifies
+/// Push-API recorder: verifies
 /// `SessionStackedRecorder` accepts `YuvPlanes<'_>` feeds and
 /// produces a replayable stacked-video file.
 ///
-/// This is the key correctness test for the M6.5 item 3 push side:
+/// This is the key correctness test for the push-side recorder:
 /// consumers call `record_yuv` per submit, `finish` at session end,
 /// and the output file must be openable by `StackedSource` with all
 /// pushed frames recoverable.

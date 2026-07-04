@@ -10,7 +10,7 @@
 //!
 //! # Why this crate
 //!
-//! The deep-review 2026-04-18 Agent 8 finding: consumer input paths were
+//! Consumer input paths were once
 //! duplicated three ways across reco-cli/preview, reco-gui, and reco-obs
 //! (different key mappings, different pan sensitivity, different units).
 //! [`PoseControl`](pose_control::PoseControl) fixes the state-machine
