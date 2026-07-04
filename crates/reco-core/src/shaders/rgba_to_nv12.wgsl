@@ -17,6 +17,10 @@
 // Color space: BT.709 sRGB → limited-range YCbCr
 // This is the inverse of the sample_yuv() function in fisheye.wgsl.
 // Input texture is Rgba8Unorm (sRGB values stored as-is, no hardware decode).
+//
+// SYNC_WITH: src/render/nv12_cpu.rs - the CPU delivery path mirrors the
+// coefficients, chroma averaging order, and rounding; an oracle test
+// pins the two to 1 LSB agreement.
 
 @group(0) @binding(0) var input: texture_2d<f32>;
 @group(0) @binding(1) var<storage, read_write> output: array<u32>;

@@ -5,6 +5,7 @@
 //! `scene` are pure value/math modules the CPU stitch path shares, so
 //! they stay available without the `gpu` feature.
 
+pub mod nv12_cpu;
 #[cfg(feature = "gpu")]
 pub mod pipeline;
 pub mod planes;

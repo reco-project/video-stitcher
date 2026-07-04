@@ -862,10 +862,10 @@ impl GpuExecutor {
     // -----------------------------------------------------------------
 
     /// NV12 output dimensions: the viewport rounded down to NV12-safe
-    /// values (width to a multiple of 4, height to even).
+    /// values (shared rounding rule with the CPU delivery path).
     pub(crate) fn nv12_dims(&self) -> (u32, u32) {
         let vp = self.pipeline.viewport();
-        (vp.width & !3, vp.height & !1)
+        crate::render::nv12_cpu::nv12_dims(vp.width, vp.height)
     }
 
     /// Submit `render_commands` and convert the render target to NV12.
