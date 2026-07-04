@@ -1,8 +1,11 @@
-//! Sink attachment and delivery fan-out for [`StitchSession`](super::StitchSession).
+//! Sink attachment and delivery fan-out for
+//! [`StitchSession`](crate::session::StitchSession).
 //!
-//! The session owns a list of attached [`OutputSink`]s and fans every
-//! rendered frame out to all of them. Attach-time [`SinkOptions`]
-//! decide two things the sink itself cannot know:
+//! The session owns a list of attached
+//! [`OutputSink`](crate::sink::OutputSink)s and fans every rendered
+//! frame out to all of them. Attach-time
+//! [`SinkOptions`](crate::session::SinkOptions) decide two things the
+//! sink itself cannot know:
 //!
 //! - **Delivery**: lossless sinks (encoders) run on a dedicated
 //!   thread with a bounded queue that blocks the render loop when

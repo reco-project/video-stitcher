@@ -1,7 +1,7 @@
 //! Per-frame render and encode methods for [`StitchSession`].
 //!
 //! These methods are called once per frame to render a stereo pair,
-//! convert to NV12, and fan out to attached encoders.
+//! convert to NV12, and fan out to attached sinks.
 
 use super::StitchSession;
 use crate::geometry::ViewportPosition;
@@ -268,7 +268,7 @@ impl StitchSession {
         Ok(())
     }
 
-    /// Render a single CPU-resident stereo frame and submit it to the encoder.
+    /// Render a single CPU-resident stereo frame and deliver it to the sinks.
     ///
     /// Handles YUV420P and NV12 input formats. For GPU-resident frames
     /// (zero-copy path), use [`submit_render_output`](Self::submit_render_output)
@@ -304,9 +304,9 @@ impl StitchSession {
     /// Process a frame from GPU-resident RGBA textures (e.g. Bayer demosaic output).
     ///
     /// Copies the RGBA textures into the stitch pipeline's input planes,
-    /// renders the stitch, converts to NV12, and submits to encoders.
+    /// renders the stitch, converts to NV12, and delivers to the sinks.
     /// This is the Bayer/GPU-RGBA equivalent of `process_frame` for
-    /// YUV/NV12 paths - session features (encoder fan-out, replay recording,
+    /// YUV/NV12 paths - session features (sink fan-out, replay recording,
     /// frame counting) work automatically.
     pub fn process_frame_gpu_rgba(
         &mut self,
@@ -326,7 +326,7 @@ impl StitchSession {
     /// Process a frame from imported NV12 textures (DMA-buf zero-copy path).
     ///
     /// Takes Y and UV textures for both cameras (from DMA-buf Vulkan import),
-    /// renders the stitch, converts to NV12, and submits to encoders.
+    /// renders the stitch, converts to NV12, and delivers to the sinks.
     /// Uses the imported textures directly for replay packing (not the
     /// renderer's internal planes, which aren't written by this path).
     pub fn process_frame_imported_nv12(

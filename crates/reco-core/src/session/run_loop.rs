@@ -91,7 +91,7 @@ impl StitchSession {
         log::info!("Session configured for GPU-resident source");
     }
 
-    /// Batch-process frames from a source into the encoder.
+    /// Batch-process frames from a source into the attached sinks.
     ///
     /// Runs the full decode-render-encode loop until the source is
     /// exhausted, the frame limit is reached, or the interrupt flag

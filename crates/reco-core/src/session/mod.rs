@@ -1,19 +1,22 @@
 //! High-level stitching session.
 //!
-//! [`StitchSession`] bundles the GPU pipeline with the NV12 converter,
-//! providing a single entry point for rendering and encoding stitched
-//! panoramic frames. This keeps encode orchestration inside `reco-core`
-//! so that every consumer (CLI, GUI, OBS plugin, cloud worker) gets the
-//! same optimized frame loop without duplicating pipeline plumbing.
+//! [`StitchSession`] is the pull-loop orchestrator over the engine:
+//! it renders stitched panoramic frames and fans them out to the
+//! attached [`OutputSink`](crate::sink::OutputSink)s (encoders,
+//! snapshots, streams). This keeps delivery orchestration inside
+//! `reco-core` so that every consumer (CLI, GUI, OBS plugin, cloud
+//! worker) gets the same optimized frame loop without duplicating
+//! pipeline plumbing.
 //!
 //! ## Two-level API
 //!
-//! - [`StitchSession::process_frame`] - render one frame and submit it
-//!   to an encoder. Use this for interactive/GUI applications or when
-//!   the caller controls the frame loop (e.g. zero-copy GPU decode).
+//! - [`StitchSession::process_frame`] - render one frame and deliver
+//!   it to the sinks. Use this for interactive/GUI applications or
+//!   when the caller controls the frame loop (e.g. zero-copy GPU
+//!   decode).
 //!
 //! - [`StitchSession::run`] - batch-process an entire `FrameSource`
-//!   into an encoder, with optional progress reporting and interrupt
+//!   into the sinks, with optional progress reporting and interrupt
 //!   support. Use this for CLI batch encoding.
 
 /// Sink attachment options and delivery fan-out.
