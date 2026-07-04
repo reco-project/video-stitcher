@@ -51,6 +51,12 @@ pub(crate) struct Residency {
         crate::nvbuf_transform::NvBufDetectionSurface,
         crate::nvbuf_transform::NvBufDetectionSurface,
     )>,
+    /// D3D11VA staging pool: SHARED_NTHANDLE textures that bridge
+    /// FFmpeg's decode device to wgpu's DX12 device. Doubles as the
+    /// lookahead buffer on Windows - slots are sized for peak
+    /// occupancy instead of allocating a separate `VramPool`.
+    #[cfg(target_os = "windows")]
+    pub(crate) d3d11_staging: Option<crate::interop::d3d11::D3d11StagingPool>,
     /// VRAM pool for GPU-resident lookahead buffering.
     pub(crate) pool: Option<VramPool>,
 }

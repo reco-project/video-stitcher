@@ -606,27 +606,6 @@ impl super::StitchCore {
             .render_imported_textures(left_y, left_uv, right_y, right_uv, yaw, pitch)
     }
 
-    /// Render from pre-built GPU texture views at an explicit pose.
-    ///
-    /// Used by the D3D11VA zero-copy path where NV12 plane views are
-    /// created with `TextureAspect::Plane0` / `Plane1`.
-    #[cfg(feature = "gpu")]
-    pub fn render_imported_views_at_pose(
-        &mut self,
-        left_y: &wgpu::TextureView,
-        left_uv: &wgpu::TextureView,
-        right_y: &wgpu::TextureView,
-        right_uv: &wgpu::TextureView,
-        yaw: f32,
-        pitch: f32,
-    ) -> wgpu::CommandBuffer {
-        self.executor
-            .gpu_mut()
-            .expect("zero-copy render paths require the GPU executor")
-            .pipeline
-            .render_imported_views(left_y, left_uv, right_y, right_uv, yaw, pitch)
-    }
-
     /// Render from pre-configured GPU bind groups and decode slots at
     /// an explicit pose (Linux zero-copy path).
     ///

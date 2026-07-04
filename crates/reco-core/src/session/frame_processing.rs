@@ -141,18 +141,17 @@ impl StitchSession {
                 }
                 #[cfg(target_os = "windows")]
                 StereoFrame::D3d11Resident { .. } => {
-                    if self.d3d11_staging_pool.is_some() {
-                        let left_slot = self.frame_count as usize % 2;
-                        let right_slot = left_slot + 2;
+                    let left_slot = self.frame_count as usize % 2;
+                    let right_slot = left_slot + 2;
+                    if let Some(views) = self.gpu_exec_ref().d3d11_views(left_slot, right_slot) {
                         if due {
                             crate::profile_scope!("detect_wgpu_nv12");
                             let (w, h) = self.core.source_info();
-                            let pool = self.d3d11_staging_pool.as_ref().unwrap();
                             let frames = super::detection_dispatch::wgpu_nv12_frames(
-                                pool.y_view(left_slot),
-                                pool.uv_view(left_slot),
-                                pool.y_view(right_slot),
-                                pool.uv_view(right_slot),
+                                &views[0],
+                                &views[1],
+                                &views[2],
+                                &views[3],
                                 w,
                                 h,
                                 self.left_rotation,
@@ -484,10 +483,9 @@ impl StitchSession {
         self.process_frame_imported_nv12(&ly, &lu, &ry, &ru, yaw, pitch)
     }
 
-    /// Stage D3D11VA decoded frames into the shared staging pool.
+    /// Stage D3D11VA decoded frames into the executor's staging pool
+    /// (immediate path, double-buffered slots).
     ///
-    /// Lazily creates the pool on first call. Performs `CopySubresourceRegion`
-    /// from FFmpeg's decode textures to our SHARED_NTHANDLE staging textures.
     /// Returns `true` on the first call (pool just created) to signal
     /// that this frame should be skipped (cross-API warmup).
     #[cfg(target_os = "windows")]
@@ -498,55 +496,25 @@ impl StitchSession {
         right_texture: *mut std::ffi::c_void,
         right_slice: usize,
     ) -> Result<bool, SessionError> {
-        let first_frame = self.d3d11_staging_pool.is_none();
-        if first_frame {
-            let (w, h) = self.core.source_info();
-            let needs_cuda = self.core.detector_needs_cuda_frames();
-            // For lookahead, size slots to the max frames simultaneously
-            // in flight (decoded but not yet rendered), x2 for left+right.
-            // Peak occupancy is n + post_smooth_half + 1 (buffer hits n+1
-            // right after a produce while the pose queue holds
-            // post_smooth_half). Slots are assigned by produce_index modulo
-            // n_slots with no occupancy check, so the pool must exceed peak
-            // occupancy or a producer would overwrite a frame still queued
-            // for render. +4 keeps a few frames of slack above the exact
-            // fit (the Linux VramPool uses ref-counted acquire/release; this
-            // path relies on the sizing margin instead). Without lookahead,
-            // 4 slots (double-buffered stereo) suffice.
-            let n_slots = if self.lookahead_frames > 0 {
-                let post_smooth_half = (self.lookahead_frames / 2).max(1);
-                (self.lookahead_frames + post_smooth_half + 4) * 2
-            } else {
-                4
-            };
-            match crate::interop::d3d11::D3d11StagingPool::new(
-                self.core.gpu(),
-                w,
-                h,
-                n_slots,
-                needs_cuda,
-                self.gpu_pixel_format,
-            ) {
-                Ok(pool) => {
-                    log::info!(
-                        "D3D11VA staging pool created: {}x{}, {n_slots} {:?} slots",
-                        w,
-                        h,
-                        self.gpu_pixel_format
-                    );
-                    self.d3d11_staging_pool = Some(pool);
-                }
-                Err(e) => {
-                    return Err(SessionError::ZeroCopy(format!("D3D11 staging pool: {e}")));
-                }
-            }
-        }
+        let needs_cuda = self.core.detector_needs_cuda_frames();
+        let lookahead_frames = self.lookahead_frames;
+        let pixel_format = self.gpu_pixel_format;
+        let first_frame = self
+            .gpu_exec()
+            .ensure_d3d11_staging(lookahead_frames, needs_cuda, pixel_format)
+            .map_err(SessionError::ZeroCopy)?;
         let left_pool_slot = self.frame_count as usize % 2;
         let right_pool_slot = left_pool_slot + 2;
-
-        let pool = self.d3d11_staging_pool.as_mut().unwrap();
-        pool.stage_frame(left_texture, left_slice, left_pool_slot)?;
-        pool.stage_frame(right_texture, right_slice, right_pool_slot)?;
+        self.gpu_exec()
+            .stage_d3d11_frames(
+                left_texture,
+                left_slice,
+                right_texture,
+                right_slice,
+                left_pool_slot,
+                right_pool_slot,
+            )
+            .map_err(SessionError::ZeroCopy)?;
         Ok(first_frame)
     }
 
@@ -559,15 +527,10 @@ impl StitchSession {
         yaw: f32,
         pitch: f32,
     ) -> Result<(), SessionError> {
-        let pool = self.d3d11_staging_pool.as_ref().unwrap();
-        let render_buf = self.core.render_imported_views_at_pose(
-            pool.y_view(left_slot),
-            pool.uv_view(left_slot),
-            pool.y_view(right_slot),
-            pool.uv_view(right_slot),
-            yaw,
-            pitch,
-        );
+        let render_buf = self
+            .gpu_exec()
+            .render_d3d11_slots(left_slot, right_slot, yaw, pitch)
+            .map_err(|e| SessionError::ZeroCopy(e.to_string()))?;
         self.submit_render_output(render_buf)
     }
 
@@ -576,29 +539,23 @@ impl StitchSession {
     fn render_d3d11_staged(&mut self, yaw: f32, pitch: f32) -> Result<(), SessionError> {
         let left_pool_slot = self.frame_count as usize % 2;
         let right_pool_slot = left_pool_slot + 2;
+        self.render_d3d11_from_slot(left_pool_slot, right_pool_slot, yaw, pitch)?;
 
-        let pool = self.d3d11_staging_pool.as_ref().unwrap();
-        let render_buf = self.core.render_imported_views_at_pose(
-            pool.y_view(left_pool_slot),
-            pool.uv_view(left_pool_slot),
-            pool.y_view(right_pool_slot),
-            pool.uv_view(right_pool_slot),
-            yaw,
-            pitch,
-        );
-        self.submit_render_output(render_buf)?;
-
-        let pool = self.d3d11_staging_pool.as_ref().unwrap();
-        self.core.pack_gpu_stacked_replay_from_views(
-            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
-                y: pool.y_view(left_pool_slot),
-                uv: pool.uv_view(left_pool_slot),
-            },
-            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
-                y: pool.y_view(right_pool_slot),
-                uv: pool.uv_view(right_pool_slot),
-            },
-        );
+        if let Some(views) = self
+            .gpu_exec_ref()
+            .d3d11_views(left_pool_slot, right_pool_slot)
+        {
+            self.core.pack_gpu_stacked_replay_from_views(
+                crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
+                    y: &views[0],
+                    uv: &views[1],
+                },
+                crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
+                    y: &views[2],
+                    uv: &views[3],
+                },
+            );
+        }
 
         Ok(())
     }
@@ -767,16 +724,26 @@ impl StitchSession {
             right_slice,
         } = frame
         {
-            // Ensure the D3D11 staging pool is initialized (lazy init
-            // needs the first source texture to extract the D3D11 device).
-            if self.d3d11_staging_pool.is_none() {
-                self.stage_d3d11_frames(*left_texture, *left_slice, *right_texture, *right_slice)?;
-            }
-            let pool = self.d3d11_staging_pool.as_mut().unwrap();
-            let left_slot = (produce_index as usize * 2) % pool.n_slots();
-            let right_slot = (produce_index as usize * 2 + 1) % pool.n_slots();
-            pool.stage_frame(*left_texture, *left_slice, left_slot)?;
-            pool.stage_frame(*right_texture, *right_slice, right_slot)?;
+            let needs_cuda = self.core.detector_needs_cuda_frames();
+            let lookahead_frames = self.lookahead_frames;
+            let pixel_format = self.gpu_pixel_format;
+            self.gpu_exec()
+                .ensure_d3d11_staging(lookahead_frames, needs_cuda, pixel_format)
+                .map_err(SessionError::ZeroCopy)?;
+            let (left_slot, right_slot) = self
+                .gpu_exec_ref()
+                .d3d11_slots(produce_index)
+                .expect("staging pool created above");
+            self.gpu_exec()
+                .stage_d3d11_frames(
+                    *left_texture,
+                    *left_slice,
+                    *right_texture,
+                    *right_slice,
+                    left_slot,
+                    right_slot,
+                )
+                .map_err(SessionError::ZeroCopy)?;
             return Ok(Some(left_slot));
         }
         Ok(None)

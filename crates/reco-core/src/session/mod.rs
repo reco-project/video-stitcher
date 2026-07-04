@@ -95,11 +95,6 @@ pub struct StitchSession {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     pub(crate) metal_texture_cache: Option<crate::interop::metal::MetalTextureCache>,
 
-    /// D3D11VA staging pool for zero-copy decode on Windows.
-    /// Created lazily when the first D3d11Resident frame arrives.
-    #[cfg(target_os = "windows")]
-    pub(crate) d3d11_staging_pool: Option<crate::interop::d3d11::D3d11StagingPool>,
-
     /// Camera rotation from stream metadata, populated by
     /// [`configure_from_source`](Self::configure_from_source).
     /// Used to tell the GPU detector to flip frames during preprocessing.
@@ -200,8 +195,6 @@ impl StitchSession {
             current_vram_slot: None,
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_texture_cache: None,
-            #[cfg(target_os = "windows")]
-            d3d11_staging_pool: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             left_rotation: 0,
             #[cfg(any(target_os = "linux", target_os = "windows"))]

@@ -258,16 +258,18 @@ impl StitchSession {
                 }
                 #[cfg(target_os = "windows")]
                 StereoFrame::D3d11Resident { .. } => {
-                    if let Some(ref pool) = self.d3d11_staging_pool {
+                    let views = self
+                        .gpu_exec_ref()
+                        .d3d11_slots(produce_index)
+                        .and_then(|(ls, rs)| self.gpu_exec_ref().d3d11_views(ls, rs));
+                    if let Some(views) = views {
                         crate::profile_scope!("detect_wgpu_nv12");
-                        let left_slot = (produce_index as usize * 2) % pool.n_slots();
-                        let right_slot = (produce_index as usize * 2 + 1) % pool.n_slots();
                         let (w, h) = self.core.source_info();
                         let frames = wgpu_nv12_frames(
-                            pool.y_view(left_slot),
-                            pool.uv_view(left_slot),
-                            pool.y_view(right_slot),
-                            pool.uv_view(right_slot),
+                            &views[0],
+                            &views[1],
+                            &views[2],
+                            &views[3],
                             w,
                             h,
                             self.left_rotation,

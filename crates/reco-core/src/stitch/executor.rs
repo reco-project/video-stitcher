@@ -659,6 +659,131 @@ impl GpuExecutor {
         self.residency.slot_free_tx = None;
     }
 
+    /// Lazily create the D3D11VA staging pool, sized for
+    /// `lookahead_frames` of buffering (0 = double-buffered stereo).
+    ///
+    /// Returns `true` if the pool was created by this call: the first
+    /// staged frame performs cross-API warmup (device extraction,
+    /// shared-handle imports), so callers skip rendering it.
+    #[cfg(target_os = "windows")]
+    pub(crate) fn ensure_d3d11_staging(
+        &mut self,
+        lookahead_frames: usize,
+        needs_cuda: bool,
+        pixel_format: crate::render::renderer::GpuPixelFormat,
+    ) -> Result<bool, String> {
+        if self.residency.d3d11_staging.is_some() {
+            return Ok(false);
+        }
+        // For lookahead, size slots to the max frames simultaneously
+        // in flight (decoded but not yet rendered), x2 for left+right.
+        // Peak occupancy is n + post_smooth_half + 1 (the buffer hits
+        // n+1 right after a produce while the pose queue holds
+        // post_smooth_half). Slots are assigned by produce_index modulo
+        // n_slots with no occupancy check, so the pool must exceed peak
+        // occupancy or a producer would overwrite a frame still queued
+        // for render. +4 keeps a few frames of slack above the exact
+        // fit (the VramPool uses ref-counted acquire/release; this
+        // path relies on the sizing margin instead). Without lookahead,
+        // 4 slots (double-buffered stereo) suffice.
+        let n_slots = if lookahead_frames > 0 {
+            let post_smooth_half = (lookahead_frames / 2).max(1);
+            (lookahead_frames + post_smooth_half + 4) * 2
+        } else {
+            4
+        };
+        let (w, h) = self.pipeline.source_info();
+        let pool = crate::interop::d3d11::D3d11StagingPool::new(
+            self.pipeline.gpu(),
+            w,
+            h,
+            n_slots,
+            needs_cuda,
+            pixel_format,
+        )
+        .map_err(|e| format!("D3D11 staging pool: {e}"))?;
+        log::info!("D3D11VA staging pool created: {w}x{h}, {n_slots} {pixel_format:?} slots");
+        self.residency.d3d11_staging = Some(pool);
+        Ok(true)
+    }
+
+    /// Stage a decoded D3D11VA stereo frame into the given pool slots.
+    /// The first call extracts FFmpeg's device from the source texture
+    /// and builds the staging textures on it.
+    #[cfg(target_os = "windows")]
+    pub(crate) fn stage_d3d11_frames(
+        &mut self,
+        left_texture: *mut std::ffi::c_void,
+        left_slice: usize,
+        right_texture: *mut std::ffi::c_void,
+        right_slice: usize,
+        left_slot: usize,
+        right_slot: usize,
+    ) -> Result<(), String> {
+        let pool = self
+            .residency
+            .d3d11_staging
+            .as_mut()
+            .ok_or_else(|| "D3D11 staging pool not created".to_string())?;
+        pool.stage_frame(left_texture, left_slice, left_slot)
+            .map_err(|e| e.to_string())?;
+        pool.stage_frame(right_texture, right_slice, right_slot)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Staging slots for a buffered frame, assigned round-robin by
+    /// produce index (left in even slots, right in odd). `None` until
+    /// the pool exists.
+    #[cfg(target_os = "windows")]
+    pub(crate) fn d3d11_slots(&self, produce_index: u64) -> Option<(usize, usize)> {
+        let pool = self.residency.d3d11_staging.as_ref()?;
+        let n = pool.n_slots();
+        let i = produce_index as usize * 2;
+        Some((i % n, (i + 1) % n))
+    }
+
+    /// Render from staged D3D11 pool slots.
+    #[cfg(target_os = "windows")]
+    pub(crate) fn render_d3d11_slots(
+        &mut self,
+        left_slot: usize,
+        right_slot: usize,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<wgpu::CommandBuffer, StitchError> {
+        let pool =
+            self.residency.d3d11_staging.as_ref().ok_or_else(|| {
+                StitchError::InvalidConfig("D3D11 staging pool not created".into())
+            })?;
+        Ok(self.pipeline.render_imported_views(
+            pool.y_view(left_slot),
+            pool.uv_view(left_slot),
+            pool.y_view(right_slot),
+            pool.uv_view(right_slot),
+            yaw,
+            pitch,
+        ))
+    }
+
+    /// Y/UV detection views over two staged slots, Arc-cloned so
+    /// callers can hold them across `&mut` engine calls. Layout
+    /// `[left_y, left_uv, right_y, right_uv]`. `None` until the pool
+    /// exists.
+    #[cfg(target_os = "windows")]
+    pub(crate) fn d3d11_views(
+        &self,
+        left_slot: usize,
+        right_slot: usize,
+    ) -> Option<[wgpu::TextureView; 4]> {
+        let pool = self.residency.d3d11_staging.as_ref()?;
+        Some([
+            pool.y_view(left_slot).clone(),
+            pool.uv_view(left_slot).clone(),
+            pool.y_view(right_slot).clone(),
+            pool.uv_view(right_slot).clone(),
+        ])
+    }
+
     /// Allocate the VRAM lookahead pool.
     pub(crate) fn create_lookahead_pool(
         &mut self,
