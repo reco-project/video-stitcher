@@ -5,35 +5,35 @@
 //! or delegates to the underlying [`StitchCore`](crate::core::StitchCore).
 
 use super::StitchSession;
-use crate::session::types::ErrorPolicy;
+use crate::session::sinks::{AttachedSink, SinkOptions, validate_sink_input};
+use crate::session::types::{ErrorPolicy, SessionError};
 use crate::sink::OutputSink;
-use crate::sink_thread::SinkThread;
 
 impl StitchSession {
-    /// Attach an encoder sink to this session.
+    /// Attach an output sink to this session.
     ///
-    /// The sink is moved to a background thread for async delivery.
-    /// `buffer_count` controls how many frames can be in-flight between
-    /// the render thread and the sink thread (typically 2).
+    /// Every rendered frame fans out to all attached sinks in attach
+    /// order. [`SinkOptions`] decides the delivery mode (dedicated
+    /// thread vs inline on the render loop) and whether a sink error
+    /// aborts the session or just detaches the sink.
     ///
-    /// Must be called before [`Self::submit_render_output`], [`Self::process_frame`],
-    /// or [`Self::run`].
-    pub fn set_encoder(&mut self, encoder: Box<dyn OutputSink>, buffer_count: usize) {
+    /// Must be called before [`Self::submit_render_output`],
+    /// [`Self::process_frame`], or [`Self::run`].
+    ///
+    /// # Errors
+    ///
+    /// Rejects sinks whose [`wants`](OutputSink::wants) the session
+    /// cannot deliver (it produces NV12 CPU bytes only).
+    pub fn add_sink(
+        &mut self,
+        sink: Box<dyn OutputSink>,
+        options: SinkOptions,
+    ) -> Result<(), SessionError> {
+        validate_sink_input(sink.wants(), sink.name()).map_err(SessionError::Config)?;
         let (width, height) = self.gpu_exec_ref().nv12_dims();
-        self.encoder = Some(SinkThread::new(encoder, width, height, buffer_count));
-    }
-
-    /// Add an additional encoder sink for multi-output (e.g. record + stream).
-    ///
-    /// The NV12 data from each rendered frame is fanned out to all attached
-    /// sinks. Each sink runs on its own background thread.
-    ///
-    /// Use [`set_encoder`](Self::set_encoder) for the primary encoder,
-    /// then `add_encoder` for additional outputs.
-    pub fn add_encoder(&mut self, encoder: Box<dyn OutputSink>, buffer_count: usize) {
-        let (width, height) = self.gpu_exec_ref().nv12_dims();
-        self.extra_encoders
-            .push(SinkThread::new(encoder, width, height, buffer_count));
+        self.sinks
+            .push(AttachedSink::new(sink, options, width, height));
+        Ok(())
     }
 
     /// Attach a [`UnifiedDetector`](crate::detect::detector::UnifiedDetector)

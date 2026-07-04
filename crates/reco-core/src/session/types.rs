@@ -11,6 +11,7 @@ use crate::gpu::{GpuContext, GpuError, OutputFormat};
 use crate::render::pipeline::PipelineError;
 use crate::render::renderer::InputFormat;
 use crate::render::viewport::ViewportConfig;
+use crate::session::sinks::SinkOptions;
 use crate::sink::{OutputSink, SinkError};
 use crate::source::SourceError;
 
@@ -200,7 +201,7 @@ pub struct StitchSessionBuilder {
     pub(super) output_format: OutputFormat,
     pub(super) input_format: InputFormat,
     pub(super) gpu: Option<GpuContext>,
-    pub(super) encoder: Option<(Box<dyn OutputSink>, usize)>,
+    pub(super) sinks: Vec<(Box<dyn OutputSink>, SinkOptions)>,
     pub(super) detector: Option<Box<dyn crate::detect::detector::UnifiedDetector>>,
     pub(super) detection_interval: u64,
 }
@@ -251,9 +252,10 @@ impl StitchSessionBuilder {
         self
     }
 
-    /// Attach an encoder sink with the given double-buffer count.
-    pub fn encoder(mut self, encoder: Box<dyn OutputSink>, buffer_count: usize) -> Self {
-        self.encoder = Some((encoder, buffer_count));
+    /// Attach an output sink (see
+    /// [`StitchSession::add_sink`](super::StitchSession::add_sink)).
+    pub fn sink(mut self, sink: Box<dyn OutputSink>, options: SinkOptions) -> Self {
+        self.sinks.push((sink, options));
         self
     }
 
@@ -316,8 +318,8 @@ impl StitchSessionBuilder {
         let mut session = super::StitchSession::with_gpu(gpu, config)?;
         session.set_detection_interval(self.detection_interval);
 
-        if let Some((enc, buf_count)) = self.encoder {
-            session.set_encoder(enc, buf_count);
+        for (sink, options) in self.sinks {
+            session.add_sink(sink, options)?;
         }
         if let Some(det) = self.detector {
             session.set_detector(det);

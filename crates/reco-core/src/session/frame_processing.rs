@@ -542,7 +542,7 @@ impl StitchSession {
     }
 
     /// Submit a recorded render and fan the NV12 result out to the
-    /// encoders and the NV12 tap.
+    /// attached sinks.
     ///
     /// Used with the zero-copy paths where decode threads write
     /// directly to GPU textures: the executor's render methods produce
@@ -556,7 +556,7 @@ impl StitchSession {
         render_commands: wgpu::CommandBuffer,
     ) -> Result<(), SessionError> {
         // Field-path borrow: `nv12_data` borrows the executor inside
-        // `core` for the rest of the function, while the encode fan-out
+        // `core` for the rest of the function, while the sink fan-out
         // below touches only session-owned fields.
         let (nv12_width, nv12_height) = self.gpu_exec_ref().nv12_dims();
         let readback_t0 = std::time::Instant::now();
@@ -570,22 +570,23 @@ impl StitchSession {
 
         // First two calls return None (triple-buffer warmup).
         // From the third call onward, we get data from 2 frames ago.
-        let encode_t0 = std::time::Instant::now();
+        let submit_t0 = std::time::Instant::now();
         if let Some(data) = nv12_data {
-            if let Some(ref encoder) = self.encoder {
-                encoder.submit(data, self.frame_count as i64)?;
-            }
-            for enc in &self.extra_encoders {
-                enc.submit(data, self.frame_count as i64)?;
-            }
+            super::sinks::deliver_frame(
+                &mut self.sinks,
+                data,
+                nv12_width,
+                nv12_height,
+                self.frame_count as i64,
+            )?;
             // NV12 tap for snapshot / preview hooks (reco-cli's periodic
-            // JPEG writer). Runs after encode submit; the callback is
+            // JPEG writer). Runs after sink delivery; the callback is
             // expected to be non-blocking (try_send on a channel).
             if let Some(ref mut tap) = self.nv12_tap {
                 tap(data, nv12_width, nv12_height);
             }
         }
-        self.last_submit_time = encode_t0.elapsed();
+        self.last_submit_time = submit_t0.elapsed();
 
         self.frame_count += 1;
         Ok(())

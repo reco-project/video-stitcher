@@ -386,7 +386,10 @@ pub fn run_camera(
     )?;
     println!("Encoder: {}", encoder.encoder_name());
 
-    session.set_encoder(Box::new(encoder), 2);
+    session.add_sink(
+        Box::new(encoder),
+        reco_core::session::SinkOptions::threaded(2),
+    )?;
 
     // Snapshot writer for live preview (gameday panel). Taps the NV12
     // readback after each frame and writes a JPEG every N frames on a

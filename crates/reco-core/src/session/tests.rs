@@ -286,7 +286,7 @@ fn build_test_session(
         .detection_interval(detection_interval);
 
     if let Some(enc) = encoder {
-        builder = builder.encoder(enc, 2);
+        builder = builder.sink(enc, crate::session::SinkOptions::threaded(2));
     }
     if let Some(det) = detector {
         builder = builder.detector(det);
