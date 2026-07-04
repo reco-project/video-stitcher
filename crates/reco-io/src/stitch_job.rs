@@ -2,8 +2,9 @@
 //!
 //! [`StitchJob`] is the simplest way to stitch two video files into a
 //! panoramic output. It handles all orchestration internally: GPU
-//! initialization, zero-copy detection, encoder creation, decode thread
-//! management, and audio passthrough.
+//! initialization (or the all-software path via [`StitchJob::cpu`]),
+//! zero-copy detection, encoder creation, decode thread management,
+//! and audio passthrough.
 //!
 //! # Example
 //!
