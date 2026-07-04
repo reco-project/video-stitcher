@@ -137,12 +137,6 @@ pub struct StitchCore {
 
     pub(crate) replay: Option<ReplayBuffer>,
 
-    /// NV12 converter for the preview-mode recording tap
-    /// ([`Self::render_and_readback_nv12`]); lazy so pure display
-    /// consumers never pay for the staging ring.
-    #[cfg(feature = "gpu")]
-    pub(crate) preview_nv12: Option<crate::gpu::nv12_converter::Nv12Converter>,
-
     /// Optional stacked-video replay recorder attached via
     /// [`Self::set_stacked_recorder`]. Fires on every successful
     /// YUV submit (not BGRA - see [`StackedReplayRecorder`] docs).
@@ -237,8 +231,6 @@ impl StitchCore {
             detection_interval: 1,
             last_detections: Vec::new(),
             replay: None,
-            #[cfg(feature = "gpu")]
-            preview_nv12: None,
             stacked_recorder: None,
             #[cfg(feature = "gpu")]
             stacked_packer: None,
@@ -456,8 +448,8 @@ impl StitchCore {
     ///
     /// A resize is a stream discontinuity for the delivery machinery:
     /// the GPU streaming readback ring is rebuilt at the new size
-    /// (frames in flight in the old ring are dropped) and the lazy NV12
-    /// preview converter re-creates itself on next use.
+    /// (frames in flight in the old ring are dropped) and the executor's
+    /// NV12 delivery re-creates itself on next use (it is keyed by dims).
     pub fn resize(&mut self, width: u32, height: u32) -> Option<(u32, u32)> {
         let accepted = self.executor.resize(width, height);
         if accepted.is_some() {
@@ -471,7 +463,6 @@ impl StitchCore {
                     RgbaReadback::new(gpu.pipeline.gpu(), width, height)
                         .expect("resize validated non-zero dimensions"),
                 );
-                self.preview_nv12 = None;
                 log::info!(
                     "StitchCore: delivery machinery rebuilt for the {width}x{height} resize"
                 );

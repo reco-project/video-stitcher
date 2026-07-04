@@ -36,7 +36,6 @@ mod tests;
 use crate::async_encode::AsyncEncodeThread;
 use crate::core::StitchCore;
 use crate::core::types::StitchCoreError;
-use crate::gpu::nv12_converter::Nv12Converter;
 use crate::gpu::{GpuContext, OutputFormat};
 use crate::render::pipeline::StitchPipeline;
 use crate::render::renderer::InputFormat;
@@ -63,7 +62,6 @@ pub struct StitchSession {
     /// pull-loop orchestrator over it: frame buffering, encode
     /// fan-out, telemetry, progress.
     pub(crate) core: StitchCore,
-    pub(crate) nv12_converter: Nv12Converter,
     pub(crate) encoder: Option<AsyncEncodeThread>,
     /// Additional encoders for multi-output (stream + record).
     pub(crate) extra_encoders: Vec<AsyncEncodeThread>,
@@ -136,15 +134,11 @@ impl StitchSession {
     /// Use this when the caller needs to control GPU selection (e.g.
     /// for zero-copy decode where the GPU must match the CUDA device).
     pub fn with_gpu(gpu: GpuContext, config: SessionConfig) -> Result<Self, SessionError> {
-        let output_width = config.viewport.width;
-        let output_height = config.viewport.height;
-
         // Build a `StitchCore` as the session's rendering foundation.
-        // The executor owns the pipeline + projection; the core layers
-        // readback + coverage on top. The session layers on NV12
-        // conversion, async encoding, lookahead, and the legacy
-        // per-platform detection pipeline (until the unified-detector
-        // migration of the session body completes).
+        // The executor owns the pipeline + projection + NV12 delivery;
+        // the core layers readback + coverage on top. The session
+        // layers on async encoding, lookahead, and the per-platform
+        // frame dispatch.
         //
         // Rotation is NOT applied here. It's handled by:
         // - CPU path: decoder reverses buffers in extract_yuv()
@@ -171,11 +165,8 @@ impl StitchSession {
         .map_err(StitchCoreError::from)?;
         let core = StitchCore::new(Executor::Gpu(Box::new(executor)))?;
 
-        let nv12_converter = Nv12Converter::new(core.gpu(), output_width, output_height)?;
-
         Ok(Self {
             core,
-            nv12_converter,
             encoder: None,
             skip_detection: false,
             lookahead_frames: 0,
@@ -328,8 +319,16 @@ impl StitchSession {
     /// submits them to the encoder, then shuts down the encode thread
     /// and calls `Encoder::finish`. Must be called after the frame loop ends.
     pub fn finish(&mut self) -> Result<(), SessionError> {
-        // Flush remaining frames from the NV12 triple-buffer.
-        while let Some(nv12_data) = self.nv12_converter.flush_pending(self.core.gpu())? {
+        // Flush remaining frames from the NV12 triple-buffer. Field-path
+        // borrow: `nv12_data` borrows the executor inside `core` while
+        // the loop body feeds the session-owned encoders.
+        while let Some(nv12_data) = self
+            .core
+            .executor
+            .gpu_mut()
+            .expect("the streaming session runs on the GPU executor")
+            .flush_nv12()?
+        {
             if let Some(ref encoder) = self.encoder {
                 encoder.submit(nv12_data, self.frame_count as i64)?;
             }

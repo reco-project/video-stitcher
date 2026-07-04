@@ -556,16 +556,17 @@ impl StitchSession {
         &mut self,
         render_commands: wgpu::CommandBuffer,
     ) -> Result<(), SessionError> {
-        // Read NV12 dims up front (Copy) so the tap below can borrow `data`
-        // without re-borrowing self.nv12_converter.
-        let nv12_width = self.nv12_converter.width();
-        let nv12_height = self.nv12_converter.height();
+        // Field-path borrow: `nv12_data` borrows the executor inside
+        // `core` for the rest of the function, while the encode fan-out
+        // below touches only session-owned fields.
+        let (nv12_width, nv12_height) = self.gpu_exec_ref().nv12_dims();
         let readback_t0 = std::time::Instant::now();
-        let nv12_data = self.nv12_converter.convert_and_readback(
-            self.core.gpu(),
-            self.core.pipeline().render_target(),
-            render_commands,
-        )?;
+        let nv12_data = self
+            .core
+            .executor
+            .gpu_mut()
+            .expect("the streaming session runs on the GPU executor")
+            .convert_nv12(render_commands)?;
         self.last_readback_time = readback_t0.elapsed();
 
         // First two calls return None (triple-buffer warmup).
@@ -604,11 +605,12 @@ impl StitchSession {
         &mut self,
         render_commands: wgpu::CommandBuffer,
     ) -> Result<Option<&[u8]>, SessionError> {
-        let nv12_data = self.nv12_converter.convert_and_readback(
-            self.core.gpu(),
-            self.core.pipeline().render_target(),
-            render_commands,
-        )?;
+        let nv12_data = self
+            .core
+            .executor
+            .gpu_mut()
+            .expect("the streaming session runs on the GPU executor")
+            .convert_nv12(render_commands)?;
         self.frame_count += 1;
         Ok(nv12_data)
     }

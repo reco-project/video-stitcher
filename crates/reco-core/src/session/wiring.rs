@@ -19,8 +19,7 @@ impl StitchSession {
     /// Must be called before [`Self::submit_render_output`], [`Self::process_frame`],
     /// or [`Self::run`].
     pub fn set_encoder(&mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) {
-        let width = self.nv12_converter.width();
-        let height = self.nv12_converter.height();
+        let (width, height) = self.gpu_exec_ref().nv12_dims();
         self.encoder = Some(AsyncEncodeThread::new(encoder, width, height, buffer_count));
     }
 
@@ -32,8 +31,7 @@ impl StitchSession {
     /// Use [`set_encoder`](Self::set_encoder) for the primary encoder,
     /// then `add_encoder` for additional outputs.
     pub fn add_encoder(&mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) {
-        let width = self.nv12_converter.width();
-        let height = self.nv12_converter.height();
+        let (width, height) = self.gpu_exec_ref().nv12_dims();
         self.extra_encoders
             .push(AsyncEncodeThread::new(encoder, width, height, buffer_count));
     }

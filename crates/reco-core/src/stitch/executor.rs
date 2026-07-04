@@ -302,6 +302,10 @@ pub struct GpuExecutor {
     /// allocate it. Keyed by the output dims it was built for so a
     /// resize recreates it.
     sync_readback: Option<(RgbaReadback, (u32, u32))>,
+    /// NV12 delivery: triple-buffered render-target -> NV12 readback
+    /// for encoders and preview taps. Created on first use and keyed
+    /// by the dims it was built for so a resize recreates it.
+    nv12: Option<(crate::gpu::nv12_converter::Nv12Converter, (u32, u32))>,
 }
 
 #[cfg(feature = "gpu")]
@@ -342,6 +346,7 @@ impl GpuExecutor {
             projection,
             residency: super::residency::Residency::default(),
             sync_readback: None,
+            nv12: None,
         })
     }
 
@@ -836,6 +841,62 @@ impl GpuExecutor {
     pub(crate) fn release_pool_slot(&mut self, slot: usize) {
         if let Some(pool) = self.residency.pool.as_mut() {
             pool.release(slot);
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // NV12 delivery (encoders, preview taps)
+    // -----------------------------------------------------------------
+
+    /// NV12 output dimensions: the viewport rounded down to NV12-safe
+    /// values (width to a multiple of 4, height to even).
+    pub(crate) fn nv12_dims(&self) -> (u32, u32) {
+        let vp = self.pipeline.viewport();
+        (vp.width & !3, vp.height & !1)
+    }
+
+    /// Submit `render_commands` and convert the render target to NV12.
+    ///
+    /// Triple-buffered: returns `None` on the first two calls, then
+    /// bytes from two frames ago. Drain the tail with
+    /// [`Self::flush_nv12`] after the loop. The converter is created
+    /// on first use at [`Self::nv12_dims`] and recreated on resize.
+    pub(crate) fn convert_nv12(
+        &mut self,
+        render_commands: wgpu::CommandBuffer,
+    ) -> Result<Option<&[u8]>, crate::gpu::nv12_converter::Nv12Error> {
+        let dims = self.nv12_dims();
+        if self.nv12.as_ref().is_none_or(|(_, built)| *built != dims) {
+            let (w, h) = dims;
+            let vp = self.pipeline.viewport();
+            if (vp.width, vp.height) != dims {
+                log::info!(
+                    "GpuExecutor: NV12 delivery rounds {}x{} viewport to {w}x{h}",
+                    vp.width,
+                    vp.height
+                );
+            }
+            let converter =
+                crate::gpu::nv12_converter::Nv12Converter::new(self.pipeline.gpu(), w, h)?;
+            log::info!("GpuExecutor: NV12 delivery initialized ({w}x{h})");
+            self.nv12 = Some((converter, dims));
+        }
+        let (converter, _) = self.nv12.as_mut().expect("created above");
+        converter.convert_and_readback(
+            self.pipeline.gpu(),
+            self.pipeline.render_target(),
+            render_commands,
+        )
+    }
+
+    /// Drain one pending NV12 frame from the triple buffer. `None`
+    /// when nothing remains (or NV12 delivery was never used).
+    pub(crate) fn flush_nv12(
+        &mut self,
+    ) -> Result<Option<&[u8]>, crate::gpu::nv12_converter::Nv12Error> {
+        match self.nv12.as_mut() {
+            Some((converter, _)) => converter.flush_pending(self.pipeline.gpu()),
+            None => Ok(None),
         }
     }
 }

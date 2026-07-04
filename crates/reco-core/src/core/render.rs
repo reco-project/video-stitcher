@@ -445,41 +445,23 @@ impl super::StitchCore {
             self.executor.set_fov(fov);
         }
         let (yaw, pitch) = (pose.yaw, pose.pitch);
-        let Executor::Gpu(gpu) = &self.executor else {
+        let Executor::Gpu(gpu) = &mut self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
-        if self.preview_nv12.is_none() {
-            let w = gpu.pipeline.viewport().width & !3;
-            let h = gpu.pipeline.viewport().height & !1;
-            let converter =
-                crate::gpu::nv12_converter::Nv12Converter::new(gpu.pipeline.gpu(), w, h).map_err(
-                    |e| StitchCoreError::Config(format!("NV12 preview readback init: {e}")),
-                )?;
-            log::info!("StitchCore: NV12 preview readback initialized ({w}x{h})");
-            self.preview_nv12 = Some(converter);
-        }
-
         let cmd = gpu.pipeline.render_to_target(left, right, yaw, pitch)?;
-        let converter = self.preview_nv12.as_mut().expect("initialized above");
-        let data = converter
-            .convert_and_readback(gpu.pipeline.gpu(), gpu.pipeline.render_target(), cmd)
-            .map_err(|e| StitchCoreError::Config(format!("NV12 preview readback: {e}")))?;
-        Ok(data)
+        gpu.convert_nv12(cmd)
+            .map_err(|e| StitchCoreError::Config(format!("NV12 preview readback: {e}")))
     }
 
     /// Drain one pending NV12 frame from the preview recording tap.
     /// Returns `None` when nothing remains (or the tap was never used).
     #[cfg(feature = "gpu")]
     pub fn flush_nv12(&mut self) -> Result<Option<&[u8]>, StitchCoreError> {
-        let Executor::Gpu(gpu) = &self.executor else {
+        let Executor::Gpu(gpu) = &mut self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
-        match self.preview_nv12.as_mut() {
-            Some(converter) => converter
-                .flush_pending(gpu.pipeline.gpu())
-                .map_err(|e| StitchCoreError::Config(format!("NV12 preview flush: {e}"))),
-            None => Ok(None),
-        }
+        gpu.flush_nv12()
+            .map_err(|e| StitchCoreError::Config(format!("NV12 preview flush: {e}")))
     }
 
     // -----------------------------------------------------------------
