@@ -695,6 +695,7 @@ impl Renderer {
     /// Used by the D3D11VA zero-copy path where NV12 plane views require
     /// explicit `TextureAspect::Plane0` / `Plane1` and cannot be obtained
     /// from `TextureViewDescriptor::default()`.
+    #[cfg(target_os = "windows")]
     pub fn create_bind_group_from_views(
         &self,
         y_view: &wgpu::TextureView,

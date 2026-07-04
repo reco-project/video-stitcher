@@ -48,14 +48,10 @@ use crate::detect::panner::Panner;
 use crate::detect::tracker::Tracker;
 use crate::geometry::ViewportPosition;
 #[cfg(feature = "gpu")]
-use crate::gpu::GpuContext;
-#[cfg(feature = "gpu")]
 use crate::gpu::rgba_readback::RgbaReadback;
 #[cfg(feature = "gpu")]
 use crate::gpu::yuv_stack_packer::YuvStackPacker;
 use crate::projection::{CoverageBoundary, PanoramaExtent};
-#[cfg(feature = "gpu")]
-use crate::render::pipeline::StitchPipeline;
 use crate::stitch::{Executor, StitchExecutor};
 
 use self::replay_buffer::ReplayBuffer;
@@ -689,38 +685,18 @@ impl StitchCore {
         self.frame_count
     }
 
-    /// Shared access to the underlying pipeline.
-    ///
-    /// GPU-executor reach-through, kept only until the platform
-    /// residency machinery moves onto the executor. Panics when the
-    /// engine runs the CPU executor - CPU engines have no pipeline;
-    /// use the engine's own setters and submit paths.
+    /// The GPU context, for consumers that create auxiliary resources
+    /// on the engine's device (preview surfaces, demosaic kernels,
+    /// VRAM queries). Panics when the engine runs the CPU executor;
+    /// use [`DetectionTarget::gpu`](crate::detect::DetectionTarget::gpu)
+    /// for executor-agnostic access.
     #[cfg(feature = "gpu")]
-    pub fn pipeline(&self) -> &StitchPipeline {
-        &self
-            .executor
+    pub fn gpu(&self) -> &crate::gpu::GpuContext {
+        self.executor
             .gpu()
-            .expect("pipeline() requires the GPU executor")
+            .expect("gpu() requires the GPU executor")
             .pipeline
-    }
-
-    /// Mutable access to the pipeline for advanced callers that need
-    /// to tweak viewport / FOV / zero-copy bind groups directly.
-    /// See [`Self::pipeline`] for the CPU-executor caveat.
-    #[cfg(feature = "gpu")]
-    pub fn pipeline_mut(&mut self) -> &mut StitchPipeline {
-        &mut self
-            .executor
-            .gpu_mut()
-            .expect("pipeline_mut() requires the GPU executor")
-            .pipeline
-    }
-
-    /// The GPU context owning every resource. See [`Self::pipeline`]
-    /// for the CPU-executor caveat.
-    #[cfg(feature = "gpu")]
-    pub fn gpu(&self) -> &GpuContext {
-        self.pipeline().gpu()
+            .gpu()
     }
 }
 

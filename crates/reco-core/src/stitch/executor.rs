@@ -9,7 +9,7 @@
 //! one executor as its render substrate.
 //!
 //! - [`CpuExecutor`] binds a [`Projection`] and drives the pure-Rust gather.
-//! - [`GpuExecutor`] owns the wgpu [`StitchPipeline`] (there is no other
+//! - [`GpuExecutor`] owns the wgpu `StitchPipeline` (there is no other
 //!   owner) plus a private blocking-readback ring for the synchronous
 //!   contract.
 //!
@@ -277,7 +277,7 @@ impl GpuExecutorConfig {
     }
 }
 
-/// GPU executor - the sole owner of the wgpu [`StitchPipeline`] and of
+/// GPU executor - the sole owner of the wgpu `StitchPipeline` and of
 /// the [`Projection`] bound to it.
 ///
 /// [`StitchCore`](crate::core::StitchCore) holds one of these as its

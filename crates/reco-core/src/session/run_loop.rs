@@ -236,10 +236,10 @@ impl StitchSession {
         // Create VRAM pool if the source is GPU-resident.
         if source.is_gpu_resident() && self.gpu_exec_ref().residency.pool.is_none() {
             let post_smooth_half = (n / 2).max(1);
-            // Keep in sync with the D3D11 staging pool sizing in
-            // frame_processing.rs (peak occupancy + slack).
+            // Keep in sync with the D3D11 staging pool sizing in the
+            // executor's ensure_d3d11_staging (peak occupancy + slack).
             let pool_size = n + post_smooth_half + 4;
-            let (w, h) = self.core.pipeline().source_info();
+            let (w, h) = self.core.source_info();
             let per_slot = crate::gpu::vram_pool::estimate_vram(
                 w,
                 h,
@@ -252,7 +252,7 @@ impl StitchSession {
             // available_vram() is None on backends with no budget API; there
             // we skip the check and rely on the allocation-time catch in
             // VramPool::new plus graceful teardown for any slip-through.
-            match self.core.pipeline().gpu().available_vram() {
+            match self.gpu_exec_ref().pipeline.gpu().available_vram() {
                 Some((free, total)) => {
                     // Budget trusts the driver's "free" figure when it is
                     // believable (it already excludes the compositor and the

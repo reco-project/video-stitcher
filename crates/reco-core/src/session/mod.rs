@@ -37,7 +37,6 @@ use crate::async_encode::AsyncEncodeThread;
 use crate::core::StitchCore;
 use crate::core::types::StitchCoreError;
 use crate::gpu::{GpuContext, OutputFormat};
-use crate::render::pipeline::StitchPipeline;
 use crate::render::renderer::InputFormat;
 use crate::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 
@@ -46,8 +45,8 @@ pub type Nv12TapFn = Box<dyn FnMut(&[u8], u32, u32) + Send>;
 
 use types::{ErrorPolicy, SessionConfig, SessionError, SessionMetrics, StitchSessionBuilder};
 
-/// A high-level stitching session that owns the GPU pipeline, NV12
-/// converter, and optionally an async encoder.
+/// A high-level stitching session: a pull-loop orchestrator over the
+/// engine, adding frame buffering, encode fan-out, and telemetry.
 ///
 /// Created once per encoding job or application lifetime. Call
 /// [`set_encoder`](Self::set_encoder) to attach an encoder before
@@ -225,19 +224,6 @@ impl StitchSession {
         self.frame_count
     }
 
-    /// Shared reference to the underlying pipeline (via `StitchCore`).
-    pub fn pipeline(&self) -> &StitchPipeline {
-        self.core.pipeline()
-    }
-
-    /// Mutable reference to the underlying pipeline (via `StitchCore`).
-    ///
-    /// Needed for zero-copy setup (configure_gpu_source) and viewport
-    /// changes (resize, set_fov).
-    pub fn pipeline_mut(&mut self) -> &mut StitchPipeline {
-        self.core.pipeline_mut()
-    }
-
     /// Borrow the underlying [`StitchCore`]. Useful for consumers that
     /// want to reach through to the push-first API
     /// (`submit_frame_*`, replay buffer, etc.) without giving up the
@@ -269,14 +255,16 @@ impl StitchSession {
             .expect("the streaming session runs on the GPU executor")
     }
 
-    /// Shared reference to the GPU context.
+    /// Shared reference to the GPU context, for consumers that create
+    /// auxiliary resources on the session's device (demosaic kernels,
+    /// preview textures).
     pub fn gpu(&self) -> &GpuContext {
-        self.core.gpu()
+        self.gpu_exec_ref().pipeline.gpu()
     }
 
     /// The name of the GPU this session is running on.
     pub fn gpu_name(&self) -> &str {
-        self.core.pipeline().gpu_name()
+        self.gpu().gpu_name()
     }
 
     /// Get current session performance metrics.
@@ -370,6 +358,6 @@ impl crate::detect::DetectionTarget for StitchSession {
         self.core.source_info()
     }
     fn gpu(&self) -> Option<&crate::gpu::GpuContext> {
-        Some(self.core.gpu())
+        Some(self.gpu())
     }
 }

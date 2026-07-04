@@ -487,10 +487,10 @@ impl super::StitchCore {
     /// (detection + director + readback) should call
     /// [`Self::submit_frame_yuv`] instead.
     ///
-    /// The caller is responsible for subsequently consuming the
-    /// rendered texture (via [`Self::pipeline`] + `render_target()`)
-    /// or submitting the returned command buffer to chain further
-    /// GPU work.
+    /// The caller is responsible for consuming the render by
+    /// submitting the returned command buffer (directly or chained
+    /// into further GPU work); the engine's readback and NV12
+    /// delivery paths do this internally.
     #[cfg(feature = "gpu")]
     pub fn render_yuv_at_pose(
         &self,
@@ -546,9 +546,8 @@ impl super::StitchCore {
     /// Render any [`StereoFrame`](crate::source::StereoFrame) variant
     /// (YUV / NV12 / GpuResident) at an explicit pose.
     ///
-    /// Thin wrapper over
-    /// [`StitchPipeline::render_stereo_frame`](crate::render::pipeline::StitchPipeline::render_stereo_frame)
-    /// that converts the pipeline error into a `StitchCoreError`. The
+    /// Thin wrapper over the pipeline's stereo-frame render that
+    /// converts the pipeline error into a `StitchCoreError`. The
     /// `MetalResident` variant is NOT handled here; use
     /// [`Self::render_imported_textures_at_pose`] after importing the
     /// `CVPixelBuffer` via `MetalTextureCache`.
@@ -586,28 +585,5 @@ impl super::StitchCore {
             .expect("zero-copy render paths require the GPU executor")
             .pipeline
             .render_imported_textures(left_y, left_uv, right_y, right_uv, yaw, pitch)
-    }
-
-    /// Render from pre-configured GPU bind groups and decode slots at
-    /// an explicit pose (Linux zero-copy path).
-    ///
-    /// Thin wrapper over
-    /// `StitchPipeline::render_gpu_frame`.
-    /// Consumers must have already called
-    /// `StitchPipeline::configure_gpu_source` via [`Self::pipeline_mut`].
-    #[cfg(all(target_os = "linux", feature = "gpu"))]
-    pub fn render_gpu_frame_at_pose(
-        &mut self,
-        bind_groups: &crate::render::pipeline::GpuSourceBindGroups,
-        left_slot: u8,
-        right_slot: u8,
-        yaw: f32,
-        pitch: f32,
-    ) -> wgpu::CommandBuffer {
-        self.executor
-            .gpu_mut()
-            .expect("zero-copy render paths require the GPU executor")
-            .pipeline
-            .render_gpu_frame(bind_groups, left_slot, right_slot, yaw, pitch)
     }
 }

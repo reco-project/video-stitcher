@@ -541,13 +541,12 @@ impl StitchSession {
         Ok(())
     }
 
-    /// Render from GPU-resident textures and submit to the async encoder.
+    /// Submit a recorded render and fan the NV12 result out to the
+    /// encoders and the NV12 tap.
     ///
-    /// Used with the zero-copy path where decode threads write directly
-    /// to shared GPU textures. The caller must configure bind groups via
-    /// [`pipeline_mut()`](Self::pipeline_mut) and call
-    /// `StitchPipeline::render_gpu_frame` to get the command buffer,
-    /// then pass it here.
+    /// Used with the zero-copy paths where decode threads write
+    /// directly to GPU textures: the executor's render methods produce
+    /// the command buffer, and this delivers it.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "session_submit_render")

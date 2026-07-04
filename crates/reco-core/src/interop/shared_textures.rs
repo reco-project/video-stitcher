@@ -33,9 +33,4 @@ pub struct SharedTextureSet {
     pub left_slot_free_rx: Option<std::sync::mpsc::Receiver<u8>>,
     /// Slot-free receiver for right camera. Taken by decode thread spawner.
     pub right_slot_free_rx: Option<std::sync::mpsc::Receiver<u8>>,
-    /// Pre-built bind groups for the shared textures.
-    /// `None` when the source creates textures without pipeline access
-    /// (e.g. `SmartFileSource`). The session creates them lazily at
-    /// the start of `run()`.
-    pub bind_groups: Option<crate::render::pipeline::GpuSourceBindGroups>,
 }
