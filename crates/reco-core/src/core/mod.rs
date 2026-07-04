@@ -91,6 +91,9 @@ pub struct StitchCore {
     /// staging ring. [`RenderOutcome::Rgba`](self::types::RenderOutcome)
     /// borrows from it on the CPU arm; empty on GPU engines.
     pub(crate) cpu_frame: Vec<u8>,
+    /// One-shot guard for the mono-detection warning (detection is
+    /// L-shape-only until the mono mapping lands).
+    mono_detection_warned: bool,
     pub(crate) output_width: u32,
     pub(crate) output_height: u32,
 
@@ -215,6 +218,7 @@ impl StitchCore {
             #[cfg(feature = "gpu")]
             readback,
             cpu_frame: Vec::new(),
+            mono_detection_warned: false,
             output_width,
             output_height,
             coverage: Some(coverage),

@@ -35,7 +35,8 @@ use reco_core::source::FrameSource;
 /// is managed internally.
 pub struct StitchJob {
     left: InputPath,
-    right: InputPath,
+    /// `None` for mono (single-input) topologies.
+    right: Option<InputPath>,
     calibration: CalibrationSource,
     output: PathBuf,
 
@@ -239,7 +240,7 @@ impl StitchJob {
     ) -> Self {
         Self {
             left: left.into(),
-            right: right.into(),
+            right: Some(right.into()),
             calibration: CalibrationSource::File(calibration.as_ref().to_path_buf()),
             output: output.as_ref().to_path_buf(),
             codec: Codec::default(),
@@ -267,6 +268,24 @@ impl StitchJob {
         }
     }
 
+    /// Create a single-input job for mono topologies (the cylinder's
+    /// pre-stitched panorama). The calibration document must carry a
+    /// mono topology; [`run`](Self::run) rejects the mismatch.
+    pub fn mono(
+        input: impl Into<InputPath>,
+        calibration: impl AsRef<Path>,
+        output: impl AsRef<Path>,
+    ) -> Self {
+        let mut job = Self::new(
+            input,
+            InputPath::Single(PathBuf::new()),
+            calibration,
+            output,
+        );
+        job.right = None;
+        job
+    }
+
     /// Create a job with in-memory calibration (no JSON file needed).
     pub fn with_calibration(
         left: impl Into<InputPath>,
@@ -275,6 +294,17 @@ impl StitchJob {
         output: impl AsRef<Path>,
     ) -> Self {
         let mut job = Self::new(left, right, Path::new(""), output);
+        job.calibration = CalibrationSource::Memory(Box::new(calibration));
+        job
+    }
+
+    /// [`Self::mono`] with an in-memory calibration.
+    pub fn mono_with_calibration(
+        input: impl Into<InputPath>,
+        calibration: reco_core::calibration::Calibration,
+        output: impl AsRef<Path>,
+    ) -> Self {
+        let mut job = Self::mono(input, Path::new(""), output);
         job.calibration = CalibrationSource::Memory(Box::new(calibration));
         job
     }
@@ -575,37 +605,57 @@ impl StitchJob {
             log::info!("Sync offset: {} frames (from calibration)", effective_sync);
         }
 
+        // Input arity must match the calibration's topology before any
+        // decoder spins up.
+        let mono = cal.topology.camera_count() == 1;
+        match (mono, &self.right) {
+            (true, Some(_)) => {
+                return Err(StitchError::Other(
+                    "this calibration's topology consumes one input video, but two were \
+                     given"
+                        .into(),
+                ));
+            }
+            (false, None) => {
+                return Err(StitchError::Other(
+                    "this calibration's topology needs left and right input videos".into(),
+                ));
+            }
+            _ => {}
+        }
+
         // Decode + render strategy. --cpu never touches the GPU;
         // otherwise the GPU renders and decode is zero-copy unless
-        // forced off.
+        // forced off. Mono topologies render on the CPU executor
+        // regardless (the mono GPU pass is not wired yet).
         log::debug!(
-            "StitchJob::run: cpu_stitch={} force_cpu_decode={}",
+            "StitchJob::run: mono={mono} cpu_stitch={} force_cpu_decode={}",
             self.cpu_stitch,
             self.force_cpu_decode
         );
-        let (gpu, mut source) = if self.cpu_stitch {
-            log::info!("CPU stitch: software render + software decode, no GPU touched (--cpu)");
+        let (gpu, mut source) = if mono {
+            if !self.cpu_stitch {
+                log::info!("mono topology: software render (the mono GPU pass is not wired yet)");
+            }
             (
                 None,
-                crate::SmartFileSource::open_cpu_only(
-                    &self.left,
-                    &self.right,
-                    effective_sync,
-                    true,
-                )?,
+                crate::SmartFileSource::open_mono(&self.left, self.cpu_stitch)?,
+            )
+        } else if self.cpu_stitch {
+            log::info!("CPU stitch: software render + software decode, no GPU touched (--cpu)");
+            let right = self.right.as_ref().expect("arity checked above");
+            (
+                None,
+                crate::SmartFileSource::open_cpu_only(&self.left, right, effective_sync, true)?,
             )
         } else {
+            let right = self.right.as_ref().expect("arity checked above");
             let gpu = reco_core::gpu::GpuContext::new_blocking()?;
             let source = if self.force_cpu_decode {
                 log::info!("Force CPU decode: zero-copy disabled by --no-zero-copy");
-                crate::SmartFileSource::open_cpu_only(
-                    &self.left,
-                    &self.right,
-                    effective_sync,
-                    false,
-                )?
+                crate::SmartFileSource::open_cpu_only(&self.left, right, effective_sync, false)?
             } else {
-                crate::SmartFileSource::open(&self.left, &self.right, &gpu, effective_sync)?
+                crate::SmartFileSource::open(&self.left, right, &gpu, effective_sync)?
             };
             (Some(gpu), source)
         };
@@ -667,8 +717,9 @@ impl StitchJob {
             }
             None => {
                 gpu_name = "software (CPU)".to_string();
+                let projection = reco_core::projection::for_topology(&cal.topology);
                 let executor = reco_core::stitch::CpuExecutor::new(
-                    Box::new(reco_core::projection::LShapeProjection),
+                    projection,
                     cal,
                     viewport,
                     info.width,
@@ -739,7 +790,13 @@ impl StitchJob {
         // included so passthrough spans the whole recording, not just file 1.
         let audio_source = match &self.audio {
             AudioMode::CopyFrom(0) => Some(self.left.all_paths()),
-            AudioMode::CopyFrom(1) => Some(self.right.all_paths()),
+            AudioMode::CopyFrom(1) => match &self.right {
+                Some(right) => Some(right.all_paths()),
+                None => {
+                    log::warn!("AudioMode::CopyFrom(1) - a mono job has no right input");
+                    None
+                }
+            },
             AudioMode::CopyFrom(n) => {
                 log::warn!("AudioMode::CopyFrom({n}) - only 0 (left) and 1 (right) are valid");
                 None

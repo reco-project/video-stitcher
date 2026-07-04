@@ -590,6 +590,7 @@ impl StitchSession {
 
             let stitch_t0 = std::time::Instant::now();
             let outcome = match &frame {
+                StereoFrame::Mono(yuv) => self.core.submit_frame_mono_yuv(&yuv.as_planes())?,
                 StereoFrame::Yuv420p(pair) => self
                     .core
                     .submit_frame_yuv(&pair.left.as_planes(), &pair.right.as_planes())?,

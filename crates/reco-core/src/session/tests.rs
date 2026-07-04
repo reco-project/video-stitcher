@@ -760,3 +760,82 @@ fn cpu_session_rejects_gpu_resident_frames() {
         "expected a typed config error, got: {err}"
     );
 }
+
+/// The mono cylinder path end to end without a GPU: single-input
+/// source -> engine mono submit (CPU cylinder stitch) -> NV12 -> sink.
+#[test]
+fn mono_cylinder_session_runs_end_to_end_without_gpu() {
+    struct MonoSource(u64);
+    impl FrameSource for MonoSource {
+        fn info(&self) -> SourceInfo {
+            SourceInfo {
+                width: W,
+                height: H,
+                fps: 30.0,
+                fps_rational: Some((30, 1)),
+                total_frames: None,
+            }
+        }
+        fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+            if self.0 == 0 {
+                return Ok(None);
+            }
+            self.0 -= 1;
+            let y_size = (W * H) as usize;
+            let uv_size = ((W / 2) * (H / 2)) as usize;
+            Ok(Some(StereoFrame::Mono(YuvData {
+                y: vec![128u8; y_size],
+                u: vec![128u8; uv_size],
+                v: vec![128u8; uv_size],
+            })))
+        }
+    }
+
+    const FRAMES: u64 = 4;
+    let cal = Calibration::new(
+        vec![crate::calibration::Lens::flat(W, H)],
+        crate::calibration::CylinderTopology::default(),
+        Framing {
+            axis_offset: 0.0,
+            tilt: 0.0,
+            roll: 0.0,
+        },
+    );
+    let executor = crate::stitch::CpuExecutor::new(
+        Box::new(crate::projection::CylindricalProjection),
+        cal,
+        ViewportConfig {
+            width: 64,
+            height: 64,
+            fov_degrees: 60.0,
+        },
+        W,
+        H,
+        false,
+    )
+    .expect("mono cpu executor");
+    let mut session =
+        StitchSession::with_executor(crate::stitch::Executor::Cpu(Box::new(executor)))
+            .expect("mono session");
+
+    let encoded = Arc::new(AtomicU64::new(0));
+    session
+        .add_sink(
+            Box::new(MockEncoder::new(Arc::clone(&encoded))),
+            crate::session::SinkOptions::threaded(2),
+        )
+        .expect("attach sink");
+
+    let interrupted = AtomicBool::new(false);
+    let frames = session
+        .run(&mut MonoSource(FRAMES), u64::MAX, &interrupted, None)
+        .expect("mono run");
+    session.finish().expect("finish");
+
+    assert_eq!(frames, FRAMES);
+    assert_eq!(
+        encoded.load(Ordering::SeqCst),
+        FRAMES,
+        "every mono frame reached the sink"
+    );
+}

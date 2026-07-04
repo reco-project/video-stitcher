@@ -18,7 +18,7 @@ use std::sync::atomic::AtomicBool;
 #[allow(dead_code)]
 pub struct StitchArgs<'a> {
     pub left: &'a str,
-    pub right: &'a str,
+    pub right: Option<&'a str>,
     pub calibration: &'a str,
     pub output: &'a str,
     pub width: u32,
@@ -107,21 +107,27 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
             reco_io::stitch_job::InputPath::Single(std::path::PathBuf::from(s))
         }
     };
-    let mut job = reco_io::StitchJob::with_calibration(
-        to_input(args.left),
-        to_input(args.right),
-        cal,
-        args.output,
-    )
-    .codec(parse_codec(args.codec))
-    .quality(parse_quality(args.quality))
-    .resolution(args.width, args.height)
-    .on_progress(move |p: &reco_core::session::types::FrameProgress| {
-        // Use the session's own elapsed clock so the reported
-        // rate excludes one-time GPU / encoder / ORT init and
-        // reflects only the decode → stitch → encode loop.
-        progress.report_with_elapsed(p.frames_completed, p.elapsed);
-    });
+    let mut job = match args.right {
+        Some(right) => reco_io::StitchJob::with_calibration(
+            to_input(args.left),
+            to_input(right),
+            cal,
+            args.output,
+        ),
+        // One input: the calibration must carry a mono topology
+        // (StitchJob::run rejects the mismatch with a typed error).
+        None => reco_io::StitchJob::mono_with_calibration(to_input(args.left), cal, args.output),
+    };
+    job = job
+        .codec(parse_codec(args.codec))
+        .quality(parse_quality(args.quality))
+        .resolution(args.width, args.height)
+        .on_progress(move |p: &reco_core::session::types::FrameProgress| {
+            // Use the session's own elapsed clock so the reported
+            // rate excludes one-time GPU / encoder / ORT init and
+            // reflects only the decode → stitch → encode loop.
+            progress.report_with_elapsed(p.frames_completed, p.elapsed);
+        });
 
     if let Some(b) = args.blend {
         job = job.blend_width(b);

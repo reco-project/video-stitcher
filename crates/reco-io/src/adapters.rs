@@ -568,6 +568,95 @@ pub fn create_encoder(
     Ok((encoder, name))
 }
 
+// -- FFmpeg Mono Source --
+
+/// Single-video source for mono topologies (pre-stitched panoramas).
+///
+/// Decodes one file on a background thread and delivers
+/// [`StereoFrame::Mono`] frames - the single-input dual of
+/// [`FfmpegFileSource`] for cylinder calibrations.
+#[cfg(feature = "ffmpeg")]
+pub struct FfmpegMonoSource {
+    rx: std::sync::mpsc::Receiver<YuvData>,
+    info: SourceInfo,
+    exhausted: bool,
+}
+
+#[cfg(feature = "ffmpeg")]
+impl FfmpegMonoSource {
+    /// Open a mono source. `software_decode` forces the software
+    /// decoder (the `--cpu` path).
+    pub fn open(
+        input: &crate::stitch_job::InputPath,
+        software_decode: bool,
+    ) -> Result<Self, SourceError> {
+        let probe_path = input.first_path();
+        reco_core::source::validate_input_path(probe_path)?;
+        let probe =
+            ffmpeg::decoder::VideoDecoder::open(probe_path).map_err(|e| SourceError::Init {
+                path: probe_path.display().to_string(),
+                reason: format!("{e}"),
+            })?;
+        let fps_r = probe.frame_rate();
+        let fps = probe.fps();
+        let total_frames = input_duration_secs(input).map(|dur| (dur * fps) as u64);
+        let info = SourceInfo {
+            width: probe.width(),
+            height: probe.height(),
+            fps,
+            fps_rational: Some((fps_r.0, fps_r.1)),
+            total_frames,
+        };
+        drop(probe);
+
+        let rx =
+            FfmpegFileSource::spawn_single_decoder_at(input.clone(), "mono", None, software_decode);
+        Ok(Self {
+            rx,
+            info,
+            exhausted: false,
+        })
+    }
+}
+
+#[cfg(feature = "ffmpeg")]
+impl reco_core::source::FrameSource for FfmpegMonoSource {
+    fn info(&self) -> SourceInfo {
+        self.info.clone()
+    }
+
+    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+        if self.exhausted {
+            return Ok(None);
+        }
+        match self.rx.recv() {
+            Ok(yuv) => Ok(Some(StereoFrame::Mono(yuv))),
+            Err(_) => {
+                self.exhausted = true;
+                Ok(None)
+            }
+        }
+    }
+
+    fn total_frames(&self) -> Option<u64> {
+        self.info.total_frames
+    }
+
+    fn skip_frames(&mut self, count: u64) -> Result<u64, SourceError> {
+        let mut skipped = 0;
+        while skipped < count {
+            match self.rx.recv() {
+                Ok(_) => skipped += 1,
+                Err(_) => {
+                    self.exhausted = true;
+                    break;
+                }
+            }
+        }
+        Ok(skipped)
+    }
+}
+
 // -- FFmpeg File Encoder --
 
 /// File encoder backed by FFmpeg.

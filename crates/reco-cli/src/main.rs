@@ -118,13 +118,15 @@ struct Cli {
 // is irrelevant.
 #[allow(clippy::large_enum_variant)]
 enum Commands {
-    /// Stitch two video files into a panoramic output.
+    /// Stitch camera video files into a panoramic output.
     Stitch {
-        /// Path to the left camera video file.
+        /// Path to the left camera video file (or the single
+        /// pre-stitched panorama for cylinder calibrations).
         left: String,
 
-        /// Path to the right camera video file.
-        right: String,
+        /// Path to the right camera video file. Omit for single-input
+        /// (cylinder) calibrations.
+        right: Option<String>,
 
         /// Path to the calibration JSON file.
         #[arg(short, long)]
@@ -808,7 +810,7 @@ fn main() -> anyhow::Result<()> {
         } => stitch::run_stitch(
             stitch::StitchArgs {
                 left: &left,
-                right: &right,
+                right: right.as_deref(),
                 calibration: &calibration,
                 output: &output,
                 width,
