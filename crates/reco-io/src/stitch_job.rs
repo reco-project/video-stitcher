@@ -618,17 +618,24 @@ impl StitchJob {
 
         // Build session. Blend lives on the calibration; an explicit job
         // override replaces it, otherwise the saved value renders as-is.
-        if let Some(blend) = self.blend_width {
-            log::info!(
-                "seam blend: overriding calibration value {} with {blend}",
-                cal.topology.blend_width
-            );
-            cal.topology.blend_width = blend;
-        } else {
-            log::info!(
-                "seam blend: using calibration value {}",
-                cal.topology.blend_width
-            );
+        // Seamless topologies (the mono cylinder) have no blend to set.
+        match (self.blend_width, cal.topology.l_shape_mut()) {
+            (Some(blend), Some(topology)) => {
+                log::info!(
+                    "seam blend: overriding calibration value {} with {blend}",
+                    topology.blend_width
+                );
+                topology.blend_width = blend;
+            }
+            (Some(blend), None) => {
+                log::warn!("seam blend override {blend} ignored: this topology has no seam");
+            }
+            (None, _) => {
+                log::info!(
+                    "seam blend: using calibration value {}",
+                    cal.topology.blend_width()
+                );
+            }
         }
         let viewport = reco_core::render::viewport::ViewportConfig {
             width: out_w,

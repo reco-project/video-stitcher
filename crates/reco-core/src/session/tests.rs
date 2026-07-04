@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use super::StitchSession;
 use super::types::*;
-use crate::calibration::{Calibration, Framing, Lens, Topology};
+use crate::calibration::{Calibration, Framing, LShapeTopology, Lens};
 use crate::detect::detector::{Detection, DetectorError, DetectorFrame, UnifiedDetector};
 use crate::detect::director::MappedDetection;
 use crate::detect::panner::{PanContext, Panner};
@@ -33,7 +33,7 @@ fn test_calibration() -> Calibration {
     let cam = || Lens::fisheye(W, H, 32.0, 32.0, 32.0, 32.0, [0.0; 4]);
     Calibration::new(
         vec![cam(), cam()],
-        Topology {
+        LShapeTopology {
             intersect: 0.5,
             x_ty: 0.0,
             x_rz: 0.0,

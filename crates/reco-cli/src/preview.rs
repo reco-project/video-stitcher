@@ -95,12 +95,18 @@ pub fn run_preview(
     // Blend lives on the calibration document; --blend is an explicit
     // override, otherwise the saved value is used (and hotkey edits
     // mutate the document directly - no shadow copy).
+    let Some(l_shape) = cal.topology.l_shape() else {
+        anyhow::bail!(
+            "reco preview tunes the L-shape stereo rig; this calibration's topology has \
+             no seam parameters to tune"
+        );
+    };
     if let Some(b) = blend_width {
         eprintln!(
             "Seam blend: --blend {b} overrides the calibration's {}",
-            cal.topology.blend_width
+            l_shape.blend_width
         );
-        cal.topology.blend_width = b;
+        cal.topology.l_shape_mut().unwrap().blend_width = b;
     }
 
     // Use calibration's sync offset unless the user explicitly overrode it
@@ -143,8 +149,7 @@ pub fn run_preview(
     // The actual CoverageBoundary is computed inside StitchCore::new().
     let max_fov = {
         let aspect = info.width as f32 / info.height as f32;
-        let scene =
-            reco_core::render::scene::SceneGeometry::new(&cal.topology, &cal.framing, aspect);
+        let scene = reco_core::render::scene::SceneGeometry::for_calibration(&cal, aspect);
         let coverage = reco_core::projection::CoverageBoundary::from_calibration(&cal, &scene);
         coverage.max_fov_degrees().min(FOV_MAX)
     };
@@ -649,16 +654,50 @@ impl ApplicationHandler for App {
                         }
                         // Calibration adjustment keys
                         PhysicalKey::Code(KeyCode::Digit1) => {
-                            self.cal.topology.intersect =
-                                (self.cal.topology.intersect + 0.01).min(1.0);
+                            self.cal
+                                .topology
+                                .l_shape_mut()
+                                .expect("guarded at startup")
+                                .intersect = (self
+                                .cal
+                                .topology
+                                .l_shape_mut()
+                                .expect("guarded at startup")
+                                .intersect
+                                + 0.01)
+                                .min(1.0);
                             self.apply_calibration_change();
-                            println!("intersect: {:.4}", self.cal.topology.intersect);
+                            println!(
+                                "intersect: {:.4}",
+                                self.cal
+                                    .topology
+                                    .l_shape_mut()
+                                    .expect("guarded at startup")
+                                    .intersect
+                            );
                         }
                         PhysicalKey::Code(KeyCode::Digit2) => {
-                            self.cal.topology.intersect =
-                                (self.cal.topology.intersect - 0.01).max(0.0);
+                            self.cal
+                                .topology
+                                .l_shape_mut()
+                                .expect("guarded at startup")
+                                .intersect = (self
+                                .cal
+                                .topology
+                                .l_shape_mut()
+                                .expect("guarded at startup")
+                                .intersect
+                                - 0.01)
+                                .max(0.0);
                             self.apply_calibration_change();
-                            println!("intersect: {:.4}", self.cal.topology.intersect);
+                            println!(
+                                "intersect: {:.4}",
+                                self.cal
+                                    .topology
+                                    .l_shape_mut()
+                                    .expect("guarded at startup")
+                                    .intersect
+                            );
                         }
                         PhysicalKey::Code(KeyCode::Digit3) => {
                             self.cal.framing.axis_offset += 0.005;
@@ -671,25 +710,69 @@ impl ApplicationHandler for App {
                             println!("camera_axis_offset: {:.4}", self.cal.framing.axis_offset);
                         }
                         PhysicalKey::Code(KeyCode::Digit5) => {
-                            self.cal.topology.x_ty += 0.005;
+                            self.cal
+                                .topology
+                                .l_shape_mut()
+                                .expect("guarded at startup")
+                                .x_ty += 0.005;
                             self.apply_calibration_change();
-                            println!("x_ty: {:.4}", self.cal.topology.x_ty);
+                            println!(
+                                "x_ty: {:.4}",
+                                self.cal
+                                    .topology
+                                    .l_shape_mut()
+                                    .expect("guarded at startup")
+                                    .x_ty
+                            );
                         }
                         PhysicalKey::Code(KeyCode::Digit6) => {
-                            self.cal.topology.x_ty -= 0.005;
+                            self.cal
+                                .topology
+                                .l_shape_mut()
+                                .expect("guarded at startup")
+                                .x_ty -= 0.005;
                             self.apply_calibration_change();
-                            println!("x_ty: {:.4}", self.cal.topology.x_ty);
+                            println!(
+                                "x_ty: {:.4}",
+                                self.cal
+                                    .topology
+                                    .l_shape_mut()
+                                    .expect("guarded at startup")
+                                    .x_ty
+                            );
                         }
                         PhysicalKey::Code(KeyCode::KeyB) => {
                             // Cycle blend width: 0.0 -> 0.05 -> 0.10 -> 0.15 -> 0.20 -> 0.0.
                             // Mutate the calibration document (single home) so
                             // other hotkeys' update_calibration cannot revert it.
-                            let b = self.cal.topology.blend_width;
-                            self.cal.topology.blend_width = if b >= 0.19 { 0.0 } else { b + 0.05 };
+                            let b = self
+                                .cal
+                                .topology
+                                .l_shape_mut()
+                                .expect("guarded at startup")
+                                .blend_width;
+                            self.cal
+                                .topology
+                                .l_shape_mut()
+                                .expect("guarded at startup")
+                                .blend_width = if b >= 0.19 { 0.0 } else { b + 0.05 };
                             if let Some(ref mut r) = self.renderer {
-                                r.set_blend_width(self.cal.topology.blend_width);
+                                r.set_blend_width(
+                                    self.cal
+                                        .topology
+                                        .l_shape_mut()
+                                        .expect("guarded at startup")
+                                        .blend_width,
+                                );
                             }
-                            println!("blend_width: {:.2}", self.cal.topology.blend_width);
+                            println!(
+                                "blend_width: {:.2}",
+                                self.cal
+                                    .topology
+                                    .l_shape_mut()
+                                    .expect("guarded at startup")
+                                    .blend_width
+                            );
                             self.needs_redraw = true;
                         }
                         PhysicalKey::Code(KeyCode::Digit7) => {

@@ -104,7 +104,7 @@ pub(crate) mod test_support {
     // either way so the fixtures stay in sync.
     #![cfg_attr(not(feature = "gpu"), allow(dead_code))]
 
-    use crate::calibration::{Calibration, Framing, Lens, Topology};
+    use crate::calibration::{Calibration, Framing, LShapeTopology, Lens};
     #[cfg(feature = "gpu")]
     use crate::gpu::{GpuContext, GpuError};
 
@@ -123,7 +123,7 @@ pub(crate) mod test_support {
         };
         Calibration::new(
             vec![cam(), cam()],
-            Topology {
+            LShapeTopology {
                 intersect: 0.5,
                 x_ty: 0.0,
                 x_rz: 0.0,

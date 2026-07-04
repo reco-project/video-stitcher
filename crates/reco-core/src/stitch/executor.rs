@@ -193,7 +193,7 @@ impl CpuExecutor {
 /// `StitchPipeline::update_calibration` does on the GPU side.
 fn derive_scene(calib: &Calibration) -> SceneGeometry {
     let aspect = calib.lenses[0].width as f32 / calib.lenses[0].height as f32;
-    SceneGeometry::new(&calib.topology, &calib.framing, aspect)
+    SceneGeometry::for_calibration(calib, aspect)
 }
 
 impl StitchExecutor for CpuExecutor {
@@ -1098,7 +1098,13 @@ impl Executor {
     /// Set the seam blend width (document field; no geometry rebuild).
     pub fn set_blend_width(&mut self, width: f32) {
         match self {
-            Executor::Cpu(c) => c.calib.topology.blend_width = width,
+            Executor::Cpu(c) => {
+                if let Some(t) = c.calib.topology.l_shape_mut() {
+                    t.blend_width = width;
+                } else {
+                    log::warn!("set_blend_width({width}) ignored: this topology has no seam");
+                }
+            }
             #[cfg(feature = "gpu")]
             Executor::Gpu(g) => g.pipeline.set_blend_width(width),
         }
@@ -1290,7 +1296,7 @@ mod tests {
             cal.framing.tilt = tilt;
             cal.framing.roll = roll;
             let plane_aspect = cal.lenses[0].width as f32 / cal.lenses[0].height as f32;
-            let scene = SceneGeometry::new(&cal.topology, &cal.framing, plane_aspect);
+            let scene = SceneGeometry::for_calibration(&cal, plane_aspect);
             let coverage = CoverageBoundary::from_calibration(&cal, &scene);
             let cam = VirtualCamera::new(&scene.camera_position);
             let fov = (coverage.max_fov_degrees() * fov_factor).min(60.0);

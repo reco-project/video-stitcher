@@ -896,7 +896,7 @@ mod tests {
         );
         core.set_fov(50.0);
         core.set_blend_width(0.1);
-        assert!((core.calibration().topology.blend_width - 0.1).abs() < 1e-6);
+        assert!((core.calibration().topology.blend_width() - 0.1).abs() < 1e-6);
         core.set_rig_tilt(0.2);
         assert!((core.calibration().framing.tilt - 0.2).abs() < 1e-6);
         assert_eq!(core.resize(48, 26), Some((48, 26)));

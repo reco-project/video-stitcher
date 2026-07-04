@@ -60,28 +60,30 @@ fn calibrate_videos_matches_known_good() {
         exp.framing.axis_offset,
     );
     assert!(
-        (got.topology.intersect - exp.topology.intersect).abs() < tol,
+        (got.topology.l_shape().unwrap().intersect - exp.topology.l_shape().unwrap().intersect)
+            .abs()
+            < tol,
         "intersect: got {}, expected {} (tol {tol})",
-        got.topology.intersect,
-        exp.topology.intersect,
+        got.topology.l_shape().unwrap().intersect,
+        exp.topology.l_shape().unwrap().intersect,
     );
     assert!(
-        (got.topology.x_ty - exp.topology.x_ty).abs() < tol,
+        (got.topology.l_shape().unwrap().x_ty - exp.topology.l_shape().unwrap().x_ty).abs() < tol,
         "x_ty: got {}, expected {} (tol {tol})",
-        got.topology.x_ty,
-        exp.topology.x_ty,
+        got.topology.l_shape().unwrap().x_ty,
+        exp.topology.l_shape().unwrap().x_ty,
     );
     assert!(
-        (got.topology.x_rz - exp.topology.x_rz).abs() < tol,
+        (got.topology.l_shape().unwrap().x_rz - exp.topology.l_shape().unwrap().x_rz).abs() < tol,
         "x_rz: got {}, expected {} (tol {tol})",
-        got.topology.x_rz,
-        exp.topology.x_rz,
+        got.topology.l_shape().unwrap().x_rz,
+        exp.topology.l_shape().unwrap().x_rz,
     );
     assert!(
-        (got.topology.z_rx - exp.topology.z_rx).abs() < tol,
+        (got.topology.l_shape().unwrap().z_rx - exp.topology.l_shape().unwrap().z_rx).abs() < tol,
         "z_rx: got {}, expected {} (tol {tol})",
-        got.topology.z_rx,
-        exp.topology.z_rx,
+        got.topology.l_shape().unwrap().z_rx,
+        exp.topology.l_shape().unwrap().z_rx,
     );
 
     // Quality metrics
@@ -103,5 +105,8 @@ fn calibrate_videos_matches_known_good() {
     println!("  frames_used: {}", result.frames_used);
     println!("  matches: {}", result.total_matches);
     println!("  cam_d: {:.4}", got.framing.axis_offset);
-    println!("  intersect: {:.4}", got.topology.intersect);
+    println!(
+        "  intersect: {:.4}",
+        got.topology.l_shape().unwrap().intersect
+    );
 }

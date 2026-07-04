@@ -126,7 +126,7 @@ impl Projection for LShapeProjection {
             (Box::new(left), BlendRule::Opaque),
             (
                 Box::new(right),
-                BlendRule::Smoothstep(calibration.topology.blend_width as f64),
+                BlendRule::Smoothstep(calibration.topology.blend_width() as f64),
             ),
         ]
     }
@@ -291,7 +291,7 @@ const CONVERGENCE_EPS: f64 = 1e-10;
 ///
 /// # fn example(cal: &Calibration) {
 /// let aspect = cal.lenses[0].width as f32 / cal.lenses[0].height as f32;
-/// let scene = SceneGeometry::new(&cal.topology, &cal.framing, aspect);
+/// let scene = SceneGeometry::for_calibration(cal, aspect);
 /// if let Some(pos) = camera_to_panorama(CameraId::Left, 0.5, 0.5, cal, &scene) {
 ///     println!("Center of left camera maps to yaw={:.3}, pitch={:.3}", pos.yaw, pos.pitch);
 /// }
@@ -468,11 +468,11 @@ pub(crate) fn yaw_pitch_to_direction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::calibration::{Calibration, Framing, Lens, Topology};
+    use crate::calibration::{Calibration, Framing, LShapeTopology, Lens};
 
     fn test_scene(cal: &Calibration) -> SceneGeometry {
         let aspect = cal.lenses[0].width as f32 / cal.lenses[0].height as f32;
-        SceneGeometry::new(&cal.topology, &cal.framing, aspect)
+        SceneGeometry::for_calibration(cal, aspect)
     }
 
     fn test_calibration() -> Calibration {
@@ -489,7 +489,7 @@ mod tests {
         };
         Calibration::new(
             vec![cam(), cam()],
-            Topology {
+            LShapeTopology {
                 intersect: 0.5446,
                 x_ty: 0.00476,
                 x_rz: 0.00753,
@@ -909,7 +909,7 @@ mod tests {
         assert_eq!(surfaces[0].1, crate::stitch::BlendRule::Opaque);
         assert_eq!(
             surfaces[1].1,
-            crate::stitch::BlendRule::Smoothstep(cal.topology.blend_width as f64)
+            crate::stitch::BlendRule::Smoothstep(cal.topology.blend_width() as f64)
         );
     }
 

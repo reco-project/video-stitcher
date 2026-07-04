@@ -123,7 +123,7 @@ impl StitchPipeline {
 
         let output_format = output_format.into();
         let aspect = calibration.lenses[0].width as f32 / calibration.lenses[0].height as f32;
-        let scene = SceneGeometry::new(&calibration.topology, &calibration.framing, aspect);
+        let scene = SceneGeometry::for_calibration(&calibration, aspect);
         let renderer = Renderer::new(
             &gpu,
             program,
@@ -250,7 +250,11 @@ impl StitchPipeline {
 
     /// Set the seam blend width (per-frame uniform; no scene rebuild).
     pub fn set_blend_width(&mut self, width: f32) {
-        self.calibration.topology.blend_width = width;
+        if let Some(t) = self.calibration.topology.l_shape_mut() {
+            t.blend_width = width;
+        } else {
+            log::warn!("set_blend_width({width}) ignored: this topology has no seam");
+        }
     }
 
     /// Update calibration parameters. Recomputes [`SceneGeometry`] from the
@@ -260,7 +264,7 @@ impl StitchPipeline {
     /// No GPU pipeline recreation needed - only the uniform data changes.
     pub fn update_calibration(&mut self, calibration: Calibration) {
         let aspect = calibration.lenses[0].width as f32 / calibration.lenses[0].height as f32;
-        self.scene = SceneGeometry::new(&calibration.topology, &calibration.framing, aspect);
+        self.scene = SceneGeometry::for_calibration(&calibration, aspect);
         self.calibration = calibration;
         log::debug!("Pipeline calibration updated");
     }
@@ -528,7 +532,7 @@ impl StitchPipeline {
             &self.scene,
             &self.calibration,
             &viewport,
-            self.calibration.topology.blend_width,
+            self.calibration.topology.blend_width(),
             target_view,
         );
         Ok(())
@@ -569,7 +573,7 @@ impl StitchPipeline {
             &self.scene,
             &self.calibration,
             &viewport,
-            self.calibration.topology.blend_width,
+            self.calibration.topology.blend_width(),
         ))
     }
 
@@ -607,7 +611,7 @@ impl StitchPipeline {
             &self.scene,
             &self.calibration,
             &viewport,
-            self.calibration.topology.blend_width,
+            self.calibration.topology.blend_width(),
         ))
     }
 
@@ -645,7 +649,7 @@ impl StitchPipeline {
             &self.scene,
             &self.calibration,
             &viewport,
-            self.calibration.topology.blend_width,
+            self.calibration.topology.blend_width(),
         ))
     }
 
@@ -708,7 +712,7 @@ impl StitchPipeline {
             &self.scene,
             &self.calibration,
             &viewport,
-            self.calibration.topology.blend_width,
+            self.calibration.topology.blend_width(),
         )
     }
 

@@ -579,12 +579,14 @@ impl AppState {
 
     /// Apply an edited Topology to the renderer. `preview_dirty`
     /// triggers a re-render on the next timer tick.
-    fn apply_layout(&mut self, layout: reco_core::calibration::Topology) {
+    fn apply_layout(&mut self, layout: reco_core::calibration::LShapeTopology) {
         if let Some(cal) = self.calibration.as_mut() {
-            cal.topology = layout.clone();
+            cal.topology = reco_core::calibration::Topology::LShape(layout.clone());
         }
         if let Some(bridge) = self.bridge.as_mut() {
-            bridge.engine_mut().update_topology(layout);
+            bridge
+                .engine_mut()
+                .update_topology(reco_core::calibration::Topology::LShape(layout));
             self.preview_dirty = true;
         }
         self.clamp_targets();
@@ -621,7 +623,9 @@ impl AppState {
     /// Restore Topology to the values loaded at init (or after auto-cal).
     fn reset_calibration(&mut self) {
         if let Some(base) = self.cal_baseline.clone() {
-            self.apply_layout(base.topology);
+            if let Some(t) = base.topology.l_shape() {
+                self.apply_layout(t.clone());
+            }
             self.apply_framing(base.framing);
         }
     }
@@ -922,8 +926,12 @@ impl AppState {
         // Mirror into the source-of-truth calibration so topology slider
         // edits (which clone-and-reapply the whole Topology) and saves
         // cannot revert the blend to a stale value.
-        if let Some(cal) = self.calibration.as_mut() {
-            cal.topology.blend_width = w;
+        if let Some(t) = self
+            .calibration
+            .as_mut()
+            .and_then(|cal| cal.topology.l_shape_mut())
+        {
+            t.blend_width = w;
         }
         if let Some(bridge) = self.bridge.as_mut() {
             bridge.engine_mut().set_blend_width(w);
@@ -2818,7 +2826,11 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_changed_cal_intersect(move |v| {
         let mut s = state_ref.borrow_mut();
-        let Some(mut layout) = s.calibration.as_ref().map(|c| c.topology.clone()) else {
+        let Some(mut layout) = s
+            .calibration
+            .as_ref()
+            .and_then(|c| c.topology.l_shape().cloned())
+        else {
             return;
         };
         layout.intersect = v as f64;
@@ -2846,7 +2858,11 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_changed_cal_x_ty(move |v| {
         let mut s = state_ref.borrow_mut();
-        let Some(mut layout) = s.calibration.as_ref().map(|c| c.topology.clone()) else {
+        let Some(mut layout) = s
+            .calibration
+            .as_ref()
+            .and_then(|c| c.topology.l_shape().cloned())
+        else {
             return;
         };
         layout.x_ty = v as f64;
@@ -2892,14 +2908,16 @@ fn main() -> anyhow::Result<()> {
         let mut s = state_ref.borrow_mut();
         s.reset_calibration();
         if let (Some(app), Some(layout)) = (app_weak.upgrade(), s.cal_baseline.as_ref()) {
-            app.set_cal_intersect(layout.topology.intersect as f32);
+            if let Some(t) = layout.topology.l_shape() {
+                app.set_cal_intersect(t.intersect as f32);
+                app.set_cal_x_ty(t.x_ty as f32);
+            }
             app.set_cal_camera_axis_offset(layout.framing.axis_offset as f32);
-            app.set_cal_x_ty(layout.topology.x_ty as f32);
             // The reset also restored framing tilt/roll and the topology's
             // blend in the renderer - keep the View-panel sliders in sync.
             app.set_rig_tilt((layout.framing.tilt as f32).to_degrees());
             app.set_rig_roll((layout.framing.roll as f32).to_degrees());
-            app.set_blend_width(layout.topology.blend_width);
+            app.set_blend_width(layout.topology.blend_width());
             app.set_cal_dirty(false);
         }
     });
@@ -4266,7 +4284,7 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
             let blend_width = s
                 .bridge
                 .as_ref()
-                .map(|b| b.engine().calibration().topology.blend_width);
+                .map(|b| b.engine().calibration().topology.blend_width());
             // Lens-correction strength came in via the loaded calibration and
             // the renderer was seeded with it at bridge creation; mirror it
             // into AppState so a later save re-persists the right value.
@@ -4348,9 +4366,11 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                     app.set_preview_frame(img);
                 }
                 if let Some(layout) = layout {
-                    app.set_cal_intersect(layout.topology.intersect as f32);
+                    if let Some(t) = layout.topology.l_shape() {
+                        app.set_cal_intersect(t.intersect as f32);
+                        app.set_cal_x_ty(t.x_ty as f32);
+                    }
                     app.set_cal_camera_axis_offset(layout.framing.axis_offset as f32);
-                    app.set_cal_x_ty(layout.topology.x_ty as f32);
                     app.set_cal_dirty(false);
                 }
                 if let Some(rt) = rig_tilt_rad {
@@ -4552,7 +4572,7 @@ fn handle_calibration_result(
                     let blend_width = state
                         .bridge
                         .as_ref()
-                        .map(|b| b.engine().calibration().topology.blend_width);
+                        .map(|b| b.engine().calibration().topology.blend_width());
                     let lens_correction =
                         state.calibration.as_ref().map(|c| c.lenses[0].correction);
                     if let Some(lc) = lens_correction {
@@ -4615,9 +4635,11 @@ fn handle_calibration_result(
                             app.set_preview_frame(img);
                         }
                         if let Some(layout) = layout_baseline.as_ref() {
-                            app.set_cal_intersect(layout.topology.intersect as f32);
+                            if let Some(t) = layout.topology.l_shape() {
+                                app.set_cal_intersect(t.intersect as f32);
+                                app.set_cal_x_ty(t.x_ty as f32);
+                            }
                             app.set_cal_camera_axis_offset(layout.framing.axis_offset as f32);
-                            app.set_cal_x_ty(layout.topology.x_ty as f32);
                             app.set_cal_dirty(false);
                         }
                         if let Some(rt) = rig_tilt_rad {
