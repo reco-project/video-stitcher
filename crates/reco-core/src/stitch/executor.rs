@@ -633,6 +633,34 @@ impl GpuExecutor {
             .map_err(|e| e.to_string())
     }
 
+    /// Import a stereo CVPixelBuffer pair as Y/UV plane textures
+    /// (`[left_y, left_uv, right_y, right_uv]`). The Metal texture
+    /// cache is created on first use. Each returned plane keeps its
+    /// `CVMetalTextureRef` alive - hold it until the GPU has read the
+    /// frame.
+    ///
+    /// # Safety
+    ///
+    /// `left` and `right` must be valid, non-null `CVPixelBufferRef`s.
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    pub(crate) unsafe fn import_metal(
+        &mut self,
+        left: crate::interop::metal::CVPixelBufferRef,
+        right: crate::interop::metal::CVPixelBufferRef,
+    ) -> Result<[crate::interop::metal::ImportedPlaneTexture; 4], String> {
+        if self.residency.metal_cache.is_none() {
+            let cache = crate::interop::metal::MetalTextureCache::new(self.pipeline.gpu())
+                .map_err(|e| e.to_string())?;
+            log::info!("Metal zero-copy: texture cache initialized");
+            self.residency.metal_cache = Some(cache);
+        }
+        let gpu = self.pipeline.gpu();
+        let cache = self.residency.metal_cache.as_mut().expect("created above");
+        let (ly, lu) = unsafe { cache.import_nv12(left, gpu) }.map_err(|e| e.to_string())?;
+        let (ry, ru) = unsafe { cache.import_nv12(right, gpu) }.map_err(|e| e.to_string())?;
+        Ok([ly, lu, ry, ru])
+    }
+
     /// Hand decode slots back to the decode threads. Call only after
     /// detection has read the slot - releasing earlier lets the decode
     /// thread overwrite the shared memory mid-read.

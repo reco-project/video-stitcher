@@ -365,39 +365,20 @@ impl StitchSession {
         yaw: f32,
         pitch: f32,
     ) -> Result<(), SessionError> {
-        // Lazily create the texture cache on first MetalResident frame.
-        if self.metal_texture_cache.is_none() {
-            self.metal_texture_cache = Some(crate::interop::metal::MetalTextureCache::new(
-                self.core.gpu(),
-            )?);
-            log::info!("Metal zero-copy: texture cache initialized");
-        }
-        let cache = self.metal_texture_cache.as_mut().unwrap();
-
-        // SAFETY: RetainedCVPixelBuffer guarantees the pointer is valid.
-        let (left_y, left_uv) = unsafe { cache.import_nv12(left.as_ptr(), self.core.gpu())? };
-        let (right_y, right_uv) = unsafe { cache.import_nv12(right.as_ptr(), self.core.gpu())? };
-
-        let render_buf = self.core.render_imported_textures_at_pose(
-            &left_y.texture,
-            &left_uv.texture,
-            &right_y.texture,
-            &right_uv.texture,
+        // SAFETY: RetainedCVPixelBuffer guarantees the pointers are valid.
+        let [ly, lu, ry, ru] =
+            unsafe { self.gpu_exec().import_metal(left.as_ptr(), right.as_ptr()) }
+                .map_err(SessionError::ZeroCopy)?;
+        // The imported planes must outlive the render + readback below
+        // (each keeps its CVMetalTextureRef alive).
+        self.process_frame_imported_nv12(
+            &ly.texture,
+            &lu.texture,
+            &ry.texture,
+            &ru.texture,
             yaw,
             pitch,
-        );
-        self.submit_render_output(render_buf)?;
-
-        let desc = wgpu::TextureViewDescriptor::default();
-        let ly = left_y.texture.create_view(&desc);
-        let lu = left_uv.texture.create_view(&desc);
-        let ry = right_y.texture.create_view(&desc);
-        let ru = right_uv.texture.create_view(&desc);
-        self.core.pack_gpu_stacked_replay_from_views(
-            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 { y: &ly, uv: &lu },
-            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 { y: &ry, uv: &ru },
-        );
-        Ok(())
+        )
     }
 
     /// Render a GpuResident frame: shared CUDA/Vulkan textures.
@@ -756,25 +737,15 @@ impl StitchSession {
         _produce_index: u64,
     ) -> Result<Option<usize>, SessionError> {
         if let StereoFrame::MetalResident { left, right } = frame {
-            // Import CVPixelBuffers as wgpu textures (separate Y + UV).
-            if self.metal_texture_cache.is_none() {
-                self.metal_texture_cache = Some(crate::interop::metal::MetalTextureCache::new(
-                    self.core.gpu(),
-                )?);
-            }
-            let cache = self.metal_texture_cache.as_mut().unwrap();
-            let (left_y, left_uv) = unsafe { cache.import_nv12(left.as_ptr(), self.core.gpu())? };
-            let (right_y, right_uv) =
-                unsafe { cache.import_nv12(right.as_ptr(), self.core.gpu())? };
-
+            // SAFETY: RetainedCVPixelBuffer guarantees the pointers are valid.
+            let [ly, lu, ry, ru] =
+                unsafe { self.gpu_exec().import_metal(left.as_ptr(), right.as_ptr()) }
+                    .map_err(SessionError::ZeroCopy)?;
+            // The staging copy is awaited before this returns, so the
+            // imported planes may drop at the end of this arm.
             return self
                 .gpu_exec()
-                .stage_textures_to_pool(
-                    &left_y.texture,
-                    &left_uv.texture,
-                    &right_y.texture,
-                    &right_uv.texture,
-                )
+                .stage_textures_to_pool(&ly.texture, &lu.texture, &ry.texture, &ru.texture)
                 .map_err(|e| SessionError::Config(e.to_string()));
         }
         Ok(None)

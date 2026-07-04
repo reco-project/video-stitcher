@@ -51,6 +51,10 @@ pub(crate) struct Residency {
         crate::nvbuf_transform::NvBufDetectionSurface,
         crate::nvbuf_transform::NvBufDetectionSurface,
     )>,
+    /// CVPixelBuffer -> Metal texture import cache for the
+    /// VideoToolbox zero-copy path.
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    pub(crate) metal_cache: Option<crate::interop::metal::MetalTextureCache>,
     /// D3D11VA staging pool: SHARED_NTHANDLE textures that bridge
     /// FFmpeg's decode device to wgpu's DX12 device. Doubles as the
     /// lookahead buffer on Windows - slots are sized for peak

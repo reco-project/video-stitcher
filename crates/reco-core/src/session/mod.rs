@@ -90,11 +90,6 @@ pub struct StitchSession {
     /// GPU executor).
     pub(crate) current_vram_slot: Option<usize>,
 
-    /// Metal texture cache for importing CVPixelBuffers as wgpu textures.
-    /// Created lazily on the first MetalResident frame.
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    pub(crate) metal_texture_cache: Option<crate::interop::metal::MetalTextureCache>,
-
     /// Camera rotation from stream metadata, populated by
     /// [`configure_from_source`](Self::configure_from_source).
     /// Used to tell the GPU detector to flip frames during preprocessing.
@@ -193,8 +188,6 @@ impl StitchSession {
             last_readback_time: std::time::Duration::ZERO,
             last_submit_time: std::time::Duration::ZERO,
             current_vram_slot: None,
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
-            metal_texture_cache: None,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             left_rotation: 0,
             #[cfg(any(target_os = "linux", target_os = "windows"))]
