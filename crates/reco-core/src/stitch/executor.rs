@@ -292,6 +292,10 @@ pub struct GpuExecutor {
     /// The bound projection: supplied the pipeline's GPU program at
     /// construction and dispatches coverage construction for the engine.
     pub(crate) projection: Box<dyn Projection>,
+    /// Resident-frame machinery: shared decode textures, the VRAM
+    /// lookahead pool, decode backpressure. Populated lazily by the
+    /// configure/stage methods; empty for pure CPU-frame consumers.
+    pub(crate) residency: super::residency::Residency,
     /// Readback ring for the synchronous [`StitchExecutor::stitch`]
     /// path, created on first use so engine-embedded executors (which
     /// read back through the engine's own pipelined ring) never
@@ -336,8 +340,212 @@ impl GpuExecutor {
         Ok(Self {
             pipeline,
             projection,
+            residency: super::residency::Residency::default(),
             sync_readback: None,
         })
+    }
+
+    // -----------------------------------------------------------------
+    // Resident-frame surface (zero-copy sources, lookahead pool)
+    // -----------------------------------------------------------------
+
+    /// Wire the shared zero-copy decode textures into the pipeline:
+    /// bind groups for rendering, views for detection and replay
+    /// packing, texture clones for pool staging, CUDA pointers for
+    /// GPU detection, and the decode backpressure channels.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn configure_shared_textures(&mut self, shared: &crate::interop::SharedTextureSet) {
+        let t = &shared.textures;
+        let bind_groups = self.pipeline.configure_gpu_source(
+            [(&t[0], &t[1]), (&t[2], &t[3])],
+            [(&t[4], &t[5]), (&t[6], &t[7])],
+        );
+        let desc = wgpu::TextureViewDescriptor::default();
+        self.residency.bind_groups = Some(bind_groups);
+        self.residency.slot_free_tx = Some((
+            shared.left_slot_free_tx.clone(),
+            shared.right_slot_free_tx.clone(),
+        ));
+        self.residency.cuda_buf_info = Some((shared.left_buf.clone(), shared.right_buf.clone()));
+        self.residency.shared_views = Some([
+            t[0].texture.create_view(&desc),
+            t[1].texture.create_view(&desc),
+            t[2].texture.create_view(&desc),
+            t[3].texture.create_view(&desc),
+            t[4].texture.create_view(&desc),
+            t[5].texture.create_view(&desc),
+            t[6].texture.create_view(&desc),
+            t[7].texture.create_view(&desc),
+        ]);
+        self.residency.shared_textures = Some([
+            t[0].texture.clone(),
+            t[1].texture.clone(),
+            t[2].texture.clone(),
+            t[3].texture.clone(),
+            t[4].texture.clone(),
+            t[5].texture.clone(),
+            t[6].texture.clone(),
+            t[7].texture.clone(),
+        ]);
+        log::info!("GpuExecutor: shared zero-copy decode textures configured");
+    }
+
+    /// Render from the shared decode textures at the given slots
+    /// (immediate zero-copy path).
+    #[cfg(target_os = "linux")]
+    pub(crate) fn render_shared_slots(
+        &mut self,
+        left_slot: u8,
+        right_slot: u8,
+        yaw: f32,
+        pitch: f32,
+    ) -> Result<wgpu::CommandBuffer, StitchError> {
+        let bind_groups = self.residency.bind_groups.as_ref().ok_or_else(|| {
+            StitchError::InvalidConfig(
+                "GPU bind groups not configured - call setup_gpu_source() before run()".into(),
+            )
+        })?;
+        Ok(self
+            .pipeline
+            .render_gpu_frame(bind_groups, left_slot, right_slot, yaw, pitch))
+    }
+
+    /// Render from a VRAM lookahead pool slot (buffered path).
+    pub(crate) fn render_pool_slot(
+        &mut self,
+        slot: usize,
+        yaw: f32,
+        pitch: f32,
+    ) -> wgpu::CommandBuffer {
+        let pool = self
+            .residency
+            .pool
+            .as_ref()
+            .expect("render_pool_slot requires the lookahead pool");
+        self.pipeline.render_with_bind_groups(
+            pool.left_bind_group(slot),
+            pool.right_bind_group(slot),
+            yaw,
+            pitch,
+        )
+    }
+
+    /// Copy the shared decode slots into a pool slot so the decode
+    /// surfaces can recycle while the frame waits in the lookahead
+    /// buffer. The copy is awaited before returning. The decode slot
+    /// is NOT released here - detection still reads it; the caller
+    /// frees it via [`Self::release_decode_slots`] afterwards.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn stage_shared_to_pool(
+        &mut self,
+        left_slot: usize,
+        right_slot: usize,
+    ) -> Result<Option<usize>, StitchError> {
+        let residency = &mut self.residency;
+        let (Some(pool), Some(shared_tex)) =
+            (residency.pool.as_mut(), residency.shared_textures.as_ref())
+        else {
+            return Ok(None);
+        };
+        let slot = pool.acquire().ok_or_else(|| {
+            StitchError::InvalidConfig(format!(
+                "VRAM pool exhausted ({} slots, {} available)",
+                pool.capacity(),
+                pool.available()
+            ))
+        })?;
+        let gpu = self.pipeline.gpu();
+        pool.copy_from_textures(
+            gpu,
+            slot,
+            &shared_tex[left_slot * 2],
+            &shared_tex[left_slot * 2 + 1],
+            &shared_tex[4 + right_slot * 2],
+            &shared_tex[4 + right_slot * 2 + 1],
+        );
+        let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
+        Ok(Some(slot))
+    }
+
+    /// Copy four imported NV12 plane textures into a pool slot
+    /// (DMA-buf / CVPixelBuffer sources whose import caches live
+    /// outside the shared-texture set). The copy is awaited so the
+    /// source may recycle its buffer immediately after.
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "ios"))]
+    pub(crate) fn stage_textures_to_pool(
+        &mut self,
+        left_y: &wgpu::Texture,
+        left_uv: &wgpu::Texture,
+        right_y: &wgpu::Texture,
+        right_uv: &wgpu::Texture,
+    ) -> Result<Option<usize>, StitchError> {
+        let Some(pool) = self.residency.pool.as_mut() else {
+            return Ok(None);
+        };
+        let slot = pool.acquire().ok_or_else(|| {
+            StitchError::InvalidConfig(format!(
+                "VRAM pool exhausted ({} slots, {} available)",
+                pool.capacity(),
+                pool.available()
+            ))
+        })?;
+        let gpu = self.pipeline.gpu();
+        pool.copy_from_textures(gpu, slot, left_y, left_uv, right_y, right_uv);
+        let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
+        Ok(Some(slot))
+    }
+
+    /// Hand decode slots back to the decode threads. Call only after
+    /// detection has read the slot - releasing earlier lets the decode
+    /// thread overwrite the shared memory mid-read.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn release_decode_slots(&self, left_slot: u8, right_slot: u8) {
+        if let Some((ref left_tx, ref right_tx)) = self.residency.slot_free_tx {
+            if left_tx.send(left_slot).is_err() {
+                log::error!(
+                    "failed to release left GPU decode slot {left_slot} - decode thread may have died"
+                );
+            }
+            if right_tx.send(right_slot).is_err() {
+                log::error!(
+                    "failed to release right GPU decode slot {right_slot} - decode thread may have died"
+                );
+            }
+        }
+    }
+
+    /// Drop the decode backpressure senders so decode threads see a
+    /// closed channel and exit instead of blocking on `recv()`.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn drop_decode_channels(&mut self) {
+        self.residency.slot_free_tx = None;
+    }
+
+    /// Allocate the VRAM lookahead pool.
+    pub(crate) fn create_lookahead_pool(
+        &mut self,
+        width: u32,
+        height: u32,
+        slots: usize,
+        pixel_format: crate::render::renderer::GpuPixelFormat,
+    ) -> Result<(), String> {
+        let pool = crate::gpu::vram_pool::VramPool::new(
+            self.pipeline.gpu(),
+            &self.pipeline,
+            width,
+            height,
+            slots,
+            pixel_format,
+        )?;
+        self.residency.pool = Some(pool);
+        Ok(())
+    }
+
+    /// Release a lookahead pool slot after its frame rendered.
+    pub(crate) fn release_pool_slot(&mut self, slot: usize) {
+        if let Some(pool) = self.residency.pool.as_mut() {
+            pool.release(slot);
+        }
     }
 }
 

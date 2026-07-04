@@ -2,8 +2,8 @@
 //!
 //! Contains [`SharedTextureSet`], the bundle of double-buffered shared
 //! textures + CUDA pointers + slot channels used by the GPU zero-copy
-//! decode path. Platform-specific session methods that operate on these
-//! textures live in `run_loop.rs` (`setup_gpu_source`, `step_gpu_with_bufs`).
+//! decode path. The decode side (reco-io) constructs it; the render
+//! side consumes it via `StitchSession::setup_gpu_source`.
 
 use crate::interop::vulkan::SharedTexture;
 use crate::interop::zero_copy::GpuBufInfo;

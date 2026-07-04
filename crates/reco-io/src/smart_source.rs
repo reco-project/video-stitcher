@@ -122,7 +122,7 @@ struct LinuxZeroCopyState {
     /// early to unblock the pairing thread before joining decode threads.
     frame_rx: Option<std::sync::mpsc::Receiver<reco_core::interop::zero_copy::GpuFrameSignal>>,
     /// Shared textures (kept alive until Drop).
-    shared: reco_core::session::SharedTextureSet,
+    shared: reco_core::interop::SharedTextureSet,
     /// Decode thread join handles.
     join_handles: Vec<std::thread::JoinHandle<()>>,
     /// Shutdown flag checked by decode threads for graceful exit.
@@ -305,9 +305,9 @@ impl SmartFileSource {
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
+        use reco_core::interop::SharedTextureSet;
         use reco_core::interop::vulkan::{Nv12Plane, create_nv12_shared_texture};
         use reco_core::interop::zero_copy::GpuBufInfo;
-        use reco_core::session::SharedTextureSet;
 
         let map_err = |msg: String| SourceError::Init {
             path: left.first_path().display().to_string(),
@@ -548,7 +548,7 @@ impl SmartFileSource {
     /// The session uses this to create bind groups at the start of `run()`.
     /// Returns `None` for CPU-mode sources.
     #[cfg(target_os = "linux")]
-    pub fn shared_texture_set(&self) -> Option<&reco_core::session::SharedTextureSet> {
+    pub fn shared_texture_set(&self) -> Option<&reco_core::interop::SharedTextureSet> {
         match &self.mode {
             SourceMode::GpuZeroCopy(state) => Some(&state.shared),
             _ => None,

@@ -221,11 +221,16 @@ impl StitchSession {
                     right_slot,
                 } => {
                     if self.core.detector_needs_cuda_frames() {
-                        if let Some((ref left_buf, ref right_buf)) = self.gpu_buf_info {
+                        let bufs = self
+                            .core
+                            .executor
+                            .gpu()
+                            .and_then(|g| g.residency.cuda_buf_info.clone());
+                        if let Some((left_buf, right_buf)) = bufs {
                             crate::profile_scope!("gpu_detect_total");
                             let frames = cuda_nv12_frames(
-                                left_buf,
-                                right_buf,
+                                &left_buf,
+                                &right_buf,
                                 *left_slot,
                                 *right_slot,
                                 self.left_rotation,
@@ -233,7 +238,7 @@ impl StitchSession {
                             );
                             self.core.run_detection_frames(&frames);
                         }
-                    } else if let Some(ref views) = self.gpu_shared_views {
+                    } else if let Some(views) = self.shared_views() {
                         crate::profile_scope!("detect_wgpu_nv12");
                         let ls = *left_slot as usize;
                         let rs = *right_slot as usize;

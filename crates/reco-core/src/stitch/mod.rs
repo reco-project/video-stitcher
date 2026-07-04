@@ -31,6 +31,8 @@
 mod cpu;
 mod executor;
 pub(crate) mod geometry;
+#[cfg(feature = "gpu")]
+pub(crate) mod residency;
 
 pub use executor::{CpuExecutor, Executor, StitchError, StitchExecutor};
 #[cfg(feature = "gpu")]

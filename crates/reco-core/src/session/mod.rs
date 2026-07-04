@@ -27,21 +27,11 @@ pub(crate) mod frame_buffer;
 mod frame_processing;
 /// Batch processing entry points (run, run_immediate, setup_gpu_source).
 mod run_loop;
-/// VRAM texture pool for GPU-resident frame buffering.
-pub(crate) mod vram_pool;
-/// Lookahead VRAM fit estimate, for the export UI risk slider and the
-/// pre-flight budget check.
-pub use vram_pool::{LookaheadFit, lookahead_budget_bytes, lookahead_fit};
 /// Configuration wiring (set/clear/attach methods).
 mod wiring;
 
 #[cfg(test)]
 mod tests;
-#[cfg(target_os = "linux")]
-mod zero_copy_linux;
-
-#[cfg(target_os = "linux")]
-pub use zero_copy_linux::SharedTextureSet;
 
 use crate::async_encode::AsyncEncodeThread;
 use crate::core::StitchCore;
@@ -95,41 +85,9 @@ pub struct StitchSession {
     /// render / readback / encode for accurate telemetry.
     pub(crate) last_readback_time: std::time::Duration,
     pub(crate) last_submit_time: std::time::Duration,
-    // ── GPU-resident source state (populated by configure_from_source) ──
-    /// Bind groups for GPU-resident shared textures.
-    /// Created lazily from the source's textures at the start of run().
-    #[cfg(target_os = "linux")]
-    pub(crate) gpu_bind_groups: Option<crate::render::pipeline::GpuSourceBindGroups>,
-    /// Slot-free senders for decode backpressure (GPU zero-copy).
-    #[cfg(target_os = "linux")]
-    pub(crate) gpu_slot_free_tx: Option<(
-        std::sync::mpsc::SyncSender<u8>,
-        std::sync::mpsc::SyncSender<u8>,
-    )>,
-    /// CUDA buffer info for GPU detection (GPU zero-copy).
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub(crate) gpu_buf_info: Option<(
-        crate::interop::zero_copy::GpuBufInfo,
-        crate::interop::zero_copy::GpuBufInfo,
-    )>,
-    /// Texture views for the 8 shared zero-copy textures, layout
-    /// `[left_y_0, left_uv_0, left_y_1, left_uv_1, right_y_0,
-    /// right_uv_0, right_y_1, right_uv_1]`. Stashed at
-    /// `setup_gpu_source` time so `step_gpu_with_bufs` can hand
-    /// slot-indexed views to the GPU stacked-replay pack without
-    /// rebuilding views every frame. TextureView holds an Arc on
-    /// the underlying texture so the shared-memory lifetime is
-    /// still bound to the SharedTextureSet the source owns.
-    #[cfg(target_os = "linux")]
-    pub(crate) gpu_shared_views: Option<[wgpu::TextureView; 8]>,
-    /// The 8 shared textures (2 slots x 2 cameras x Y/UV), cloned for
-    /// `copy_texture_to_texture` in the VRAM pool path. Cheap (Arc inside).
-    #[cfg(target_os = "linux")]
-    pub(crate) gpu_shared_textures: Option<[wgpu::Texture; 8]>,
-
-    /// VRAM buffer pool for GPU-resident lookahead.
-    pub(crate) vram_pool: Option<vram_pool::VramPool>,
-    /// VRAM pool slot for the frame currently being rendered.
+    /// VRAM pool slot for the frame currently being rendered
+    /// (buffered lookahead path; the pool itself lives on the
+    /// GPU executor).
     pub(crate) current_vram_slot: Option<usize>,
 
     /// Metal texture cache for importing CVPixelBuffers as wgpu textures.
@@ -252,17 +210,6 @@ impl StitchSession {
             telemetry: crate::telemetry::TelemetryCollector::new(),
             last_readback_time: std::time::Duration::ZERO,
             last_submit_time: std::time::Duration::ZERO,
-            #[cfg(target_os = "linux")]
-            gpu_bind_groups: None,
-            #[cfg(target_os = "linux")]
-            gpu_slot_free_tx: None,
-            #[cfg(any(target_os = "linux", target_os = "windows"))]
-            gpu_buf_info: None,
-            #[cfg(target_os = "linux")]
-            gpu_shared_views: None,
-            #[cfg(target_os = "linux")]
-            gpu_shared_textures: None,
-            vram_pool: None,
             current_vram_slot: None,
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             metal_texture_cache: None,
@@ -344,6 +291,24 @@ impl StitchSession {
     /// Mutable borrow of the underlying [`StitchCore`].
     pub fn core_mut(&mut self) -> &mut StitchCore {
         &mut self.core
+    }
+
+    /// The engine's GPU executor - the resident-frame surface the
+    /// streaming session drives. The batch loop is a GPU-streaming
+    /// orchestrator, so its engine always runs the GPU arm.
+    pub(crate) fn gpu_exec(&mut self) -> &mut GpuExecutor {
+        self.core
+            .executor
+            .gpu_mut()
+            .expect("the streaming session runs on the GPU executor")
+    }
+
+    /// Shared-reference sibling of [`Self::gpu_exec`].
+    pub(crate) fn gpu_exec_ref(&self) -> &GpuExecutor {
+        self.core
+            .executor
+            .gpu()
+            .expect("the streaming session runs on the GPU executor")
     }
 
     /// Shared reference to the GPU context.

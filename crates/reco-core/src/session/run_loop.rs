@@ -80,54 +80,14 @@ impl StitchSession {
 
     /// Configure the session for a GPU-resident source.
     ///
-    /// Creates bind groups from the source's shared textures and stores
-    /// slot-free senders for decode backpressure. Call this before
-    /// [`run`](Self::run) when using a GPU-resident [`FrameSource`] like
-    /// `SmartFileSource`.
-    ///
-    /// The `run` loop uses these bind groups for GPU-resident
-    /// `StereoFrame::GpuResident` frames.
+    /// Hands the source's shared textures to the GPU executor, which
+    /// builds render bind groups, detection/replay views, and the
+    /// decode backpressure channels. Call this before
+    /// [`run`](Self::run) when using a GPU-resident [`FrameSource`]
+    /// like `SmartFileSource`.
     #[cfg(target_os = "linux")]
-    pub fn setup_gpu_source(&mut self, shared: &super::SharedTextureSet) {
-        let t = &shared.textures;
-        let bind_groups = self.core.pipeline_mut().configure_gpu_source(
-            [(&t[0], &t[1]), (&t[2], &t[3])],
-            [(&t[4], &t[5]), (&t[6], &t[7])],
-        );
-        self.gpu_bind_groups = Some(bind_groups);
-        self.gpu_slot_free_tx = Some((
-            shared.left_slot_free_tx.clone(),
-            shared.right_slot_free_tx.clone(),
-        ));
-        self.gpu_buf_info = Some((shared.left_buf.clone(), shared.right_buf.clone()));
-        // Pre-build the 8 shared texture views for the GPU
-        // stacked-replay pack shader. Same order as `t` above so
-        // `step_gpu_with_bufs` can index per slot:
-        //   left  y: [ls * 2],     uv: [ls * 2 + 1]
-        //   right y: [4 + rs * 2], uv: [4 + rs * 2 + 1]
-        // Views hold Arcs to the underlying textures, so the
-        // SharedTextureSet still owns the lifetime.
-        let desc = wgpu::TextureViewDescriptor::default();
-        self.gpu_shared_views = Some([
-            t[0].texture.create_view(&desc),
-            t[1].texture.create_view(&desc),
-            t[2].texture.create_view(&desc),
-            t[3].texture.create_view(&desc),
-            t[4].texture.create_view(&desc),
-            t[5].texture.create_view(&desc),
-            t[6].texture.create_view(&desc),
-            t[7].texture.create_view(&desc),
-        ]);
-        self.gpu_shared_textures = Some([
-            t[0].texture.clone(),
-            t[1].texture.clone(),
-            t[2].texture.clone(),
-            t[3].texture.clone(),
-            t[4].texture.clone(),
-            t[5].texture.clone(),
-            t[6].texture.clone(),
-            t[7].texture.clone(),
-        ]);
+    pub fn setup_gpu_source(&mut self, shared: &crate::interop::SharedTextureSet) {
+        self.gpu_exec().configure_shared_textures(shared);
         log::info!("Session configured for GPU-resident source");
     }
 
@@ -171,10 +131,10 @@ impl StitchSession {
 
         // Drop GPU slot senders so decode threads can exit gracefully.
         // Without this, SmartFileSource::drop() deadlocks because the
-        // session's cloned senders keep the decode threads' recv() alive.
+        // executor's cloned senders keep the decode threads' recv() alive.
         #[cfg(target_os = "linux")]
-        {
-            self.gpu_slot_free_tx = None;
+        if let Some(exec) = self.core.executor.gpu_mut() {
+            exec.drop_decode_channels();
         }
 
         result
@@ -231,8 +191,8 @@ impl StitchSession {
             ctx,
         )?;
 
-        if let (Some(slot), Some(ref mut pool)) = (oldest.vram_slot, self.vram_pool.as_mut()) {
-            pool.release(slot);
+        if let Some(slot) = oldest.vram_slot {
+            self.gpu_exec().release_pool_slot(slot);
         }
         self.current_vram_slot = None;
 
@@ -263,21 +223,29 @@ impl StitchSession {
         let start = std::time::Instant::now();
         let ctx = crate::session::types::FrameLoopContext {
             #[cfg(target_os = "linux")]
-            gpu_buf_info: self.gpu_buf_info.clone(),
+            gpu_buf_info: self
+                .core
+                .executor
+                .gpu()
+                .and_then(|g| g.residency.cuda_buf_info.clone()),
         };
         let n = self.lookahead_frames;
         let mut buffer = FrameBuffer::new(n + 1);
         let mut produce_count: u64 = 0;
 
         // Create VRAM pool if the source is GPU-resident.
-        if source.is_gpu_resident() && self.vram_pool.is_none() {
+        if source.is_gpu_resident() && self.gpu_exec_ref().residency.pool.is_none() {
             let post_smooth_half = (n / 2).max(1);
             // Keep in sync with the D3D11 staging pool sizing in
             // frame_processing.rs (peak occupancy + slack).
             let pool_size = n + post_smooth_half + 4;
             let (w, h) = self.core.pipeline().source_info();
-            let per_slot =
-                super::vram_pool::estimate_vram(w, h, 1, self.gpu_pixel_format.bytes_per_sample());
+            let per_slot = crate::gpu::vram_pool::estimate_vram(
+                w,
+                h,
+                1,
+                self.gpu_pixel_format.bytes_per_sample(),
+            );
             let required = per_slot * pool_size;
 
             // Pre-flight VRAM budget check: fail fast with a fit suggestion.
@@ -294,7 +262,7 @@ impl StitchSession {
                     // preview is released, so it reflects real export-time room.
                     // Shared with the export-panel risk slider for consistency;
                     // over-allocation is caught gracefully at pool creation.
-                    let budget = super::vram_pool::lookahead_budget_bytes(free, total);
+                    let budget = crate::gpu::vram_pool::lookahead_budget_bytes(free, total);
                     log::info!(
                         "VRAM budget: {:.2} GB usable of {:.2} GB total ({:.2} GB reported free); \
                          lookahead pool needs {:.2} GB ({pool_size} slots @ {w}x{h})",
@@ -307,7 +275,7 @@ impl StitchSession {
                         let fps = source.info().fps.max(1.0);
                         // Shared with the export-panel risk slider so the
                         // suggested ceiling here matches the slider's red zone.
-                        let max_n = super::vram_pool::max_lookahead_frames(per_slot, budget);
+                        let max_n = crate::gpu::vram_pool::max_lookahead_frames(per_slot, budget);
                         let max_secs = max_n as f64 / fps;
                         let req_secs = n as f64 / fps;
                         return Err(SessionError::Config(format!(
@@ -340,16 +308,10 @@ impl StitchSession {
             // total VRAM equals estimate_vram(w,h,1,bps)*pool_size.
             #[cfg(not(target_os = "windows"))]
             {
-                let pool = super::vram_pool::VramPool::new(
-                    self.core.pipeline().gpu(),
-                    self.core.pipeline(),
-                    w,
-                    h,
-                    pool_size,
-                    self.gpu_pixel_format,
-                )
-                .map_err(SessionError::Config)?;
-                self.vram_pool = Some(pool);
+                let pixel_format = self.gpu_pixel_format;
+                self.gpu_exec()
+                    .create_lookahead_pool(w, h, pool_size, pixel_format)
+                    .map_err(SessionError::Config)?;
             }
         }
 
@@ -539,7 +501,11 @@ impl StitchSession {
 
         let ctx = crate::session::types::FrameLoopContext {
             #[cfg(target_os = "linux")]
-            gpu_buf_info: self.gpu_buf_info.clone(),
+            gpu_buf_info: self
+                .core
+                .executor
+                .gpu()
+                .and_then(|g| g.residency.cuda_buf_info.clone()),
         };
 
         while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {

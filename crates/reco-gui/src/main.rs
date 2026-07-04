@@ -4215,7 +4215,7 @@ fn budget_for_lookahead(free_vram: u64, total_vram: u64) -> usize {
     }
     // Same budget the export pre-flight uses, so the slider's risk zones match
     // what the engine will accept.
-    reco_core::session::lookahead_budget_bytes(free_vram, total_vram)
+    reco_core::gpu::vram_pool::lookahead_budget_bytes(free_vram, total_vram)
 }
 
 fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) {
@@ -4290,7 +4290,8 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 {
                     Some((free, total)) if total > 0 && in_w > 0 && in_h > 0 => {
                         let budget = budget_for_lookahead(free, total);
-                        let fit = reco_core::session::lookahead_fit(in_w, in_h, 1, budget, fps);
+                        let fit =
+                            reco_core::gpu::vram_pool::lookahead_fit(in_w, in_h, 1, budget, fps);
                         app.set_lookahead_green_max(fit.safe_secs as f32);
                         app.set_lookahead_red_min(fit.max_secs as f32);
                         app.set_lookahead_risk_active(true);
