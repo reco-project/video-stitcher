@@ -57,7 +57,7 @@ impl StitchSession {
         self.gpu_pixel_format = source.gpu_pixel_format();
         self.is_full_range = source.is_full_range();
         if self.is_full_range {
-            self.core.pipeline_mut().set_full_range(true);
+            self.core.set_full_range(true);
         }
         // Apply rotation via shader UV flip ONLY for GPU-resident sources.
         // CPU sources handle rotation via buffer reversal in the decoder,
@@ -65,7 +65,7 @@ impl StitchSession {
         if source.is_gpu_resident() {
             let (lr, rr) = (source.left_rotation(), source.right_rotation());
             if lr == 180 || rr == 180 {
-                self.core.pipeline_mut().set_flip_180(lr == 180, rr == 180);
+                self.core.set_flip_180(lr == 180, rr == 180);
                 log::info!("Rotation: UV flip left={}, right={}", lr == 180, rr == 180);
             }
             // Store rotation for the GPU detector preprocessing path.

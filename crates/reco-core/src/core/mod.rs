@@ -485,6 +485,19 @@ impl StitchCore {
         self.executor.set_blend_width(width);
     }
 
+    /// Whether source YUV uses full-range (0-255) quantization rather
+    /// than limited range (16-235).
+    pub fn set_full_range(&mut self, full_range: bool) {
+        self.executor.set_full_range(full_range);
+    }
+
+    /// Flip each camera's source 180 degrees at sample time (for
+    /// rotated mounts). GPU sampling only; CPU sources reverse
+    /// buffers at decode.
+    pub fn set_flip_180(&mut self, left: bool, right: bool) {
+        self.executor.set_flip_180(left, right);
+    }
+
     /// Set the lens-correction strength on every lens (`0` = pinhole,
     /// `1` = full KB4).
     pub fn set_lens_correction_amount(&mut self, amount: f32) {

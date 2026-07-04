@@ -531,6 +531,36 @@ impl Executor {
         }
     }
 
+    /// Whether source YUV uses full-range (0-255) quantization rather
+    /// than limited range (16-235).
+    pub fn set_full_range(&mut self, full_range: bool) {
+        match self {
+            Executor::Cpu(c) => c.full_range = full_range,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.set_full_range(full_range),
+        }
+    }
+
+    /// Flip each camera's source 180 degrees at sample time (rotated
+    /// mounts whose streams carry rotation=180 metadata).
+    ///
+    /// GPU sampling only: the CPU decode path reverses buffers at
+    /// extraction, so a CPU engine has nothing to flip here.
+    pub fn set_flip_180(&mut self, left: bool, right: bool) {
+        match self {
+            Executor::Cpu(_) => {
+                if left || right {
+                    log::warn!(
+                        "set_flip_180 ignored on the CPU executor - CPU sources reverse \
+                         buffers at decode"
+                    );
+                }
+            }
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.set_flip_180(left, right),
+        }
+    }
+
     /// Set the lens-correction strength on every lens, clamped to `[0, 1]`.
     pub fn set_lens_correction_amount(&mut self, amount: f32) {
         match self {
