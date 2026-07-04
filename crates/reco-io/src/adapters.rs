@@ -5,7 +5,7 @@
 //! in `reco-core`. Backend code stays clean and trait-free; all trait
 //! plumbing lives here.
 
-use reco_core::encoder::{EncodeError, Encoder, OutputFrame, PixelFormat};
+use reco_core::sink::{OutputFrame, OutputSink, PixelFormat, SinkError, SinkInput};
 use reco_core::source::{FramePair, SourceError, SourceInfo, StereoFrame, YuvData};
 
 #[cfg(feature = "ffmpeg")]
@@ -526,7 +526,7 @@ pub fn create_encoder(
     encoder_name: Option<String>,
     quality_value: Option<u8>,
     preset: Option<String>,
-) -> Result<(FfmpegFileEncoder, String), reco_core::encoder::EncodeError> {
+) -> Result<(FfmpegFileEncoder, String), reco_core::sink::SinkError> {
     use crate::output;
 
     let out_codec: output::Codec = codec.parse().unwrap_or_else(|_| {
@@ -559,7 +559,7 @@ pub fn create_encoder(
 /// File encoder backed by FFmpeg.
 ///
 /// Thin wrapper around `ffmpeg::encoder::VideoEncoder` that implements
-/// the `reco_core::encoder::Encoder` trait.
+/// the `reco_core::sink::OutputSink` trait.
 #[cfg(feature = "ffmpeg")]
 pub struct FfmpegFileEncoder {
     inner: ffmpeg::encoder::VideoEncoder,
@@ -574,10 +574,10 @@ impl FfmpegFileEncoder {
         height: u32,
         fps: (i32, i32),
         config: &ffmpeg::encoder::EncoderConfig,
-    ) -> Result<Self, EncodeError> {
+    ) -> Result<Self, SinkError> {
         let fps_rational = ffmpeg_next::Rational(fps.0, fps.1);
         let inner = ffmpeg::encoder::VideoEncoder::new(path, width, height, fps_rational, config)
-            .map_err(|e| EncodeError::Init {
+            .map_err(|e| SinkError::Init {
             reason: e.to_string(),
         })?;
         Ok(Self { inner })
@@ -590,13 +590,21 @@ impl FfmpegFileEncoder {
 }
 
 #[cfg(feature = "ffmpeg")]
-impl Encoder for FfmpegFileEncoder {
-    fn submit(&mut self, frame: OutputFrame<'_>) -> Result<(), EncodeError> {
+impl OutputSink for FfmpegFileEncoder {
+    fn name(&self) -> &str {
+        self.inner.encoder_name()
+    }
+
+    fn wants(&self) -> SinkInput {
+        SinkInput::CpuBytes(PixelFormat::Nv12)
+    }
+
+    fn consume(&mut self, frame: OutputFrame<'_>) -> Result<(), SinkError> {
         match frame.format {
             PixelFormat::Nv12 => {
                 self.inner
                     .write_nv12_frame(frame.data)
-                    .map_err(|e| EncodeError::Frame {
+                    .map_err(|e| SinkError::Consume {
                         frame_index: None,
                         reason: e.to_string(),
                     })
@@ -604,7 +612,7 @@ impl Encoder for FfmpegFileEncoder {
             PixelFormat::Rgba8 => {
                 self.inner
                     .write_frame(frame.data)
-                    .map_err(|e| EncodeError::Frame {
+                    .map_err(|e| SinkError::Consume {
                         frame_index: None,
                         reason: e.to_string(),
                     })
@@ -612,8 +620,8 @@ impl Encoder for FfmpegFileEncoder {
         }
     }
 
-    fn finish(&mut self) -> Result<(), EncodeError> {
-        self.inner.finish().map_err(|e| EncodeError::Finalize {
+    fn finish(&mut self) -> Result<(), SinkError> {
+        self.inner.finish().map_err(|e| SinkError::Finish {
             reason: e.to_string(),
         })
     }

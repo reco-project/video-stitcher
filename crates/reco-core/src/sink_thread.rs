@@ -1,17 +1,18 @@
-//! Async encode thread for pipelined video encoding.
+//! Dedicated delivery thread for lossless output sinks.
 //!
-//! Wraps any [`Encoder`] and runs it on a dedicated thread, decoupling
-//! the render loop from encoder latency. The caller submits NV12 data
-//! via a bounded channel; the encode thread encodes frames in the
+//! Wraps any [`OutputSink`] and runs it on a dedicated thread,
+//! decoupling the render loop from sink latency. The caller submits
+//! NV12 data via a bounded channel; the thread consumes frames in the
 //! background. This is critical on Apple M4 where VideoToolbox encode
-//! takes ~3.5ms/frame - without async encoding, this stall dominates
-//! the frame time even though GPU readback is only ~0.5ms.
+//! takes ~3.5ms/frame - without the thread, this stall dominates the
+//! frame time even though GPU readback is only ~0.5ms.
 //!
 //! ## Buffer pool
 //!
 //! To avoid allocating 3.1 MB (at 1080p) per frame for the channel
 //! send, the thread maintains a pool of pre-allocated buffers. After
-//! encoding, each buffer is returned to the pool for reuse.
+//! the sink consumes a frame, each buffer is returned to the pool for
+//! reuse.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -19,78 +20,74 @@ use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::thread::{self, JoinHandle};
 use std::time::Instant;
 
-use crate::encoder::{EncodeError, Encoder, OutputFrame, PixelFormat};
+use crate::sink::{OutputFrame, OutputSink, PixelFormat, SinkError};
 
-/// A frame payload sent to the encode thread.
-struct EncodeJob {
+/// A frame payload sent to the sink thread.
+struct SinkJob {
     /// NV12 pixel data (borrowed from the buffer pool).
     data: Vec<u8>,
     /// Presentation timestamp in microseconds.
     pts_us: i64,
 }
 
-/// Shared encode-thread counters. The worker records the true (overlapped)
-/// encode cost; `submit` records backpressure stalls (the encoder being the
-/// real bottleneck). Distinct from the pipeline's per-frame "encode" timing,
-/// which only measures the submit memcpy + enqueue.
+/// Shared sink-thread counters. The worker records the true
+/// (overlapped) consume cost; `submit` records backpressure stalls
+/// (the sink being the real bottleneck). Distinct from the pipeline's
+/// per-frame "encode" timing, which only measures the submit memcpy +
+/// enqueue.
 #[derive(Default)]
-struct EncodeStats {
-    encode_busy_ns: AtomicU64,
-    frames_encoded: AtomicU64,
+struct SinkStats {
+    consume_busy_ns: AtomicU64,
+    frames_consumed: AtomicU64,
     backpressure_ns: AtomicU64,
     backpressure_count: AtomicU64,
 }
 
-/// Async encoder that runs on a dedicated thread.
+/// A sink running on a dedicated thread.
 ///
-/// Created via [`new`](Self::new), which moves the encoder to a
-/// background thread. Call [`submit`](Self::submit) to queue frames
-/// for encoding, then [`finish`](Self::finish) to flush and join.
-pub struct AsyncEncodeThread {
-    /// Channel to send frames to the encode thread.
+/// Created via [`new`](Self::new), which moves the sink to a
+/// background thread. Call [`submit`](Self::submit) to queue frames,
+/// then [`finish`](Self::finish) to flush and join.
+pub struct SinkThread {
+    /// Channel to send frames to the sink thread.
     /// Wrapped in Option so `finish()` can take ownership to drop it.
-    tx: Option<SyncSender<EncodeJob>>,
-    /// Channel to receive recycled buffers back from the encode thread.
+    tx: Option<SyncSender<SinkJob>>,
+    /// Channel to receive recycled buffers back from the sink thread.
     pool_rx: Option<Receiver<Vec<u8>>>,
-    /// The encode thread handle.
-    handle: Option<JoinHandle<Result<(), EncodeError>>>,
+    /// The sink thread handle.
+    handle: Option<JoinHandle<Result<(), SinkError>>>,
     /// Output dimensions (needed for OutputFrame construction).
     width: u32,
     height: u32,
-    /// Encode-thread counters (shared with the worker).
-    stats: Arc<EncodeStats>,
+    /// Sink-thread counters (shared with the worker).
+    stats: Arc<SinkStats>,
 }
 
-impl AsyncEncodeThread {
-    /// Create an async encode thread.
+impl SinkThread {
+    /// Create a sink thread.
     ///
-    /// Moves `encoder` to a background thread and pre-allocates
-    /// `buffer_count + 1` NV12 buffers for zero-allocation submits.
-    /// The `buffer_count` parameter controls how many frames can be
-    /// in-flight between the render thread and the encode thread
+    /// Moves `sink` to a background thread and pre-allocates
+    /// `queue_depth + 1` NV12 buffers for zero-allocation submits.
+    /// The `queue_depth` parameter controls how many frames can be
+    /// in-flight between the render thread and the sink thread
     /// (typically 2).
-    pub fn new(
-        encoder: Box<dyn Encoder + Send>,
-        width: u32,
-        height: u32,
-        buffer_count: usize,
-    ) -> Self {
+    pub fn new(sink: Box<dyn OutputSink>, width: u32, height: u32, queue_depth: usize) -> Self {
         let nv12_size = width as usize * height as usize * 3 / 2;
-        let (tx, rx) = mpsc::sync_channel::<EncodeJob>(buffer_count);
-        let (pool_tx, pool_rx) = mpsc::sync_channel::<Vec<u8>>(buffer_count + 1);
+        let (tx, rx) = mpsc::sync_channel::<SinkJob>(queue_depth);
+        let (pool_tx, pool_rx) = mpsc::sync_channel::<Vec<u8>>(queue_depth + 1);
 
-        // Pre-allocate buffer pool. buffer_count go into the pool channel,
+        // Pre-allocate buffer pool. queue_depth go into the pool channel,
         // +1 stays in reserve (the caller might hold one while sending).
-        for _ in 0..buffer_count + 1 {
+        for _ in 0..queue_depth + 1 {
             let _ = pool_tx.try_send(vec![0u8; nv12_size]);
         }
 
-        let stats = Arc::new(EncodeStats::default());
+        let stats = Arc::new(SinkStats::default());
         let worker_stats = Arc::clone(&stats);
         let handle = thread::Builder::new()
-            .name("encode".into())
-            .spawn(move || Self::encode_loop(rx, pool_tx, encoder, width, height, worker_stats))
-            .expect("spawn encode thread");
+            .name("sink".into())
+            .spawn(move || Self::consume_loop(rx, pool_tx, sink, width, height, worker_stats))
+            .expect("spawn sink thread");
 
         Self {
             tx: Some(tx),
@@ -102,16 +99,16 @@ impl AsyncEncodeThread {
         }
     }
 
-    /// Submit NV12 data for encoding.
+    /// Submit NV12 data to the sink.
     ///
     /// Copies `nv12_data` into a pooled buffer and sends it to the
-    /// encode thread. Blocks if the channel is full (backpressure).
+    /// sink thread. Blocks if the channel is full (backpressure).
     /// `pts_us` is the presentation timestamp in microseconds.
-    pub fn submit(&self, nv12_data: &[u8], pts_us: i64) -> Result<(), EncodeError> {
-        profile_scope!("async_encode_submit");
-        let tx = self.tx.as_ref().ok_or_else(|| EncodeError::Frame {
+    pub fn submit(&self, nv12_data: &[u8], pts_us: i64) -> Result<(), SinkError> {
+        profile_scope!("sink_thread_submit");
+        let tx = self.tx.as_ref().ok_or_else(|| SinkError::Consume {
             frame_index: None,
-            reason: "encoder already finished".into(),
+            reason: "sink already finished".into(),
         })?;
         let pool_rx = self.pool_rx.as_ref();
 
@@ -126,13 +123,13 @@ impl AsyncEncodeThread {
         buf.resize(nv12_data.len(), 0);
         buf.copy_from_slice(nv12_data);
 
-        let dead = || EncodeError::Frame {
+        let dead = || SinkError::Consume {
             frame_index: None,
-            reason: "encode thread died".into(),
+            reason: "sink thread died".into(),
         };
-        // Try non-blocking first; only a full channel means the encoder is
+        // Try non-blocking first; only a full channel means the sink is
         // the bottleneck. Measure that stall.
-        match tx.try_send(EncodeJob { data: buf, pts_us }) {
+        match tx.try_send(SinkJob { data: buf, pts_us }) {
             Ok(()) => Ok(()),
             Err(TrySendError::Full(job)) => {
                 let t0 = Instant::now();
@@ -149,11 +146,11 @@ impl AsyncEncodeThread {
         }
     }
 
-    /// Snapshot of encode-thread counters: (frames, avg encode ms,
+    /// Snapshot of sink-thread counters: (frames, avg consume ms,
     /// backpressure stalls, total backpressure ms).
     pub fn stats(&self) -> (u64, f32, u64, f32) {
-        let frames = self.stats.frames_encoded.load(Ordering::Relaxed);
-        let busy_ns = self.stats.encode_busy_ns.load(Ordering::Relaxed);
+        let frames = self.stats.frames_consumed.load(Ordering::Relaxed);
+        let busy_ns = self.stats.consume_busy_ns.load(Ordering::Relaxed);
         let avg_ms = if frames > 0 {
             (busy_ns as f64 / frames as f64 / 1e6) as f32
         } else {
@@ -164,20 +161,20 @@ impl AsyncEncodeThread {
         (frames, avg_ms, bp_count, bp_ms)
     }
 
-    /// Flush all pending frames and shut down the encode thread.
+    /// Flush all pending frames and shut down the sink thread.
     ///
-    /// Drops the send channel (encode thread sees disconnect and
-    /// calls `encoder.finish()`), then joins the thread and
-    /// propagates any encoder error.
-    pub fn finish(&mut self) -> Result<(), EncodeError> {
-        // Drop sender so the encode thread's recv() returns Err and it finishes.
+    /// Drops the send channel (the sink thread sees disconnect and
+    /// calls `sink.finish()`), then joins the thread and propagates
+    /// any sink error.
+    pub fn finish(&mut self) -> Result<(), SinkError> {
+        // Drop sender so the sink thread's recv() returns Err and it finishes.
         self.tx.take();
-        // Drop pool_rx so the encode thread's pool_tx sends don't block.
+        // Drop pool_rx so the sink thread's pool_tx sends don't block.
         self.pool_rx.take();
 
         let result = if let Some(handle) = self.handle.take() {
-            handle.join().map_err(|_| EncodeError::Finalize {
-                reason: "encode thread panicked".into(),
+            handle.join().map_err(|_| SinkError::Finish {
+                reason: "sink thread panicked".into(),
             })?
         } else {
             Ok(())
@@ -186,26 +183,26 @@ impl AsyncEncodeThread {
         let (frames, avg_ms, bp_count, bp_ms) = self.stats();
         if frames > 0 {
             log::info!(
-                "Encode thread: {frames} frames, avg encode {avg_ms:.2}ms (overlapped); \
+                "Sink thread: {frames} frames, avg consume {avg_ms:.2}ms (overlapped); \
                  backpressure {bp_count} stalls totaling {bp_ms:.1}ms"
             );
         }
         result
     }
 
-    /// The encode thread's main loop.
-    fn encode_loop(
-        rx: Receiver<EncodeJob>,
+    /// The sink thread's main loop.
+    fn consume_loop(
+        rx: Receiver<SinkJob>,
         pool_tx: SyncSender<Vec<u8>>,
-        mut encoder: Box<dyn Encoder + Send>,
+        mut sink: Box<dyn OutputSink>,
         width: u32,
         height: u32,
-        stats: Arc<EncodeStats>,
-    ) -> Result<(), EncodeError> {
+        stats: Arc<SinkStats>,
+    ) -> Result<(), SinkError> {
         while let Ok(job) = rx.recv() {
-            profile_scope!("encode_submit");
+            profile_scope!("sink_consume");
             let t0 = Instant::now();
-            encoder.submit(OutputFrame {
+            sink.consume(OutputFrame {
                 data: &job.data,
                 width,
                 height,
@@ -213,24 +210,24 @@ impl AsyncEncodeThread {
                 pts_us: job.pts_us,
             })?;
             stats
-                .encode_busy_ns
+                .consume_busy_ns
                 .fetch_add(t0.elapsed().as_nanos() as u64, Ordering::Relaxed);
-            stats.frames_encoded.fetch_add(1, Ordering::Relaxed);
+            stats.frames_consumed.fetch_add(1, Ordering::Relaxed);
 
             // Return the buffer to the pool for reuse.
             // If the pool channel is full or disconnected, just drop it.
             let _ = pool_tx.try_send(job.data);
         }
 
-        encoder.finish()
+        sink.finish()
     }
 }
 
-impl Drop for AsyncEncodeThread {
+impl Drop for SinkThread {
     fn drop(&mut self) {
         // Drop the sender (and pool receiver) BEFORE joining. Struct
         // fields are dropped AFTER this body runs, so `self.tx` is still
-        // alive here; if we joined first, the encode thread's `rx.recv()`
+        // alive here; if we joined first, the sink thread's `rx.recv()`
         // would never see a disconnect and the join would block forever.
         // This matters on early-error paths (e.g. a pre-flight VRAM budget
         // failure) where `finish()` was never called.
@@ -245,20 +242,27 @@ impl Drop for AsyncEncodeThread {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sink::SinkInput;
 
-    struct NoopEncoder;
-    impl Encoder for NoopEncoder {
-        fn submit(&mut self, _f: OutputFrame<'_>) -> Result<(), EncodeError> {
+    struct NoopSink;
+    impl OutputSink for NoopSink {
+        fn name(&self) -> &str {
+            "noop"
+        }
+        fn wants(&self) -> SinkInput {
+            SinkInput::CpuBytes(PixelFormat::Nv12)
+        }
+        fn consume(&mut self, _f: OutputFrame<'_>) -> Result<(), SinkError> {
             Ok(())
         }
-        fn finish(&mut self) -> Result<(), EncodeError> {
+        fn finish(&mut self) -> Result<(), SinkError> {
             Ok(())
         }
     }
 
     #[test]
-    fn counts_encoded_frames() {
-        let mut t = AsyncEncodeThread::new(Box::new(NoopEncoder), 16, 16, 2);
+    fn counts_consumed_frames() {
+        let mut t = SinkThread::new(Box::new(NoopSink), 16, 16, 2);
         let data = vec![0u8; 16 * 16 * 3 / 2];
         for i in 0..8 {
             t.submit(&data, i).unwrap();

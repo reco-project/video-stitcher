@@ -16,9 +16,9 @@ pub struct FrameTiming {
     pub stitch: Option<Duration>,
     pub readback: Option<Duration>,
     /// Synchronous submit cost on the pipeline thread: NV12 memcpy into the
-    /// async encode buffer + channel enqueue (+ backpressure wait if the
-    /// encoder is the bottleneck). NOT the encode compute, which runs
-    /// overlapped on the encode thread (see `AsyncEncodeThread`).
+    /// sink buffer + channel enqueue (+ backpressure wait if the
+    /// sink is the bottleneck). NOT the encode compute, which runs
+    /// overlapped on the sink thread (see `SinkThread`).
     pub submit: Option<Duration>,
     pub detection: Option<Duration>,
     pub tracking: Option<Duration>,

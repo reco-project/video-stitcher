@@ -5,35 +5,35 @@
 //! or delegates to the underlying [`StitchCore`](crate::core::StitchCore).
 
 use super::StitchSession;
-use crate::async_encode::AsyncEncodeThread;
-use crate::encoder::Encoder;
 use crate::session::types::ErrorPolicy;
+use crate::sink::OutputSink;
+use crate::sink_thread::SinkThread;
 
 impl StitchSession {
-    /// Attach an encoder to this session.
+    /// Attach an encoder sink to this session.
     ///
-    /// The encoder is moved to a background thread for async encoding.
+    /// The sink is moved to a background thread for async delivery.
     /// `buffer_count` controls how many frames can be in-flight between
-    /// the render thread and the encode thread (typically 2).
+    /// the render thread and the sink thread (typically 2).
     ///
     /// Must be called before [`Self::submit_render_output`], [`Self::process_frame`],
     /// or [`Self::run`].
-    pub fn set_encoder(&mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) {
+    pub fn set_encoder(&mut self, encoder: Box<dyn OutputSink>, buffer_count: usize) {
         let (width, height) = self.gpu_exec_ref().nv12_dims();
-        self.encoder = Some(AsyncEncodeThread::new(encoder, width, height, buffer_count));
+        self.encoder = Some(SinkThread::new(encoder, width, height, buffer_count));
     }
 
-    /// Add an additional encoder for multi-output (e.g. record + stream).
+    /// Add an additional encoder sink for multi-output (e.g. record + stream).
     ///
     /// The NV12 data from each rendered frame is fanned out to all attached
-    /// encoders. Each encoder runs on its own background thread.
+    /// sinks. Each sink runs on its own background thread.
     ///
     /// Use [`set_encoder`](Self::set_encoder) for the primary encoder,
     /// then `add_encoder` for additional outputs.
-    pub fn add_encoder(&mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) {
+    pub fn add_encoder(&mut self, encoder: Box<dyn OutputSink>, buffer_count: usize) {
         let (width, height) = self.gpu_exec_ref().nv12_dims();
         self.extra_encoders
-            .push(AsyncEncodeThread::new(encoder, width, height, buffer_count));
+            .push(SinkThread::new(encoder, width, height, buffer_count));
     }
 
     /// Attach a [`UnifiedDetector`](crate::detect::detector::UnifiedDetector)

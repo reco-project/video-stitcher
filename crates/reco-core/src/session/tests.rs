@@ -16,10 +16,10 @@ use crate::detect::detector::{Detection, DetectorError, DetectorFrame, UnifiedDe
 use crate::detect::director::MappedDetection;
 use crate::detect::panner::{PanContext, Panner};
 use crate::detect::tracker::{TrackState, TrackedEntity, Tracker, WorldState};
-use crate::encoder::{EncodeError, Encoder, OutputFrame};
 use crate::geometry::CameraId;
 use crate::geometry::ViewportPosition;
 use crate::render::viewport::ViewportConfig;
+use crate::sink::{OutputFrame, OutputSink, SinkError, SinkInput};
 use crate::source::{FramePair, FrameSource, SourceError, SourceInfo, StereoFrame, YuvData};
 
 // ─── Helpers ───────────────────────────────────────────────────────────
@@ -204,8 +204,16 @@ impl MockEncoder {
     }
 }
 
-impl Encoder for MockEncoder {
-    fn submit(&mut self, frame: OutputFrame<'_>) -> Result<(), EncodeError> {
+impl OutputSink for MockEncoder {
+    fn name(&self) -> &str {
+        "mock-encoder"
+    }
+
+    fn wants(&self) -> SinkInput {
+        SinkInput::CpuBytes(crate::sink::PixelFormat::Nv12)
+    }
+
+    fn consume(&mut self, frame: OutputFrame<'_>) -> Result<(), SinkError> {
         assert!(frame.width > 0, "frame width must be positive");
         assert!(frame.height > 0, "frame height must be positive");
         assert!(!frame.data.is_empty(), "frame data must not be empty");
@@ -213,7 +221,7 @@ impl Encoder for MockEncoder {
         Ok(())
     }
 
-    fn finish(&mut self) -> Result<(), EncodeError> {
+    fn finish(&mut self) -> Result<(), SinkError> {
         Ok(())
     }
 }
@@ -263,7 +271,7 @@ impl Panner for NanPanner {
 /// Trackers and panners are attached post-build (they have their own
 /// setters and aren't part of the builder API).
 fn build_test_session(
-    encoder: Option<Box<dyn Encoder + Send>>,
+    encoder: Option<Box<dyn OutputSink>>,
     detector: Option<Box<dyn UnifiedDetector>>,
     detection_interval: u64,
 ) -> Result<StitchSession, SessionError> {

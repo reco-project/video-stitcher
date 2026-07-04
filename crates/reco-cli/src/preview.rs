@@ -24,7 +24,7 @@ use std::time::Instant;
 use reco_control::pose_control::HotkeyIntent;
 use reco_control::{ControlIntent, PoseIntent};
 use reco_core::core::StitchCore;
-use reco_core::encoder::{Encoder, OutputFrame, PixelFormat};
+use reco_core::sink::{OutputFrame, OutputSink, PixelFormat};
 use reco_core::source::{FrameSource, YuvData};
 use reco_core::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 use winit::application::ApplicationHandler;
@@ -258,7 +258,7 @@ struct App {
     /// Ctrl-C signal from the main thread.
     interrupted: Arc<AtomicBool>,
     // -- Recording state --
-    recording: Option<Box<dyn Encoder>>,
+    recording: Option<Box<dyn OutputSink>>,
     recording_path: Option<String>,
     recording_frames: u64,
     fps: f64,
@@ -310,7 +310,7 @@ impl App {
                 if let Ok(Some(nv12)) = renderer.flush_nv12()
                     && let Some(ref mut enc) = self.recording
                 {
-                    let _ = enc.submit(OutputFrame {
+                    let _ = enc.consume(OutputFrame {
                         data: nv12,
                         width: self.width & !3,
                         height: self.height & !1,
@@ -862,7 +862,7 @@ impl ApplicationHandler for App {
                             let pts_us =
                                 (self.recording_frames as f64 / self.fps * 1_000_000.0) as i64;
                             if let Some(ref mut enc) = self.recording
-                                && let Err(e) = enc.submit(OutputFrame {
+                                && let Err(e) = enc.consume(OutputFrame {
                                     data: nv12,
                                     width: self.width & !3,
                                     height: self.height & !1,

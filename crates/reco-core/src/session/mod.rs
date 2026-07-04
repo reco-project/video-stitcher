@@ -33,11 +33,11 @@ mod wiring;
 #[cfg(test)]
 mod tests;
 
-use crate::async_encode::AsyncEncodeThread;
 use crate::core::StitchCore;
 use crate::core::types::StitchCoreError;
 use crate::gpu::{GpuContext, OutputFormat};
 use crate::render::renderer::InputFormat;
+use crate::sink_thread::SinkThread;
 use crate::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 
 /// Callback type for the NV12 tap: receives `(nv12_data, width, height)`.
@@ -61,9 +61,9 @@ pub struct StitchSession {
     /// pull-loop orchestrator over it: frame buffering, encode
     /// fan-out, telemetry, progress.
     pub(crate) core: StitchCore,
-    pub(crate) encoder: Option<AsyncEncodeThread>,
-    /// Additional encoders for multi-output (stream + record).
-    pub(crate) extra_encoders: Vec<AsyncEncodeThread>,
+    pub(crate) encoder: Option<SinkThread>,
+    /// Additional encoder sinks for multi-output (stream + record).
+    pub(crate) extra_encoders: Vec<SinkThread>,
     /// When true, `process_frame_any` skips detection (the produce phase
     /// already ran it and stored the WorldState in the buffer).
     pub(crate) skip_detection: bool,

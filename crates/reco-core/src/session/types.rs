@@ -6,12 +6,12 @@
 
 use crate::calibration::Calibration;
 use crate::core::types::StitchCoreError;
-use crate::encoder::{EncodeError, Encoder};
 use crate::gpu::nv12_converter::Nv12Error;
 use crate::gpu::{GpuContext, GpuError, OutputFormat};
 use crate::render::pipeline::PipelineError;
 use crate::render::renderer::InputFormat;
 use crate::render::viewport::ViewportConfig;
+use crate::sink::{OutputSink, SinkError};
 use crate::source::SourceError;
 
 use thiserror::Error;
@@ -139,9 +139,9 @@ pub enum SessionError {
     #[error("NV12 converter: {0}")]
     Nv12(#[from] Nv12Error),
 
-    /// Encoder error.
-    #[error("encoder: {0}")]
-    Encode(#[from] EncodeError),
+    /// Output sink error.
+    #[error("sink: {0}")]
+    Sink(#[from] SinkError),
 
     /// Source error.
     #[error("source: {0}")]
@@ -174,7 +174,7 @@ const _: fn() = || {
     assert_clone_send_sync::<PipelineError>();
     assert_clone_send_sync::<StitchCoreError>();
     assert_clone_send_sync::<Nv12Error>();
-    assert_clone_send_sync::<EncodeError>();
+    assert_clone_send_sync::<SinkError>();
     assert_clone_send_sync::<SourceError>();
     assert_clone_send_sync::<crate::detect::detector::DetectorError>();
 };
@@ -200,7 +200,7 @@ pub struct StitchSessionBuilder {
     pub(super) output_format: OutputFormat,
     pub(super) input_format: InputFormat,
     pub(super) gpu: Option<GpuContext>,
-    pub(super) encoder: Option<(Box<dyn Encoder + Send>, usize)>,
+    pub(super) encoder: Option<(Box<dyn OutputSink>, usize)>,
     pub(super) detector: Option<Box<dyn crate::detect::detector::UnifiedDetector>>,
     pub(super) detection_interval: u64,
 }
@@ -251,8 +251,8 @@ impl StitchSessionBuilder {
         self
     }
 
-    /// Attach an encoder with the given double-buffer count.
-    pub fn encoder(mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) -> Self {
+    /// Attach an encoder sink with the given double-buffer count.
+    pub fn encoder(mut self, encoder: Box<dyn OutputSink>, buffer_count: usize) -> Self {
         self.encoder = Some((encoder, buffer_count));
         self
     }

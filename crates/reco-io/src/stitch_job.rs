@@ -202,9 +202,9 @@ pub enum StitchError {
     /// Session/pipeline error during stitching.
     #[error("session: {0}")]
     Session(#[from] reco_core::session::types::SessionError),
-    /// Encoder error.
+    /// Encoder sink error.
     #[error("encoder: {0}")]
-    Encoder(#[from] reco_core::encoder::EncodeError),
+    Encoder(#[from] reco_core::sink::SinkError),
     /// Encoder completed without error but the output file has no
     /// usable video stream. Typical cause: an encoder ffmpeg listed as
     /// available silently rejected every frame (e.g. AV1/NVENC on

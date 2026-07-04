@@ -737,13 +737,13 @@ impl AppState {
         // The UI thread sends NV12 data without blocking on FFmpeg.
         let (tx, rx) = std::sync::mpsc::sync_channel::<RecordingFrame>(4);
         let handle = std::thread::spawn(move || {
-            let mut encoder: Box<dyn reco_core::encoder::Encoder + Send> = Box::new(encoder);
+            let mut encoder: Box<dyn reco_core::sink::OutputSink> = Box::new(encoder);
             while let Ok(frame) = rx.recv() {
-                let _ = encoder.submit(reco_core::encoder::OutputFrame {
+                let _ = encoder.consume(reco_core::sink::OutputFrame {
                     data: &frame.data,
                     width: frame.width,
                     height: frame.height,
-                    format: reco_core::encoder::PixelFormat::Nv12,
+                    format: reco_core::sink::PixelFormat::Nv12,
                     pts_us: frame.pts_us,
                 });
             }

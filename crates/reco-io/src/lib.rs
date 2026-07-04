@@ -1,7 +1,7 @@
 //! Pluggable frame I/O for Reco.
 //!
 //! This crate provides [`reco_core::source::FrameSource`] and
-//! [`reco_core::encoder::Encoder`] implementations backed by
+//! [`reco_core::sink::OutputSink`] implementations backed by
 //! FFmpeg (files, network streams), GStreamer (live cameras),
 //! and libcamera (Raspberry Pi CSI cameras).
 //!

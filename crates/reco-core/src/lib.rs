@@ -34,7 +34,7 @@
 //! - [`detect::detector::UnifiedDetector`] — detects objects in raw frames (e.g. ball tracking)
 //! - [`detect::tracker::Tracker`] — turns detections into stable tracked entities
 //! - [`detect::panner::Panner`] — turns the tracked world state into a viewport pose
-//! - [`encoder::Encoder`] — receives stitched GPU frames for encoding
+//! - [`sink::OutputSink`] — consumes stitched frames (encoding, snapshots, streams)
 //!
 //! ## Usage
 //!
@@ -77,10 +77,8 @@ pub use wgpu;
 // The `gpu` feature (default-on) gates the wgpu render stack. What
 // remains without it is the wgpu-free leaf for GPU-less targets:
 // calibration, geometry, projection, the CPU stitch path, and the
-// pure value/trait modules (source, detect sans GPU frames, encoder,
+// pure value/trait modules (source, detect sans GPU frames, sink,
 // telemetry).
-#[cfg(feature = "gpu")]
-pub(crate) mod async_encode;
 #[cfg(feature = "gpu")]
 pub mod bayer;
 pub mod calibration;
@@ -89,7 +87,6 @@ pub mod calibration;
 /// wgpu-free; only its GPU streaming surface is gated on `gpu`.
 pub mod core;
 pub mod detect;
-pub mod encoder;
 pub mod geometry;
 #[cfg(feature = "gpu")]
 pub mod gpu;
@@ -102,6 +99,9 @@ pub mod projection;
 pub mod render;
 #[cfg(feature = "gpu")]
 pub mod session;
+pub mod sink;
+#[cfg(feature = "gpu")]
+pub(crate) mod sink_thread;
 pub mod source;
 pub mod stitch;
 pub mod telemetry;
