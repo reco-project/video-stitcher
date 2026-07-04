@@ -74,7 +74,7 @@ impl super::StitchCore {
             #[cfg(feature = "gpu")]
             Executor::Gpu(_) => unreachable!("routed from the CPU arm"),
         };
-        let rgba = cpu.stitch_yuv(left, right, pose.yaw, pose.pitch)?;
+        let rgba = cpu.stitch_yuv(&[*left, *right], pose.yaw, pose.pitch)?;
         Ok(self.deliver_cpu_frame(rgba, pose))
     }
 
@@ -320,7 +320,7 @@ impl super::StitchCore {
                     #[cfg(feature = "gpu")]
                     Executor::Gpu(_) => unreachable!("routed from the CPU arm"),
                 };
-                let rgba = cpu.stitch_nv12(left, right, pose.yaw, pose.pitch)?;
+                let rgba = cpu.stitch_nv12(&[*left, *right], pose.yaw, pose.pitch)?;
                 Ok(self.deliver_cpu_frame(rgba, pose))
             }
             #[cfg(feature = "gpu")]

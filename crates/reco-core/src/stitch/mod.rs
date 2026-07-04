@@ -298,8 +298,7 @@ mod tests {
 
         let out = stitch_rgba(
             &LShapeProjection,
-            &left,
-            &right,
+            &[left, right],
             (w, h),
             &calib,
             &cfg,
@@ -329,8 +328,7 @@ mod tests {
 
         let a = stitch_rgba(
             &LShapeProjection,
-            &left,
-            &right,
+            &[left, right],
             (w, h),
             &calib,
             &cfg,
@@ -341,8 +339,7 @@ mod tests {
         .unwrap();
         let b = stitch_rgba(
             &LShapeProjection,
-            &left,
-            &right,
+            &[left, right],
             (w, h),
             &calib,
             &cfg,
@@ -425,8 +422,7 @@ mod tests {
         // CPU reference on the same inputs (limited range, matching the GPU default).
         let cpu_rgba = stitch_rgba(
             &LShapeProjection,
-            &left,
-            &right,
+            &[left, right],
             (cam_w, cam_h),
             &calib,
             &config,
@@ -520,8 +516,7 @@ mod tests {
 
         let cpu_rgba = stitch_rgba_yuv420p(
             &LShapeProjection,
-            &left,
-            &right,
+            &[left, right],
             (cam_w, cam_h),
             &calib,
             &config,
@@ -630,8 +625,7 @@ mod tests {
         let gpu_rgba = gpu_rgba.expect("gpu frame");
         let cpu_rgba = stitch_rgba(
             &LShapeProjection,
-            left,
-            right,
+            &[*left, *right],
             cam,
             calib,
             config,
@@ -943,8 +937,7 @@ mod tests {
         // ~1px of output (fov 75 over 192px ~= 0.007 rad/px); 0.01 rad is decisive.
         let perturbed = stitch_rgba(
             &LShapeProjection,
-            &left,
-            &right,
+            &[left, right],
             (cam_w, cam_h),
             &cal,
             &config,

@@ -68,11 +68,11 @@ pub enum StitchError {
 /// pan. Output is `width * height * 4` sRGB-domain RGBA, identical in layout
 /// across backends (the GPU and CPU agree to ~1 LSB).
 pub trait StitchExecutor {
-    /// Stitch one NV12 frame pair to RGBA at the configured output size.
+    /// Stitch one frame set (one NV12 plane pair per camera, in
+    /// projection order) to RGBA at the configured output size.
     fn stitch(
         &mut self,
-        left: &Nv12Planes,
-        right: &Nv12Planes,
+        planes: &[Nv12Planes<'_>],
         yaw: f32,
         pitch: f32,
     ) -> Result<Vec<u8>, StitchError>;
@@ -143,15 +143,13 @@ impl CpuExecutor {
     /// GPU arm's readback ring).
     pub fn stitch_nv12(
         &self,
-        left: &Nv12Planes<'_>,
-        right: &Nv12Planes<'_>,
+        planes: &[Nv12Planes<'_>],
         yaw: f32,
         pitch: f32,
     ) -> Result<Vec<u8>, StitchError> {
         stitch_rgba(
             self.projection.as_ref(),
-            left,
-            right,
+            planes,
             self.cam,
             &self.calib,
             &self.config,
@@ -168,15 +166,13 @@ impl CpuExecutor {
     /// inherent entry covers planar YUV sources (file decode).
     pub fn stitch_yuv(
         &self,
-        left: &YuvPlanes<'_>,
-        right: &YuvPlanes<'_>,
+        planes: &[YuvPlanes<'_>],
         yaw: f32,
         pitch: f32,
     ) -> Result<Vec<u8>, StitchError> {
         super::cpu::stitch_rgba_yuv420p(
             self.projection.as_ref(),
-            left,
-            right,
+            planes,
             self.cam,
             &self.calib,
             &self.config,
@@ -199,14 +195,13 @@ fn derive_scene(calib: &Calibration) -> SceneGeometry {
 impl StitchExecutor for CpuExecutor {
     fn stitch(
         &mut self,
-        left: &Nv12Planes,
-        right: &Nv12Planes,
+        planes: &[Nv12Planes<'_>],
         yaw: f32,
         pitch: f32,
     ) -> Result<Vec<u8>, StitchError> {
-        // Plane-size + dimension validation lives in stitch_rgba, which
+        // Plane-size + camera-count validation lives in stitch_rgba, which
         // returns a typed error instead of panicking on a short/truncated frame.
-        self.stitch_nv12(left, right, yaw, pitch)
+        self.stitch_nv12(planes, yaw, pitch)
     }
 
     fn output_dims(&self) -> (u32, u32) {
@@ -918,11 +913,18 @@ impl GpuExecutor {
 impl StitchExecutor for GpuExecutor {
     fn stitch(
         &mut self,
-        left: &Nv12Planes,
-        right: &Nv12Planes,
+        planes: &[Nv12Planes<'_>],
         yaw: f32,
         pitch: f32,
     ) -> Result<Vec<u8>, StitchError> {
+        // The GPU upload path is stereo-shaped today; mono programs
+        // land with their own bind layout at the cylinder GPU step.
+        let [left, right] = planes else {
+            return Err(StitchError::InvalidConfig(format!(
+                "the GPU executor's synchronous stitch consumes exactly 2                  camera frames, got {}",
+                planes.len()
+            )));
+        };
         // The synchronous contract is NV12-specific; the underlying
         // upload only debug-asserts the format, so guard it here with
         // a typed error instead of corrupting textures in release.
@@ -1211,15 +1213,14 @@ impl Executor {
 impl StitchExecutor for Executor {
     fn stitch(
         &mut self,
-        left: &Nv12Planes,
-        right: &Nv12Planes,
+        planes: &[Nv12Planes<'_>],
         yaw: f32,
         pitch: f32,
     ) -> Result<Vec<u8>, StitchError> {
         match self {
-            Executor::Cpu(c) => c.stitch(left, right, yaw, pitch),
+            Executor::Cpu(c) => c.stitch(planes, yaw, pitch),
             #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.stitch(left, right, yaw, pitch),
+            Executor::Gpu(g) => g.stitch(planes, yaw, pitch),
         }
     }
 
@@ -1338,7 +1339,7 @@ mod tests {
                     fov,
                     aspect_out,
                 );
-                let frac = black_frac(&backend.stitch(&planes, &planes, ry, rp).unwrap());
+                let frac = black_frac(&backend.stitch(&[planes, planes], ry, rp).unwrap());
                 assert!(
                     frac < 0.01,
                     "black fraction {frac:.4} at tilt={tilt} roll={roll} fov={fov:.1} target=({wy},{wp})"
@@ -1389,7 +1390,7 @@ mod tests {
             uv: &short,
         };
         // Must return a typed error, not panic (matches the GPU backend).
-        let err = backend.stitch(&planes, &planes, 0.0, 0.0).unwrap_err();
+        let err = backend.stitch(&[planes, planes], 0.0, 0.0).unwrap_err();
         assert!(matches!(err, StitchError::FrameSizeMismatch { .. }));
     }
 
@@ -1437,7 +1438,7 @@ mod tests {
         let mut outputs = Vec::new();
         for b in backends {
             assert_eq!(b.output_dims(), (out_w, out_h));
-            outputs.push(b.stitch(&left, &right, yaw, pitch).expect("stitch"));
+            outputs.push(b.stitch(&[left, right], yaw, pitch).expect("stitch"));
         }
         let (cpu_rgba, gpu_rgba) = (&outputs[0], &outputs[1]);
         assert_eq!(cpu_rgba.len(), (out_w * out_h * 4) as usize);

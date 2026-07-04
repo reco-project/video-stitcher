@@ -11,6 +11,7 @@
 /// - `y`: `width * height` bytes
 /// - `u`: `(width/2) * (height/2)` bytes
 /// - `v`: `(width/2) * (height/2)` bytes
+#[derive(Clone, Copy)]
 pub struct YuvPlanes<'a> {
     /// Y (luma) plane, full resolution.
     pub y: &'a [u8],
@@ -124,6 +125,7 @@ pub(crate) fn copy_plane_tight(src: &FramePlaneView<'_>, dst: &mut [u8]) {
 /// Tightly packed (no stride padding):
 /// - `y`: `width * height` bytes
 /// - `uv`: `width * (height/2)` bytes (interleaved U,V)
+#[derive(Clone, Copy)]
 pub struct Nv12Planes<'a> {
     /// Y (luma) plane, full resolution.
     pub y: &'a [u8],
