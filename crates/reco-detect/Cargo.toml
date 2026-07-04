@@ -36,6 +36,12 @@ tracing = { workspace = true, optional = true }
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
 libloading = "0.9"
 
+# ort_session registers the DirectML EP on Windows; without ort's
+# `directml` feature the registration silently falls back to the CPU
+# EP, so every Windows ort build carries it.
+[target.'cfg(windows)'.dependencies]
+ort = { version = "2.0.0-rc.12", optional = true, features = ["directml"] }
+
 # Apple frameworks: used by coreml_inference (CoreML model wrap) and
 # metal_compute (Metal compute pipeline for YOLO preprocess). These
 # are detect-preprocess concerns that used to live in reco-core; they
