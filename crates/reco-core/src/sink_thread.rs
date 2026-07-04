@@ -104,7 +104,7 @@ impl SinkThread {
     /// Copies `nv12_data` into a pooled buffer and sends it to the
     /// sink thread. Blocks if the channel is full (backpressure).
     /// `pts_us` is the presentation timestamp in microseconds.
-    pub fn submit(&self, nv12_data: &[u8], pts_us: i64) -> Result<(), SinkError> {
+    pub fn submit(&mut self, nv12_data: &[u8], pts_us: i64) -> Result<(), SinkError> {
         profile_scope!("sink_thread_submit");
         let tx = self.tx.as_ref().ok_or_else(|| SinkError::Consume {
             frame_index: None,
@@ -123,26 +123,48 @@ impl SinkThread {
         buf.resize(nv12_data.len(), 0);
         buf.copy_from_slice(nv12_data);
 
-        let dead = || SinkError::Consume {
-            frame_index: None,
-            reason: "sink thread died".into(),
-        };
         // Try non-blocking first; only a full channel means the sink is
         // the bottleneck. Measure that stall.
         match tx.try_send(SinkJob { data: buf, pts_us }) {
             Ok(()) => Ok(()),
             Err(TrySendError::Full(job)) => {
                 let t0 = Instant::now();
-                let r = tx.send(job).map_err(|_| dead());
+                let sent = tx.send(job).is_ok();
                 self.stats
                     .backpressure_ns
                     .fetch_add(t0.elapsed().as_nanos() as u64, Ordering::Relaxed);
                 self.stats
                     .backpressure_count
                     .fetch_add(1, Ordering::Relaxed);
-                r
+                if sent {
+                    Ok(())
+                } else {
+                    Err(self.worker_error())
+                }
             }
-            Err(TrySendError::Disconnected(_)) => Err(dead()),
+            Err(TrySendError::Disconnected(_)) => Err(self.worker_error()),
+        }
+    }
+
+    /// The worker exited while frames were still being submitted: join
+    /// it and surface the sink's real error (e.g. the codec rejecting a
+    /// frame) instead of a generic "thread died". Without the join, the
+    /// underlying error only lives in the JoinHandle and is discarded
+    /// on Drop when the caller aborts before `finish()`.
+    fn worker_error(&mut self) -> SinkError {
+        let generic = || SinkError::Consume {
+            frame_index: None,
+            reason: "sink thread died".into(),
+        };
+        match self.handle.take() {
+            Some(handle) => match handle.join() {
+                Ok(Err(e)) => e,
+                Ok(Ok(())) => generic(),
+                Err(_) => SinkError::Finish {
+                    reason: "sink thread panicked".into(),
+                },
+            },
+            None => generic(),
         }
     }
 
@@ -271,5 +293,41 @@ mod tests {
         let (frames, avg_ms, _bp, _bp_ms) = t.stats();
         assert_eq!(frames, 8);
         assert!(avg_ms.is_finite() && avg_ms >= 0.0);
+    }
+
+    /// A dying worker must surface the sink's real error to the
+    /// submitting thread, not a generic "thread died".
+    #[test]
+    fn dead_worker_surfaces_the_real_error() {
+        struct FailingSink;
+        impl OutputSink for FailingSink {
+            fn name(&self) -> &str {
+                "failing"
+            }
+            fn wants(&self) -> SinkInput {
+                SinkInput::CpuBytes(PixelFormat::Nv12)
+            }
+            fn consume(&mut self, _f: OutputFrame<'_>) -> Result<(), SinkError> {
+                Err(SinkError::Consume {
+                    frame_index: Some(0),
+                    reason: "codec rejected the frame".into(),
+                })
+            }
+            fn finish(&mut self) -> Result<(), SinkError> {
+                Ok(())
+            }
+        }
+
+        let mut t = SinkThread::new(Box::new(FailingSink), 16, 16, 1);
+        let data = vec![0u8; 16 * 16 * 3 / 2];
+        // The first submits may succeed (queued before the worker
+        // errors); keep going until the disconnect is observed.
+        let err = (0..100)
+            .find_map(|i| t.submit(&data, i).err())
+            .expect("worker death must surface as a submit error");
+        assert!(
+            err.to_string().contains("codec rejected the frame"),
+            "generic error masked the sink's real failure: {err}"
+        );
     }
 }

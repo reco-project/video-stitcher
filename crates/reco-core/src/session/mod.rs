@@ -311,6 +311,11 @@ impl StitchSession {
         // Flush remaining frames from the NV12 triple-buffer. Field-path
         // borrow: `nv12_data` borrows the executor inside `core` while
         // the fan-out feeds the session-owned sinks.
+        //
+        // An Abort error here skips `finish_all`, but no output is left
+        // without its trailer: dropping a SinkThread disconnects its
+        // channel and the worker runs the sink's own `finish` on exit,
+        // and inline sinks finalize in their Drop impls.
         let (nv12_width, nv12_height) = self.gpu_exec_ref().nv12_dims();
         while let Some(nv12_data) = self
             .core
