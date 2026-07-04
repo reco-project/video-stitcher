@@ -285,7 +285,7 @@ impl StitchSession {
                 #[cfg(target_os = "linux")]
                 StereoFrame::NvmmResident { left, right } => {
                     crate::profile_scope!("detect_preletterboxed_total");
-                    if let Some(frames) = self.nvmm_detector_frames(left, right) {
+                    if let Some(frames) = self.gpu_exec().nvmm_detector_frames(left, right) {
                         self.core.run_detection_frames(&frames);
                     }
                 }
@@ -319,66 +319,9 @@ impl StitchSession {
         src_width: u32,
         src_height: u32,
     ) -> Result<(), SessionError> {
-        let left =
-            crate::nvbuf_transform::NvBufDetectionSurface::new(model_size, src_width, src_height)
-                .map_err(|e| SessionError::ZeroCopy(format!("NVMM left detection surface: {e}")))?;
-        let right =
-            crate::nvbuf_transform::NvBufDetectionSurface::new(model_size, src_width, src_height)
-                .map_err(|e| SessionError::ZeroCopy(format!("NVMM right detection surface: {e}")))?;
-        self.nvmm_det_left = Some(left);
-        self.nvmm_det_right = Some(right);
-        log::info!(
-            "NVMM detection surfaces ready: {model_size}x{model_size} (src {src_width}x{src_height})"
-        );
-        Ok(())
-    }
-
-    /// Letterbox a stereo NVMM frame into the pre-allocated CUDA
-    /// detection surfaces (set up by
-    /// [`setup_nvmm_detection`](Self::setup_nvmm_detection)) and wrap
-    /// the results as per-camera
-    /// [`DetectorFrame::CudaRgbaLetterboxed`]. Returns `None` when the
-    /// surfaces are not set up or a transform fails (logged). Shared by
-    /// the buffered produce arm and the immediate-render detect arm.
-    #[cfg(target_os = "linux")]
-    pub(crate) fn nvmm_detector_frames(
-        &mut self,
-        left: &crate::source::NvmmPlaneInfo,
-        right: &crate::source::NvmmPlaneInfo,
-    ) -> Option<[(CameraId, DetectorFrame<'static>); 2]> {
-        let (Some(det_left), Some(det_right)) =
-            (self.nvmm_det_left.as_mut(), self.nvmm_det_right.as_mut())
-        else {
-            return None;
-        };
-        unsafe {
-            if let Err(e) = det_left.transform_from_nvmm(left.surface_ptr) {
-                log::warn!("NVMM left detection transform failed: {e}");
-                return None;
-            }
-            if let Err(e) = det_right.transform_from_nvmm(right.surface_ptr) {
-                log::warn!("NVMM right detection transform failed: {e}");
-                return None;
-            }
-        }
-        Some([
-            (
-                CameraId::Left,
-                DetectorFrame::CudaRgbaLetterboxed {
-                    ptr: det_left.data_ptr,
-                    src_width: left.width,
-                    src_height: left.height,
-                },
-            ),
-            (
-                CameraId::Right,
-                DetectorFrame::CudaRgbaLetterboxed {
-                    ptr: det_right.data_ptr,
-                    src_width: right.width,
-                    src_height: right.height,
-                },
-            ),
-        ])
+        self.gpu_exec()
+            .setup_nvmm_detection(model_size, src_width, src_height)
+            .map_err(SessionError::ZeroCopy)
     }
 
     /// Run detection on a CPU-resident stereo frame (YUV420P / NV12).

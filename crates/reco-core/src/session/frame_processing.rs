@@ -121,7 +121,7 @@ impl StitchSession {
                     // detection during produce and skips this whole step.)
                     if due {
                         crate::profile_scope!("detect_preletterboxed_total");
-                        if let Some(frames) = self.nvmm_detector_frames(left, right) {
+                        if let Some(frames) = self.gpu_exec().nvmm_detector_frames(left, right) {
                             self.core.run_detection_frames(&frames);
                         }
                     }
@@ -477,40 +477,10 @@ impl StitchSession {
         yaw: f32,
         pitch: f32,
     ) -> Result<(), SessionError> {
-        if self.nvmm_dmabuf_cache.is_none() {
-            self.nvmm_dmabuf_cache = Some(crate::interop::dmabuf::DmaBufTextureCache::new());
-        }
-        let gpu = self.core.pipeline().gpu();
-        let cache = self.nvmm_dmabuf_cache.as_mut().unwrap();
-        cache
-            .ensure_imported(
-                gpu,
-                left.dmabuf_fd,
-                left.width,
-                left.height,
-                left.y_offset,
-                left.uv_offset,
-                left.total_size,
-            )
-            .map_err(|e| SessionError::ZeroCopy(format!("left NVMM DMA-buf import: {e}")))?;
-        cache
-            .ensure_imported(
-                gpu,
-                right.dmabuf_fd,
-                right.width,
-                right.height,
-                right.y_offset,
-                right.uv_offset,
-                right.total_size,
-            )
-            .map_err(|e| SessionError::ZeroCopy(format!("right NVMM DMA-buf import: {e}")))?;
-
-        // Clone the texture handles (cheap, Arc-backed) to drop the cache
-        // borrow before the &mut self render call.
-        let left_tex = cache.get(left.dmabuf_fd);
-        let right_tex = cache.get(right.dmabuf_fd);
-        let (ly, lu) = (left_tex.y_texture.clone(), left_tex.uv_texture.clone());
-        let (ry, ru) = (right_tex.y_texture.clone(), right_tex.uv_texture.clone());
+        let [ly, lu, ry, ru] = self
+            .gpu_exec()
+            .import_nvmm(left, right)
+            .map_err(SessionError::ZeroCopy)?;
         self.process_frame_imported_nv12(&ly, &lu, &ry, &ru, yaw, pitch)
     }
 
@@ -763,7 +733,10 @@ impl StitchSession {
         // as the macOS Metal arm, just sourced from an NvBufSurface fd
         // instead of a CVPixelBuffer.
         if let StereoFrame::NvmmResident { left, right } = frame {
-            return self.copy_nvmm_to_vram_pool(left, right);
+            return self
+                .gpu_exec()
+                .stage_nvmm_to_pool(left, right)
+                .map_err(SessionError::ZeroCopy);
         }
         let (ls, rs) = match frame {
             StereoFrame::GpuResident {
@@ -778,63 +751,6 @@ impl StitchSession {
         // post-detection.
         self.gpu_exec()
             .stage_shared_to_pool(ls, rs)
-            .map_err(|e| SessionError::Config(e.to_string()))
-    }
-
-    /// Import a stereo NVMM frame's DMA-bufs and copy them into a VRAM
-    /// pool slot for buffered (lookahead) rendering.
-    ///
-    /// Mirrors the macOS Metal import path: the per-camera DMA-buf is
-    /// imported into Vulkan textures (cached by fd, since the ISP rotates a
-    /// small fd pool), then `copy_from_textures` blits both cameras' Y/UV
-    /// planes into a freshly acquired pool slot. The blit is awaited before
-    /// returning so the source may recycle the DMA-buf immediately after.
-    #[cfg(target_os = "linux")]
-    fn copy_nvmm_to_vram_pool(
-        &mut self,
-        left: &crate::source::NvmmPlaneInfo,
-        right: &crate::source::NvmmPlaneInfo,
-    ) -> Result<Option<usize>, SessionError> {
-        if self.gpu_exec_ref().residency.pool.is_none() {
-            return Ok(None);
-        }
-        if self.nvmm_dmabuf_cache.is_none() {
-            self.nvmm_dmabuf_cache = Some(crate::interop::dmabuf::DmaBufTextureCache::new());
-        }
-
-        let gpu = self.core.gpu();
-        let cache = self.nvmm_dmabuf_cache.as_mut().unwrap();
-        cache
-            .ensure_imported(
-                gpu,
-                left.dmabuf_fd,
-                left.width,
-                left.height,
-                left.y_offset,
-                left.uv_offset,
-                left.total_size,
-            )
-            .map_err(|e| SessionError::ZeroCopy(format!("left NVMM DMA-buf import: {e}")))?;
-        cache
-            .ensure_imported(
-                gpu,
-                right.dmabuf_fd,
-                right.width,
-                right.height,
-                right.y_offset,
-                right.uv_offset,
-                right.total_size,
-            )
-            .map_err(|e| SessionError::ZeroCopy(format!("right NVMM DMA-buf import: {e}")))?;
-
-        // Clone the texture handles (cheap, Arc-backed) so the cache
-        // borrow ends before the executor staging call.
-        let left_tex = cache.get(left.dmabuf_fd);
-        let right_tex = cache.get(right.dmabuf_fd);
-        let (ly, lu) = (left_tex.y_texture.clone(), left_tex.uv_texture.clone());
-        let (ry, ru) = (right_tex.y_texture.clone(), right_tex.uv_texture.clone());
-        self.gpu_exec()
-            .stage_textures_to_pool(&ly, &lu, &ry, &ru)
             .map_err(|e| SessionError::Config(e.to_string()))
     }
 

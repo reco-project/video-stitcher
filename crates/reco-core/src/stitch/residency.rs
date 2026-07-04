@@ -37,6 +37,20 @@ pub(crate) struct Residency {
     /// `copy_texture_to_texture` into the VRAM pool (cheap, Arc inside).
     #[cfg(target_os = "linux")]
     pub(crate) shared_textures: Option<[wgpu::Texture; 8]>,
+    /// DMA-buf -> Vulkan texture cache for the NVMM zero-copy path
+    /// (Jetson). Keyed by DMA-buf fd; the ISP rotates a small fd pool
+    /// so each buffer is imported once.
+    #[cfg(target_os = "linux")]
+    pub(crate) nvmm_cache: Option<crate::interop::dmabuf::DmaBufTextureCache>,
+    /// NvBufSurfTransform letterbox surfaces for NVMM detection
+    /// (left, right). Render and detection consume different handles
+    /// of the same NVMM frame: the DMA-buf fd renders, the raw
+    /// NvBufSurface pointer letterboxes here for the detector.
+    #[cfg(target_os = "linux")]
+    pub(crate) nvmm_det: Option<(
+        crate::nvbuf_transform::NvBufDetectionSurface,
+        crate::nvbuf_transform::NvBufDetectionSurface,
+    )>,
     /// VRAM pool for GPU-resident lookahead buffering.
     pub(crate) pool: Option<VramPool>,
 }

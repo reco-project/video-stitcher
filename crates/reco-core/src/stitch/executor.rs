@@ -495,6 +495,144 @@ impl GpuExecutor {
         Ok(Some(slot))
     }
 
+    /// Allocate the NVMM detection letterbox surfaces (Jetson).
+    ///
+    /// `model_size` is the detector's square input dimension (e.g.
+    /// 1280); the source dimensions size the letterbox geometry.
+    /// Without this the NVMM detection arm no-ops (the director still
+    /// advances, just without detections).
+    #[cfg(target_os = "linux")]
+    pub(crate) fn setup_nvmm_detection(
+        &mut self,
+        model_size: u32,
+        src_width: u32,
+        src_height: u32,
+    ) -> Result<(), String> {
+        let left =
+            crate::nvbuf_transform::NvBufDetectionSurface::new(model_size, src_width, src_height)
+                .map_err(|e| format!("NVMM left detection surface: {e}"))?;
+        let right =
+            crate::nvbuf_transform::NvBufDetectionSurface::new(model_size, src_width, src_height)
+                .map_err(|e| format!("NVMM right detection surface: {e}"))?;
+        self.residency.nvmm_det = Some((left, right));
+        log::info!(
+            "GpuExecutor: NVMM detection surfaces ready: {model_size}x{model_size} \
+             (src {src_width}x{src_height})"
+        );
+        Ok(())
+    }
+
+    /// Letterbox a stereo NVMM frame into the detection surfaces and
+    /// wrap the results as per-camera detector frames. Returns `None`
+    /// (logged) when the surfaces are not set up or a transform fails.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn nvmm_detector_frames(
+        &mut self,
+        left: &crate::source::NvmmPlaneInfo,
+        right: &crate::source::NvmmPlaneInfo,
+    ) -> Option<
+        [(
+            crate::geometry::CameraId,
+            crate::detect::detector::DetectorFrame<'static>,
+        ); 2],
+    > {
+        use crate::detect::detector::DetectorFrame;
+        use crate::geometry::CameraId;
+
+        let (det_left, det_right) = self.residency.nvmm_det.as_mut()?;
+        unsafe {
+            if let Err(e) = det_left.transform_from_nvmm(left.surface_ptr) {
+                log::warn!("NVMM left detection transform failed: {e}");
+                return None;
+            }
+            if let Err(e) = det_right.transform_from_nvmm(right.surface_ptr) {
+                log::warn!("NVMM right detection transform failed: {e}");
+                return None;
+            }
+        }
+        Some([
+            (
+                CameraId::Left,
+                DetectorFrame::CudaRgbaLetterboxed {
+                    ptr: det_left.data_ptr,
+                    src_width: left.width,
+                    src_height: left.height,
+                },
+            ),
+            (
+                CameraId::Right,
+                DetectorFrame::CudaRgbaLetterboxed {
+                    ptr: det_right.data_ptr,
+                    src_width: right.width,
+                    src_height: right.height,
+                },
+            ),
+        ])
+    }
+
+    /// Import a stereo NVMM frame's DMA-bufs as Vulkan textures
+    /// (cached by fd) and hand back Arc-backed clones of the four
+    /// Y/UV plane textures `[left_y, left_uv, right_y, right_uv]`.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn import_nvmm(
+        &mut self,
+        left: &crate::source::NvmmPlaneInfo,
+        right: &crate::source::NvmmPlaneInfo,
+    ) -> Result<[wgpu::Texture; 4], String> {
+        if self.residency.nvmm_cache.is_none() {
+            self.residency.nvmm_cache = Some(crate::interop::dmabuf::DmaBufTextureCache::new());
+        }
+        let gpu = self.pipeline.gpu();
+        let cache = self.residency.nvmm_cache.as_mut().expect("created above");
+        cache
+            .ensure_imported(
+                gpu,
+                left.dmabuf_fd,
+                left.width,
+                left.height,
+                left.y_offset,
+                left.uv_offset,
+                left.total_size,
+            )
+            .map_err(|e| format!("left NVMM DMA-buf import: {e}"))?;
+        cache
+            .ensure_imported(
+                gpu,
+                right.dmabuf_fd,
+                right.width,
+                right.height,
+                right.y_offset,
+                right.uv_offset,
+                right.total_size,
+            )
+            .map_err(|e| format!("right NVMM DMA-buf import: {e}"))?;
+        let l = cache.get(left.dmabuf_fd);
+        let r = cache.get(right.dmabuf_fd);
+        Ok([
+            l.y_texture.clone(),
+            l.uv_texture.clone(),
+            r.y_texture.clone(),
+            r.uv_texture.clone(),
+        ])
+    }
+
+    /// Import a stereo NVMM frame and stage it into a pool slot for
+    /// buffered rendering. The blit is awaited so the source may
+    /// recycle the DMA-buf immediately after.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn stage_nvmm_to_pool(
+        &mut self,
+        left: &crate::source::NvmmPlaneInfo,
+        right: &crate::source::NvmmPlaneInfo,
+    ) -> Result<Option<usize>, String> {
+        if self.residency.pool.is_none() {
+            return Ok(None);
+        }
+        let [ly, lu, ry, ru] = self.import_nvmm(left, right)?;
+        self.stage_textures_to_pool(&ly, &lu, &ry, &ru)
+            .map_err(|e| e.to_string())
+    }
+
     /// Hand decode slots back to the decode threads. Call only after
     /// detection has read the slot - releasing earlier lets the decode
     /// thread overwrite the shared memory mid-read.
