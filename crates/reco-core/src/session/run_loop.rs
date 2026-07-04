@@ -223,11 +223,7 @@ impl StitchSession {
         let start = std::time::Instant::now();
         let ctx = crate::session::types::FrameLoopContext {
             #[cfg(target_os = "linux")]
-            gpu_buf_info: self
-                .core
-                .executor
-                .gpu()
-                .and_then(|g| g.residency.cuda_buf_info.clone()),
+            gpu_buf_info: self.core.executor.gpu().and_then(|g| g.cuda_buf_info()),
         };
         let n = self.lookahead_frames;
         let mut buffer = FrameBuffer::new(n + 1);
@@ -501,11 +497,7 @@ impl StitchSession {
 
         let ctx = crate::session::types::FrameLoopContext {
             #[cfg(target_os = "linux")]
-            gpu_buf_info: self
-                .core
-                .executor
-                .gpu()
-                .and_then(|g| g.residency.cuda_buf_info.clone()),
+            gpu_buf_info: self.core.executor.gpu().and_then(|g| g.cuda_buf_info()),
         };
 
         while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {

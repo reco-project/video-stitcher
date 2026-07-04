@@ -221,11 +221,7 @@ impl StitchSession {
                     right_slot,
                 } => {
                     if self.core.detector_needs_cuda_frames() {
-                        let bufs = self
-                            .core
-                            .executor
-                            .gpu()
-                            .and_then(|g| g.residency.cuda_buf_info.clone());
+                        let bufs = self.core.executor.gpu().and_then(|g| g.cuda_buf_info());
                         if let Some((left_buf, right_buf)) = bufs {
                             crate::profile_scope!("gpu_detect_total");
                             let frames = cuda_nv12_frames(

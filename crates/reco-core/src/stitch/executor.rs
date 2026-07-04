@@ -395,6 +395,19 @@ impl GpuExecutor {
         log::info!("GpuExecutor: shared zero-copy decode textures configured");
     }
 
+    /// CUDA buffer info for GPU detection on the shared decode
+    /// textures, cloned so callers can hold it across `&mut` engine
+    /// calls. `None` until a zero-copy source is configured.
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    pub(crate) fn cuda_buf_info(
+        &self,
+    ) -> Option<(
+        crate::interop::zero_copy::GpuBufInfo,
+        crate::interop::zero_copy::GpuBufInfo,
+    )> {
+        self.residency.cuda_buf_info.clone()
+    }
+
     /// Render from the shared decode textures at the given slots
     /// (immediate zero-copy path).
     #[cfg(target_os = "linux")]
