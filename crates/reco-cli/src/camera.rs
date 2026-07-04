@@ -125,12 +125,18 @@ pub fn run_camera(
     );
 
     let mut cal = reco_core::calibration::Calibration::from_file(Path::new(calibration))?;
-    if let Some(b) = blend {
-        eprintln!(
-            "Seam blend: --blend {b} overrides the calibration's {}",
-            cal.topology.blend_width
-        );
-        cal.topology.blend_width = b;
+    match (blend, cal.topology.l_shape_mut()) {
+        (Some(b), Some(topology)) => {
+            eprintln!(
+                "Seam blend: --blend {b} overrides the calibration's {}",
+                topology.blend_width
+            );
+            topology.blend_width = b;
+        }
+        (Some(b), None) => {
+            eprintln!("Seam blend: --blend {b} ignored - this topology has no seam");
+        }
+        (None, _) => {}
     }
     let field_roi = cal.field_roi.clone();
 
