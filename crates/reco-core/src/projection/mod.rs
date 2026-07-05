@@ -227,16 +227,16 @@ impl Projection for CylindricalProjection {
         let height = t
             .video_height
             .unwrap_or(f64::from(calibration.lenses[0].height));
-        // A tilted rig frame shifts the painted band in pose space by
-        // up to the tilt; shrink conservatively until the sampled
-        // coverage lands with the mono GPU pass.
-        let pitch_half =
-            (((height * 0.5) / t.focal_length).atan() - calibration.framing.tilt.abs()) as f32;
+        let pitch_half = (((height * 0.5) / t.focal_length).atan()) as f32;
+        // The painted band is world-fixed; rig tilt/roll shape how
+        // panning traverses it, not where it is - the clamp's rotated
+        // viewport margining (the same mechanism a tilted L-shape
+        // uses) accounts for the edge roll.
         CoverageBoundary::rectangular(
             -yaw_half,
             yaw_half,
-            -pitch_half.max(0.0),
-            pitch_half.max(0.0),
+            -pitch_half,
+            pitch_half,
             calibration.framing.tilt as f32,
             calibration.framing.roll as f32,
         )
