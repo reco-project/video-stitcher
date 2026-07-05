@@ -6,15 +6,36 @@
 //! camera and intersects the cylinder; the hit's angle and height give
 //! the video UV.
 //!
-//! SYNC_WITH: shaders/cylindrical_mono.wgsl - ray construction (top
-//! row of the output looks up), the screen-rotation fold, the
-//! theta-from-forward convention (straight ahead samples u = 0.5, u
-//! grows with yaw), and the bounds discard must match; the CPU/GPU
-//! cylinder oracle pins the agreement.
+//! The pan frame honours the calibration's rig orientation
+//! ([`Framing`] tilt/roll) exactly like the L-shape does: yaw rotates
+//! around the tilted+rolled up axis, so panning a tilted rig rolls
+//! the rendered viewport progressively toward the edges.
+//! SYNC_WITH: geometry/rig_correction.rs `rig_frame` - the frame
+//! construction must match or the two topologies disagree on what a
+//! calibrated tilt means.
+//! SYNC_WITH: shaders/cylindrical_mono.wgsl - ray construction, the
+//! theta sign, and the bounds discard; the CPU/GPU cylinder oracle
+//! pins the agreement.
 
-use crate::calibration::CylinderTopology;
+use crate::calibration::{CylinderTopology, Framing};
 use crate::render::viewport::ViewportConfig;
 use crate::stitch::{SurfaceMap, SurfaceUv};
+
+/// Rotate `v` around the unit axis `k` by `angle` (Rodrigues).
+fn rotate(v: [f64; 3], k: [f64; 3], angle: f64) -> [f64; 3] {
+    let (s, c) = angle.sin_cos();
+    let kv = [
+        k[1] * v[2] - k[2] * v[1],
+        k[2] * v[0] - k[0] * v[2],
+        k[0] * v[1] - k[1] * v[0],
+    ];
+    let kdv = k[0] * v[0] + k[1] * v[1] + k[2] * v[2];
+    [
+        v[0] * c + kv[0] * s + k[0] * kdv * (1.0 - c),
+        v[1] * c + kv[1] * s + k[1] * kdv * (1.0 - c),
+        v[2] * c + kv[2] * s + k[2] * kdv * (1.0 - c),
+    ]
+}
 
 /// Per-frame inverse map: output pixel -> pre-stitched panorama UV.
 ///
@@ -22,11 +43,11 @@ use crate::stitch::{SurfaceMap, SurfaceUv};
 /// convention; the GPU runs the same math in f32 and the oracle
 /// absorbs the difference).
 pub(crate) struct CylinderMap {
-    /// Rotated camera basis scaled for ray construction: the ray for
-    /// NDC `(x, y)` is `forward + right_eff * x * tan_h + up_eff * y * tan_v`.
+    /// Rotated camera basis for ray construction: the ray for NDC
+    /// `(x, y)` is `forward + right * x * tan_h + up * y * tan_v`.
     forward: [f64; 3],
-    right_eff: [f64; 3],
-    up_eff: [f64; 3],
+    right: [f64; 3],
+    up: [f64; 3],
     tan_half_h: f64,
     tan_half_v: f64,
     /// Cylinder radius (world units).
@@ -42,49 +63,50 @@ pub(crate) struct CylinderMap {
 impl CylinderMap {
     /// Build the map for one output frame at the given pose.
     ///
-    /// The yaw/pitch convention is [`VirtualCamera`]'s
-    /// (`yaw_pitch_to_direction`): the mono camera basis looks along
-    /// `-Z` with `+X` right and `+Y` up. Positive yaw turns toward
-    /// `-X` (VirtualCamera's sense), i.e. toward the video's left
-    /// half - what matters is that screen-right samples video-right.
-    ///
-    /// [`VirtualCamera`]: crate::geometry::VirtualCamera
+    /// The mono camera basis looks along `-Z` with `+X` right and
+    /// `+Y` up (`VirtualCamera::new([0, 0, 1])`), and the pose
+    /// composition mirrors `view_matrix`: yaw around the rig frame's
+    /// up axis, pitch around the yaw-rotated base right.
     pub fn new(
         topology: &CylinderTopology,
+        framing: &Framing,
         source_height_px: f64,
         config: &ViewportConfig,
         yaw: f32,
         pitch: f32,
     ) -> Self {
-        let (yaw, pitch) = (yaw as f64, pitch as f64);
-        let (sin_y, cos_y) = yaw.sin_cos();
-        let (sin_p, cos_p) = pitch.sin_cos();
+        let base_forward = [0.0, 0.0, -1.0];
+        let base_right = [1.0, 0.0, 0.0];
+        let world_up = [0.0, 1.0, 0.0];
 
-        // dir = base_forward*(cosP*cosY) - base_right*(cosP*sinY) + up*sinP
-        // with base_forward = -Z, base_right = +X (SYNC_WITH
-        // VirtualCamera::yaw_pitch_to_direction).
-        let forward = [-cos_p * sin_y, sin_p, -cos_p * cos_y];
-        // The camera's right stays horizontal under pitch; up completes
-        // the right-handed basis (up = right x forward).
-        let right = [cos_y, 0.0, -sin_y];
-        let up = [
-            right[1] * forward[2] - right[2] * forward[1],
-            right[2] * forward[0] - right[0] * forward[2],
-            right[0] * forward[1] - right[1] * forward[0],
-        ];
+        // Rig frame (SYNC_WITH rig_correction::rig_frame): tilt rotates
+        // forward + up around base right; roll rotates up around the
+        // tilted forward, leaving it unchanged.
+        let mut f0 = base_forward;
+        let mut u = world_up;
+        if framing.tilt.abs() > 1e-9 {
+            f0 = rotate(f0, base_right, framing.tilt);
+            u = rotate(u, base_right, framing.tilt);
+        }
+        if framing.roll.abs() > 1e-9 {
+            u = rotate(u, f0, -framing.roll);
+        }
 
-        // Fold the screen rotation (tilt around the view axis) into the
-        // basis: offsets (a, b) rotate to (a*cr - b*sr, a*sr + b*cr).
-        let (sr, cr) = topology.screen_rotation_deg.to_radians().sin_cos();
-        let right_eff = [
-            right[0] * cr + up[0] * sr,
-            right[1] * cr + up[1] * sr,
-            right[2] * cr + up[2] * sr,
-        ];
-        let up_eff = [
-            up[0] * cr - right[0] * sr,
-            up[1] * cr - right[1] * sr,
-            up[2] * cr - right[2] * sr,
+        // Pose (SYNC_WITH geometry::view_matrix): yaw around the rig
+        // up, pitch around the yaw-rotated base right; the SCREEN axes
+        // come from the rotated forward + up pair, exactly like the
+        // look-at construction - deriving right from the pitch axis
+        // would silently drop the rig roll.
+        let (yaw, pitch) = (f64::from(yaw), f64::from(pitch));
+        let pitch_axis = rotate(base_right, u, yaw);
+        let forward = rotate(rotate(f0, u, yaw), pitch_axis, pitch);
+        let up = rotate(rotate(u, u, yaw), pitch_axis, pitch);
+        // f0 and u stay orthonormal through every rotation, so the
+        // cross product is already unit length.
+        let right = [
+            forward[1] * up[2] - forward[2] * up[1],
+            forward[2] * up[0] - forward[0] * up[2],
+            forward[0] * up[1] - forward[1] * up[0],
         ];
 
         let tan_half_v = (f64::from(config.fov_degrees).to_radians() * 0.5).tan();
@@ -92,8 +114,8 @@ impl CylinderMap {
 
         Self {
             forward,
-            right_eff,
-            up_eff,
+            right,
+            up,
             tan_half_h: tan_half_v * aspect,
             tan_half_v,
             radius: topology.focal_length,
@@ -114,9 +136,9 @@ impl SurfaceMap for CylinderMap {
         let a = ndc_x * self.tan_half_h;
         let b = ndc_y * self.tan_half_v;
         let ray = [
-            self.forward[0] + self.right_eff[0] * a + self.up_eff[0] * b,
-            self.forward[1] + self.right_eff[1] * a + self.up_eff[1] * b,
-            self.forward[2] + self.right_eff[2] * a + self.up_eff[2] * b,
+            self.forward[0] + self.right[0] * a + self.up[0] * b,
+            self.forward[1] + self.right[1] * a + self.up[1] * b,
+            self.forward[2] + self.right[2] * a + self.up[2] * b,
         ];
 
         // Intersect with the cylinder x^2 + z^2 = r^2 (camera on the
@@ -169,8 +191,43 @@ mod tests {
         }
     }
 
+    fn level() -> Framing {
+        Framing {
+            axis_offset: 0.0,
+            tilt: 0.0,
+            roll: 0.0,
+        }
+    }
+
     fn map(yaw: f32, pitch: f32) -> CylinderMap {
-        CylinderMap::new(&CylinderTopology::default(), SRC_H, &cfg(), yaw, pitch)
+        CylinderMap::new(
+            &CylinderTopology::default(),
+            &level(),
+            SRC_H,
+            &cfg(),
+            yaw,
+            pitch,
+        )
+    }
+
+    /// Rig-frame map over a tall painted band, so tilted/rolled
+    /// samples at pan edges stay inside the coverage.
+    fn map_rig(tilt: f64, roll: f64, yaw: f32) -> CylinderMap {
+        CylinderMap::new(
+            &CylinderTopology {
+                video_height: Some(20_000.0),
+                ..Default::default()
+            },
+            &Framing {
+                axis_offset: 0.0,
+                tilt,
+                roll,
+            },
+            SRC_H,
+            &cfg(),
+            yaw,
+            0.0,
+        )
     }
 
     /// Half-pixel slack: the output center pixel (100, 50) sits half a
@@ -236,6 +293,7 @@ mod tests {
                 video_height: Some(100_000.0),
                 ..Default::default()
             },
+            &level(),
             SRC_H,
             &cfg(),
             0.0,
@@ -266,30 +324,60 @@ mod tests {
     }
 
     #[test]
-    fn screen_rotation_tilts_the_sampling() {
-        let level = map(0.0, 0.0);
-        let tilted = CylinderMap::new(
-            &CylinderTopology {
-                screen_rotation_deg: 10.0,
-                ..Default::default()
-            },
-            SRC_H,
-            &cfg(),
-            0.0,
-            0.0,
-        );
-        // Off-center horizontally: a tilt shifts its vertical sample.
-        let l = level.sample_uv(180, 50).unwrap();
-        let t = tilted.sample_uv(180, 50).unwrap();
+    fn rig_tilt_shifts_the_band_at_pan_center() {
+        // At yaw 0 a tilted rig frame points the rest-forward up by
+        // the tilt: the center pixel samples r*tan(t) above the video
+        // center, exactly like pitching by t (band height 20k here).
+        let tilted = map_rig(0.15, 0.0, 0.0);
+        let s = tilted.sample_uv(100, 50).unwrap();
+        let t = CylinderTopology::default();
+        let expected = 0.5 - t.focal_length * (0.15f64).tan() / 20_000.0;
+        assert!((s.v - expected).abs() < TOL, "v = {} vs {expected}", s.v);
+    }
+
+    #[test]
+    fn rig_tilt_rolls_the_view_at_pan_edges() {
+        // THE tilt signature: pan a tilted rig sideways and the
+        // horizon rolls. Level rig at yaw 0.9: two pixels on the same
+        // output row sample the same video height (symmetry). Tilted
+        // rig: they diverge. Pixels sit at +-23 deg of horizontal FOV
+        // so yaw + offset stays inside the 180-degree sweep.
+        let level_v = {
+            let m = map_rig(0.0, 0.0, 0.9);
+            let l = m.sample_uv(60, 50).unwrap();
+            let r = m.sample_uv(140, 50).unwrap();
+            (l.v - r.v).abs()
+        };
+        let tilted_v = {
+            let m = map_rig(0.15, 0.0, 0.9);
+            let l = m.sample_uv(60, 50).unwrap();
+            let r = m.sample_uv(140, 50).unwrap();
+            (l.v - r.v).abs()
+        };
+        assert!(level_v < 5e-3, "level rig stays symmetric: {level_v}");
         assert!(
-            (l.v - t.v).abs() > 1e-3,
-            "screen rotation must displace off-center samples: {} vs {}",
-            l.v,
-            t.v
+            tilted_v > 5e-3,
+            "tilted rig must roll the view when panned: {tilted_v}"
         );
-        // The center pixel stays put (it lies on the rotation axis).
-        let lc = level.sample_uv(100, 50).unwrap();
-        let tc = tilted.sample_uv(100, 50).unwrap();
-        assert!((lc.u - tc.u).abs() < TOL && (lc.v - tc.v).abs() < TOL);
+    }
+
+    #[test]
+    fn rig_roll_tilts_the_sampling_like_the_surface_roll() {
+        // Rig roll = the painted surface rolled around the view axis
+        // (the player's screen-tilt correction): off-center samples
+        // displace vertically, the center pixel stays on the axis.
+        let level_m = map_rig(0.0, 0.0, 0.0);
+        let rolled = map_rig(0.0, 0.15, 0.0);
+        let l = level_m.sample_uv(180, 50).unwrap();
+        let r = rolled.sample_uv(180, 50).unwrap();
+        assert!(
+            (l.v - r.v).abs() > 1e-3,
+            "roll must displace off-center samples: {} vs {}",
+            l.v,
+            r.v
+        );
+        let lc = level_m.sample_uv(100, 50).unwrap();
+        let rc = rolled.sample_uv(100, 50).unwrap();
+        assert!((lc.u - rc.u).abs() < TOL && (lc.v - rc.v).abs() < TOL);
     }
 }

@@ -357,10 +357,6 @@ pub struct CylinderTopology {
     /// pre-stitched action-camera case; 360 is a full cylinder.
     #[serde(default = "default_sweep_deg")]
     pub sweep_deg: f64,
-    /// Screen tilt around the view axis in degrees (typically within
-    /// ±30), correcting a rig that is not level side-to-side.
-    #[serde(default)]
-    pub screen_rotation_deg: f64,
     /// Painted height in the same units as `focal_length` (source
     /// pixels). Omitted = the source video's pixel height, which is
     /// the convention's default.
@@ -373,7 +369,6 @@ impl Default for CylinderTopology {
         Self {
             focal_length: default_focal_length(),
             sweep_deg: default_sweep_deg(),
-            screen_rotation_deg: 0.0,
             video_height: None,
         }
     }
@@ -736,12 +731,6 @@ fn validate_cylinder(t: &CylinderTopology) -> Result<(), CalibrationError> {
             f64::MAX,
         ),
         ("topology.sweep_deg", t.sweep_deg, f64::MIN_POSITIVE, 360.0),
-        (
-            "topology.screen_rotation_deg",
-            t.screen_rotation_deg,
-            -360.0,
-            360.0,
-        ),
         (
             "topology.video_height",
             // Omitted = the source pixel height, always valid.
