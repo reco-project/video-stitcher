@@ -85,17 +85,20 @@ impl SceneGeometry {
     }
 
     /// Placeholder scene for topologies without plane placement (the
-    /// mono cylinder): planes at the origin, camera at the origin.
-    /// Mono projections never sample it - they override coverage and
-    /// carry their own geometry - but the engine's scene accessor
-    /// stays total until the scene becomes projection-owned.
+    /// mono cylinder): planes at the origin. Mono projections never
+    /// sample the planes - they override coverage and carry their own
+    /// geometry - but the camera position must yield a valid
+    /// [`VirtualCamera`](crate::geometry::VirtualCamera) basis
+    /// (`[0, 0, 1]` = the mono convention, forward `-Z`): the pose
+    /// orientation path builds the basis from it, and the origin
+    /// would normalize a zero vector into NaN poses.
     pub fn mono_identity(aspect: f32) -> Self {
         Self {
             left_position: [0.0; 3],
             left_rotation: [0.0; 3],
             right_position: [0.0; 3],
             right_rotation: [0.0; 3],
-            camera_position: [0.0; 3],
+            camera_position: [0.0, 0.0, 1.0],
             plane_width: 1.0,
             plane_aspect: aspect,
         }
