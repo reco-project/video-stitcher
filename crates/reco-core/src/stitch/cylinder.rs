@@ -44,8 +44,9 @@ impl CylinderMap {
     ///
     /// The yaw/pitch convention is [`VirtualCamera`]'s
     /// (`yaw_pitch_to_direction`): the mono camera basis looks along
-    /// `-Z` with `+X` right and `+Y` up, and positive yaw pans toward
-    /// the video's right half (u > 0.5).
+    /// `-Z` with `+X` right and `+Y` up. Positive yaw turns toward
+    /// `-X` (VirtualCamera's sense), i.e. toward the video's left
+    /// half - what matters is that screen-right samples video-right.
     ///
     /// [`VirtualCamera`]: crate::geometry::VirtualCamera
     pub fn new(
@@ -128,9 +129,14 @@ impl SurfaceMap for CylinderMap {
         let t = self.radius / horiz;
         let hit_y = ray[1] * t;
 
-        // Angle from the world forward axis (-Z), growing with yaw:
-        // straight ahead is 0, the video's right half is positive.
-        let theta = (-ray[0]).atan2(-ray[2]);
+        // Angle from the world forward axis (-Z), positive toward
+        // screen-right (+X at pose zero): straight ahead is 0 and the
+        // right half of the output samples the right half of the
+        // video. VirtualCamera's positive yaw turns toward -X, so
+        // panning right means decreasing yaw - the sign never
+        // surfaces (coverage is symmetric and panners work in the
+        // same basis), but a mismatch here mirrors the image.
+        let theta = ray[0].atan2(-ray[2]);
 
         let u = 0.5 + theta / self.sweep;
         let v = 0.5 - hit_y / (self.half_height * 2.0);
@@ -179,17 +185,33 @@ mod tests {
     }
 
     #[test]
-    fn positive_yaw_pans_toward_higher_u() {
+    fn screen_right_samples_video_right() {
+        // The un-mirrored invariant: at pose zero, the right side of
+        // the output shows the right half of the panorama.
+        let m = map(0.0, 0.0);
+        let left_px = m.sample_uv(10, 50).unwrap();
+        let right_px = m.sample_uv(190, 50).unwrap();
+        assert!(
+            left_px.u < 0.5 && right_px.u > 0.5,
+            "screen left/right must sample video left/right: {} / {}",
+            left_px.u,
+            right_px.u
+        );
+    }
+
+    #[test]
+    fn yaw_follows_the_virtual_camera_sense() {
+        // VirtualCamera's positive yaw turns toward -X = the video's
+        // left half; the magnitude is exact (0.4 rad over a PI sweep).
         let ahead = map(0.0, 0.0).sample_uv(100, 50).unwrap();
         let panned = map(0.4, 0.0).sample_uv(100, 50).unwrap();
         assert!(
-            panned.u > ahead.u + 0.05,
-            "yaw +0.4 must move u right: {} -> {}",
+            panned.u < ahead.u - 0.05,
+            "yaw +0.4 turns toward the video's left: {} -> {}",
             ahead.u,
             panned.u
         );
-        // 0.4 rad over a PI sweep = 0.4/PI in u.
-        let expected = 0.5 + 0.4 / std::f64::consts::PI;
+        let expected = 0.5 - 0.4 / std::f64::consts::PI;
         assert!((panned.u - expected).abs() < 5e-3, "u = {}", panned.u);
     }
 
