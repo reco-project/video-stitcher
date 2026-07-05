@@ -3,9 +3,12 @@
 // Models the video as a texture painted on the inside surface of a
 // cylinder of radius `focal_length`. The virtual camera sits on the
 // cylinder axis and looks outward; pan/tilt/zoom rotate the camera
-// and scale the FOV. Based on the projection used by
-// gilbertchen/actionstitch-player (180-degree cylindrical video
-// player, MIT license; see projection.rs attribution).
+// and scale the FOV. This is the established projection convention
+// for pre-stitched 180-degree panoramic footage.
+//
+// SYNC_WITH: src/stitch/cylinder.rs - this draft predates the CPU map
+// and still carries the old conventions; the mono GPU pass rewrite
+// adopts the CPU map's ray construction, theta sign, and units.
 //
 // Geometry summary:
 //   - Cylinder radius:          focal_length (world units)
