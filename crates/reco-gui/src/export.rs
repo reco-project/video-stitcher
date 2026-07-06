@@ -65,6 +65,8 @@ pub struct AutocamUiConfig {
     pub fov_tight: f32,
     pub fov_wide: f32,
     pub fov_default: f32,
+    /// Margin added around detected players in frame-all mode, degrees.
+    pub frame_all_margin_deg: f32,
 }
 
 /// Telemetry sink that forwards snapshots to the Slint UI thread.
@@ -308,6 +310,7 @@ pub fn run_export(
                 fov_tight: ac.fov_tight,
                 fov_wide: ac.fov_wide,
                 fov_default: ac.fov_default,
+                frame_all_margin_deg: ac.frame_all_margin_deg,
                 // Preset is the base; the visible knobs above overlay it
                 // (they mirror the preset until the user tweaks them).
                 ..reco_autocam::panners::FieldPannerConfig::from_preset_name(&ac.preset)

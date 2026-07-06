@@ -557,7 +557,15 @@ export component RecoApp inherits Window {
     in-out property <float> export-ball-weight: 0.20;
     in-out property <float> export-fov-tight: 22.0;
     in-out property <float> export-fov-wide: 58.0;
+    in-out property <float> export-frame-all-margin: 5.0;
     in-out property <float> export-fov-default: 40.0;
+
+    changed export-framing => {
+        if (self.export-framing != "frame_all") {
+            self.export-fov-tight = self.export-fov-tight.clamp(10.0, 40.0);
+            self.export-fov-wide = self.export-fov-wide.clamp(40.0, 90.0);
+        }
+    }
     in-out property <bool> export-replay-enabled: false;
     in-out property <bool> export-events-enabled: false;
 
@@ -2674,8 +2682,8 @@ export component RecoApp inherits Window {
                                 padding: 0;
                                 LabeledSlider {
                                     label: "Tight";
-                                    minimum: 10.0;
-                                    maximum: 40.0;
+                                    minimum: root.export-framing == "frame_all" ? 0.0 : 10.0;
+                                    maximum: root.export-framing == "frame_all" ? 180.0 : 40.0;
                                     value <=> root.export-fov-tight;
                                     decimals: 0;
                                 }
@@ -2688,11 +2696,18 @@ export component RecoApp inherits Window {
                                 }
                                 LabeledSlider {
                                     label: "Wide";
-                                    minimum: 40.0;
-                                    maximum: 90.0;
+                                    minimum: root.export-framing == "frame_all" ? 0.0 : 40.0;
+                                    maximum: root.export-framing == "frame_all" ? 180.0 : 90.0;
                                     value <=> root.export-fov-wide;
                                     decimals: 0;
                                 }
+                            }
+                            if root.export-framing == "frame_all" : LabeledSlider {
+                                label: "Margin";
+                                minimum: 0.0;
+                                maximum: 20.0;
+                                value <=> root.export-frame-all-margin;
+                                decimals: 0;
                             }
                         }
                     }

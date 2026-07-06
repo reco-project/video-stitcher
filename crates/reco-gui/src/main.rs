@@ -3413,6 +3413,7 @@ fn main() -> anyhow::Result<()> {
             app.set_export_fov_tight(cfg.fov_tight);
             app.set_export_fov_wide(cfg.fov_wide);
             app.set_export_fov_default(cfg.fov_default);
+            app.set_export_frame_all_margin(cfg.frame_all_margin_deg);
         }
         #[cfg(not(feature = "autocam"))]
         let _ = (&app_weak, &name);
@@ -3498,6 +3499,7 @@ fn main() -> anyhow::Result<()> {
             fov_tight: app.get_export_fov_tight(),
             fov_wide: app.get_export_fov_wide(),
             fov_default: app.get_export_fov_default(),
+            frame_all_margin_deg: app.get_export_frame_all_margin(),
         };
         let replay_enabled = app.get_export_replay_enabled();
         let events_enabled = app.get_export_events_enabled();
