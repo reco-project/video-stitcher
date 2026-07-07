@@ -579,6 +579,9 @@ pub fn create_encoder(
 pub struct FfmpegMonoSource {
     rx: std::sync::mpsc::Receiver<YuvData>,
     info: SourceInfo,
+    input: crate::stitch_job::InputPath,
+    software_decode: bool,
+    current_frame: u64,
     exhausted: bool,
 }
 
@@ -614,6 +617,9 @@ impl FfmpegMonoSource {
         Ok(Self {
             rx,
             info,
+            input: input.clone(),
+            software_decode,
+            current_frame: 0,
             exhausted: false,
         })
     }
@@ -630,7 +636,10 @@ impl reco_core::source::FrameSource for FfmpegMonoSource {
             return Ok(None);
         }
         match self.rx.recv() {
-            Ok(yuv) => Ok(Some(StereoFrame::Mono(yuv))),
+            Ok(yuv) => {
+                self.current_frame += 1;
+                Ok(Some(StereoFrame::Mono(yuv)))
+            }
             Err(_) => {
                 self.exhausted = true;
                 Ok(None)
@@ -643,17 +652,43 @@ impl reco_core::source::FrameSource for FfmpegMonoSource {
     }
 
     fn skip_frames(&mut self, count: u64) -> Result<u64, SourceError> {
-        let mut skipped = 0;
-        while skipped < count {
-            match self.rx.recv() {
-                Ok(_) => skipped += 1,
-                Err(_) => {
-                    self.exhausted = true;
-                    break;
+        self.seek(self.current_frame + count)?;
+        Ok(count)
+    }
+
+    fn seek(&mut self, frame: u64) -> Result<(), SourceError> {
+        // Same two strategies as `FfmpegFileSource::seek`: a short
+        // forward seek drains the already-running decoder; anything
+        // else respawns it at the target keyframe. Decode-and-discard
+        // for a large `start_time` would decode the entire prefix.
+        if frame >= self.current_frame {
+            let skip = frame - self.current_frame;
+            let max_forward = (self.info.fps * 10.0) as u64;
+            if skip <= max_forward {
+                for _ in 0..skip {
+                    match self.rx.recv() {
+                        Ok(_) => self.current_frame += 1,
+                        Err(_) => {
+                            self.exhausted = true;
+                            break;
+                        }
+                    }
                 }
+                return Ok(());
             }
         }
-        Ok(skipped)
+
+        let secs = frame as f64 / self.info.fps;
+        log::debug!("mono seek to frame {frame} ({secs:.1}s)");
+        self.rx = FfmpegFileSource::spawn_single_decoder_at(
+            self.input.clone(),
+            "mono",
+            Some(secs),
+            self.software_decode,
+        );
+        self.current_frame = frame;
+        self.exhausted = false;
+        Ok(())
     }
 }
 
