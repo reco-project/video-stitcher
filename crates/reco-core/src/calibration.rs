@@ -204,6 +204,11 @@ impl Lens {
     /// A distortion-free source: a pre-stitched flat panorama frame.
     /// Only the dimensions are load-bearing (cylinder sampling never
     /// undistorts); the intrinsics are centered identity values.
+    ///
+    /// The programmatic route to a mono lens - consumers building a
+    /// cylinder [`Calibration`] in code use this; JSON documents spell
+    /// the fields out. Exercised by the mono session and projection
+    /// tests.
     pub fn flat(width: u32, height: u32) -> Self {
         Self {
             width,
@@ -220,12 +225,11 @@ impl Lens {
 
 /// Scene geometry parameters: which shape the sources are painted on.
 ///
-/// Serialized with a `type` tag (`"l-shape"` / `"cylinder"`); documents
-/// written before the tag existed deserialize as L-shape. The matching
-/// [`Projection`](crate::projection::Projection) dispatches the actual
-/// geometry; this carries its parameters. The virtual-camera position
-/// lives in [`Framing`], not here.
-#[derive(Debug, Clone, Serialize)]
+/// Serialized with a mandatory `type` tag (`"l-shape"` / `"cylinder"`).
+/// The matching [`Projection`](crate::projection::Projection) dispatches
+/// the actual geometry; this carries its parameters. The virtual-camera
+/// position lives in [`Framing`], not here.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum Topology {
     /// Two fisheye cameras on perpendicular planes (the stereo rig).
@@ -289,33 +293,6 @@ impl From<CylinderTopology> for Topology {
     }
 }
 
-// Deserialize accepts both the tagged form and the legacy untagged
-// L-shape document (no `type` field): tagged wins when present.
-impl<'de> Deserialize<'de> for Topology {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(tag = "type", rename_all = "kebab-case")]
-        enum Tagged {
-            LShape(LShapeTopology),
-            Cylinder(CylinderTopology),
-        }
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Repr {
-            Tagged(Tagged),
-            Legacy(LShapeTopology),
-        }
-        Ok(match Repr::deserialize(deserializer)? {
-            Repr::Tagged(Tagged::LShape(t)) => Topology::LShape(t),
-            Repr::Tagged(Tagged::Cylinder(t)) => Topology::Cylinder(t),
-            Repr::Legacy(t) => Topology::LShape(t),
-        })
-    }
-}
-
 /// 3D placement of the two L-shape source planes plus the overlap seam.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LShapeTopology {
@@ -374,6 +351,8 @@ impl Default for CylinderTopology {
     }
 }
 
+// Functions, not constants: serde's `default = "..."` attribute takes
+// a function path, never a value expression.
 fn default_focal_length() -> f64 {
     2400.0
 }
@@ -847,7 +826,8 @@ mod tests {
                   "fx": 1796.32, "fy": 1797.22, "cx": 1919.37, "cy": 1063.17,
                   "distortion": [0.0342, 0.0677, -0.0741, 0.0299], "correction": 1.0 }
             ],
-            "topology": { "intersect": 0.5446, "x_ty": 0.00476, "x_rz": 0.00753,
+            "topology": { "type": "l-shape",
+                          "intersect": 0.5446, "x_ty": 0.00476, "x_rz": 0.00753,
                           "z_rx": -0.00431, "blend_width": 0.05 },
             "framing": { "axis_offset": 0.2398, "tilt": 0.0, "roll": 0.0 }
         }"#
@@ -947,16 +927,13 @@ mod tests {
     }
 
     #[test]
-    fn legacy_untagged_topology_parses_as_l_shape() {
-        // Documents written before the `type` tag existed carry a bare
-        // L-shape object; they must keep parsing unchanged.
+    fn untagged_topology_document_is_rejected() {
+        // The `type` tag is mandatory: a topology object without it
+        // must fail to parse rather than silently default to L-shape.
         let mut v: serde_json::Value = serde_json::from_str(&valid_cal().to_json_pretty()).unwrap();
         let topo = v["topology"].as_object_mut().unwrap();
         assert_eq!(topo.remove("type").unwrap(), "l-shape");
-        let cal: Calibration = serde_json::from_value(v).unwrap();
-        let t = cal.topology.l_shape().expect("untagged doc is L-shape");
-        assert!((t.intersect - 0.5).abs() < 1e-9);
-        cal.validate().unwrap();
+        assert!(serde_json::from_value::<Calibration>(v).is_err());
     }
 
     #[test]
