@@ -48,14 +48,22 @@ pub(crate) struct CylinderMap {
     forward: [f64; 3],
     right: [f64; 3],
     up: [f64; 3],
+    /// Half-frustum extents at unit distance: `tan(fov/2)` vertically,
+    /// times the output aspect horizontally. They scale NDC into the
+    /// ray basis above.
     tan_half_h: f64,
     tan_half_v: f64,
-    /// Cylinder radius (world units).
+    /// Cylinder radius (world units) = `CylinderTopology::focal_length`:
+    /// how far the painted surface sits from the axis camera.
     radius: f64,
-    /// Full angular sweep in radians.
+    /// Full angular sweep in radians: a hit's azimuth inside
+    /// `[-sweep/2, +sweep/2]` maps linearly to source U.
     sweep: f64,
-    /// Half the painted height (world units).
+    /// Half the painted height (world units): bounds the ray-cylinder
+    /// hit vertically and maps linearly to source V.
     half_height: f64,
+    /// Output dimensions, cast once here because `sample_uv` runs per
+    /// output pixel.
     out_w: f64,
     out_h: f64,
 }
@@ -63,10 +71,16 @@ pub(crate) struct CylinderMap {
 impl CylinderMap {
     /// Build the map for one output frame at the given pose.
     ///
+    /// The parameters split by lifetime: `topology` and `framing` are
+    /// the calibrated document (static), `yaw`/`pitch` are the
+    /// per-frame render pose, and the viewport FOV plus output
+    /// dimensions ride in `config`. `source_height_px` backs
+    /// `CylinderTopology::video_height`'s default.
+    ///
     /// The mono camera basis looks along `-Z` with `+X` right and
-    /// `+Y` up (`VirtualCamera::new([0, 0, 1])`), and the pose
-    /// composition mirrors `view_matrix`: yaw around the rig frame's
-    /// up axis, pitch around the yaw-rotated base right.
+    /// `+Y` up ([`VirtualCamera::mono`](crate::geometry::VirtualCamera::mono)),
+    /// and the pose composition mirrors `view_matrix`: yaw around the
+    /// rig frame's up axis, pitch around the yaw-rotated base right.
     pub fn new(
         topology: &CylinderTopology,
         framing: &Framing,
@@ -81,7 +95,9 @@ impl CylinderMap {
 
         // Rig frame (SYNC_WITH rig_correction::rig_frame): tilt rotates
         // forward + up around base right; roll rotates up around the
-        // tilted forward, leaving it unchanged.
+        // tilted forward, leaving it unchanged. The epsilon guards
+        // skip the no-op rotations so a level rig keeps bit-exact
+        // base axes.
         let mut f0 = base_forward;
         let mut u = world_up;
         if framing.tilt.abs() > 1e-9 {

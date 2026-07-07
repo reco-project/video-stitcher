@@ -209,8 +209,9 @@ impl Projection for CylindricalProjection {
             fs_entry: "fs_cylindrical_mono",
             // Mono: single surface, nothing to blend over.
             blend: wgpu::BlendState::REPLACE,
-            // Placeholder until the mono GPU pass is wired: its
-            // composite is a fullscreen pass with its own bind layout.
+            // TODO: placeholder until the mono GPU pass is wired
+            // (Step 13 PR B): its composite is a fullscreen pass with
+            // its own bind layout.
             vertex_layout: crate::render::renderer::Vertex::LAYOUT,
         }
     }
@@ -971,10 +972,11 @@ mod tests {
 
     #[test]
     fn projection_dyn_dispatch_round_trip_with_mixed_camera_counts() {
-        // Compile-time: `Box<dyn Projection>` can hold concrete impls
-        // with different `camera_count()` results. Proves the trait
-        // API's claim that consumers can swap projections without a
-        // new type parameter on StitchCore.
+        // Compile-time: the trait is object-safe, so one collection
+        // holds impls with different `camera_count()` results - what
+        // lets `for_topology` pick the projection at calibration-load
+        // time. The assertions pin the per-projection counts and that
+        // the diagnostic names stay distinct.
         let projections: Vec<Box<dyn Projection>> =
             vec![Box::new(LShapeProjection), Box::new(CylindricalProjection)];
         assert_eq!(projections[0].camera_count(), 2);

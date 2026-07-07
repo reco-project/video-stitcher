@@ -93,6 +93,7 @@ pub struct StitchCore {
     pub(crate) cpu_frame: Vec<u8>,
     /// One-shot guard for the mono-detection warning (detection is
     /// L-shape-only until the mono mapping lands).
+    // TODO: remove once mono detection lands (Step 13 PR B).
     mono_detection_warned: bool,
     pub(crate) output_width: u32,
     pub(crate) output_height: u32,

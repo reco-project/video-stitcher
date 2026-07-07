@@ -135,7 +135,7 @@ impl CoverageBoundary {
             min_pitch_range: pitch_max - pitch_min,
             rig_tilt,
             rig_roll,
-            cam: VirtualCamera::new(&[0.0, 0.0, 1.0]),
+            cam: VirtualCamera::mono(),
         }
     }
 

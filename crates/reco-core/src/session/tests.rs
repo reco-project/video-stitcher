@@ -763,6 +763,11 @@ fn cpu_session_rejects_gpu_resident_frames() {
 
 /// The mono cylinder path end to end without a GPU: single-input
 /// source -> engine mono submit (CPU cylinder stitch) -> NV12 -> sink.
+///
+/// Doubles as the minimal mono-consumer example: a calibration built
+/// from `Lens::flat` + `CylinderTopology` + a zero `Framing`, a
+/// `FrameSource` yielding `StereoFrame::Mono`, and a plain session
+/// run on the CPU executor - no GPU context is created on this path.
 #[test]
 fn mono_cylinder_session_runs_end_to_end_without_gpu() {
     struct MonoSource(u64);

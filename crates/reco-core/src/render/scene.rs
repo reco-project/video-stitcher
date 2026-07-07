@@ -98,7 +98,7 @@ impl SceneGeometry {
             left_rotation: [0.0; 3],
             right_position: [0.0; 3],
             right_rotation: [0.0; 3],
-            camera_position: [0.0, 0.0, 1.0],
+            camera_position: crate::geometry::MONO_CAMERA_POSITION,
             plane_width: 1.0,
             plane_aspect: aspect,
         }

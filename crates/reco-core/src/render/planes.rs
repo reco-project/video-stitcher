@@ -7,6 +7,10 @@
 
 /// Borrowed YUV420P plane references for pipeline input.
 ///
+/// `Copy` because this is a bundle of slice references: duplicating it
+/// copies pointers, never pixels, which lets the N-ary stitch seam
+/// build per-camera arrays by value.
+///
 /// Tightly packed (no stride padding):
 /// - `y`: `width * height` bytes
 /// - `u`: `(width/2) * (height/2)` bytes
@@ -121,6 +125,9 @@ pub(crate) fn copy_plane_tight(src: &FramePlaneView<'_>, dst: &mut [u8]) {
 }
 
 /// Borrowed NV12 plane references for pipeline input.
+///
+/// `Copy` for the same reason as [`YuvPlanes`]: slice references only,
+/// so per-camera arrays at the stitch seam copy pointers, not pixels.
 ///
 /// Tightly packed (no stride padding):
 /// - `y`: `width * height` bytes

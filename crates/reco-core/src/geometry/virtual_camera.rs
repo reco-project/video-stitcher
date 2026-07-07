@@ -27,6 +27,12 @@ use nalgebra::Vector3;
 /// Rig tilt and rig roll are NOT part of this type: `rig_frame` layers
 /// them on top, and `view_matrix` + `world_to_render_pose` both compose
 /// through that one construction.
+/// World-space eye position of the mono (single-camera) rig: on the
+/// projection axis, one unit back along `+Z`. The single home for the
+/// convention shared by [`VirtualCamera::mono`], the mono scene
+/// geometry, and the cylinder map.
+pub const MONO_CAMERA_POSITION: [f32; 3] = [0.0, 0.0, 1.0];
+
 #[derive(Debug, Clone, Copy)]
 pub struct VirtualCamera {
     /// World-space camera eye position (copy of `camera_position`).
@@ -44,6 +50,15 @@ impl VirtualCamera {
     /// rather than a field because every VirtualCamera agrees on it.
     pub fn world_up() -> Vector3<f32> {
         Vector3::new(0.0, 1.0, 0.0)
+    }
+
+    /// The mono (single-camera) basis: the camera sits on the
+    /// projection axis at [`MONO_CAMERA_POSITION`] looking at the
+    /// origin - forward `-Z`, right `+X`, up `+Y`. A unit offset
+    /// rather than the origin itself: `new` normalizes the
+    /// eye-to-origin direction, and a zero eye would produce NaN axes.
+    pub fn mono() -> Self {
+        Self::new(&MONO_CAMERA_POSITION)
     }
 
     /// Build the basis from a world-space camera position.
