@@ -75,9 +75,9 @@ impl SceneGeometry {
 
     /// Scene geometry for a calibration document: plane placement for
     /// the L-shape, the inert identity for plane-less topologies
-    /// (their projections never sample it). `aspect` is the source
-    /// frame `width / height`.
-    pub fn for_calibration(calibration: &Calibration, aspect: f32) -> Self {
+    /// (their projections never sample it).
+    pub fn for_calibration(calibration: &Calibration) -> Self {
+        let aspect = calibration.source_aspect();
         match &calibration.topology {
             Topology::LShape(t) => Self::new(t, &calibration.framing, aspect),
             Topology::Cylinder(_) => Self::mono_identity(aspect),

@@ -122,8 +122,7 @@ impl StitchPipeline {
         }
 
         let output_format = output_format.into();
-        let aspect = calibration.lenses[0].width as f32 / calibration.lenses[0].height as f32;
-        let scene = SceneGeometry::for_calibration(&calibration, aspect);
+        let scene = SceneGeometry::for_calibration(&calibration);
         let renderer = Renderer::new(
             &gpu,
             program,
@@ -263,8 +262,7 @@ impl StitchPipeline {
     ///
     /// No GPU pipeline recreation needed - only the uniform data changes.
     pub fn update_calibration(&mut self, calibration: Calibration) {
-        let aspect = calibration.lenses[0].width as f32 / calibration.lenses[0].height as f32;
-        self.scene = SceneGeometry::for_calibration(&calibration, aspect);
+        self.scene = SceneGeometry::for_calibration(&calibration);
         self.calibration = calibration;
         log::debug!("Pipeline calibration updated");
     }

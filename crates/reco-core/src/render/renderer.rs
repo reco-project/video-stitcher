@@ -957,7 +957,7 @@ impl Renderer {
         blend_width: f32,
         target_view: &wgpu::TextureView,
     ) {
-        let aspect = viewport.config.width as f32 / viewport.config.height as f32;
+        let aspect = viewport.config.aspect_ratio();
         let encoder = self.encode_stitch_pass(
             gpu,
             scene,

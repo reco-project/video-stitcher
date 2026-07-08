@@ -277,8 +277,7 @@ const CONVERGENCE_EPS: f64 = 1e-10;
 /// use reco_core::render::scene::SceneGeometry;
 ///
 /// # fn example(cal: &Calibration) {
-/// let aspect = cal.lenses[0].width as f32 / cal.lenses[0].height as f32;
-/// let scene = SceneGeometry::for_calibration(cal, aspect);
+/// let scene = SceneGeometry::for_calibration(cal);
 /// if let Some(pos) = camera_to_panorama(CameraId::Left, 0.5, 0.5, cal, &scene) {
 ///     println!("Center of left camera maps to yaw={:.3}, pitch={:.3}", pos.yaw, pos.pitch);
 /// }
@@ -458,8 +457,7 @@ mod tests {
     use crate::calibration::{Calibration, Framing, LShapeTopology, Lens};
 
     fn test_scene(cal: &Calibration) -> SceneGeometry {
-        let aspect = cal.lenses[0].width as f32 / cal.lenses[0].height as f32;
-        SceneGeometry::for_calibration(cal, aspect)
+        SceneGeometry::for_calibration(cal)
     }
 
     fn test_calibration() -> Calibration {
@@ -944,7 +942,7 @@ mod tests {
     #[test]
     fn cylindrical_coverage_is_the_analytic_rectangle() {
         let cal = cylinder_cal();
-        let scene = SceneGeometry::for_calibration(&cal, 3840.0 / 1080.0);
+        let scene = SceneGeometry::for_calibration(&cal);
         let coverage = CylindricalProjection.coverage(&cal, &scene);
         let (y_lo, y_hi) = coverage.yaw_range();
         assert!(
