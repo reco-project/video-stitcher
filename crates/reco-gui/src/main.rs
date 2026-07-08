@@ -1490,6 +1490,7 @@ fn main() -> anyhow::Result<()> {
             let mut config = slint::wgpu_28::WGPUConfiguration::default();
             if let slint::wgpu_28::WGPUConfiguration::Automatic(ref mut settings) = config {
                 settings.device_required_limits = reco_core::wgpu::Limits::downlevel_defaults();
+                settings.backends = reco_core::gpu::GpuContext::select_backends();
             }
             config
         })

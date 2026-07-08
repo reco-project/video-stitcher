@@ -249,7 +249,13 @@ impl GpuContext {
     /// Checks `WGPU_BACKEND` first (user override). Otherwise uses
     /// platform defaults: DX12 on Windows, Vulkan on Linux, Metal
     /// on macOS.
-    fn select_backends() -> wgpu::Backends {
+    ///
+    /// Public so windowed consumers (reco-gui, rig-calib) that let Slint
+    /// create the shared `wgpu::Instance` can apply the same policy via
+    /// `WGPUConfiguration::Automatic::backends`, instead of falling back to
+    /// Slint's own default (which tries Vulkan first on Windows and can hit
+    /// driver/loader bugs this function's platform defaults are chosen to avoid).
+    pub fn select_backends() -> wgpu::Backends {
         if let Ok(val) = std::env::var("WGPU_BACKEND") {
             match val.to_lowercase().as_str() {
                 "vulkan" | "vk" => return wgpu::Backends::VULKAN,
