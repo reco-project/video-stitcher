@@ -22,6 +22,7 @@ consumer-side workaround.
 - `crates/reco-detect/` — AI detection backends (ORT CPU/GPU, TensorRT, NCNN, CoreML/Metal)
 - `crates/reco-autocam/` — AI camera control (directors, trajectory smoothing, ROI filtering)
 - `crates/reco-calibrate/` — Stereo camera calibration (AKAZE features, optimization)
+- `crates/reco-control/` — Typed control intents (pose, hotkeys) shared by interactive consumers
 - `crates/reco-gui/` — Slint GUI consumer (wgpu zero-copy preview)
 - `crates/reco-obs/` — OBS Studio source plugin (async-frame ingestion + BGRA + interactive pan/zoom)
 

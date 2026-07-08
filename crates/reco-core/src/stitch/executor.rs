@@ -188,8 +188,7 @@ impl CpuExecutor {
 /// executor's cache and its mutation paths - mirrors what
 /// `StitchPipeline::update_calibration` does on the GPU side.
 fn derive_scene(calib: &Calibration) -> SceneGeometry {
-    let aspect = calib.lenses[0].width as f32 / calib.lenses[0].height as f32;
-    SceneGeometry::for_calibration(calib, aspect)
+    SceneGeometry::for_calibration(calib)
 }
 
 impl StitchExecutor for CpuExecutor {
@@ -237,8 +236,9 @@ pub struct GpuExecutorConfig {
     /// for consumers that prefer to swizzle on upload instead of on
     /// readback.
     pub output_format: wgpu::TextureFormat,
-    /// Projection to stitch through. `None` selects the two-camera
-    /// L-shape ([`LShapeProjection`](crate::projection::LShapeProjection)).
+    /// Projection to stitch through. `None` resolves the projection
+    /// matching the calibration's topology (the out-of-tree injection
+    /// point for custom projections).
     pub projection: Option<Box<dyn Projection>>,
     /// Whether source YUV uses full-range (JPEG) quantization.
     pub full_range: bool,
@@ -309,9 +309,14 @@ impl GpuExecutor {
     /// pull an async runtime into non-test code; callers create it via
     /// [`GpuContext::new`].
     pub fn new(gpu: GpuContext, config: GpuExecutorConfig) -> Result<Self, StitchError> {
-        let projection: Box<dyn Projection> = config
-            .projection
-            .unwrap_or_else(|| Box::new(crate::projection::LShapeProjection));
+        let projection: Box<dyn Projection> = config.projection.unwrap_or_else(|| {
+            let p = crate::projection::for_topology(&config.calibration.topology);
+            log::debug!(
+                "no projection injected; resolved '{}' from the calibration topology",
+                p.name()
+            );
+            p
+        });
         if usize::from(projection.camera_count()) != config.calibration.lenses.len() {
             return Err(StitchError::InvalidConfig(format!(
                 "projection '{}' consumes {} cameras but the calibration has {} lenses",
@@ -1296,8 +1301,7 @@ mod tests {
             let mut cal = calib(cam_w, cam_h);
             cal.framing.tilt = tilt;
             cal.framing.roll = roll;
-            let plane_aspect = cal.lenses[0].width as f32 / cal.lenses[0].height as f32;
-            let scene = SceneGeometry::for_calibration(&cal, plane_aspect);
+            let scene = SceneGeometry::for_calibration(&cal);
             let coverage = CoverageBoundary::from_calibration(&cal, &scene);
             let cam = VirtualCamera::new(&scene.camera_position);
             let fov = (coverage.max_fov_degrees() * fov_factor).min(60.0);
