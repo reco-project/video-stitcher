@@ -50,6 +50,8 @@ pub struct SmartFileSource {
 
 enum SourceMode {
     Cpu(crate::adapters::FfmpegFileSource),
+    /// Single pre-stitched panorama for mono topologies.
+    Mono(crate::adapters::FfmpegMonoSource),
     #[cfg(target_os = "linux")]
     GpuZeroCopy(Box<LinuxZeroCopyState>),
     #[cfg(target_os = "macos")]
@@ -122,7 +124,7 @@ struct LinuxZeroCopyState {
     /// early to unblock the pairing thread before joining decode threads.
     frame_rx: Option<std::sync::mpsc::Receiver<reco_core::interop::zero_copy::GpuFrameSignal>>,
     /// Shared textures (kept alive until Drop).
-    shared: reco_core::session::SharedTextureSet,
+    shared: reco_core::interop::SharedTextureSet,
     /// Decode thread join handles.
     join_handles: Vec<std::thread::JoinHandle<()>>,
     /// Shutdown flag checked by decode threads for graceful exit.
@@ -209,6 +211,7 @@ impl SmartFileSource {
                 left,
                 right,
                 sync_offset,
+                false,
                 info,
                 pixel_format,
                 full_range,
@@ -222,6 +225,7 @@ impl SmartFileSource {
         left: &crate::stitch_job::InputPath,
         right: &crate::stitch_job::InputPath,
         sync_offset: i64,
+        software_decode: bool,
     ) -> Result<Self, SourceError> {
         let left_probe_path = left.first_path();
 
@@ -255,6 +259,7 @@ impl SmartFileSource {
             left,
             right,
             sync_offset,
+            software_decode,
             info,
             pixel_format,
             full_range,
@@ -263,17 +268,24 @@ impl SmartFileSource {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn open_cpu(
         left: &crate::stitch_job::InputPath,
         right: &crate::stitch_job::InputPath,
         sync_offset: i64,
+        software_decode: bool,
         info: SourceInfo,
         pixel_format: GpuPixelFormat,
         full_range: bool,
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
-        let source = crate::adapters::FfmpegFileSource::open_from_inputs(left, right, sync_offset)?;
+        let source = crate::adapters::FfmpegFileSource::open_from_inputs(
+            left,
+            right,
+            sync_offset,
+            software_decode,
+        )?;
         log::info!(
             "SmartFileSource: CPU decode ({}x{}, {pixel_format:?}{})",
             info.width,
@@ -305,9 +317,9 @@ impl SmartFileSource {
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
+        use reco_core::interop::SharedTextureSet;
         use reco_core::interop::vulkan::{Nv12Plane, create_nv12_shared_texture};
         use reco_core::interop::zero_copy::GpuBufInfo;
-        use reco_core::session::SharedTextureSet;
 
         let map_err = |msg: String| SourceError::Init {
             path: left.first_path().display().to_string(),
@@ -422,9 +434,6 @@ impl SmartFileSource {
             right_slot_free_tx,
             left_slot_free_rx: None,
             right_slot_free_rx: None,
-            // Bind groups are created lazily by setup_gpu_source()
-            // when it sees None. The source doesn't have pipeline access.
-            bind_groups: None,
         };
 
         Ok(Self {
@@ -538,6 +547,33 @@ impl SmartFileSource {
         )
     }
 
+    /// Open a single-input mono source (cylinder calibrations).
+    ///
+    /// Always CPU frames - the mono GPU pass is not wired yet.
+    /// `software_decode` forces the software decoder (`--cpu`).
+    pub fn open_mono(
+        input: &crate::stitch_job::InputPath,
+        software_decode: bool,
+    ) -> Result<Self, SourceError> {
+        let source = crate::adapters::FfmpegMonoSource::open(input, software_decode)?;
+        let info = source.info();
+        log::info!(
+            "SmartFileSource: mono CPU decode ({}x{})",
+            info.width,
+            info.height
+        );
+        Ok(Self {
+            mode: SourceMode::Mono(source),
+            info,
+            pixel_format: GpuPixelFormat::Nv12,
+            full_range: false,
+            left_rotation: 0,
+            right_rotation: 0,
+            decode_mode: "CPU mono",
+            exhausted: false,
+        })
+    }
+
     /// Human-readable description of the active decode path.
     pub fn decode_mode(&self) -> &'static str {
         self.decode_mode
@@ -548,7 +584,7 @@ impl SmartFileSource {
     /// The session uses this to create bind groups at the start of `run()`.
     /// Returns `None` for CPU-mode sources.
     #[cfg(target_os = "linux")]
-    pub fn shared_texture_set(&self) -> Option<&reco_core::session::SharedTextureSet> {
+    pub fn shared_texture_set(&self) -> Option<&reco_core::interop::SharedTextureSet> {
         match &self.mode {
             SourceMode::GpuZeroCopy(state) => Some(&state.shared),
             _ => None,
@@ -608,6 +644,7 @@ impl FrameSource for SmartFileSource {
 
     fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
         match &mut self.mode {
+            SourceMode::Mono(source) => source.next_frame(),
             SourceMode::Cpu(source) => {
                 let frame = source.next_frame()?;
                 if frame.is_none() {
@@ -676,11 +713,12 @@ impl FrameSource for SmartFileSource {
     }
 
     fn is_gpu_resident(&self) -> bool {
-        !matches!(self.mode, SourceMode::Cpu(_))
+        !matches!(self.mode, SourceMode::Cpu(_) | SourceMode::Mono(_))
     }
 
     fn skip_frames(&mut self, count: u64) -> Result<u64, SourceError> {
         match &mut self.mode {
+            SourceMode::Mono(source) => source.skip_frames(count),
             #[cfg(target_os = "linux")]
             SourceMode::GpuZeroCopy(state) => {
                 let rx = state
@@ -752,6 +790,7 @@ impl FrameSource for SmartFileSource {
         // implement `try_next_frame`, so their local flag is sufficient).
         match &self.mode {
             SourceMode::Cpu(source) => self.exhausted || source.is_exhausted(),
+            SourceMode::Mono(_) => self.exhausted,
             #[cfg(target_os = "linux")]
             SourceMode::GpuZeroCopy(_) => self.exhausted,
             #[cfg(target_os = "macos")]

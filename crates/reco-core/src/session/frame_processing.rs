@@ -1,7 +1,7 @@
 //! Per-frame render and encode methods for [`StitchSession`].
 //!
 //! These methods are called once per frame to render a stereo pair,
-//! convert to NV12, and fan out to attached encoders.
+//! convert to NV12, and fan out to attached sinks.
 
 use super::StitchSession;
 use crate::geometry::ViewportPosition;
@@ -17,7 +17,44 @@ impl StitchSession {
     /// roll-aware basis inversion), the `PosePresented` trace, and the
     /// FOV write-back. Panners output unconstrained positions.
     pub fn director_position(&mut self) -> ViewportPosition {
-        self.core.presented_clamped_pose(self.frame_count)
+        if self.stabilizer.is_none() {
+            return self.core.presented_clamped_pose(self.frame_count);
+        }
+
+        let mut pos = self.core.previous_panner_pose;
+
+        // Stabilization operates in the panner's world-space pose
+        // contract. It runs before coverage clamping so the normal
+        // no-black boundary still constrains the corrected pose.
+        let stabilization_fov = pos.fov_degrees.unwrap_or_else(|| self.core.fov());
+        let stabilization_aspect = self.core.viewport().aspect_ratio();
+        let stabilization_scene = self.core.scene();
+        if let Some(stabilizer) = self.stabilizer.as_mut() {
+            let ctx = crate::session::stabilization::StabilizationContext {
+                frame_index: self.frame_count,
+                fov_degrees: stabilization_fov,
+                aspect: stabilization_aspect,
+                // `pos` is still in panorama/world space here. Rig
+                // tilt/roll are applied later when converting to the
+                // renderer's pose basis, so anchor projection uses the
+                // same native world frame.
+                rig_tilt: 0.0,
+                rig_roll: 0.0,
+                scene: stabilization_scene,
+            };
+            let (stabilized, correction) = stabilizer.stabilize_pose(pos, ctx);
+            if correction.yaw != 0.0 || correction.pitch != 0.0 {
+                log::trace!(
+                    "stabilization correction frame={} yaw={:.5} pitch={:.5}",
+                    self.frame_count,
+                    correction.yaw,
+                    correction.pitch,
+                );
+            }
+            pos = stabilized;
+        }
+
+        self.core.presented_clamped_pose_from(self.frame_count, pos)
     }
 
     /// Full per-frame pipeline: detect, pose, render, replay, telemetry.
@@ -79,7 +116,7 @@ impl StitchSession {
                             self.update_director(elapsed)?;
                             false
                         }
-                    } else if let Some(ref views) = self.gpu_shared_views {
+                    } else if let Some(views) = self.shared_views() {
                         if self.frame_count == 0 {
                             log::info!(
                                 "GpuResident detection: wgpu shared texture views (ORT/wgpu preprocess)"
@@ -121,7 +158,7 @@ impl StitchSession {
                     // detection during produce and skips this whole step.)
                     if due {
                         crate::profile_scope!("detect_preletterboxed_total");
-                        if let Some(frames) = self.nvmm_detector_frames(left, right) {
+                        if let Some(frames) = self.gpu_exec().nvmm_detector_frames(left, right) {
                             self.core.run_detection_frames(&frames);
                         }
                     }
@@ -141,18 +178,17 @@ impl StitchSession {
                 }
                 #[cfg(target_os = "windows")]
                 StereoFrame::D3d11Resident { .. } => {
-                    if self.d3d11_staging_pool.is_some() {
-                        let left_slot = self.frame_count as usize % 2;
-                        let right_slot = left_slot + 2;
+                    let left_slot = self.frame_count as usize % 2;
+                    let right_slot = left_slot + 2;
+                    if let Some(views) = self.gpu_exec_ref().d3d11_views(left_slot, right_slot) {
                         if due {
                             crate::profile_scope!("detect_wgpu_nv12");
                             let (w, h) = self.core.source_info();
-                            let pool = self.d3d11_staging_pool.as_ref().unwrap();
                             let frames = super::detection_dispatch::wgpu_nv12_frames(
-                                pool.y_view(left_slot),
-                                pool.uv_view(left_slot),
-                                pool.y_view(right_slot),
-                                pool.uv_view(right_slot),
+                                &views[0],
+                                &views[1],
+                                &views[2],
+                                &views[3],
                                 w,
                                 h,
                                 self.left_rotation,
@@ -269,7 +305,7 @@ impl StitchSession {
         Ok(())
     }
 
-    /// Render a single CPU-resident stereo frame and submit it to the encoder.
+    /// Render a single CPU-resident stereo frame and deliver it to the sinks.
     ///
     /// Handles YUV420P and NV12 input formats. For GPU-resident frames
     /// (zero-copy path), use [`submit_render_output`](Self::submit_render_output)
@@ -305,9 +341,9 @@ impl StitchSession {
     /// Process a frame from GPU-resident RGBA textures (e.g. Bayer demosaic output).
     ///
     /// Copies the RGBA textures into the stitch pipeline's input planes,
-    /// renders the stitch, converts to NV12, and submits to encoders.
+    /// renders the stitch, converts to NV12, and delivers to the sinks.
     /// This is the Bayer/GPU-RGBA equivalent of `process_frame` for
-    /// YUV/NV12 paths - session features (encoder fan-out, replay recording,
+    /// YUV/NV12 paths - session features (sink fan-out, replay recording,
     /// frame counting) work automatically.
     pub fn process_frame_gpu_rgba(
         &mut self,
@@ -327,7 +363,7 @@ impl StitchSession {
     /// Process a frame from imported NV12 textures (DMA-buf zero-copy path).
     ///
     /// Takes Y and UV textures for both cameras (from DMA-buf Vulkan import),
-    /// renders the stitch, converts to NV12, and submits to encoders.
+    /// renders the stitch, converts to NV12, and delivers to the sinks.
     /// Uses the imported textures directly for replay packing (not the
     /// renderer's internal planes, which aren't written by this path).
     pub fn process_frame_imported_nv12(
@@ -366,45 +402,27 @@ impl StitchSession {
         yaw: f32,
         pitch: f32,
     ) -> Result<(), SessionError> {
-        // Lazily create the texture cache on first MetalResident frame.
-        if self.metal_texture_cache.is_none() {
-            self.metal_texture_cache = Some(crate::interop::metal::MetalTextureCache::new(
-                self.core.gpu(),
-            )?);
-            log::info!("Metal zero-copy: texture cache initialized");
-        }
-        let cache = self.metal_texture_cache.as_mut().unwrap();
-
-        // SAFETY: RetainedCVPixelBuffer guarantees the pointer is valid.
-        let (left_y, left_uv) = unsafe { cache.import_nv12(left.as_ptr(), self.core.gpu())? };
-        let (right_y, right_uv) = unsafe { cache.import_nv12(right.as_ptr(), self.core.gpu())? };
-
-        let render_buf = self.core.render_imported_textures_at_pose(
-            &left_y.texture,
-            &left_uv.texture,
-            &right_y.texture,
-            &right_uv.texture,
+        // SAFETY: RetainedCVPixelBuffer guarantees the pointers are valid.
+        let [ly, lu, ry, ru] =
+            unsafe { self.gpu_exec().import_metal(left.as_ptr(), right.as_ptr()) }
+                .map_err(SessionError::ZeroCopy)?;
+        // The imported planes must outlive the render + readback below
+        // (each keeps its CVMetalTextureRef alive).
+        self.process_frame_imported_nv12(
+            &ly.texture,
+            &lu.texture,
+            &ry.texture,
+            &ru.texture,
             yaw,
             pitch,
-        );
-        self.submit_render_output(render_buf)?;
-
-        let desc = wgpu::TextureViewDescriptor::default();
-        let ly = left_y.texture.create_view(&desc);
-        let lu = left_uv.texture.create_view(&desc);
-        let ry = right_y.texture.create_view(&desc);
-        let ru = right_uv.texture.create_view(&desc);
-        self.core.pack_gpu_stacked_replay_from_views(
-            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 { y: &ly, uv: &lu },
-            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 { y: &ry, uv: &ru },
-        );
-        Ok(())
+        )
     }
 
     /// Render a GpuResident frame: shared CUDA/Vulkan textures.
     ///
-    /// Renders from pre-built bind groups, packs replay from shared
-    /// texture views, and releases decode slots for thread reuse.
+    /// Renders from the executor's resident-frame surface, packs
+    /// replay from the shared texture views, and releases decode
+    /// slots for thread reuse.
     #[cfg(target_os = "linux")]
     fn render_gpu_resident(
         &mut self,
@@ -413,35 +431,22 @@ impl StitchSession {
         yaw: f32,
         pitch: f32,
     ) -> Result<(), SessionError> {
-        // VRAM pool path: render from pool bind groups.
+        // VRAM pool path: render from the staged pool slot.
         // Decode slots were already freed during produce.
         if let Some(vram_idx) = self.current_vram_slot {
-            let pool = self
-                .vram_pool
-                .as_ref()
-                .expect("vram_pool must exist when current_vram_slot is set");
-            let left_bg = pool.left_bind_group(vram_idx);
-            let right_bg = pool.right_bind_group(vram_idx);
-            let render_buf = self
-                .core
-                .pipeline_mut()
-                .render_with_bind_groups(left_bg, right_bg, yaw, pitch);
+            let render_buf = self.gpu_exec().render_pool_slot(vram_idx, yaw, pitch);
             self.submit_render_output(render_buf)?;
             return Ok(());
         }
 
         // Shared texture path (non-buffered / immediate mode).
-        let bind_groups = self.gpu_bind_groups.as_ref().ok_or_else(|| {
-            SessionError::ZeroCopy(
-                "GPU bind groups not configured - call setup_gpu_source() before run()".into(),
-            )
-        })?;
-        let render_buf =
-            self.core
-                .render_gpu_frame_at_pose(bind_groups, left_slot, right_slot, yaw, pitch);
+        let render_buf = self
+            .gpu_exec()
+            .render_shared_slots(left_slot, right_slot, yaw, pitch)
+            .map_err(|e| SessionError::ZeroCopy(e.to_string()))?;
         self.submit_render_output(render_buf)?;
 
-        if let Some(ref views) = self.gpu_shared_views {
+        if let Some(views) = self.shared_views() {
             let ls = left_slot as usize;
             let rs = right_slot as usize;
             self.core.pack_gpu_stacked_replay_from_views(
@@ -456,20 +461,22 @@ impl StitchSession {
             );
         }
 
-        if let Some((ref left_tx, ref right_tx)) = self.gpu_slot_free_tx {
-            if left_tx.send(left_slot).is_err() {
-                log::error!(
-                    "Failed to release left GPU slot {left_slot} - decode thread may have died"
-                );
-            }
-            if right_tx.send(right_slot).is_err() {
-                log::error!(
-                    "Failed to release right GPU slot {right_slot} - decode thread may have died"
-                );
-            }
-        }
+        self.gpu_exec().release_decode_slots(left_slot, right_slot);
 
         Ok(())
+    }
+
+    /// Clones of the executor's shared texture views (Arc-backed, so
+    /// the clone is pointer-sized). Cloned out rather than borrowed
+    /// because the callers feed them into `&mut self.core` methods
+    /// (detection, replay pack) while the views live on the executor
+    /// inside that same core.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn shared_views(&self) -> Option<[wgpu::TextureView; 8]> {
+        self.core
+            .executor
+            .gpu()
+            .and_then(|g| g.residency.shared_views.clone())
     }
 
     /// Render an NVMM frame directly from imported DMA-buf textures
@@ -487,47 +494,16 @@ impl StitchSession {
         yaw: f32,
         pitch: f32,
     ) -> Result<(), SessionError> {
-        if self.nvmm_dmabuf_cache.is_none() {
-            self.nvmm_dmabuf_cache = Some(crate::interop::dmabuf::DmaBufTextureCache::new());
-        }
-        let gpu = self.core.pipeline().gpu();
-        let cache = self.nvmm_dmabuf_cache.as_mut().unwrap();
-        cache
-            .ensure_imported(
-                gpu,
-                left.dmabuf_fd,
-                left.width,
-                left.height,
-                left.y_offset,
-                left.uv_offset,
-                left.total_size,
-            )
-            .map_err(|e| SessionError::ZeroCopy(format!("left NVMM DMA-buf import: {e}")))?;
-        cache
-            .ensure_imported(
-                gpu,
-                right.dmabuf_fd,
-                right.width,
-                right.height,
-                right.y_offset,
-                right.uv_offset,
-                right.total_size,
-            )
-            .map_err(|e| SessionError::ZeroCopy(format!("right NVMM DMA-buf import: {e}")))?;
-
-        // Clone the texture handles (cheap, Arc-backed) to drop the cache
-        // borrow before the &mut self render call.
-        let left_tex = cache.get(left.dmabuf_fd);
-        let right_tex = cache.get(right.dmabuf_fd);
-        let (ly, lu) = (left_tex.y_texture.clone(), left_tex.uv_texture.clone());
-        let (ry, ru) = (right_tex.y_texture.clone(), right_tex.uv_texture.clone());
+        let [ly, lu, ry, ru] = self
+            .gpu_exec()
+            .import_nvmm(left, right)
+            .map_err(SessionError::ZeroCopy)?;
         self.process_frame_imported_nv12(&ly, &lu, &ry, &ru, yaw, pitch)
     }
 
-    /// Stage D3D11VA decoded frames into the shared staging pool.
+    /// Stage D3D11VA decoded frames into the executor's staging pool
+    /// (immediate path, double-buffered slots).
     ///
-    /// Lazily creates the pool on first call. Performs `CopySubresourceRegion`
-    /// from FFmpeg's decode textures to our SHARED_NTHANDLE staging textures.
     /// Returns `true` on the first call (pool just created) to signal
     /// that this frame should be skipped (cross-API warmup).
     #[cfg(target_os = "windows")]
@@ -538,55 +514,25 @@ impl StitchSession {
         right_texture: *mut std::ffi::c_void,
         right_slice: usize,
     ) -> Result<bool, SessionError> {
-        let first_frame = self.d3d11_staging_pool.is_none();
-        if first_frame {
-            let (w, h) = self.core.source_info();
-            let needs_cuda = self.core.detector_needs_cuda_frames();
-            // For lookahead, size slots to the max frames simultaneously
-            // in flight (decoded but not yet rendered), x2 for left+right.
-            // Peak occupancy is n + post_smooth_half + 1 (buffer hits n+1
-            // right after a produce while the pose queue holds
-            // post_smooth_half). Slots are assigned by produce_index modulo
-            // n_slots with no occupancy check, so the pool must exceed peak
-            // occupancy or a producer would overwrite a frame still queued
-            // for render. +4 keeps a few frames of slack above the exact
-            // fit (the Linux VramPool uses ref-counted acquire/release; this
-            // path relies on the sizing margin instead). Without lookahead,
-            // 4 slots (double-buffered stereo) suffice.
-            let n_slots = if self.lookahead_frames > 0 {
-                let post_smooth_half = (self.lookahead_frames / 2).max(1);
-                (self.lookahead_frames + post_smooth_half + 4) * 2
-            } else {
-                4
-            };
-            match crate::interop::d3d11::D3d11StagingPool::new(
-                self.core.gpu(),
-                w,
-                h,
-                n_slots,
-                needs_cuda,
-                self.gpu_pixel_format,
-            ) {
-                Ok(pool) => {
-                    log::info!(
-                        "D3D11VA staging pool created: {}x{}, {n_slots} {:?} slots",
-                        w,
-                        h,
-                        self.gpu_pixel_format
-                    );
-                    self.d3d11_staging_pool = Some(pool);
-                }
-                Err(e) => {
-                    return Err(SessionError::ZeroCopy(format!("D3D11 staging pool: {e}")));
-                }
-            }
-        }
+        let needs_cuda = self.core.detector_needs_cuda_frames();
+        let lookahead_frames = self.lookahead_frames;
+        let pixel_format = self.gpu_pixel_format;
+        let first_frame = self
+            .gpu_exec()
+            .ensure_d3d11_staging(lookahead_frames, needs_cuda, pixel_format)
+            .map_err(SessionError::ZeroCopy)?;
         let left_pool_slot = self.frame_count as usize % 2;
         let right_pool_slot = left_pool_slot + 2;
-
-        let pool = self.d3d11_staging_pool.as_mut().unwrap();
-        pool.stage_frame(left_texture, left_slice, left_pool_slot)?;
-        pool.stage_frame(right_texture, right_slice, right_pool_slot)?;
+        self.gpu_exec()
+            .stage_d3d11_frames(
+                left_texture,
+                left_slice,
+                right_texture,
+                right_slice,
+                left_pool_slot,
+                right_pool_slot,
+            )
+            .map_err(SessionError::ZeroCopy)?;
         Ok(first_frame)
     }
 
@@ -599,15 +545,10 @@ impl StitchSession {
         yaw: f32,
         pitch: f32,
     ) -> Result<(), SessionError> {
-        let pool = self.d3d11_staging_pool.as_ref().unwrap();
-        let render_buf = self.core.render_imported_views_at_pose(
-            pool.y_view(left_slot),
-            pool.uv_view(left_slot),
-            pool.y_view(right_slot),
-            pool.uv_view(right_slot),
-            yaw,
-            pitch,
-        );
+        let render_buf = self
+            .gpu_exec()
+            .render_d3d11_slots(left_slot, right_slot, yaw, pitch)
+            .map_err(|e| SessionError::ZeroCopy(e.to_string()))?;
         self.submit_render_output(render_buf)
     }
 
@@ -616,40 +557,33 @@ impl StitchSession {
     fn render_d3d11_staged(&mut self, yaw: f32, pitch: f32) -> Result<(), SessionError> {
         let left_pool_slot = self.frame_count as usize % 2;
         let right_pool_slot = left_pool_slot + 2;
+        self.render_d3d11_from_slot(left_pool_slot, right_pool_slot, yaw, pitch)?;
 
-        let pool = self.d3d11_staging_pool.as_ref().unwrap();
-        let render_buf = self.core.render_imported_views_at_pose(
-            pool.y_view(left_pool_slot),
-            pool.uv_view(left_pool_slot),
-            pool.y_view(right_pool_slot),
-            pool.uv_view(right_pool_slot),
-            yaw,
-            pitch,
-        );
-        self.submit_render_output(render_buf)?;
-
-        let pool = self.d3d11_staging_pool.as_ref().unwrap();
-        self.core.pack_gpu_stacked_replay_from_views(
-            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
-                y: pool.y_view(left_pool_slot),
-                uv: pool.uv_view(left_pool_slot),
-            },
-            crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
-                y: pool.y_view(right_pool_slot),
-                uv: pool.uv_view(right_pool_slot),
-            },
-        );
+        if let Some(views) = self
+            .gpu_exec_ref()
+            .d3d11_views(left_pool_slot, right_pool_slot)
+        {
+            self.core.pack_gpu_stacked_replay_from_views(
+                crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
+                    y: &views[0],
+                    uv: &views[1],
+                },
+                crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
+                    y: &views[2],
+                    uv: &views[3],
+                },
+            );
+        }
 
         Ok(())
     }
 
-    /// Render from GPU-resident textures and submit to the async encoder.
+    /// Submit a recorded render and fan the NV12 result out to the
+    /// attached sinks.
     ///
-    /// Used with the zero-copy path where decode threads write directly
-    /// to shared GPU textures. The caller must configure bind groups via
-    /// [`pipeline_mut()`](Self::pipeline_mut) and call
-    /// `StitchPipeline::render_gpu_frame` to get the command buffer,
-    /// then pass it here.
+    /// Used with the zero-copy paths where decode threads write
+    /// directly to GPU textures: the executor's render methods produce
+    /// the command buffer, and this delivers it.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "session_submit_render")
@@ -658,36 +592,32 @@ impl StitchSession {
         &mut self,
         render_commands: wgpu::CommandBuffer,
     ) -> Result<(), SessionError> {
-        // Read NV12 dims up front (Copy) so the tap below can borrow `data`
-        // without re-borrowing self.nv12_converter.
-        let nv12_width = self.nv12_converter.width();
-        let nv12_height = self.nv12_converter.height();
+        // Field-path borrow: `nv12_data` borrows the executor inside
+        // `core` for the rest of the function, while the sink fan-out
+        // below touches only session-owned fields.
+        let (nv12_width, nv12_height) = self.gpu_exec_ref().nv12_dims();
         let readback_t0 = std::time::Instant::now();
-        let nv12_data = self.nv12_converter.convert_and_readback(
-            self.core.gpu(),
-            self.core.pipeline().render_target(),
-            render_commands,
-        )?;
+        let nv12_data = self
+            .core
+            .executor
+            .gpu_mut()
+            .expect("the streaming session runs on the GPU executor")
+            .convert_nv12(render_commands)?;
         self.last_readback_time = readback_t0.elapsed();
 
         // First two calls return None (triple-buffer warmup).
         // From the third call onward, we get data from 2 frames ago.
-        let encode_t0 = std::time::Instant::now();
+        let submit_t0 = std::time::Instant::now();
         if let Some(data) = nv12_data {
-            if let Some(ref encoder) = self.encoder {
-                encoder.submit(data, self.frame_count as i64)?;
-            }
-            for enc in &self.extra_encoders {
-                enc.submit(data, self.frame_count as i64)?;
-            }
-            // NV12 tap for snapshot / preview hooks (reco-cli's periodic
-            // JPEG writer). Runs after encode submit; the callback is
-            // expected to be non-blocking (try_send on a channel).
-            if let Some(ref mut tap) = self.nv12_tap {
-                tap(data, nv12_width, nv12_height);
-            }
+            super::sinks::deliver_frame(
+                &mut self.sinks,
+                data,
+                nv12_width,
+                nv12_height,
+                self.frame_count as i64,
+            )?;
         }
-        self.last_submit_time = encode_t0.elapsed();
+        self.last_submit_time = submit_t0.elapsed();
 
         self.frame_count += 1;
         Ok(())
@@ -706,11 +636,12 @@ impl StitchSession {
         &mut self,
         render_commands: wgpu::CommandBuffer,
     ) -> Result<Option<&[u8]>, SessionError> {
-        let nv12_data = self.nv12_converter.convert_and_readback(
-            self.core.gpu(),
-            self.core.pipeline().render_target(),
-            render_commands,
-        )?;
+        let nv12_data = self
+            .core
+            .executor
+            .gpu_mut()
+            .expect("the streaming session runs on the GPU executor")
+            .convert_nv12(render_commands)?;
         self.frame_count += 1;
         Ok(nv12_data)
     }
@@ -751,10 +682,9 @@ impl StitchSession {
                 left_slot,
                 right_slot,
             } = frame
-                && let Some((ref left_tx, ref right_tx)) = self.gpu_slot_free_tx
             {
-                let _ = left_tx.send(*left_slot);
-                let _ = right_tx.send(*right_slot);
+                self.gpu_exec_ref()
+                    .release_decode_slots(*left_slot, *right_slot);
             }
         }
         #[cfg(not(target_os = "linux"))]
@@ -774,7 +704,10 @@ impl StitchSession {
         // as the macOS Metal arm, just sourced from an NvBufSurface fd
         // instead of a CVPixelBuffer.
         if let StereoFrame::NvmmResident { left, right } = frame {
-            return self.copy_nvmm_to_vram_pool(left, right);
+            return self
+                .gpu_exec()
+                .stage_nvmm_to_pool(left, right)
+                .map_err(SessionError::ZeroCopy);
         }
         let (ls, rs) = match frame {
             StereoFrame::GpuResident {
@@ -783,104 +716,13 @@ impl StitchSession {
             } => (*left_slot as usize, *right_slot as usize),
             _ => return Ok(None),
         };
-        {
-            if let (Some(pool), Some(shared_tex)) =
-                (self.vram_pool.as_mut(), self.gpu_shared_textures.as_ref())
-            {
-                let slot = pool.acquire().ok_or_else(|| {
-                    SessionError::Config(format!(
-                        "VRAM pool exhausted ({} slots, {} available)",
-                        pool.capacity(),
-                        pool.available()
-                    ))
-                })?;
-                let gpu = self.core.pipeline().gpu();
-                pool.copy_from_textures(
-                    gpu,
-                    slot,
-                    &shared_tex[ls * 2],
-                    &shared_tex[ls * 2 + 1],
-                    &shared_tex[4 + rs * 2],
-                    &shared_tex[4 + rs * 2 + 1],
-                );
-                let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
-                // NOTE: the decode slot is NOT released here. Detection
-                // reads it after this copy (see `produce_one`), so the
-                // slot must stay held until `release_gpu_decode_slot` is
-                // called post-detection. Releasing it now would let the
-                // decode thread overwrite the slot mid-detection.
-                return Ok(Some(slot));
-            }
-        }
-        Ok(None)
-    }
-
-    /// Import a stereo NVMM frame's DMA-bufs and copy them into a VRAM
-    /// pool slot for buffered (lookahead) rendering.
-    ///
-    /// Mirrors the macOS Metal import path: the per-camera DMA-buf is
-    /// imported into Vulkan textures (cached by fd, since the ISP rotates a
-    /// small fd pool), then `copy_from_textures` blits both cameras' Y/UV
-    /// planes into a freshly acquired pool slot. The blit is awaited before
-    /// returning so the source may recycle the DMA-buf immediately after.
-    #[cfg(target_os = "linux")]
-    fn copy_nvmm_to_vram_pool(
-        &mut self,
-        left: &crate::source::NvmmPlaneInfo,
-        right: &crate::source::NvmmPlaneInfo,
-    ) -> Result<Option<usize>, SessionError> {
-        if self.vram_pool.is_none() {
-            return Ok(None);
-        }
-        if self.nvmm_dmabuf_cache.is_none() {
-            self.nvmm_dmabuf_cache = Some(crate::interop::dmabuf::DmaBufTextureCache::new());
-        }
-
-        let gpu = self.core.pipeline().gpu();
-        let cache = self.nvmm_dmabuf_cache.as_mut().unwrap();
-        cache
-            .ensure_imported(
-                gpu,
-                left.dmabuf_fd,
-                left.width,
-                left.height,
-                left.y_offset,
-                left.uv_offset,
-                left.total_size,
-            )
-            .map_err(|e| SessionError::ZeroCopy(format!("left NVMM DMA-buf import: {e}")))?;
-        cache
-            .ensure_imported(
-                gpu,
-                right.dmabuf_fd,
-                right.width,
-                right.height,
-                right.y_offset,
-                right.uv_offset,
-                right.total_size,
-            )
-            .map_err(|e| SessionError::ZeroCopy(format!("right NVMM DMA-buf import: {e}")))?;
-
-        let left_tex = cache.get(left.dmabuf_fd);
-        let right_tex = cache.get(right.dmabuf_fd);
-        let pool = self.vram_pool.as_mut().unwrap();
-        let slot = pool.acquire().ok_or_else(|| {
-            SessionError::Config(format!(
-                "VRAM pool exhausted ({} slots, {} available)",
-                pool.capacity(),
-                pool.available()
-            ))
-        })?;
-        pool.copy_from_textures(
-            gpu,
-            slot,
-            &left_tex.y_texture,
-            &left_tex.uv_texture,
-            &right_tex.y_texture,
-            &right_tex.uv_texture,
-        );
-        let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
-        Ok(Some(slot))
+        // The decode slot is NOT released here. Detection reads it
+        // after this copy (see `produce_one`), so the slot must stay
+        // held until `release_gpu_decode_slot` is called
+        // post-detection.
+        self.gpu_exec()
+            .stage_shared_to_pool(ls, rs)
+            .map_err(|e| SessionError::Config(e.to_string()))
     }
 
     #[cfg(target_os = "windows")]
@@ -896,16 +738,26 @@ impl StitchSession {
             right_slice,
         } = frame
         {
-            // Ensure the D3D11 staging pool is initialized (lazy init
-            // needs the first source texture to extract the D3D11 device).
-            if self.d3d11_staging_pool.is_none() {
-                self.stage_d3d11_frames(*left_texture, *left_slice, *right_texture, *right_slice)?;
-            }
-            let pool = self.d3d11_staging_pool.as_mut().unwrap();
-            let left_slot = (produce_index as usize * 2) % pool.n_slots();
-            let right_slot = (produce_index as usize * 2 + 1) % pool.n_slots();
-            pool.stage_frame(*left_texture, *left_slice, left_slot)?;
-            pool.stage_frame(*right_texture, *right_slice, right_slot)?;
+            let needs_cuda = self.core.detector_needs_cuda_frames();
+            let lookahead_frames = self.lookahead_frames;
+            let pixel_format = self.gpu_pixel_format;
+            self.gpu_exec()
+                .ensure_d3d11_staging(lookahead_frames, needs_cuda, pixel_format)
+                .map_err(SessionError::ZeroCopy)?;
+            let (left_slot, right_slot) = self
+                .gpu_exec_ref()
+                .d3d11_slots(produce_index)
+                .expect("staging pool created above");
+            self.gpu_exec()
+                .stage_d3d11_frames(
+                    *left_texture,
+                    *left_slice,
+                    *right_texture,
+                    *right_slice,
+                    left_slot,
+                    right_slot,
+                )
+                .map_err(SessionError::ZeroCopy)?;
             return Ok(Some(left_slot));
         }
         Ok(None)
@@ -918,37 +770,16 @@ impl StitchSession {
         _produce_index: u64,
     ) -> Result<Option<usize>, SessionError> {
         if let StereoFrame::MetalResident { left, right } = frame {
-            // Import CVPixelBuffers as wgpu textures (separate Y + UV).
-            if self.metal_texture_cache.is_none() {
-                self.metal_texture_cache = Some(crate::interop::metal::MetalTextureCache::new(
-                    self.core.gpu(),
-                )?);
-            }
-            let cache = self.metal_texture_cache.as_mut().unwrap();
-            let (left_y, left_uv) = unsafe { cache.import_nv12(left.as_ptr(), self.core.gpu())? };
-            let (right_y, right_uv) =
-                unsafe { cache.import_nv12(right.as_ptr(), self.core.gpu())? };
-
-            if let Some(pool) = self.vram_pool.as_mut() {
-                let slot = pool.acquire().ok_or_else(|| {
-                    SessionError::Config(format!(
-                        "VRAM pool exhausted ({} slots, {} available)",
-                        pool.capacity(),
-                        pool.available()
-                    ))
-                })?;
-                let gpu = self.core.pipeline().gpu();
-                pool.copy_from_textures(
-                    gpu,
-                    slot,
-                    &left_y.texture,
-                    &left_uv.texture,
-                    &right_y.texture,
-                    &right_uv.texture,
-                );
-                let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
-                return Ok(Some(slot));
-            }
+            // SAFETY: RetainedCVPixelBuffer guarantees the pointers are valid.
+            let [ly, lu, ry, ru] =
+                unsafe { self.gpu_exec().import_metal(left.as_ptr(), right.as_ptr()) }
+                    .map_err(SessionError::ZeroCopy)?;
+            // The staging copy is awaited before this returns, so the
+            // imported planes may drop at the end of this arm.
+            return self
+                .gpu_exec()
+                .stage_textures_to_pool(&ly.texture, &lu.texture, &ry.texture, &ru.texture)
+                .map_err(|e| SessionError::Config(e.to_string()));
         }
         Ok(None)
     }

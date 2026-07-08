@@ -57,7 +57,7 @@ impl StitchSession {
         self.gpu_pixel_format = source.gpu_pixel_format();
         self.is_full_range = source.is_full_range();
         if self.is_full_range {
-            self.core.pipeline_mut().set_full_range(true);
+            self.core.set_full_range(true);
         }
         // Apply rotation via shader UV flip ONLY for GPU-resident sources.
         // CPU sources handle rotation via buffer reversal in the decoder,
@@ -65,7 +65,7 @@ impl StitchSession {
         if source.is_gpu_resident() {
             let (lr, rr) = (source.left_rotation(), source.right_rotation());
             if lr == 180 || rr == 180 {
-                self.core.pipeline_mut().set_flip_180(lr == 180, rr == 180);
+                self.core.set_flip_180(lr == 180, rr == 180);
                 log::info!("Rotation: UV flip left={}, right={}", lr == 180, rr == 180);
             }
             // Store rotation for the GPU detector preprocessing path.
@@ -80,58 +80,18 @@ impl StitchSession {
 
     /// Configure the session for a GPU-resident source.
     ///
-    /// Creates bind groups from the source's shared textures and stores
-    /// slot-free senders for decode backpressure. Call this before
-    /// [`run`](Self::run) when using a GPU-resident [`FrameSource`] like
-    /// `SmartFileSource`.
-    ///
-    /// The `run` loop uses these bind groups for GPU-resident
-    /// `StereoFrame::GpuResident` frames.
+    /// Hands the source's shared textures to the GPU executor, which
+    /// builds render bind groups, detection/replay views, and the
+    /// decode backpressure channels. Call this before
+    /// [`run`](Self::run) when using a GPU-resident [`FrameSource`]
+    /// like `SmartFileSource`.
     #[cfg(target_os = "linux")]
-    pub fn setup_gpu_source(&mut self, shared: &super::SharedTextureSet) {
-        let t = &shared.textures;
-        let bind_groups = self.core.pipeline_mut().configure_gpu_source(
-            [(&t[0], &t[1]), (&t[2], &t[3])],
-            [(&t[4], &t[5]), (&t[6], &t[7])],
-        );
-        self.gpu_bind_groups = Some(bind_groups);
-        self.gpu_slot_free_tx = Some((
-            shared.left_slot_free_tx.clone(),
-            shared.right_slot_free_tx.clone(),
-        ));
-        self.gpu_buf_info = Some((shared.left_buf.clone(), shared.right_buf.clone()));
-        // Pre-build the 8 shared texture views for the GPU
-        // stacked-replay pack shader. Same order as `t` above so
-        // `step_gpu_with_bufs` can index per slot:
-        //   left  y: [ls * 2],     uv: [ls * 2 + 1]
-        //   right y: [4 + rs * 2], uv: [4 + rs * 2 + 1]
-        // Views hold Arcs to the underlying textures, so the
-        // SharedTextureSet still owns the lifetime.
-        let desc = wgpu::TextureViewDescriptor::default();
-        self.gpu_shared_views = Some([
-            t[0].texture.create_view(&desc),
-            t[1].texture.create_view(&desc),
-            t[2].texture.create_view(&desc),
-            t[3].texture.create_view(&desc),
-            t[4].texture.create_view(&desc),
-            t[5].texture.create_view(&desc),
-            t[6].texture.create_view(&desc),
-            t[7].texture.create_view(&desc),
-        ]);
-        self.gpu_shared_textures = Some([
-            t[0].texture.clone(),
-            t[1].texture.clone(),
-            t[2].texture.clone(),
-            t[3].texture.clone(),
-            t[4].texture.clone(),
-            t[5].texture.clone(),
-            t[6].texture.clone(),
-            t[7].texture.clone(),
-        ]);
+    pub fn setup_gpu_source(&mut self, shared: &crate::interop::SharedTextureSet) {
+        self.gpu_exec().configure_shared_textures(shared);
         log::info!("Session configured for GPU-resident source");
     }
 
-    /// Batch-process frames from a source into the encoder.
+    /// Batch-process frames from a source into the attached sinks.
     ///
     /// Runs the full decode-render-encode loop until the source is
     /// exhausted, the frame limit is reached, or the interrupt flag
@@ -154,6 +114,12 @@ impl StitchSession {
         interrupted: &AtomicBool,
         mut on_progress: Option<ProgressCallback>,
     ) -> Result<u64, SessionError> {
+        // The CPU arm runs its own synchronous loop: no GPU source
+        // configuration, no staging, no zero-copy.
+        if self.core.executor.gpu().is_none() {
+            return self.run_cpu(source, frame_limit, interrupted, &mut on_progress);
+        }
+
         self.configure_from_source(source);
 
         let result = if self.lookahead_frames > 0 {
@@ -171,10 +137,10 @@ impl StitchSession {
 
         // Drop GPU slot senders so decode threads can exit gracefully.
         // Without this, SmartFileSource::drop() deadlocks because the
-        // session's cloned senders keep the decode threads' recv() alive.
+        // executor's cloned senders keep the decode threads' recv() alive.
         #[cfg(target_os = "linux")]
-        {
-            self.gpu_slot_free_tx = None;
+        if let Some(exec) = self.core.executor.gpu_mut() {
+            exec.drop_decode_channels();
         }
 
         result
@@ -231,8 +197,8 @@ impl StitchSession {
             ctx,
         )?;
 
-        if let (Some(slot), Some(ref mut pool)) = (oldest.vram_slot, self.vram_pool.as_mut()) {
-            pool.release(slot);
+        if let Some(slot) = oldest.vram_slot {
+            self.gpu_exec().release_pool_slot(slot);
         }
         self.current_vram_slot = None;
 
@@ -263,28 +229,32 @@ impl StitchSession {
         let start = std::time::Instant::now();
         let ctx = crate::session::types::FrameLoopContext {
             #[cfg(target_os = "linux")]
-            gpu_buf_info: self.gpu_buf_info.clone(),
+            gpu_buf_info: self.core.executor.gpu().and_then(|g| g.cuda_buf_info()),
         };
         let n = self.lookahead_frames;
         let mut buffer = FrameBuffer::new(n + 1);
         let mut produce_count: u64 = 0;
 
         // Create VRAM pool if the source is GPU-resident.
-        if source.is_gpu_resident() && self.vram_pool.is_none() {
+        if source.is_gpu_resident() && self.gpu_exec_ref().residency.pool.is_none() {
             let post_smooth_half = (n / 2).max(1);
-            // Keep in sync with the D3D11 staging pool sizing in
-            // frame_processing.rs (peak occupancy + slack).
+            // Keep in sync with the D3D11 staging pool sizing in the
+            // executor's ensure_d3d11_staging (peak occupancy + slack).
             let pool_size = n + post_smooth_half + 4;
-            let (w, h) = self.core.pipeline().source_info();
-            let per_slot =
-                super::vram_pool::estimate_vram(w, h, 1, self.gpu_pixel_format.bytes_per_sample());
+            let (w, h) = self.core.source_info();
+            let per_slot = crate::gpu::vram_pool::estimate_vram(
+                w,
+                h,
+                1,
+                self.gpu_pixel_format.bytes_per_sample(),
+            );
             let required = per_slot * pool_size;
 
             // Pre-flight VRAM budget check: fail fast with a fit suggestion.
             // available_vram() is None on backends with no budget API; there
             // we skip the check and rely on the allocation-time catch in
             // VramPool::new plus graceful teardown for any slip-through.
-            match self.core.pipeline().gpu().available_vram() {
+            match self.gpu_exec_ref().pipeline.gpu().available_vram() {
                 Some((free, total)) => {
                     // Budget trusts the driver's "free" figure when it is
                     // believable (it already excludes the compositor and the
@@ -294,7 +264,7 @@ impl StitchSession {
                     // preview is released, so it reflects real export-time room.
                     // Shared with the export-panel risk slider for consistency;
                     // over-allocation is caught gracefully at pool creation.
-                    let budget = super::vram_pool::lookahead_budget_bytes(free, total);
+                    let budget = crate::gpu::vram_pool::lookahead_budget_bytes(free, total);
                     log::info!(
                         "VRAM budget: {:.2} GB usable of {:.2} GB total ({:.2} GB reported free); \
                          lookahead pool needs {:.2} GB ({pool_size} slots @ {w}x{h})",
@@ -307,7 +277,7 @@ impl StitchSession {
                         let fps = source.info().fps.max(1.0);
                         // Shared with the export-panel risk slider so the
                         // suggested ceiling here matches the slider's red zone.
-                        let max_n = super::vram_pool::max_lookahead_frames(per_slot, budget);
+                        let max_n = crate::gpu::vram_pool::max_lookahead_frames(per_slot, budget);
                         let max_secs = max_n as f64 / fps;
                         let req_secs = n as f64 / fps;
                         return Err(SessionError::Config(format!(
@@ -340,16 +310,10 @@ impl StitchSession {
             // total VRAM equals estimate_vram(w,h,1,bps)*pool_size.
             #[cfg(not(target_os = "windows"))]
             {
-                let pool = super::vram_pool::VramPool::new(
-                    self.core.pipeline().gpu(),
-                    self.core.pipeline(),
-                    w,
-                    h,
-                    pool_size,
-                    self.gpu_pixel_format,
-                )
-                .map_err(SessionError::Config)?;
-                self.vram_pool = Some(pool);
+                let pixel_format = self.gpu_pixel_format;
+                self.gpu_exec()
+                    .create_lookahead_pool(w, h, pool_size, pixel_format)
+                    .map_err(SessionError::Config)?;
             }
         }
 
@@ -539,7 +503,7 @@ impl StitchSession {
 
         let ctx = crate::session::types::FrameLoopContext {
             #[cfg(target_os = "linux")]
-            gpu_buf_info: self.gpu_buf_info.clone(),
+            gpu_buf_info: self.core.executor.gpu().and_then(|g| g.cuda_buf_info()),
         };
 
         while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
@@ -563,6 +527,123 @@ impl StitchSession {
 
             self.process_frame_any(&frame, start.elapsed(), decode_time, frame_t0, &ctx)?;
 
+            if let Some(cb) = on_progress.as_mut() {
+                cb(&FrameProgress {
+                    frames_completed: self.frame_count,
+                    elapsed: start.elapsed(),
+                });
+            }
+        }
+
+        Ok(self.frame_count)
+    }
+
+    /// Batch loop over the CPU executor: synchronous software stitch.
+    ///
+    /// Decode, submit (detection + pose + stitch run inside the
+    /// engine's `submit_frame_*`), convert to NV12 on the CPU, fan out
+    /// to the sinks. No staging ring, no warmup, no zero-copy - the
+    /// engine returns RGBA for the submitted frame immediately.
+    fn run_cpu(
+        &mut self,
+        source: &mut dyn FrameSource,
+        frame_limit: u64,
+        interrupted: &AtomicBool,
+        on_progress: &mut Option<ProgressCallback>,
+    ) -> Result<u64, SessionError> {
+        use crate::source::StereoFrame;
+
+        let start = std::time::Instant::now();
+        if self.lookahead_frames > 0 {
+            log::warn!(
+                "Lookahead ({} frames) is not implemented on the CPU executor; \
+                 running the immediate loop",
+                self.lookahead_frames
+            );
+        }
+        let (nv12_w, nv12_h) = self.nv12_delivery_dims();
+        let render_w = self.core.executor.viewport().width;
+        log::info!(
+            "CPU stitch loop: software render at {}x{}, NV12 delivery {nv12_w}x{nv12_h}",
+            render_w,
+            self.core.executor.viewport().height
+        );
+
+        let mut nv12 = Vec::new();
+        while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+            let frame_t0 = std::time::Instant::now();
+            let frame = {
+                crate::profile_scope!("wait_decode");
+                match source.next_frame()? {
+                    Some(f) => f,
+                    None => break,
+                }
+            };
+            let decode_time = frame_t0.elapsed();
+
+            if let Some(sink) = self.core.event_sink.as_deref_mut() {
+                sink.emit(crate::detect::pipeline_event::PipelineEvent::FrameStart {
+                    frame_index: self.frame_count,
+                    timestamp_ms: start.elapsed().as_secs_f64() * 1000.0,
+                });
+            }
+
+            let stitch_t0 = std::time::Instant::now();
+            let outcome = match &frame {
+                StereoFrame::Mono(yuv) => self.core.submit_frame_mono_yuv(&yuv.as_planes())?,
+                StereoFrame::Yuv420p(pair) => self
+                    .core
+                    .submit_frame_yuv(&pair.left.as_planes(), &pair.right.as_planes())?,
+                StereoFrame::Nv12(pair) => {
+                    let left = crate::render::planes::Nv12Planes {
+                        y: &pair.left.y,
+                        uv: &pair.left.uv,
+                    };
+                    let right = crate::render::planes::Nv12Planes {
+                        y: &pair.right.y,
+                        uv: &pair.right.uv,
+                    };
+                    self.core.submit_frame_nv12(&left, &right)?
+                }
+                _ => {
+                    return Err(SessionError::Config(
+                        "the CPU session consumes CPU-resident frames only (YUV420P / \
+                         NV12); zero-copy sources need the GPU executor"
+                            .into(),
+                    ));
+                }
+            };
+            let crate::core::types::RenderOutcome::Rgba(rgba) = outcome else {
+                unreachable!("the CPU executor stitches synchronously - no warmup");
+            };
+            let stitch_time = stitch_t0.elapsed();
+
+            let convert_t0 = std::time::Instant::now();
+            crate::render::nv12_cpu::rgba_to_nv12_into(rgba, render_w, nv12_w, nv12_h, &mut nv12)?;
+            let convert_time = convert_t0.elapsed();
+
+            let submit_t0 = std::time::Instant::now();
+            super::sinks::deliver_frame(
+                &mut self.sinks,
+                &nv12,
+                nv12_w,
+                nv12_h,
+                self.frame_count as i64,
+            )?;
+            let submit_time = submit_t0.elapsed();
+
+            self.telemetry.record_frame(crate::telemetry::FrameTiming {
+                decode: Some(decode_time),
+                stitch: Some(stitch_time),
+                // The CPU conversion is this arm's counterpart of the
+                // GPU readback slot.
+                readback: Some(convert_time),
+                submit: Some(submit_time),
+                total: Some(frame_t0.elapsed()),
+                ..Default::default()
+            });
+
+            self.frame_count += 1;
             if let Some(cb) = on_progress.as_mut() {
                 cb(&FrameProgress {
                     frames_completed: self.frame_count,

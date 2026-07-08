@@ -8,8 +8,8 @@
 //!
 //! Before this script, `src/ffi.rs` was ~600 lines of hand-written
 //! `#[repr(C)]` struct definitions mirroring libobs headers. Hand-written
-//! FFI is the root cause of the T-2 / C2 bug in the 2026-04-18 deep
-//! review: `obs_source_frame::refs` was declared `AtomicI32` (4 bytes)
+//! FFI drifts from the real headers - the worst instance:
+//! `obs_source_frame::refs` was declared `AtomicI32` (4 bytes)
 //! but libobs defines it as `volatile long` (8 bytes on Linux LP64),
 //! which leaves `prev_frame` at the wrong offset and misaligns every
 //! subsequent field.
@@ -59,7 +59,7 @@ fn main() {
     // Also pull in the frontend API header so we can hook
     // OBS_FRONTEND_EVENT_RECORDING_STARTED / STOPPED and mirror
     // OBS's global record/stream state to the replay recorder
-    // (FRICTION reco-obs A20 — replay follows OBS Record/Stream
+    // (replay follows the OBS Record/Stream
     // button by default). Optional: if the header is missing we
     // skip it and the replay feature falls back to the
     // "always record" mode.

@@ -1,26 +1,13 @@
 //! Stitch pipeline orchestration.
 //!
-//! The [`StitchPipeline`] coordinates all stages: GPU setup, frame ingestion,
-//! rendering, viewport cropping, and output encoding. It is the primary
-//! entry point for consumers of `reco-core`.
-//!
-//! ## Usage
-//!
-//! Most consumers should use [`StitchSession`](crate::session::StitchSession)
-//! instead of `StitchPipeline` directly. The pipeline is exposed for advanced
-//! use cases like preview windows that need direct surface rendering.
-//!
-//! ```rust,no_run,compile_fail
-//! use reco_core::render::pipeline::StitchPipeline;
-//! use reco_core::gpu::GpuContext;
-//!
-//! let gpu = pollster::block_on(GpuContext::new())?;
-//! let pipeline = StitchPipeline::with_gpu(
-//!     gpu, calibration, viewport, 1920, 1080,
-//!     wgpu::TextureFormat::Rgba8UnormSrgb,
-//!     reco_core::render::renderer::InputFormat::Yuv420p,
-//! )?;
-//! ```
+//! `StitchPipeline` coordinates all stages: GPU setup, frame ingestion,
+//! rendering, and viewport cropping. It is crate-internal - the
+//! [`GpuExecutor`](crate::stitch::GpuExecutor) is its sole owner, and
+//! consumers reach rendering through the engine or a
+//! [`StitchSession`](crate::session::StitchSession). This module also
+//! re-exports the public frame-plane value types
+//! ([`YuvPlanes`], [`Nv12Planes`], [`BgraPlanes`], ...) and
+//! [`PipelineError`], the pipeline half of the engine's error type.
 
 use super::renderer::{InputFormat, RenderError, Renderer};
 use super::scene::SceneGeometry;
@@ -66,10 +53,10 @@ pub enum PipelineError {
 
 /// The main stitching pipeline.
 ///
-/// Owns the GPU context, scene geometry, and renderer. Consumers provide
-/// YUV420P or NV12 frames and receive stitched RGBA output via
-/// [`Self::render_to_target`] or [`Self::render_to_target_nv12`].
-pub struct StitchPipeline {
+/// Owns the GPU context, scene geometry, and renderer. The
+/// [`GpuExecutor`](crate::stitch::GpuExecutor) is its sole owner;
+/// everything else reaches rendering through the engine.
+pub(crate) struct StitchPipeline {
     /// GPU device and queue.
     pub(crate) gpu: GpuContext,
     /// 3D scene layout computed from calibration.
@@ -90,7 +77,7 @@ pub struct StitchPipeline {
 /// Created by [`StitchPipeline::configure_gpu_source`]. Each slot
 /// corresponds to a double-buffer index used by the decode thread.
 #[cfg(target_os = "linux")]
-pub struct GpuSourceBindGroups {
+pub(crate) struct GpuSourceBindGroups {
     left: [wgpu::BindGroup; 2],
     right: [wgpu::BindGroup; 2],
 }
@@ -136,7 +123,7 @@ impl StitchPipeline {
 
         let output_format = output_format.into();
         let aspect = calibration.lenses[0].width as f32 / calibration.lenses[0].height as f32;
-        let scene = SceneGeometry::new(&calibration.topology, &calibration.framing, aspect);
+        let scene = SceneGeometry::for_calibration(&calibration, aspect);
         let renderer = Renderer::new(
             &gpu,
             program,
@@ -165,11 +152,6 @@ impl StitchPipeline {
             input_width,
             input_height,
         })
-    }
-
-    /// The name of the GPU this pipeline is running on.
-    pub fn gpu_name(&self) -> &str {
-        self.gpu.gpu_name()
     }
 
     /// Shared reference to the GPU context.
@@ -268,7 +250,11 @@ impl StitchPipeline {
 
     /// Set the seam blend width (per-frame uniform; no scene rebuild).
     pub fn set_blend_width(&mut self, width: f32) {
-        self.calibration.topology.blend_width = width;
+        if let Some(t) = self.calibration.topology.l_shape_mut() {
+            t.blend_width = width;
+        } else {
+            log::warn!("set_blend_width({width}) ignored: this topology has no seam");
+        }
     }
 
     /// Update calibration parameters. Recomputes [`SceneGeometry`] from the
@@ -278,7 +264,7 @@ impl StitchPipeline {
     /// No GPU pipeline recreation needed - only the uniform data changes.
     pub fn update_calibration(&mut self, calibration: Calibration) {
         let aspect = calibration.lenses[0].width as f32 / calibration.lenses[0].height as f32;
-        self.scene = SceneGeometry::new(&calibration.topology, &calibration.framing, aspect);
+        self.scene = SceneGeometry::for_calibration(&calibration, aspect);
         self.calibration = calibration;
         log::debug!("Pipeline calibration updated");
     }
@@ -448,6 +434,7 @@ impl StitchPipeline {
     ///
     /// Used by the D3D11VA zero-copy path where NV12 plane views are
     /// created from `TextureAspect::Plane0` / `Plane1`.
+    #[cfg(target_os = "windows")]
     pub fn render_imported_views(
         &mut self,
         left_y: &wgpu::TextureView,
@@ -545,44 +532,7 @@ impl StitchPipeline {
             &self.scene,
             &self.calibration,
             &viewport,
-            self.calibration.topology.blend_width,
-            target_view,
-        );
-        Ok(())
-    }
-
-    /// Render NV12 frames directly to a texture view (for window display).
-    ///
-    /// Like [`Self::render_to_view`] but accepts NV12 input (Y + interleaved
-    /// UV) instead of YUV420P. Requires the pipeline to be initialized with
-    /// `InputFormat::Nv12`.
-    pub fn render_nv12_to_view(
-        &self,
-        left: &Nv12Planes<'_>,
-        right: &Nv12Planes<'_>,
-        yaw: f32,
-        pitch: f32,
-        target_view: &wgpu::TextureView,
-    ) -> Result<(), PipelineError> {
-        self.renderer.upload_left_nv12(&self.gpu, left.y, left.uv)?;
-        self.renderer
-            .upload_right_nv12(&self.gpu, right.y, right.uv)?;
-
-        let viewport = ResolvedViewport {
-            config: self.viewport.clone(),
-            position: ViewportPosition {
-                yaw,
-                pitch,
-                fov_degrees: None,
-            },
-        };
-
-        self.renderer.render_to_view(
-            &self.gpu,
-            &self.scene,
-            &self.calibration,
-            &viewport,
-            self.calibration.topology.blend_width,
+            self.calibration.topology.blend_width(),
             target_view,
         );
         Ok(())
@@ -623,7 +573,7 @@ impl StitchPipeline {
             &self.scene,
             &self.calibration,
             &viewport,
-            self.calibration.topology.blend_width,
+            self.calibration.topology.blend_width(),
         ))
     }
 
@@ -661,7 +611,7 @@ impl StitchPipeline {
             &self.scene,
             &self.calibration,
             &viewport,
-            self.calibration.topology.blend_width,
+            self.calibration.topology.blend_width(),
         ))
     }
 
@@ -699,7 +649,7 @@ impl StitchPipeline {
             &self.scene,
             &self.calibration,
             &viewport,
-            self.calibration.topology.blend_width,
+            self.calibration.topology.blend_width(),
         ))
     }
 
@@ -762,7 +712,7 @@ impl StitchPipeline {
             &self.scene,
             &self.calibration,
             &viewport,
-            self.calibration.topology.blend_width,
+            self.calibration.topology.blend_width(),
         )
     }
 

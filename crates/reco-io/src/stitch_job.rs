@@ -2,8 +2,9 @@
 //!
 //! [`StitchJob`] is the simplest way to stitch two video files into a
 //! panoramic output. It handles all orchestration internally: GPU
-//! initialization, zero-copy detection, encoder creation, decode thread
-//! management, and audio passthrough.
+//! initialization (or the all-software path via [`StitchJob::cpu`]),
+//! zero-copy detection, encoder creation, decode thread management,
+//! and audio passthrough.
 //!
 //! # Example
 //!
@@ -34,7 +35,8 @@ use reco_core::source::FrameSource;
 /// is managed internally.
 pub struct StitchJob {
     left: InputPath,
-    right: InputPath,
+    /// `None` for mono (single-input) topologies.
+    right: Option<InputPath>,
     calibration: CalibrationSource,
     output: PathBuf,
 
@@ -65,7 +67,7 @@ pub struct StitchJob {
     // complex composition but Vec<FnOnce> is sufficient for now.
     session_hooks: Vec<SessionCallback>,
 
-    // Replay recording (M6.5 stacked-video). Opt-in, gated by the
+    // Replay recording (stacked-video). Opt-in, gated by the
     // `stacked-output` feature so consumers not building it pay
     // nothing.
     #[cfg(feature = "stacked-output")]
@@ -75,9 +77,18 @@ pub struct StitchJob {
     /// CPU detection is wanted but TensorRT is not available.
     force_cpu_decode: bool,
 
+    /// Stitch on the CPU executor: software render, CPU decode, no
+    /// GPU touched at all. The GPU-less path (headless boxes, CI,
+    /// X5-class boards).
+    cpu_stitch: bool,
+
     /// Lookahead buffer depth in seconds. When > 0, the session
     /// decodes N frames ahead to give the panner future context.
     lookahead_secs: f64,
+
+    /// Stabilize the viewport pose using calibration `field_roi`
+    /// points as anchors.
+    roi_stabilization: bool,
 
     /// Path for pipeline event JSONL output. When set, attaches a
     /// `JsonlSink` to the session that records every detection,
@@ -97,9 +108,8 @@ struct ReplayRecordingConfig {
     /// `None`, replay tiles match the source tile dims. When
     /// `Some`, the GPU pack shader downscales each tile via the
     /// sampler's linear filter (free on the GPU path) and the CPU
-    /// decorator rejects the config with a warn (CPU path has no
-    /// free downscale today; use the GPU path for A19). FRICTION
-    /// reco-obs A19.
+    /// decorator rejects the config with a warn (the CPU path has no
+    /// free downscale).
     scale: Option<(u32, u32)>,
 }
 
@@ -203,9 +213,9 @@ pub enum StitchError {
     /// Session/pipeline error during stitching.
     #[error("session: {0}")]
     Session(#[from] reco_core::session::types::SessionError),
-    /// Encoder error.
+    /// Encoder sink error.
     #[error("encoder: {0}")]
-    Encoder(#[from] reco_core::encoder::EncodeError),
+    Encoder(#[from] reco_core::sink::SinkError),
     /// Encoder completed without error but the output file has no
     /// usable video stream. Typical cause: an encoder ffmpeg listed as
     /// available silently rejected every frame (e.g. AV1/NVENC on
@@ -234,7 +244,7 @@ impl StitchJob {
     ) -> Self {
         Self {
             left: left.into(),
-            right: right.into(),
+            right: Some(right.into()),
             calibration: CalibrationSource::File(calibration.as_ref().to_path_buf()),
             output: output.as_ref().to_path_buf(),
             codec: Codec::default(),
@@ -256,9 +266,29 @@ impl StitchJob {
             #[cfg(feature = "stacked-output")]
             replay_recording: None,
             force_cpu_decode: false,
+            cpu_stitch: false,
             lookahead_secs: 0.0,
+            roi_stabilization: false,
             events_path: None,
         }
+    }
+
+    /// Create a single-input job for mono topologies (the cylinder's
+    /// pre-stitched panorama). The calibration document must carry a
+    /// mono topology; [`run`](Self::run) rejects the mismatch.
+    pub fn mono(
+        input: impl Into<InputPath>,
+        calibration: impl AsRef<Path>,
+        output: impl AsRef<Path>,
+    ) -> Self {
+        let mut job = Self::new(
+            input,
+            InputPath::Single(PathBuf::new()),
+            calibration,
+            output,
+        );
+        job.right = None;
+        job
     }
 
     /// Create a job with in-memory calibration (no JSON file needed).
@@ -269,6 +299,17 @@ impl StitchJob {
         output: impl AsRef<Path>,
     ) -> Self {
         let mut job = Self::new(left, right, Path::new(""), output);
+        job.calibration = CalibrationSource::Memory(Box::new(calibration));
+        job
+    }
+
+    /// [`Self::mono`] with an in-memory calibration.
+    pub fn mono_with_calibration(
+        input: impl Into<InputPath>,
+        calibration: reco_core::calibration::Calibration,
+        output: impl AsRef<Path>,
+    ) -> Self {
+        let mut job = Self::mono(input, Path::new(""), output);
         job.calibration = CalibrationSource::Memory(Box::new(calibration));
         job
     }
@@ -374,7 +415,7 @@ impl StitchJob {
         self
     }
 
-    // ── Replay recording (M6.5 stacked-video) ──
+    // ── Replay recording (stacked-video) ──
 
     /// Record pre-stitch source frames to a stacked-video file at
     /// `path` while the job runs. The file is a grid-layout video
@@ -430,7 +471,7 @@ impl StitchJob {
         self
     }
 
-    /// Set the replay tile downscale (FRICTION reco-obs A19). Must
+    /// Set the replay tile downscale. Must
     /// be called AFTER [`Self::with_replay_recording`] — no-op with
     /// a warn if replay recording wasn't enabled first.
     ///
@@ -456,9 +497,27 @@ impl StitchJob {
         self
     }
 
+    /// Stitch on the CPU executor: software render + CPU decode, no
+    /// GPU initialized. Implies [`Self::force_cpu_decode`] (there is
+    /// no GPU to decode into).
+    pub fn cpu(mut self) -> Self {
+        self.cpu_stitch = true;
+        self
+    }
+
     /// Set the lookahead buffer depth in seconds.
     pub fn lookahead(mut self, seconds: f64) -> Self {
         self.lookahead_secs = seconds;
+        self
+    }
+
+    /// Enable or disable ROI-anchor viewport stabilization.
+    ///
+    /// When enabled, the job reads `field_roi` from the calibration and
+    /// attaches a session stabilizer before rendering. At least two ROI
+    /// points are required.
+    pub fn roi_stabilization(mut self, enabled: bool) -> Self {
+        self.roi_stabilization = enabled;
         self
     }
 
@@ -560,17 +619,61 @@ impl StitchJob {
         if self.sync_offset.is_none() && cal.sync_offset != 0 {
             log::info!("Sync offset: {} frames (from calibration)", effective_sync);
         }
+        let field_roi_for_stabilization = cal.field_roi.clone();
 
-        // Initialize GPU
-        let gpu = reco_core::gpu::GpuContext::new_blocking()?;
-        let gpu_name = gpu.gpu_name().to_string();
+        // Input arity must match the calibration's topology before any
+        // decoder spins up.
+        let mono = cal.topology.camera_count() == 1;
+        match (mono, &self.right) {
+            (true, Some(_)) => {
+                return Err(StitchError::Other(
+                    "this calibration's topology consumes one input video, but two were \
+                     given"
+                        .into(),
+                ));
+            }
+            (false, None) => {
+                return Err(StitchError::Other(
+                    "this calibration's topology needs left and right input videos".into(),
+                ));
+            }
+            _ => {}
+        }
 
-        log::debug!("StitchJob::run: force_cpu_decode={}", self.force_cpu_decode);
-        let mut source = if self.force_cpu_decode {
-            log::info!("Force CPU decode: zero-copy disabled by --no-zero-copy");
-            crate::SmartFileSource::open_cpu_only(&self.left, &self.right, effective_sync)?
+        // Decode + render strategy. --cpu never touches the GPU;
+        // otherwise the GPU renders and decode is zero-copy unless
+        // forced off. Mono topologies render on the CPU executor
+        // regardless (the mono GPU pass is not wired yet).
+        log::debug!(
+            "StitchJob::run: mono={mono} cpu_stitch={} force_cpu_decode={}",
+            self.cpu_stitch,
+            self.force_cpu_decode
+        );
+        let (gpu, mut source) = if mono {
+            if !self.cpu_stitch {
+                log::info!("mono topology: software render (the mono GPU pass is not wired yet)");
+            }
+            (
+                None,
+                crate::SmartFileSource::open_mono(&self.left, self.cpu_stitch)?,
+            )
+        } else if self.cpu_stitch {
+            log::info!("CPU stitch: software render + software decode, no GPU touched (--cpu)");
+            let right = self.right.as_ref().expect("arity checked above");
+            (
+                None,
+                crate::SmartFileSource::open_cpu_only(&self.left, right, effective_sync, true)?,
+            )
         } else {
-            crate::SmartFileSource::open(&self.left, &self.right, &gpu, effective_sync)?
+            let right = self.right.as_ref().expect("arity checked above");
+            let gpu = reco_core::gpu::GpuContext::new_blocking()?;
+            let source = if self.force_cpu_decode {
+                log::info!("Force CPU decode: zero-copy disabled by --no-zero-copy");
+                crate::SmartFileSource::open_cpu_only(&self.left, right, effective_sync, false)?
+            } else {
+                crate::SmartFileSource::open(&self.left, right, &gpu, effective_sync)?
+            };
+            (Some(gpu), source)
         };
         let info = source.info();
         let (out_w, out_h) = self.resolution.unwrap_or((1920, 1080));
@@ -579,46 +682,88 @@ impl StitchJob {
         }
         let decode_mode = source.decode_mode().to_string();
 
-        // Determine input format from source capabilities
-        let input_format = if source.is_gpu_resident() {
-            reco_core::render::renderer::InputFormat::Nv12
-        } else {
-            reco_core::render::renderer::InputFormat::Yuv420p
-        };
-
         // Build session. Blend lives on the calibration; an explicit job
         // override replaces it, otherwise the saved value renders as-is.
-        if let Some(blend) = self.blend_width {
-            log::info!(
-                "seam blend: overriding calibration value {} with {blend}",
-                cal.topology.blend_width
-            );
-            cal.topology.blend_width = blend;
-        } else {
-            log::info!(
-                "seam blend: using calibration value {}",
-                cal.topology.blend_width
-            );
+        // Seamless topologies (the mono cylinder) have no blend to set.
+        match (self.blend_width, cal.topology.l_shape_mut()) {
+            (Some(blend), Some(topology)) => {
+                log::info!(
+                    "seam blend: overriding calibration value {} with {blend}",
+                    topology.blend_width
+                );
+                topology.blend_width = blend;
+            }
+            (Some(blend), None) => {
+                log::warn!("seam blend override {blend} ignored: this topology has no seam");
+            }
+            (None, _) => {
+                log::info!(
+                    "seam blend: using calibration value {}",
+                    cal.topology.blend_width()
+                );
+            }
         }
         let viewport = reco_core::render::viewport::ViewportConfig {
             width: out_w,
             height: out_h,
             ..Default::default()
         };
-        let session_config = reco_core::session::types::SessionConfig {
-            calibration: cal,
-            viewport,
-            input_width: info.width,
-            input_height: info.height,
-            output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
-            input_format,
-            left_rotation: source.left_rotation(),
-            right_rotation: source.right_rotation(),
+        let gpu_name;
+        let mut session = match gpu {
+            Some(gpu) => {
+                gpu_name = gpu.gpu_name().to_string();
+                // Input format follows source capabilities: zero-copy
+                // decoders hand the pipeline NV12 textures.
+                let input_format = if source.is_gpu_resident() {
+                    reco_core::render::renderer::InputFormat::Nv12
+                } else {
+                    reco_core::render::renderer::InputFormat::Yuv420p
+                };
+                let session_config = reco_core::session::types::SessionConfig {
+                    calibration: cal,
+                    viewport,
+                    input_width: info.width,
+                    input_height: info.height,
+                    output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
+                    input_format,
+                    left_rotation: source.left_rotation(),
+                    right_rotation: source.right_rotation(),
+                };
+                reco_core::session::StitchSession::with_gpu(gpu, session_config)?
+            }
+            None => {
+                gpu_name = "software (CPU)".to_string();
+                let projection = reco_core::projection::for_topology(&cal.topology);
+                let executor = reco_core::stitch::CpuExecutor::new(
+                    projection,
+                    cal,
+                    viewport,
+                    info.width,
+                    info.height,
+                    false,
+                )
+                .map_err(|e| StitchError::Other(format!("CPU executor: {e}")))?;
+                reco_core::session::StitchSession::with_executor(reco_core::stitch::Executor::Cpu(
+                    Box::new(executor),
+                ))?
+            }
         };
-        let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 
         session.telemetry_mut().set_gpu_name(gpu_name.clone());
         session.telemetry_mut().set_decode_mode(decode_mode.clone());
+
+        if self.roi_stabilization {
+            let roi = field_roi_for_stabilization.ok_or_else(|| {
+                StitchError::Other(
+                    "ROI stabilization requested, but calibration has no field_roi".into(),
+                )
+            })?;
+            let point_count = roi.points.len();
+            session.set_roi_stabilization(
+                reco_core::session::stabilization::RoiStabilizationConfig::new(roi),
+            )?;
+            log::info!("ROI stabilization: enabled ({point_count} anchors)");
+        }
 
         // Configure GPU bind groups if source is GPU-resident
         #[cfg(target_os = "linux")]
@@ -664,11 +809,7 @@ impl StitchJob {
             Bitrate::Quality(q) => crate::ffmpeg::encoder::Quality::from(*q),
             Bitrate::Crf(_) => crate::ffmpeg::encoder::Quality::Balanced,
         };
-        let fps = if info.fps > 0.0 {
-            info.fps as f64
-        } else {
-            30.0
-        };
+        let fps = if info.fps > 0.0 { info.fps } else { 30.0 };
         let start_secs = self
             .start_time
             .filter(|secs| secs.is_finite() && *secs > 0.0)
@@ -678,7 +819,13 @@ impl StitchJob {
         // included so passthrough spans the whole recording, not just file 1.
         let audio_source = match &self.audio {
             AudioMode::CopyFrom(0) => Some(self.left.all_paths()),
-            AudioMode::CopyFrom(1) => Some(self.right.all_paths()),
+            AudioMode::CopyFrom(1) => match &self.right {
+                Some(right) => Some(right.all_paths()),
+                None => {
+                    log::warn!("AudioMode::CopyFrom(1) - a mono job has no right input");
+                    None
+                }
+            },
             AudioMode::CopyFrom(n) => {
                 log::warn!("AudioMode::CopyFrom({n}) - only 0 (left) and 1 (right) are valid");
                 None
@@ -686,8 +833,17 @@ impl StitchJob {
             AudioMode::Disabled => None,
         };
 
+        // --cpu defaults the encoder to software so the whole run keeps
+        // its no-GPU promise; an explicit encoder choice still wins.
+        let encoder_name = match (&self.encoder_name, self.cpu_stitch) {
+            (None, true) => {
+                log::info!("CPU stitch: defaulting to the libx264 software encoder");
+                Some("libx264".to_string())
+            }
+            (name, _) => name.clone(),
+        };
         let enc_config = crate::ffmpeg::encoder::EncoderConfig {
-            encoder_name: self.encoder_name.clone(),
+            encoder_name,
             codec: self.codec.into(),
             quality_preset: quality,
             quality: self.quality_value,
@@ -707,7 +863,10 @@ impl StitchJob {
         )?;
         let enc_name = encoder.encoder_name().to_string();
         session.telemetry_mut().set_encoder_name(enc_name.clone());
-        session.set_encoder(Box::new(encoder), 2);
+        session.add_sink(
+            Box::new(encoder),
+            reco_core::session::SinkOptions::threaded(2),
+        )?;
 
         #[cfg(feature = "stacked-output")]
         if let Some(ref mut cfg) = self.replay_recording

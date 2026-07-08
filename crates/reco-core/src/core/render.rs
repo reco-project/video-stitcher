@@ -74,7 +74,7 @@ impl super::StitchCore {
             #[cfg(feature = "gpu")]
             Executor::Gpu(_) => unreachable!("routed from the CPU arm"),
         };
-        let rgba = cpu.stitch_yuv(left, right, pose.yaw, pose.pitch)?;
+        let rgba = cpu.stitch_yuv(&[*left, *right], pose.yaw, pose.pitch)?;
         Ok(self.deliver_cpu_frame(rgba, pose))
     }
 
@@ -320,7 +320,7 @@ impl super::StitchCore {
                     #[cfg(feature = "gpu")]
                     Executor::Gpu(_) => unreachable!("routed from the CPU arm"),
                 };
-                let rgba = cpu.stitch_nv12(left, right, pose.yaw, pose.pitch)?;
+                let rgba = cpu.stitch_nv12(&[*left, *right], pose.yaw, pose.pitch)?;
                 Ok(self.deliver_cpu_frame(rgba, pose))
             }
             #[cfg(feature = "gpu")]
@@ -366,6 +366,51 @@ impl super::StitchCore {
         })
     }
 
+    /// Submit a mono frame - a single pre-stitched panorama - and
+    /// render the current pose. The single-camera counterpart of
+    /// [`Self::submit_frame_yuv`] for mono topologies (the cylinder).
+    ///
+    /// Detection is not wired for mono topologies yet (the
+    /// detection-to-panorama mapping is L-shape-only); an attached
+    /// detector logs once and idles, and the panner runs without
+    /// detections. The stacked replay recorder (2-tile format) is
+    /// likewise skipped.
+    // TODO: wire mono detection + replay (Step 13 PR B).
+    pub fn submit_frame_mono_yuv(
+        &mut self,
+        frame: &YuvPlanes<'_>,
+    ) -> Result<RenderOutcome<'_>, StitchCoreError> {
+        self.anchor_session_start();
+
+        if self.detection_due(self.frame_count) && !self.mono_detection_warned {
+            self.mono_detection_warned = true;
+            log::warn!("detection is not supported on mono topologies yet; the detector idles");
+        }
+
+        let pose = self.resolve_current_pose(false);
+        match &self.executor {
+            Executor::Cpu(_) => {
+                // See submit_cpu_yuv for the wgpu-free lint note.
+                #[allow(clippy::infallible_destructuring_match)]
+                let cpu = match &self.executor {
+                    Executor::Cpu(cpu) => cpu,
+                    #[cfg(feature = "gpu")]
+                    Executor::Gpu(_) => unreachable!("routed from the CPU arm"),
+                };
+                let rgba = cpu.stitch_yuv(&[*frame], pose.yaw, pose.pitch)?;
+                Ok(self.deliver_cpu_frame(rgba, pose))
+            }
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(_) => Err(StitchCoreError::Executor(
+                crate::stitch::StitchError::InvalidConfig(
+                    "the mono GPU pass is not wired yet; run mono topologies on the \
+                     CPU executor"
+                        .into(),
+                ),
+            )),
+        }
+    }
+
     /// Store a CPU-stitched frame and hand out the borrowed outcome -
     /// the synchronous dual of the GPU readback tail (replay push +
     /// frame accounting).
@@ -409,7 +454,7 @@ impl super::StitchCore {
     ///
     /// The full pose is the render parameter: when `pose.fov_degrees` is
     /// set it applies for this frame, so an out-of-tick FOV clamp can
-    /// never leave the view rendering a stale cached value (FRICTION N19).
+    /// never leave the view rendering a stale cached value.
     #[cfg(feature = "gpu")]
     pub fn render_to_view(
         &mut self,
@@ -445,41 +490,23 @@ impl super::StitchCore {
             self.executor.set_fov(fov);
         }
         let (yaw, pitch) = (pose.yaw, pose.pitch);
-        let Executor::Gpu(gpu) = &self.executor else {
+        let Executor::Gpu(gpu) = &mut self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
-        if self.preview_nv12.is_none() {
-            let w = gpu.pipeline.viewport().width & !3;
-            let h = gpu.pipeline.viewport().height & !1;
-            let converter =
-                crate::gpu::nv12_converter::Nv12Converter::new(gpu.pipeline.gpu(), w, h).map_err(
-                    |e| StitchCoreError::Config(format!("NV12 preview readback init: {e}")),
-                )?;
-            log::info!("StitchCore: NV12 preview readback initialized ({w}x{h})");
-            self.preview_nv12 = Some(converter);
-        }
-
         let cmd = gpu.pipeline.render_to_target(left, right, yaw, pitch)?;
-        let converter = self.preview_nv12.as_mut().expect("initialized above");
-        let data = converter
-            .convert_and_readback(gpu.pipeline.gpu(), gpu.pipeline.render_target(), cmd)
-            .map_err(|e| StitchCoreError::Config(format!("NV12 preview readback: {e}")))?;
-        Ok(data)
+        gpu.convert_nv12(cmd)
+            .map_err(|e| StitchCoreError::Config(format!("NV12 preview readback: {e}")))
     }
 
     /// Drain one pending NV12 frame from the preview recording tap.
     /// Returns `None` when nothing remains (or the tap was never used).
     #[cfg(feature = "gpu")]
     pub fn flush_nv12(&mut self) -> Result<Option<&[u8]>, StitchCoreError> {
-        let Executor::Gpu(gpu) = &self.executor else {
+        let Executor::Gpu(gpu) = &mut self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
-        match self.preview_nv12.as_mut() {
-            Some(converter) => converter
-                .flush_pending(gpu.pipeline.gpu())
-                .map_err(|e| StitchCoreError::Config(format!("NV12 preview flush: {e}"))),
-            None => Ok(None),
-        }
+        gpu.flush_nv12()
+            .map_err(|e| StitchCoreError::Config(format!("NV12 preview flush: {e}")))
     }
 
     // -----------------------------------------------------------------
@@ -492,12 +519,10 @@ impl super::StitchCore {
     // (NV12 conversion for encoding, compositor texture import) can
     // drive the core without paying for readback.
     //
-    // The M3 `StitchSession::run` pull-adapter (plan step 2) uses these
-    // to route its encode loop through `StitchCore`: session owns its
-    // own director + detection pipeline during the transition and
-    // passes the resolved pose explicitly here. Once the session
-    // migration completes, these remain as the "render primitives" for
-    // multi-output consumers (record + stream, zero-copy compositor).
+    // The `StitchSession::run` pull-adapter routes its encode loop
+    // through these, passing the pose it resolved through the engine's
+    // dispatch. They are also the render primitives for multi-output
+    // consumers (record + stream, zero-copy compositor).
     // -----------------------------------------------------------------
 
     /// Render a stereo YUV420P frame at an explicit pose.
@@ -507,10 +532,10 @@ impl super::StitchCore {
     /// (detection + director + readback) should call
     /// [`Self::submit_frame_yuv`] instead.
     ///
-    /// The caller is responsible for subsequently consuming the
-    /// rendered texture (via [`Self::pipeline`] + `render_target()`)
-    /// or submitting the returned command buffer to chain further
-    /// GPU work.
+    /// The caller is responsible for consuming the render by
+    /// submitting the returned command buffer (directly or chained
+    /// into further GPU work); the engine's readback and NV12
+    /// delivery paths do this internally.
     #[cfg(feature = "gpu")]
     pub fn render_yuv_at_pose(
         &self,
@@ -566,9 +591,8 @@ impl super::StitchCore {
     /// Render any [`StereoFrame`](crate::source::StereoFrame) variant
     /// (YUV / NV12 / GpuResident) at an explicit pose.
     ///
-    /// Thin wrapper over
-    /// [`StitchPipeline::render_stereo_frame`](crate::render::pipeline::StitchPipeline::render_stereo_frame)
-    /// that converts the pipeline error into a `StitchCoreError`. The
+    /// Thin wrapper over the pipeline's stereo-frame render that
+    /// converts the pipeline error into a `StitchCoreError`. The
     /// `MetalResident` variant is NOT handled here; use
     /// [`Self::render_imported_textures_at_pose`] after importing the
     /// `CVPixelBuffer` via `MetalTextureCache`.
@@ -606,49 +630,5 @@ impl super::StitchCore {
             .expect("zero-copy render paths require the GPU executor")
             .pipeline
             .render_imported_textures(left_y, left_uv, right_y, right_uv, yaw, pitch)
-    }
-
-    /// Render from pre-built GPU texture views at an explicit pose.
-    ///
-    /// Used by the D3D11VA zero-copy path where NV12 plane views are
-    /// created with `TextureAspect::Plane0` / `Plane1`.
-    #[cfg(feature = "gpu")]
-    pub fn render_imported_views_at_pose(
-        &mut self,
-        left_y: &wgpu::TextureView,
-        left_uv: &wgpu::TextureView,
-        right_y: &wgpu::TextureView,
-        right_uv: &wgpu::TextureView,
-        yaw: f32,
-        pitch: f32,
-    ) -> wgpu::CommandBuffer {
-        self.executor
-            .gpu_mut()
-            .expect("zero-copy render paths require the GPU executor")
-            .pipeline
-            .render_imported_views(left_y, left_uv, right_y, right_uv, yaw, pitch)
-    }
-
-    /// Render from pre-configured GPU bind groups and decode slots at
-    /// an explicit pose (Linux zero-copy path).
-    ///
-    /// Thin wrapper over
-    /// `StitchPipeline::render_gpu_frame`.
-    /// Consumers must have already called
-    /// `StitchPipeline::configure_gpu_source` via [`Self::pipeline_mut`].
-    #[cfg(all(target_os = "linux", feature = "gpu"))]
-    pub fn render_gpu_frame_at_pose(
-        &mut self,
-        bind_groups: &crate::render::pipeline::GpuSourceBindGroups,
-        left_slot: u8,
-        right_slot: u8,
-        yaw: f32,
-        pitch: f32,
-    ) -> wgpu::CommandBuffer {
-        self.executor
-            .gpu_mut()
-            .expect("zero-copy render paths require the GPU executor")
-            .pipeline
-            .render_gpu_frame(bind_groups, left_slot, right_slot, yaw, pitch)
     }
 }

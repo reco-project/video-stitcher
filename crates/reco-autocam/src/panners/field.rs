@@ -1139,11 +1139,11 @@ mod tests {
     }
 
     fn cal() -> reco_core::calibration::Calibration {
-        use reco_core::calibration::{Calibration, Framing, Lens, Topology};
+        use reco_core::calibration::{Calibration, Framing, LShapeTopology, Lens};
         let cam = || Lens::fisheye(1920, 1080, 900.0, 900.0, 960.0, 540.0, [0.0; 4]);
         Calibration::new(
             vec![cam(), cam()],
-            Topology {
+            LShapeTopology {
                 intersect: 0.54,
                 x_ty: 0.0,
                 x_rz: 0.0,

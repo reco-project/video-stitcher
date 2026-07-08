@@ -444,7 +444,7 @@ pub struct EncoderConfig {
     /// Output container format. Defaults to plain MP4 to match the
     /// existing stitch-output behavior; opt in to fragmented MP4 or
     /// Matroska for streamable / write-while-read workflows (e.g.,
-    /// the M6.5 stacked-video replay backend).
+    /// the stacked-video replay backend).
     pub container: Container,
     /// Override the encoder's group-of-pictures size (frames
     /// between keyframes). `None` leaves ffmpeg / libx264 defaults

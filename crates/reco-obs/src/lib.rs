@@ -2,7 +2,7 @@
 //!
 //! This crate builds as a shared library (`.so` / `.dll` / `.dylib`) that OBS
 //! loads as a plugin. It registers a video source called "Reco Panorama
-//! Stitcher" that uses [`reco_core::render::pipeline::StitchPipeline`] to stitch two
+//! Stitcher" that drives [`reco_core::core::StitchCore`] to stitch two
 //! camera inputs into a single panoramic output.
 //!
 //! ## Installation
@@ -14,7 +14,7 @@
 //!
 //! ## Current status
 //!
-//! Tier 1 shipped 2026-04-18 (PR #267): async-frame ingestion from upstream
+//! Shipped: async-frame ingestion from upstream
 //! OBS sources, BGRA input path, interactive pan / zoom via mouse + keyboard,
 //! optional stacked-video replay recording. See
 //! [`FRICTION.md`](https://github.com/reco-project/video-stitcher/blob/main/crates/reco-obs/FRICTION.md)
@@ -41,7 +41,7 @@ use std::sync::atomic::{AtomicPtr, Ordering};
 /// Global state shared between the frontend-event callback and the
 /// source instance. `true` whenever OBS is actively recording or
 /// streaming. Consulted by the replay recorder when the source is
-/// configured to "follow OBS record/stream" mode (FRICTION A20).
+/// configured to "follow OBS record/stream" mode.
 ///
 /// Using atomics (no mutex) because writers come from a single OBS
 /// thread (the frontend event loop) and readers are source ticks;
@@ -64,8 +64,8 @@ pub(crate) static OBS_RECORDING_OR_STREAMING: AtomicBool = AtomicBool::new(true)
 /// panic, the hook emits a structured `tracing::error!` event
 /// (location + payload), then this macro's `catch_unwind` converts
 /// the would-be abort into a safe early-return with the caller-
-/// supplied default value. Together they complete the T-1 (severity-
-/// adjusted High-DoS) mitigation from the 2026-04-18 deep review.
+/// supplied default value. Together they keep a plugin panic from
+/// taking down the whole OBS process.
 ///
 /// Usage:
 /// ```ignore
@@ -206,7 +206,7 @@ fn install_panic_hook() {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn obs_module_load() -> bool {
     ffi_catch!(false, {
-        // M2 migration: tracing_subscriber replaces env_logger. OBS captures
+        // OBS captures
         // the plugin's stderr so structured tracing events land in OBS's
         // log files alongside other plugin output.
         init_tracing();
@@ -303,10 +303,9 @@ pub extern "C" fn obs_module_description() -> *const std::os::raw::c_char {
 
 #[cfg(test)]
 mod macro_tests {
-    //! Regression tests for the `ffi_catch!` macro. Completes the T-1
-    //! (deep-review-2026-04-18) mitigation: panic hook + catch_unwind
-    //! wrappers together prevent a panic in any of the 22 `extern "C"`
-    //! callbacks from propagating across the C ABI.
+    //! Regression tests for the `ffi_catch!` macro: panic hook +
+    //! catch_unwind wrappers together prevent a panic in any of the
+    //! 22 `extern "C"` callbacks from propagating across the C ABI.
 
     #[test]
     fn ffi_catch_returns_value_on_success() {

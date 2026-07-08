@@ -304,6 +304,9 @@ unsafe impl Send for NvmmPlaneInfo {}
 /// - Jetson NVMM zero-copy (DMA-buf + NvBufSurface): `NvmmResident`
 #[non_exhaustive]
 pub enum StereoFrame {
+    /// A single pre-stitched panorama frame for mono topologies (the
+    /// cylinder): CPU-resident YUV420P planes of the one source.
+    Mono(YuvData),
     /// CPU-resident YUV420P planes (3 planes per camera).
     Yuv420p(FramePair),
     /// CPU-resident NV12 planes (2 planes per camera).

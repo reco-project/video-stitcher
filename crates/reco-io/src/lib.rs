@@ -1,7 +1,7 @@
 //! Pluggable frame I/O for Reco.
 //!
 //! This crate provides [`reco_core::source::FrameSource`] and
-//! [`reco_core::encoder::Encoder`] implementations backed by
+//! [`reco_core::sink::OutputSink`] implementations backed by
 //! FFmpeg (files, network streams), GStreamer (live cameras),
 //! and libcamera (Raspberry Pi CSI cameras).
 //!
@@ -44,7 +44,7 @@ pub mod zero_copy;
 #[cfg(feature = "config")]
 pub mod settings;
 
-/// M6.5 stacked-video pack / unpack. Maps N YUV420P tiles into one
+/// Stacked-video pack / unpack. Maps N YUV420P tiles into one
 /// grid-layout frame (see `GridLayout`) and back, for single-file replay
 /// recording, web panorama input, and cloud deployment. FFmpeg-backed
 /// encoder/source stubs are gated behind the `stacked-output`

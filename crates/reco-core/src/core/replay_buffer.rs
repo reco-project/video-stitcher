@@ -1,6 +1,6 @@
 //! Bounded-duration ring buffer for recently-rendered panorama frames.
 //!
-//! Solves FRICTION A16 (OBS replay). Opt-in via
+//! Backs instant-replay consumers (e.g. the OBS source). Opt-in via
 //! [`super::StitchCore::enable_replay_buffer`]; when disabled the core
 //! allocates nothing for replay and `submit_frame_*` does zero extra
 //! work. Ring trimming runs per-submit and is `O(frames_evicted)`.

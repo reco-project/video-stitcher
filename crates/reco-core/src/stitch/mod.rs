@@ -29,8 +29,11 @@
 //! additions, gated on profiling (see the cpu-stitch portability work).
 
 mod cpu;
+pub(crate) mod cylinder;
 mod executor;
 pub(crate) mod geometry;
+#[cfg(feature = "gpu")]
+pub(crate) mod residency;
 
 pub use executor::{CpuExecutor, Executor, StitchError, StitchExecutor};
 #[cfg(feature = "gpu")]
@@ -102,7 +105,7 @@ pub(crate) mod test_support {
     // either way so the fixtures stay in sync.
     #![cfg_attr(not(feature = "gpu"), allow(dead_code))]
 
-    use crate::calibration::{Calibration, Framing, Lens, Topology};
+    use crate::calibration::{Calibration, Framing, LShapeTopology, Lens};
     #[cfg(feature = "gpu")]
     use crate::gpu::{GpuContext, GpuError};
 
@@ -121,7 +124,7 @@ pub(crate) mod test_support {
         };
         Calibration::new(
             vec![cam(), cam()],
-            Topology {
+            LShapeTopology {
                 intersect: 0.5,
                 x_ty: 0.0,
                 x_rz: 0.0,
@@ -296,8 +299,7 @@ mod tests {
 
         let out = stitch_rgba(
             &LShapeProjection,
-            &left,
-            &right,
+            &[left, right],
             (w, h),
             &calib,
             &cfg,
@@ -327,8 +329,7 @@ mod tests {
 
         let a = stitch_rgba(
             &LShapeProjection,
-            &left,
-            &right,
+            &[left, right],
             (w, h),
             &calib,
             &cfg,
@@ -339,8 +340,7 @@ mod tests {
         .unwrap();
         let b = stitch_rgba(
             &LShapeProjection,
-            &left,
-            &right,
+            &[left, right],
             (w, h),
             &calib,
             &cfg,
@@ -362,7 +362,7 @@ mod tests {
         );
     }
 
-    /// The keystone: the CPU float reference must agree with the GPU shader on
+    /// The CPU float reference must agree with the GPU shader on
     /// the same scene. Because both share `view_matrix`, the projection, and
     /// `lens::kb4`, the only differences are f32-vs-f64 and hardware-vs-software
     /// bilinear - so the RGB match should be tight. Skips when no GPU adapter.
@@ -423,8 +423,7 @@ mod tests {
         // CPU reference on the same inputs (limited range, matching the GPU default).
         let cpu_rgba = stitch_rgba(
             &LShapeProjection,
-            &left,
-            &right,
+            &[left, right],
             (cam_w, cam_h),
             &calib,
             &config,
@@ -518,8 +517,7 @@ mod tests {
 
         let cpu_rgba = stitch_rgba_yuv420p(
             &LShapeProjection,
-            &left,
-            &right,
+            &[left, right],
             (cam_w, cam_h),
             &calib,
             &config,
@@ -628,8 +626,7 @@ mod tests {
         let gpu_rgba = gpu_rgba.expect("gpu frame");
         let cpu_rgba = stitch_rgba(
             &LShapeProjection,
-            left,
-            right,
+            &[*left, *right],
             cam,
             calib,
             config,
@@ -941,8 +938,7 @@ mod tests {
         // ~1px of output (fov 75 over 192px ~= 0.007 rad/px); 0.01 rad is decisive.
         let perturbed = stitch_rgba(
             &LShapeProjection,
-            &left,
-            &right,
+            &[left, right],
             (cam_w, cam_h),
             &cal,
             &config,

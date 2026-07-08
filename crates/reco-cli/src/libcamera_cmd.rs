@@ -150,7 +150,10 @@ pub fn run_libcamera(
     )?;
     println!("Encoder: {}", encoder.encoder_name());
 
-    session.set_encoder(Box::new(encoder), 2);
+    session.add_sink(
+        Box::new(encoder),
+        reco_core::session::SinkOptions::threaded(2),
+    )?;
 
     let frame_limit =
         reco_core::session::types::compute_frame_limit(end_time, max_frames, capture_fps as f64);

@@ -20,7 +20,7 @@ mod virtual_camera;
 pub use matrices::{FAR_PLANE, NEAR_PLANE, view_matrix};
 pub use rig_correction::{resolve_render_pose, world_to_render_pose};
 pub use types::{CameraId, ViewportPosition};
-pub use virtual_camera::VirtualCamera;
+pub use virtual_camera::{MONO_CAMERA_POSITION, VirtualCamera};
 
 #[cfg(feature = "gpu")]
 pub(crate) use matrices::matrix4_to_columns;

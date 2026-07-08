@@ -116,13 +116,16 @@ pub enum CalibrationError {
     #[error("calibration must have at least one lens")]
     NoLenses,
 
-    /// The lens count does not match what the topology can render.
+    /// The lens count does not match what the topology consumes.
     ///
-    /// The L-shape topology (the only one today) indexes exactly two
-    /// lenses; any other count would panic at render time. This becomes
-    /// topology-aware once projections carry their own arity.
-    #[error("L-shape calibration needs exactly 2 lenses, got {found}")]
-    ExpectedTwoLenses {
+    /// Topologies index their lenses at render time; any other count
+    /// would panic out-of-bounds downstream.
+    #[error("{topology} calibration needs exactly {expected} lens(es), got {found}")]
+    LensCountMismatch {
+        /// Topology name for the message.
+        topology: &'static str,
+        /// Lens count the topology consumes.
+        expected: usize,
         /// Number of lenses actually present.
         found: usize,
     },
@@ -197,15 +200,102 @@ impl Lens {
             correction: 1.0,
         }
     }
+
+    /// A distortion-free source: a pre-stitched flat panorama frame.
+    /// Only the dimensions are load-bearing (cylinder sampling never
+    /// undistorts); the intrinsics are centered identity values.
+    ///
+    /// The programmatic route to a mono lens - consumers building a
+    /// cylinder [`Calibration`] in code use this; JSON documents spell
+    /// the fields out. Exercised by the mono session and projection
+    /// tests.
+    pub fn flat(width: u32, height: u32) -> Self {
+        Self {
+            width,
+            height,
+            fx: width as f64 * 0.5,
+            fy: width as f64 * 0.5,
+            cx: width as f64 * 0.5,
+            cy: height as f64 * 0.5,
+            distortion: [0.0; 4],
+            correction: 1.0,
+        }
+    }
 }
 
-/// 3D placement of the source planes plus the overlap seam.
+/// Scene geometry parameters: which shape the sources are painted on.
 ///
-/// The geometry kind (L-shape today, cylinder/N-camera later) is dispatched by
-/// the [`Projection`](crate::projection::Projection) trait; this carries its
-/// parameters. The virtual-camera position lives in [`Framing`], not here.
+/// Serialized with a mandatory `type` tag (`"l-shape"` / `"cylinder"`).
+/// The matching [`Projection`](crate::projection::Projection) dispatches
+/// the actual geometry; this carries its parameters. The virtual-camera
+/// position lives in [`Framing`], not here.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Topology {
+#[serde(tag = "type", rename_all = "kebab-case")]
+pub enum Topology {
+    /// Two fisheye cameras on perpendicular planes (the stereo rig).
+    LShape(LShapeTopology),
+    /// One pre-stitched panorama painted on the inside of a cylinder.
+    Cylinder(CylinderTopology),
+}
+
+impl Topology {
+    /// L-shape parameters, when this is the L-shape topology.
+    pub fn l_shape(&self) -> Option<&LShapeTopology> {
+        match self {
+            Topology::LShape(t) => Some(t),
+            Topology::Cylinder(_) => None,
+        }
+    }
+
+    /// Mutable [`Self::l_shape`].
+    pub fn l_shape_mut(&mut self) -> Option<&mut LShapeTopology> {
+        match self {
+            Topology::LShape(t) => Some(t),
+            Topology::Cylinder(_) => None,
+        }
+    }
+
+    /// Cylinder parameters, when this is the cylinder topology.
+    pub fn cylinder(&self) -> Option<&CylinderTopology> {
+        match self {
+            Topology::LShape(_) => None,
+            Topology::Cylinder(t) => Some(t),
+        }
+    }
+
+    /// Number of source cameras this topology consumes.
+    pub fn camera_count(&self) -> usize {
+        match self {
+            Topology::LShape(_) => 2,
+            Topology::Cylinder(_) => 1,
+        }
+    }
+
+    /// Seam blend width. The cylinder has a single surface and no seam,
+    /// so it reports `0.0`.
+    pub fn blend_width(&self) -> f32 {
+        match self {
+            Topology::LShape(t) => t.blend_width,
+            Topology::Cylinder(_) => 0.0,
+        }
+    }
+}
+
+impl From<LShapeTopology> for Topology {
+    fn from(t: LShapeTopology) -> Self {
+        Topology::LShape(t)
+    }
+}
+
+impl From<CylinderTopology> for Topology {
+    fn from(t: CylinderTopology) -> Self {
+        Topology::Cylinder(t)
+    }
+}
+
+/// 3D placement of the two L-shape source planes plus the overlap seam.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LShapeTopology {
     /// Overlap ratio between the two planes (`0.0` none .. `1.0` full).
     /// Each plane is translated by `(plane_width / 2) × (1 - intersect)`.
     pub intersect: f64,
@@ -227,6 +317,48 @@ pub struct Topology {
     /// Seam blend width as a fraction of the plane overlap. `0.0` = hard seam.
     #[serde(default = "default_blend_width")]
     pub blend_width: f32,
+}
+
+/// Cylinder placement for a single pre-stitched panorama: the video is
+/// painted on the inside of a cylinder and the virtual camera sits on
+/// its axis. Defaults match the established 180-degree
+/// cylindrical-player convention.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CylinderTopology {
+    /// Cylinder radius in world units. Larger values = narrower
+    /// cylindrical wrap per pixel, so the panorama feels flatter.
+    /// Conventional range is 1000-5000.
+    #[serde(default = "default_focal_length")]
+    pub focal_length: f64,
+    /// Full horizontal angular sweep in degrees. 180 is the canonical
+    /// pre-stitched action-camera case; 360 is a full cylinder.
+    #[serde(default = "default_sweep_deg")]
+    pub sweep_deg: f64,
+    /// Painted height in the same units as `focal_length` (source
+    /// pixels). Omitted = the source video's pixel height, which is
+    /// the convention's default.
+    #[serde(default)]
+    pub video_height: Option<f64>,
+}
+
+impl Default for CylinderTopology {
+    fn default() -> Self {
+        Self {
+            focal_length: default_focal_length(),
+            sweep_deg: default_sweep_deg(),
+            video_height: None,
+        }
+    }
+}
+
+// Functions, not constants: serde's `default = "..."` attribute takes
+// a function path, never a value expression.
+fn default_focal_length() -> f64 {
+    2400.0
+}
+
+fn default_sweep_deg() -> f64 {
+    180.0
 }
 
 /// Default seam blend width for calibrations that do not specify one.
@@ -253,18 +385,17 @@ pub struct Framing {
     pub roll: f64,
 }
 
-/// Playing-field region of interest for per-camera detection filtering.
+/// Playing-field region of interest for detection filtering.
 ///
-/// A detection concern (consumed by `reco-autocam`), kept here transitionally;
-/// it will move out of the calibration when detection config is extracted.
+/// A single polygon in stitched panorama coordinates, stored as `[yaw, pitch]`
+/// radians. Detections are projected from their source camera into this shared
+/// space before filtering.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct FieldRoi {
-    /// Polygon vertices for the left camera, normalized `[0,1]`.
+    /// Polygon vertices in stitched panorama `[yaw, pitch]` radians.
     #[serde(default)]
-    pub left: Vec<[f64; 2]>,
-    /// Polygon vertices for the right camera, normalized `[0,1]`.
-    #[serde(default)]
-    pub right: Vec<[f64; 2]>,
+    pub points: Vec<[f64; 2]>,
 }
 
 /// The calibration document: canonical, serializable source of truth.
@@ -300,11 +431,11 @@ const MAX_CALIBRATION_FILE_SIZE: u64 = 1_048_576;
 impl Calibration {
     /// Assemble a calibration from its parts (current schema version, no sync
     /// offset, no ROI).
-    pub fn new(lenses: Vec<Lens>, topology: Topology, framing: Framing) -> Self {
+    pub fn new(lenses: Vec<Lens>, topology: impl Into<Topology>, framing: Framing) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
             lenses,
-            topology,
+            topology: topology.into(),
             framing,
             sync_offset: 0,
             field_roi: None,
@@ -395,11 +526,16 @@ impl Calibration {
         if self.lenses.is_empty() {
             return Err(CalibrationError::NoLenses);
         }
-        // The L-shape topology hard-indexes lenses[0] and lenses[1] at
-        // render time; reject any other count here with a typed error
-        // rather than panicking out-of-bounds downstream.
-        if self.lenses.len() != 2 {
-            return Err(CalibrationError::ExpectedTwoLenses {
+        // Topologies hard-index their lenses at render time; reject a
+        // mismatched count here with a typed error rather than
+        // panicking out-of-bounds downstream.
+        if self.lenses.len() != self.topology.camera_count() {
+            return Err(CalibrationError::LensCountMismatch {
+                topology: match self.topology {
+                    Topology::LShape(_) => "L-shape",
+                    Topology::Cylinder(_) => "cylinder",
+                },
+                expected: self.topology.camera_count(),
                 found: self.lenses.len(),
             });
         }
@@ -407,7 +543,7 @@ impl Calibration {
             validate_lens(lens, i)?;
         }
         validate_topology(&self.topology)?;
-        validate_framing(&self.framing)?;
+        validate_framing(&self.framing, &self.topology)?;
         if self.sync_offset < -MAX_SYNC_OFFSET_FRAMES || self.sync_offset > MAX_SYNC_OFFSET_FRAMES {
             return Err(CalibrationError::SyncOffsetOutOfRange {
                 value: self.sync_offset,
@@ -556,6 +692,50 @@ fn validate_lens(lens: &Lens, index: usize) -> Result<(), CalibrationError> {
 
 /// Validate the topology parameters.
 fn validate_topology(t: &Topology) -> Result<(), CalibrationError> {
+    match t {
+        Topology::LShape(t) => validate_l_shape(t),
+        Topology::Cylinder(t) => validate_cylinder(t),
+    }
+}
+
+/// Cylinder parameter ranges: positive finite radius/height, sweep in
+/// `(0, 360]` degrees, finite screen rotation.
+fn validate_cylinder(t: &CylinderTopology) -> Result<(), CalibrationError> {
+    for (name, val, lo, hi) in [
+        (
+            "topology.focal_length",
+            t.focal_length,
+            f64::MIN_POSITIVE,
+            f64::MAX,
+        ),
+        ("topology.sweep_deg", t.sweep_deg, f64::MIN_POSITIVE, 360.0),
+        (
+            "topology.video_height",
+            // Omitted = the source pixel height, always valid.
+            t.video_height.unwrap_or(1.0),
+            f64::MIN_POSITIVE,
+            f64::MAX,
+        ),
+    ] {
+        if !val.is_finite() {
+            return Err(CalibrationError::NonFiniteFloat {
+                field: name.to_owned(),
+                value: format!("{val}"),
+            });
+        }
+        if val < lo || val > hi {
+            return Err(CalibrationError::OutOfRange {
+                field: name.to_owned(),
+                value: val,
+                min: lo,
+                max: hi,
+            });
+        }
+    }
+    Ok(())
+}
+
+fn validate_l_shape(t: &LShapeTopology) -> Result<(), CalibrationError> {
     if !t.intersect.is_finite() {
         return Err(CalibrationError::NonFiniteFloat {
             field: "topology.intersect".to_owned(),
@@ -602,14 +782,16 @@ fn validate_topology(t: &Topology) -> Result<(), CalibrationError> {
 }
 
 /// Validate the framing parameters.
-fn validate_framing(f: &Framing) -> Result<(), CalibrationError> {
+fn validate_framing(f: &Framing, topology: &Topology) -> Result<(), CalibrationError> {
     if !f.axis_offset.is_finite() {
         return Err(CalibrationError::NonFiniteFloat {
             field: "framing.axis_offset".to_owned(),
             value: format!("{}", f.axis_offset),
         });
     }
-    if f.axis_offset <= EPSILON {
+    // The off-axis camera placement is an L-shape concept; the mono
+    // cylinder's camera sits on the axis (offset 0 is its natural value).
+    if matches!(topology, Topology::LShape(_)) && f.axis_offset <= EPSILON {
         return Err(CalibrationError::AxisOffsetTooSmall {
             value: f.axis_offset,
             epsilon: EPSILON,
@@ -643,7 +825,8 @@ mod tests {
                   "fx": 1796.32, "fy": 1797.22, "cx": 1919.37, "cy": 1063.17,
                   "distortion": [0.0342, 0.0677, -0.0741, 0.0299], "correction": 1.0 }
             ],
-            "topology": { "intersect": 0.5446, "x_ty": 0.00476, "x_rz": 0.00753,
+            "topology": { "type": "l-shape",
+                          "intersect": 0.5446, "x_ty": 0.00476, "x_rz": 0.00753,
                           "z_rx": -0.00431, "blend_width": 0.05 },
             "framing": { "axis_offset": 0.2398, "tilt": 0.0, "roll": 0.0 }
         }"#
@@ -656,7 +839,7 @@ mod tests {
         assert_eq!(cal.lenses[0].width, 3840);
         assert_eq!(cal.lenses[0].distortion.len(), 4);
         assert!((cal.framing.axis_offset - 0.2398).abs() < 1e-4);
-        assert!((cal.topology.intersect - 0.5446).abs() < 1e-4);
+        assert!((cal.topology.l_shape().unwrap().intersect - 0.5446).abs() < 1e-4);
         assert!(cal.field_roi.is_none());
         cal.validate().unwrap();
     }
@@ -668,7 +851,7 @@ mod tests {
         // default-valued field survives even if serialization drops it).
         let mut cal = valid_cal();
         cal.lenses[0].correction = 0.0;
-        cal.topology.blend_width = 0.123;
+        cal.topology.l_shape_mut().unwrap().blend_width = 0.123;
         cal.framing.tilt = 0.3;
         cal.framing.roll = -0.12;
         cal.sync_offset = 67;
@@ -677,8 +860,13 @@ mod tests {
         let back: Calibration = serde_json::from_str(&json).unwrap();
         assert_eq!(back.lenses.len(), cal.lenses.len());
         assert!((back.lenses[0].correction - 0.0).abs() < 1e-6);
-        assert!((back.topology.blend_width - 0.123).abs() < 1e-6);
-        assert!((back.topology.intersect - cal.topology.intersect).abs() < 1e-9);
+        assert!((back.topology.l_shape().unwrap().blend_width - 0.123).abs() < 1e-6);
+        assert!(
+            (back.topology.l_shape().unwrap().intersect
+                - cal.topology.l_shape().unwrap().intersect)
+                .abs()
+                < 1e-9
+        );
         assert!((back.framing.axis_offset - cal.framing.axis_offset).abs() < 1e-9);
         assert!((back.framing.tilt - 0.3).abs() < 1e-9);
         assert!((back.framing.roll + 0.12).abs() < 1e-9);
@@ -689,14 +877,14 @@ mod tests {
     fn parse_calibration_with_field_roi() {
         let mut cal: Calibration = serde_json::from_str(sample_json()).unwrap();
         cal.field_roi = Some(FieldRoi {
-            left: vec![[0.49, 0.90], [0.33, 0.73], [0.42, 0.58]],
-            right: vec![[0.63, 0.85], [0.78, 0.68], [0.55, 0.60]],
+            points: vec![[-0.49, -0.10], [0.33, -0.08], [0.42, 0.18]],
         });
         let json = cal.to_json_pretty();
         let back: Calibration = serde_json::from_str(&json).unwrap();
         let roi = back.field_roi.as_ref().unwrap();
-        assert_eq!(roi.left.len(), 3);
-        assert!((roi.right[1][1] - 0.68).abs() < 1e-6);
+        assert_eq!(roi.points.len(), 3);
+        assert!((roi.points[0][0] - (-0.49)).abs() < 1e-6);
+        assert!((roi.points[2][1] - 0.18).abs() < 1e-6);
     }
 
     fn valid_cal() -> Calibration {
@@ -713,7 +901,7 @@ mod tests {
         Calibration {
             schema_version: SCHEMA_VERSION,
             lenses: vec![lens(), lens()],
-            topology: Topology {
+            topology: Topology::LShape(LShapeTopology {
                 intersect: 0.5,
                 x_ty: 0.0,
                 x_rz: 0.0,
@@ -721,7 +909,7 @@ mod tests {
                 x_rx: 0.0,
                 z_rz: 0.0,
                 blend_width: 0.05,
-            },
+            }),
             framing: Framing {
                 axis_offset: 0.25,
                 tilt: 0.0,
@@ -735,6 +923,79 @@ mod tests {
     #[test]
     fn valid_calibration_passes() {
         valid_cal().validate().unwrap();
+    }
+
+    #[test]
+    fn untagged_topology_document_is_rejected() {
+        // The `type` tag is mandatory: a topology object without it
+        // must fail to parse rather than silently default to L-shape.
+        let mut v: serde_json::Value = serde_json::from_str(&valid_cal().to_json_pretty()).unwrap();
+        let topo = v["topology"].as_object_mut().unwrap();
+        assert_eq!(topo.remove("type").unwrap(), "l-shape");
+        assert!(serde_json::from_value::<Calibration>(v).is_err());
+    }
+
+    #[test]
+    fn tagged_cylinder_document_round_trips() {
+        let cal = Calibration::new(
+            vec![Lens::flat(3840, 1080)],
+            CylinderTopology::default(),
+            Framing {
+                axis_offset: 0.0,
+                tilt: 0.0,
+                roll: 0.0,
+            },
+        );
+        cal.validate().unwrap();
+        let json = cal.to_json_pretty();
+        assert!(
+            json.contains("\"type\": \"cylinder\""),
+            "tagged serialization: {json}"
+        );
+        let back: Calibration = serde_json::from_str(&json).unwrap();
+        let t = back.topology.cylinder().expect("cylinder round-trip");
+        assert!((t.focal_length - 2400.0).abs() < 1e-9);
+        assert!((t.sweep_deg - 180.0).abs() < 1e-9);
+        back.validate().unwrap();
+    }
+
+    #[test]
+    fn cylinder_lens_count_is_enforced() {
+        let mut cal = valid_cal();
+        cal.topology = Topology::Cylinder(CylinderTopology::default());
+        assert!(
+            matches!(
+                cal.validate(),
+                Err(CalibrationError::LensCountMismatch {
+                    expected: 1,
+                    found: 2,
+                    ..
+                })
+            ),
+            "two lenses on a mono topology must be rejected"
+        );
+    }
+
+    #[test]
+    fn cylinder_parameters_are_validated() {
+        let bad = |f: fn(&mut CylinderTopology)| {
+            let mut t = CylinderTopology::default();
+            f(&mut t);
+            let cal = Calibration::new(
+                vec![Lens::flat(3840, 1080)],
+                t,
+                Framing {
+                    axis_offset: 0.0,
+                    tilt: 0.0,
+                    roll: 0.0,
+                },
+            );
+            cal.validate()
+        };
+        assert!(bad(|t| t.focal_length = 0.0).is_err());
+        assert!(bad(|t| t.sweep_deg = 361.0).is_err());
+        assert!(bad(|t| t.sweep_deg = 0.0).is_err());
+        assert!(bad(|t| t.video_height = Some(f64::NAN)).is_err());
     }
 
     #[test]
@@ -790,7 +1051,7 @@ mod tests {
     #[test]
     fn rejects_intersect_out_of_range() {
         let mut c = valid_cal();
-        c.topology.intersect = 1.5;
+        c.topology.l_shape_mut().unwrap().intersect = 1.5;
         assert!(matches!(
             c.validate(),
             Err(CalibrationError::IntersectOutOfRange { .. })
@@ -810,7 +1071,7 @@ mod tests {
         c.lenses.pop();
         assert!(matches!(
             c.validate(),
-            Err(CalibrationError::ExpectedTwoLenses { found: 1 })
+            Err(CalibrationError::LensCountMismatch { found: 1, .. })
         ));
     }
 
@@ -821,7 +1082,7 @@ mod tests {
         c.lenses.push(extra);
         assert!(matches!(
             c.validate(),
-            Err(CalibrationError::ExpectedTwoLenses { found: 3 })
+            Err(CalibrationError::LensCountMismatch { found: 3, .. })
         ));
     }
 
@@ -842,7 +1103,7 @@ mod tests {
         // A hand-migrated file keeping old camelCase keys must not load
         // with the seam alignment silently zeroed.
         let mut cal = valid_cal();
-        cal.topology.x_ty = 0.0048;
+        cal.topology.l_shape_mut().unwrap().x_ty = 0.0048;
         let mut v: serde_json::Value = serde_json::from_str(&cal.to_json_pretty()).unwrap();
         let topo = v["topology"].as_object_mut().unwrap();
         topo.remove("x_ty");

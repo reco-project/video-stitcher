@@ -58,8 +58,7 @@ fn check_plane(plane: &[u8], expected: usize) -> Result<(), StitchError> {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn stitch_rgba(
     projection: &dyn Projection,
-    left: &Nv12Planes,
-    right: &Nv12Planes,
+    planes: &[Nv12Planes<'_>],
     cam: (u32, u32),
     calib: &Calibration,
     config: &ViewportConfig,
@@ -69,19 +68,18 @@ pub(crate) fn stitch_rgba(
 ) -> Result<Vec<u8>, StitchError> {
     let (cw, ch) = cam;
     check_source_dims(cw, ch)?;
+    check_camera_count(projection, planes.len())?;
     let (w, h) = (cw as usize, ch as usize);
-    check_plane(left.y, w * h)?;
-    check_plane(left.uv, w * (h / 2))?;
-    check_plane(right.y, w * h)?;
-    check_plane(right.uv, w * (h / 2))?;
+    for p in planes {
+        check_plane(p.y, w * h)?;
+        check_plane(p.uv, w * (h / 2))?;
+    }
+    let samplers: Vec<_> = planes
+        .iter()
+        .map(|p| move |u, v| sample_nv12(p, cw, ch, u, v, full_range))
+        .collect();
     Ok(stitch_with(
-        projection,
-        calib,
-        config,
-        yaw,
-        pitch,
-        |u, v| sample_nv12(left, cw, ch, u, v, full_range),
-        |u, v| sample_nv12(right, cw, ch, u, v, full_range),
+        projection, calib, config, yaw, pitch, &samplers,
     ))
 }
 
@@ -93,8 +91,7 @@ pub(crate) fn stitch_rgba(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn stitch_rgba_yuv420p(
     projection: &dyn Projection,
-    left: &YuvPlanes,
-    right: &YuvPlanes,
+    planes: &[YuvPlanes<'_>],
     cam: (u32, u32),
     calib: &Calibration,
     config: &ViewportConfig,
@@ -104,43 +101,56 @@ pub(crate) fn stitch_rgba_yuv420p(
 ) -> Result<Vec<u8>, StitchError> {
     let (cw, ch) = cam;
     check_source_dims(cw, ch)?;
+    check_camera_count(projection, planes.len())?;
     let (w, h) = (cw as usize, ch as usize);
     let chroma = (w / 2) * (h / 2);
-    check_plane(left.y, w * h)?;
-    check_plane(left.u, chroma)?;
-    check_plane(left.v, chroma)?;
-    check_plane(right.y, w * h)?;
-    check_plane(right.u, chroma)?;
-    check_plane(right.v, chroma)?;
+    for p in planes {
+        check_plane(p.y, w * h)?;
+        check_plane(p.u, chroma)?;
+        check_plane(p.v, chroma)?;
+    }
+    let samplers: Vec<_> = planes
+        .iter()
+        .map(|p| move |u, v| sample_yuv420p(p, cw, ch, u, v, full_range))
+        .collect();
     Ok(stitch_with(
-        projection,
-        calib,
-        config,
-        yaw,
-        pitch,
-        |u, v| sample_yuv420p(left, cw, ch, u, v, full_range),
-        |u, v| sample_yuv420p(right, cw, ch, u, v, full_range),
+        projection, calib, config, yaw, pitch, &samplers,
     ))
+}
+
+/// The number of input frames must match what the projection consumes;
+/// a mismatch would silently sample the wrong camera.
+fn check_camera_count(projection: &dyn Projection, planes: usize) -> Result<(), StitchError> {
+    if planes != usize::from(projection.camera_count()) {
+        return Err(StitchError::InvalidConfig(format!(
+            "projection '{}' consumes {} camera(s) but {planes} frame(s) were supplied",
+            projection.name(),
+            projection.camera_count(),
+        )));
+    }
+    Ok(())
 }
 
 /// Format-agnostic gather and composite driven by the projection.
 ///
 /// The surface list comes from [`Projection::surface_maps`] - this is the
-/// L1 dispatch made real. `sample_left` / `sample_right` map a normalised
-/// camera UV to sRGB-domain RGB for their respective source frame; the
-/// loop itself knows nothing about the pixel format.
+/// L1 dispatch made real. `samplers[i]` maps a normalised camera UV to
+/// sRGB-domain RGB for source frame `i`; the loop itself knows nothing
+/// about the pixel format.
 fn stitch_with(
     projection: &dyn Projection,
     calib: &Calibration,
     config: &ViewportConfig,
     yaw: f32,
     pitch: f32,
-    sample_left: impl Fn(f64, f64) -> [f64; 3],
-    sample_right: impl Fn(f64, f64) -> [f64; 3],
+    samplers: &[impl Fn(f64, f64) -> [f64; 3]],
 ) -> Vec<u8> {
     let surfaces = projection.surface_maps(calib, config, yaw, pitch);
-    let samplers: [&dyn Fn(f64, f64) -> [f64; 3]; 2] = [&sample_left, &sample_right];
-    composite_rgba(&surfaces, &samplers, config.width, config.height)
+    let sampler_refs: Vec<&dyn Fn(f64, f64) -> [f64; 3]> = samplers
+        .iter()
+        .map(|s| s as &dyn Fn(f64, f64) -> [f64; 3])
+        .collect();
+    composite_rgba(&surfaces, &sampler_refs, config.width, config.height)
 }
 
 /// Composite an ordered surface list into an opaque RGBA buffer.

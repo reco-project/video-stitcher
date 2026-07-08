@@ -20,13 +20,13 @@ jobs:
     name: Windows CLI
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
       - name: Cache FFmpeg
         id: cache-ffmpeg
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: C:\ffmpeg
           key: ffmpeg-n7.1.4-win64-gpl-shared
@@ -79,13 +79,13 @@ jobs:
     name: Windows GUI
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
       - name: Cache FFmpeg
         id: cache-ffmpeg
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: C:\ffmpeg
           key: ffmpeg-n7.1.4-win64-gpl-shared

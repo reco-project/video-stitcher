@@ -182,7 +182,20 @@ impl super::StitchCore {
     /// `PosePresented` trace and the FOV write-back.
     #[cfg_attr(not(feature = "gpu"), allow(dead_code))] // session (gpu-gated) drives this
     pub(crate) fn presented_clamped_pose(&mut self, index: u64) -> ViewportPosition {
-        let pos = self.safe_clamp(self.previous_panner_pose);
+        self.presented_clamped_pose_from(index, self.previous_panner_pose)
+    }
+
+    /// Same as [`Self::presented_clamped_pose`], but starts from a caller-supplied
+    /// raw world-space pose. The session uses this after applying optional
+    /// pre-clamp stabilization while keeping clamp/orient/FOV/event emission
+    /// centralized here.
+    #[cfg_attr(not(feature = "gpu"), allow(dead_code))] // session (gpu-gated) drives this
+    pub(crate) fn presented_clamped_pose_from(
+        &mut self,
+        index: u64,
+        raw: ViewportPosition,
+    ) -> ViewportPosition {
+        let pos = self.safe_clamp(raw);
         if let Some(sink) = self.event_sink.as_deref_mut() {
             sink.emit(
                 crate::detect::pipeline_event::PipelineEvent::PosePresented {

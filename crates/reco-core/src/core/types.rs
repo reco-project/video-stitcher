@@ -85,8 +85,7 @@ pub struct ReplayFrame {
     pub pose: ViewportPosition,
 }
 
-/// Recorder hook for the push-API replay backend (FRICTION A18 /
-/// plan M6.5 item 3 on the push side).
+/// Recorder hook for the push-API replay backend.
 ///
 /// reco-core doesn't know about ffmpeg or the stacked-video file
 /// format - this trait is the abstraction boundary so a concrete
@@ -130,7 +129,7 @@ pub trait StackedReplayRecorder: Send {
     fn finish(&mut self) {}
 }
 
-/// Recorder hook for the GPU-pack replay path (M7 pivot item 1).
+/// Recorder hook for the GPU-pack replay path.
 ///
 /// The GPU-pack path is chosen by
 /// [`super::StitchCore::enable_gpu_stacked_replay`] when the source frames

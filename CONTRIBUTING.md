@@ -38,10 +38,12 @@ Write clear commit messages. Use conventional prefixes:
 
 ### Pull requests
 
-- One PR per feature/fix
+- One PR per feature/fix, targeting the `dev` branch
 - PRs must pass CI (fmt, clippy, test, doc)
-- Squash merge to main
+- Squash merge to `dev`
 - Reference the issue number: `Closes #123`
+
+`main` is the stable branch: it only advances by merging `dev` at release milestones, and releases are tagged from it.
 
 ## Architecture
 

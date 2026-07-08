@@ -16,5 +16,10 @@ pub mod dmabuf;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod metal;
 #[cfg(target_os = "linux")]
+pub mod shared_textures;
+#[cfg(target_os = "linux")]
 pub mod vulkan;
 pub mod zero_copy;
+
+#[cfg(target_os = "linux")]
+pub use shared_textures::SharedTextureSet;

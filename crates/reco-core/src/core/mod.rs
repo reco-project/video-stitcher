@@ -1,12 +1,10 @@
 //! `StitchCore` - push-first canonical entry point for the stitching engine.
 //!
-//! `StitchCore` is the M3 unification of what used to be two parallel
-//! session APIs: `StitchSession` (pull, batch-oriented) and the former
-//! `LiveStitchSession` (push, live-oriented, since deleted). Live sports
-//! production is the primary use case, so the canonical API is push-based:
-//! consumers call `StitchCore::submit_frame_yuv` / `submit_frame_bgra`
-//! whenever a new frame pair is ready, and the core owns the pipeline,
-//! readback, director, detection, coverage, and replay ring buffer.
+//! Live sports production is the primary use case, so the canonical
+//! API is push-based: consumers call `StitchCore::submit_frame_yuv` /
+//! `submit_frame_bgra` whenever a new frame pair is ready, and the
+//! core owns the render substrate, readback, detection, pose
+//! resolution, coverage, and the replay ring buffer.
 //!
 //! Batch file processing layers a thin pull-adapter on top
 //! ([`StitchSession`](crate::session::StitchSession)::run).
@@ -50,14 +48,10 @@ use crate::detect::panner::Panner;
 use crate::detect::tracker::Tracker;
 use crate::geometry::ViewportPosition;
 #[cfg(feature = "gpu")]
-use crate::gpu::GpuContext;
-#[cfg(feature = "gpu")]
 use crate::gpu::rgba_readback::RgbaReadback;
 #[cfg(feature = "gpu")]
 use crate::gpu::yuv_stack_packer::YuvStackPacker;
 use crate::projection::{CoverageBoundary, PanoramaExtent};
-#[cfg(feature = "gpu")]
-use crate::render::pipeline::StitchPipeline;
 use crate::stitch::{Executor, StitchExecutor};
 
 use self::replay_buffer::ReplayBuffer;
@@ -97,6 +91,10 @@ pub struct StitchCore {
     /// staging ring. [`RenderOutcome::Rgba`](self::types::RenderOutcome)
     /// borrows from it on the CPU arm; empty on GPU engines.
     pub(crate) cpu_frame: Vec<u8>,
+    /// One-shot guard for the mono-detection warning (detection is
+    /// L-shape-only until the mono mapping lands).
+    // TODO: remove once mono detection lands (Step 13 PR B).
+    mono_detection_warned: bool,
     pub(crate) output_width: u32,
     pub(crate) output_height: u32,
 
@@ -139,12 +137,6 @@ pub struct StitchCore {
 
     pub(crate) replay: Option<ReplayBuffer>,
 
-    /// NV12 converter for the preview-mode recording tap
-    /// ([`Self::render_and_readback_nv12`]); lazy so pure display
-    /// consumers never pay for the staging ring.
-    #[cfg(feature = "gpu")]
-    pub(crate) preview_nv12: Option<crate::gpu::nv12_converter::Nv12Converter>,
-
     /// Optional stacked-video replay recorder attached via
     /// [`Self::set_stacked_recorder`]. Fires on every successful
     /// YUV submit (not BGRA - see [`StackedReplayRecorder`] docs).
@@ -170,11 +162,11 @@ pub struct StitchCore {
     pub(crate) stacked_gpu_recorder: Option<Box<dyn StackedReplayGpuRecorder>>,
 
     /// Whether `resolve_current_pose` clamps output through the
-    /// coverage boundary (FRICTION A13 - "constrained look"). `true`
-    /// by default so the viewport never reveals black panorama
-    /// edges; toggle off when the user wants to explore the raw
-    /// panorama space (e.g. to find the edge of coverage during
-    /// debugging or a cinematographic effect).
+    /// coverage boundary ("constrained look"). `true` by default so
+    /// the viewport never reveals black panorama edges; toggle off
+    /// when the user wants to explore the raw panorama space (e.g. to
+    /// find the edge of coverage during debugging or a cinematographic
+    /// effect).
     ///
     /// The public [`Self::safe_clamp`] method remains available
     /// regardless of this flag - it's the primitive consumers use
@@ -227,6 +219,7 @@ impl StitchCore {
             #[cfg(feature = "gpu")]
             readback,
             cpu_frame: Vec::new(),
+            mono_detection_warned: false,
             output_width,
             output_height,
             coverage: Some(coverage),
@@ -239,8 +232,6 @@ impl StitchCore {
             detection_interval: 1,
             last_detections: Vec::new(),
             replay: None,
-            #[cfg(feature = "gpu")]
-            preview_nv12: None,
             stacked_recorder: None,
             #[cfg(feature = "gpu")]
             stacked_packer: None,
@@ -443,6 +434,11 @@ impl StitchCore {
         self.executor.calibration()
     }
 
+    /// The derived plane-placement geometry for the active calibration.
+    pub fn scene(&self) -> &crate::render::scene::SceneGeometry {
+        self.executor.scene()
+    }
+
     /// Set the vertical field of view in degrees.
     pub fn set_fov(&mut self, fov_degrees: f32) {
         self.executor.set_fov(fov_degrees);
@@ -453,13 +449,18 @@ impl StitchCore {
         self.executor.fov()
     }
 
+    /// The output viewport configuration.
+    pub fn viewport(&self) -> &crate::render::viewport::ViewportConfig {
+        self.executor.viewport()
+    }
+
     /// Resize the output viewport. Returns the accepted `(width, height)`,
     /// or `None` when the request was rejected (zero dimension).
     ///
     /// A resize is a stream discontinuity for the delivery machinery:
     /// the GPU streaming readback ring is rebuilt at the new size
-    /// (frames in flight in the old ring are dropped) and the lazy NV12
-    /// preview converter re-creates itself on next use.
+    /// (frames in flight in the old ring are dropped) and the executor's
+    /// NV12 delivery re-creates itself on next use (it is keyed by dims).
     pub fn resize(&mut self, width: u32, height: u32) -> Option<(u32, u32)> {
         let accepted = self.executor.resize(width, height);
         if accepted.is_some() {
@@ -473,7 +474,6 @@ impl StitchCore {
                     RgbaReadback::new(gpu.pipeline.gpu(), width, height)
                         .expect("resize validated non-zero dimensions"),
                 );
-                self.preview_nv12 = None;
                 log::info!(
                     "StitchCore: delivery machinery rebuilt for the {width}x{height} resize"
                 );
@@ -485,6 +485,19 @@ impl StitchCore {
     /// Set the seam blend width (per-frame uniform; coverage unaffected).
     pub fn set_blend_width(&mut self, width: f32) {
         self.executor.set_blend_width(width);
+    }
+
+    /// Whether source YUV uses full-range (0-255) quantization rather
+    /// than limited range (16-235).
+    pub fn set_full_range(&mut self, full_range: bool) {
+        self.executor.set_full_range(full_range);
+    }
+
+    /// Flip each camera's source 180 degrees at sample time (for
+    /// rotated mounts). GPU sampling only; CPU sources reverse
+    /// buffers at decode.
+    pub fn set_flip_180(&mut self, left: bool, right: bool) {
+        self.executor.set_flip_180(left, right);
     }
 
     /// Set the lens-correction strength on every lens (`0` = pinhole,
@@ -573,7 +586,7 @@ impl StitchCore {
     }
 
     /// Whether the render loop's pose resolution clamps through the
-    /// coverage boundary (FRICTION A13). `true` by default. Consumers
+    /// coverage boundary. `true` by default. Consumers
     /// expose this as a UI toggle ("Constrained look") so users can
     /// choose between "never show black edges" (on) and "unrestricted
     /// panning" (off).
@@ -687,37 +700,18 @@ impl StitchCore {
         self.frame_count
     }
 
-    /// Shared access to the underlying pipeline.
-    ///
-    /// GPU-executor reach-through (dies with the pipeline demotion in
-    /// 9B). Panics when the engine runs the CPU executor - CPU engines
-    /// have no pipeline; use the engine's own setters and submit paths.
+    /// The GPU context, for consumers that create auxiliary resources
+    /// on the engine's device (preview surfaces, demosaic kernels,
+    /// VRAM queries). Panics when the engine runs the CPU executor;
+    /// use [`DetectionTarget::gpu`](crate::detect::DetectionTarget::gpu)
+    /// for executor-agnostic access.
     #[cfg(feature = "gpu")]
-    pub fn pipeline(&self) -> &StitchPipeline {
-        &self
-            .executor
+    pub fn gpu(&self) -> &crate::gpu::GpuContext {
+        self.executor
             .gpu()
-            .expect("pipeline() requires the GPU executor")
+            .expect("gpu() requires the GPU executor")
             .pipeline
-    }
-
-    /// Mutable access to the pipeline for advanced callers that need
-    /// to tweak viewport / FOV / zero-copy bind groups directly.
-    /// See [`Self::pipeline`] for the CPU-executor caveat.
-    #[cfg(feature = "gpu")]
-    pub fn pipeline_mut(&mut self) -> &mut StitchPipeline {
-        &mut self
-            .executor
-            .gpu_mut()
-            .expect("pipeline_mut() requires the GPU executor")
-            .pipeline
-    }
-
-    /// The GPU context owning every resource. See [`Self::pipeline`]
-    /// for the CPU-executor caveat.
-    #[cfg(feature = "gpu")]
-    pub fn gpu(&self) -> &GpuContext {
-        self.pipeline().gpu()
+            .gpu()
     }
 }
 
@@ -739,6 +733,12 @@ impl crate::detect::DetectionTarget for StitchCore {
     }
     fn source_info(&self) -> (u32, u32) {
         self.source_info()
+    }
+    fn calibration(&self) -> &crate::calibration::Calibration {
+        self.calibration()
+    }
+    fn scene(&self) -> &crate::render::scene::SceneGeometry {
+        self.scene()
     }
     #[cfg(feature = "gpu")]
     fn gpu(&self) -> Option<&crate::gpu::GpuContext> {
@@ -871,10 +871,10 @@ mod tests {
         );
     }
 
-    /// The keystone-B contract: the SAME engine constructs over the
-    /// CPU executor - pure-logic surfaces (coverage, clamp, live
-    /// setters, introspection) work identically, and the GPU-only
-    /// streaming paths return the typed error instead of panicking.
+    /// The SAME engine constructs over the CPU executor - pure-logic
+    /// surfaces (coverage, clamp, live setters, introspection) work
+    /// identically, and the GPU-only streaming paths return the typed
+    /// error instead of panicking.
     #[test]
     fn engine_over_cpu_executor_pure_logic_works() {
         use crate::core::StitchCore;
@@ -917,7 +917,7 @@ mod tests {
         );
         core.set_fov(50.0);
         core.set_blend_width(0.1);
-        assert!((core.calibration().topology.blend_width - 0.1).abs() < 1e-6);
+        assert!((core.calibration().topology.blend_width() - 0.1).abs() < 1e-6);
         core.set_rig_tilt(0.2);
         assert!((core.calibration().framing.tilt - 0.2).abs() < 1e-6);
         assert_eq!(core.resize(48, 26), Some((48, 26)));
@@ -1053,9 +1053,9 @@ mod tests {
 
     /// Resize is a delivery-machinery discontinuity: the streaming
     /// readback ring must follow the new size, so a submit after a
-    /// resize yields frames at the resized dimensions (the review of
-    /// the executor spine caught the ring staying at construction
-    /// size, which fails wgpu copy validation on the next submit).
+    /// resize yields frames at the resized dimensions. A ring left at
+    /// the construction size fails wgpu copy validation on the next
+    /// submit.
     #[test]
     #[cfg(feature = "gpu")]
     fn resize_then_submit_yields_resized_frames() {

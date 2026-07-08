@@ -65,6 +65,8 @@ pub struct AutocamUiConfig {
     pub fov_tight: f32,
     pub fov_wide: f32,
     pub fov_default: f32,
+    /// Margin added around detected players in frame-all mode, degrees.
+    pub frame_all_margin_deg: f32,
 }
 
 /// Telemetry sink that forwards snapshots to the Slint UI thread.
@@ -131,6 +133,10 @@ pub fn run_export(
 
     #[cfg(feature = "autocam")]
     let field_roi = cal.field_roi.clone();
+    let enable_roi_stabilization = cal
+        .field_roi
+        .as_ref()
+        .is_some_and(|roi| roi.points.len() >= 2);
 
     let post_status = |text: String| {
         let weak = app_weak.clone();
@@ -144,7 +150,8 @@ pub fn run_export(
     post_status("Probing source...".into());
 
     use reco_core::source::FrameSource;
-    if let Ok(source) = reco_io::adapters::FfmpegFileSource::open_from_inputs(&left, &right, 0)
+    if let Ok(source) =
+        reco_io::adapters::FfmpegFileSource::open_from_inputs(&left, &right, 0, false)
         && let Some(full_total) = source.total_frames()
     {
         let fps = reco_io::adapters::FfmpegFileSource::frame_rate(left.first_path())
@@ -249,6 +256,11 @@ pub fn run_export(
         job = job.events(ep);
     }
 
+    if enable_roi_stabilization {
+        log::info!("Export: ROI stabilization enabled");
+        job = job.roi_stabilization(true);
+    }
+
     let finalizing_weak = app_weak.clone();
     job = job.on_finalizing(move || {
         let weak = finalizing_weak;
@@ -308,6 +320,7 @@ pub fn run_export(
                 fov_tight: ac.fov_tight,
                 fov_wide: ac.fov_wide,
                 fov_default: ac.fov_default,
+                frame_all_margin_deg: ac.frame_all_margin_deg,
                 // Preset is the base; the visible knobs above overlay it
                 // (they mirror the preset until the user tweaks them).
                 ..reco_autocam::panners::FieldPannerConfig::from_preset_name(&ac.preset)

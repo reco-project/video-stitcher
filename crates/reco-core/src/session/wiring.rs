@@ -5,37 +5,35 @@
 //! or delegates to the underlying [`StitchCore`](crate::core::StitchCore).
 
 use super::StitchSession;
-use crate::async_encode::AsyncEncodeThread;
-use crate::encoder::Encoder;
-use crate::session::types::ErrorPolicy;
+use crate::session::sinks::{AttachedSink, SinkOptions, validate_sink_input};
+use crate::session::types::{ErrorPolicy, SessionError};
+use crate::sink::OutputSink;
 
 impl StitchSession {
-    /// Attach an encoder to this session.
+    /// Attach an output sink to this session.
     ///
-    /// The encoder is moved to a background thread for async encoding.
-    /// `buffer_count` controls how many frames can be in-flight between
-    /// the render thread and the encode thread (typically 2).
+    /// Every rendered frame fans out to all attached sinks in attach
+    /// order. [`SinkOptions`] decides the delivery mode (dedicated
+    /// thread vs inline on the render loop) and whether a sink error
+    /// aborts the session or just detaches the sink.
     ///
-    /// Must be called before [`Self::submit_render_output`], [`Self::process_frame`],
-    /// or [`Self::run`].
-    pub fn set_encoder(&mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) {
-        let width = self.nv12_converter.width();
-        let height = self.nv12_converter.height();
-        self.encoder = Some(AsyncEncodeThread::new(encoder, width, height, buffer_count));
-    }
-
-    /// Add an additional encoder for multi-output (e.g. record + stream).
+    /// Must be called before [`Self::submit_render_output`],
+    /// [`Self::process_frame`], or [`Self::run`].
     ///
-    /// The NV12 data from each rendered frame is fanned out to all attached
-    /// encoders. Each encoder runs on its own background thread.
+    /// # Errors
     ///
-    /// Use [`set_encoder`](Self::set_encoder) for the primary encoder,
-    /// then `add_encoder` for additional outputs.
-    pub fn add_encoder(&mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) {
-        let width = self.nv12_converter.width();
-        let height = self.nv12_converter.height();
-        self.extra_encoders
-            .push(AsyncEncodeThread::new(encoder, width, height, buffer_count));
+    /// Rejects sinks whose [`wants`](OutputSink::wants) the session
+    /// cannot deliver (it produces NV12 CPU bytes only).
+    pub fn add_sink(
+        &mut self,
+        sink: Box<dyn OutputSink>,
+        options: SinkOptions,
+    ) -> Result<(), SessionError> {
+        validate_sink_input(sink.wants(), sink.name()).map_err(SessionError::Config)?;
+        let (width, height) = self.nv12_delivery_dims();
+        self.sinks
+            .push(AttachedSink::new(sink, options, width, height));
+        Ok(())
     }
 
     /// Attach a [`UnifiedDetector`](crate::detect::detector::UnifiedDetector)
@@ -106,6 +104,45 @@ impl StitchSession {
         self.core.set_panner(panner);
     }
 
+    /// Enable ROI-anchor viewport stabilization.
+    ///
+    /// The stabilizer uses selected field ROI points as fixed panorama
+    /// anchors and applies short-frame yaw/pitch corrections before
+    /// coverage clamping. This smooths jitter in the virtual-camera pose
+    /// without changing detector filtering or the panner itself.
+    pub fn set_roi_stabilization(
+        &mut self,
+        config: crate::session::stabilization::RoiStabilizationConfig,
+    ) -> Result<(), crate::session::types::SessionError> {
+        let point_count = config.roi.points.len();
+        let roi = crate::session::stabilization::RoiStabilizer::new(config)
+            .map_err(crate::session::types::SessionError::Config)?;
+        let stabilizer = self
+            .stabilizer
+            .get_or_insert_with(crate::session::stabilization::ViewportStabilizer::default);
+        stabilizer.set_roi(roi);
+        log::info!("StitchSession: ROI stabilization attached ({point_count} anchors)");
+        Ok(())
+    }
+
+    /// Attach a frame-indexed stabilization correction track.
+    pub fn set_stabilization_track(
+        &mut self,
+        track: crate::session::stabilization::StabilizationTrack,
+    ) {
+        let frame_count = track.len();
+        let stabilizer = self
+            .stabilizer
+            .get_or_insert_with(crate::session::stabilization::ViewportStabilizer::default);
+        stabilizer.set_track(track);
+        log::info!("StitchSession: stabilization track attached ({frame_count} frames)");
+    }
+
+    /// Disable all viewport stabilization.
+    pub fn clear_stabilization(&mut self) {
+        self.stabilizer = None;
+    }
+
     /// Set the lookahead buffer depth in frames.
     pub fn set_lookahead(&mut self, frames: usize) {
         self.lookahead_frames = frames;
@@ -118,8 +155,7 @@ impl StitchSession {
     /// GStreamer bridge) that wire this get the same replay-recording
     /// ergonomics the pull-side `StitchJob::with_replay_recording`
     /// already provides: one method call, the session handles the
-    /// per-frame tap + encoder lifecycle internally. Closes FRICTION
-    /// A18 on the reco-obs side.
+    /// per-frame tap + encoder lifecycle internally.
     ///
     /// # Example
     ///
@@ -155,7 +191,7 @@ impl StitchSession {
         self.core.flush_stacked_recorder();
     }
 
-    /// Enable the GPU-pack replay path (M7 pivot item 1).
+    /// Enable the GPU-pack replay path.
     ///
     /// Forwards to [`crate::core::StitchCore::enable_gpu_stacked_replay`].
     /// After enabling, attach a
@@ -218,20 +254,5 @@ impl StitchSession {
     /// boundary in one call.
     pub fn update_calibration(&mut self, calibration: crate::calibration::Calibration) {
         self.core.update_calibration(calibration);
-    }
-
-    /// Set an NV12 tap callback invoked after each frame's NV12 readback.
-    /// The callback receives `(nv12_data, width, height)`.
-    ///
-    /// Used by reco-cli's snapshot writer for periodic JPEG output. The
-    /// callback should return quickly (e.g. `try_send` on a channel) to
-    /// avoid blocking the frame loop.
-    pub fn set_nv12_tap(&mut self, tap: super::Nv12TapFn) {
-        self.nv12_tap = Some(tap);
-    }
-
-    /// Remove the NV12 tap callback.
-    pub fn clear_nv12_tap(&mut self) {
-        self.nv12_tap = None;
     }
 }

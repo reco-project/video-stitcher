@@ -20,7 +20,7 @@
 //!   Camera at [d, 0, d] where d = framing.axis_offset
 //! ```
 
-use crate::calibration::{Framing, Topology};
+use crate::calibration::{Calibration, Framing, LShapeTopology, Topology};
 use nalgebra::{Matrix4, Translation3, UnitQuaternion};
 
 /// Computed 3D positions and rotations for the two camera planes.
@@ -53,7 +53,7 @@ impl SceneGeometry {
     /// - Left plane: `position = [0, 0, (w/2)(1 - intersect)]`, `rotation = [z_rx, π/2, z_rz]`
     /// - Right plane: `position = [(w/2)(1 - intersect), x_ty, 0]`, `rotation = [x_rx, 0, x_rz]`
     /// - Virtual camera at `[axis_offset, 0, axis_offset]`.
-    pub fn new(topology: &Topology, framing: &Framing, aspect: f32) -> Self {
+    pub fn new(topology: &LShapeTopology, framing: &Framing, aspect: f32) -> Self {
         let plane_width: f32 = 1.0;
         let half_offset = (plane_width / 2.0) * (1.0 - topology.intersect as f32);
         let axis = framing.axis_offset as f32;
@@ -69,6 +69,37 @@ impl SceneGeometry {
             right_rotation: [topology.x_rx as f32, 0.0, topology.x_rz as f32],
             camera_position: [axis, 0.0, axis],
             plane_width,
+            plane_aspect: aspect,
+        }
+    }
+
+    /// Scene geometry for a calibration document: plane placement for
+    /// the L-shape, the inert identity for plane-less topologies
+    /// (their projections never sample it). `aspect` is the source
+    /// frame `width / height`.
+    pub fn for_calibration(calibration: &Calibration, aspect: f32) -> Self {
+        match &calibration.topology {
+            Topology::LShape(t) => Self::new(t, &calibration.framing, aspect),
+            Topology::Cylinder(_) => Self::mono_identity(aspect),
+        }
+    }
+
+    /// Placeholder scene for topologies without plane placement (the
+    /// mono cylinder): planes at the origin. Mono projections never
+    /// sample the planes - they override coverage and carry their own
+    /// geometry - but the camera position must yield a valid
+    /// [`VirtualCamera`](crate::geometry::VirtualCamera) basis
+    /// (`[0, 0, 1]` = the mono convention, forward `-Z`): the pose
+    /// orientation path builds the basis from it, and the origin
+    /// would normalize a zero vector into NaN poses.
+    pub fn mono_identity(aspect: f32) -> Self {
+        Self {
+            left_position: [0.0; 3],
+            left_rotation: [0.0; 3],
+            right_position: [0.0; 3],
+            right_rotation: [0.0; 3],
+            camera_position: crate::geometry::MONO_CAMERA_POSITION,
+            plane_width: 1.0,
             plane_aspect: aspect,
         }
     }
@@ -120,10 +151,10 @@ impl SceneGeometry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::calibration::{Framing, Topology};
+    use crate::calibration::{Framing, LShapeTopology};
 
-    fn topo(intersect: f64) -> Topology {
-        Topology {
+    fn topo(intersect: f64) -> LShapeTopology {
+        LShapeTopology {
             intersect,
             x_ty: 0.0,
             x_rz: 0.0,
@@ -156,7 +187,7 @@ mod tests {
 
     #[test]
     fn geometry_with_corrections() {
-        let topology = Topology {
+        let topology = LShapeTopology {
             intersect: 0.55,
             x_ty: 0.005,
             x_rz: 0.008,

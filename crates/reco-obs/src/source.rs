@@ -65,12 +65,12 @@ const PROP_RIGHT_SOURCE: &CStr = c"right_source";
 const PROP_INPUT_FORMAT: &CStr = c"input_format";
 const INPUT_FORMAT_I420: &CStr = c"i420";
 const INPUT_FORMAT_BGRA: &CStr = c"bgra";
-/// Opt-in replay recording (M6.5 item 3, FRICTION A18 close).
-/// When enabled alongside a non-empty [`PROP_REPLAY_PATH`], the
-/// plugin attaches a stacked-video recorder to the StitchCore so
-/// every submitted YUV frame pair is also written to disk as a
-/// vertically stacked Matroska file. Reader-while-writer is safe
-/// (see architecture/stacked-video-replay-2026-04-19 in the vault).
+/// Opt-in replay recording. When enabled alongside a non-empty
+/// [`PROP_REPLAY_PATH`], the plugin attaches a stacked-video
+/// recorder to the StitchCore so every submitted YUV frame pair is
+/// also written to disk as a vertically stacked Matroska file.
+/// Matroska clusters flush as they are written, so a reader can
+/// open the file while the recorder is still running.
 #[cfg(feature = "replay")]
 const PROP_REPLAY_ENABLED: &CStr = c"replay_enabled";
 #[cfg(feature = "replay")]
@@ -80,11 +80,10 @@ const PROP_REPLAY_PATH: &CStr = c"replay_path";
 /// - `"follow_obs"` (default): record only while OBS itself is
 ///   recording or streaming. Closest to the user's mental model
 ///   ("the OBS Record button controls everything the plugin
-///   writes") and the M6.5 A20 decision.
+///   writes").
 /// - `"always"`: record whenever the checkbox is ticked,
-///   independently of OBS state. The pre-A20 behavior, kept as a
-///   hidden-feel option for users who genuinely want replay
-///   without running an OBS recording.
+///   independently of OBS state, for users who genuinely want
+///   replay without running an OBS recording.
 #[cfg(feature = "replay")]
 const PROP_REPLAY_MODE: &CStr = c"replay_mode";
 #[cfg(feature = "replay")]
@@ -188,9 +187,9 @@ struct RecoSource {
     /// Created/destroyed on the OBS graphics thread.
     obs_texture: *mut ffi::gs_texture_t,
 
-    /// Replay-recording toggle state (M6.5 item 3). Mirrors the OBS
-    /// property; kept here so `try_init_pipeline` can re-attach a
-    /// recorder after a session rebuild (dim / format change).
+    /// Replay-recording toggle state. Mirrors the OBS property;
+    /// kept here so `try_init_pipeline` can re-attach a recorder
+    /// after a session rebuild (dim / format change).
     #[cfg(feature = "replay")]
     replay_enabled: bool,
     /// Output path for the stacked-video replay file. Empty string
@@ -301,9 +300,9 @@ impl RecoSource {
                 // Sanity-check the source's output_flags. We can only
                 // consume ASYNC video sources via obs_source_get_frame.
                 // Sync video sources (Browser Source, Screen Capture,
-                // Window Capture, Game Capture) need render-to-texture
-                // (tracked as FRICTION A9) - they'd silently produce no
-                // output if we didn't warn here.
+                // Window Capture, Game Capture) need render-to-texture,
+                // which this plugin does not implement - they'd
+                // silently produce no output if we didn't warn here.
                 let flags = ffi::obs_source_get_output_flags(ptr);
                 let has_video = (flags & ffi::OBS_SOURCE_VIDEO) != 0;
                 let is_async = (flags & ffi::OBS_SOURCE_ASYNC) != 0;
@@ -1560,10 +1559,9 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
             fov_degrees: None,
         });
 
-        // Replay recording toggle + path (M6.5 item 3). Recorder
-        // attachment itself happens in `try_init_pipeline` /
-        // `update_replay_recorder` — this block only captures the
-        // property state.
+        // Replay recording toggle + path. Recorder attachment itself
+        // happens in `try_init_pipeline` / `update_replay_recorder` —
+        // this block only captures the property state.
         #[cfg(feature = "replay")]
         {
             src.replay_enabled = ffi::obs_data_get_bool(settings, PROP_REPLAY_ENABLED.as_ptr());

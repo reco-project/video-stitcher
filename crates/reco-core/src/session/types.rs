@@ -6,12 +6,13 @@
 
 use crate::calibration::Calibration;
 use crate::core::types::StitchCoreError;
-use crate::encoder::{EncodeError, Encoder};
 use crate::gpu::nv12_converter::Nv12Error;
 use crate::gpu::{GpuContext, GpuError, OutputFormat};
 use crate::render::pipeline::PipelineError;
 use crate::render::renderer::InputFormat;
 use crate::render::viewport::ViewportConfig;
+use crate::session::sinks::SinkOptions;
+use crate::sink::{OutputSink, SinkError};
 use crate::source::SourceError;
 
 use thiserror::Error;
@@ -135,13 +136,17 @@ pub enum SessionError {
     #[error("core: {0}")]
     Core(#[from] StitchCoreError),
 
-    /// NV12 conversion error.
+    /// NV12 conversion error (GPU converter).
     #[error("NV12 converter: {0}")]
     Nv12(#[from] Nv12Error),
 
-    /// Encoder error.
-    #[error("encoder: {0}")]
-    Encode(#[from] EncodeError),
+    /// NV12 conversion error (CPU kernel).
+    #[error("CPU NV12 conversion: {0}")]
+    CpuNv12(#[from] crate::render::nv12_cpu::Nv12CpuError),
+
+    /// Output sink error.
+    #[error("sink: {0}")]
+    Sink(#[from] SinkError),
 
     /// Source error.
     #[error("source: {0}")]
@@ -161,7 +166,7 @@ pub enum SessionError {
     Config(String),
 }
 
-// Compile-time assertion (plan step 7): every error type reachable
+// Compile-time assertion: every error type reachable
 // from the public session API is `Clone + Send + Sync`, so consumers
 // that post results to worker-thread channels (reco-gui export
 // thread, reco-obs async init) carry the typed error across the
@@ -174,7 +179,8 @@ const _: fn() = || {
     assert_clone_send_sync::<PipelineError>();
     assert_clone_send_sync::<StitchCoreError>();
     assert_clone_send_sync::<Nv12Error>();
-    assert_clone_send_sync::<EncodeError>();
+    assert_clone_send_sync::<crate::render::nv12_cpu::Nv12CpuError>();
+    assert_clone_send_sync::<SinkError>();
     assert_clone_send_sync::<SourceError>();
     assert_clone_send_sync::<crate::detect::detector::DetectorError>();
 };
@@ -200,7 +206,7 @@ pub struct StitchSessionBuilder {
     pub(super) output_format: OutputFormat,
     pub(super) input_format: InputFormat,
     pub(super) gpu: Option<GpuContext>,
-    pub(super) encoder: Option<(Box<dyn Encoder + Send>, usize)>,
+    pub(super) sinks: Vec<(Box<dyn OutputSink>, SinkOptions)>,
     pub(super) detector: Option<Box<dyn crate::detect::detector::UnifiedDetector>>,
     pub(super) detection_interval: u64,
 }
@@ -251,9 +257,10 @@ impl StitchSessionBuilder {
         self
     }
 
-    /// Attach an encoder with the given double-buffer count.
-    pub fn encoder(mut self, encoder: Box<dyn Encoder + Send>, buffer_count: usize) -> Self {
-        self.encoder = Some((encoder, buffer_count));
+    /// Attach an output sink (see
+    /// [`StitchSession::add_sink`](super::StitchSession::add_sink)).
+    pub fn sink(mut self, sink: Box<dyn OutputSink>, options: SinkOptions) -> Self {
+        self.sinks.push((sink, options));
         self
     }
 
@@ -316,8 +323,8 @@ impl StitchSessionBuilder {
         let mut session = super::StitchSession::with_gpu(gpu, config)?;
         session.set_detection_interval(self.detection_interval);
 
-        if let Some((enc, buf_count)) = self.encoder {
-            session.set_encoder(enc, buf_count);
+        for (sink, options) in self.sinks {
+            session.add_sink(sink, options)?;
         }
         if let Some(det) = self.detector {
             session.set_detector(det);

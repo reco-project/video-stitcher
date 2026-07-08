@@ -18,11 +18,13 @@
 mod export;
 mod playback;
 mod preview;
+mod roi_overlay;
 mod settings;
 mod telemetry_client;
 mod toast;
 
 use std::cell::RefCell;
+use std::future::Future;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -33,12 +35,13 @@ use std::time::{Duration, Instant};
 use reco_calibrate::{LensProfileInfo, ProfileSource};
 use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_control::{ControlIntent, PoseIntent};
-use reco_core::calibration::Calibration;
-use reco_core::geometry::ViewportPosition;
+use reco_core::calibration::{Calibration, FieldRoi};
+use reco_core::geometry::{CameraId, ViewportPosition};
 use reco_core::wgpu;
 
 use crate::playback::{PlayState, Playback};
 use crate::preview::PreviewBridge;
+use crate::roi_overlay::RoiOverlayGeometry;
 use crate::toast::{Severity, ToastManager};
 
 /// wgpu handles captured from Slint's rendering notifier. Populated once
@@ -103,11 +106,31 @@ struct CalibrationOutput {
 }
 
 /// Result sent from the calibration background thread. The error is
-/// the typed [`reco_calibrate::video::CalibrateVideosError`] now that
-/// it is `Clone + Send + Sync` (plan step 7), so the UI thread can
-/// pattern-match specific failure modes (`Cancelled`, `NoFrames`,
-/// `Io(...)`, etc.) instead of parsing a stringified message.
+/// the typed [`reco_calibrate::video::CalibrateVideosError`] (which
+/// is `Clone + Send + Sync`), so the UI thread can pattern-match
+/// specific failure modes (`Cancelled`, `NoFrames`, `Io(...)`, etc.)
+/// instead of parsing a stringified message.
 type CalibrationResult = Result<CalibrationOutput, reco_calibrate::video::CalibrateVideosError>;
+
+trait FileDialogAction: Send {
+    fn apply(self: Box<Self>, state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>);
+}
+
+struct SelectedFileDialog<T, A> {
+    selection: T,
+    apply: A,
+}
+
+impl<T, A> FileDialogAction for SelectedFileDialog<T, A>
+where
+    T: Send + 'static,
+    A: FnOnce(T, &Rc<RefCell<AppState>>, &slint::Weak<RecoApp>) + Send + 'static,
+{
+    fn apply(self: Box<Self>, state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) {
+        let Self { selection, apply } = *self;
+        apply(selection, state, app_weak);
+    }
+}
 
 /// Headless dev/test preload hook. When `RECO_AUTOLOAD` is set the GUI loads
 /// the given left/right videos and calibration on startup (and optionally
@@ -204,6 +227,12 @@ struct AppState {
     recording_frames: u64,
     /// Receives calibration results from the background thread.
     cal_rx: Option<std::sync::mpsc::Receiver<CalibrationResult>>,
+    /// Receives native file dialog selections after the OS dialog
+    /// completes on a background waiter.
+    file_dialog_rx: Option<std::sync::mpsc::Receiver<Option<Box<dyn FileDialogAction>>>>,
+    /// Prevents stacking multiple native pickers while the app window
+    /// remains responsive.
+    file_dialog_open: bool,
     /// wgpu handles captured from Slint's rendering notifier. `None`
     /// until the window has completed its first rendering setup.
     shared_gpu: Option<SharedGpu>,
@@ -291,10 +320,13 @@ struct AppState {
     lens_preview_active: bool,
     /// Which camera to show in lens preview mode ("left" or "right").
     lens_preview_side: String,
-    /// Lens correction amount for the preview (0.0 = raw, 1.0 = full).
+    /// Lens correction amount for stitched/lens preview (0.0 = uncorrected, 1.0 = full).
     lens_correction_amount: f32,
-    /// Set by the ROI editor thread. Timer tick reloads calibration when true.
-    roi_reload_pending: Option<Arc<AtomicBool>>,
+    /// In-app ROI edit mode uses the stitched panorama preview as its canvas.
+    roi_editing: bool,
+    roi_drag_point: Option<usize>,
+    roi_restore_lens_preview_active: bool,
+    roi_restore_lens_preview_side: String,
     toasts: ToastManager,
     telemetry: Option<telemetry_client::TelemetryClient>,
 }
@@ -467,6 +499,8 @@ impl AppState {
             recording_path: None,
             recording_frames: 0,
             cal_rx: None,
+            file_dialog_rx: None,
+            file_dialog_open: false,
             shared_gpu: None,
             #[cfg(feature = "automation")]
             autoload: AutoloadSpec::from_env(),
@@ -518,7 +552,10 @@ impl AppState {
             lens_preview_active: false,
             lens_preview_side: "left".into(),
             lens_correction_amount: 1.0,
-            roi_reload_pending: None,
+            roi_editing: false,
+            roi_drag_point: None,
+            roi_restore_lens_preview_active: false,
+            roi_restore_lens_preview_side: "left".into(),
             toasts: ToastManager::default(),
             telemetry: None,
         }
@@ -579,12 +616,14 @@ impl AppState {
 
     /// Apply an edited Topology to the renderer. `preview_dirty`
     /// triggers a re-render on the next timer tick.
-    fn apply_layout(&mut self, layout: reco_core::calibration::Topology) {
+    fn apply_layout(&mut self, layout: reco_core::calibration::LShapeTopology) {
         if let Some(cal) = self.calibration.as_mut() {
-            cal.topology = layout.clone();
+            cal.topology = reco_core::calibration::Topology::LShape(layout.clone());
         }
         if let Some(bridge) = self.bridge.as_mut() {
-            bridge.engine_mut().update_topology(layout);
+            bridge
+                .engine_mut()
+                .update_topology(reco_core::calibration::Topology::LShape(layout));
             self.preview_dirty = true;
         }
         self.clamp_targets();
@@ -621,7 +660,9 @@ impl AppState {
     /// Restore Topology to the values loaded at init (or after auto-cal).
     fn reset_calibration(&mut self) {
         if let Some(base) = self.cal_baseline.clone() {
-            self.apply_layout(base.topology);
+            if let Some(t) = base.topology.l_shape() {
+                self.apply_layout(t.clone());
+            }
             self.apply_framing(base.framing);
         }
     }
@@ -737,13 +778,13 @@ impl AppState {
         // The UI thread sends NV12 data without blocking on FFmpeg.
         let (tx, rx) = std::sync::mpsc::sync_channel::<RecordingFrame>(4);
         let handle = std::thread::spawn(move || {
-            let mut encoder: Box<dyn reco_core::encoder::Encoder + Send> = Box::new(encoder);
+            let mut encoder: Box<dyn reco_core::sink::OutputSink> = Box::new(encoder);
             while let Ok(frame) = rx.recv() {
-                let _ = encoder.submit(reco_core::encoder::OutputFrame {
+                let _ = encoder.consume(reco_core::sink::OutputFrame {
                     data: &frame.data,
                     width: frame.width,
                     height: frame.height,
-                    format: reco_core::encoder::PixelFormat::Nv12,
+                    format: reco_core::sink::PixelFormat::Nv12,
                     pts_us: frame.pts_us,
                 });
             }
@@ -922,8 +963,12 @@ impl AppState {
         // Mirror into the source-of-truth calibration so topology slider
         // edits (which clone-and-reapply the whole Topology) and saves
         // cannot revert the blend to a stale value.
-        if let Some(cal) = self.calibration.as_mut() {
-            cal.topology.blend_width = w;
+        if let Some(t) = self
+            .calibration
+            .as_mut()
+            .and_then(|cal| cal.topology.l_shape_mut())
+        {
+            t.blend_width = w;
         }
         if let Some(bridge) = self.bridge.as_mut() {
             bridge.engine_mut().set_blend_width(w);
@@ -1041,6 +1086,87 @@ impl AppState {
         let fraction = target as f32 / total as f32;
         self.playback.seek(fraction).map_err(|e| format!("{e}"))
     }
+}
+
+fn begin_file_dialog<T, F, B, A>(
+    state: &Rc<RefCell<AppState>>,
+    app_weak: &slint::Weak<RecoApp>,
+    build: B,
+    apply: A,
+) where
+    T: Send + 'static,
+    F: Future<Output = Option<T>> + Send + 'static,
+    B: FnOnce() -> F,
+    A: FnOnce(T, &Rc<RefCell<AppState>>, &slint::Weak<RecoApp>) + Send + 'static,
+{
+    let (tx, rx) = std::sync::mpsc::channel();
+    {
+        let mut s = state.borrow_mut();
+        if s.file_dialog_open {
+            if let Some(app) = app_weak.upgrade() {
+                app.set_status_text("Finish the current file selection first".into());
+            }
+            return;
+        }
+        s.file_dialog_open = true;
+        s.file_dialog_rx = Some(rx);
+    }
+    // Mirror into Slint: raises the modal-guard overlay that blocks
+    // pointer input while the (unparented, non-modal) picker is up.
+    if let Some(app) = app_weak.upgrade() {
+        app.set_file_dialog_open(true);
+    }
+
+    let task = build();
+    std::thread::spawn(move || {
+        let action = pollster::block_on(task).map(|selection| {
+            Box::new(SelectedFileDialog { selection, apply }) as Box<dyn FileDialogAction>
+        });
+        if tx.send(action).is_err() {
+            log::debug!("File dialog result dropped because the GUI closed");
+        }
+    });
+}
+
+fn poll_file_dialog(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) -> bool {
+    let action = {
+        let mut s = state.borrow_mut();
+        let Some(rx) = s.file_dialog_rx.as_ref() else {
+            return false;
+        };
+        match rx.try_recv() {
+            Ok(action) => {
+                s.file_dialog_rx = None;
+                s.file_dialog_open = false;
+                action
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => return false,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                s.file_dialog_rx = None;
+                s.file_dialog_open = false;
+                log::warn!("File dialog worker disconnected before returning a selection");
+                None
+            }
+        }
+    };
+
+    // Both delivery and disconnect end the dialog: drop the overlay
+    // before applying so the result lands on an interactive UI.
+    if let Some(app) = app_weak.upgrade() {
+        app.set_file_dialog_open(false);
+    }
+    if let Some(action) = action {
+        action.apply(state, app_weak);
+    }
+    true
+}
+
+fn file_handle_to_path(handle: rfd::FileHandle) -> PathBuf {
+    handle.path().to_path_buf()
+}
+
+fn file_handles_to_paths(handles: Vec<rfd::FileHandle>) -> Vec<PathBuf> {
+    handles.into_iter().map(file_handle_to_path).collect()
 }
 
 /// Extract just the filename from a path for display.
@@ -1210,23 +1336,138 @@ fn sync_segments(state: &AppState, app: &RecoApp) {
     ))));
 }
 
-fn sync_roi_points(state: &AppState, app: &RecoApp) {
-    let (xs, ys) = if let Some(cal) = &state.calibration
-        && let Some(roi) = &cal.field_roi
-    {
-        let side = if state.lens_preview_side == "right" {
-            &roi.right
-        } else {
-            &roi.left
-        };
-        let xs: Vec<f32> = side.iter().map(|p| p[0] as f32).collect();
-        let ys: Vec<f32> = side.iter().map(|p| p[1] as f32).collect();
-        (xs, ys)
+fn roi_point_from_viewport(state: &AppState, norm_x: f32, norm_y: f32) -> Option<[f64; 2]> {
+    if state.lens_preview_active {
+        return None;
+    }
+    let calibration = state.calibration.as_ref()?;
+    let bridge = state.bridge.as_ref()?;
+    let (width, height) = bridge.viewport_size();
+    let aspect = if height > 0 {
+        width as f32 / height as f32
     } else {
-        (vec![], vec![])
+        16.0 / 9.0
     };
-    app.set_roi_points_x(slint::ModelRc::new(slint::VecModel::from(xs)));
-    app.set_roi_points_y(slint::ModelRc::new(slint::VecModel::from(ys)));
+    let viewport = bridge.engine().viewport();
+    let scene = roi_overlay::scene_for_calibration(calibration);
+    let pose = bridge.engine().orient_pose(state.pose.current_pose());
+    let fov = pose.fov_degrees.unwrap_or(viewport.fov_degrees);
+    let rig_tilt = calibration.framing.tilt as f32;
+    let rig_roll = calibration.framing.roll as f32;
+    roi_overlay::roi_point_from_viewport(
+        &scene, norm_x, norm_y, pose.yaw, pose.pitch, fov, aspect, rig_tilt, rig_roll,
+    )
+}
+
+fn roi_screen_points(state: &AppState) -> Vec<(f32, f32)> {
+    if state.lens_preview_active {
+        return Vec::new();
+    }
+    let Some(calibration) = state.calibration.as_ref() else {
+        return Vec::new();
+    };
+    let Some(bridge) = state.bridge.as_ref() else {
+        return Vec::new();
+    };
+    let roi = calibration.field_roi.clone().unwrap_or_default();
+    let (width, height) = bridge.viewport_size();
+    let aspect = if height > 0 {
+        width as f32 / height as f32
+    } else {
+        16.0 / 9.0
+    };
+    let viewport = bridge.engine().viewport();
+    let scene = roi_overlay::scene_for_calibration(calibration);
+    let pose = bridge.engine().orient_pose(state.pose.current_pose());
+    let fov = pose.fov_degrees.unwrap_or(viewport.fov_degrees);
+    let rig_tilt = calibration.framing.tilt as f32;
+    let rig_roll = calibration.framing.roll as f32;
+    roi_overlay::viewport_roi_screen_points(
+        &roi.points,
+        &scene,
+        pose.yaw,
+        pose.pitch,
+        fov,
+        aspect,
+        rig_tilt,
+        rig_roll,
+    )
+}
+
+fn set_float_model(setter: impl FnOnce(slint::ModelRc<f32>), values: Vec<f32>) {
+    setter(slint::ModelRc::new(slint::VecModel::from(values)));
+}
+
+fn set_roi_model(app: &RecoApp, geometry: RoiOverlayGeometry) {
+    set_float_model(|model| app.set_roi_points_x(model), geometry.points_x);
+    set_float_model(|model| app.set_roi_points_y(model), geometry.points_y);
+    set_float_model(|model| app.set_roi_lines_x1(model), geometry.lines_x1);
+    set_float_model(|model| app.set_roi_lines_y1(model), geometry.lines_y1);
+    set_float_model(|model| app.set_roi_lines_x2(model), geometry.lines_x2);
+    set_float_model(|model| app.set_roi_lines_y2(model), geometry.lines_y2);
+}
+
+fn sync_roi_overlay(state: &AppState, app: &RecoApp) {
+    let Some(calibration) = state.calibration.as_ref() else {
+        app.set_has_roi(false);
+        app.set_roi_point_count(0);
+        set_roi_model(app, RoiOverlayGeometry::default());
+        return;
+    };
+
+    let roi = calibration.field_roi.clone().unwrap_or_default();
+    app.set_has_roi(roi_overlay::has_effective_roi(&roi));
+    app.set_roi_point_count(roi.points.len() as i32);
+
+    if state.lens_preview_active {
+        let scene = roi_overlay::scene_for_calibration(calibration);
+        let (camera, params) = if state.lens_preview_side == "right" {
+            (CameraId::Right, &calibration.lenses[1])
+        } else {
+            (CameraId::Left, &calibration.lenses[0])
+        };
+        let geometry = roi_overlay::lens_preview_roi_geometry(
+            &roi.points,
+            camera,
+            calibration,
+            &scene,
+            params,
+            state.lens_correction_amount,
+        );
+        set_roi_model(app, geometry);
+        return;
+    }
+
+    let Some(bridge) = state.bridge.as_ref() else {
+        set_roi_model(app, RoiOverlayGeometry::default());
+        return;
+    };
+
+    let (width, height) = bridge.viewport_size();
+    let aspect = if height > 0 {
+        width as f32 / height as f32
+    } else {
+        16.0 / 9.0
+    };
+    let viewport = bridge.engine().viewport();
+    let scene = roi_overlay::scene_for_calibration(calibration);
+    let pose = bridge.engine().orient_pose(state.pose.current_pose());
+    let fov = pose.fov_degrees.unwrap_or(viewport.fov_degrees);
+    let rig_tilt = calibration.framing.tilt as f32;
+    let rig_roll = calibration.framing.roll as f32;
+
+    let geometry = roi_overlay::viewport_roi_geometry(
+        &roi.points,
+        &scene,
+        pose.yaw,
+        pose.pitch,
+        fov,
+        aspect,
+        rig_tilt,
+        rig_roll,
+    );
+
+    set_roi_model(app, geometry);
 }
 
 /// Install the standard tracing subscriber + log bridge.
@@ -1235,8 +1476,6 @@ fn sync_roi_points(state: &AppState, app: &RecoApp) {
 /// from reco-core / reco-io / reco-calibrate into tracing so user bug
 /// reports arrive as one structured event stream instead of two
 /// loggers writing to the same stderr.
-///
-/// M2 migration (deep-review-2026-04-18 decision 11).
 fn init_tracing() {
     use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
@@ -1613,176 +1852,210 @@ fn main() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     app.on_pick_left_video(move || {
-        let dialog = rfd::FileDialog::new()
-            .set_title("Select left camera video(s)")
-            .add_filter(
-                "Video",
-                &["mp4", "MP4", "mov", "MOV", "avi", "AVI", "mkv", "MKV"],
-            );
-        let mut paths = dialog.pick_files().unwrap_or_default();
-        if paths.is_empty() {
-            return;
-        }
-        paths.sort();
-        let input = {
-            let s = state_ref.borrow();
-            match &s.left_input {
-                Some(existing) => {
-                    let mut all = match existing {
-                        reco_io::stitch_job::InputPath::Single(p) => vec![p.clone()],
-                        reco_io::stitch_job::InputPath::Chained(ps) => ps.clone(),
-                    };
-                    all.extend(paths);
-                    log::info!("Left: appended to {} total segments", all.len());
-                    reco_io::stitch_job::InputPath::Chained(all)
+        begin_file_dialog(
+            &state_ref,
+            &app_weak,
+            || {
+                let task = rfd::AsyncFileDialog::new()
+                    .set_title("Select left camera video(s)")
+                    .add_filter(
+                        "Video",
+                        &["mp4", "MP4", "mov", "MOV", "avi", "AVI", "mkv", "MKV"],
+                    )
+                    .pick_files();
+                async move { task.await.map(file_handles_to_paths) }
+            },
+            |mut paths, state_ref, app_weak| {
+                if paths.is_empty() {
+                    return;
                 }
-                None => {
-                    if paths.len() == 1 {
-                        reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
-                    } else {
-                        log::info!(
-                            "Left: {} segments selected, chaining via concat demuxer",
-                            paths.len()
-                        );
-                        reco_io::stitch_job::InputPath::Chained(paths)
-                    }
-                }
-            }
-        };
-        let first = match &input {
-            reco_io::stitch_job::InputPath::Single(p) => p.clone(),
-            reco_io::stitch_job::InputPath::Chained(ps) => ps[0].clone(),
-        };
-        {
-            let mut s = state_ref.borrow_mut();
-            let changed = s.left_path.as_ref() != Some(&first);
-            if changed && s.bridge.is_some() {
-                s.unload_pipeline();
-                if let Some(app) = app_weak.upgrade() {
-                    app.set_files_loaded(false);
-                    app.set_status_text("File changed - re-calibrate or load calibration".into());
-                }
-            }
-            if let Some(app) = app_weak.upgrade() {
-                let label = match &input {
-                    reco_io::stitch_job::InputPath::Single(p) => display_name(p),
-                    reco_io::stitch_job::InputPath::Chained(ps) => {
-                        format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                paths.sort();
+                let input = {
+                    let s = state_ref.borrow();
+                    match &s.left_input {
+                        Some(existing) => {
+                            let mut all = match existing {
+                                reco_io::stitch_job::InputPath::Single(p) => vec![p.clone()],
+                                reco_io::stitch_job::InputPath::Chained(ps) => ps.clone(),
+                            };
+                            all.extend(paths);
+                            log::info!("Left: appended to {} total segments", all.len());
+                            reco_io::stitch_job::InputPath::Chained(all)
+                        }
+                        None => {
+                            if paths.len() == 1 {
+                                reco_io::stitch_job::InputPath::Single(
+                                    paths.into_iter().next().unwrap(),
+                                )
+                            } else {
+                                log::info!(
+                                    "Left: {} segments selected, chaining via concat demuxer",
+                                    paths.len()
+                                );
+                                reco_io::stitch_job::InputPath::Chained(paths)
+                            }
+                        }
                     }
                 };
-                app.set_left_path(label.into());
-            }
-            s.user_settings.push_left(first.clone());
-            if let Some(app) = app_weak.upgrade() {
-                sync_recent_paths(&s.user_settings, &app);
-            }
-            s.left_input = Some(input);
-            s.left_path = Some(first);
-            drop(s);
-            try_init_and_update(&state_ref, &app_weak);
-        }
+                let first = match &input {
+                    reco_io::stitch_job::InputPath::Single(p) => p.clone(),
+                    reco_io::stitch_job::InputPath::Chained(ps) => ps[0].clone(),
+                };
+                {
+                    let mut s = state_ref.borrow_mut();
+                    let changed = s.left_path.as_ref() != Some(&first);
+                    if changed && s.bridge.is_some() {
+                        s.unload_pipeline();
+                        if let Some(app) = app_weak.upgrade() {
+                            app.set_files_loaded(false);
+                            app.set_status_text(
+                                "File changed - re-calibrate or load calibration".into(),
+                            );
+                        }
+                    }
+                    if let Some(app) = app_weak.upgrade() {
+                        let label = match &input {
+                            reco_io::stitch_job::InputPath::Single(p) => display_name(p),
+                            reco_io::stitch_job::InputPath::Chained(ps) => {
+                                format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                            }
+                        };
+                        app.set_left_path(label.into());
+                    }
+                    s.user_settings.push_left(first.clone());
+                    if let Some(app) = app_weak.upgrade() {
+                        sync_recent_paths(&s.user_settings, &app);
+                    }
+                    s.left_input = Some(input);
+                    s.left_path = Some(first);
+                    drop(s);
+                    try_init_and_update(state_ref, app_weak);
+                }
+            },
+        );
     });
 
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     app.on_pick_right_video(move || {
-        let dialog = rfd::FileDialog::new()
-            .set_title("Select right camera video(s)")
-            .add_filter(
-                "Video",
-                &["mp4", "MP4", "mov", "MOV", "avi", "AVI", "mkv", "MKV"],
-            );
-        let mut paths = dialog.pick_files().unwrap_or_default();
-        if paths.is_empty() {
-            return;
-        }
-        paths.sort();
-        let input = {
-            let s = state_ref.borrow();
-            match &s.right_input {
-                Some(existing) => {
-                    let mut all = match existing {
-                        reco_io::stitch_job::InputPath::Single(p) => vec![p.clone()],
-                        reco_io::stitch_job::InputPath::Chained(ps) => ps.clone(),
-                    };
-                    all.extend(paths);
-                    log::info!("Right: appended to {} total segments", all.len());
-                    reco_io::stitch_job::InputPath::Chained(all)
+        begin_file_dialog(
+            &state_ref,
+            &app_weak,
+            || {
+                let task = rfd::AsyncFileDialog::new()
+                    .set_title("Select right camera video(s)")
+                    .add_filter(
+                        "Video",
+                        &["mp4", "MP4", "mov", "MOV", "avi", "AVI", "mkv", "MKV"],
+                    )
+                    .pick_files();
+                async move { task.await.map(file_handles_to_paths) }
+            },
+            |mut paths, state_ref, app_weak| {
+                if paths.is_empty() {
+                    return;
                 }
-                None => {
-                    if paths.len() == 1 {
-                        reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
-                    } else {
-                        log::info!(
-                            "Right: {} segments selected, chaining via concat demuxer",
-                            paths.len()
-                        );
-                        reco_io::stitch_job::InputPath::Chained(paths)
-                    }
-                }
-            }
-        };
-        let first = match &input {
-            reco_io::stitch_job::InputPath::Single(p) => p.clone(),
-            reco_io::stitch_job::InputPath::Chained(ps) => ps[0].clone(),
-        };
-        {
-            let mut s = state_ref.borrow_mut();
-            let changed = s.right_path.as_ref() != Some(&first);
-            if changed && s.bridge.is_some() {
-                s.unload_pipeline();
-                if let Some(app) = app_weak.upgrade() {
-                    app.set_files_loaded(false);
-                    app.set_status_text("File changed - re-calibrate or load calibration".into());
-                }
-            }
-            if let Some(app) = app_weak.upgrade() {
-                let label = match &input {
-                    reco_io::stitch_job::InputPath::Single(p) => display_name(p),
-                    reco_io::stitch_job::InputPath::Chained(ps) => {
-                        format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                paths.sort();
+                let input = {
+                    let s = state_ref.borrow();
+                    match &s.right_input {
+                        Some(existing) => {
+                            let mut all = match existing {
+                                reco_io::stitch_job::InputPath::Single(p) => vec![p.clone()],
+                                reco_io::stitch_job::InputPath::Chained(ps) => ps.clone(),
+                            };
+                            all.extend(paths);
+                            log::info!("Right: appended to {} total segments", all.len());
+                            reco_io::stitch_job::InputPath::Chained(all)
+                        }
+                        None => {
+                            if paths.len() == 1 {
+                                reco_io::stitch_job::InputPath::Single(
+                                    paths.into_iter().next().unwrap(),
+                                )
+                            } else {
+                                log::info!(
+                                    "Right: {} segments selected, chaining via concat demuxer",
+                                    paths.len()
+                                );
+                                reco_io::stitch_job::InputPath::Chained(paths)
+                            }
+                        }
                     }
                 };
-                app.set_right_path(label.into());
-            }
-            s.user_settings.push_right(first.clone());
-            if let Some(app) = app_weak.upgrade() {
-                sync_recent_paths(&s.user_settings, &app);
-            }
-            s.right_input = Some(input);
-            s.right_path = Some(first);
-            drop(s);
-            try_init_and_update(&state_ref, &app_weak);
-        }
+                let first = match &input {
+                    reco_io::stitch_job::InputPath::Single(p) => p.clone(),
+                    reco_io::stitch_job::InputPath::Chained(ps) => ps[0].clone(),
+                };
+                {
+                    let mut s = state_ref.borrow_mut();
+                    let changed = s.right_path.as_ref() != Some(&first);
+                    if changed && s.bridge.is_some() {
+                        s.unload_pipeline();
+                        if let Some(app) = app_weak.upgrade() {
+                            app.set_files_loaded(false);
+                            app.set_status_text(
+                                "File changed - re-calibrate or load calibration".into(),
+                            );
+                        }
+                    }
+                    if let Some(app) = app_weak.upgrade() {
+                        let label = match &input {
+                            reco_io::stitch_job::InputPath::Single(p) => display_name(p),
+                            reco_io::stitch_job::InputPath::Chained(ps) => {
+                                format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                            }
+                        };
+                        app.set_right_path(label.into());
+                    }
+                    s.user_settings.push_right(first.clone());
+                    if let Some(app) = app_weak.upgrade() {
+                        sync_recent_paths(&s.user_settings, &app);
+                    }
+                    s.right_input = Some(input);
+                    s.right_path = Some(first);
+                    drop(s);
+                    try_init_and_update(state_ref, app_weak);
+                }
+            },
+        );
     });
 
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     app.on_pick_calibration(move || {
-        let dialog = rfd::FileDialog::new()
-            .set_title("Select calibration JSON")
-            .add_filter("JSON", &["json", "JSON"]);
-        if let Some(path) = dialog.pick_file() {
-            let mut s = state_ref.borrow_mut();
-            let changed = s.calibration_path.as_ref() != Some(&path);
-            if changed && s.bridge.is_some() {
-                s.unload_pipeline();
-                if let Some(app) = app_weak.upgrade() {
-                    app.set_files_loaded(false);
-                    app.set_status_text("Calibration changed — reloading".into());
+        begin_file_dialog(
+            &state_ref,
+            &app_weak,
+            || {
+                let task = rfd::AsyncFileDialog::new()
+                    .set_title("Select calibration JSON")
+                    .add_filter("JSON", &["json", "JSON"])
+                    .pick_file();
+                async move { task.await.map(file_handle_to_path) }
+            },
+            |path, state_ref, app_weak| {
+                let mut s = state_ref.borrow_mut();
+                let changed = s.calibration_path.as_ref() != Some(&path);
+                if changed && s.bridge.is_some() {
+                    s.unload_pipeline();
+                    if let Some(app) = app_weak.upgrade() {
+                        app.set_files_loaded(false);
+                        app.set_status_text("Calibration changed - reloading".into());
+                    }
                 }
-            }
-            if let Some(app) = app_weak.upgrade() {
-                app.set_calibration_path(display_name(&path).into());
-            }
-            s.user_settings.push_calibration(path.clone());
-            if let Some(app) = app_weak.upgrade() {
-                sync_recent_paths(&s.user_settings, &app);
-            }
-            s.calibration_path = Some(path);
-            drop(s);
-            try_init_and_update(&state_ref, &app_weak);
-        }
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_calibration_path(display_name(&path).into());
+                }
+                s.user_settings.push_calibration(path.clone());
+                if let Some(app) = app_weak.upgrade() {
+                    sync_recent_paths(&s.user_settings, &app);
+                }
+                s.calibration_path = Some(path);
+                drop(s);
+                try_init_and_update(state_ref, app_weak);
+            },
+        );
     });
 
     // ── Recent-files dialog callbacks ──
@@ -1895,6 +2168,7 @@ fn main() -> anyhow::Result<()> {
             app.set_files_loaded(false);
             app.set_status_text("Left video cleared. Calibration preserved.".into());
             sync_segments(&s, &app);
+            sync_roi_overlay(&s, &app);
         }
     });
 
@@ -1912,6 +2186,7 @@ fn main() -> anyhow::Result<()> {
             app.set_files_loaded(false);
             app.set_status_text("Right video cleared. Calibration preserved.".into());
             sync_segments(&s, &app);
+            sync_roi_overlay(&s, &app);
         }
     });
 
@@ -1928,248 +2203,224 @@ fn main() -> anyhow::Result<()> {
             app.set_calibration_path("".into());
             app.set_files_loaded(false);
             app.set_status_text("Calibration cleared".into());
+            sync_roi_overlay(&s, &app);
         }
     });
 
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
-    app.on_launch_roi_editor(move || {
-        let paths = {
-            let s = state_ref.borrow();
-            match (
-                s.left_path.clone(),
-                s.right_path.clone(),
-                s.calibration_path.clone(),
-            ) {
-                (Some(l), Some(r), Some(c)) => Some((l, r, c)),
-                _ => None,
-            }
-        };
-        let Some((left, right, cal_path)) = paths else {
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "Cannot set ROI",
-                    "Need left video, right video, and calibration loaded.",
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
+    app.on_toggle_roi_editor(move || {
+        let Some(app) = app_weak.upgrade() else {
             return;
         };
-
-        // Use $HOME/.cache/reco instead of /tmp because snap-packaged
-        // browsers (Firefox) can't access /tmp due to sandboxing.
-        let cache_base = std::env::var("XDG_CACHE_HOME")
-            .map(PathBuf::from)
-            .or_else(|_| std::env::var("HOME").map(|h| PathBuf::from(h).join(".cache")))
-            .unwrap_or_else(|_| std::env::temp_dir());
-        let tmp_dir = cache_base.join("reco").join("roi");
-        if let Err(e) = std::fs::create_dir_all(&tmp_dir) {
-            log::error!("Failed to create ROI temp dir {}: {e}", tmp_dir.display());
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "ROI editor",
-                    format!("Cannot create temp dir: {e}"),
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
-            return;
-        }
-        let left_png = tmp_dir.join("left.png");
-        let right_png = tmp_dir.join("right.png");
-
-        let current_secs = {
-            let s = state_ref.borrow();
-            if s.playback.fps() > 0.0 {
-                s.playback.frame_index() as f64 / s.playback.fps()
-            } else {
-                1.0
-            }
-        };
-        let _seek_str = format!("{:.2}", current_secs);
-        let frame_index = {
-            let s = state_ref.borrow();
-            s.playback.frame_index()
-        };
-        let extract_frame = |video: &std::path::Path, out: &std::path::Path, idx: u64| {
-            match reco_io::ffmpeg::calibration_io::extract_frames(video, &[idx]) {
-                Ok(frames) if !frames.is_empty() => {
-                    let yuv = &frames[0];
-                    let w = yuv.width as usize;
-                    let h = yuv.height as usize;
-                    let uv_w = w / 2;
-                    let mut rgb = vec![0u8; w * h * 3];
-                    for row in 0..h {
-                        for col in 0..w {
-                            let yi = row * w + col;
-                            let uvi = (row / 2) * uv_w + (col / 2);
-                            let y = yuv.y[yi] as f32;
-                            let u = yuv.u[uvi] as f32;
-                            let v = yuv.v[uvi] as f32;
-                            let r = y + 1.402 * (v - 128.0);
-                            let g = y - 0.344 * (u - 128.0) - 0.714 * (v - 128.0);
-                            let b = y + 1.772 * (u - 128.0);
-                            let pi = yi * 3;
-                            rgb[pi] = r.clamp(0.0, 255.0) as u8;
-                            rgb[pi + 1] = g.clamp(0.0, 255.0) as u8;
-                            rgb[pi + 2] = b.clamp(0.0, 255.0) as u8;
-                        }
-                    }
-                    if let Err(e) =
-                        image::save_buffer(out, &rgb, w as u32, h as u32, image::ColorType::Rgb8)
-                    {
-                        log::warn!("Failed to save ROI frame {}: {e}", out.display());
-                    }
-                }
-                Ok(_) => log::warn!("No frame decoded from {}", video.display()),
-                Err(e) => log::error!("Frame extraction failed for {}: {e}", video.display()),
-            }
-        };
-        extract_frame(&left, &left_png, frame_index);
-        extract_frame(&right, &right_png, frame_index);
-        log::info!(
-            "ROI frame extraction: left={} right={}",
-            left_png.exists(),
-            right_png.exists()
-        );
-
-        use base64::Engine;
-        let b64 = base64::engine::general_purpose::STANDARD;
-
-        let left_data = std::fs::read(&left_png)
-            .ok()
-            .map(|bytes| format!("data:image/png;base64,{}", b64.encode(&bytes)))
-            .unwrap_or_default();
-        let right_data = std::fs::read(&right_png)
-            .ok()
-            .map(|bytes| format!("data:image/png;base64,{}", b64.encode(&bytes)))
-            .unwrap_or_default();
-
-        let cal_json_str = std::fs::read_to_string(&cal_path).unwrap_or_else(|_| "{}".into());
-
-        // Template is embedded at compile time so deployed binaries work
-        // without needing the source tree.
-        let template = include_str!("../../../resources/roi_editor.html");
-        let html = template
-            .replace("'{{LEFT_IMAGE_DATA}}'", &format!("'{left_data}'"))
-            .replace("'{{RIGHT_IMAGE_DATA}}'", &format!("'{right_data}'"))
-            .replace("{{CAL_JSON}}", &cal_json_str)
-            .replace("'{{CAL_PATH}}'", &format!("'{}'", cal_path.display()));
-
-        let out_html = tmp_dir.join("roi_editor.html");
-        if let Err(e) = std::fs::write(&out_html, &html) {
-            log::error!("Failed to write ROI editor HTML: {e}");
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "ROI editor",
-                    format!("Cannot write temp file: {e}"),
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
-            return;
-        }
-        log::info!(
-            "ROI editor: wrote {} bytes to {}, opening in browser",
-            html.len(),
-            out_html.display()
-        );
-
-        let open_result = open::that(out_html.as_os_str());
-        if let Err(e) = open_result {
-            log::error!("Failed to open ROI editor: {e}");
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "Cannot open browser",
-                    e.to_string(),
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
-        } else {
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Info,
-                    "ROI editor opened in browser",
-                    "Draw field boundary, click Save ROI, then come back here and click Paste ROI.",
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
-        }
-    });
-
-    let app_weak = app.as_weak();
-    let state_ref = Rc::clone(&state);
-    app.on_paste_roi(move || {
         let mut s = state_ref.borrow_mut();
-        // Try manual JSON input first, then clipboard
-        let manual = app_weak
-            .upgrade()
-            .map(|a| {
-                let t = a.get_roi_manual_json().to_string();
-                a.set_roi_manual_json("".into());
-                t
-            })
-            .unwrap_or_default();
-        let clipboard_text = if !manual.trim().is_empty() {
-            manual
+        if s.calibration.is_none() || s.bridge.is_none() {
+            s.toasts.push(
+                Severity::Error,
+                "Cannot set ROI",
+                "Need videos and calibration loaded.",
+            );
+            crate::toast::sync_to_ui(&s.toasts, &app);
+            return;
+        }
+
+        if s.roi_editing {
+            s.roi_editing = false;
+            s.roi_drag_point = None;
+            s.lens_preview_active = s.roi_restore_lens_preview_active;
+            s.lens_preview_side = s.roi_restore_lens_preview_side.clone();
+            app.set_roi_editing(false);
+            app.set_roi_pan_mode(false);
+            app.set_lens_preview_active(s.lens_preview_active);
+            app.set_lens_preview_side(s.lens_preview_side.clone().into());
+            app.set_status_text("ROI editing finished".into());
         } else {
-            match arboard::Clipboard::new().and_then(|mut cb| cb.get_text()) {
-                Ok(t) => t,
-                Err(e) => {
-                    log::warn!("Clipboard read failed: {e}");
-                    if let Some(app) = app_weak.upgrade() {
-                        s.toasts.push(
-                            crate::toast::Severity::Error,
-                            "Paste ROI",
-                            "Could not read clipboard. Paste JSON in the text field instead.",
-                        );
-                        crate::toast::sync_to_ui(&s.toasts, &app);
-                    }
-                    return;
-                }
+            s.roi_editing = true;
+            s.roi_restore_lens_preview_active = s.lens_preview_active;
+            s.roi_restore_lens_preview_side = s.lens_preview_side.clone();
+            s.lens_preview_active = false;
+            app.set_roi_editing(true);
+            app.set_roi_visible(true);
+            app.set_roi_pan_mode(false);
+            app.set_lens_preview_active(false);
+            app.set_lens_preview_side(s.lens_preview_side.clone().into());
+            app.set_status_text("Editing field ROI".into());
+        }
+        s.preview_dirty = true;
+        sync_roi_overlay(&s, &app);
+        app.window().request_redraw();
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_roi_pointer_down(move |x, y, image_width_px, image_height_px| {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let mut s = state_ref.borrow_mut();
+        if !s.roi_editing {
+            return;
+        }
+        let screen_points = roi_screen_points(&s);
+        let selected = roi_overlay::nearest_roi_point(
+            &screen_points,
+            [x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)],
+            image_width_px,
+            image_height_px,
+        );
+        let selected = if let Some(idx) = selected {
+            idx
+        } else {
+            let Some(point) = roi_point_from_viewport(&s, x, y) else {
+                return;
+            };
+            let Some(cal) = s.calibration.as_mut() else {
+                return;
+            };
+            let roi = cal.field_roi.get_or_insert_with(FieldRoi::default);
+            roi.points.push(point);
+            roi.points.len() - 1
+        };
+        s.roi_drag_point = Some(selected);
+        sync_roi_overlay(&s, &app);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_roi_pointer_move(move |x, y| {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let mut s = state_ref.borrow_mut();
+        if !s.roi_editing {
+            return;
+        }
+        let Some(drag_idx) = s.roi_drag_point else {
+            return;
+        };
+        let Some(point) = roi_point_from_viewport(&s, x, y) else {
+            return;
+        };
+        let moved = {
+            let Some(roi) = s
+                .calibration
+                .as_mut()
+                .and_then(|cal| cal.field_roi.as_mut())
+            else {
+                return;
+            };
+            if let Some(existing) = roi.points.get_mut(drag_idx) {
+                *existing = point;
+                true
+            } else {
+                false
             }
         };
+        if moved {
+            sync_roi_overlay(&s, &app);
+        } else {
+            s.roi_drag_point = None;
+        }
+    });
 
-        let roi: reco_core::calibration::FieldRoi = match serde_json::from_str(&clipboard_text) {
-            Ok(r) => r,
+    let state_ref = Rc::clone(&state);
+    app.on_roi_pointer_up(move || {
+        state_ref.borrow_mut().roi_drag_point = None;
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_roi_undo(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let mut s = state_ref.borrow_mut();
+        s.roi_drag_point = None;
+        if let Some(roi) = s
+            .calibration
+            .as_mut()
+            .and_then(|cal| cal.field_roi.as_mut())
+        {
+            roi.points.pop();
+        }
+        sync_roi_overlay(&s, &app);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_roi_clear(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let mut s = state_ref.borrow_mut();
+        s.roi_drag_point = None;
+        if let Some(roi) = s
+            .calibration
+            .as_mut()
+            .and_then(|cal| cal.field_roi.as_mut())
+        {
+            roi.points.clear();
+        }
+        sync_roi_overlay(&s, &app);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_roi_save(move || {
+        let save_result = state_ref.borrow().save_calibration();
+        let mut s = state_ref.borrow_mut();
+        if let Some(app) = app_weak.upgrade() {
+            match save_result {
+                Ok(()) => {
+                    app.set_status_text("ROI saved".into());
+                    s.toasts.push(Severity::Info, "ROI saved", "");
+                    sync_roi_overlay(&s, &app);
+                }
+                Err(e) => {
+                    log::error!("Save ROI: {e}");
+                    app.set_status_text("ROI save failed".into());
+                    s.toasts.push(Severity::Error, "ROI save failed", e);
+                }
+            }
+            crate::toast::sync_to_ui(&s.toasts, &app);
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_roi_copy_json(move || {
+        let roi = state_ref
+            .borrow()
+            .calibration
+            .as_ref()
+            .and_then(|cal| cal.field_roi.clone())
+            .unwrap_or_default();
+        let json = match serde_json::to_string_pretty(&roi) {
+            Ok(json) => json,
             Err(e) => {
-                log::warn!("Clipboard is not valid ROI JSON: {e}");
+                let mut s = state_ref.borrow_mut();
                 if let Some(app) = app_weak.upgrade() {
-                    s.toasts.push(
-                        crate::toast::Severity::Error,
-                        "Paste ROI",
-                        "Clipboard doesn't contain valid ROI JSON. Save ROI in the browser editor first.",
-                    );
+                    s.toasts
+                        .push(Severity::Error, "Copy ROI JSON failed", e.to_string());
                     crate::toast::sync_to_ui(&s.toasts, &app);
                 }
                 return;
             }
         };
 
-        let point_count = roi.left.len() + roi.right.len();
-        if let Some(cal) = s.calibration.as_mut() {
-            cal.field_roi = Some(roi);
-        }
-        if let Err(e) = s.save_calibration() {
-            log::error!("Failed to save calibration with ROI: {e}");
-        }
-
+        let mut s = state_ref.borrow_mut();
         if let Some(app) = app_weak.upgrade() {
-            let has = point_count > 0;
-            app.set_has_roi(has);
-            sync_roi_points(&s, &app);
-            s.toasts.push(
-                crate::toast::Severity::Info,
-                "ROI applied",
-                format!("{point_count} points saved to calibration."),
-            );
+            match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(json)) {
+                Ok(()) => {
+                    app.set_status_text("ROI JSON copied".into());
+                    s.toasts.push(Severity::Info, "ROI JSON copied", "");
+                }
+                Err(e) => {
+                    log::warn!("Clipboard write failed: {e}");
+                    s.toasts
+                        .push(Severity::Error, "Copy ROI JSON failed", e.to_string());
+                }
+            }
             crate::toast::sync_to_ui(&s.toasts, &app);
         }
     });
@@ -2459,25 +2710,44 @@ fn main() -> anyhow::Result<()> {
     });
 
     let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
     app.on_pick_prefs_model(move || {
-        let dialog = rfd::FileDialog::new()
-            .set_title("Select YOLO ONNX model")
-            .add_filter("ONNX", &["onnx"]);
-        if let Some(path) = dialog.pick_file()
-            && let Some(app) = app_weak.upgrade()
-        {
-            app.set_prefs_ai_model_path(path.to_string_lossy().to_string().into());
-        }
+        begin_file_dialog(
+            &state_ref,
+            &app_weak,
+            || {
+                let task = rfd::AsyncFileDialog::new()
+                    .set_title("Select YOLO ONNX model")
+                    .add_filter("ONNX", &["onnx"])
+                    .pick_file();
+                async move { task.await.map(file_handle_to_path) }
+            },
+            |path, _, app_weak| {
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_prefs_ai_model_path(path.to_string_lossy().to_string().into());
+                }
+            },
+        );
     });
 
     let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
     app.on_pick_recording_folder(move || {
-        let dialog = rfd::FileDialog::new().set_title("Select default recording folder");
-        if let Some(folder) = dialog.pick_folder()
-            && let Some(app) = app_weak.upgrade()
-        {
-            app.set_recording_folder(folder.to_string_lossy().to_string().into());
-        }
+        begin_file_dialog(
+            &state_ref,
+            &app_weak,
+            || {
+                let task = rfd::AsyncFileDialog::new()
+                    .set_title("Select default recording folder")
+                    .pick_folder();
+                async move { task.await.map(file_handle_to_path) }
+            },
+            |path, _, app_weak| {
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_recording_folder(path.to_string_lossy().to_string().into());
+                }
+            },
+        );
     });
 
     let state_ref = Rc::clone(&state);
@@ -2659,7 +2929,9 @@ fn main() -> anyhow::Result<()> {
                 let img = s.render_current();
                 if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
                     app.set_preview_frame(img);
-                    app.set_current_frame(s.playback.frame_index() as i32);
+                    let fps = s.playback.fps();
+                    let total = s.playback.total_frames().unwrap_or(0);
+                    sync_frame_display(&app, s.playback.frame_index(), total, fps);
                 }
             }
             Ok(false) => {}
@@ -2689,7 +2961,9 @@ fn main() -> anyhow::Result<()> {
                 let img = s.render_current();
                 if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
                     app.set_preview_frame(img);
-                    app.set_current_frame(s.playback.frame_index() as i32);
+                    let fps = s.playback.fps();
+                    let total = s.playback.total_frames().unwrap_or(0);
+                    sync_frame_display(&app, s.playback.frame_index(), total, fps);
                 }
             }
             Err(e) => log::error!("Step backward error: {e}"),
@@ -2806,7 +3080,9 @@ fn main() -> anyhow::Result<()> {
         let img = s.render_current();
         if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
             app.set_preview_frame(img);
-            app.set_current_frame(s.playback.frame_index() as i32);
+            let fps = s.playback.fps();
+            let total = s.playback.total_frames().unwrap_or(0);
+            sync_frame_display(&app, s.playback.frame_index(), total, fps);
         }
     });
 
@@ -2820,7 +3096,11 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_changed_cal_intersect(move |v| {
         let mut s = state_ref.borrow_mut();
-        let Some(mut layout) = s.calibration.as_ref().map(|c| c.topology.clone()) else {
+        let Some(mut layout) = s
+            .calibration
+            .as_ref()
+            .and_then(|c| c.topology.l_shape().cloned())
+        else {
             return;
         };
         layout.intersect = v as f64;
@@ -2848,7 +3128,11 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_changed_cal_x_ty(move |v| {
         let mut s = state_ref.borrow_mut();
-        let Some(mut layout) = s.calibration.as_ref().map(|c| c.topology.clone()) else {
+        let Some(mut layout) = s
+            .calibration
+            .as_ref()
+            .and_then(|c| c.topology.l_shape().cloned())
+        else {
             return;
         };
         layout.x_ty = v as f64;
@@ -2894,14 +3178,16 @@ fn main() -> anyhow::Result<()> {
         let mut s = state_ref.borrow_mut();
         s.reset_calibration();
         if let (Some(app), Some(layout)) = (app_weak.upgrade(), s.cal_baseline.as_ref()) {
-            app.set_cal_intersect(layout.topology.intersect as f32);
+            if let Some(t) = layout.topology.l_shape() {
+                app.set_cal_intersect(t.intersect as f32);
+                app.set_cal_x_ty(t.x_ty as f32);
+            }
             app.set_cal_camera_axis_offset(layout.framing.axis_offset as f32);
-            app.set_cal_x_ty(layout.topology.x_ty as f32);
             // The reset also restored framing tilt/roll and the topology's
             // blend in the renderer - keep the View-panel sliders in sync.
             app.set_rig_tilt((layout.framing.tilt as f32).to_degrees());
             app.set_rig_roll((layout.framing.roll as f32).to_degrees());
-            app.set_blend_width(layout.topology.blend_width);
+            app.set_blend_width(layout.topology.blend_width());
             app.set_cal_dirty(false);
         }
     });
@@ -3165,11 +3451,17 @@ fn main() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     app.on_lens_pick_file(move || {
-        let dialog = rfd::FileDialog::new()
-            .set_title("Load lens profile JSON")
-            .add_filter("JSON", &["json"]);
-        if let Some(path) = dialog.pick_file() {
-            match reco_calibrate::lens_database::load_from_file(&path) {
+        begin_file_dialog(
+            &state_ref,
+            &app_weak,
+            || {
+                let task = rfd::AsyncFileDialog::new()
+                    .set_title("Load lens profile JSON")
+                    .add_filter("JSON", &["json"])
+                    .pick_file();
+                async move { task.await.map(file_handle_to_path) }
+            },
+            |path, state_ref, app_weak| match reco_calibrate::lens_database::load_from_file(&path) {
                 Ok(params) => {
                     let mut s = state_ref.borrow_mut();
                     let (in_w, in_h) = s.playback.input_dimensions().unwrap_or((0, 0));
@@ -3234,8 +3526,8 @@ fn main() -> anyhow::Result<()> {
                         crate::toast::sync_to_ui(&s.toasts, &app);
                     }
                 }
-            }
-        }
+            },
+        );
     });
 
     // Slint's <=> binding updates the use-constrained-look property but
@@ -3271,7 +3563,13 @@ fn main() -> anyhow::Result<()> {
         let mut s = state_ref.borrow_mut();
         s.lens_preview_active = app.get_lens_preview_active();
         s.lens_preview_side = app.get_lens_preview_side().to_string();
-        sync_roi_points(&s, &app);
+        if s.roi_editing {
+            s.roi_editing = false;
+            s.roi_drag_point = None;
+            app.set_roi_editing(false);
+            app.set_roi_pan_mode(false);
+        }
+        sync_roi_overlay(&s, &app);
         s.preview_dirty = true;
     });
 
@@ -3353,39 +3651,56 @@ fn main() -> anyhow::Result<()> {
     });
 
     let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
     app.on_pick_export_output(move || {
-        let dialog = rfd::FileDialog::new()
-            .set_title("Export stitched video to…")
-            .add_filter("MP4", &["mp4"])
-            .add_filter("MOV", &["mov"])
-            .add_filter("MKV", &["mkv"]);
-        if let Some(mut path) = dialog.save_file() {
-            // Ensure an extension — ffmpeg picks muxer by extension.
-            if path.extension().is_none() {
-                path.set_extension("mp4");
-            }
-            if let Some(app) = app_weak.upgrade() {
-                app.set_export_output_path(path.to_string_lossy().to_string().into());
-            }
-        }
+        begin_file_dialog(
+            &state_ref,
+            &app_weak,
+            || {
+                let task = rfd::AsyncFileDialog::new()
+                    .set_title("Export stitched video to...")
+                    .add_filter("MP4", &["mp4"])
+                    .add_filter("MOV", &["mov"])
+                    .add_filter("MKV", &["mkv"])
+                    .save_file();
+                async move { task.await.map(file_handle_to_path) }
+            },
+            |mut path, _, app_weak| {
+                // Ensure an extension - ffmpeg picks muxer by extension.
+                if path.extension().is_none() {
+                    path.set_extension("mp4");
+                }
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_export_output_path(path.to_string_lossy().to_string().into());
+                }
+            },
+        );
     });
 
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     app.on_pick_export_model(move || {
-        let dialog = rfd::FileDialog::new()
-            .set_title("Select YOLO ONNX model")
-            .add_filter("ONNX", &["onnx"]);
-        if let Some(path) = dialog.pick_file()
-            && let Some(app) = app_weak.upgrade()
-        {
-            app.set_export_model_path(path.to_string_lossy().to_string().into());
-            // Remember across sessions so the user doesn't re-pick
-            // the same ONNX every run. Save is best-effort.
-            let mut s = state_ref.borrow_mut();
-            s.user_settings.ai_model_path = Some(path);
-            s.user_settings.save();
-        }
+        begin_file_dialog(
+            &state_ref,
+            &app_weak,
+            || {
+                let task = rfd::AsyncFileDialog::new()
+                    .set_title("Select YOLO ONNX model")
+                    .add_filter("ONNX", &["onnx"])
+                    .pick_file();
+                async move { task.await.map(file_handle_to_path) }
+            },
+            |path, state_ref, app_weak| {
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_export_model_path(path.to_string_lossy().to_string().into());
+                    // Remember across sessions so the user doesn't re-pick
+                    // the same ONNX every run. Save is best-effort.
+                    let mut s = state_ref.borrow_mut();
+                    s.user_settings.ai_model_path = Some(path);
+                    s.user_settings.save();
+                }
+            },
+        );
     });
 
     let app_weak = app.as_weak();
@@ -3413,6 +3728,7 @@ fn main() -> anyhow::Result<()> {
             app.set_export_fov_tight(cfg.fov_tight);
             app.set_export_fov_wide(cfg.fov_wide);
             app.set_export_fov_default(cfg.fov_default);
+            app.set_export_frame_all_margin(cfg.frame_all_margin_deg);
         }
         #[cfg(not(feature = "autocam"))]
         let _ = (&app_weak, &name);
@@ -3498,6 +3814,7 @@ fn main() -> anyhow::Result<()> {
             fov_tight: app.get_export_fov_tight(),
             fov_wide: app.get_export_fov_wide(),
             fov_default: app.get_export_fov_default(),
+            frame_all_margin_deg: app.get_export_frame_all_margin(),
         };
         let replay_enabled = app.get_export_replay_enabled();
         let events_enabled = app.get_export_events_enabled();
@@ -3721,6 +4038,13 @@ fn main() -> anyhow::Result<()> {
                 }
             }
 
+            // Poll native file dialogs. The OS dialog waits off the
+            // Slint event loop, but path application stays on this UI
+            // thread because AppState is Rc<RefCell<_>>.
+            if poll_file_dialog(&state_ref, &app_weak) {
+                return;
+            }
+
             let mut s = state_ref.borrow_mut();
 
             // Check for update notification from the background thread.
@@ -3936,36 +4260,6 @@ fn main() -> anyhow::Result<()> {
                 }
             }
 
-            // Check if ROI editor finished and reload calibration.
-            if let Some(ref flag) = s.roi_reload_pending
-                && flag.load(Ordering::Relaxed)
-            {
-                s.roi_reload_pending = None;
-                if let Some(cal_path) = s.calibration_path.as_ref()
-                    && let Ok(cal) = Calibration::from_file(cal_path)
-                {
-                    let has_roi = cal
-                        .field_roi
-                        .as_ref()
-                        .is_some_and(|r| !r.left.is_empty() || !r.right.is_empty());
-                    s.calibration = Some(cal);
-                    if let Some(app) = app_weak.upgrade() {
-                        app.set_has_roi(has_roi);
-                        sync_roi_points(&s, &app);
-                        s.toasts.push(
-                            Severity::Info,
-                            "Field ROI updated",
-                            if has_roi {
-                                "ROI loaded from calibration"
-                            } else {
-                                "No ROI points saved"
-                            },
-                        );
-                        crate::toast::sync_to_ui(&s.toasts, &app);
-                    }
-                }
-            }
-
             // Expire aged toasts (Tier 3a).
             if !s.toasts.is_empty()
                 && s.toasts.expire(Instant::now())
@@ -3990,7 +4284,9 @@ fn main() -> anyhow::Result<()> {
                         let img = s.render_current();
                         if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
                             app.set_preview_frame(img);
-                            app.set_current_frame(s.playback.frame_index() as i32);
+                            let fps = s.playback.fps();
+                            let total = s.playback.total_frames().unwrap_or(0);
+                            sync_frame_display(&app, s.playback.frame_index(), total, fps);
                             s.last_render_at = Some(Instant::now());
                         }
                     }
@@ -4097,6 +4393,7 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
         if let Some(fov) = current.fov_degrees {
             app.set_fov(fov);
         }
+        sync_roi_overlay(&s, &app);
         return true;
     }
     false
@@ -4217,7 +4514,7 @@ fn budget_for_lookahead(free_vram: u64, total_vram: u64) -> usize {
     }
     // Same budget the export pre-flight uses, so the slider's risk zones match
     // what the engine will accept.
-    reco_core::session::lookahead_budget_bytes(free_vram, total_vram)
+    reco_core::gpu::vram_pool::lookahead_budget_bytes(free_vram, total_vram)
 }
 
 fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) {
@@ -4268,7 +4565,7 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
             let blend_width = s
                 .bridge
                 .as_ref()
-                .map(|b| b.engine().calibration().topology.blend_width);
+                .map(|b| b.engine().calibration().topology.blend_width());
             // Lens-correction strength came in via the loaded calibration and
             // the renderer was seeded with it at bridge creation; mirror it
             // into AppState so a later save re-persists the right value.
@@ -4292,7 +4589,8 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 {
                     Some((free, total)) if total > 0 && in_w > 0 && in_h > 0 => {
                         let budget = budget_for_lookahead(free, total);
-                        let fit = reco_core::session::lookahead_fit(in_w, in_h, 1, budget, fps);
+                        let fit =
+                            reco_core::gpu::vram_pool::lookahead_fit(in_w, in_h, 1, budget, fps);
                         app.set_lookahead_green_max(fit.safe_secs as f32);
                         app.set_lookahead_red_min(fit.max_secs as f32);
                         app.set_lookahead_risk_active(true);
@@ -4321,12 +4619,10 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                     }
                     _ => app.set_lookahead_risk_active(false),
                 }
-                app.set_has_roi(
-                    s.calibration
-                        .as_ref()
-                        .and_then(|c| c.field_roi.as_ref())
-                        .is_some_and(|r| !r.left.is_empty() || !r.right.is_empty()),
-                );
+                if in_h > 0 {
+                    app.set_input_aspect(in_w as f32 / in_h as f32);
+                }
+                sync_roi_overlay(&s, &app);
                 sync_frame_display(&app, s.playback.frame_index(), total, fps);
                 app.set_fps(fps as f32);
                 app.set_status_text(format!("Ready - {:.0} fps - {total} frames", fps).into());
@@ -4349,9 +4645,11 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                     app.set_preview_frame(img);
                 }
                 if let Some(layout) = layout {
-                    app.set_cal_intersect(layout.topology.intersect as f32);
+                    if let Some(t) = layout.topology.l_shape() {
+                        app.set_cal_intersect(t.intersect as f32);
+                        app.set_cal_x_ty(t.x_ty as f32);
+                    }
                     app.set_cal_camera_axis_offset(layout.framing.axis_offset as f32);
-                    app.set_cal_x_ty(layout.topology.x_ty as f32);
                     app.set_cal_dirty(false);
                 }
                 if let Some(rt) = rig_tilt_rad {
@@ -4553,7 +4851,7 @@ fn handle_calibration_result(
                     let blend_width = state
                         .bridge
                         .as_ref()
-                        .map(|b| b.engine().calibration().topology.blend_width);
+                        .map(|b| b.engine().calibration().topology.blend_width());
                     let lens_correction =
                         state.calibration.as_ref().map(|c| c.lenses[0].correction);
                     if let Some(lc) = lens_correction {
@@ -4598,13 +4896,10 @@ fn handle_calibration_result(
                             .map(|p| display_name(p))
                             .unwrap_or_else(|| "(auto-calibrated)".into());
                         app.set_files_loaded(true);
-                        app.set_has_roi(
-                            state
-                                .calibration
-                                .as_ref()
-                                .and_then(|c| c.field_roi.as_ref())
-                                .is_some_and(|r| !r.left.is_empty() || !r.right.is_empty()),
-                        );
+                        if in_h > 0 {
+                            app.set_input_aspect(in_w as f32 / in_h as f32);
+                        }
+                        sync_roi_overlay(state, &app);
                         app.set_calibration_path(cal_label.into());
                         sync_recent_paths(&state.user_settings, &app);
                         sync_frame_display(&app, state.playback.frame_index(), total, fps);
@@ -4616,9 +4911,11 @@ fn handle_calibration_result(
                             app.set_preview_frame(img);
                         }
                         if let Some(layout) = layout_baseline.as_ref() {
-                            app.set_cal_intersect(layout.topology.intersect as f32);
+                            if let Some(t) = layout.topology.l_shape() {
+                                app.set_cal_intersect(t.intersect as f32);
+                                app.set_cal_x_ty(t.x_ty as f32);
+                            }
                             app.set_cal_camera_axis_offset(layout.framing.axis_offset as f32);
-                            app.set_cal_x_ty(layout.topology.x_ty as f32);
                             app.set_cal_dirty(false);
                         }
                         if let Some(rt) = rig_tilt_rad {

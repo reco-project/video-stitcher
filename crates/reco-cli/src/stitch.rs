@@ -18,7 +18,7 @@ use std::sync::atomic::AtomicBool;
 #[allow(dead_code)]
 pub struct StitchArgs<'a> {
     pub left: &'a str,
-    pub right: &'a str,
+    pub right: Option<&'a str>,
     pub calibration: &'a str,
     pub output: &'a str,
     pub width: u32,
@@ -43,14 +43,13 @@ pub struct StitchArgs<'a> {
     pub container: Option<&'a str>,
     /// Optional replay-recording output path. When `Some`, the
     /// stitch job writes a stacked-video copy of the source frames
-    /// alongside the stitched output (M6.5 feature, `replay`
-    /// feature flag on reco-cli).
+    /// alongside the stitched output (requires the `replay` feature
+    /// flag on reco-cli).
     pub replay_path: Option<&'a str>,
     /// Optional replay-tile downscale `(width, height)`. When
-    /// `Some`, the GPU pack shader produces smaller replay tiles
-    /// (FRICTION reco-obs A19). Has no effect without
-    /// [`Self::replay_path`]. GPU path only — CPU-resident
-    /// sources log a warn and record at source dims.
+    /// `Some`, the GPU pack shader produces smaller replay tiles.
+    /// Has no effect without [`Self::replay_path`]. GPU path only -
+    /// CPU-resident sources log a warn and record at source dims.
     pub replay_scale: Option<(u32, u32)>,
     /// When true, silently continue without tracking if detection
     /// cannot run (e.g. zero-copy mode without TensorRT). Default
@@ -59,8 +58,11 @@ pub struct StitchArgs<'a> {
     pub allow_no_tracking: bool,
     /// Force CPU decode to enable ORT CPU detection without TensorRT.
     pub no_zero_copy: bool,
+    pub cpu: bool,
     /// Path for pipeline event JSONL output.
     pub events_path: Option<&'a str>,
+    /// Stabilize panner output using calibration field ROI points as anchors.
+    pub stabilize_roi: bool,
     /// Precomputed trajectory CSV (overrides AI panner).
     pub trajectory_path: Option<&'a str>,
     /// FieldPanner tuning JSON (field mode); only present keys override.
@@ -107,21 +109,27 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
             reco_io::stitch_job::InputPath::Single(std::path::PathBuf::from(s))
         }
     };
-    let mut job = reco_io::StitchJob::with_calibration(
-        to_input(args.left),
-        to_input(args.right),
-        cal,
-        args.output,
-    )
-    .codec(parse_codec(args.codec))
-    .quality(parse_quality(args.quality))
-    .resolution(args.width, args.height)
-    .on_progress(move |p: &reco_core::session::types::FrameProgress| {
-        // Use the session's own elapsed clock so the reported
-        // rate excludes one-time GPU / encoder / ORT init and
-        // reflects only the decode → stitch → encode loop.
-        progress.report_with_elapsed(p.frames_completed, p.elapsed);
-    });
+    let mut job = match args.right {
+        Some(right) => reco_io::StitchJob::with_calibration(
+            to_input(args.left),
+            to_input(right),
+            cal,
+            args.output,
+        ),
+        // One input: the calibration must carry a mono topology
+        // (StitchJob::run rejects the mismatch with a typed error).
+        None => reco_io::StitchJob::mono_with_calibration(to_input(args.left), cal, args.output),
+    };
+    job = job
+        .codec(parse_codec(args.codec))
+        .quality(parse_quality(args.quality))
+        .resolution(args.width, args.height)
+        .on_progress(move |p: &reco_core::session::types::FrameProgress| {
+            // Use the session's own elapsed clock so the reported
+            // rate excludes one-time GPU / encoder / ORT init and
+            // reflects only the decode → stitch → encode loop.
+            progress.report_with_elapsed(p.frames_completed, p.elapsed);
+        });
 
     if let Some(b) = args.blend {
         job = job.blend_width(b);
@@ -140,6 +148,9 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     }
     if args.no_zero_copy {
         job = job.force_cpu_decode();
+    }
+    if args.cpu {
+        job = job.cpu();
     }
     // Lookahead only helps when an AI panner drives the camera: it buffers
     // future frames so the panner can lead and the loop can centered-smooth.
@@ -163,6 +174,9 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     }
     if let Some(path) = args.events_path {
         job = job.events(path);
+    }
+    if args.stabilize_roi {
+        job = job.roi_stabilization(true);
     }
     if let Some(ref enc) = args.encoder_name {
         job = job.encoder_name(enc);

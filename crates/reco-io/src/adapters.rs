@@ -5,7 +5,7 @@
 //! in `reco-core`. Backend code stays clean and trait-free; all trait
 //! plumbing lives here.
 
-use reco_core::encoder::{EncodeError, Encoder, OutputFrame, PixelFormat};
+use reco_core::sink::{OutputFrame, OutputSink, PixelFormat, SinkError, SinkInput};
 use reco_core::source::{FramePair, SourceError, SourceInfo, StereoFrame, YuvData};
 
 #[cfg(feature = "ffmpeg")]
@@ -73,6 +73,8 @@ pub struct FfmpegFileSource {
     left_input: crate::stitch_job::InputPath,
     right_input: crate::stitch_job::InputPath,
     sync_offset: i64,
+    /// Software decode forced at open; seek respawns must reuse it.
+    software_decode: bool,
     /// Total frame count (estimated from duration * fps).
     total_frame_count: Option<u64>,
     /// Current frame position (incremented on each next_frame).
@@ -105,6 +107,7 @@ impl FfmpegFileSource {
             &crate::stitch_job::InputPath::Single(left_path.to_path_buf()),
             &crate::stitch_job::InputPath::Single(right_path.to_path_buf()),
             sync_offset,
+            false,
         )
     }
 
@@ -116,6 +119,7 @@ impl FfmpegFileSource {
         left: &crate::stitch_job::InputPath,
         right: &crate::stitch_job::InputPath,
         sync_offset: i64,
+        software_decode: bool,
     ) -> Result<Self, SourceError> {
         let left_probe_path = left.first_path();
         let right_probe_path = right.first_path();
@@ -173,6 +177,7 @@ impl FfmpegFileSource {
             right_owned.clone(),
             sync_offset,
             None,
+            software_decode,
         );
 
         Ok(Self {
@@ -185,6 +190,7 @@ impl FfmpegFileSource {
             left_input: left_owned,
             right_input: right_owned,
             sync_offset,
+            software_decode,
             total_frame_count,
             current_frame: 0,
             exhausted: false,
@@ -250,13 +256,19 @@ impl FfmpegFileSource {
         input: crate::stitch_job::InputPath,
         label: &'static str,
         seek_secs: Option<f64>,
+        software_decode: bool,
     ) -> std::sync::mpsc::Receiver<YuvData> {
         let (tx, rx) = std::sync::mpsc::sync_channel::<YuvData>(4);
 
         std::thread::Builder::new()
             .name(format!("decode_{label}"))
             .spawn(move || {
-                let mut dec = match ffmpeg::decoder::VideoDecoder::open_input(&input) {
+                let open = if software_decode {
+                    ffmpeg::decoder::VideoDecoder::open_input_software
+                } else {
+                    ffmpeg::decoder::VideoDecoder::open_input
+                };
+                let mut dec = match open(&input) {
                     Ok(d) => {
                         log::info!(
                             "{label} decoder: {} ({}x{})",
@@ -333,9 +345,10 @@ impl FfmpegFileSource {
         right: crate::stitch_job::InputPath,
         sync_offset: i64,
         seek_secs: Option<f64>,
+        software_decode: bool,
     ) -> std::sync::mpsc::Receiver<FramePair> {
-        let left_rx = Self::spawn_single_decoder_at(left, "left", seek_secs);
-        let right_rx = Self::spawn_single_decoder_at(right, "right", seek_secs);
+        let left_rx = Self::spawn_single_decoder_at(left, "left", seek_secs, software_decode);
+        let right_rx = Self::spawn_single_decoder_at(right, "right", seek_secs, software_decode);
 
         let (tx, rx) = std::sync::mpsc::sync_channel::<FramePair>(4);
 
@@ -461,6 +474,7 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
             self.right_input.clone(),
             self.sync_offset,
             Some(secs),
+            self.software_decode,
         );
         self.current_frame = frame;
         self.exhausted = false;
@@ -526,7 +540,7 @@ pub fn create_encoder(
     encoder_name: Option<String>,
     quality_value: Option<u8>,
     preset: Option<String>,
-) -> Result<(FfmpegFileEncoder, String), reco_core::encoder::EncodeError> {
+) -> Result<(FfmpegFileEncoder, String), reco_core::sink::SinkError> {
     use crate::output;
 
     let out_codec: output::Codec = codec.parse().unwrap_or_else(|_| {
@@ -554,12 +568,136 @@ pub fn create_encoder(
     Ok((encoder, name))
 }
 
+// -- FFmpeg Mono Source --
+
+/// Single-video source for mono topologies (pre-stitched panoramas).
+///
+/// Decodes one file on a background thread and delivers
+/// [`StereoFrame::Mono`] frames - the single-input dual of
+/// [`FfmpegFileSource`] for cylinder calibrations.
+#[cfg(feature = "ffmpeg")]
+pub struct FfmpegMonoSource {
+    rx: std::sync::mpsc::Receiver<YuvData>,
+    info: SourceInfo,
+    input: crate::stitch_job::InputPath,
+    software_decode: bool,
+    current_frame: u64,
+    exhausted: bool,
+}
+
+#[cfg(feature = "ffmpeg")]
+impl FfmpegMonoSource {
+    /// Open a mono source. `software_decode` forces the software
+    /// decoder (the `--cpu` path).
+    pub fn open(
+        input: &crate::stitch_job::InputPath,
+        software_decode: bool,
+    ) -> Result<Self, SourceError> {
+        let probe_path = input.first_path();
+        reco_core::source::validate_input_path(probe_path)?;
+        let probe =
+            ffmpeg::decoder::VideoDecoder::open(probe_path).map_err(|e| SourceError::Init {
+                path: probe_path.display().to_string(),
+                reason: format!("{e}"),
+            })?;
+        let fps_r = probe.frame_rate();
+        let fps = probe.fps();
+        let total_frames = input_duration_secs(input).map(|dur| (dur * fps) as u64);
+        let info = SourceInfo {
+            width: probe.width(),
+            height: probe.height(),
+            fps,
+            fps_rational: Some((fps_r.0, fps_r.1)),
+            total_frames,
+        };
+        drop(probe);
+
+        let rx =
+            FfmpegFileSource::spawn_single_decoder_at(input.clone(), "mono", None, software_decode);
+        Ok(Self {
+            rx,
+            info,
+            input: input.clone(),
+            software_decode,
+            current_frame: 0,
+            exhausted: false,
+        })
+    }
+}
+
+#[cfg(feature = "ffmpeg")]
+impl reco_core::source::FrameSource for FfmpegMonoSource {
+    fn info(&self) -> SourceInfo {
+        self.info.clone()
+    }
+
+    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+        if self.exhausted {
+            return Ok(None);
+        }
+        match self.rx.recv() {
+            Ok(yuv) => {
+                self.current_frame += 1;
+                Ok(Some(StereoFrame::Mono(yuv)))
+            }
+            Err(_) => {
+                self.exhausted = true;
+                Ok(None)
+            }
+        }
+    }
+
+    fn total_frames(&self) -> Option<u64> {
+        self.info.total_frames
+    }
+
+    fn skip_frames(&mut self, count: u64) -> Result<u64, SourceError> {
+        self.seek(self.current_frame + count)?;
+        Ok(count)
+    }
+
+    fn seek(&mut self, frame: u64) -> Result<(), SourceError> {
+        // Same two strategies as `FfmpegFileSource::seek`: a short
+        // forward seek drains the already-running decoder; anything
+        // else respawns it at the target keyframe. Decode-and-discard
+        // for a large `start_time` would decode the entire prefix.
+        if frame >= self.current_frame {
+            let skip = frame - self.current_frame;
+            let max_forward = (self.info.fps * 10.0) as u64;
+            if skip <= max_forward {
+                for _ in 0..skip {
+                    match self.rx.recv() {
+                        Ok(_) => self.current_frame += 1,
+                        Err(_) => {
+                            self.exhausted = true;
+                            break;
+                        }
+                    }
+                }
+                return Ok(());
+            }
+        }
+
+        let secs = frame as f64 / self.info.fps;
+        log::debug!("mono seek to frame {frame} ({secs:.1}s)");
+        self.rx = FfmpegFileSource::spawn_single_decoder_at(
+            self.input.clone(),
+            "mono",
+            Some(secs),
+            self.software_decode,
+        );
+        self.current_frame = frame;
+        self.exhausted = false;
+        Ok(())
+    }
+}
+
 // -- FFmpeg File Encoder --
 
 /// File encoder backed by FFmpeg.
 ///
 /// Thin wrapper around `ffmpeg::encoder::VideoEncoder` that implements
-/// the `reco_core::encoder::Encoder` trait.
+/// the `reco_core::sink::OutputSink` trait.
 #[cfg(feature = "ffmpeg")]
 pub struct FfmpegFileEncoder {
     inner: ffmpeg::encoder::VideoEncoder,
@@ -574,10 +712,10 @@ impl FfmpegFileEncoder {
         height: u32,
         fps: (i32, i32),
         config: &ffmpeg::encoder::EncoderConfig,
-    ) -> Result<Self, EncodeError> {
+    ) -> Result<Self, SinkError> {
         let fps_rational = ffmpeg_next::Rational(fps.0, fps.1);
         let inner = ffmpeg::encoder::VideoEncoder::new(path, width, height, fps_rational, config)
-            .map_err(|e| EncodeError::Init {
+            .map_err(|e| SinkError::Init {
             reason: e.to_string(),
         })?;
         Ok(Self { inner })
@@ -590,13 +728,21 @@ impl FfmpegFileEncoder {
 }
 
 #[cfg(feature = "ffmpeg")]
-impl Encoder for FfmpegFileEncoder {
-    fn submit(&mut self, frame: OutputFrame<'_>) -> Result<(), EncodeError> {
+impl OutputSink for FfmpegFileEncoder {
+    fn name(&self) -> &str {
+        self.inner.encoder_name()
+    }
+
+    fn wants(&self) -> SinkInput {
+        SinkInput::CpuBytes(PixelFormat::Nv12)
+    }
+
+    fn consume(&mut self, frame: OutputFrame<'_>) -> Result<(), SinkError> {
         match frame.format {
             PixelFormat::Nv12 => {
                 self.inner
                     .write_nv12_frame(frame.data)
-                    .map_err(|e| EncodeError::Frame {
+                    .map_err(|e| SinkError::Consume {
                         frame_index: None,
                         reason: e.to_string(),
                     })
@@ -604,7 +750,7 @@ impl Encoder for FfmpegFileEncoder {
             PixelFormat::Rgba8 => {
                 self.inner
                     .write_frame(frame.data)
-                    .map_err(|e| EncodeError::Frame {
+                    .map_err(|e| SinkError::Consume {
                         frame_index: None,
                         reason: e.to_string(),
                     })
@@ -612,8 +758,8 @@ impl Encoder for FfmpegFileEncoder {
         }
     }
 
-    fn finish(&mut self) -> Result<(), EncodeError> {
-        self.inner.finish().map_err(|e| EncodeError::Finalize {
+    fn finish(&mut self) -> Result<(), SinkError> {
+        self.inner.finish().map_err(|e| SinkError::Finish {
             reason: e.to_string(),
         })
     }

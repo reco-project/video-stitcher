@@ -1,7 +1,7 @@
 //! FrameSource decorator that records pre-stitch source frames to a
 //! stacked-video file alongside the live pipeline.
 //!
-//! Enables the "professional replay" capability from the M6.5 plan
+//! Enables replay-during-recording
 //! with zero plumbing in the consumer: call
 //! [`crate::StitchJob::with_replay_recording`] and the library wires
 //! a `ReplayRecordingSource` in front of the real source. Each
@@ -207,7 +207,7 @@ const _: fn() = || {
 };
 
 // -----------------------------------------------------------------
-// Push-API recorder (FRICTION A18 close)
+// Push-API recorder
 // -----------------------------------------------------------------
 
 /// Push-API stacked-video recorder. Implements reco-core's
@@ -400,7 +400,7 @@ pub fn session_recorder(
     SessionStackedRecorder::open(path, config, width, height)
 }
 
-/// GPU-pack atlas recorder (M7 pivot). Implements
+/// GPU-pack atlas recorder. Implements
 /// [`reco_core::core::types::StackedReplayGpuRecorder`] by forwarding
 /// pre-packed [`StackedAtlas`] bytes straight to a
 /// [`StackedEncoder`]. There's no pack work in this type - the

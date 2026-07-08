@@ -11,15 +11,15 @@ use std::sync::{Arc, Mutex};
 
 use super::StitchSession;
 use super::types::*;
-use crate::calibration::{Calibration, Framing, Lens, Topology};
+use crate::calibration::{Calibration, Framing, LShapeTopology, Lens};
 use crate::detect::detector::{Detection, DetectorError, DetectorFrame, UnifiedDetector};
 use crate::detect::director::MappedDetection;
 use crate::detect::panner::{PanContext, Panner};
 use crate::detect::tracker::{TrackState, TrackedEntity, Tracker, WorldState};
-use crate::encoder::{EncodeError, Encoder, OutputFrame};
 use crate::geometry::CameraId;
 use crate::geometry::ViewportPosition;
 use crate::render::viewport::ViewportConfig;
+use crate::sink::{OutputFrame, OutputSink, SinkError, SinkInput};
 use crate::source::{FramePair, FrameSource, SourceError, SourceInfo, StereoFrame, YuvData};
 
 // ─── Helpers ───────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ fn test_calibration() -> Calibration {
     let cam = || Lens::fisheye(W, H, 32.0, 32.0, 32.0, 32.0, [0.0; 4]);
     Calibration::new(
         vec![cam(), cam()],
-        Topology {
+        LShapeTopology {
             intersect: 0.5,
             x_ty: 0.0,
             x_rz: 0.0,
@@ -204,8 +204,16 @@ impl MockEncoder {
     }
 }
 
-impl Encoder for MockEncoder {
-    fn submit(&mut self, frame: OutputFrame<'_>) -> Result<(), EncodeError> {
+impl OutputSink for MockEncoder {
+    fn name(&self) -> &str {
+        "mock-encoder"
+    }
+
+    fn wants(&self) -> SinkInput {
+        SinkInput::CpuBytes(crate::sink::PixelFormat::Nv12)
+    }
+
+    fn consume(&mut self, frame: OutputFrame<'_>) -> Result<(), SinkError> {
         assert!(frame.width > 0, "frame width must be positive");
         assert!(frame.height > 0, "frame height must be positive");
         assert!(!frame.data.is_empty(), "frame data must not be empty");
@@ -213,7 +221,7 @@ impl Encoder for MockEncoder {
         Ok(())
     }
 
-    fn finish(&mut self) -> Result<(), EncodeError> {
+    fn finish(&mut self) -> Result<(), SinkError> {
         Ok(())
     }
 }
@@ -263,7 +271,7 @@ impl Panner for NanPanner {
 /// Trackers and panners are attached post-build (they have their own
 /// setters and aren't part of the builder API).
 fn build_test_session(
-    encoder: Option<Box<dyn Encoder + Send>>,
+    encoder: Option<Box<dyn OutputSink>>,
     detector: Option<Box<dyn UnifiedDetector>>,
     detection_interval: u64,
 ) -> Result<StitchSession, SessionError> {
@@ -278,7 +286,7 @@ fn build_test_session(
         .detection_interval(detection_interval);
 
     if let Some(enc) = encoder {
-        builder = builder.encoder(enc, 2);
+        builder = builder.sink(enc, crate::session::SinkOptions::threaded(2));
     }
     if let Some(det) = detector {
         builder = builder.detector(det);
@@ -495,7 +503,7 @@ fn compute_frame_limit_negative_fps_uses_fallback() {
     assert_eq!(result, 300);
 }
 
-/// The 9B-i property guard, in two halves. (1) Entry-point parity:
+/// The one-AI-stack guard, in two halves. (1) Entry-point parity:
 /// the same scripted detector + tracker + panner, fed the same frames
 /// through `StitchCore::submit_frame_yuv` and `StitchSession::run`,
 /// must see identical inputs in identical order - frame indices,
@@ -613,5 +621,226 @@ fn push_and_pull_share_one_ai_brain() {
         pull_calls.load(Ordering::Relaxed),
         push_calls.load(Ordering::Relaxed),
         "detector call-count parity"
+    );
+}
+
+// ─── CPU-executor session ──────────────────────────────────────────────
+
+/// Build a session over the CPU executor - no GPU anywhere.
+fn build_cpu_session() -> StitchSession {
+    let executor = crate::stitch::CpuExecutor::new(
+        Box::new(crate::projection::LShapeProjection),
+        test_calibration(),
+        ViewportConfig {
+            width: 64,
+            height: 64,
+            fov_degrees: 75.0,
+        },
+        W,
+        H,
+        false,
+    )
+    .expect("cpu executor");
+    StitchSession::with_executor(crate::stitch::Executor::Cpu(Box::new(executor)))
+        .expect("cpu session")
+}
+
+/// Inline sink asserting every delivered frame is a well-formed NV12
+/// buffer at the session's delivery dimensions.
+struct Nv12CheckingSink {
+    frames: Arc<AtomicU64>,
+}
+
+impl OutputSink for Nv12CheckingSink {
+    fn name(&self) -> &str {
+        "nv12-check"
+    }
+    fn wants(&self) -> SinkInput {
+        SinkInput::CpuBytes(crate::sink::PixelFormat::Nv12)
+    }
+    fn consume(&mut self, frame: OutputFrame<'_>) -> Result<(), SinkError> {
+        assert_eq!(frame.format, crate::sink::PixelFormat::Nv12);
+        assert_eq!(
+            frame.data.len(),
+            (frame.width * frame.height * 3 / 2) as usize,
+            "NV12 layout: Y plane + half-size interleaved UV"
+        );
+        self.frames.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+    fn finish(&mut self) -> Result<(), SinkError> {
+        Ok(())
+    }
+}
+
+/// The full batch path over the software stitch: source -> engine
+/// submit (detection + pose + CPU stitch) -> CPU NV12 -> sink fan-out.
+/// Runs in the default suite - the session's first GPU-free
+/// end-to-end test.
+#[test]
+fn cpu_session_runs_end_to_end_without_gpu() {
+    const FRAMES: u64 = 5;
+    let mut session = build_cpu_session();
+
+    let encoded = Arc::new(AtomicU64::new(0));
+    session
+        .add_sink(
+            Box::new(MockEncoder::new(Arc::clone(&encoded))),
+            crate::session::SinkOptions::threaded(2),
+        )
+        .expect("attach threaded sink");
+    let checked = Arc::new(AtomicU64::new(0));
+    session
+        .add_sink(
+            Box::new(Nv12CheckingSink {
+                frames: Arc::clone(&checked),
+            }),
+            crate::session::SinkOptions::inline_lossy(),
+        )
+        .expect("attach inline sink");
+
+    let detections = Arc::new(AtomicU64::new(0));
+    session.set_detector(Box::new(MockDetector::new(vec![], Arc::clone(&detections))));
+    session.set_detection_interval(1);
+
+    let mut source = MockSource::new(FRAMES);
+    let interrupted = AtomicBool::new(false);
+    let frames = session
+        .run(&mut source, u64::MAX, &interrupted, None)
+        .expect("cpu run");
+    session.finish().expect("finish");
+
+    assert_eq!(frames, FRAMES);
+    assert_eq!(
+        encoded.load(Ordering::SeqCst),
+        FRAMES,
+        "every frame reached the threaded sink"
+    );
+    assert_eq!(
+        checked.load(Ordering::SeqCst),
+        FRAMES,
+        "every frame reached the inline sink"
+    );
+    assert!(
+        detections.load(Ordering::SeqCst) >= FRAMES,
+        "detection ran inside the CPU submit path"
+    );
+}
+
+/// Zero-copy frames cannot be consumed by the software stitch; the
+/// loop rejects them with a typed error instead of panicking.
+#[test]
+fn cpu_session_rejects_gpu_resident_frames() {
+    struct ResidentSource;
+    impl FrameSource for ResidentSource {
+        fn info(&self) -> SourceInfo {
+            SourceInfo {
+                width: W,
+                height: H,
+                fps: 30.0,
+                fps_rational: Some((30, 1)),
+                total_frames: None,
+            }
+        }
+        fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+            Ok(Some(StereoFrame::GpuResident {
+                left_slot: 0,
+                right_slot: 0,
+            }))
+        }
+    }
+
+    let mut session = build_cpu_session();
+    let interrupted = AtomicBool::new(false);
+    let err = session
+        .run(&mut ResidentSource, u64::MAX, &interrupted, None)
+        .expect_err("resident frames must be rejected on the CPU executor");
+    assert!(
+        matches!(err, SessionError::Config(_)),
+        "expected a typed config error, got: {err}"
+    );
+}
+
+/// The mono cylinder path end to end without a GPU: single-input
+/// source -> engine mono submit (CPU cylinder stitch) -> NV12 -> sink.
+///
+/// Doubles as the minimal mono-consumer example: a calibration built
+/// from `Lens::flat` + `CylinderTopology` + a zero `Framing`, a
+/// `FrameSource` yielding `StereoFrame::Mono`, and a plain session
+/// run on the CPU executor - no GPU context is created on this path.
+#[test]
+fn mono_cylinder_session_runs_end_to_end_without_gpu() {
+    struct MonoSource(u64);
+    impl FrameSource for MonoSource {
+        fn info(&self) -> SourceInfo {
+            SourceInfo {
+                width: W,
+                height: H,
+                fps: 30.0,
+                fps_rational: Some((30, 1)),
+                total_frames: None,
+            }
+        }
+        fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+            if self.0 == 0 {
+                return Ok(None);
+            }
+            self.0 -= 1;
+            let y_size = (W * H) as usize;
+            let uv_size = ((W / 2) * (H / 2)) as usize;
+            Ok(Some(StereoFrame::Mono(YuvData {
+                y: vec![128u8; y_size],
+                u: vec![128u8; uv_size],
+                v: vec![128u8; uv_size],
+            })))
+        }
+    }
+
+    const FRAMES: u64 = 4;
+    let cal = Calibration::new(
+        vec![crate::calibration::Lens::flat(W, H)],
+        crate::calibration::CylinderTopology::default(),
+        Framing {
+            axis_offset: 0.0,
+            tilt: 0.0,
+            roll: 0.0,
+        },
+    );
+    let executor = crate::stitch::CpuExecutor::new(
+        Box::new(crate::projection::CylindricalProjection),
+        cal,
+        ViewportConfig {
+            width: 64,
+            height: 64,
+            fov_degrees: 60.0,
+        },
+        W,
+        H,
+        false,
+    )
+    .expect("mono cpu executor");
+    let mut session =
+        StitchSession::with_executor(crate::stitch::Executor::Cpu(Box::new(executor)))
+            .expect("mono session");
+
+    let encoded = Arc::new(AtomicU64::new(0));
+    session
+        .add_sink(
+            Box::new(MockEncoder::new(Arc::clone(&encoded))),
+            crate::session::SinkOptions::threaded(2),
+        )
+        .expect("attach sink");
+
+    let interrupted = AtomicBool::new(false);
+    let frames = session
+        .run(&mut MonoSource(FRAMES), u64::MAX, &interrupted, None)
+        .expect("mono run");
+    session.finish().expect("finish");
+
+    assert_eq!(frames, FRAMES);
+    assert_eq!(
+        encoded.load(Ordering::SeqCst),
+        FRAMES,
+        "every mono frame reached the sink"
     );
 }

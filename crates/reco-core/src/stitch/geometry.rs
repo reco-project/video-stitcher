@@ -182,7 +182,11 @@ pub(crate) fn l_shape_plane_maps(
 ) -> (PlaneMap, PlaneMap) {
     // Both planes share the camera aspect (a stereo rig's two cameras match).
     let plane_aspect = calib.lenses[0].width as f32 / calib.lenses[0].height as f32;
-    let scene = SceneGeometry::new(&calib.topology, &calib.framing, plane_aspect);
+    let topology = calib
+        .topology
+        .l_shape()
+        .expect("l_shape_plane_maps requires the L-shape topology");
+    let scene = SceneGeometry::new(topology, &calib.framing, plane_aspect);
 
     let out_aspect = config.width as f32 / config.height as f32;
     let projection = opengl_to_wgpu_matrix()

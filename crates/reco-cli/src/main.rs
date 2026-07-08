@@ -39,8 +39,6 @@ fn init_profiling() -> tracing_chrome::FlushGuard {
 /// reco-calibrate into the tracing pipeline so a single structured
 /// source of truth carries every event. Reads `RUST_LOG` for level
 /// filtering; defaults to `info` if unset.
-///
-/// M2 migration: replaces the previous `env_logger::init()`.
 #[cfg(not(feature = "profiling"))]
 fn init_tracing() {
     use tracing_subscriber::{EnvFilter, fmt, prelude::*};
@@ -76,9 +74,6 @@ fn quiet_libva_info_by_default() {
 /// hook runs. When a user reports a bug post-deployment with a log
 /// file, the panic context is immediately searchable alongside regular
 /// log lines.
-///
-/// M2 addition: required for the post-deployment diagnostic story the
-/// user flagged during the plan iteration on 2026-04-18.
 fn install_panic_hook() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -123,13 +118,15 @@ struct Cli {
 // is irrelevant.
 #[allow(clippy::large_enum_variant)]
 enum Commands {
-    /// Stitch two video files into a panoramic output.
+    /// Stitch camera video files into a panoramic output.
     Stitch {
-        /// Path to the left camera video file.
+        /// Path to the left camera video file (or the single
+        /// pre-stitched panorama for cylinder calibrations).
         left: String,
 
-        /// Path to the right camera video file.
-        right: String,
+        /// Path to the right camera video file. Omit for single-input
+        /// (cylinder) calibrations.
+        right: Option<String>,
 
         /// Path to the calibration JSON file.
         #[arg(short, long)]
@@ -258,10 +255,22 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         no_zero_copy: bool,
 
+        /// Stitch entirely on the CPU: software render + CPU decode,
+        /// no GPU touched. Much slower; for GPU-less machines and for
+        /// verifying output without GPU variance.
+        #[arg(long, default_value_t = false)]
+        cpu: bool,
+
         /// Record pipeline events (detections, filter decisions, pan
         /// decisions) to a JSONL file for offline analysis.
         #[arg(long)]
         events: Option<String>,
+
+        /// Stabilize the panner output using calibration field ROI
+        /// points as fixed anchors. Requires at least two saved ROI
+        /// points in the calibration JSON.
+        #[arg(long = "stabilize-roi", default_value_t = false)]
+        stabilize_roi: bool,
 
         /// Precomputed trajectory CSV (frame,yaw,pitch,fov). Overrides
         /// AI tracking with poses read from the file.
@@ -439,15 +448,15 @@ enum Commands {
         #[arg(long, default_value = "field")]
         tracking: String,
 
-        /// Disable the constrained-look coverage clamp
-        /// (FRICTION A13). When off, the viewport can pan into
-        /// black panorama edges — useful for sweeping the full
-        /// coverage or debugging the coverage boundary itself.
+        /// Disable the constrained-look coverage clamp. When off,
+        /// the viewport can pan into black panorama edges — useful
+        /// for sweeping the full coverage or debugging the coverage
+        /// boundary itself.
         #[arg(long, default_value_t = false)]
         unconstrained: bool,
 
         /// Record pre-stitch source frames to this path as a
-        /// stacked-video file. Same M7 replay feature as
+        /// stacked-video file. Same replay feature as
         /// `stitch --replay`. Requires `--features replay`.
         #[arg(long)]
         replay: Option<String>,
@@ -799,14 +808,16 @@ fn main() -> anyhow::Result<()> {
             replay_scale,
             allow_no_tracking,
             no_zero_copy,
+            cpu,
             events,
+            stabilize_roi,
             trajectory,
             panner_config,
             panner_preset,
         } => stitch::run_stitch(
             stitch::StitchArgs {
                 left: &left,
-                right: &right,
+                right: right.as_deref(),
                 calibration: &calibration,
                 output: &output,
                 width,
@@ -830,7 +841,9 @@ fn main() -> anyhow::Result<()> {
                 replay_scale,
                 allow_no_tracking,
                 no_zero_copy,
+                cpu,
                 events_path: events.as_deref(),
+                stabilize_roi,
                 trajectory_path: trajectory.as_deref(),
                 panner_config_path: panner_config.as_deref(),
                 panner_preset: panner_preset.as_deref(),

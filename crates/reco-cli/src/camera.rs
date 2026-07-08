@@ -61,7 +61,7 @@ pub struct CameraRunConfig<'a> {
     /// Disable coverage-boundary clamp on the director output.
     /// Useful in sweep mode to cover the full panorama width.
     pub unconstrained: bool,
-    /// Optional path for M7 stacked-replay recording. Same feature
+    /// Optional path for stacked-replay recording. Same feature
     /// as `StitchJob::with_replay_recording`. Requires the `replay`
     /// feature flag on reco-cli.
     pub replay_path: Option<&'a str>,
@@ -125,12 +125,18 @@ pub fn run_camera(
     );
 
     let mut cal = reco_core::calibration::Calibration::from_file(Path::new(calibration))?;
-    if let Some(b) = blend {
-        eprintln!(
-            "Seam blend: --blend {b} overrides the calibration's {}",
-            cal.topology.blend_width
-        );
-        cal.topology.blend_width = b;
+    match (blend, cal.topology.l_shape_mut()) {
+        (Some(b), Some(topology)) => {
+            eprintln!(
+                "Seam blend: --blend {b} overrides the calibration's {}",
+                topology.blend_width
+            );
+            topology.blend_width = b;
+        }
+        (Some(b), None) => {
+            eprintln!("Seam blend: --blend {b} ignored - this topology has no seam");
+        }
+        (None, _) => {}
     }
     let field_roi = cal.field_roi.clone();
 
@@ -166,9 +172,8 @@ pub fn run_camera(
     };
     let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
 
-    // Constrained-look clamp (FRICTION A13). Default on; `--unconstrained`
-    // flips it off so sweep / debug views can pan past the coverage
-    // boundary.
+    // Constrained-look clamp. Default on; `--unconstrained` flips it
+    // off so sweep / debug views can pan past the coverage boundary.
     if unconstrained {
         session.core_mut().set_constrained_look(false);
         log::info!("constrained_look: disabled (unconstrained viewport)");
@@ -264,7 +269,7 @@ pub fn run_camera(
         height
     );
 
-    // M7 replay recording on live cams (closes #273). Live capture
+    // Replay recording on live cams. Live capture
     // runs through `session.process_frame` → CPU-upload render
     // path; the GPU pack tap in `process_frame` reads from the
     // renderer's internal plane textures (populated by
@@ -387,20 +392,23 @@ pub fn run_camera(
     )?;
     println!("Encoder: {}", encoder.encoder_name());
 
-    session.set_encoder(Box::new(encoder), 2);
+    session.add_sink(
+        Box::new(encoder),
+        reco_core::session::SinkOptions::threaded(2),
+    )?;
 
-    // Snapshot writer for live preview (gameday panel). Taps the NV12
-    // readback after each frame and writes a JPEG every N frames on a
-    // background thread; held alive until the function returns. Gated
-    // behind the `snapshot` build feature.
-    #[cfg(feature = "snapshot")]
-    let mut _snapshot_writer: Option<SnapshotWriter> = None;
+    // Snapshot sink for live preview (gameday panel): writes a JPEG
+    // every N frames on a background thread. Inline delivery - its
+    // consume never blocks the frame loop. Gated behind the
+    // `snapshot` build feature.
     #[cfg(feature = "snapshot")]
     if let Some(dir) = snapshot_dir {
-        let (writer, tap) = SnapshotWriter::new(Path::new(dir), snapshot_interval)?;
-        session.set_nv12_tap(tap);
+        let writer = SnapshotWriter::new(Path::new(dir), snapshot_interval)?;
+        session.add_sink(
+            Box::new(writer),
+            reco_core::session::SinkOptions::inline_lossy(),
+        )?;
         println!("Snapshots: {dir}/snapshot.jpg (every {snapshot_interval} frames)");
-        _snapshot_writer = Some(writer);
     }
 
     let frame_limit =

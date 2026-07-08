@@ -284,7 +284,11 @@ fn print_results(result: &reco_calibrate::CalibrationResult, output: &str, total
     eprintln!("  Confidence:      {:.1}%", result.confidence * 100.0);
     eprintln!("  Residual error:  {:.6}", result.residual_error);
     eprintln!("\nPlacement parameters:");
-    let l = &result.calibration.topology;
+    let l = result
+        .calibration
+        .topology
+        .l_shape()
+        .expect("stereo calibration always produces the L-shape topology");
     eprintln!(
         "  cameraAxisOffset: {:.4}",
         result.calibration.framing.axis_offset

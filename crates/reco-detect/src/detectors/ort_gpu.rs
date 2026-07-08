@@ -69,8 +69,8 @@ pub struct OrtGpuDetector {
     nv12_8bit_y: CUdeviceptr,
     nv12_8bit_uv: CUdeviceptr,
     // Cached CUDA device MemoryInfo. Constant for the detector's
-    // lifetime; constructing one per inference showed up on the
-    // per-frame alloc audit (plan M7 item 5).
+    // lifetime; constructing one per inference is measurable
+    // per-frame allocation churn.
     cuda_memory_info: SendMemoryInfo,
 }
 
