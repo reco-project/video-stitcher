@@ -308,17 +308,11 @@ impl super::StitchCore {
         detections: Vec<Detection>,
     ) -> Vec<MappedDetection> {
         let calibration = self.executor.calibration();
-        let scene = self.executor.scene();
         detections
             .into_iter()
             .map(|d| {
-                let position = projection::camera_to_panorama(
-                    d.camera,
-                    d.center_x,
-                    d.center_y,
-                    calibration,
-                    scene,
-                );
+                let position =
+                    projection::camera_to_panorama(d.camera, d.center_x, d.center_y, calibration);
                 MappedDetection {
                     camera: d.camera,
                     class_id: d.class_id,

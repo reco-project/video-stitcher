@@ -14,9 +14,9 @@
 //! ```
 
 mod coverage;
-mod cylinder;
+pub(crate) mod cylinder;
 mod geometry;
-mod l_shape;
+pub(crate) mod l_shape;
 
 // Re-export coverage types so external code can still use
 // `crate::projection::CoverageBoundary` etc.
@@ -27,12 +27,12 @@ pub use l_shape::{DEFAULT_BLEND_WIDTH, LShape};
 // Re-export geometry utility.
 pub use geometry::point_in_polygon;
 
-use crate::calibration::{Calibration, Lens};
+use crate::calibration::{Calibration, Framing, Lens};
 use crate::geometry::CameraId;
 use crate::geometry::ViewportPosition;
 use crate::geometry::VirtualCamera;
-use crate::render::scene::SceneGeometry;
 use crate::stitch::{BlendRule, SurfaceMap};
+use l_shape::PlaneScene;
 
 use nalgebra::{Point3, Vector3};
 
@@ -69,6 +69,12 @@ pub trait Projection: Send + Sync {
     /// 2 for today's L-shape stereo, N>2 for future panoramic rigs.
     fn camera_count(&self) -> usize;
 
+    /// The virtual camera's position in world space - the eye every
+    /// view matrix and pose basis is built from. The one piece of
+    /// scene state every projection has, plane-backed or not (the
+    /// mono cylinder's camera sits at the `[0, 0, 1]` convention).
+    fn camera_position(&self, framing: &Framing) -> [f32; 3];
+
     /// The ordered surface list for one frame: each surface's inverse
     /// map paired with how it blends over the surfaces before it.
     /// Surface `i` samples source camera `i`; the first surface lays
@@ -90,13 +96,11 @@ pub trait Projection: Send + Sync {
 
     /// Build the coverage boundary for this projection's panorama.
     ///
-    /// Representation and clamp are one coupled unit: the default is the
-    /// sampled-slice model (bounded, non-wrapping - today's L-shape). A
-    /// projection that cannot reuse it overrides with its own at the
-    /// topology step.
-    fn coverage(&self, calibration: &Calibration, scene: &SceneGeometry) -> CoverageBoundary {
-        CoverageBoundary::from_calibration(calibration, scene)
-    }
+    /// No default on purpose: representation and clamp are one coupled
+    /// unit each projection must own (the L-shape samples its plane
+    /// edges; the cylinder is analytic). A defaulted implementation
+    /// would silently hand a new projection another one's boundary.
+    fn coverage(&self, calibration: &Calibration) -> CoverageBoundary;
 }
 
 /// Maximum Newton-Raphson iterations for KB4 inverse distortion.
@@ -113,17 +117,19 @@ const CONVERGENCE_EPS: f64 = 1e-10;
 /// Returns `None` if the inverse distortion fails to converge (rare,
 /// indicates an extreme point far outside the valid lens area).
 ///
+/// Returns `None` for plane-less topologies: the forward map inverts
+/// the L-shape's plane rasterization, and mono detection mapping is
+/// its own follow-up.
+///
 /// # Example
 ///
 /// ```rust
 /// use reco_core::projection::camera_to_panorama;
 /// use reco_core::geometry::CameraId;
 /// use reco_core::calibration::Calibration;
-/// use reco_core::render::scene::SceneGeometry;
 ///
 /// # fn example(cal: &Calibration) {
-/// let scene = SceneGeometry::for_calibration(cal);
-/// if let Some(pos) = camera_to_panorama(CameraId::Left, 0.5, 0.5, cal, &scene) {
+/// if let Some(pos) = camera_to_panorama(CameraId::Left, 0.5, 0.5, cal) {
 ///     println!("Center of left camera maps to yaw={:.3}, pitch={:.3}", pos.yaw, pos.pitch);
 /// }
 /// # }
@@ -133,7 +139,20 @@ pub fn camera_to_panorama(
     norm_x: f32,
     norm_y: f32,
     calibration: &Calibration,
-    scene: &SceneGeometry,
+) -> Option<ViewportPosition> {
+    let topology = calibration.topology.l_shape()?;
+    let scene = topology.scene(&calibration.framing, calibration.lenses[0].aspect());
+    camera_to_panorama_in_scene(camera, norm_x, norm_y, calibration, &scene)
+}
+
+/// [`camera_to_panorama`] against an already-derived plane scene - the
+/// coverage sampler maps thousands of edge points against one scene.
+pub(crate) fn camera_to_panorama_in_scene(
+    camera: CameraId,
+    norm_x: f32,
+    norm_y: f32,
+    calibration: &Calibration,
+    scene: &PlaneScene,
 ) -> Option<ViewportPosition> {
     let params = match camera {
         CameraId::Left => &calibration.lenses[0],
@@ -253,7 +272,7 @@ fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &Lens) -> Option<(f64, f64)
 }
 
 /// Convert a plane UV (in extended shader space) to a 3D world point.
-fn plane_uv_to_world(uv: (f64, f64), camera: CameraId, scene: &SceneGeometry) -> Point3<f32> {
+fn plane_uv_to_world(uv: (f64, f64), camera: CameraId, scene: &PlaneScene) -> Point3<f32> {
     // Extended UV -> texture UV [0,1]
     let tex_u = ((uv.0 + 0.5) / 2.0) as f32;
     let tex_v = ((uv.1 + 0.5) / 2.0) as f32;
@@ -302,8 +321,11 @@ mod tests {
     use crate::calibration::{Calibration, Framing, Lens};
     use crate::projection::LShape;
 
-    fn test_scene(cal: &Calibration) -> SceneGeometry {
-        SceneGeometry::for_calibration(cal)
+    fn test_scene(cal: &Calibration) -> PlaneScene {
+        cal.topology
+            .l_shape()
+            .unwrap()
+            .scene(&cal.framing, cal.lenses[0].aspect())
     }
 
     fn test_calibration() -> Calibration {
@@ -340,13 +362,12 @@ mod tests {
     #[test]
     fn optical_center_maps_to_known_position() {
         let cal = test_calibration();
-        let scene = test_scene(&cal);
 
         // Optical center of the left camera (cx/w, cy/h)
         let cx = cal.lenses[0].cx as f32 / cal.lenses[0].width as f32;
         let cy = cal.lenses[0].cy as f32 / cal.lenses[0].height as f32;
 
-        let pos = camera_to_panorama(CameraId::Left, cx, cy, &cal, &scene);
+        let pos = camera_to_panorama(CameraId::Left, cx, cy, &cal);
         assert!(pos.is_some(), "optical center should map successfully");
         let pos = pos.unwrap();
         // The optical center should produce a valid yaw/pitch (no NaN)
@@ -357,10 +378,9 @@ mod tests {
     #[test]
     fn left_camera_left_edge_yaw_differs_from_center() {
         let cal = test_calibration();
-        let scene = test_scene(&cal);
 
-        let center = camera_to_panorama(CameraId::Left, 0.5, 0.5, &cal, &scene).unwrap();
-        let left_edge = camera_to_panorama(CameraId::Left, 0.1, 0.5, &cal, &scene).unwrap();
+        let center = camera_to_panorama(CameraId::Left, 0.5, 0.5, &cal).unwrap();
+        let left_edge = camera_to_panorama(CameraId::Left, 0.1, 0.5, &cal).unwrap();
 
         // The left edge of the left camera image maps to a different
         // part of the panorama than the center; this test just
@@ -379,10 +399,9 @@ mod tests {
     #[test]
     fn right_camera_produces_different_yaw_than_left() {
         let cal = test_calibration();
-        let scene = test_scene(&cal);
 
-        let left_center = camera_to_panorama(CameraId::Left, 0.5, 0.5, &cal, &scene).unwrap();
-        let right_center = camera_to_panorama(CameraId::Right, 0.5, 0.5, &cal, &scene).unwrap();
+        let left_center = camera_to_panorama(CameraId::Left, 0.5, 0.5, &cal).unwrap();
+        let right_center = camera_to_panorama(CameraId::Right, 0.5, 0.5, &cal).unwrap();
 
         // The two cameras face different directions, so their centers
         // should map to different yaw values
@@ -585,7 +604,7 @@ mod tests {
     fn coverage_yaw_and_pitch_ranges_match_internal_state() {
         let cal = test_calibration();
         let scene = test_scene(&cal);
-        let coverage = CoverageBoundary::from_calibration(&cal, &scene);
+        let coverage = CoverageBoundary::from_l_shape(&cal, &scene);
 
         let (yaw_min, yaw_max) = coverage.yaw_range();
         assert!(yaw_min < yaw_max, "yaw range must be non-empty");
@@ -602,7 +621,7 @@ mod tests {
         // sample, since it's the envelope over all pitch slices.
         let cal = test_calibration();
         let scene = test_scene(&cal);
-        let coverage = CoverageBoundary::from_calibration(&cal, &scene);
+        let coverage = CoverageBoundary::from_l_shape(&cal, &scene);
 
         let (y_lo_global, y_hi_global) = coverage.yaw_range();
         let (p_lo, p_hi) = coverage.pitch_range();
@@ -666,7 +685,7 @@ mod tests {
     fn safe_clamp_rejects_nan_yaw() {
         let cal = test_calibration();
         let scene = test_scene(&cal);
-        let coverage = CoverageBoundary::from_calibration(&cal, &scene);
+        let coverage = CoverageBoundary::from_l_shape(&cal, &scene);
         let out = coverage.safe_clamp(f32::NAN, 0.0, 75.0, 16.0 / 9.0);
         assert!(out.yaw.is_finite(), "yaw must be finite, got {}", out.yaw);
         assert!(
@@ -680,7 +699,7 @@ mod tests {
     fn safe_clamp_rejects_nan_pitch() {
         let cal = test_calibration();
         let scene = test_scene(&cal);
-        let coverage = CoverageBoundary::from_calibration(&cal, &scene);
+        let coverage = CoverageBoundary::from_l_shape(&cal, &scene);
         let out = coverage.safe_clamp(0.0, f32::NAN, 75.0, 16.0 / 9.0);
         assert!(out.yaw.is_finite());
         assert!(out.pitch.is_finite());
@@ -690,7 +709,7 @@ mod tests {
     fn safe_clamp_rejects_nan_fov() {
         let cal = test_calibration();
         let scene = test_scene(&cal);
-        let coverage = CoverageBoundary::from_calibration(&cal, &scene);
+        let coverage = CoverageBoundary::from_l_shape(&cal, &scene);
         let out = coverage.safe_clamp(0.0, 0.0, f32::NAN, 16.0 / 9.0);
         assert!(out.yaw.is_finite());
         assert!(out.pitch.is_finite());
@@ -700,7 +719,7 @@ mod tests {
     fn safe_clamp_rejects_infinite_inputs() {
         let cal = test_calibration();
         let scene = test_scene(&cal);
-        let coverage = CoverageBoundary::from_calibration(&cal, &scene);
+        let coverage = CoverageBoundary::from_l_shape(&cal, &scene);
         let out = coverage.safe_clamp(f32::INFINITY, 0.0, 75.0, 16.0 / 9.0);
         assert!(out.yaw.is_finite());
         assert!(out.pitch.is_finite());
@@ -799,8 +818,7 @@ mod tests {
     #[test]
     fn cylindrical_coverage_is_the_analytic_rectangle() {
         let cal = cylinder_cal();
-        let scene = SceneGeometry::for_calibration(&cal);
-        let coverage = cal.topology.projection().coverage(&cal, &scene);
+        let coverage = cal.topology.projection().coverage(&cal);
         let (y_lo, y_hi) = coverage.yaw_range();
         assert!(
             (y_lo + std::f32::consts::FRAC_PI_2).abs() < 1e-5,

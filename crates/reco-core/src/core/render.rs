@@ -580,12 +580,14 @@ impl super::StitchCore {
         right_rgba: &wgpu::Texture,
         yaw: f32,
         pitch: f32,
-    ) -> wgpu::CommandBuffer {
-        self.executor
+    ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
+        Ok(self
+            .executor
             .gpu()
             .expect("zero-copy render paths require the GPU executor")
             .pipeline
             .render_from_gpu_rgba(left_rgba, right_rgba, yaw, pitch)
+            .map_err(crate::stitch::StitchError::from)?)
     }
 
     /// Render any [`StereoFrame`](crate::source::StereoFrame) variant
@@ -624,11 +626,13 @@ impl super::StitchCore {
         right_uv: &wgpu::Texture,
         yaw: f32,
         pitch: f32,
-    ) -> wgpu::CommandBuffer {
-        self.executor
+    ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
+        Ok(self
+            .executor
             .gpu_mut()
             .expect("zero-copy render paths require the GPU executor")
             .pipeline
             .render_imported_textures(left_y, left_uv, right_y, right_uv, yaw, pitch)
+            .map_err(crate::stitch::StitchError::from)?)
     }
 }

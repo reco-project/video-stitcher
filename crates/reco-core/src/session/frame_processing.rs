@@ -317,7 +317,7 @@ impl StitchSession {
     ) -> Result<(), SessionError> {
         let render_buf = self
             .core
-            .render_gpu_rgba_at_pose(left_rgba, right_rgba, yaw, pitch);
+            .render_gpu_rgba_at_pose(left_rgba, right_rgba, yaw, pitch)?;
         self.submit_render_output(render_buf)?;
         self.core.pack_replay_from_pipeline();
         Ok(())
@@ -340,7 +340,7 @@ impl StitchSession {
     ) -> Result<(), SessionError> {
         let render_buf = self
             .core
-            .render_imported_textures_at_pose(left_y, left_uv, right_y, right_uv, yaw, pitch);
+            .render_imported_textures_at_pose(left_y, left_uv, right_y, right_uv, yaw, pitch)?;
         self.submit_render_output(render_buf)?;
 
         // Replay pack from the imported views (not internal plane textures,
@@ -397,7 +397,10 @@ impl StitchSession {
         // VRAM pool path: render from the staged pool slot.
         // Decode slots were already freed during produce.
         if let Some(vram_idx) = self.current_vram_slot {
-            let render_buf = self.gpu_exec().render_pool_slot(vram_idx, yaw, pitch);
+            let render_buf = self
+                .gpu_exec()
+                .render_pool_slot(vram_idx, yaw, pitch)
+                .map_err(crate::core::types::StitchCoreError::from)?;
             self.submit_render_output(render_buf)?;
             return Ok(());
         }

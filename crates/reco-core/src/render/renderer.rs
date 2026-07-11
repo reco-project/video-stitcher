@@ -23,13 +23,13 @@
 //! reduces CPU-GPU transfer from 8.3 MB to 3.1 MB per frame (62% less
 //! bandwidth) and eliminates CPU-side swscale color conversion entirely.
 
-use super::scene::SceneGeometry;
 use super::viewport::ResolvedViewport;
 use crate::calibration::{Calibration, Lens};
 use crate::geometry::{
     FAR_PLANE, NEAR_PLANE, matrix4_to_columns, opengl_to_wgpu_matrix, view_matrix,
 };
 use crate::gpu::GpuContext;
+use crate::projection::l_shape::PlaneScene;
 
 use bytemuck::{Pod, Zeroable};
 use nalgebra::{Matrix4, Perspective3};
@@ -254,7 +254,7 @@ impl Renderer {
         input_height: u32,
         output_format: wgpu::TextureFormat,
         input_format: InputFormat,
-        scene: &SceneGeometry,
+        source_aspect: f32,
     ) -> Self {
         let device = &gpu.device;
 
@@ -266,7 +266,7 @@ impl Renderer {
         });
 
         // Vertex buffer (quad for both planes — same shape, different model matrices)
-        let vertices = quad_vertices(scene.plane_aspect);
+        let vertices = quad_vertices(source_aspect);
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("quad_vertices"),
             contents: bytemuck::cast_slice(&vertices),
@@ -806,7 +806,7 @@ impl Renderer {
     fn encode_stitch_pass(
         &self,
         gpu: &GpuContext,
-        scene: &SceneGeometry,
+        scene: &PlaneScene,
         calibration: &Calibration,
         viewport: &ResolvedViewport,
         blend_width: f32,
@@ -917,7 +917,7 @@ impl Renderer {
     pub fn render_to_target(
         &self,
         gpu: &GpuContext,
-        scene: &SceneGeometry,
+        scene: &PlaneScene,
         calibration: &Calibration,
         viewport: &ResolvedViewport,
         blend_width: f32,
@@ -951,7 +951,7 @@ impl Renderer {
     pub fn render_to_view(
         &self,
         gpu: &GpuContext,
-        scene: &SceneGeometry,
+        scene: &PlaneScene,
         calibration: &Calibration,
         viewport: &ResolvedViewport,
         blend_width: f32,

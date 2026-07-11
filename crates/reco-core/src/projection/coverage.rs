@@ -4,11 +4,11 @@ use std::f32::consts::FRAC_PI_2;
 
 use crate::calibration::Calibration;
 use crate::geometry::CameraId;
-use crate::render::scene::SceneGeometry;
+use crate::projection::l_shape::PlaneScene;
 
 use crate::geometry::VirtualCamera;
 
-use super::camera_to_panorama;
+use super::camera_to_panorama_in_scene;
 
 // -- Coverage Boundary --
 //
@@ -139,7 +139,7 @@ impl CoverageBoundary {
         }
     }
 
-    pub fn from_calibration(calibration: &Calibration, scene: &SceneGeometry) -> Self {
+    pub(crate) fn from_l_shape(calibration: &Calibration, scene: &PlaneScene) -> Self {
         let n_slices: usize = 400;
         let margin = 0.02_f32;
         let rig_tilt = calibration.framing.tilt as f32;
@@ -166,7 +166,9 @@ impl CoverageBoundary {
                     (margin, t),
                     (1.0 - margin, t),
                 ] {
-                    if let Some(pos) = camera_to_panorama(camera, nx, ny, calibration, scene) {
+                    if let Some(pos) =
+                        camera_to_panorama_in_scene(camera, nx, ny, calibration, scene)
+                    {
                         points.push((pos.yaw, pos.pitch));
                     }
                 }
@@ -178,7 +180,9 @@ impl CoverageBoundary {
                 let nx = margin + (1.0 - 2.0 * margin) * (ix as f32 / grid_steps as f32);
                 for iy in 0..=grid_steps {
                     let ny = margin + (1.0 - 2.0 * margin) * (iy as f32 / grid_steps as f32);
-                    if let Some(pos) = camera_to_panorama(camera, nx, ny, calibration, scene) {
+                    if let Some(pos) =
+                        camera_to_panorama_in_scene(camera, nx, ny, calibration, scene)
+                    {
                         points.push((pos.yaw, pos.pitch));
                     }
                 }
@@ -330,7 +334,7 @@ impl CoverageBoundary {
     ///
     /// The sampled slices are tilt/roll-invariant: rig tilt and roll are
     /// view-time basis rotations and never move the plane geometry the
-    /// boundary samples (`SceneGeometry` consumes only `axis_offset`).
+    /// boundary samples (the plane scene consumes only `axis_offset`).
     /// Only the roll-aware clamp margins read these scalars, so a live
     /// tilt/roll change needs no dense re-projection.
     #[cfg_attr(not(feature = "gpu"), allow(dead_code))] // live-orientation engine hook

@@ -8,9 +8,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::calibration::{Calibration, CalibrationError};
+use crate::calibration::{Calibration, CalibrationError, Framing};
 use crate::projection::{CoverageBoundary, Projection};
-use crate::render::scene::SceneGeometry;
 use crate::render::viewport::ViewportConfig;
 use crate::stitch::{BlendRule, SurfaceMap};
 
@@ -109,6 +108,13 @@ impl Projection for Cylinder {
         1
     }
 
+    fn camera_position(&self, _framing: &Framing) -> [f32; 3] {
+        // The mono camera sits on the cylinder axis; the [0, 0, 1]
+        // convention (forward -Z) keeps the pose basis well-defined
+        // where the origin would normalize a zero vector into NaNs.
+        crate::geometry::MONO_CAMERA_POSITION
+    }
+
     fn surface_maps(
         &self,
         calibration: &Calibration,
@@ -148,7 +154,7 @@ impl Projection for Cylinder {
     /// The cylinder's panorama is exactly rectangular in (yaw, pitch):
     /// yaw spans the angular sweep, pitch spans what the painted
     /// height subtends at the radius.
-    fn coverage(&self, calibration: &Calibration, _scene: &SceneGeometry) -> CoverageBoundary {
+    fn coverage(&self, calibration: &Calibration) -> CoverageBoundary {
         let yaw_half = (self.sweep_deg.to_radians() * 0.5) as f32;
         let height = self
             .video_height

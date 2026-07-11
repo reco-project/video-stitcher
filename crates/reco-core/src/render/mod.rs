@@ -11,7 +11,6 @@ pub mod pipeline;
 pub mod planes;
 #[cfg(feature = "gpu")]
 pub mod renderer;
-pub mod scene;
 pub mod viewport;
 
 /// The GPU half of a projection: what the stitch pipeline compiles and

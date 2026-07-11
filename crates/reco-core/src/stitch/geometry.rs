@@ -13,7 +13,6 @@ use nalgebra::{Matrix3, Matrix4, Perspective3, Vector3};
 use crate::calibration::{Calibration, Lens};
 use crate::geometry::{FAR_PLANE, NEAR_PLANE, opengl_to_wgpu_matrix, view_matrix};
 use crate::lens::kb4;
-use crate::render::scene::SceneGeometry;
 use crate::render::viewport::ViewportConfig;
 
 use super::{SurfaceMap, SurfaceUv};
@@ -185,7 +184,7 @@ pub(crate) fn l_shape_plane_maps(
     // Mixed-aspect rigs are valid calibrations; honoring each lens's
     // own aspect lands when the L-shape derives its own scene.
     let plane_aspect = calib.lenses[0].aspect();
-    let scene = SceneGeometry::new(topology, &calib.framing, plane_aspect);
+    let scene = topology.scene(&calib.framing, plane_aspect);
 
     let out_aspect = config.aspect_ratio();
     let projection = opengl_to_wgpu_matrix()

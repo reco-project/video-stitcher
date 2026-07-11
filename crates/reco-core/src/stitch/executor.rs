@@ -27,7 +27,7 @@ use crate::render::pipeline::{PipelineError, StitchPipeline};
 use crate::render::planes::{Nv12Planes, YuvPlanes};
 #[cfg(feature = "gpu")]
 use crate::render::renderer::InputFormat;
-use crate::render::scene::SceneGeometry;
+
 use crate::render::viewport::ViewportConfig;
 
 use crate::projection::Projection;
@@ -90,10 +90,6 @@ pub struct CpuExecutor {
     pub(crate) config: ViewportConfig,
     pub(crate) cam: (u32, u32),
     pub(crate) full_range: bool,
-    /// Plane-placement geometry derived from `calib`, cached for the
-    /// engine's coverage construction (the stitch kernel re-derives its
-    /// own per call). Rebuilt by the [`Executor`] mutation methods.
-    pub(crate) scene: SceneGeometry,
 }
 
 impl CpuExecutor {
@@ -121,13 +117,12 @@ impl CpuExecutor {
             "CpuExecutor: projection '{}' from the calibration topology",
             calib.topology.projection().name()
         );
-        let scene = derive_scene(&calib);
+
         Ok(Self {
             calib,
             config,
             cam: (cam_w, cam_h),
             full_range,
-            scene,
         })
     }
 
@@ -180,14 +175,6 @@ impl CpuExecutor {
             self.full_range,
         )
     }
-}
-
-/// Plane-placement geometry for a calibration document (both stereo
-/// cameras share the lens aspect). One derivation, shared by the CPU
-/// executor's cache and its mutation paths - mirrors what
-/// `StitchPipeline::update_calibration` does on the GPU side.
-fn derive_scene(calib: &Calibration) -> SceneGeometry {
-    SceneGeometry::for_calibration(calib)
 }
 
 impl StitchExecutor for CpuExecutor {
@@ -436,7 +423,7 @@ impl GpuExecutor {
         })?;
         Ok(self
             .pipeline
-            .render_gpu_frame(bind_groups, left_slot, right_slot, yaw, pitch))
+            .render_gpu_frame(bind_groups, left_slot, right_slot, yaw, pitch)?)
     }
 
     /// Render from a VRAM lookahead pool slot (buffered path).
@@ -445,18 +432,18 @@ impl GpuExecutor {
         slot: usize,
         yaw: f32,
         pitch: f32,
-    ) -> wgpu::CommandBuffer {
+    ) -> Result<wgpu::CommandBuffer, StitchError> {
         let pool = self
             .residency
             .pool
             .as_ref()
             .expect("render_pool_slot requires the lookahead pool");
-        self.pipeline.render_with_bind_groups(
+        Ok(self.pipeline.render_with_bind_groups(
             pool.left_bind_group(slot),
             pool.right_bind_group(slot),
             yaw,
             pitch,
-        )
+        )?)
     }
 
     /// Copy the shared decode slots into a pool slot so the decode
@@ -1046,15 +1033,6 @@ impl Executor {
         }
     }
 
-    /// The derived plane-placement geometry for the active calibration.
-    pub fn scene(&self) -> &SceneGeometry {
-        match self {
-            Executor::Cpu(c) => &c.scene,
-            #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => &g.pipeline.scene,
-        }
-    }
-
     /// The projection in effect: the calibration document's topology,
     /// unless the GPU arm carries an injected override.
     pub fn projection(&self) -> &dyn Projection {
@@ -1180,7 +1158,6 @@ impl Executor {
     pub fn update_calibration(&mut self, calibration: Calibration) {
         match self {
             Executor::Cpu(c) => {
-                c.scene = derive_scene(&calibration);
                 c.calib = calibration;
             }
             #[cfg(feature = "gpu")]
@@ -1193,7 +1170,6 @@ impl Executor {
         match self {
             Executor::Cpu(c) => {
                 c.calib.topology = topology;
-                c.scene = derive_scene(&c.calib);
             }
             #[cfg(feature = "gpu")]
             Executor::Gpu(g) => g.pipeline.update_topology(topology),
@@ -1205,7 +1181,6 @@ impl Executor {
         match self {
             Executor::Cpu(c) => {
                 c.calib.framing = framing;
-                c.scene = derive_scene(&c.calib);
             }
             #[cfg(feature = "gpu")]
             Executor::Gpu(g) => g.pipeline.update_framing(framing),
@@ -1222,7 +1197,6 @@ impl Executor {
                 if let Some(r) = right {
                     c.calib.lenses[1] = r;
                 }
-                c.scene = derive_scene(&c.calib);
             }
             #[cfg(feature = "gpu")]
             Executor::Gpu(g) => g.pipeline.update_camera_params(left, right),
@@ -1283,8 +1257,6 @@ mod tests {
     fn clamped_poses_render_no_black_edges() {
         use crate::geometry::VirtualCamera;
         use crate::geometry::resolve_render_pose;
-        use crate::projection::CoverageBoundary;
-        use crate::render::scene::SceneGeometry;
 
         let (cam_w, cam_h) = (256u32, 144u32);
         let (out_w, out_h) = (192u32, 108u32);
@@ -1316,9 +1288,8 @@ mod tests {
             let mut cal = calib(cam_w, cam_h);
             cal.framing.tilt = tilt;
             cal.framing.roll = roll;
-            let scene = SceneGeometry::for_calibration(&cal);
-            let coverage = CoverageBoundary::from_calibration(&cal, &scene);
-            let cam = VirtualCamera::new(&scene.camera_position);
+            let coverage = cal.topology.projection().coverage(&cal);
+            let cam = VirtualCamera::new(&cal.topology.projection().camera_position(&cal.framing));
             let fov = (coverage.max_fov_degrees() * fov_factor).min(60.0);
             let config = ViewportConfig {
                 width: out_w,

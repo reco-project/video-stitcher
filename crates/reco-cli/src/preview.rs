@@ -148,8 +148,7 @@ pub fn run_preview(
     // Precompute max FOV from coverage boundary using calibration metadata.
     // The actual CoverageBoundary is computed inside StitchCore::new().
     let max_fov = {
-        let scene = reco_core::render::scene::SceneGeometry::for_calibration(&cal);
-        let coverage = reco_core::projection::CoverageBoundary::from_calibration(&cal, &scene);
+        let coverage = cal.topology.projection().coverage(&cal);
         coverage.max_fov_degrees().min(FOV_MAX)
     };
     let initial_fov = FOV_DEFAULT;
