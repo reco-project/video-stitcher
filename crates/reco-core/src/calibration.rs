@@ -63,22 +63,6 @@ pub enum CalibrationError {
         value: u32,
     },
 
-    /// Lenses disagree on aspect ratio. The plane geometry applies
-    /// `lenses[0]`'s aspect to every surface, so a mismatch would
-    /// render silently wrong.
-    #[error(
-        "lens[{index}] aspect {}x{} does not match lens[0] aspect {}x{}",
-        found.0, found.1, first.0, first.1
-    )]
-    LensAspectMismatch {
-        /// Index of the offending lens.
-        index: usize,
-        /// `lenses[0]` dimensions (width, height).
-        first: (u32, u32),
-        /// Offending lens dimensions (width, height).
-        found: (u32, u32),
-    },
-
     /// A dimension exceeds [`MAX_DIM`] and would cause an excessive GPU allocation.
     #[error("lens[{index}] {field} exceeds the maximum of {max}, got {value}")]
     DimensionTooLarge {
@@ -470,18 +454,6 @@ impl Calibration {
         }
     }
 
-    /// The shared source aspect ratio (width / height of the input
-    /// frames).
-    ///
-    /// Reads `lenses[0]`; validation guarantees the vector is
-    /// non-empty and that every lens agrees on aspect, so one value
-    /// speaks for all cameras. Distinct from the output aspect
-    /// (`ViewportConfig::aspect_ratio`) - the two differ whenever the
-    /// viewport is not shaped like the sources.
-    pub fn source_aspect(&self) -> f32 {
-        self.lenses[0].aspect()
-    }
-
     /// Load and validate a calibration from a JSON file.
     pub fn from_file(path: &std::path::Path) -> Result<Self, CalibrationLoadError> {
         use std::io::Read;
@@ -581,22 +553,6 @@ impl Calibration {
         }
         for (i, lens) in self.lenses.iter().enumerate() {
             validate_lens(lens, i)?;
-        }
-        // The plane geometry applies lenses[0]'s aspect to every
-        // surface (see `source_aspect`), so mismatched lens aspects
-        // would render silently wrong. Exact integer cross-product
-        // comparison - no float epsilon.
-        for (i, lens) in self.lenses.iter().enumerate().skip(1) {
-            let first = &self.lenses[0];
-            if u64::from(lens.width) * u64::from(first.height)
-                != u64::from(first.width) * u64::from(lens.height)
-            {
-                return Err(CalibrationError::LensAspectMismatch {
-                    index: i,
-                    first: (first.width, first.height),
-                    found: (lens.width, lens.height),
-                });
-            }
         }
         validate_topology(&self.topology)?;
         validate_framing(&self.framing, &self.topology)?;
@@ -1140,28 +1096,6 @@ mod tests {
             c.validate(),
             Err(CalibrationError::LensCountMismatch { found: 3, .. })
         ));
-    }
-
-    #[test]
-    fn rejects_mismatched_lens_aspect() {
-        // Plane geometry applies lenses[0]'s aspect to every surface;
-        // a disagreeing lens would render silently wrong.
-        let mut c = valid_cal();
-        c.lenses[1].width /= 2;
-        assert!(matches!(
-            c.validate(),
-            Err(CalibrationError::LensAspectMismatch { index: 1, .. })
-        ));
-    }
-
-    #[test]
-    fn accepts_equal_aspect_different_dims() {
-        // Same aspect at different resolutions is fine - only the
-        // ratio feeds the plane geometry.
-        let mut c = valid_cal();
-        c.lenses[1].width *= 2;
-        c.lenses[1].height *= 2;
-        assert!(c.validate().is_ok(), "got {:?}", c.validate());
     }
 
     #[test]

@@ -180,9 +180,10 @@ pub(crate) fn l_shape_plane_maps(
     yaw: f32,
     pitch: f32,
 ) -> (PlaneMap, PlaneMap) {
-    // Both planes share the source aspect (validation enforces that
-    // every lens agrees on it).
-    let plane_aspect = calib.source_aspect();
+    // Known limitation: both planes are sized with lens 0's aspect.
+    // Mixed-aspect rigs are valid calibrations; honoring each lens's
+    // own aspect lands when the L-shape derives its own scene.
+    let plane_aspect = calib.lenses[0].aspect();
     let topology = calib
         .topology
         .l_shape()

@@ -77,7 +77,11 @@ impl SceneGeometry {
     /// the L-shape, the inert identity for plane-less topologies
     /// (their projections never sample it).
     pub fn for_calibration(calibration: &Calibration) -> Self {
-        let aspect = calibration.source_aspect();
+        // Known limitation: the plane math sizes BOTH planes with lens
+        // 0's aspect. Per-lens aspects are a supported calibration
+        // (validation deliberately does not reject them) and land when
+        // each projection derives its own scene.
+        let aspect = calibration.lenses[0].aspect();
         match &calibration.topology {
             Topology::LShape(t) => Self::new(t, &calibration.framing, aspect),
             Topology::Cylinder(_) => Self::mono_identity(aspect),
