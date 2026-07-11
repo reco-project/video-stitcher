@@ -18,6 +18,7 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::precision::VALIDATION_EPSILON;
 use crate::projection::{Cylinder, LShape, Projection};
 
 /// Maximum allowed dimension (width or height) in pixels.
@@ -25,12 +26,6 @@ use crate::projection::{Cylinder, LShape, Projection};
 /// Values above this threshold indicate a malformed calibration and would
 /// cause the GPU allocator to request an unreasonably large texture.
 pub const MAX_DIM: u32 = 8192;
-
-/// Minimum positive value accepted for focal lengths and the axis offset.
-///
-/// Values at or below this would cause division-by-zero or zero-vector
-/// normalization in the stitching geometry.
-pub(crate) const EPSILON: f64 = 1e-6;
 
 /// Current calibration document schema version.
 const SCHEMA_VERSION: u32 = 1;
@@ -590,11 +585,11 @@ fn validate_lens(lens: &Lens, index: usize) -> Result<(), CalibrationError> {
                 value: format!("{val}"),
             });
         }
-        if val <= EPSILON {
+        if val <= VALIDATION_EPSILON {
             return Err(CalibrationError::FocalLengthTooSmall {
                 field: format!("lens[{index}].{name}"),
                 value: val,
-                epsilon: EPSILON,
+                epsilon: VALIDATION_EPSILON,
             });
         }
     }
