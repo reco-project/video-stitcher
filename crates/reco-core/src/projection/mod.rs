@@ -48,6 +48,21 @@ use nalgebra::{Point3, Vector3};
 // (`camera_to_panorama`) fold in once their `CameraId`/`ViewportPosition`
 // currency moves out of the detect layer.
 
+/// One frame's geometry question, bundled: the document, the output
+/// viewport, and the pan state. FOV is deliberately absent - it is
+/// resolved into `viewport.fov_degrees` before any render call, so a
+/// second copy here could only disagree.
+pub struct ProjectionContext<'a> {
+    /// The calibration document (lenses, topology, framing).
+    pub calibration: &'a Calibration,
+    /// Output viewport (dimensions + resolved FOV).
+    pub viewport: &'a crate::render::viewport::ViewportConfig,
+    /// Horizontal pan in radians.
+    pub yaw: f32,
+    /// Vertical pan in radians.
+    pub pitch: f32,
+}
+
 /// A panoramic projection geometry.
 ///
 /// Implemented by concrete projections (today's 2-plane L-shape, the
@@ -79,13 +94,7 @@ pub trait Projection: Send + Sync {
     /// map paired with how it blends over the surfaces before it.
     /// Surface `i` samples source camera `i`; the first surface lays
     /// the base. The CPU composite drives these directly.
-    fn surface_maps(
-        &self,
-        calibration: &Calibration,
-        config: &crate::render::viewport::ViewportConfig,
-        yaw: f32,
-        pitch: f32,
-    ) -> Vec<(Box<dyn SurfaceMap>, BlendRule)>;
+    fn surface_maps(&self, ctx: &ProjectionContext) -> Vec<(Box<dyn SurfaceMap>, BlendRule)>;
 
     /// The GPU program this projection composites with. The render
     /// pipeline compiles and binds exactly what the descriptor says -
@@ -757,10 +766,12 @@ mod tests {
         // then the right fading in with the calibration's seam width.
         let cal = test_calibration();
         let config = crate::render::viewport::ViewportConfig::default();
-        let surfaces = cal
-            .topology
-            .projection()
-            .surface_maps(&cal, &config, 0.0, 0.0);
+        let surfaces = cal.topology.projection().surface_maps(&ProjectionContext {
+            calibration: &cal,
+            viewport: &config,
+            yaw: 0.0,
+            pitch: 0.0,
+        });
         assert_eq!(surfaces.len(), 2);
         assert_eq!(surfaces[0].1, crate::stitch::BlendRule::Opaque);
         let seam = cal.topology.l_shape().unwrap().blend_width;
@@ -800,10 +811,12 @@ mod tests {
     fn cylindrical_surface_maps_emit_one_opaque_surface() {
         let cal = cylinder_cal();
         let config = crate::render::viewport::ViewportConfig::default();
-        let surfaces = cal
-            .topology
-            .projection()
-            .surface_maps(&cal, &config, 0.0, 0.0);
+        let surfaces = cal.topology.projection().surface_maps(&ProjectionContext {
+            calibration: &cal,
+            viewport: &config,
+            yaw: 0.0,
+            pitch: 0.0,
+        });
         assert_eq!(surfaces.len(), 1);
         assert_eq!(surfaces[0].1, crate::stitch::BlendRule::Opaque);
         assert!(

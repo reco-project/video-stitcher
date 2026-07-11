@@ -9,8 +9,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::calibration::{Calibration, CalibrationError, Framing};
-use crate::projection::{CoverageBoundary, Projection};
-use crate::render::viewport::ViewportConfig;
+use crate::projection::{CoverageBoundary, Projection, ProjectionContext};
 use crate::stitch::{BlendRule, SurfaceMap};
 
 // Functions, not constants: serde's `default = "..."` attribute takes
@@ -115,21 +114,15 @@ impl Projection for Cylinder {
         crate::geometry::MONO_CAMERA_POSITION
     }
 
-    fn surface_maps(
-        &self,
-        calibration: &Calibration,
-        config: &ViewportConfig,
-        yaw: f32,
-        pitch: f32,
-    ) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {
+    fn surface_maps(&self, ctx: &ProjectionContext) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {
         vec![(
             Box::new(crate::stitch::cylinder::CylinderMap::new(
                 self,
-                &calibration.framing,
-                f64::from(calibration.lenses[0].height),
-                config,
-                yaw,
-                pitch,
+                &ctx.calibration.framing,
+                f64::from(ctx.calibration.lenses[0].height),
+                ctx.viewport,
+                ctx.yaw,
+                ctx.pitch,
             )),
             // Single surface: nothing underneath to blend with.
             BlendRule::Opaque,

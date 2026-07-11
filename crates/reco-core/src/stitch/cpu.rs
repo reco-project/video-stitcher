@@ -145,7 +145,13 @@ fn stitch_with(
     pitch: f32,
     samplers: &[impl Fn(f64, f64) -> [f64; 3]],
 ) -> Vec<u8> {
-    let surfaces = projection.surface_maps(calib, config, yaw, pitch);
+    let ctx = crate::projection::ProjectionContext {
+        calibration: calib,
+        viewport: config,
+        yaw,
+        pitch,
+    };
+    let surfaces = projection.surface_maps(&ctx);
     let sampler_refs: Vec<&dyn Fn(f64, f64) -> [f64; 3]> = samplers
         .iter()
         .map(|s| s as &dyn Fn(f64, f64) -> [f64; 3])

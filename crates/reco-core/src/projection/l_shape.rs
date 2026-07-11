@@ -8,9 +8,9 @@
 use nalgebra::{Matrix4, Translation3, UnitQuaternion};
 use serde::{Deserialize, Serialize};
 
-use crate::calibration::{Calibration, CalibrationError, EPSILON, Framing};
-use crate::projection::{CoverageBoundary, Projection};
-use crate::render::viewport::ViewportConfig;
+use crate::calibration::{Calibration, CalibrationError, Framing};
+use crate::precision::VALIDATION_EPSILON;
+use crate::projection::{CoverageBoundary, Projection, ProjectionContext};
 use crate::stitch::{BlendRule, SurfaceMap};
 
 /// Default seam blend width for calibrations that do not specify one.
@@ -100,10 +100,10 @@ impl LShape {
         // The off-axis camera placement is an L-shape concept: the two
         // planes are viewed from `[axis_offset, 0, axis_offset]`, and a
         // zero offset would normalize a zero vector in the view basis.
-        if framing.axis_offset <= EPSILON {
+        if framing.axis_offset <= VALIDATION_EPSILON {
             return Err(CalibrationError::AxisOffsetTooSmall {
                 value: framing.axis_offset,
-                epsilon: EPSILON,
+                epsilon: VALIDATION_EPSILON,
             });
         }
 
@@ -233,15 +233,14 @@ impl Projection for LShape {
         CoverageBoundary::from_l_shape(calibration, &scene)
     }
 
-    fn surface_maps(
-        &self,
-        calibration: &Calibration,
-        config: &ViewportConfig,
-        yaw: f32,
-        pitch: f32,
-    ) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {
-        let (left, right) =
-            crate::stitch::geometry::l_shape_plane_maps(self, calibration, config, yaw, pitch);
+    fn surface_maps(&self, ctx: &ProjectionContext) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {
+        let (left, right) = crate::stitch::geometry::l_shape_plane_maps(
+            self,
+            ctx.calibration,
+            ctx.viewport,
+            ctx.yaw,
+            ctx.pitch,
+        );
         vec![
             (Box::new(left), BlendRule::Opaque),
             (
