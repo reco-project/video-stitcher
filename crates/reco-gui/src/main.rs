@@ -608,7 +608,7 @@ impl AppState {
 
     /// Apply an edited Topology to the renderer. `preview_dirty`
     /// triggers a re-render on the next timer tick.
-    fn apply_layout(&mut self, layout: reco_core::calibration::LShapeTopology) {
+    fn apply_layout(&mut self, layout: reco_core::projection::LShape) {
         if let Some(cal) = self.calibration.as_mut() {
             cal.topology = reco_core::calibration::Topology::LShape(layout.clone());
         }

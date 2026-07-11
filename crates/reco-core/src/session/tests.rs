@@ -11,13 +11,14 @@ use std::sync::{Arc, Mutex};
 
 use super::StitchSession;
 use super::types::*;
-use crate::calibration::{Calibration, Framing, LShapeTopology, Lens};
+use crate::calibration::{Calibration, Framing, Lens};
 use crate::detect::detector::{Detection, DetectorError, DetectorFrame, UnifiedDetector};
 use crate::detect::director::MappedDetection;
 use crate::detect::panner::{PanContext, Panner};
 use crate::detect::tracker::{TrackState, TrackedEntity, Tracker, WorldState};
 use crate::geometry::CameraId;
 use crate::geometry::ViewportPosition;
+use crate::projection::LShape;
 use crate::render::viewport::ViewportConfig;
 use crate::sink::{OutputFrame, OutputSink, SinkError, SinkInput};
 use crate::source::{FramePair, FrameSource, SourceError, SourceInfo, StereoFrame, YuvData};
@@ -33,7 +34,7 @@ fn test_calibration() -> Calibration {
     let cam = || Lens::fisheye(W, H, 32.0, 32.0, 32.0, 32.0, [0.0; 4]);
     Calibration::new(
         vec![cam(), cam()],
-        LShapeTopology {
+        LShape {
             intersect: 0.5,
             x_ty: 0.0,
             x_rz: 0.0,
@@ -765,7 +766,7 @@ fn cpu_session_rejects_gpu_resident_frames() {
 /// source -> engine mono submit (CPU cylinder stitch) -> NV12 -> sink.
 ///
 /// Doubles as the minimal mono-consumer example: a calibration built
-/// from `Lens::flat` + `CylinderTopology` + a zero `Framing`, a
+/// from `Lens::flat` + `Cylinder` + a zero `Framing`, a
 /// `FrameSource` yielding `StereoFrame::Mono`, and a plain session
 /// run on the CPU executor - no GPU context is created on this path.
 #[test]
@@ -799,7 +800,7 @@ fn mono_cylinder_session_runs_end_to_end_without_gpu() {
     const FRAMES: u64 = 4;
     let cal = Calibration::new(
         vec![crate::calibration::Lens::flat(W, H)],
-        crate::calibration::CylinderTopology::default(),
+        crate::projection::Cylinder::default(),
         Framing {
             axis_offset: 0.0,
             tilt: 0.0,

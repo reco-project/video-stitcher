@@ -14,11 +14,15 @@
 //! ```
 
 mod coverage;
+mod cylinder;
 mod geometry;
+mod l_shape;
 
 // Re-export coverage types so external code can still use
 // `crate::projection::CoverageBoundary` etc.
 pub use coverage::{ClampedPosition, CoverageBoundary, PanoramaExtent};
+pub use cylinder::Cylinder;
+pub use l_shape::{DEFAULT_BLEND_WIDTH, LShape};
 
 // Re-export geometry utility.
 pub use geometry::point_in_polygon;
@@ -161,7 +165,7 @@ impl Projection for LShapeProjection {
 /// Consumes one camera (`camera_count() == 1`) and renders it as if
 /// painted on the inside of a cylinder; the virtual camera sits on the
 /// cylinder axis. The parameters live in the calibration document's
-/// [`CylinderTopology`](crate::calibration::CylinderTopology) - like
+/// [`Cylinder`](crate::projection::Cylinder) - like
 /// the L-shape, the struct itself carries no state. This is the
 /// standard projection for pre-stitched 180-degree footage.
 #[derive(Debug, Default, Clone, Copy)]
@@ -454,7 +458,8 @@ pub(crate) fn yaw_pitch_to_direction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::calibration::{Calibration, Framing, LShapeTopology, Lens};
+    use crate::calibration::{Calibration, Framing, Lens};
+    use crate::projection::LShape;
 
     fn test_scene(cal: &Calibration) -> SceneGeometry {
         SceneGeometry::for_calibration(cal)
@@ -474,7 +479,7 @@ mod tests {
         };
         Calibration::new(
             vec![cam(), cam()],
-            LShapeTopology {
+            LShape {
                 intersect: 0.5446,
                 x_ty: 0.00476,
                 x_rz: 0.00753,
@@ -903,7 +908,7 @@ mod tests {
     fn cylinder_cal() -> Calibration {
         Calibration::new(
             vec![Lens::flat(3840, 1080)],
-            crate::calibration::CylinderTopology::default(),
+            crate::projection::Cylinder::default(),
             Framing {
                 axis_offset: 0.0,
                 tilt: 0.0,

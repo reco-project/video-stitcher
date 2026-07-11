@@ -105,9 +105,10 @@ pub(crate) mod test_support {
     // either way so the fixtures stay in sync.
     #![cfg_attr(not(feature = "gpu"), allow(dead_code))]
 
-    use crate::calibration::{Calibration, Framing, LShapeTopology, Lens};
+    use crate::calibration::{Calibration, Framing, Lens};
     #[cfg(feature = "gpu")]
     use crate::gpu::{GpuContext, GpuError};
+    use crate::projection::LShape;
 
     /// Two-camera calibration (shared dims, mild fisheye, centred) for tests.
     pub fn calib(w: u32, h: u32) -> Calibration {
@@ -124,7 +125,7 @@ pub(crate) mod test_support {
         };
         Calibration::new(
             vec![cam(), cam()],
-            LShapeTopology {
+            LShape {
                 intersect: 0.5,
                 x_ty: 0.0,
                 x_rz: 0.0,

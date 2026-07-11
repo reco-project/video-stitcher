@@ -18,6 +18,8 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::projection::{Cylinder, LShape};
+
 /// Maximum allowed dimension (width or height) in pixels.
 ///
 /// Values above this threshold indicate a malformed calibration and would
@@ -28,7 +30,7 @@ pub const MAX_DIM: u32 = 8192;
 ///
 /// Values at or below this would cause division-by-zero or zero-vector
 /// normalization in the stitching geometry.
-const EPSILON: f64 = 1e-6;
+pub(crate) const EPSILON: f64 = 1e-6;
 
 /// Current calibration document schema version.
 const SCHEMA_VERSION: u32 = 1;
@@ -244,14 +246,14 @@ impl Lens {
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum Topology {
     /// Two fisheye cameras on perpendicular planes (the stereo rig).
-    LShape(LShapeTopology),
+    LShape(LShape),
     /// One pre-stitched panorama painted on the inside of a cylinder.
-    Cylinder(CylinderTopology),
+    Cylinder(Cylinder),
 }
 
 impl Topology {
     /// L-shape parameters, when this is the L-shape topology.
-    pub fn l_shape(&self) -> Option<&LShapeTopology> {
+    pub fn l_shape(&self) -> Option<&LShape> {
         match self {
             Topology::LShape(t) => Some(t),
             Topology::Cylinder(_) => None,
@@ -259,7 +261,7 @@ impl Topology {
     }
 
     /// Mutable [`Self::l_shape`].
-    pub fn l_shape_mut(&mut self) -> Option<&mut LShapeTopology> {
+    pub fn l_shape_mut(&mut self) -> Option<&mut LShape> {
         match self {
             Topology::LShape(t) => Some(t),
             Topology::Cylinder(_) => None,
@@ -267,7 +269,7 @@ impl Topology {
     }
 
     /// Cylinder parameters, when this is the cylinder topology.
-    pub fn cylinder(&self) -> Option<&CylinderTopology> {
+    pub fn cylinder(&self) -> Option<&Cylinder> {
         match self {
             Topology::LShape(_) => None,
             Topology::Cylinder(t) => Some(t),
@@ -292,92 +294,16 @@ impl Topology {
     }
 }
 
-impl From<LShapeTopology> for Topology {
-    fn from(t: LShapeTopology) -> Self {
+impl From<LShape> for Topology {
+    fn from(t: LShape) -> Self {
         Topology::LShape(t)
     }
 }
 
-impl From<CylinderTopology> for Topology {
-    fn from(t: CylinderTopology) -> Self {
+impl From<Cylinder> for Topology {
+    fn from(t: Cylinder) -> Self {
         Topology::Cylinder(t)
     }
-}
-
-/// 3D placement of the two L-shape source planes plus the overlap seam.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LShapeTopology {
-    /// Overlap ratio between the two planes (`0.0` none .. `1.0` full).
-    /// Each plane is translated by `(plane_width / 2) × (1 - intersect)`.
-    pub intersect: f64,
-    /// Y-axis translation of the right plane (vertical misalignment).
-    #[serde(default)]
-    pub x_ty: f64,
-    /// Z-axis rotation of the right plane, radians (roll).
-    #[serde(default)]
-    pub x_rz: f64,
-    /// X-axis rotation of the left plane, radians (tilt).
-    #[serde(default)]
-    pub z_rx: f64,
-    /// X-axis rotation of the right plane, radians (pitch).
-    #[serde(default)]
-    pub x_rx: f64,
-    /// Z-axis rotation of the left plane, radians (pitch).
-    #[serde(default)]
-    pub z_rz: f64,
-    /// Seam blend width as a fraction of the plane overlap. `0.0` = hard seam.
-    #[serde(default = "default_blend_width")]
-    pub blend_width: f32,
-}
-
-/// Cylinder placement for a single pre-stitched panorama: the video is
-/// painted on the inside of a cylinder and the virtual camera sits on
-/// its axis. Defaults match the established 180-degree
-/// cylindrical-player convention.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CylinderTopology {
-    /// Cylinder radius in world units. Larger values = narrower
-    /// cylindrical wrap per pixel, so the panorama feels flatter.
-    /// Conventional range is 1000-5000.
-    #[serde(default = "default_focal_length")]
-    pub focal_length: f64,
-    /// Full horizontal angular sweep in degrees. 180 is the canonical
-    /// pre-stitched action-camera case; 360 is a full cylinder.
-    #[serde(default = "default_sweep_deg")]
-    pub sweep_deg: f64,
-    /// Painted height in the same units as `focal_length` (source
-    /// pixels). Omitted = the source video's pixel height, which is
-    /// the convention's default.
-    #[serde(default)]
-    pub video_height: Option<f64>,
-}
-
-impl Default for CylinderTopology {
-    fn default() -> Self {
-        Self {
-            focal_length: default_focal_length(),
-            sweep_deg: default_sweep_deg(),
-            video_height: None,
-        }
-    }
-}
-
-// Functions, not constants: serde's `default = "..."` attribute takes
-// a function path, never a value expression.
-fn default_focal_length() -> f64 {
-    2400.0
-}
-
-fn default_sweep_deg() -> f64 {
-    180.0
-}
-
-/// Default seam blend width for calibrations that do not specify one.
-/// The single source for every constructor and serde default.
-pub const DEFAULT_BLEND_WIDTH: f32 = 0.05;
-
-fn default_blend_width() -> f32 {
-    DEFAULT_BLEND_WIDTH
 }
 
 /// The virtual camera's calibrated coordinate frame: the axis/orientation that
@@ -554,8 +480,13 @@ impl Calibration {
         for (i, lens) in self.lenses.iter().enumerate() {
             validate_lens(lens, i)?;
         }
-        validate_topology(&self.topology)?;
-        validate_framing(&self.framing, &self.topology)?;
+        // Each projection validates its own parameters (and its
+        // requirements on the shared framing).
+        match &self.topology {
+            Topology::LShape(t) => t.validate(&self.framing)?,
+            Topology::Cylinder(t) => t.validate()?,
+        }
+        validate_framing(&self.framing)?;
         if self.sync_offset < -MAX_SYNC_OFFSET_FRAMES || self.sync_offset > MAX_SYNC_OFFSET_FRAMES {
             return Err(CalibrationError::SyncOffsetOutOfRange {
                 value: self.sync_offset,
@@ -702,115 +633,15 @@ fn validate_lens(lens: &Lens, index: usize) -> Result<(), CalibrationError> {
     Ok(())
 }
 
-/// Validate the topology parameters.
-fn validate_topology(t: &Topology) -> Result<(), CalibrationError> {
-    match t {
-        Topology::LShape(t) => validate_l_shape(t),
-        Topology::Cylinder(t) => validate_cylinder(t),
-    }
-}
-
-/// Cylinder parameter ranges: positive finite radius/height, sweep in
-/// `(0, 360]` degrees, finite screen rotation.
-fn validate_cylinder(t: &CylinderTopology) -> Result<(), CalibrationError> {
-    for (name, val, lo, hi) in [
-        (
-            "topology.focal_length",
-            t.focal_length,
-            f64::MIN_POSITIVE,
-            f64::MAX,
-        ),
-        ("topology.sweep_deg", t.sweep_deg, f64::MIN_POSITIVE, 360.0),
-        (
-            "topology.video_height",
-            // Omitted = the source pixel height, always valid.
-            t.video_height.unwrap_or(1.0),
-            f64::MIN_POSITIVE,
-            f64::MAX,
-        ),
-    ] {
-        if !val.is_finite() {
-            return Err(CalibrationError::NonFiniteFloat {
-                field: name.to_owned(),
-                value: format!("{val}"),
-            });
-        }
-        if val < lo || val > hi {
-            return Err(CalibrationError::OutOfRange {
-                field: name.to_owned(),
-                value: val,
-                min: lo,
-                max: hi,
-            });
-        }
-    }
-    Ok(())
-}
-
-fn validate_l_shape(t: &LShapeTopology) -> Result<(), CalibrationError> {
-    if !t.intersect.is_finite() {
-        return Err(CalibrationError::NonFiniteFloat {
-            field: "topology.intersect".to_owned(),
-            value: format!("{}", t.intersect),
-        });
-    }
-    if !(0.0..=1.0).contains(&t.intersect) {
-        return Err(CalibrationError::IntersectOutOfRange { value: t.intersect });
-    }
-
+/// Validate the topology-independent framing parameters. Rules a
+/// topology imposes on the framing (the L-shape's minimum axis offset)
+/// live in that topology's own validate.
+fn validate_framing(f: &Framing) -> Result<(), CalibrationError> {
     for (name, val) in [
-        ("topology.x_ty", t.x_ty),
-        ("topology.x_rz", t.x_rz),
-        ("topology.x_rx", t.x_rx),
-        ("topology.z_rx", t.z_rx),
-        ("topology.z_rz", t.z_rz),
+        ("framing.axis_offset", f.axis_offset),
+        ("framing.tilt", f.tilt),
+        ("framing.roll", f.roll),
     ] {
-        if !val.is_finite() {
-            return Err(CalibrationError::NonFiniteFloat {
-                field: name.to_owned(),
-                value: format!("{val}"),
-            });
-        }
-    }
-
-    if !t.blend_width.is_finite() {
-        return Err(CalibrationError::NonFiniteFloat {
-            field: "topology.blend_width".to_owned(),
-            value: format!("{}", t.blend_width),
-        });
-    }
-    // The seam smoothstep needs ordered edges; outside [0, 1] the blend
-    // is meaningless (the old ViewportConfig::validate enforced this).
-    if !(0.0..=1.0).contains(&t.blend_width) {
-        return Err(CalibrationError::OutOfRange {
-            field: "topology.blend_width".to_owned(),
-            value: t.blend_width as f64,
-            min: 0.0,
-            max: 1.0,
-        });
-    }
-
-    Ok(())
-}
-
-/// Validate the framing parameters.
-fn validate_framing(f: &Framing, topology: &Topology) -> Result<(), CalibrationError> {
-    if !f.axis_offset.is_finite() {
-        return Err(CalibrationError::NonFiniteFloat {
-            field: "framing.axis_offset".to_owned(),
-            value: format!("{}", f.axis_offset),
-        });
-    }
-    // The off-axis camera placement is an L-shape concept; the mono
-    // cylinder's camera sits on the axis (offset 0 is its natural value).
-    if matches!(topology, Topology::LShape(_)) && f.axis_offset <= EPSILON {
-        return Err(CalibrationError::AxisOffsetTooSmall {
-            value: f.axis_offset,
-            epsilon: EPSILON,
-        });
-    }
-
-    for (name, val) in [("framing.tilt", f.tilt), ("framing.roll", f.roll)] {
         if !val.is_finite() {
             return Err(CalibrationError::NonFiniteFloat {
                 field: name.to_owned(),
@@ -913,7 +744,7 @@ mod tests {
         Calibration {
             schema_version: SCHEMA_VERSION,
             lenses: vec![lens(), lens()],
-            topology: Topology::LShape(LShapeTopology {
+            topology: Topology::LShape(LShape {
                 intersect: 0.5,
                 x_ty: 0.0,
                 x_rz: 0.0,
@@ -951,7 +782,7 @@ mod tests {
     fn tagged_cylinder_document_round_trips() {
         let cal = Calibration::new(
             vec![Lens::flat(3840, 1080)],
-            CylinderTopology::default(),
+            Cylinder::default(),
             Framing {
                 axis_offset: 0.0,
                 tilt: 0.0,
@@ -974,7 +805,7 @@ mod tests {
     #[test]
     fn cylinder_lens_count_is_enforced() {
         let mut cal = valid_cal();
-        cal.topology = Topology::Cylinder(CylinderTopology::default());
+        cal.topology = Topology::Cylinder(Cylinder::default());
         assert!(
             matches!(
                 cal.validate(),
@@ -990,8 +821,8 @@ mod tests {
 
     #[test]
     fn cylinder_parameters_are_validated() {
-        let bad = |f: fn(&mut CylinderTopology)| {
-            let mut t = CylinderTopology::default();
+        let bad = |f: fn(&mut Cylinder)| {
+            let mut t = Cylinder::default();
             f(&mut t);
             let cal = Calibration::new(
                 vec![Lens::flat(3840, 1080)],

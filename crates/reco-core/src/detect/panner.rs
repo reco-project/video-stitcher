@@ -229,9 +229,10 @@ pub(crate) fn dispatch(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::calibration::{Calibration, Framing, LShapeTopology, Lens};
+    use crate::calibration::{Calibration, Framing, Lens};
     use crate::detect::tracker::{TrackState, TrackedEntity, WorldState};
     use crate::geometry::CameraId;
+    use crate::projection::LShape;
 
     /// A fixture calibration shaped like the v1 test JSON without
     /// needing disk access or real lens data.
@@ -239,7 +240,7 @@ mod tests {
         let cam = || Lens::fisheye(1920, 1080, 900.0, 900.0, 960.0, 540.0, [0.0; 4]);
         Calibration::new(
             vec![cam(), cam()],
-            LShapeTopology {
+            LShape {
                 intersect: 0.54,
                 x_ty: 0.0,
                 x_rz: 0.0,

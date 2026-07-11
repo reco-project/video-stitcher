@@ -94,13 +94,14 @@ impl Panner for SweepPanner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reco_core::calibration::{Calibration, Framing, LShapeTopology, Lens};
+    use reco_core::calibration::{Calibration, Framing, Lens};
+    use reco_core::projection::LShape;
 
     fn test_cal() -> Calibration {
         let cam = || Lens::fisheye(1920, 1080, 900.0, 900.0, 960.0, 540.0, [0.0; 4]);
         Calibration::new(
             vec![cam(), cam()],
-            LShapeTopology {
+            LShape {
                 intersect: 0.54,
                 x_ty: 0.0,
                 x_rz: 0.0,

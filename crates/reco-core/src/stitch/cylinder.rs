@@ -17,7 +17,8 @@
 //! theta sign, and the bounds discard; the CPU/GPU cylinder oracle
 //! pins the agreement.
 
-use crate::calibration::{CylinderTopology, Framing};
+use crate::calibration::Framing;
+use crate::projection::Cylinder;
 use crate::render::viewport::ViewportConfig;
 use crate::stitch::{SurfaceMap, SurfaceUv};
 
@@ -53,7 +54,7 @@ pub(crate) struct CylinderMap {
     /// ray basis above.
     tan_half_h: f64,
     tan_half_v: f64,
-    /// Cylinder radius (world units) = `CylinderTopology::focal_length`:
+    /// Cylinder radius (world units) = `Cylinder::focal_length`:
     /// how far the painted surface sits from the axis camera.
     radius: f64,
     /// Full angular sweep in radians: a hit's azimuth inside
@@ -75,14 +76,14 @@ impl CylinderMap {
     /// the calibrated document (static), `yaw`/`pitch` are the
     /// per-frame render pose, and the viewport FOV plus output
     /// dimensions ride in `config`. `source_height_px` backs
-    /// `CylinderTopology::video_height`'s default.
+    /// `Cylinder::video_height`'s default.
     ///
     /// The mono camera basis looks along `-Z` with `+X` right and
     /// `+Y` up ([`VirtualCamera::mono`](crate::geometry::VirtualCamera::mono)),
     /// and the pose composition mirrors `view_matrix`: yaw around the
     /// rig frame's up axis, pitch around the yaw-rotated base right.
     pub fn new(
-        topology: &CylinderTopology,
+        topology: &Cylinder,
         framing: &Framing,
         source_height_px: f64,
         config: &ViewportConfig,
@@ -216,21 +217,14 @@ mod tests {
     }
 
     fn map(yaw: f32, pitch: f32) -> CylinderMap {
-        CylinderMap::new(
-            &CylinderTopology::default(),
-            &level(),
-            SRC_H,
-            &cfg(),
-            yaw,
-            pitch,
-        )
+        CylinderMap::new(&Cylinder::default(), &level(), SRC_H, &cfg(), yaw, pitch)
     }
 
     /// Rig-frame map over a tall painted band, so tilted/rolled
     /// samples at pan edges stay inside the coverage.
     fn map_rig(tilt: f64, roll: f64, yaw: f32) -> CylinderMap {
         CylinderMap::new(
-            &CylinderTopology {
+            &Cylinder {
                 video_height: Some(20_000.0),
                 ..Default::default()
             },
@@ -292,7 +286,7 @@ mod tests {
     fn positive_pitch_looks_up_toward_lower_v() {
         let up = map(0.0, 0.2).sample_uv(100, 50).unwrap();
         // Center ray at pitch p hits at y = r*tan(p): v = 0.5 - r*tan(p)/h.
-        let t = CylinderTopology::default();
+        let t = Cylinder::default();
         let expected = 0.5 - t.focal_length * (0.2f64).tan() / SRC_H;
         assert!(
             up.v < 0.5 && (up.v - expected).abs() < TOL,
@@ -305,7 +299,7 @@ mod tests {
     fn top_output_row_samples_above_the_bottom_row() {
         // A tall painted band so both extreme rows land inside it.
         let tall = CylinderMap::new(
-            &CylinderTopology {
+            &Cylinder {
                 video_height: Some(100_000.0),
                 ..Default::default()
             },
@@ -346,7 +340,7 @@ mod tests {
         // center, exactly like pitching by t (band height 20k here).
         let tilted = map_rig(0.15, 0.0, 0.0);
         let s = tilted.sample_uv(100, 50).unwrap();
-        let t = CylinderTopology::default();
+        let t = Cylinder::default();
         let expected = 0.5 - t.focal_length * (0.15f64).tan() / 20_000.0;
         assert!((s.v - expected).abs() < TOL, "v = {} vs {expected}", s.v);
     }

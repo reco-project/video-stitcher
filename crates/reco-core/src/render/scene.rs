@@ -20,7 +20,8 @@
 //!   Camera at [d, 0, d] where d = framing.axis_offset
 //! ```
 
-use crate::calibration::{Calibration, Framing, LShapeTopology, Topology};
+use crate::calibration::{Calibration, Framing, Topology};
+use crate::projection::LShape;
 use nalgebra::{Matrix4, Translation3, UnitQuaternion};
 
 /// Computed 3D positions and rotations for the two camera planes.
@@ -53,7 +54,7 @@ impl SceneGeometry {
     /// - Left plane: `position = [0, 0, (w/2)(1 - intersect)]`, `rotation = [z_rx, π/2, z_rz]`
     /// - Right plane: `position = [(w/2)(1 - intersect), x_ty, 0]`, `rotation = [x_rx, 0, x_rz]`
     /// - Virtual camera at `[axis_offset, 0, axis_offset]`.
-    pub fn new(topology: &LShapeTopology, framing: &Framing, aspect: f32) -> Self {
+    pub fn new(topology: &LShape, framing: &Framing, aspect: f32) -> Self {
         let plane_width: f32 = 1.0;
         let half_offset = (plane_width / 2.0) * (1.0 - topology.intersect as f32);
         let axis = framing.axis_offset as f32;
@@ -155,10 +156,11 @@ impl SceneGeometry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::calibration::{Framing, LShapeTopology};
+    use crate::calibration::Framing;
+    use crate::projection::LShape;
 
-    fn topo(intersect: f64) -> LShapeTopology {
-        LShapeTopology {
+    fn topo(intersect: f64) -> LShape {
+        LShape {
             intersect,
             x_ty: 0.0,
             x_rz: 0.0,
@@ -191,7 +193,7 @@ mod tests {
 
     #[test]
     fn geometry_with_corrections() {
-        let topology = LShapeTopology {
+        let topology = LShape {
             intersect: 0.55,
             x_ty: 0.005,
             x_rz: 0.008,
