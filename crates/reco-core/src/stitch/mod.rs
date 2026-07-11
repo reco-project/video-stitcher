@@ -267,10 +267,6 @@ pub(crate) mod test_support {
 mod tests {
     #![cfg_attr(not(feature = "gpu"), allow(dead_code))]
 
-    use crate::projection::LShapeProjection;
-    #[cfg(feature = "gpu")]
-    use crate::projection::Projection;
-
     use super::cpu::stitch_rgba;
     #[cfg(feature = "gpu")]
     use super::cpu::stitch_rgba_yuv420p;
@@ -299,7 +295,7 @@ mod tests {
         let right = Nv12Planes { y: &ry, uv: &ruv };
 
         let out = stitch_rgba(
-            &LShapeProjection,
+            calib.topology.projection(),
             &[left, right],
             (w, h),
             &calib,
@@ -329,7 +325,7 @@ mod tests {
         let right = Nv12Planes { y: &ry, uv: &ruv };
 
         let a = stitch_rgba(
-            &LShapeProjection,
+            calib.topology.projection(),
             &[left, right],
             (w, h),
             &calib,
@@ -340,7 +336,7 @@ mod tests {
         )
         .unwrap();
         let b = stitch_rgba(
-            &LShapeProjection,
+            calib.topology.projection(),
             &[left, right],
             (w, h),
             &calib,
@@ -394,7 +390,7 @@ mod tests {
         // render the same frame three times to drain one result.
         let pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
             gpu,
-            &crate::projection::LShapeProjection.gpu_program(),
+            &calib.topology.projection().gpu_program(),
             calib.clone(),
             config.clone(),
             cam_w,
@@ -423,7 +419,7 @@ mod tests {
 
         // CPU reference on the same inputs (limited range, matching the GPU default).
         let cpu_rgba = stitch_rgba(
-            &LShapeProjection,
+            calib.topology.projection(),
             &[left, right],
             (cam_w, cam_h),
             &calib,
@@ -489,7 +485,7 @@ mod tests {
 
         let pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
             gpu,
-            &crate::projection::LShapeProjection.gpu_program(),
+            &calib.topology.projection().gpu_program(),
             calib.clone(),
             config.clone(),
             cam_w,
@@ -517,7 +513,7 @@ mod tests {
         let gpu_rgba = gpu_rgba.expect("gpu should produce a frame after 3 renders");
 
         let cpu_rgba = stitch_rgba_yuv420p(
-            &LShapeProjection,
+            calib.topology.projection(),
             &[left, right],
             (cam_w, cam_h),
             &calib,
@@ -595,7 +591,7 @@ mod tests {
         let (cam_w, cam_h) = cam;
         let mut pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
             gpu,
-            &crate::projection::LShapeProjection.gpu_program(),
+            &calib.topology.projection().gpu_program(),
             calib.clone(),
             config.clone(),
             cam_w,
@@ -626,7 +622,7 @@ mod tests {
         }
         let gpu_rgba = gpu_rgba.expect("gpu frame");
         let cpu_rgba = stitch_rgba(
-            &LShapeProjection,
+            calib.topology.projection(),
             &[*left, *right],
             cam,
             calib,
@@ -938,7 +934,7 @@ mod tests {
 
         // ~1px of output (fov 75 over 192px ~= 0.007 rad/px); 0.01 rad is decisive.
         let perturbed = stitch_rgba(
-            &LShapeProjection,
+            cal.topology.projection(),
             &[left, right],
             (cam_w, cam_h),
             &cal,

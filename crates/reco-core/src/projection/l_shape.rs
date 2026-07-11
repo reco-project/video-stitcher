@@ -7,7 +7,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::calibration::{CalibrationError, EPSILON, Framing};
+use crate::calibration::{Calibration, CalibrationError, EPSILON, Framing};
+use crate::projection::Projection;
+use crate::render::viewport::ViewportConfig;
+use crate::stitch::{BlendRule, SurfaceMap};
 
 /// Default seam blend width for calibrations that do not specify one.
 /// The single source for every constructor and serde default.
@@ -104,5 +107,53 @@ impl LShape {
         }
 
         Ok(())
+    }
+}
+
+impl Projection for LShape {
+    fn name(&self) -> &'static str {
+        "l-shape-stereo-2camera"
+    }
+
+    fn camera_count(&self) -> usize {
+        2
+    }
+
+    fn surface_maps(
+        &self,
+        calibration: &Calibration,
+        config: &ViewportConfig,
+        yaw: f32,
+        pitch: f32,
+    ) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {
+        let (left, right) =
+            crate::stitch::geometry::l_shape_plane_maps(self, calibration, config, yaw, pitch);
+        vec![
+            (Box::new(left), BlendRule::Opaque),
+            (
+                Box::new(right),
+                BlendRule::Smoothstep(self.blend_width as f64),
+            ),
+        ]
+    }
+
+    #[cfg(feature = "gpu")]
+    fn gpu_program(&self) -> crate::render::GpuProgram {
+        crate::render::GpuProgram {
+            wgsl: include_str!("../shaders/fisheye.wgsl"),
+            vs_entry: "vs_main",
+            fs_entry: "fs_main",
+            // Seam transition: the right plane's smoothstep alpha blends
+            // over the opaque left base (matches BlendRule ordering).
+            blend: wgpu::BlendState {
+                color: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::SrcAlpha,
+                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                    operation: wgpu::BlendOperation::Add,
+                },
+                alpha: wgpu::BlendComponent::OVER,
+            },
+            vertex_layout: crate::render::renderer::Vertex::LAYOUT,
+        }
     }
 }

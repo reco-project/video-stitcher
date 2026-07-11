@@ -13,10 +13,13 @@
 //!
 //! `StitchCore` composes the foundation traits:
 //!
-//! - [`crate::projection::Projection`] - camera-geometry contract; today's
-//!   L-shape is [`LShapeProjection`](crate::projection::LShapeProjection).
-//!   Bound to the executor at construction (see
-//!   [`GpuExecutorConfig`](crate::stitch::GpuExecutorConfig)); the
+//! - [`crate::projection::Projection`] - camera-geometry contract,
+//!   implemented directly by the calibration topology's parameter
+//!   structs ([`LShape`](crate::projection::LShape),
+//!   [`Cylinder`](crate::projection::Cylinder)). The executor reads it
+//!   through the document (see
+//!   [`GpuExecutorConfig`](crate::stitch::GpuExecutorConfig) for the
+//!   injection override); the
 //!   engine reads it back for coverage construction.
 //! - [`crate::detect::detector::UnifiedDetector`] - collapsed CPU/CUDA/Metal
 //!   detector contract with `DetectorError` for remote-inference futures.
@@ -630,7 +633,7 @@ impl StitchCore {
     /// Camera count the active projection consumes (one submitted frame
     /// per camera plane). For today's stereo L-shape this is `2`; a
     /// mono projection exposes `1`.
-    pub fn camera_count(&self) -> u8 {
+    pub fn camera_count(&self) -> usize {
         self.executor.projection().camera_count()
     }
 
@@ -868,7 +871,6 @@ mod tests {
 
         let (w, h) = (64u32, 36u32);
         let executor = CpuExecutor::new(
-            Box::new(crate::projection::LShapeProjection),
             calib(w, h),
             ViewportConfig {
                 width: w,
@@ -986,15 +988,8 @@ mod tests {
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
 
-        let cpu_exec = CpuExecutor::new(
-            Box::new(crate::projection::LShapeProjection),
-            calib(cam_w, cam_h),
-            config.clone(),
-            cam_w,
-            cam_h,
-            false,
-        )
-        .expect("cpu executor");
+        let cpu_exec = CpuExecutor::new(calib(cam_w, cam_h), config.clone(), cam_w, cam_h, false)
+            .expect("cpu executor");
         let mut cpu_core = StitchCore::new(Executor::Cpu(Box::new(cpu_exec))).expect("cpu engine");
 
         let gpu_exec = GpuExecutor::new(
@@ -1138,7 +1133,6 @@ mod tests {
         use crate::render::viewport::ViewportConfig;
         use crate::stitch::{CpuExecutor, Executor, test_support::calib};
         let executor = CpuExecutor::new(
-            Box::new(crate::projection::LShapeProjection),
             calib(w, h),
             ViewportConfig {
                 width: w,

@@ -121,7 +121,7 @@ pub(crate) fn stitch_rgba_yuv420p(
 /// The number of input frames must match what the projection consumes;
 /// a mismatch would silently sample the wrong camera.
 fn check_camera_count(projection: &dyn Projection, planes: usize) -> Result<(), StitchError> {
-    if planes != usize::from(projection.camera_count()) {
+    if planes != projection.camera_count() {
         return Err(StitchError::InvalidConfig(format!(
             "projection '{}' consumes {} camera(s) but {planes} frame(s) were supplied",
             projection.name(),

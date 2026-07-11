@@ -8,7 +8,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::calibration::CalibrationError;
+use crate::calibration::{Calibration, CalibrationError};
+use crate::projection::{CoverageBoundary, Projection};
+use crate::render::scene::SceneGeometry;
+use crate::render::viewport::ViewportConfig;
+use crate::stitch::{BlendRule, SurfaceMap};
 
 // Functions, not constants: serde's `default = "..."` attribute takes
 // a function path, never a value expression.
@@ -93,5 +97,74 @@ impl Cylinder {
             }
         }
         Ok(())
+    }
+}
+
+impl Projection for Cylinder {
+    fn name(&self) -> &'static str {
+        "cylindrical-mono-1camera"
+    }
+
+    fn camera_count(&self) -> usize {
+        1
+    }
+
+    fn surface_maps(
+        &self,
+        calibration: &Calibration,
+        config: &ViewportConfig,
+        yaw: f32,
+        pitch: f32,
+    ) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {
+        vec![(
+            Box::new(crate::stitch::cylinder::CylinderMap::new(
+                self,
+                &calibration.framing,
+                f64::from(calibration.lenses[0].height),
+                config,
+                yaw,
+                pitch,
+            )),
+            // Single surface: nothing underneath to blend with.
+            BlendRule::Opaque,
+        )]
+    }
+
+    #[cfg(feature = "gpu")]
+    fn gpu_program(&self) -> crate::render::GpuProgram {
+        crate::render::GpuProgram {
+            wgsl: include_str!("../shaders/cylindrical_mono.wgsl"),
+            vs_entry: "vs_fullscreen",
+            fs_entry: "fs_cylindrical_mono",
+            // Mono: single surface, nothing to blend over.
+            blend: wgpu::BlendState::REPLACE,
+            // TODO: placeholder until the mono GPU pass is wired
+            // (Step 13 PR B): its composite is a fullscreen pass with
+            // its own bind layout.
+            vertex_layout: crate::render::renderer::Vertex::LAYOUT,
+        }
+    }
+
+    /// The cylinder's panorama is exactly rectangular in (yaw, pitch):
+    /// yaw spans the angular sweep, pitch spans what the painted
+    /// height subtends at the radius.
+    fn coverage(&self, calibration: &Calibration, _scene: &SceneGeometry) -> CoverageBoundary {
+        let yaw_half = (self.sweep_deg.to_radians() * 0.5) as f32;
+        let height = self
+            .video_height
+            .unwrap_or(f64::from(calibration.lenses[0].height));
+        let pitch_half = (((height * 0.5) / self.focal_length).atan()) as f32;
+        // The painted band is world-fixed; rig tilt/roll shape how
+        // panning traverses it, not where it is - the clamp's rotated
+        // viewport margining (the same mechanism a tilted L-shape
+        // uses) accounts for the edge roll.
+        CoverageBoundary::rectangular(
+            -yaw_half,
+            yaw_half,
+            -pitch_half,
+            pitch_half,
+            calibration.framing.tilt as f32,
+            calibration.framing.roll as f32,
+        )
     }
 }

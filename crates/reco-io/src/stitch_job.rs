@@ -717,9 +717,7 @@ impl StitchJob {
             }
             None => {
                 gpu_name = "software (CPU)".to_string();
-                let projection = reco_core::projection::for_topology(&cal.topology);
                 let executor = reco_core::stitch::CpuExecutor::new(
-                    projection,
                     cal,
                     viewport,
                     info.width,

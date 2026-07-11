@@ -630,7 +630,6 @@ fn push_and_pull_share_one_ai_brain() {
 /// Build a session over the CPU executor - no GPU anywhere.
 fn build_cpu_session() -> StitchSession {
     let executor = crate::stitch::CpuExecutor::new(
-        Box::new(crate::projection::LShapeProjection),
         test_calibration(),
         ViewportConfig {
             width: 64,
@@ -808,7 +807,6 @@ fn mono_cylinder_session_runs_end_to_end_without_gpu() {
         },
     );
     let executor = crate::stitch::CpuExecutor::new(
-        Box::new(crate::projection::CylindricalProjection),
         cal,
         ViewportConfig {
             width: 64,
