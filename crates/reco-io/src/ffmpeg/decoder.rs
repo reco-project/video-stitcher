@@ -487,6 +487,23 @@ impl VideoDecoder {
         for p in paths {
             writeln!(manifest, "file '{}'", p.display())
                 .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
+            // Without a `duration` hint, FFmpeg's concat demuxer can't build
+            // a seekable index across segments and reports the whole chain
+            // as non-seekable (`avformat_seek_file` -> AVERROR(ESPIPE)) for
+            // *any* target, even one within the first segment - confirmed
+            // directly against libavformat, not just inferred. One extra
+            // cheap format-only probe per segment (no decoder/hw setup) is
+            // worth it for seeking to actually work.
+            match probe_duration_secs(p) {
+                Some(secs) => {
+                    writeln!(manifest, "duration {secs}")
+                        .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
+                }
+                None => log::warn!(
+                    "Concat demuxer: could not probe duration of {} - seeking across this chain may fail",
+                    p.display()
+                ),
+            }
         }
         manifest
             .flush()
@@ -1033,6 +1050,15 @@ impl VideoDecoder {
 /// Check if a frame is hardware-decoded (lives on GPU memory).
 fn is_hw_frame(frame: &VideoFrame) -> bool {
     unsafe { !(*frame.as_ptr()).hw_frames_ctx.is_null() }
+}
+
+/// Probe a single segment's duration for the concat manifest's `duration`
+/// hint (see `VideoDecoder::open_chained_impl`). Format-only open - no
+/// decoder/hw device setup - since only the container-level duration is
+/// needed.
+fn probe_duration_secs(path: &Path) -> Option<f64> {
+    let dur = input(path).ok()?.duration();
+    (dur > 0).then(|| dur as f64 / f64::from(ffi::AV_TIME_BASE))
 }
 
 /// Pre-created hw device that can be shared across multiple decoders.
