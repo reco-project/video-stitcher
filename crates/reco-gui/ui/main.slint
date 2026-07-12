@@ -498,7 +498,6 @@ export component RecoApp inherits Window {
     in-out property <bool> has-roi: false;
     in-out property <[float]> roi-points-x: [];
     in-out property <[float]> roi-points-y: [];
-    callback launch-roi-editor();
     callback paste-roi();
     in-out property <string> roi-manual-json: "";
 
@@ -736,6 +735,45 @@ export component RecoApp inherits Window {
     callback changed-lens-preview();
     callback changed-lens-correction(float);
 
+    // Lens-preview pan/zoom - pure view state, never touches Rust (the
+    // texture is already rendered at full native camera resolution, so
+    // zoom/pan is just a scale+translate of the displayed Image).
+    // `lens-frame-aspect` is the exception: Rust sets it (native camera
+    // width/height) since Slint has no access to the decoded video's
+    // dimensions otherwise.
+    in-out property <float> lens-frame-aspect: 1.0;
+    property <float> lens-zoom: 1.0;
+    property <length> lens-pan-x: 0px;
+    property <length> lens-pan-y: 0px;
+    // In-app field-ROI point editor (click to add, drag to move,
+    // right-click to delete), replacing the old browser-based tool.
+    in-out property <bool> roi-edit-mode: false;
+    // Whether entering ROI-edit mode auto-enabled lens preview (it was
+    // off before); if so, leaving edit mode turns it back off too,
+    // returning to the stitched panorama view. Left alone if the user
+    // was already in lens preview for their own reasons.
+    property <bool> roi-edit-auto-lens-preview: false;
+    in-out property <string> roi-path-commands: "";
+    callback roi-pointer-hit-test(float, float, float, float) -> int;
+    callback roi-pointer-add(float, float, float, float);
+    callback roi-pointer-drag(int, float, float, float, float);
+    callback roi-pointer-up();
+    callback roi-pointer-delete(float, float, float, float);
+
+    changed lens-preview-side => {
+        root.lens-zoom = 1.0;
+        root.lens-pan-x = 0px;
+        root.lens-pan-y = 0px;
+    }
+    changed lens-preview-active => {
+        root.lens-zoom = 1.0;
+        root.lens-pan-x = 0px;
+        root.lens-pan-y = 0px;
+        if (!root.lens-preview-active) {
+            root.roi-edit-mode = false;
+        }
+    }
+
     // Constrained-look checkbox. Fires when the user toggles it so Rust
     // can sync `AppState.use_constrained_look` with the UI property
     // (Slint's <=> binding updates the property but Rust needs a notify
@@ -833,8 +871,17 @@ export component RecoApp inherits Window {
             // [ / ] : seek by 5s
             if (event.text == "[") { root.seek-relative(-5); return accept; }
             if (event.text == "]") { root.seek-relative(5);  return accept; }
-            // R : reset view
-            if (event.text == "r" || event.text == "R") { root.reset-view(); return accept; }
+            // R : reset view (or lens-preview zoom/pan, in that mode)
+            if (event.text == "r" || event.text == "R") {
+                if (root.lens-preview-active) {
+                    root.lens-zoom = 1.0;
+                    root.lens-pan-x = 0px;
+                    root.lens-pan-y = 0px;
+                } else {
+                    root.reset-view();
+                }
+                return accept;
+            }
             // F or F11 : toggle fullscreen
             if (event.text == "f" || event.text == "F" || event.text == Key.F11) {
                 root.full-screen = !root.full-screen;
@@ -1172,9 +1219,29 @@ export component RecoApp inherits Window {
                         if root.files-loaded: HorizontalLayout {
                             spacing: 4px;
                             Button {
-                                text: root.has-roi ? "Edit ROI..." : "Set ROI...";
+                                text: root.roi-edit-mode ? "Done Editing ROI"
+                                    : (root.has-roi ? "Edit ROI..." : "Set ROI...");
+                                primary: root.roi-edit-mode;
                                 horizontal-stretch: 1;
-                                clicked => { root.launch-roi-editor(); }
+                                clicked => {
+                                    if (!root.roi-edit-mode) {
+                                        if (!root.lens-preview-active) {
+                                            root.lens-preview-active = true;
+                                            root.roi-edit-auto-lens-preview = true;
+                                            root.changed-lens-preview();
+                                        } else {
+                                            root.roi-edit-auto-lens-preview = false;
+                                        }
+                                        root.roi-edit-mode = true;
+                                    } else {
+                                        root.roi-edit-mode = false;
+                                        if (root.roi-edit-auto-lens-preview) {
+                                            root.roi-edit-auto-lens-preview = false;
+                                            root.lens-preview-active = false;
+                                            root.changed-lens-preview();
+                                        }
+                                    }
+                                }
                             }
                             Button {
                                 text: "Paste ROI";
@@ -1190,8 +1257,15 @@ export component RecoApp inherits Window {
                             }
                         }
 
-                        if root.files-loaded && !root.has-roi: Text {
-                            text: "Draw in browser, Copy ROI, then Paste or type JSON above.";
+                        if root.files-loaded && root.roi-edit-mode: Text {
+                            text: "Click the lens preview to add points, drag a point to move it, right-click a point to delete it. Switch Left/Right camera above to edit the other side.";
+                            color: root.text-dim;
+                            font-size: 10px;
+                            wrap: word-wrap;
+                        }
+
+                        if root.files-loaded && !root.roi-edit-mode && !root.has-roi: Text {
+                            text: "Or paste ROI JSON above (from another calibration, or scripted).";
                             color: root.text-dim;
                             font-size: 10px;
                             wrap: word-wrap;
@@ -1264,12 +1338,31 @@ export component RecoApp inherits Window {
                     height: fit-h;
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
+                    clip: true;
+
+                    // Letterboxed content rect for lens-preview mode
+                    // (the `contain`-fit rect Slint computes internally
+                    // for the Image below, but not exposed as a
+                    // property - reconstructed here since the ROI
+                    // overlay/pointer math needs its exact origin/size).
+                    // Unused outside lens-preview mode.
+                    property <float> box-aspect: preview-box.width / preview-box.height;
+                    property <length> base-w:
+                        root.lens-frame-aspect > box-aspect ? preview-box.width : preview-box.height * root.lens-frame-aspect;
+                    property <length> base-h:
+                        root.lens-frame-aspect > box-aspect ? preview-box.width / root.lens-frame-aspect : preview-box.height;
+                    property <length> content-w: base-w * root.lens-zoom;
+                    property <length> content-h: base-h * root.lens-zoom;
+                    property <length> content-x: (preview-box.width - content-w) / 2 + root.lens-pan-x;
+                    property <length> content-y: (preview-box.height - content-h) / 2 + root.lens-pan-y;
 
                     if root.files-loaded: Image {
                         source: root.preview-frame;
                         image-fit: contain;
-                        width: 100%;
-                        height: 100%;
+                        x: root.lens-preview-active ? preview-box.content-x : 0px;
+                        y: root.lens-preview-active ? preview-box.content-y : 0px;
+                        width: root.lens-preview-active ? preview-box.content-w : preview-box.width;
+                        height: root.lens-preview-active ? preview-box.content-h : preview-box.height;
                     }
 
                     // Preview is released during export to free VRAM; show
@@ -1287,12 +1380,47 @@ export component RecoApp inherits Window {
                         }
                     }
 
+                    // ROI polygon outline (visible in lens preview mode),
+                    // drawn in the same normalized 0..1 space as the
+                    // points via the Path's viewbox, so it tracks the
+                    // image through zoom/pan without any pixel math here.
+                    //
+                    // Path always fits its viewbox into its box with
+                    // *uniform* (aspect-preserving) scaling - there's no
+                    // anisotropic/stretch option. A plain 1x1 viewbox
+                    // against a non-square content box (any real camera
+                    // aspect ratio) therefore scales/centers differently
+                    // than the dot overlay below (which maps x/y to
+                    // content-w/content-h independently), so line
+                    // endpoints drift away from their dots the further a
+                    // point sits from center. Fixed by giving the viewbox
+                    // the same aspect ratio as the box: `roi-path-commands`
+                    // pre-scales its y-values by the matching factor
+                    // (see `roi_path_commands` in main.rs) so the
+                    // now-uniform fit reproduces the dots' anisotropic
+                    // mapping exactly.
+                    if root.lens-preview-active && root.has-roi: Path {
+                        x: preview-box.content-x;
+                        y: preview-box.content-y;
+                        width: preview-box.content-w;
+                        height: preview-box.content-h;
+                        viewbox-x: 0;
+                        viewbox-y: 0;
+                        viewbox-width: 1;
+                        viewbox-height: 1.0 / root.lens-frame-aspect;
+                        stroke: #0f08;
+                        stroke-width: 2px;
+                        commands: root.roi-path-commands;
+                    }
+
                     // ROI vertex overlay (visible in lens preview mode).
-                    // Absolute-positioned dots at each polygon vertex.
+                    // Absolute-positioned dots at each polygon vertex,
+                    // positioned within the letterboxed content rect so
+                    // they track the image through zoom/pan.
                     for idx in root.roi-points-x.length: Rectangle {
                         visible: root.lens-preview-active && root.has-roi;
-                        x: root.roi-points-x[idx] * preview-box.width - 4px;
-                        y: root.roi-points-y[idx] * preview-box.height - 4px;
+                        x: preview-box.content-x + root.roi-points-x[idx] * preview-box.content-w - 4px;
+                        y: preview-box.content-y + root.roi-points-y[idx] * preview-box.content-h - 4px;
                         width: 8px;
                         height: 8px;
                         border-radius: 4px;
@@ -1300,34 +1428,197 @@ export component RecoApp inherits Window {
                         border-width: 1px;
                         border-color: #0f0;
                     }
+
+                    // Pan/zoom (panorama or lens-preview) and, in lens
+                    // preview + ROI-edit mode, field-boundary point
+                    // editing: click empty space to add a point, drag an
+                    // existing point to move it, right-click a point to
+                    // delete it. A child of preview-box (not a sibling)
+                    // so its coordinates are relative to the same
+                    // content rect the ROI overlay above uses - matters
+                    // once `preview-aspect` letterboxes the image.
+                    //
+                    // Click vs. drag on empty space is disambiguated by
+                    // movement, not by which handler fires: pressing down
+                    // on empty space only *tentatively* marks a possible
+                    // add (`roi-click-pending`) - it's committed on
+                    // release only if the pointer never moved past a
+                    // small threshold, otherwise the gesture is treated
+                    // as a pan instead. Without this, every left-press
+                    // would count as "start of a drag" and panning by
+                    // dragging empty space would be impossible while
+                    // editing (confirmed broken in the first version of
+                    // this feature).
+                    drag := TouchArea {
+                        enabled: root.files-loaded;
+                        x: 0px;
+                        y: 0px;
+                        width: 100%;
+                        height: 100%;
+                        property <length> last-x: 0px;
+                        property <length> last-y: 0px;
+                        property <length> press-x: 0px;
+                        property <length> press-y: 0px;
+                        property <int> roi-dragging-index: -1;
+                        property <bool> roi-click-pending: false;
+                        property <length> local-x: self.mouse-x - preview-box.content-x;
+                        property <length> local-y: self.mouse-y - preview-box.content-y;
+                        property <bool> local-in-bounds:
+                            self.local-x >= 0px && self.local-x <= preview-box.content-w
+                            && self.local-y >= 0px && self.local-y <= preview-box.content-h;
+
+                        pointer-event(e) => {
+                            if (e.kind == PointerEventKind.down) {
+                                self.last-x = self.mouse-x;
+                                self.last-y = self.mouse-y;
+                                self.press-x = self.mouse-x;
+                                self.press-y = self.mouse-y;
+                                self.roi-click-pending = false;
+
+                                if (root.lens-preview-active && root.roi-edit-mode && self.local-in-bounds) {
+                                    if (e.button == PointerEventButton.right) {
+                                        root.roi-pointer-delete(
+                                            self.local-x / 1px,
+                                            self.local-y / 1px,
+                                            preview-box.content-w / 1px,
+                                            preview-box.content-h / 1px,
+                                        );
+                                    } else if (e.button == PointerEventButton.left) {
+                                        self.roi-dragging-index = root.roi-pointer-hit-test(
+                                            self.local-x / 1px,
+                                            self.local-y / 1px,
+                                            preview-box.content-w / 1px,
+                                            preview-box.content-h / 1px,
+                                        );
+                                        if (self.roi-dragging-index < 0) {
+                                            self.roi-click-pending = true;
+                                        }
+                                    }
+                                }
+                            }
+                            if (e.kind == PointerEventKind.up) {
+                                if (self.roi-dragging-index >= 0) {
+                                    root.roi-pointer-up();
+                                    self.roi-dragging-index = -1;
+                                }
+                                if (self.roi-click-pending) {
+                                    root.roi-pointer-add(
+                                        self.local-x / 1px,
+                                        self.local-y / 1px,
+                                        preview-box.content-w / 1px,
+                                        preview-box.content-h / 1px,
+                                    );
+                                    self.roi-click-pending = false;
+                                }
+                            }
+                        }
+
+                        moved => {
+                            if (self.pressed) {
+                                if (root.lens-preview-active && root.roi-edit-mode && self.roi-dragging-index >= 0) {
+                                    root.roi-pointer-drag(
+                                        self.roi-dragging-index,
+                                        self.local-x / 1px,
+                                        self.local-y / 1px,
+                                        preview-box.content-w / 1px,
+                                        preview-box.content-h / 1px,
+                                    );
+                                } else if (root.lens-preview-active && root.roi-edit-mode && self.roi-click-pending
+                                           && (Math.abs((self.mouse-x - self.press-x) / 1px) > 4
+                                               || Math.abs((self.mouse-y - self.press-y) / 1px) > 4)) {
+                                    // Moved past the click threshold: this is a
+                                    // pan, not a click-to-add - cancel the
+                                    // pending add and fall into panning from
+                                    // here on (the next `moved` naturally hits
+                                    // the plain lens-preview-active branch
+                                    // below since both flags are now false).
+                                    self.roi-click-pending = false;
+                                    root.lens-pan-x += self.mouse-x - self.last-x;
+                                    root.lens-pan-y += self.mouse-y - self.last-y;
+                                } else if (root.lens-preview-active && root.roi-edit-mode && self.roi-click-pending) {
+                                    // Still within the click threshold - wait.
+                                } else if (root.lens-preview-active) {
+                                    root.lens-pan-x += self.mouse-x - self.last-x;
+                                    root.lens-pan-y += self.mouse-y - self.last-y;
+                                } else {
+                                    root.pan(
+                                        (self.mouse-x - self.last-x) / 1px,
+                                        (self.mouse-y - self.last-y) / 1px,
+                                    );
+                                }
+                                self.last-x = self.mouse-x;
+                                self.last-y = self.mouse-y;
+                            }
+                        }
+
+                        scroll-event(e) => {
+                            if (root.lens-preview-active) {
+                                root.lens-zoom = max(1.0, min(8.0, root.lens-zoom - e.delta-y / 400px));
+                            } else {
+                                root.zoom(-e.delta-y / 40px);
+                            }
+                            return accept;
+                        }
+                    }
                 }
 
-                drag := TouchArea {
-                    enabled: root.files-loaded;
-                    property <length> last-x: 0px;
-                    property <length> last-y: 0px;
-
-                    pointer-event(e) => {
-                        if (e.kind == PointerEventKind.down) {
-                            self.last-x = self.mouse-x;
-                            self.last-y = self.mouse-y;
+                // Current view state, surfaced over the preview where the
+                // eye already is. Non-interactive (no TouchArea) so pan/zoom
+                // drag underneath still works. Hidden until a clip loads.
+                if root.files-loaded && !root.lens-preview-active: Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    y: 12px;
+                    width: fov-pill.preferred-width + 24px;
+                    height: 26px;
+                    border-radius: 13px;
+                    background: #0d0f11d0;
+                    border-width: 1px;
+                    border-color: #2a2e33;
+                    fov-pill := HorizontalLayout {
+                        spacing: 7px;
+                        alignment: center;
+                        Text {
+                            text: "FOV " + round(root.fov) + "°";
+                            color: #9aa0a7;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+                        if root.use-constrained-look: Text {
+                            text: "· Constrained";
+                            color: #6a7077;
+                            font-size: 11px;
+                            vertical-alignment: center;
                         }
                     }
+                }
 
-                    moved => {
-                        if (self.pressed) {
-                            root.pan(
-                                (self.mouse-x - self.last-x) / 1px,
-                                (self.mouse-y - self.last-y) / 1px,
-                            );
-                            self.last-x = self.mouse-x;
-                            self.last-y = self.mouse-y;
+                // Camera-side switcher, surfaced front-and-center while
+                // editing the ROI (the primary reason you'd need it in
+                // the moment) - not shown otherwise, since the side
+                // panel's own Left/Right toggle covers normal lens
+                // preview use.
+                if root.roi-edit-mode: Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    y: 12px;
+                    width: roi-side-pill.preferred-width + 8px;
+                    height: 34px;
+                    border-radius: 17px;
+                    background: #0d0f11d0;
+                    border-width: 1px;
+                    border-color: #2a2e33;
+                    roi-side-pill := HorizontalLayout {
+                        padding: 4px;
+                        spacing: 4px;
+                        Button {
+                            text: "Left";
+                            primary: root.lens-preview-side == "left";
+                            clicked => { root.lens-preview-side = "left"; root.changed-lens-preview(); }
                         }
-                    }
-
-                    scroll-event(e) => {
-                        root.zoom(-e.delta-y / 40px);
-                        return accept;
+                        Button {
+                            text: "Right";
+                            primary: root.lens-preview-side == "right";
+                            clicked => { root.lens-preview-side = "right"; root.changed-lens-preview(); }
+                        }
                     }
                 }
             }
@@ -1391,6 +1682,15 @@ export component RecoApp inherits Window {
                     if !root.lens-preview-active: Button {
                         text: "Reset View";
                         clicked => { root.reset-view(); }
+                    }
+
+                    if root.lens-preview-active: Button {
+                        text: "Reset Zoom";
+                        clicked => {
+                            root.lens-zoom = 1.0;
+                            root.lens-pan-x = 0px;
+                            root.lens-pan-y = 0px;
+                        }
                     }
 
                     if !root.lens-preview-active: Rectangle { height: 1px; background: root.border-subtle; }
