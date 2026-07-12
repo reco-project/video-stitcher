@@ -24,6 +24,7 @@ tensorrt-native = ["autocam", "reco-autocam/tensorrt-native"]
 ncnn = ["autocam", "reco-autocam/ncnn"]
 cuda = ["autocam", "reco-autocam/cuda"]
 coreml = ["autocam", "reco-autocam/coreml"]
+directml = ["autocam", "reco-autocam/directml"]
 load-dynamic = ["autocam", "reco-autocam/load-dynamic"]
 profiling = ["reco-core/profiling", "reco-io/profiling", "reco-calibrate/profiling"]
 # Headless dev/test preload + auto-export hook (RECO_AUTOLOAD/RECO_AUTOEXPORT).
@@ -59,6 +60,16 @@ serde_json = "1"
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-log = { workspace = true }
+
+# DirectML EP (Windows-only, see reco-detect/src/ort_session.rs) needs the
+# `directml` cargo feature on `ort` compiled in, or it silently no-ops back
+# to CPU inference at runtime (the "its corresponding Cargo feature is not
+# enabled" ort::ep warning) despite logging as if it succeeded. Enabled
+# here rather than in the cross-platform `default` feature list above so
+# non-Windows builds aren't affected.
+[target.'cfg(windows)'.dependencies]
+reco-detect = { path = "../reco-detect", default-features = false, features = ["directml"] }
+reco-autocam = { path = "../reco-autocam", optional = true, default-features = false, features = ["directml"] }
 
 [build-dependencies]
 slint-build = "1.15"
