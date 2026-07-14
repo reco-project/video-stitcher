@@ -931,6 +931,16 @@ impl AppState {
         }
     }
 
+    /// Toggle automatic per-camera seam-band color matching. Opt-in, not
+    /// persisted with the calibration (no CPU-executor mirror yet - see
+    /// `StitchPipeline::set_color_match_enabled`'s doc comment).
+    fn set_color_match_enabled(&mut self, enabled: bool) {
+        if let Some(bridge) = self.bridge.as_mut() {
+            bridge.engine_mut().set_color_match_enabled(enabled);
+            self.preview_dirty = true;
+        }
+    }
+
     fn set_rig_tilt(&mut self, deg: f32) {
         if let Some(cal) = self.calibration.as_mut() {
             cal.framing.tilt = (deg as f64).to_radians();
@@ -2764,6 +2774,11 @@ fn main() -> anyhow::Result<()> {
     });
 
     let state_ref = Rc::clone(&state);
+    app.on_toggled_color_match(move |enabled| {
+        state_ref.borrow_mut().set_color_match_enabled(enabled);
+    });
+
+    let state_ref = Rc::clone(&state);
     let app_weak = app.as_weak();
     app.on_changed_rig_tilt(move |deg| {
         state_ref.borrow_mut().set_rig_tilt(deg);
@@ -3479,6 +3494,7 @@ fn main() -> anyhow::Result<()> {
         let codec_str = app.get_export_codec().to_string();
         let quality_str = app.get_export_quality().to_string();
         let blend = app.get_blend_width();
+        let color_match_enabled = app.get_color_match_enabled();
         let start_secs = app.get_export_start_secs();
         let end_secs = app.get_export_end_secs();
         log::info!("Export range: start={start_secs:.1}s, end={end_secs:.1}s");
@@ -3563,6 +3579,7 @@ fn main() -> anyhow::Result<()> {
                 codec_str,
                 quality_str,
                 blend,
+                color_match_enabled,
                 start_secs,
                 end_secs,
                 autocam,

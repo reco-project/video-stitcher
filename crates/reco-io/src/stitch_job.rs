@@ -56,6 +56,10 @@ pub struct StitchJob {
     /// Seam blend override. `None` (default) respects the calibration
     /// document's saved value - the single home for render params.
     blend_width: Option<f32>,
+    /// Automatic per-camera seam-band color matching. Opt-in (defaults
+    /// off) - see `reco_core::render::pipeline::StitchPipeline::
+    /// set_color_match_enabled`'s doc comment for why.
+    color_match_enabled: bool,
 
     // Callbacks
     on_progress: Option<ProgressCallback>,
@@ -250,6 +254,7 @@ impl StitchJob {
             max_frames: None,
             sync_offset: None,
             blend_width: None,
+            color_match_enabled: false,
             on_progress: None,
             on_finalizing: None,
             session_hooks: Vec::new(),
@@ -371,6 +376,15 @@ impl StitchJob {
     /// When not called, the calibration document's value is used.
     pub fn blend_width(mut self, blend: f32) -> Self {
         self.blend_width = Some(blend);
+        self
+    }
+
+    /// Enable automatic per-camera exposure/white-balance matching at
+    /// the seam. Opt-in (off by default) - has no CPU-executor mirror
+    /// yet, so it only affects the CPU-upload GPU render paths (any file-
+    /// based stitch job takes one of these).
+    pub fn color_match(mut self, enabled: bool) -> Self {
+        self.color_match_enabled = enabled;
         self
     }
 
@@ -616,6 +630,7 @@ impl StitchJob {
             right_rotation: source.right_rotation(),
         };
         let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
+        session.set_color_match_enabled(self.color_match_enabled);
 
         session.telemetry_mut().set_gpu_name(gpu_name.clone());
         session.telemetry_mut().set_decode_mode(decode_mode.clone());

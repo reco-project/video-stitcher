@@ -176,6 +176,11 @@ enum Commands {
         #[arg(long, value_parser = parse_blend)]
         blend: Option<f32>,
 
+        /// Enable automatic per-camera exposure/white-balance matching
+        /// at the seam. Opt-in: off by default.
+        #[arg(long, default_value_t = false)]
+        color_match: bool,
+
         /// Frame offset for temporal sync between cameras.
         /// Positive: skip N right frames (right started first).
         /// Negative: skip N left frames (left started first).
@@ -787,6 +792,7 @@ fn main() -> anyhow::Result<()> {
             codec,
             quality,
             blend,
+            color_match,
             sync_offset,
             model,
             detection_interval,
@@ -812,6 +818,7 @@ fn main() -> anyhow::Result<()> {
                 width,
                 height,
                 blend,
+                color_match,
                 start_time,
                 end_time,
                 max_frames,

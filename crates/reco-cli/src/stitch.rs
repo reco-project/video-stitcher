@@ -24,6 +24,7 @@ pub struct StitchArgs<'a> {
     pub width: u32,
     pub height: u32,
     pub blend: Option<f32>,
+    pub color_match: bool,
     pub start_time: Option<f64>,
     pub end_time: Option<f64>,
     pub max_frames: Option<u64>,
@@ -125,6 +126,9 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
 
     if let Some(b) = args.blend {
         job = job.blend_width(b);
+    }
+    if args.color_match {
+        job = job.color_match(true);
     }
     if let Some(t) = args.start_time {
         job = job.start_time(t);
