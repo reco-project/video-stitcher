@@ -378,7 +378,13 @@ impl D3d11StagingPool {
     ///
     /// Performs `CopySubresourceRegion` (GPU-to-GPU, ~0.2ms) then waits
     /// for completion via an event query before returning.
-    pub fn stage_frame(
+    ///
+    /// # Safety
+    ///
+    /// `src_texture`, if non-null, must be a valid `ID3D11Texture2D*` COM
+    /// pointer (as produced by FFmpeg's D3D11VA decode path via
+    /// `AVFrame::data[0]`) that stays alive for the duration of this call.
+    pub unsafe fn stage_frame(
         &mut self,
         src_texture: *mut c_void,
         array_slice: usize,
