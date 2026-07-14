@@ -549,6 +549,12 @@ export component RecoApp inherits Window {
     in-out property <float> lookahead-green-max: 0;
     in-out property <float> lookahead-red-min: 0;
     in-out property <bool> lookahead-risk-active: false;
+    // Downconvert the lookahead pool to 8-bit before buffering, roughly
+    // halving its VRAM cost for 10-bit sources (no effect on 8-bit
+    // sources) at some cost to gradient smoothness in the final render -
+    // the buffered frames feed both AI tracking and the stitch render.
+    // Off by default.
+    in-out property <bool> export-lookahead-reduced-bit-depth: false;
     in-out property <string> export-framing: "action";
     in-out property <bool> export-lock-pitch: false;
     in-out property <string> export-cluster-mode: "density";
@@ -2613,6 +2619,14 @@ export component RecoApp inherits Window {
                             green-max: root.lookahead-green-max;
                             red-min: root.lookahead-red-min;
                             risk-active: root.lookahead-risk-active;
+                        }
+
+                        Tip {
+                            tip: "Buffers the lookahead at 8-bit instead of the source's native bit depth, roughly halving its VRAM cost on 10-bit footage (e.g. DJI Action 4 HEVC) - lets a longer lookahead fit on lower-VRAM cards. No effect on already-8-bit sources. The same buffered frames feed the final render too, so this trades a little gradient smoothness (sky, grass, floodlit surfaces) for memory - leave off unless you're hitting a VRAM error.";
+                            CheckBox {
+                                text: "Reduce lookahead memory (8-bit)";
+                                checked <=> root.export-lookahead-reduced-bit-depth;
+                            }
                         }
 
                         panner-advanced := SectionHeader {

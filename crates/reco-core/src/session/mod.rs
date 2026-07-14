@@ -31,7 +31,7 @@ mod run_loop;
 pub(crate) mod vram_pool;
 /// Lookahead VRAM fit estimate, for the export UI risk slider and the
 /// pre-flight budget check.
-pub use vram_pool::{LookaheadFit, lookahead_budget_bytes, lookahead_fit};
+pub use vram_pool::{LookaheadBitDepth, LookaheadFit, lookahead_budget_bytes, lookahead_fit};
 /// Configuration wiring (set/clear/attach methods).
 mod wiring;
 
@@ -89,6 +89,10 @@ pub struct StitchSession {
     pub(crate) skip_detection: bool,
     /// Number of lookahead frames (0 = disabled).
     pub(crate) lookahead_frames: usize,
+    /// Whether the lookahead pool buffers frames at the source's native
+    /// bit depth or downconverts to 8-bit first. Opt-in, default `Native`
+    /// (no behavior change). See [`vram_pool::LookaheadBitDepth`].
+    pub(crate) lookahead_bit_depth: vram_pool::LookaheadBitDepth,
     pub(crate) frame_count: u64,
     /// Session start time for metrics computation.
     session_start: Option<std::time::Instant>,
@@ -251,6 +255,7 @@ impl StitchSession {
             encoder: None,
             skip_detection: false,
             lookahead_frames: 0,
+            lookahead_bit_depth: vram_pool::LookaheadBitDepth::default(),
             frame_count: 0,
             extra_encoders: Vec::new(),
             session_start: None,

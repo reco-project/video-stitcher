@@ -47,6 +47,13 @@ pub struct AutocamUiConfig {
     pub detection_interval: u32,
     /// Lookahead buffer depth in seconds (0 = off).
     pub lookahead_secs: f64,
+    /// Downconvert the lookahead pool to 8-bit NV12 even for 10-bit
+    /// sources, roughly halving its VRAM cost at some cost to gradient
+    /// smoothness in the final render (the same buffered frames feed
+    /// both AI tracking and the stitch render - see
+    /// `reco_core::session::vram_pool::LookaheadBitDepth`). Off by
+    /// default; no effect on already-8-bit sources.
+    pub lookahead_reduced_bit_depth: bool,
     /// Preset name used as the config base; visible knobs overlay it.
     pub preset: String,
     /// `"action"` or `"frame_all"`.
@@ -271,6 +278,9 @@ pub fn run_export(
     #[cfg(feature = "autocam")]
     if autocam.enabled && autocam.lookahead_secs > 0.0 {
         job = job.lookahead(autocam.lookahead_secs);
+        if autocam.lookahead_reduced_bit_depth {
+            job = job.lookahead_reduced_bit_depth(true);
+        }
     }
 
     #[cfg(feature = "autocam")]

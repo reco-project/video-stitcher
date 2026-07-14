@@ -80,11 +80,30 @@ struct StagingState {
     device: ID3D11Device,
     context: ID3D11DeviceContext,
     staging: Vec<ID3D11Texture2D>,
-    _wgpu_textures: Vec<wgpu::Texture>,
+    /// The imported multi-planar (NV12/P010) wgpu texture per slot. Read
+    /// via [`D3d11StagingPool::plane_source`] for a plane-aspect-selected
+    /// `copy_texture_to_texture` into a same-format destination (see
+    /// `session::vram_pool::VramPool::copy_from_d3d11`) - `y_views`/
+    /// `uv_views` below are already aspect-selected and cannot themselves
+    /// be the source of a texture-to-texture copy (that needs the raw
+    /// texture + an aspect, not a view).
+    wgpu_textures: Vec<wgpu::Texture>,
     y_views: Vec<wgpu::TextureView>,
     uv_views: Vec<wgpu::TextureView>,
     event_query: ID3D11Query,
     cuda_nv12: Option<Vec<crate::interop::cuda::CudaImportedNv12>>,
+}
+
+/// Borrowed handles for one D3D11 staging slot - see
+/// [`D3d11StagingPool::plane_source`].
+pub struct D3d11PlaneSource<'a> {
+    /// The raw multi-planar (NV12/P010) imported texture. Select
+    /// `TextureAspect::Plane0` (Y) / `Plane1` (UV) for a same-format copy.
+    pub texture: &'a wgpu::Texture,
+    /// Pre-built Y plane view (`Plane0`), for sampling in a render pass.
+    pub y_view: &'a wgpu::TextureView,
+    /// Pre-built UV plane view (`Plane1`), for sampling in a render pass.
+    pub uv_view: &'a wgpu::TextureView,
 }
 
 /// Double-buffered NV12 staging pool for D3D11VA -> wgpu zero-copy.
@@ -360,7 +379,7 @@ impl D3d11StagingPool {
             device,
             context,
             staging: staging_textures,
-            _wgpu_textures: wgpu_textures,
+            wgpu_textures,
             y_views,
             uv_views,
             cuda_nv12,
@@ -490,6 +509,28 @@ impl D3d11StagingPool {
             .as_ref()
             .expect("staging pool not initialized")
             .uv_views[slot]
+    }
+
+    /// Borrowed handles for one staging slot, for copying it into a
+    /// longer-lived pool (`session::vram_pool::VramPool::copy_from_d3d11`).
+    ///
+    /// Includes both the raw multi-planar `texture` (for a plane-aspect-
+    /// selected `copy_texture_to_texture` when the destination format
+    /// matches this pool's `pixel_format` - bit-exact, no shader) and the
+    /// pre-built plane views (for a downconvert render pass when the
+    /// destination is a different, lower bit depth - a raw copy cannot
+    /// change bit depth, and a render pass only needs a view, not the
+    /// aspect-selected texture).
+    ///
+    /// # Panics
+    /// Panics if called before the first `stage_frame` (pool not initialized).
+    pub fn plane_source(&self, slot: usize) -> D3d11PlaneSource<'_> {
+        let state = self.state.as_ref().expect("staging pool not initialized");
+        D3d11PlaneSource {
+            texture: &state.wgpu_textures[slot],
+            y_view: &state.y_views[slot],
+            uv_view: &state.uv_views[slot],
+        }
     }
 
     /// Number of staging slots.

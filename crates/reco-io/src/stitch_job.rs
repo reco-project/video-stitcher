@@ -79,6 +79,10 @@ pub struct StitchJob {
     /// decodes N frames ahead to give the panner future context.
     lookahead_secs: f64,
 
+    /// Downconvert the lookahead pool to 8-bit before buffering. See
+    /// [`Self::lookahead_reduced_bit_depth`].
+    lookahead_reduced_bit_depth: bool,
+
     /// Path for pipeline event JSONL output. When set, attaches a
     /// `JsonlSink` to the session that records every detection,
     /// filter decision, and pan decision for offline analysis.
@@ -257,6 +261,7 @@ impl StitchJob {
             replay_recording: None,
             force_cpu_decode: false,
             lookahead_secs: 0.0,
+            lookahead_reduced_bit_depth: false,
             events_path: None,
         }
     }
@@ -462,6 +467,16 @@ impl StitchJob {
         self
     }
 
+    /// Downconvert the lookahead pool to 8-bit NV12 even for 10-bit
+    /// sources, roughly halving its VRAM cost at some cost to gradient
+    /// smoothness (the same buffered frames feed both AI tracking and the
+    /// final stitch render). Off by default; no effect on already-8-bit
+    /// sources. See `reco_core::session::vram_pool::LookaheadBitDepth`.
+    pub fn lookahead_reduced_bit_depth(mut self, reduced: bool) -> Self {
+        self.lookahead_reduced_bit_depth = reduced;
+        self
+    }
+
     /// Record pipeline events (detections, filter decisions, pan
     /// decisions) to a JSONL file for offline analysis.
     pub fn events(mut self, path: impl AsRef<Path>) -> Self {
@@ -633,6 +648,10 @@ impl StitchJob {
                 .unwrap_or(30.0);
             let frames = (self.lookahead_secs * fps).round() as usize;
             session.set_lookahead(frames);
+            if self.lookahead_reduced_bit_depth {
+                session.set_lookahead_bit_depth(reco_core::session::LookaheadBitDepth::Reduced8Bit);
+                log::info!("Lookahead bit depth: Reduced8Bit (halved VRAM, 10-bit sources only)");
+            }
         }
 
         for hook in self.session_hooks.drain(..) {

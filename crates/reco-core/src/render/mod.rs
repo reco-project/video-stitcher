@@ -6,6 +6,8 @@
 //! they stay available without the `gpu` feature.
 
 #[cfg(feature = "gpu")]
+pub mod lookahead_downconvert;
+#[cfg(feature = "gpu")]
 pub mod pipeline;
 pub mod planes;
 #[cfg(feature = "gpu")]

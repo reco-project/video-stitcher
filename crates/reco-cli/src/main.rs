@@ -202,6 +202,15 @@ enum Commands {
         #[arg(long, default_value_t = 1.5)]
         lookahead: f64,
 
+        /// Downconvert the lookahead pool to 8-bit before buffering,
+        /// roughly halving its VRAM cost on 10-bit sources (e.g. DJI
+        /// Action 4 HEVC) - use this if export fails with a "not enough
+        /// VRAM for a Ns lookahead" error. No effect on 8-bit sources.
+        /// The same buffered frames feed the final render too, so this
+        /// trades a little gradient smoothness for memory.
+        #[arg(long)]
+        lookahead_reduced_bit_depth: bool,
+
         /// Tracking mode: "field" (ball + players, default), "ball"
         /// (ball only), "sweep" (no AI, debug pan). field is robust with
         /// COCO models; ball-only follows the weak COCO ball alone.
@@ -791,6 +800,7 @@ fn main() -> anyhow::Result<()> {
             model,
             detection_interval,
             lookahead,
+            lookahead_reduced_bit_depth,
             tracking,
             quality_value,
             preset,
@@ -822,6 +832,7 @@ fn main() -> anyhow::Result<()> {
                 model_path: model.as_deref(),
                 detection_interval,
                 lookahead,
+                lookahead_reduced_bit_depth,
                 tracking_mode: &tracking,
                 quality_value,
                 preset,
