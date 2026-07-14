@@ -507,6 +507,8 @@ export component RecoApp inherits Window {
     in-out property <float> pitch: 0.0;    // radians
     in-out property <float> fov: 75.0;     // degrees
     in-out property <float> blend-width: 0.05;
+    in-out property <float> seam-offset: 0.0;
+    in-out property <bool> show-seam-line: false;
     in-out property <float> rig-tilt: 0.0; // degrees
     in-out property <float> rig-roll: 0.0; // degrees
     in-out property <int> sync-offset: 0;  // frames
@@ -704,6 +706,8 @@ export component RecoApp inherits Window {
     callback reset-view();
     // Settings-panel slider callbacks.
     callback changed-blend-width(float);
+    callback changed-seam-offset(float);
+    callback toggled-show-seam-line(bool);
     callback changed-rig-tilt(float);
     callback changed-rig-roll(float);
     callback changed-sync-offset(int);
@@ -1115,6 +1119,21 @@ export component RecoApp inherits Window {
                             value <=> root.blend-width;
                             decimals: 2;
                             changed(v) => { root.changed-blend-width(v); }
+                        }
+
+                        if root.files-loaded: LabeledSlider {
+                            label: "Seam position";
+                            minimum: -0.3;
+                            maximum: 0.3;
+                            value <=> root.seam-offset;
+                            decimals: 3;
+                            changed(v) => { root.changed-seam-offset(v); }
+                        }
+
+                        if root.files-loaded: CheckBox {
+                            text: "Show seam line";
+                            checked <=> root.show-seam-line;
+                            toggled => { root.toggled-show-seam-line(self.checked); }
                         }
 
                         if root.files-loaded: LabeledSlider {

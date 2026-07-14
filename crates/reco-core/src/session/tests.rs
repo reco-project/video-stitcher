@@ -41,6 +41,7 @@ fn test_calibration() -> Calibration {
             x_rx: 0.0,
             z_rz: 0.0,
             blend_width: 0.05,
+            seam_offset: 0.0,
         },
         Framing {
             axis_offset: 0.25,

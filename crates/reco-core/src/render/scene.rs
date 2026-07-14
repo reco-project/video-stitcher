@@ -131,6 +131,7 @@ mod tests {
             x_rx: 0.0,
             z_rz: 0.0,
             blend_width: 0.05,
+            seam_offset: 0.0,
         }
     }
 
@@ -164,6 +165,7 @@ mod tests {
             x_rx: 0.0,
             z_rz: 0.0,
             blend_width: 0.05,
+            seam_offset: 0.0,
         };
 
         let geom = SceneGeometry::new(&topology, &framing(0.24), 16.0 / 9.0);

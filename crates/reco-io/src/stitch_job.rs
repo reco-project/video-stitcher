@@ -56,6 +56,12 @@ pub struct StitchJob {
     /// Seam blend override. `None` (default) respects the calibration
     /// document's saved value - the single home for render params.
     blend_width: Option<f32>,
+    /// Manual seam-position nudge override, same override semantics as
+    /// `blend_width`.
+    seam_offset: Option<f32>,
+    /// Draw a debug line at the exact seam position. Pure visualization,
+    /// not calibration state - always defaults off.
+    show_seam_line: bool,
 
     // Callbacks
     on_progress: Option<ProgressCallback>,
@@ -250,6 +256,8 @@ impl StitchJob {
             max_frames: None,
             sync_offset: None,
             blend_width: None,
+            seam_offset: None,
+            show_seam_line: false,
             on_progress: None,
             on_finalizing: None,
             session_hooks: Vec::new(),
@@ -371,6 +379,22 @@ impl StitchJob {
     /// When not called, the calibration document's value is used.
     pub fn blend_width(mut self, blend: f32) -> Self {
         self.blend_width = Some(blend);
+        self
+    }
+
+    /// Override the calibration's saved manual seam-position nudge, in
+    /// the right plane's own local UV units (same space as `blend_width`).
+    /// When not called, the calibration document's value is used.
+    pub fn seam_offset(mut self, offset: f32) -> Self {
+        self.seam_offset = Some(offset);
+        self
+    }
+
+    /// Draw a debug line at the exact seam position (offset included).
+    /// Pure visualization aid for tuning calibration - has no effect on
+    /// the blend math itself. Off by default.
+    pub fn show_seam_line(mut self, show: bool) -> Self {
+        self.show_seam_line = show;
         self
     }
 
@@ -600,6 +624,13 @@ impl StitchJob {
                 cal.topology.blend_width
             );
         }
+        if let Some(offset) = self.seam_offset {
+            log::info!(
+                "seam offset: overriding calibration value {} with {offset}",
+                cal.topology.seam_offset
+            );
+            cal.topology.seam_offset = offset;
+        }
         let viewport = reco_core::render::viewport::ViewportConfig {
             width: out_w,
             height: out_h,
@@ -616,6 +647,7 @@ impl StitchJob {
             right_rotation: source.right_rotation(),
         };
         let mut session = reco_core::session::StitchSession::with_gpu(gpu, session_config)?;
+        session.set_show_seam_line(self.show_seam_line);
 
         session.telemetry_mut().set_gpu_name(gpu_name.clone());
         session.telemetry_mut().set_decode_mode(decode_mode.clone());

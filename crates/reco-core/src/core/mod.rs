@@ -487,6 +487,18 @@ impl StitchCore {
         self.executor.set_blend_width(width);
     }
 
+    /// Set the manual seam-position nudge (per-frame uniform; coverage
+    /// unaffected). See [`crate::calibration::Topology::seam_offset`].
+    pub fn set_seam_offset(&mut self, offset: f32) {
+        self.executor.set_seam_offset(offset);
+    }
+
+    /// Toggle the seam debug line (GPU executor only; see
+    /// [`crate::stitch::Executor::set_show_seam_line`]).
+    pub fn set_show_seam_line(&mut self, show: bool) {
+        self.executor.set_show_seam_line(show);
+    }
+
     /// Set the lens-correction strength on every lens (`0` = pinhole,
     /// `1` = full KB4).
     pub fn set_lens_correction_amount(&mut self, amount: f32) {

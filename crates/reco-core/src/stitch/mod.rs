@@ -44,10 +44,11 @@ pub use executor::{GpuExecutor, GpuExecutorConfig};
 pub enum BlendRule {
     /// Fully replaces whatever is underneath wherever this surface covers.
     Opaque,
-    /// Fades in over `[0, width]` of the surface's [`SurfaceUv::edge`]
-    /// coordinate (the GPU's seam smoothstep). A non-positive width
-    /// renders fully opaque wherever the surface covers.
-    Smoothstep(f64),
+    /// Fades in over `[offset, offset + width]` of the surface's
+    /// [`SurfaceUv::edge`] coordinate (the GPU's seam smoothstep,
+    /// `Topology::seam_offset`-shifted). A non-positive width renders
+    /// fully opaque wherever the surface covers.
+    Smoothstep { width: f64, offset: f64 },
 }
 
 impl BlendRule {
@@ -55,8 +56,10 @@ impl BlendRule {
     pub(crate) fn alpha(&self, edge: f64) -> f64 {
         match *self {
             BlendRule::Opaque => 1.0,
-            BlendRule::Smoothstep(width) if width > 0.0 => smoothstep(0.0, width, edge),
-            BlendRule::Smoothstep(_) => 1.0,
+            BlendRule::Smoothstep { width, offset } if width > 0.0 => {
+                smoothstep(0.0, width, edge - offset)
+            }
+            BlendRule::Smoothstep { .. } => 1.0,
         }
     }
 }
@@ -129,6 +132,7 @@ pub(crate) mod test_support {
                 x_rx: 0.0,
                 z_rz: 0.0,
                 blend_width: 0.05,
+                seam_offset: 0.0,
             },
             Framing {
                 axis_offset: 0.25,
@@ -279,6 +283,35 @@ mod tests {
     use crate::calibration::Calibration;
     use crate::render::planes::Nv12Planes;
     use crate::render::viewport::ViewportConfig;
+
+    #[test]
+    fn seam_offset_shifts_the_smoothstep_without_changing_its_shape() {
+        use super::BlendRule;
+
+        let rule = BlendRule::Smoothstep {
+            width: 0.1,
+            offset: 0.0,
+        };
+        let offset_rule = BlendRule::Smoothstep {
+            width: 0.1,
+            offset: 0.05,
+        };
+
+        // A zero offset must reproduce the pre-existing (no-offset)
+        // behavior exactly - default calibrations must render unchanged.
+        assert_eq!(rule.alpha(0.0), 0.0);
+        assert_eq!(rule.alpha(0.05), 0.5);
+        assert_eq!(rule.alpha(0.1), 1.0);
+
+        // A +0.05 offset must shift the same curve by exactly +0.05: the
+        // point that used to be the midpoint (edge=0.05) is now where the
+        // curve starts (alpha=0), and the old start (edge=0.0) is now
+        // fully outside the band (alpha=0, clamped, not negative).
+        assert_eq!(offset_rule.alpha(0.05), 0.0);
+        assert_eq!(offset_rule.alpha(0.10), 0.5);
+        assert_eq!(offset_rule.alpha(0.15), 1.0);
+        assert_eq!(offset_rule.alpha(0.0), 0.0);
+    }
 
     #[test]
     fn output_dimensions_and_opaque_alpha() {

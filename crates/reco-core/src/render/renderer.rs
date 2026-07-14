@@ -809,6 +809,7 @@ impl Renderer {
         calibration: &Calibration,
         viewport: &ResolvedViewport,
         blend_width: f32,
+        show_seam_line: bool,
         target_view: &wgpu::TextureView,
         aspect: f32,
         encoder_label: &str,
@@ -852,6 +853,8 @@ impl Renderer {
             self.is_full_range,
         );
         right_uniforms.lens_preview[0] = calibration.lenses[1].correction;
+        right_uniforms.lens_preview[2] = calibration.topology.seam_offset;
+        right_uniforms.lens_preview[3] = if show_seam_line { 1.0 } else { 0.0 };
 
         gpu.queue.write_buffer(
             &self.left.uniform_buffer,
@@ -920,6 +923,7 @@ impl Renderer {
         calibration: &Calibration,
         viewport: &ResolvedViewport,
         blend_width: f32,
+        show_seam_line: bool,
     ) -> wgpu::CommandBuffer {
         let aspect = self.output_width as f32 / self.output_height as f32;
         let encoder = self.encode_stitch_pass(
@@ -928,6 +932,7 @@ impl Renderer {
             calibration,
             viewport,
             blend_width,
+            show_seam_line,
             &self.render_target_view,
             aspect,
             "stitch_to_target",
@@ -954,6 +959,7 @@ impl Renderer {
         calibration: &Calibration,
         viewport: &ResolvedViewport,
         blend_width: f32,
+        show_seam_line: bool,
         target_view: &wgpu::TextureView,
     ) {
         let aspect = viewport.config.width as f32 / viewport.config.height as f32;
@@ -963,6 +969,7 @@ impl Renderer {
             calibration,
             viewport,
             blend_width,
+            show_seam_line,
             target_view,
             aspect,
             "preview_frame",

@@ -931,6 +931,31 @@ impl AppState {
         }
     }
 
+    /// Set the manual seam-position nudge. Same mirror-into-calibration
+    /// rationale as [`Self::set_blend_width`].
+    fn set_seam_offset(&mut self, offset: f32) {
+        let offset = offset.clamp(
+            -reco_core::calibration::SEAM_OFFSET_RANGE,
+            reco_core::calibration::SEAM_OFFSET_RANGE,
+        );
+        if let Some(cal) = self.calibration.as_mut() {
+            cal.topology.seam_offset = offset;
+        }
+        if let Some(bridge) = self.bridge.as_mut() {
+            bridge.engine_mut().set_seam_offset(offset);
+            self.preview_dirty = true;
+        }
+    }
+
+    /// Toggle the seam debug line. Pure visualization - not calibration
+    /// state, not persisted.
+    fn set_show_seam_line(&mut self, show: bool) {
+        if let Some(bridge) = self.bridge.as_mut() {
+            bridge.engine_mut().set_show_seam_line(show);
+            self.preview_dirty = true;
+        }
+    }
+
     fn set_rig_tilt(&mut self, deg: f32) {
         if let Some(cal) = self.calibration.as_mut() {
             cal.framing.tilt = (deg as f64).to_radians();
@@ -2765,6 +2790,22 @@ fn main() -> anyhow::Result<()> {
 
     let state_ref = Rc::clone(&state);
     let app_weak = app.as_weak();
+    app.on_changed_seam_offset(move |offset| {
+        state_ref.borrow_mut().set_seam_offset(offset);
+        // Seam offset is persisted with the calibration, so a change is
+        // unsaved work - surface the Save Calibration button.
+        if let Some(app) = app_weak.upgrade() {
+            app.set_cal_dirty(true);
+        }
+    });
+
+    let state_ref = Rc::clone(&state);
+    app.on_toggled_show_seam_line(move |show| {
+        state_ref.borrow_mut().set_show_seam_line(show);
+    });
+
+    let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
     app.on_changed_rig_tilt(move |deg| {
         state_ref.borrow_mut().set_rig_tilt(deg);
         if let Some(app) = app_weak.upgrade() {
@@ -2902,6 +2943,7 @@ fn main() -> anyhow::Result<()> {
             app.set_rig_tilt((layout.framing.tilt as f32).to_degrees());
             app.set_rig_roll((layout.framing.roll as f32).to_degrees());
             app.set_blend_width(layout.topology.blend_width);
+            app.set_seam_offset(layout.topology.seam_offset);
             app.set_cal_dirty(false);
         }
     });
@@ -3479,6 +3521,8 @@ fn main() -> anyhow::Result<()> {
         let codec_str = app.get_export_codec().to_string();
         let quality_str = app.get_export_quality().to_string();
         let blend = app.get_blend_width();
+        let seam_offset = app.get_seam_offset();
+        let show_seam_line = app.get_show_seam_line();
         let start_secs = app.get_export_start_secs();
         let end_secs = app.get_export_end_secs();
         log::info!("Export range: start={start_secs:.1}s, end={end_secs:.1}s");
@@ -3563,6 +3607,8 @@ fn main() -> anyhow::Result<()> {
                 codec_str,
                 quality_str,
                 blend,
+                seam_offset,
+                show_seam_line,
                 start_secs,
                 end_secs,
                 autocam,
@@ -4269,6 +4315,10 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 .bridge
                 .as_ref()
                 .map(|b| b.engine().calibration().topology.blend_width);
+            let seam_offset = s
+                .bridge
+                .as_ref()
+                .map(|b| b.engine().calibration().topology.seam_offset);
             // Lens-correction strength came in via the loaded calibration and
             // the renderer was seeded with it at bridge creation; mirror it
             // into AppState so a later save re-persists the right value.
@@ -4362,6 +4412,9 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 }
                 if let Some(bw) = blend_width {
                     app.set_blend_width(bw);
+                }
+                if let Some(so) = seam_offset {
+                    app.set_seam_offset(so);
                 }
                 if let Some(lc) = lens_correction {
                     app.set_lens_correction_amount(lc);
@@ -4554,6 +4607,10 @@ fn handle_calibration_result(
                         .bridge
                         .as_ref()
                         .map(|b| b.engine().calibration().topology.blend_width);
+                    let seam_offset = state
+                        .bridge
+                        .as_ref()
+                        .map(|b| b.engine().calibration().topology.seam_offset);
                     let lens_correction =
                         state.calibration.as_ref().map(|c| c.lenses[0].correction);
                     if let Some(lc) = lens_correction {
@@ -4629,6 +4686,9 @@ fn handle_calibration_result(
                         }
                         if let Some(bw) = blend_width {
                             app.set_blend_width(bw);
+                        }
+                        if let Some(so) = seam_offset {
+                            app.set_seam_offset(so);
                         }
                         if let Some(lc) = lens_correction {
                             app.set_lens_correction_amount(lc);
