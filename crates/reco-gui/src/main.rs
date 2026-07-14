@@ -1305,52 +1305,6 @@ fn roi_insert_index(pts: &[[f64; 2]], new: [f64; 2]) -> usize {
         .unwrap_or(pts.len())
 }
 
-/// Ring buffer backing the in-app Debug panel. Capped so long sessions
-/// don't grow memory unbounded; separate from (and much shorter than)
-/// the on-disk log file used for bug reports (see `log_file_path`).
-static DEBUG_LOG_BUFFER: std::sync::LazyLock<Mutex<VecDeque<String>>> =
-    std::sync::LazyLock::new(|| Mutex::new(VecDeque::new()));
-
-const DEBUG_LOG_CAPACITY: usize = 500;
-
-/// Snapshot of the current ring-buffer contents, newest line last, joined
-/// for display in the Debug panel's scrollable text area.
-fn debug_log_snapshot() -> String {
-    DEBUG_LOG_BUFFER
-        .lock()
-        .unwrap()
-        .iter()
-        .cloned()
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// `tracing_subscriber::fmt::layer()` writer that appends formatted lines
-/// to `DEBUG_LOG_BUFFER` instead of a file/stream. A bare fn (not a
-/// closure) so it satisfies the `MakeWriter` blanket impl for `Fn() -> W`.
-fn debug_log_writer() -> DebugLogWriter {
-    DebugLogWriter
-}
-
-struct DebugLogWriter;
-
-impl std::io::Write for DebugLogWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let mut log = DEBUG_LOG_BUFFER.lock().unwrap();
-        for line in String::from_utf8_lossy(buf).lines() {
-            if log.len() >= DEBUG_LOG_CAPACITY {
-                log.pop_front();
-            }
-            log.push_back(line.to_string());
-        }
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
 /// Install the standard tracing subscriber + log bridge.
 ///
 /// Replaces the previous `env_logger::init()`. Bridges `log::*` calls
@@ -2090,7 +2044,10 @@ fn main() -> anyhow::Result<()> {
         }
         let mut s = state_ref.borrow_mut();
         let side = s.lens_preview_side.clone();
-        let norm = [(lx / cw).clamp(0.0, 1.0) as f64, (ly / ch).clamp(0.0, 1.0) as f64];
+        let norm = [
+            (lx / cw).clamp(0.0, 1.0) as f64,
+            (ly / ch).clamp(0.0, 1.0) as f64,
+        ];
         if let Some(cal) = s.calibration.as_mut() {
             let roi = cal.field_roi.get_or_insert_with(Default::default);
             let pts = if side == "right" {
@@ -2120,7 +2077,10 @@ fn main() -> anyhow::Result<()> {
         }
         let mut s = state_ref.borrow_mut();
         let side = s.lens_preview_side.clone();
-        let norm = [(lx / cw).clamp(0.0, 1.0) as f64, (ly / ch).clamp(0.0, 1.0) as f64];
+        let norm = [
+            (lx / cw).clamp(0.0, 1.0) as f64,
+            (ly / ch).clamp(0.0, 1.0) as f64,
+        ];
         if let Some(roi) = s.calibration.as_mut().and_then(|c| c.field_roi.as_mut()) {
             let pts = if side == "right" {
                 &mut roi.right
