@@ -84,11 +84,12 @@ pub trait Projection: Send + Sync {
     /// 2 for today's L-shape stereo, N>2 for future panoramic rigs.
     fn camera_count(&self) -> usize;
 
-    /// The virtual camera's position in world space - the eye every
-    /// view matrix and pose basis is built from. The one piece of
-    /// scene state every projection has, plane-backed or not (the
-    /// mono cylinder's camera sits at the `[0, 0, 1]` convention).
-    fn camera_position(&self, framing: &Framing) -> [f32; 3];
+    /// The virtual camera basis - the eye position plus the yaw/pitch
+    /// decomposition axes every view matrix and pose conversion is
+    /// built from. The one piece of scene state every projection has,
+    /// plane-backed or not (the mono cylinder's camera sits at the
+    /// `[0, 0, 1]` convention).
+    fn virtual_camera(&self, framing: &Framing) -> VirtualCamera;
 
     /// The ordered surface list for one frame: each surface's inverse
     /// map paired with how it blends over the surfaces before it.

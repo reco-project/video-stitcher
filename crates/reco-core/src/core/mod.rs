@@ -213,7 +213,7 @@ impl StitchCore {
 
         // The projection owns coverage construction: a new projection
         // brings its own boundary representation with it.
-        let coverage = executor.projection().coverage(executor.calibration());
+        let coverage = executor.coverage();
 
         Ok(Self {
             executor,
@@ -394,9 +394,7 @@ impl StitchCore {
         let rig_tilt = self.executor.calibration().framing.tilt as f32;
         let rig_roll = self.executor.calibration().framing.roll as f32;
         let framing = &self.executor.calibration().framing;
-        let cam = crate::geometry::VirtualCamera::new(
-            &self.executor.projection().camera_position(framing),
-        );
+        let cam = self.executor.projection().virtual_camera(framing);
         let (yaw, pitch) = crate::geometry::resolve_render_pose(
             coverage, &cam, rig_tilt, rig_roll, pose.yaw, pose.pitch, fov, aspect,
         );
@@ -414,9 +412,7 @@ impl StitchCore {
     /// disables horizon leveling.
     pub fn orient_pose(&self, world: ViewportPosition) -> ViewportPosition {
         let framing = &self.executor.calibration().framing;
-        let cam = crate::geometry::VirtualCamera::new(
-            &self.executor.projection().camera_position(framing),
-        );
+        let cam = self.executor.projection().virtual_camera(framing);
         let (yaw, pitch) = crate::geometry::world_to_render_pose(
             &cam,
             world.yaw,
@@ -555,11 +551,7 @@ impl StitchCore {
     }
 
     fn rebuild_coverage(&mut self) {
-        self.coverage = Some(
-            self.executor
-                .projection()
-                .coverage(self.executor.calibration()),
-        );
+        self.coverage = Some(self.executor.coverage());
     }
 
     fn refresh_coverage_orientation(&mut self) {

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::calibration::{
     Calibration, CalibrationError, Framing, Lens, expect_above, expect_finite, expect_in_range,
 };
-use crate::geometry::{FAR_PLANE, NEAR_PLANE, opengl_to_wgpu_matrix, view_matrix};
+use crate::geometry::{FAR_PLANE, NEAR_PLANE, VirtualCamera, opengl_to_wgpu_matrix, view_matrix};
 use crate::lens::kb4;
 use crate::precision::VALIDATION_EPSILON;
 use crate::projection::{CoverageBoundary, Projection, ProjectionContext};
@@ -420,9 +420,9 @@ impl Projection for LShape {
         2
     }
 
-    fn camera_position(&self, framing: &Framing) -> [f32; 3] {
+    fn virtual_camera(&self, framing: &Framing) -> VirtualCamera {
         let axis = framing.axis_offset as f32;
-        [axis, 0.0, axis]
+        VirtualCamera::new(&[axis, 0.0, axis])
     }
 
     /// Dense edge sampling of both planes through the virtual camera -

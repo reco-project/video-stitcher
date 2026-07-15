@@ -30,7 +30,7 @@ use crate::render::renderer::InputFormat;
 
 use crate::render::viewport::ViewportConfig;
 
-use crate::projection::Projection;
+use crate::projection::{CoverageBoundary, Projection};
 
 use super::cpu::stitch_rgba;
 
@@ -1008,6 +1008,13 @@ impl Executor {
         }
     }
 
+    /// The projection's coverage boundary over this executor's
+    /// document: `projection().coverage(calibration())` always pair,
+    /// so the executor offers the pairing directly.
+    pub fn coverage(&self) -> CoverageBoundary {
+        self.projection().coverage(self.calibration())
+    }
+
     /// Source frame dimensions `(width, height)` per camera.
     pub fn source_info(&self) -> (u32, u32) {
         match self {
@@ -1217,7 +1224,6 @@ mod tests {
     /// geometry, which the GPU shares verbatim via `l_shape_plane_maps`.
     #[test]
     fn clamped_poses_render_no_black_edges() {
-        use crate::geometry::VirtualCamera;
         use crate::geometry::resolve_render_pose;
 
         let (cam_w, cam_h) = (256u32, 144u32);
@@ -1251,7 +1257,7 @@ mod tests {
             cal.framing.tilt = tilt;
             cal.framing.roll = roll;
             let coverage = cal.topology.projection().coverage(&cal);
-            let cam = VirtualCamera::new(&cal.topology.projection().camera_position(&cal.framing));
+            let cam = cal.topology.projection().virtual_camera(&cal.framing);
             let fov = (coverage.max_fov_degrees() * fov_factor).min(60.0);
             let config = ViewportConfig {
                 width: out_w,

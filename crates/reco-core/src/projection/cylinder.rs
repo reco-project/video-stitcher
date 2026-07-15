@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::calibration::{
     Calibration, CalibrationError, Framing, expect_above, expect_finite, expect_in_range,
 };
+use crate::geometry::VirtualCamera;
 use crate::precision::VALIDATION_EPSILON;
 use crate::projection::{CoverageBoundary, Projection, ProjectionContext};
 use crate::render::viewport::ViewportConfig;
@@ -92,11 +93,11 @@ impl Projection for Cylinder {
         1
     }
 
-    fn camera_position(&self, _framing: &Framing) -> [f32; 3] {
-        // The mono camera sits on the cylinder axis; the [0, 0, 1]
+    fn virtual_camera(&self, _framing: &Framing) -> VirtualCamera {
+        // The mono camera sits on the cylinder axis; mono()'s [0, 0, 1]
         // convention (forward -Z) keeps the pose basis well-defined
         // where the origin would normalize a zero vector into NaNs.
-        crate::geometry::MONO_CAMERA_POSITION
+        VirtualCamera::mono()
     }
 
     fn surface_maps(&self, ctx: &ProjectionContext) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {
