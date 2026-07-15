@@ -446,8 +446,8 @@ impl Projection for LShape {
     }
 
     #[cfg(feature = "gpu")]
-    fn gpu_program(&self) -> crate::render::GpuProgram {
-        crate::render::GpuProgram {
+    fn gpu_program(&self) -> Option<crate::render::GpuProgram> {
+        Some(crate::render::GpuProgram {
             wgsl: include_str!("../shaders/fisheye.wgsl"),
             vs_entry: "vs_main",
             fs_entry: "fs_main",
@@ -462,7 +462,7 @@ impl Projection for LShape {
                 alpha: wgpu::BlendComponent::OVER,
             },
             vertex_layout: crate::render::renderer::Vertex::LAYOUT,
-        }
+        })
     }
 }
 

@@ -48,6 +48,13 @@ pub enum StitchError {
     #[cfg(feature = "gpu")]
     #[error("gpu readback: {0}")]
     Readback(#[from] RgbaReadbackError),
+    /// The projection is CPU-only: it has no GPU program to bind.
+    #[cfg(feature = "gpu")]
+    #[error("projection '{projection}' has no GPU program yet; construct the CPU executor instead")]
+    NoGpuProgram {
+        /// Name of the CPU-only projection.
+        projection: &'static str,
+    },
     /// Backend configuration is invalid (e.g. degenerate dimensions).
     #[error("invalid stitch config: {0}")]
     InvalidConfig(String),
@@ -288,11 +295,21 @@ impl GpuExecutor {
     /// [`GpuContext::new`].
     pub fn new(gpu: GpuContext, config: GpuExecutorConfig) -> Result<Self, StitchError> {
         let projection = config.calibration.topology.projection();
+        // Fail fast on CPU-only projections: binding a placeholder
+        // program would render garbage frames instead of an error.
+        let Some(program) = projection.gpu_program() else {
+            log::warn!(
+                "GpuExecutor: projection '{}' has no GPU program yet; refusing construction (the CPU executor covers it)",
+                projection.name()
+            );
+            return Err(StitchError::NoGpuProgram {
+                projection: projection.name(),
+            });
+        };
         log::info!(
             "GpuExecutor: projection '{}' from the calibration topology supplies the GPU program and coverage",
             projection.name()
         );
-        let program = projection.gpu_program();
         // Calibration validation happens once, inside with_gpu.
         let mut pipeline = StitchPipeline::with_gpu(
             gpu,
@@ -1386,5 +1403,38 @@ mod tests {
         assert_eq!(cpu_rgba.len(), (out_w * out_h * 4) as usize);
         Agreement::compare(gpu_rgba, cpu_rgba)
             .assert_within(AgreementBounds::DEFAULT, "backend cpu-vs-gpu");
+    }
+
+    #[test]
+    #[cfg(feature = "gpu")]
+    fn gpu_backend_refuses_cpu_only_projections() {
+        let Some(gpu) = gpu_or_skip() else {
+            return;
+        };
+
+        // The cylinder has no GPU program yet: construction must fail
+        // with the typed error, never bind a placeholder pipeline.
+        let (cam_w, cam_h) = (192u32, 108u32);
+        let cal = Calibration::new(
+            vec![Lens::flat(cam_w, cam_h)],
+            crate::projection::Cylinder::default(),
+            Framing {
+                axis_offset: 0.0,
+                tilt: 0.0,
+                roll: 0.0,
+            },
+        );
+        let Err(err) = GpuExecutor::new(
+            gpu,
+            GpuExecutorConfig::new(cal, cam_w, cam_h, InputFormat::Nv12),
+        ) else {
+            panic!("cylinder+GPU must fail fast");
+        };
+        assert!(matches!(
+            err,
+            StitchError::NoGpuProgram {
+                projection: "cylindrical-mono-1camera"
+            }
+        ));
     }
 }

@@ -388,7 +388,11 @@ mod tests {
         // render the same frame three times to drain one result.
         let pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
             gpu,
-            &calib.topology.projection().gpu_program(),
+            &calib
+                .topology
+                .projection()
+                .gpu_program()
+                .expect("L-shape supplies a GPU program"),
             calib.clone(),
             config.clone(),
             cam_w,
@@ -483,7 +487,11 @@ mod tests {
 
         let pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
             gpu,
-            &calib.topology.projection().gpu_program(),
+            &calib
+                .topology
+                .projection()
+                .gpu_program()
+                .expect("L-shape supplies a GPU program"),
             calib.clone(),
             config.clone(),
             cam_w,
@@ -589,7 +597,11 @@ mod tests {
         let (cam_w, cam_h) = cam;
         let mut pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
             gpu,
-            &calib.topology.projection().gpu_program(),
+            &calib
+                .topology
+                .projection()
+                .gpu_program()
+                .expect("L-shape supplies a GPU program"),
             calib.clone(),
             config.clone(),
             cam_w,

@@ -116,18 +116,13 @@ impl Projection for Cylinder {
     }
 
     #[cfg(feature = "gpu")]
-    fn gpu_program(&self) -> crate::render::GpuProgram {
-        crate::render::GpuProgram {
-            wgsl: include_str!("../shaders/cylindrical_mono.wgsl"),
-            vs_entry: "vs_fullscreen",
-            fs_entry: "fs_cylindrical_mono",
-            // Mono: single surface, nothing to blend over.
-            blend: wgpu::BlendState::REPLACE,
-            // TODO: placeholder until the mono GPU pass is wired
-            // (Step 13 PR B): its composite is a fullscreen pass with
-            // its own bind layout.
-            vertex_layout: crate::render::renderer::Vertex::LAYOUT,
-        }
+    fn gpu_program(&self) -> Option<crate::render::GpuProgram> {
+        // No mono GPU pass yet (Step 13 PR B): the cylinder composite
+        // is a fullscreen pass with its own bind layout, and a
+        // placeholder descriptor would bind cylindrical_mono.wgsl to
+        // the L-shape's plane pipeline and render garbage. None fails
+        // GPU-executor construction fast; the CPU path is complete.
+        None
     }
 
     /// The cylinder's panorama is exactly rectangular in (yaw, pitch):

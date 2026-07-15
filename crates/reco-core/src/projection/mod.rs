@@ -97,12 +97,18 @@ pub trait Projection: Send + Sync {
     /// the base. The CPU composite drives these directly.
     fn surface_maps(&self, ctx: &ProjectionContext) -> Vec<(Box<dyn SurfaceMap>, BlendRule)>;
 
-    /// The GPU program this projection composites with. The render
-    /// pipeline compiles and binds exactly what the descriptor says -
-    /// the GPU dual of [`surface_maps`](Self::surface_maps), gated by
-    /// the same CPU/GPU agreement oracle.
+    /// The GPU program this projection composites with, or `None` when
+    /// the projection has no GPU pass yet (CPU-only). `None` fails
+    /// [`GpuExecutor`](crate::stitch::GpuExecutor) construction with a
+    /// typed error instead of binding a placeholder that renders
+    /// garbage.
+    ///
+    /// The GPU dual of [`surface_maps`](Self::surface_maps). CPU/GPU
+    /// agreement is pinned by the stitch oracle, whose fixtures are
+    /// L-shape-only today: a projection growing a GPU program must
+    /// bring its own agreement test with it.
     #[cfg(feature = "gpu")]
-    fn gpu_program(&self) -> crate::render::GpuProgram;
+    fn gpu_program(&self) -> Option<crate::render::GpuProgram>;
 
     /// Build the coverage boundary for this projection's panorama.
     ///
