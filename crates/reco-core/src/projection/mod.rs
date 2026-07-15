@@ -497,6 +497,12 @@ mod tests {
                 x_rx: 0.0,
                 z_rz: 0.0,
                 blend_width: 0.05,
+                ground_tilt_x: 0.0,
+                ground_tilt_z: 0.0,
+                top_tilt_x: 0.0,
+                top_tilt_z: 0.0,
+                ground_tilt_band_width: 0.16,
+                top_tilt_band_width: 0.16,
             },
             Framing {
                 axis_offset: 0.2398,

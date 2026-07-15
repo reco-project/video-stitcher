@@ -271,6 +271,42 @@ impl StitchPipeline {
         self.calibration.topology.blend_width = width;
     }
 
+    /// Set the ground-plane tilt correction for the x-plane (per-frame
+    /// uniform; no scene rebuild). See [`crate::calibration::Topology::ground_tilt_x`].
+    pub fn set_ground_tilt_x(&mut self, tilt: f32) {
+        self.calibration.topology.ground_tilt_x = tilt as f64;
+    }
+
+    /// Set the ground-plane tilt correction for the z-plane. See
+    /// [`crate::calibration::Topology::ground_tilt_z`].
+    pub fn set_ground_tilt_z(&mut self, tilt: f32) {
+        self.calibration.topology.ground_tilt_z = tilt as f64;
+    }
+
+    /// Set the top-of-frame tilt correction for the x-plane. See
+    /// [`crate::calibration::Topology::top_tilt_x`].
+    pub fn set_top_tilt_x(&mut self, tilt: f32) {
+        self.calibration.topology.top_tilt_x = tilt as f64;
+    }
+
+    /// Set the top-of-frame tilt correction for the z-plane. See
+    /// [`crate::calibration::Topology::top_tilt_z`].
+    pub fn set_top_tilt_z(&mut self, tilt: f32) {
+        self.calibration.topology.top_tilt_z = tilt as f64;
+    }
+
+    /// Set the ground-tilt band's full-strength threshold. See
+    /// [`crate::calibration::Topology::ground_tilt_band_width`].
+    pub fn set_ground_tilt_band_width(&mut self, width: f32) {
+        self.calibration.topology.ground_tilt_band_width = width as f64;
+    }
+
+    /// Set the top-tilt band's full-strength threshold. See
+    /// [`crate::calibration::Topology::top_tilt_band_width`].
+    pub fn set_top_tilt_band_width(&mut self, width: f32) {
+        self.calibration.topology.top_tilt_band_width = width as f64;
+    }
+
     /// Update calibration parameters. Recomputes [`SceneGeometry`] from the
     /// new layout. Takes effect on the next render call (uniforms are rebuilt
     /// each frame from the stored calibration and scene).
