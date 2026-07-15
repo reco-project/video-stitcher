@@ -181,12 +181,13 @@ fn rotate(v: [f64; 3], k: [f64; 3], angle: f64) -> [f64; 3] {
 /// construction must match or the two topologies disagree on what a
 /// calibrated tilt means.
 /// SYNC_WITH: shaders/cylindrical_mono.wgsl - ray construction, the
-/// theta sign, and the bounds discard; the CPU/GPU cylinder oracle
-/// pins the agreement.
+/// theta sign, and the bounds discard must match when the mono GPU
+/// pass lands (Step 13 PR B); no cylinder CPU/GPU oracle exists yet,
+/// so that PR must bring the agreement test with it.
 ///
 /// All quantities are precomputed f64 (the CPU side's precision
-/// convention; the GPU runs the same math in f32 and the oracle
-/// absorbs the difference).
+/// convention; the GPU pass, when it lands, runs the same math in f32
+/// and its agreement test absorbs the difference).
 struct CylinderMap {
     /// Rotated camera basis for ray construction: the ray for NDC
     /// `(x, y)` is `forward + right * x * tan_h + up * y * tan_v`.
@@ -216,18 +217,18 @@ struct CylinderMap {
 impl CylinderMap {
     /// Build the map for one output frame at the given pose.
     ///
-    /// The parameters split by lifetime: `topology` and `framing` are
+    /// The parameters split by lifetime: `cylinder` and `framing` are
     /// the calibrated document (static), `yaw`/`pitch` are the
     /// per-frame render pose, and the viewport FOV plus output
     /// dimensions ride in `config`. `source_height_px` backs
     /// `Cylinder::video_height`'s default.
     ///
     /// The mono camera basis looks along `-Z` with `+X` right and
-    /// `+Y` up ([`VirtualCamera::mono`](crate::geometry::VirtualCamera::mono)),
-    /// and the pose composition mirrors `view_matrix`: yaw around the
-    /// rig frame's up axis, pitch around the yaw-rotated base right.
+    /// `+Y` up ([`VirtualCamera::mono`]), and the pose composition
+    /// mirrors `view_matrix`: yaw around the rig frame's up axis,
+    /// pitch around the yaw-rotated base right.
     fn new(
-        topology: &Cylinder,
+        cylinder: &Cylinder,
         framing: &Framing,
         source_height_px: f64,
         config: &ViewportConfig,
@@ -279,9 +280,9 @@ impl CylinderMap {
             up,
             tan_half_h: tan_half_v * aspect,
             tan_half_v,
-            radius: topology.focal_length,
-            sweep: topology.sweep_deg.to_radians(),
-            half_height: topology.video_height.unwrap_or(source_height_px) * 0.5,
+            radius: cylinder.focal_length,
+            sweep: cylinder.sweep_deg.to_radians(),
+            half_height: cylinder.video_height.unwrap_or(source_height_px) * 0.5,
             out_w: f64::from(config.width),
             out_h: f64::from(config.height),
         }

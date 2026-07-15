@@ -88,17 +88,17 @@ pub(crate) struct GpuSourceBindGroups {
     right: [wgpu::BindGroup; 2],
 }
 
-/// The L-shape's plane placement for the GPU uniforms, when the
-/// topology has planes. Both planes share lens 0's aspect (the
-/// documented limitation, kept identical to the CPU maps).
-fn derive_plane_scene(calibration: &Calibration) -> Option<PlaneScene> {
-    calibration
-        .topology
-        .l_shape()
-        .map(|t| t.scene(&calibration.framing, calibration.lenses[0].aspect()))
-}
-
 impl StitchPipeline {
+    /// The L-shape's plane placement for the GPU uniforms, when the
+    /// topology has planes. Both planes share lens 0's aspect (the
+    /// documented limitation, kept identical to the CPU maps).
+    fn derive_plane_scene(calibration: &Calibration) -> Option<PlaneScene> {
+        calibration
+            .topology
+            .l_shape()
+            .map(|t| t.scene(&calibration.framing, calibration.lenses[0].aspect()))
+    }
+
     /// Create a pipeline with an existing GPU context and custom output format.
     ///
     /// Used by the preview window which needs a specific surface format
@@ -138,7 +138,7 @@ impl StitchPipeline {
         }
 
         let output_format = output_format.into();
-        let scene = derive_plane_scene(&calibration);
+        let scene = Self::derive_plane_scene(&calibration);
         let renderer = Renderer::new(
             &gpu,
             program,
@@ -280,7 +280,7 @@ impl StitchPipeline {
     ///
     /// No GPU pipeline recreation needed - only the uniform data changes.
     pub fn update_calibration(&mut self, calibration: Calibration) {
-        self.scene = derive_plane_scene(&calibration);
+        self.scene = Self::derive_plane_scene(&calibration);
         self.calibration = calibration;
         log::debug!("Pipeline calibration updated");
     }

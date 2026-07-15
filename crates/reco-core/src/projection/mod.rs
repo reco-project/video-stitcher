@@ -40,13 +40,15 @@ use nalgebra::{Point3, Vector3};
 // The Projection trait: L1 geometry dispatch.
 // ---------------------------------------------------------------------------
 //
-// StitchCore holds a `Box<dyn Projection>` so alt-projections (the mono
-// cylinder next, N-camera later) are drop-in additions without reshaping
-// the core API. The trait dispatches the CPU surface maps and coverage
-// construction today; the GPU program descriptor joins at the
-// projection-shader step, and the detection-side forward maps
-// (`camera_to_panorama`) fold in once their `CameraId`/`ViewportPosition`
-// currency moves out of the detect layer.
+// The calibration document owns the projection: `Topology::projection()`
+// borrows the topology's parameter struct as `&dyn Projection`, so
+// alt-projections (the mono cylinder today, N-camera later) are drop-in
+// additions without reshaping the core API and without a second object
+// to keep in sync. The trait dispatches the CPU surface maps, the GPU
+// program descriptor, coverage construction and the virtual-camera
+// basis; the detection-side forward maps (`camera_to_panorama`) fold in
+// once their `CameraId`/`ViewportPosition` currency moves out of the
+// detect layer.
 
 /// One frame's geometry question, bundled: the document, the output
 /// viewport, and the pan state. FOV is deliberately absent - it is
@@ -434,9 +436,9 @@ mod tests {
         // Step 1a: the two helpers must form an exact bijection on the
         // (yaw, pitch) grid used by panners and directors. All
         // shipping scenes set `camera_position = [d, 0, d]` (see
-        // SceneGeometry::new), so eye.y = 0 is
-        // the real invariant; test positions honor that. Pitch stays
-        // clear of +-pi/2 where yaw is undefined.
+        // LShape::virtual_camera), so eye.y = 0 is the real invariant;
+        // test positions honor that. Pitch stays clear of +-pi/2 where
+        // yaw is undefined.
         let camera_positions: [[f32; 3]; 3] = [[0.24, 0.0, 0.24], [0.3, 0.0, 0.2], [0.1, 0.0, 0.5]];
 
         let yaw_steps = [-1.2_f32, -0.6, -0.2, 0.0, 0.2, 0.6, 1.2];

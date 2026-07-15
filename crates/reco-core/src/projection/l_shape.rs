@@ -366,8 +366,8 @@ fn l_shape_plane_maps(
     pitch: f32,
 ) -> (PlaneMap, PlaneMap) {
     // Known limitation: both planes are sized with lens 0's aspect.
-    // Mixed-aspect rigs are valid calibrations; honoring each lens's
-    // own aspect lands when the L-shape derives its own scene.
+    // Mixed-aspect rigs are valid calibrations; per-plane aspects are
+    // the planned generalization.
     let plane_aspect = calib.lenses[0].aspect();
     let scene = topology.scene(&calib.framing, plane_aspect);
 
