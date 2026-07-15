@@ -8,7 +8,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::calibration::{Calibration, CalibrationError, Framing};
+use crate::calibration::{
+    Calibration, CalibrationError, Framing, expect_above, expect_finite, expect_in_range,
+};
+use crate::precision::VALIDATION_EPSILON;
 use crate::projection::{CoverageBoundary, Projection, ProjectionContext};
 use crate::stitch::{BlendRule, SurfaceMap};
 
@@ -58,41 +61,23 @@ impl Cylinder {
     /// Validate the cylinder's parameters: positive finite
     /// radius/height, sweep in `(0, 360]` degrees.
     pub(crate) fn validate(&self) -> Result<(), CalibrationError> {
-        for (name, val, lo, hi) in [
-            (
-                "topology.focal_length",
-                self.focal_length,
-                f64::MIN_POSITIVE,
-                f64::MAX,
-            ),
-            (
-                "topology.sweep_deg",
-                self.sweep_deg,
-                f64::MIN_POSITIVE,
-                360.0,
-            ),
-            (
-                "topology.video_height",
-                // Omitted = the source pixel height, always valid.
-                self.video_height.unwrap_or(1.0),
-                f64::MIN_POSITIVE,
-                f64::MAX,
-            ),
-        ] {
-            if !val.is_finite() {
-                return Err(CalibrationError::NonFiniteFloat {
-                    field: name.to_owned(),
-                    value: format!("{val}"),
-                });
-            }
-            if val < lo || val > hi {
-                return Err(CalibrationError::OutOfRange {
-                    field: name.to_owned(),
-                    value: val,
-                    min: lo,
-                    max: hi,
-                });
-            }
+        expect_finite("topology.focal_length", self.focal_length)?;
+        // Same guard as lens focal lengths: the coverage math divides
+        // by the radius.
+        expect_above(
+            "topology.focal_length",
+            self.focal_length,
+            VALIDATION_EPSILON,
+        )?;
+
+        expect_finite("topology.sweep_deg", self.sweep_deg)?;
+        expect_above("topology.sweep_deg", self.sweep_deg, 0.0)?;
+        expect_in_range("topology.sweep_deg", self.sweep_deg, 0.0, 360.0)?;
+
+        // Omitted = the source pixel height, always valid.
+        if let Some(height) = self.video_height {
+            expect_finite("topology.video_height", height)?;
+            expect_above("topology.video_height", height, 0.0)?;
         }
         Ok(())
     }

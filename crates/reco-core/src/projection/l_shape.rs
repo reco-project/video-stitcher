@@ -8,7 +8,9 @@
 use nalgebra::{Matrix4, Translation3, UnitQuaternion};
 use serde::{Deserialize, Serialize};
 
-use crate::calibration::{Calibration, CalibrationError, Framing};
+use crate::calibration::{
+    Calibration, CalibrationError, Framing, expect_above, expect_finite, expect_in_range,
+};
 use crate::precision::VALIDATION_EPSILON;
 use crate::projection::{CoverageBoundary, Projection, ProjectionContext};
 use crate::stitch::{BlendRule, SurfaceMap};
@@ -53,17 +55,8 @@ impl LShape {
     /// Validate the L-shape's own parameters and its requirements on
     /// the framing it renders through.
     pub(crate) fn validate(&self, framing: &Framing) -> Result<(), CalibrationError> {
-        if !self.intersect.is_finite() {
-            return Err(CalibrationError::NonFiniteFloat {
-                field: "topology.intersect".to_owned(),
-                value: format!("{}", self.intersect),
-            });
-        }
-        if !(0.0..=1.0).contains(&self.intersect) {
-            return Err(CalibrationError::IntersectOutOfRange {
-                value: self.intersect,
-            });
-        }
+        expect_finite("topology.intersect", self.intersect)?;
+        expect_in_range("topology.intersect", self.intersect, 0.0, 1.0)?;
 
         for (name, val) in [
             ("topology.x_ty", self.x_ty),
@@ -72,40 +65,27 @@ impl LShape {
             ("topology.z_rx", self.z_rx),
             ("topology.z_rz", self.z_rz),
         ] {
-            if !val.is_finite() {
-                return Err(CalibrationError::NonFiniteFloat {
-                    field: name.to_owned(),
-                    value: format!("{val}"),
-                });
-            }
+            expect_finite(name, val)?;
         }
 
-        if !self.blend_width.is_finite() {
-            return Err(CalibrationError::NonFiniteFloat {
-                field: "topology.blend_width".to_owned(),
-                value: format!("{}", self.blend_width),
-            });
-        }
+        expect_finite("topology.blend_width", f64::from(self.blend_width))?;
         // The seam smoothstep needs ordered edges; outside [0, 1] the blend
         // is meaningless (the old ViewportConfig::validate enforced this).
-        if !(0.0..=1.0).contains(&self.blend_width) {
-            return Err(CalibrationError::OutOfRange {
-                field: "topology.blend_width".to_owned(),
-                value: self.blend_width as f64,
-                min: 0.0,
-                max: 1.0,
-            });
-        }
+        expect_in_range(
+            "topology.blend_width",
+            f64::from(self.blend_width),
+            0.0,
+            1.0,
+        )?;
 
         // The off-axis camera placement is an L-shape concept: the two
         // planes are viewed from `[axis_offset, 0, axis_offset]`, and a
         // zero offset would normalize a zero vector in the view basis.
-        if framing.axis_offset <= VALIDATION_EPSILON {
-            return Err(CalibrationError::AxisOffsetTooSmall {
-                value: framing.axis_offset,
-                epsilon: VALIDATION_EPSILON,
-            });
-        }
+        expect_above(
+            "framing.axis_offset",
+            framing.axis_offset,
+            VALIDATION_EPSILON,
+        )?;
 
         Ok(())
     }

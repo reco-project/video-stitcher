@@ -82,31 +82,16 @@ pub enum CalibrationError {
         value: String,
     },
 
-    /// A focal length is too small, which would cause division-by-zero.
+    /// A value is too small for the math downstream, which divides by
+    /// it or normalizes a vector built from it.
     #[error("field '{field}' must be > {epsilon}, got {value}")]
-    FocalLengthTooSmall {
-        /// Field path.
+    ValueTooSmall {
+        /// Field path, e.g. `lens[0].fx`.
         field: String,
         /// The offending value.
         value: f64,
         /// The minimum threshold.
         epsilon: f64,
-    },
-
-    /// `framing.axis_offset` is too small, which would cause zero-vector normalization.
-    #[error("framing.axis_offset must be > {epsilon}, got {value}")]
-    AxisOffsetTooSmall {
-        /// The offending value.
-        value: f64,
-        /// The minimum threshold.
-        epsilon: f64,
-    },
-
-    /// `topology.intersect` is outside the valid `[0.0, 1.0]` range.
-    #[error("topology.intersect must be in [0.0, 1.0], got {value}")]
-    IntersectOutOfRange {
-        /// The offending value.
-        value: f64,
     },
 
     /// The calibration has no lenses.
@@ -144,6 +129,49 @@ pub enum CalibrationError {
 
 /// Maximum realistic sync_offset in frames (~28 minutes at 60fps).
 const MAX_SYNC_OFFSET_FRAMES: i64 = 100_000;
+
+/// Reject a non-finite (NaN or infinite) float.
+pub(crate) fn expect_finite(field: &str, value: f64) -> Result<(), CalibrationError> {
+    if !value.is_finite() {
+        return Err(CalibrationError::NonFiniteFloat {
+            field: field.to_owned(),
+            value: format!("{value}"),
+        });
+    }
+    Ok(())
+}
+
+/// Reject a value outside the inclusive `[min, max]` range.
+pub(crate) fn expect_in_range(
+    field: &str,
+    value: f64,
+    min: f64,
+    max: f64,
+) -> Result<(), CalibrationError> {
+    if !(min..=max).contains(&value) {
+        return Err(CalibrationError::OutOfRange {
+            field: field.to_owned(),
+            value,
+            min,
+            max,
+        });
+    }
+    Ok(())
+}
+
+/// Reject a value at or below `epsilon`. The strict bound is the point:
+/// callers guard divisions and normalizations, where "equal to the
+/// threshold" is as degenerate as "below it".
+pub(crate) fn expect_above(field: &str, value: f64, epsilon: f64) -> Result<(), CalibrationError> {
+    if value <= epsilon {
+        return Err(CalibrationError::ValueTooSmall {
+            field: field.to_owned(),
+            value,
+            epsilon,
+        });
+    }
+    Ok(())
+}
 
 /// One source's optical model: intrinsics + KB4 distortion.
 ///
@@ -579,56 +607,25 @@ fn validate_lens(lens: &Lens, index: usize) -> Result<(), CalibrationError> {
     }
 
     for (name, val) in [("fx", lens.fx), ("fy", lens.fy)] {
-        if !val.is_finite() {
-            return Err(CalibrationError::NonFiniteFloat {
-                field: format!("lens[{index}].{name}"),
-                value: format!("{val}"),
-            });
-        }
-        if val <= VALIDATION_EPSILON {
-            return Err(CalibrationError::FocalLengthTooSmall {
-                field: format!("lens[{index}].{name}"),
-                value: val,
-                epsilon: VALIDATION_EPSILON,
-            });
-        }
+        let field = format!("lens[{index}].{name}");
+        expect_finite(&field, val)?;
+        expect_above(&field, val, VALIDATION_EPSILON)?;
     }
 
     for (name, val) in [("cx", lens.cx), ("cy", lens.cy)] {
-        if !val.is_finite() {
-            return Err(CalibrationError::NonFiniteFloat {
-                field: format!("lens[{index}].{name}"),
-                value: format!("{val}"),
-            });
-        }
+        expect_finite(&format!("lens[{index}].{name}"), val)?;
     }
 
     for (i, coeff) in lens.distortion.iter().enumerate() {
-        if !coeff.is_finite() {
-            return Err(CalibrationError::NonFiniteFloat {
-                field: format!("lens[{index}].distortion[{i}]"),
-                value: format!("{coeff}"),
-            });
-        }
+        expect_finite(&format!("lens[{index}].distortion[{i}]"), *coeff)?;
     }
 
-    if !lens.correction.is_finite() {
-        return Err(CalibrationError::NonFiniteFloat {
-            field: format!("lens[{index}].correction"),
-            value: format!("{}", lens.correction),
-        });
-    }
+    let correction = format!("lens[{index}].correction");
+    expect_finite(&correction, f64::from(lens.correction))?;
     // The shader interprets negative correction as its raw-bypass debug
     // mode and the CPU path would extrapolate the KB4 lerp - reject
     // anything outside the documented [0, 1] blend range.
-    if !(0.0..=1.0).contains(&lens.correction) {
-        return Err(CalibrationError::OutOfRange {
-            field: format!("lens[{index}].correction"),
-            value: lens.correction as f64,
-            min: 0.0,
-            max: 1.0,
-        });
-    }
+    expect_in_range(&correction, f64::from(lens.correction), 0.0, 1.0)?;
 
     Ok(())
 }
@@ -642,12 +639,7 @@ fn validate_framing(f: &Framing) -> Result<(), CalibrationError> {
         ("framing.tilt", f.tilt),
         ("framing.roll", f.roll),
     ] {
-        if !val.is_finite() {
-            return Err(CalibrationError::NonFiniteFloat {
-                field: name.to_owned(),
-                value: format!("{val}"),
-            });
-        }
+        expect_finite(name, val)?;
     }
 
     Ok(())
@@ -836,9 +828,14 @@ mod tests {
             cal.validate()
         };
         assert!(bad(|t| t.focal_length = 0.0).is_err());
-        assert!(bad(|t| t.sweep_deg = 361.0).is_err());
-        assert!(bad(|t| t.sweep_deg = 0.0).is_err());
         assert!(bad(|t| t.video_height = Some(f64::NAN)).is_err());
+
+        // The messages must state the documented (0, 360] sweep bounds,
+        // not float internals like MIN_POSITIVE.
+        let msg = bad(|t| t.sweep_deg = 361.0).unwrap_err().to_string();
+        assert!(msg.contains("[0, 360]"), "{msg}");
+        let msg = bad(|t| t.sweep_deg = 0.0).unwrap_err().to_string();
+        assert!(msg.contains("> 0,"), "{msg}");
     }
 
     #[test]
@@ -867,7 +864,7 @@ mod tests {
         c.lenses[0].fx = 0.0;
         assert!(matches!(
             c.validate(),
-            Err(CalibrationError::FocalLengthTooSmall { .. })
+            Err(CalibrationError::ValueTooSmall { ref field, .. }) if field == "lens[0].fx"
         ));
     }
 
@@ -887,7 +884,7 @@ mod tests {
         c.framing.axis_offset = 0.0;
         assert!(matches!(
             c.validate(),
-            Err(CalibrationError::AxisOffsetTooSmall { .. })
+            Err(CalibrationError::ValueTooSmall { ref field, .. }) if field == "framing.axis_offset"
         ));
     }
 
@@ -897,7 +894,7 @@ mod tests {
         c.topology.l_shape_mut().unwrap().intersect = 1.5;
         assert!(matches!(
             c.validate(),
-            Err(CalibrationError::IntersectOutOfRange { .. })
+            Err(CalibrationError::OutOfRange { ref field, .. }) if field == "topology.intersect"
         ));
     }
 
