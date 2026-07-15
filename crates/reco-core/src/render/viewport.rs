@@ -5,7 +5,7 @@
 //! [`crate::detect::panner::Panner`] emits the per-frame yaw/pitch that
 //! positions this rectangle.
 
-use crate::geometry::ViewportPosition;
+use crate::geometry::Pose;
 
 /// Configuration for the output viewport.
 #[derive(Debug, Clone)]
@@ -72,5 +72,5 @@ pub struct ResolvedViewport {
     /// The viewport configuration.
     pub config: ViewportConfig,
     /// The pan position for this frame.
-    pub position: ViewportPosition,
+    pub position: Pose,
 }

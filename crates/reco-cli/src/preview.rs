@@ -175,7 +175,7 @@ pub fn run_preview(
 
         pose: {
             use reco_control::pose_control::{PoseControl, PoseControlConfig};
-            use reco_core::geometry::ViewportPosition;
+            use reco_core::geometry::Pose;
             // Match preview's historical feel: 0.005 rad/px drag,
             // 0.05 rad arrow step, 3.0 deg scroll step, 0.3 smoothing.
             // `invert_drag_x = true` reproduces preview's "drag right
@@ -191,7 +191,7 @@ pub fn run_preview(
                 hotkey_yaw_step_rad: ARROW_PAN_STEP,
                 hotkey_pitch_step_rad: ARROW_PAN_STEP,
                 hotkey_fov_step_deg: FOV_KEY_STEP,
-                rest_pose: ViewportPosition {
+                rest_pose: Pose {
                     yaw: 0.0,
                     pitch: 0.0,
                     fov_degrees: Some(initial_fov),

@@ -4,7 +4,7 @@
 //! tick the director, and read back RGBA) and the low-level
 //! `render_*_at_pose` methods (GPU-only, no readback).
 
-use crate::geometry::ViewportPosition;
+use crate::geometry::Pose;
 #[cfg(feature = "gpu")]
 use crate::render::planes::BgraPlanes;
 use crate::render::planes::YuvPlanes;
@@ -64,7 +64,7 @@ impl super::StitchCore {
         &mut self,
         left: &YuvPlanes<'_>,
         right: &YuvPlanes<'_>,
-        pose: ViewportPosition,
+        pose: Pose,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         // Infallible on wgpu-free builds (single-variant enum); the gpu
         // build adds the second arm.
@@ -85,7 +85,7 @@ impl super::StitchCore {
         &mut self,
         left: &YuvPlanes<'_>,
         right: &YuvPlanes<'_>,
-        pose: ViewportPosition,
+        pose: Pose,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         let Executor::Gpu(gpu) = &self.executor else {
             unreachable!("routed from the GPU arm");
@@ -170,7 +170,7 @@ impl super::StitchCore {
             self.run_yuv_detection(left, right, src_w, src_h);
         }
 
-        let pose = ViewportPosition {
+        let pose = Pose {
             yaw,
             pitch,
             fov_degrees: None,
@@ -216,7 +216,7 @@ impl super::StitchCore {
             replay.push(ReplayFrame {
                 rgba: bytes.to_vec(),
                 captured_at,
-                pose: ViewportPosition {
+                pose: Pose {
                     yaw,
                     pitch,
                     fov_degrees: None,
@@ -334,7 +334,7 @@ impl super::StitchCore {
         &mut self,
         left: &crate::render::planes::Nv12Planes<'_>,
         right: &crate::render::planes::Nv12Planes<'_>,
-        pose: ViewportPosition,
+        pose: Pose,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         let Executor::Gpu(gpu) = &self.executor else {
             unreachable!("routed from the GPU arm");
@@ -414,7 +414,7 @@ impl super::StitchCore {
     /// Store a CPU-stitched frame and hand out the borrowed outcome -
     /// the synchronous dual of the GPU readback tail (replay push +
     /// frame accounting).
-    fn deliver_cpu_frame(&mut self, rgba: Vec<u8>, pose: ViewportPosition) -> RenderOutcome<'_> {
+    fn deliver_cpu_frame(&mut self, rgba: Vec<u8>, pose: Pose) -> RenderOutcome<'_> {
         let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
         self.frame_count += 1;
         if let Some(replay) = self.replay.as_mut() {
@@ -460,7 +460,7 @@ impl super::StitchCore {
         &mut self,
         left: &YuvPlanes<'_>,
         right: &YuvPlanes<'_>,
-        pose: ViewportPosition,
+        pose: Pose,
         view: &wgpu::TextureView,
     ) -> Result<(), StitchCoreError> {
         if let Some(fov) = pose.fov_degrees {
@@ -484,7 +484,7 @@ impl super::StitchCore {
         &mut self,
         left: &YuvPlanes<'_>,
         right: &YuvPlanes<'_>,
-        pose: ViewportPosition,
+        pose: Pose,
     ) -> Result<Option<&[u8]>, StitchCoreError> {
         if let Some(fov) = pose.fov_degrees {
             self.executor.set_fov(fov);

@@ -1,6 +1,6 @@
 //! The pose and source-identity currency every layer shares.
 //!
-//! `ViewportPosition` travels from human input and AI directors through
+//! `Pose` travels from human input and AI directors through
 //! the clamp and orient stages into the render; `CameraId` names which
 //! source a detection or sample came from. Both live in the geometry
 //! leaf so no layer has to import another layer's domain to talk about
@@ -10,7 +10,7 @@
 /// The FOV allows directors to express zoom: narrow FOV = zoomed in on
 /// action, wide FOV = zoomed out for context.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ViewportPosition {
+pub struct Pose {
     /// Horizontal pan angle in radians.
     ///
     /// `0.0` = centered on the seam between cameras.
@@ -29,7 +29,7 @@ pub struct ViewportPosition {
     pub fov_degrees: Option<f32>,
 }
 
-impl Default for ViewportPosition {
+impl Default for Pose {
     fn default() -> Self {
         Self {
             yaw: 0.0,

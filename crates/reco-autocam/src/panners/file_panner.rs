@@ -8,12 +8,12 @@ use std::path::Path;
 
 use reco_core::detect::panner::{PanContext, Panner};
 use reco_core::detect::tracker::WorldState;
-use reco_core::geometry::ViewportPosition;
+use reco_core::geometry::Pose;
 
 /// Replays precomputed poses from a CSV file.
 pub struct FilePanner {
-    poses: HashMap<u64, ViewportPosition>,
-    last: ViewportPosition,
+    poses: HashMap<u64, Pose>,
+    last: Pose,
 }
 
 impl FilePanner {
@@ -37,7 +37,7 @@ impl FilePanner {
             let fov: Option<f32> = cols.get(3).and_then(|s| s.trim().parse().ok());
             poses.insert(
                 frame,
-                ViewportPosition {
+                Pose {
                     yaw,
                     pitch,
                     fov_degrees: fov,
@@ -52,13 +52,13 @@ impl FilePanner {
         );
         Ok(Self {
             poses,
-            last: ViewportPosition::default(),
+            last: Pose::default(),
         })
     }
 }
 
 impl Panner for FilePanner {
-    fn decide(&mut self, _world: &WorldState, ctx: &PanContext<'_>) -> ViewportPosition {
+    fn decide(&mut self, _world: &WorldState, ctx: &PanContext<'_>) -> Pose {
         if let Some(&pose) = self.poses.get(&ctx.frame_index) {
             self.last = pose;
         }

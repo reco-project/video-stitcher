@@ -35,7 +35,7 @@ use reco_calibrate::{LensProfileInfo, ProfileSource};
 use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_control::{ControlIntent, PoseIntent};
 use reco_core::calibration::Calibration;
-use reco_core::geometry::ViewportPosition;
+use reco_core::geometry::Pose;
 use reco_core::wgpu;
 
 use crate::playback::{PlayState, Playback};
@@ -516,7 +516,7 @@ impl AppState {
                 // i.e. PTZ-head convention. `invert_drag_x = true`
                 // keeps that exact feel.
                 invert_drag_x: true,
-                rest_pose: ViewportPosition {
+                rest_pose: Pose {
                     yaw: 0.0,
                     pitch: 0.0,
                     fov_degrees: Some(FOV_DEFAULT),
@@ -566,7 +566,7 @@ impl AppState {
             fov_min_degrees: FOV_MIN,
             fov_max_degrees: FOV_MAX,
             invert_drag_x: true,
-            rest_pose: ViewportPosition {
+            rest_pose: Pose {
                 yaw: 0.0,
                 pitch: 0.0,
                 fov_degrees: Some(FOV_DEFAULT),

@@ -1,6 +1,6 @@
 //! Virtual camera basis for yaw/pitch decomposition.
 
-use crate::geometry::ViewportPosition;
+use crate::geometry::Pose;
 
 use nalgebra::Vector3;
 
@@ -74,7 +74,7 @@ impl VirtualCamera {
 
     /// Decompose a world-space direction into yaw/pitch relative to
     /// the base forward axis.
-    pub fn direction_to_yaw_pitch(&self, dir: &Vector3<f32>) -> ViewportPosition {
+    pub fn direction_to_yaw_pitch(&self, dir: &Vector3<f32>) -> Pose {
         // Pitch: elevation angle from the horizontal plane.
         let pitch = dir.y.clamp(-1.0, 1.0).asin();
 
@@ -93,7 +93,7 @@ impl VirtualCamera {
             0.0
         };
 
-        ViewportPosition {
+        Pose {
             yaw,
             pitch,
             fov_degrees: None,

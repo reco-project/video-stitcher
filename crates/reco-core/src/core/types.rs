@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use thiserror::Error;
 
-use crate::geometry::ViewportPosition;
+use crate::geometry::Pose;
 #[cfg(feature = "gpu")]
 use crate::gpu::rgba_readback::RgbaReadbackError;
 #[cfg(feature = "gpu")]
@@ -82,7 +82,7 @@ pub struct ReplayFrame {
     pub captured_at: Duration,
     /// Viewport pose the frame was rendered with. Useful for replay
     /// overlays that want to annotate where the camera pointed.
-    pub pose: ViewportPosition,
+    pub pose: Pose,
 }
 
 /// Recorder hook for the push-API replay backend.

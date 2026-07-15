@@ -17,7 +17,7 @@ use crate::detect::director::MappedDetection;
 use crate::detect::panner::{PanContext, Panner};
 use crate::detect::tracker::{TrackState, TrackedEntity, Tracker, WorldState};
 use crate::geometry::CameraId;
-use crate::geometry::ViewportPosition;
+use crate::geometry::Pose;
 use crate::projection::LShape;
 use crate::render::viewport::ViewportConfig;
 use crate::sink::{OutputFrame, OutputSink, SinkError, SinkInput};
@@ -183,11 +183,11 @@ impl Tracker for MockTracker {
 
 /// Mock panner that returns a fixed position regardless of the world.
 struct MockPanner {
-    position: ViewportPosition,
+    position: Pose,
 }
 
 impl Panner for MockPanner {
-    fn decide(&mut self, _world: &WorldState, _ctx: &PanContext<'_>) -> ViewportPosition {
+    fn decide(&mut self, _world: &WorldState, _ctx: &PanContext<'_>) -> Pose {
         self.position
     }
 }
@@ -234,16 +234,16 @@ impl OutputSink for MockEncoder {
 /// frame. Two entry points driving one AI stack must produce
 /// identical logs.
 struct RecordingPanner {
-    log: Arc<Mutex<Vec<(u64, ViewportPosition)>>>,
+    log: Arc<Mutex<Vec<(u64, Pose)>>>,
 }
 
 impl Panner for RecordingPanner {
-    fn decide(&mut self, _world: &WorldState, ctx: &PanContext<'_>) -> ViewportPosition {
+    fn decide(&mut self, _world: &WorldState, ctx: &PanContext<'_>) -> Pose {
         self.log
             .lock()
             .unwrap()
             .push((ctx.frame_index, ctx.previous_position));
-        ViewportPosition {
+        Pose {
             yaw: 0.001 * ctx.frame_index as f32,
             pitch: -0.0005 * ctx.frame_index as f32,
             fov_degrees: None,
@@ -257,8 +257,8 @@ impl Panner for RecordingPanner {
 struct NanPanner;
 
 impl Panner for NanPanner {
-    fn decide(&mut self, _world: &WorldState, _ctx: &PanContext<'_>) -> ViewportPosition {
-        ViewportPosition {
+    fn decide(&mut self, _world: &WorldState, _ctx: &PanContext<'_>) -> Pose {
+        Pose {
             yaw: f32::NAN,
             pitch: f32::NAN,
             fov_degrees: None,
@@ -360,7 +360,7 @@ fn tracker_receives_detections() {
         .expect("session build");
     session.set_ball_tracker(Box::new(tracker));
     session.set_panner(Box::new(MockPanner {
-        position: ViewportPosition::default(),
+        position: Pose::default(),
     }));
 
     let mut source = MockSource::new(3);

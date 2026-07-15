@@ -21,7 +21,7 @@
 //!                                         ↓
 //!                                       Panner
 //!                                         ↓
-//!                                   ViewportPosition
+//!                                   Pose
 //! ```
 //!
 //! # Non-goals of this module

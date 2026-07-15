@@ -29,7 +29,7 @@
 
 use super::director::MappedDetection;
 use super::tracker::TrackedEntity;
-use crate::geometry::ViewportPosition;
+use crate::geometry::Pose;
 
 /// A single observable event from the stitch pipeline.
 ///
@@ -75,7 +75,7 @@ pub enum PipelineEvent {
         /// Monotonic frame counter.
         frame_index: u64,
         /// The pose the panner decided on, before any coverage clamp.
-        pose: ViewportPosition,
+        pose: Pose,
     },
 
     /// Panner internal state for debugging camera movement decisions.
@@ -94,10 +94,7 @@ pub enum PipelineEvent {
     },
 
     /// Final pose the renderer received this frame (post-clamp).
-    PosePresented {
-        frame_index: u64,
-        pose: ViewportPosition,
-    },
+    PosePresented { frame_index: u64, pose: Pose },
 
     /// End-of-frame summary with per-stage timing.
     FrameComplete {
@@ -331,11 +328,11 @@ mod tests {
             },
             PipelineEvent::PanDecision {
                 frame_index: 4,
-                pose: ViewportPosition::default(),
+                pose: Pose::default(),
             },
             PipelineEvent::PosePresented {
                 frame_index: 5,
-                pose: ViewportPosition::default(),
+                pose: Pose::default(),
             },
             PipelineEvent::FrameComplete {
                 frame_index: 6,

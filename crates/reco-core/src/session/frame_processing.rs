@@ -4,7 +4,7 @@
 //! convert to NV12, and fan out to attached sinks.
 
 use super::StitchSession;
-use crate::geometry::ViewportPosition;
+use crate::geometry::Pose;
 use crate::session::types::{FrameLoopContext, SessionError};
 use crate::source::StereoFrame;
 
@@ -16,7 +16,7 @@ impl StitchSession {
     /// (the single pose-resolution authority - FOV cap, coverage clamp,
     /// roll-aware basis inversion), the `PosePresented` trace, and the
     /// FOV write-back. Panners output unconstrained positions.
-    pub fn director_position(&mut self) -> ViewportPosition {
+    pub fn director_position(&mut self) -> Pose {
         self.core.presented_clamped_pose(self.frame_count)
     }
 

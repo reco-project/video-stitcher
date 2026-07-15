@@ -49,7 +49,7 @@
 //! cross-thread access wrap in `Mutex`. Send-only is sufficient for
 //! the worker / UI split every consumer actually needs.
 
-use reco_core::geometry::ViewportPosition;
+use reco_core::geometry::Pose;
 use reco_core::projection::CoverageBoundary;
 
 use crate::{ControlIntent, PoseIntent};
@@ -148,7 +148,7 @@ pub struct PoseControlConfig {
     pub hotkey_fov_step_deg: f32,
 
     /// Resting pose the [`HotkeyIntent::Reset`] intent restores.
-    pub rest_pose: ViewportPosition,
+    pub rest_pose: Pose,
 }
 
 impl Default for PoseControlConfig {
@@ -164,7 +164,7 @@ impl Default for PoseControlConfig {
             hotkey_yaw_step_rad: (5.0_f32).to_radians(),
             hotkey_pitch_step_rad: (5.0_f32).to_radians(),
             hotkey_fov_step_deg: 5.0,
-            rest_pose: ViewportPosition {
+            rest_pose: Pose {
                 yaw: 0.0,
                 pitch: 0.0,
                 fov_degrees: Some(75.0),
@@ -302,23 +302,23 @@ impl PoseControl {
     fn apply_pose_intent(&mut self, intent: PoseIntent) {
         let current = self.target_pose();
         match intent {
-            PoseIntent::SetYawRad(yaw) => self.set_target(ViewportPosition {
+            PoseIntent::SetYawRad(yaw) => self.set_target(Pose {
                 yaw,
                 pitch: current.pitch,
                 fov_degrees: None,
             }),
-            PoseIntent::SetPitchRad(pitch) => self.set_target(ViewportPosition {
+            PoseIntent::SetPitchRad(pitch) => self.set_target(Pose {
                 yaw: current.yaw,
                 pitch,
                 fov_degrees: None,
             }),
             PoseIntent::SetFovDeg(fov) => self.set_target_fov(fov),
-            PoseIntent::DeltaYawRad(dy) => self.set_target(ViewportPosition {
+            PoseIntent::DeltaYawRad(dy) => self.set_target(Pose {
                 yaw: current.yaw + dy,
                 pitch: current.pitch,
                 fov_degrees: None,
             }),
-            PoseIntent::DeltaPitchRad(dp) => self.set_target(ViewportPosition {
+            PoseIntent::DeltaPitchRad(dp) => self.set_target(Pose {
                 yaw: current.yaw,
                 pitch: current.pitch + dp,
                 fov_degrees: None,
@@ -335,7 +335,7 @@ impl PoseControl {
     /// source (an AI director, a calibration reset, a replay seek)
     /// produces a pose the UI layer did not; current still eases to
     /// it over the next few ticks.
-    pub fn set_target(&mut self, pose: ViewportPosition) {
+    pub fn set_target(&mut self, pose: Pose) {
         self.target_yaw_rad = pose.yaw;
         self.target_pitch_rad = pose.pitch;
         if let Some(fov) = pose.fov_degrees {
@@ -421,8 +421,8 @@ impl PoseControl {
     // ---------------------------------------------------------------
 
     /// The target pose (what the input layer last set).
-    pub fn target_pose(&self) -> ViewportPosition {
-        ViewportPosition {
+    pub fn target_pose(&self) -> Pose {
+        Pose {
             yaw: self.target_yaw_rad,
             pitch: self.target_pitch_rad,
             fov_degrees: Some(self.target_fov_deg),
@@ -430,8 +430,8 @@ impl PoseControl {
     }
 
     /// The current pose the renderer should draw this frame.
-    pub fn current_pose(&self) -> ViewportPosition {
-        ViewportPosition {
+    pub fn current_pose(&self) -> Pose {
+        Pose {
             yaw: self.current_yaw_rad,
             pitch: self.current_pitch_rad,
             fov_degrees: Some(self.current_fov_deg),
@@ -648,7 +648,7 @@ mod tests {
     fn set_target_updates_target_but_not_current_until_tick() {
         let mut p = fresh();
         let c0 = p.current_yaw_rad;
-        p.set_target(ViewportPosition {
+        p.set_target(Pose {
             yaw: 0.5,
             pitch: -0.2,
             fov_degrees: Some(60.0),

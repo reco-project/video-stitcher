@@ -2,7 +2,7 @@
 //!
 //! A `Panner` consumes a clean `WorldState` (produced by one or
 //! more `Tracker` instances from [`super::tracker`]) and returns a
-//! `ViewportPosition` (from [`super::director`]) for the virtual
+//! `Pose` (from [`super::director`]) for the virtual
 //! camera. It knows nothing
 //! about raw detections, plausibility gates, or identity management —
 //! those are tracker concerns. Its sole job is "given where things
@@ -22,7 +22,7 @@ use super::director::MappedDetection;
 use super::pipeline_event::{PipelineEvent, PipelineEventSink};
 use super::tracker::{Tracker, WorldState};
 use crate::calibration::Calibration;
-use crate::geometry::ViewportPosition;
+use crate::geometry::Pose;
 
 /// Per-frame context a [`Panner`] receives alongside the world state.
 ///
@@ -40,7 +40,7 @@ pub struct PanContext<'a> {
     /// frame (after clamping and smoothing), or the session default
     /// if this is the first call. Panners use this to compute
     /// first-order motion deltas without needing their own state.
-    pub previous_position: ViewportPosition,
+    pub previous_position: Pose,
     /// Shared calibration for optional camera↔panorama projection.
     /// Borrowed for the duration of the [`decide`](Panner::decide)
     /// call; panners must not retain it.
@@ -59,13 +59,13 @@ pub struct PanContext<'a> {
 /// # Invariants
 ///
 /// - [`decide`](Self::decide) is called once per frame, in order.
-/// - The returned [`ViewportPosition`]
+/// - The returned [`Pose`]
 ///   is NOT yet clamped to the coverage boundary; the session applies
 ///   clamping after the panner returns. Panners should produce their
 ///   geometric preference and let the coverage math enforce reachability.
 pub trait Panner: Send {
     /// Decide where the virtual camera should look this frame.
-    fn decide(&mut self, world: &WorldState, ctx: &PanContext<'_>) -> ViewportPosition;
+    fn decide(&mut self, world: &WorldState, ctx: &PanContext<'_>) -> Pose;
 
     /// Decide with access to future WorldStates from the lookahead buffer.
     ///
@@ -77,7 +77,7 @@ pub trait Panner: Send {
         world: &WorldState,
         future: &[WorldState],
         ctx: &PanContext<'_>,
-    ) -> ViewportPosition {
+    ) -> Pose {
         let _ = future;
         self.decide(world, ctx)
     }
@@ -131,7 +131,7 @@ pub(crate) struct DispatchContext<'a> {
 /// [`PipelineEvent::PanDecision`] right after. Both sites are part
 /// of the Step 6 trace vocabulary.
 pub(crate) struct DispatchResult {
-    pub pose: ViewportPosition,
+    pub pose: Pose,
     pub active_tracks: u32,
     pub ball_present: bool,
 }
@@ -171,7 +171,7 @@ pub(crate) fn dispatch(
     panner: Option<&mut Box<dyn Panner>>,
     player_tracker: Option<&mut Box<dyn Tracker>>,
     ball_tracker: Option<&mut Box<dyn Tracker>>,
-    previous_panner_pose: &mut ViewportPosition,
+    previous_panner_pose: &mut Pose,
     mut event_sink: Option<&mut (dyn PipelineEventSink + '_)>,
     ctx: DispatchContext<'_>,
 ) -> Option<DispatchResult> {
@@ -260,14 +260,14 @@ mod tests {
     /// Minimal panner that echoes the ball's yaw/pitch when present.
     struct EchoPanner;
     impl Panner for EchoPanner {
-        fn decide(&mut self, world: &WorldState, _ctx: &PanContext<'_>) -> ViewportPosition {
+        fn decide(&mut self, world: &WorldState, _ctx: &PanContext<'_>) -> Pose {
             match world.ball {
-                Some(b) => ViewportPosition {
+                Some(b) => Pose {
                     yaw: b.yaw,
                     pitch: b.pitch,
                     fov_degrees: None,
                 },
-                None => ViewportPosition::default(),
+                None => Pose::default(),
             }
         }
     }
@@ -292,7 +292,7 @@ mod tests {
         let ctx = PanContext {
             frame_index: 0,
             timestamp_ms: 0.0,
-            previous_position: ViewportPosition::default(),
+            previous_position: Pose::default(),
             calibration: &cal,
         };
         let out = p.decide(&world, &ctx);
@@ -308,7 +308,7 @@ mod tests {
         let ctx = PanContext {
             frame_index: 0,
             timestamp_ms: 0.0,
-            previous_position: ViewportPosition::default(),
+            previous_position: Pose::default(),
             calibration: &cal,
         };
         let out = p.decide(&world, &ctx);

@@ -28,7 +28,7 @@ use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_core::calibration::Calibration;
 use reco_core::core::StitchCore;
 use reco_core::core::types::RenderOutcome;
-use reco_core::geometry::ViewportPosition;
+use reco_core::geometry::Pose;
 use reco_core::gpu::GpuContext;
 use reco_core::render::pipeline::{BgraPlanes, FramePlaneView, StridedYuvPlanes};
 use reco_core::render::renderer::InputFormat;
@@ -1552,7 +1552,7 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
         // smoothing 0.3).
         let target_yaw_deg = ffi::obs_data_get_double(settings, PROP_YAW.as_ptr()) as f32;
         let target_pitch_deg = ffi::obs_data_get_double(settings, PROP_PITCH.as_ptr()) as f32;
-        src.pose.set_target(ViewportPosition {
+        src.pose.set_target(Pose {
             yaw: target_yaw_deg.to_radians(),
             pitch: target_pitch_deg.to_radians(),
             fov_degrees: None,

@@ -49,7 +49,7 @@ use crate::detect::detector::UnifiedDetector;
 use crate::detect::director::MappedDetection;
 use crate::detect::panner::Panner;
 use crate::detect::tracker::Tracker;
-use crate::geometry::ViewportPosition;
+use crate::geometry::Pose;
 #[cfg(feature = "gpu")]
 use crate::gpu::rgba_readback::RgbaReadback;
 #[cfg(feature = "gpu")]
@@ -115,13 +115,13 @@ pub struct StitchCore {
     pub(crate) player_tracker: Option<Box<dyn Tracker>>,
     /// Camera-motion policy. Consumes the assembled
     /// [`WorldState`](crate::detect::tracker::WorldState) each frame and emits
-    /// a [`ViewportPosition`]. When unset, the pose stays at the
+    /// a [`Pose`]. When unset, the pose stays at the
     /// pipeline default.
     pub(crate) panner: Option<Box<dyn Panner>>,
     /// Previous frame's resolved pose, passed to the panner in its
     /// [`PanContext`](crate::detect::panner::PanContext) so panners can
     /// compute first-order motion deltas statelessly.
-    pub(crate) previous_panner_pose: ViewportPosition,
+    pub(crate) previous_panner_pose: Pose,
 
     /// Structured observability sink for the detect -> track -> pan
     /// chain (see [`crate::detect::pipeline_event`]). Owned by the
@@ -227,7 +227,7 @@ impl StitchCore {
             ball_tracker: None,
             player_tracker: None,
             panner: None,
-            previous_panner_pose: ViewportPosition::default(),
+            previous_panner_pose: Pose::default(),
             event_sink: None,
             detector: None,
             detection_interval: 1,
@@ -365,7 +365,7 @@ impl StitchCore {
     /// through coverage + FOV limits. Exposed so interactive consumers
     /// (OBS pan/zoom, GUI drag) can preview where the core *would*
     /// render if they submit right now.
-    pub fn current_pose(&mut self) -> ViewportPosition {
+    pub fn current_pose(&mut self) -> Pose {
         // A peek does no detection work of its own, so the director
         // sees `fresh_detection = false`. The next real submit will
         // fire the schedule-driven detection path and pass the actual
@@ -382,7 +382,7 @@ impl StitchCore {
     /// contract). Output is render-space: resolved through the shared
     /// `resolve_render_pose` authority (world-space clamp + roll-aware
     /// tilt/roll basis inversion), identical to the export/director path.
-    pub fn safe_clamp(&self, pose: ViewportPosition) -> ViewportPosition {
+    pub fn safe_clamp(&self, pose: Pose) -> Pose {
         let Some(coverage) = &self.coverage else {
             return pose;
         };
@@ -398,7 +398,7 @@ impl StitchCore {
         let (yaw, pitch) = crate::geometry::resolve_render_pose(
             coverage, &cam, rig_tilt, rig_roll, pose.yaw, pose.pitch, fov, aspect,
         );
-        ViewportPosition {
+        Pose {
             yaw,
             pitch,
             fov_degrees: Some(fov),
@@ -410,7 +410,7 @@ impl StitchCore {
     /// any coverage clamping. The orient half of [`Self::safe_clamp`];
     /// the unconstrained render path uses it so disabling the clamp never
     /// disables horizon leveling.
-    pub fn orient_pose(&self, world: ViewportPosition) -> ViewportPosition {
+    pub fn orient_pose(&self, world: Pose) -> Pose {
         let framing = &self.executor.calibration().framing;
         let cam = self.executor.projection().virtual_camera(framing);
         let (yaw, pitch) = crate::geometry::world_to_render_pose(
@@ -420,7 +420,7 @@ impl StitchCore {
             framing.tilt as f32,
             framing.roll as f32,
         );
-        ViewportPosition {
+        Pose {
             yaw,
             pitch,
             fov_degrees: world.fov_degrees,
@@ -734,7 +734,7 @@ mod tests {
 
     use crate::core::replay_buffer::ReplayBuffer;
     use crate::core::types::{RenderOutcome, ReplayFrame, StitchCoreError};
-    use crate::geometry::ViewportPosition;
+    use crate::geometry::Pose;
 
     /// Assert `ReplayBuffer` trims old frames as the newest ages past
     /// `max_duration`. This is the core guarantee OBS A16 relies on:
@@ -746,7 +746,7 @@ mod tests {
             buf.push(ReplayFrame {
                 rgba: vec![i as u8; 4],
                 captured_at: Duration::from_millis(i as u64 * 1000),
-                pose: ViewportPosition::default(),
+                pose: Pose::default(),
             });
         }
         // Newest is at 4s; anything older than 2s should be evicted.
@@ -765,12 +765,12 @@ mod tests {
         buf.push(ReplayFrame {
             rgba: vec![],
             captured_at: Duration::from_millis(0),
-            pose: ViewportPosition::default(),
+            pose: Pose::default(),
         });
         buf.push(ReplayFrame {
             rgba: vec![],
             captured_at: Duration::from_millis(100),
-            pose: ViewportPosition::default(),
+            pose: Pose::default(),
         });
         // Newest - max_duration = 0, so frame at 0ms is exactly on the
         // boundary and retained.
@@ -798,7 +798,7 @@ mod tests {
             buf.push(ReplayFrame {
                 rgba: vec![i; 4],
                 captured_at: Duration::from_millis(i as u64 * 100),
-                pose: ViewportPosition::default(),
+                pose: Pose::default(),
             });
         }
         // snapshot returns oldest-to-newest, no consumption.
@@ -821,7 +821,7 @@ mod tests {
         buf.push(ReplayFrame {
             rgba: vec![0u8; 4],
             captured_at: Duration::ZERO,
-            pose: ViewportPosition::default(),
+            pose: Pose::default(),
         });
         assert!(!buf.is_empty());
         buf.clear();
@@ -839,12 +839,12 @@ mod tests {
         buf.push(ReplayFrame {
             rgba: vec![],
             captured_at: Duration::from_millis(100),
-            pose: ViewportPosition::default(),
+            pose: Pose::default(),
         });
         buf.push(ReplayFrame {
             rgba: vec![],
             captured_at: Duration::from_millis(850),
-            pose: ViewportPosition::default(),
+            pose: Pose::default(),
         });
         assert_eq!(buf.buffered_duration(), Duration::from_millis(750));
         assert_eq!(
@@ -905,7 +905,7 @@ mod tests {
         assert_eq!(core.output_dims(), (48, 26));
 
         // Coverage clamp works CPU-side (pure geometry).
-        let clamped = core.safe_clamp(ViewportPosition {
+        let clamped = core.safe_clamp(Pose {
             yaw: 10.0,
             pitch: 10.0,
             fov_degrees: Some(50.0),

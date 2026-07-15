@@ -12,7 +12,7 @@
 use super::renderer::{InputFormat, RenderError, Renderer};
 use super::viewport::{ResolvedViewport, ViewportConfig};
 use crate::calibration::Calibration;
-use crate::geometry::ViewportPosition;
+use crate::geometry::Pose;
 use crate::gpu::{GpuContext, GpuError};
 use crate::projection::l_shape::PlaneScene;
 
@@ -539,7 +539,7 @@ impl StitchPipeline {
 
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
-            position: ViewportPosition {
+            position: Pose {
                 yaw,
                 pitch,
                 fov_degrees: None,
@@ -583,7 +583,7 @@ impl StitchPipeline {
 
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
-            position: ViewportPosition {
+            position: Pose {
                 yaw,
                 pitch,
                 fov_degrees: None,
@@ -624,7 +624,7 @@ impl StitchPipeline {
 
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
-            position: ViewportPosition {
+            position: Pose {
                 yaw,
                 pitch,
                 fov_degrees: None,
@@ -665,7 +665,7 @@ impl StitchPipeline {
 
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
-            position: ViewportPosition {
+            position: Pose {
                 yaw,
                 pitch,
                 fov_degrees: None,
@@ -735,7 +735,7 @@ impl StitchPipeline {
         };
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
-            position: ViewportPosition {
+            position: Pose {
                 yaw,
                 pitch,
                 fov_degrees: None,

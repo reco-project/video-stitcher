@@ -29,7 +29,7 @@ pub use geometry::point_in_polygon;
 
 use crate::calibration::{Calibration, Framing, Lens};
 use crate::geometry::CameraId;
-use crate::geometry::ViewportPosition;
+use crate::geometry::Pose;
 use crate::geometry::VirtualCamera;
 use crate::stitch::{BlendRule, SurfaceMap};
 use l_shape::PlaneScene;
@@ -47,7 +47,7 @@ use nalgebra::{Point3, Vector3};
 // to keep in sync. The trait dispatches the CPU surface maps, the GPU
 // program descriptor, coverage construction and the virtual-camera
 // basis; the detection-side forward maps (`camera_to_panorama`) fold in
-// once their `CameraId`/`ViewportPosition` currency moves out of the
+// once their `CameraId`/`Pose` currency moves out of the
 // detect layer.
 
 /// One frame's geometry question, bundled: the document, the output
@@ -157,7 +157,7 @@ pub fn camera_to_panorama(
     norm_x: f32,
     norm_y: f32,
     calibration: &Calibration,
-) -> Option<ViewportPosition> {
+) -> Option<Pose> {
     let topology = calibration.topology.l_shape()?;
     let scene = topology.scene(&calibration.framing, calibration.lenses[0].aspect());
     camera_to_panorama_in_scene(camera, norm_x, norm_y, calibration, &scene)
@@ -171,7 +171,7 @@ pub(crate) fn camera_to_panorama_in_scene(
     norm_y: f32,
     calibration: &Calibration,
     scene: &PlaneScene,
-) -> Option<ViewportPosition> {
+) -> Option<Pose> {
     let params = match camera {
         CameraId::Left => &calibration.lenses[0],
         CameraId::Right => &calibration.lenses[1],
@@ -315,10 +315,7 @@ fn plane_uv_to_world(uv: (f64, f64), camera: CameraId, scene: &PlaneScene) -> Po
 /// for the existing call sites until they carry a `VirtualCamera`
 /// directly. Panners, directors, and the render loop all share the
 /// same basis through this path.
-pub(crate) fn direction_to_yaw_pitch(
-    dir: &Vector3<f32>,
-    camera_position: &[f32; 3],
-) -> ViewportPosition {
+pub(crate) fn direction_to_yaw_pitch(dir: &Vector3<f32>, camera_position: &[f32; 3]) -> Pose {
     VirtualCamera::new(camera_position).direction_to_yaw_pitch(dir)
 }
 

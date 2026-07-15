@@ -9,7 +9,7 @@ use crate::detect::detector::{ChromaFormat, Detection, DetectorError, DetectorFr
 use crate::detect::director::MappedDetection;
 use crate::detect::tracker::WorldState;
 use crate::geometry::CameraId;
-use crate::geometry::ViewportPosition;
+use crate::geometry::Pose;
 use crate::projection;
 use crate::render::planes::YuvPlanes;
 
@@ -19,7 +19,7 @@ use crate::render::planes::YuvPlanes;
 pub(crate) struct DispatchStats {
     /// The panner's decided pose (world-space, pre-clamp). `None` when
     /// no panner is attached.
-    pub pose: Option<ViewportPosition>,
+    pub pose: Option<Pose>,
     /// Panorama-mapped detections the dispatch consumed.
     pub detections: u32,
     /// Player tracks active this frame.
@@ -35,7 +35,7 @@ impl super::StitchCore {
         }
     }
 
-    pub(super) fn resolve_current_pose(&mut self, fresh_detection: bool) -> ViewportPosition {
+    pub(super) fn resolve_current_pose(&mut self, fresh_detection: bool) -> Pose {
         // Pull raw director output (or default) and clamp through
         // coverage. Then write the resolved FOV back onto the pipeline
         // so the upcoming render uses it.
@@ -153,7 +153,7 @@ impl super::StitchCore {
         futures: &[WorldState],
         index: u64,
         timestamp_ms: f64,
-    ) -> ViewportPosition {
+    ) -> Pose {
         let Some(panner) = self.panner.as_mut() else {
             return self.previous_panner_pose;
         };
@@ -172,7 +172,7 @@ impl super::StitchCore {
     /// The buffered loop writes its post-smoothed pose back through
     /// this before rendering.
     #[cfg_attr(not(feature = "gpu"), allow(dead_code))] // session (gpu-gated) drives this
-    pub(crate) fn set_previous_panner_pose(&mut self, pose: ViewportPosition) {
+    pub(crate) fn set_previous_panner_pose(&mut self, pose: Pose) {
         self.previous_panner_pose = pose;
     }
 
@@ -181,7 +181,7 @@ impl super::StitchCore {
     /// edges, independent of the constrained-look toggle), with the
     /// `PosePresented` trace and the FOV write-back.
     #[cfg_attr(not(feature = "gpu"), allow(dead_code))] // session (gpu-gated) drives this
-    pub(crate) fn presented_clamped_pose(&mut self, index: u64) -> ViewportPosition {
+    pub(crate) fn presented_clamped_pose(&mut self, index: u64) -> Pose {
         let pos = self.safe_clamp(self.previous_panner_pose);
         if let Some(sink) = self.event_sink.as_deref_mut() {
             sink.emit(
