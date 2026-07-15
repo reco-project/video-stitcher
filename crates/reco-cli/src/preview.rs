@@ -512,7 +512,6 @@ impl ApplicationHandler for App {
                 input_height: self.input_height,
                 input_format: reco_core::render::renderer::InputFormat::Yuv420p,
                 output_format: reco_core::render::strip_srgb(surface_format),
-                projection: None,
                 full_range: false,
             },
         )

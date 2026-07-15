@@ -99,7 +99,6 @@ impl PreviewBridge {
                 input_height,
                 input_format: reco_core::render::renderer::InputFormat::Yuv420p,
                 output_format: texture_format,
-                projection: None,
                 full_range: false,
             },
         )?;

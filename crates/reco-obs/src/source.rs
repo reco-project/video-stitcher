@@ -381,7 +381,6 @@ impl RecoSource {
                 input_height: self.input_height,
                 input_format: self.input_format,
                 output_format: reco_core::wgpu::TextureFormat::Rgba8Unorm,
-                projection: None,
                 full_range: false,
             },
         );

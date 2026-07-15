@@ -201,9 +201,10 @@ impl StitchExecutor for CpuExecutor {
 /// Configuration for building a [`GpuExecutor`].
 ///
 /// Owns everything the GPU pipeline needs to know about the frames it
-/// will stitch: the calibration document, the output viewport, source
-/// dimensions and pixel formats, and the projection. Engine-level
-/// concerns (detection, trackers, replay) deliberately live on
+/// will stitch: the calibration document, the output viewport, and the
+/// source dimensions and pixel formats. The projection is the
+/// document's topology (zero-copy). Engine-level concerns (detection,
+/// trackers, replay) deliberately live on
 /// [`StitchCore`](crate::core::StitchCore), not here.
 #[cfg(feature = "gpu")]
 pub struct GpuExecutorConfig {
@@ -222,10 +223,6 @@ pub struct GpuExecutorConfig {
     /// for consumers that prefer to swizzle on upload instead of on
     /// readback.
     pub output_format: wgpu::TextureFormat,
-    /// Projection to stitch through. `None` resolves the projection
-    /// matching the calibration's topology (the out-of-tree injection
-    /// point for custom projections).
-    pub projection: Option<Box<dyn Projection>>,
     /// Whether source YUV uses full-range (JPEG) quantization.
     pub full_range: bool,
 }
@@ -233,8 +230,7 @@ pub struct GpuExecutorConfig {
 #[cfg(feature = "gpu")]
 impl GpuExecutorConfig {
     /// New config with required fields only; defaults everywhere else
-    /// (1080p viewport, `Rgba8Unorm` output, L-shape projection,
-    /// limited-range YUV).
+    /// (1080p viewport, `Rgba8Unorm` output, limited-range YUV).
     pub fn new(
         calibration: Calibration,
         input_width: u32,
@@ -252,7 +248,6 @@ impl GpuExecutorConfig {
             input_height,
             input_format,
             output_format: wgpu::TextureFormat::Rgba8Unorm,
-            projection: None,
             full_range: false,
         }
     }
@@ -270,11 +265,6 @@ impl GpuExecutorConfig {
 #[cfg(feature = "gpu")]
 pub struct GpuExecutor {
     pub(crate) pipeline: StitchPipeline,
-    /// Out-of-tree projection override, when one was injected through
-    /// [`GpuExecutorConfig::projection`]. `None` = the projection is
-    /// the calibration document's topology (zero-copy), read through
-    /// [`Self::projection`].
-    pub(crate) injected: Option<Box<dyn Projection>>,
     /// Resident-frame machinery: shared decode textures, the VRAM
     /// lookahead pool, decode backpressure. Populated lazily by the
     /// configure/stage methods; empty for pure CPU-frame consumers.
@@ -297,36 +287,12 @@ impl GpuExecutor {
     /// pull an async runtime into non-test code; callers create it via
     /// [`GpuContext::new`].
     pub fn new(gpu: GpuContext, config: GpuExecutorConfig) -> Result<Self, StitchError> {
-        let injected = config.projection;
-        {
-            let projection: &dyn Projection = injected
-                .as_deref()
-                .unwrap_or_else(|| config.calibration.topology.projection());
-            // The document's own projection always matches its lens
-            // count (validate() gates it); only an injected override
-            // can disagree, so the check is really for that case.
-            if projection.camera_count() != config.calibration.lenses.len() {
-                return Err(StitchError::InvalidConfig(format!(
-                    "projection '{}' consumes {} cameras but the calibration has {} lenses",
-                    projection.name(),
-                    projection.camera_count(),
-                    config.calibration.lenses.len()
-                )));
-            }
-            log::info!(
-                "GpuExecutor: projection '{}' ({}) supplies the GPU program and coverage",
-                projection.name(),
-                if injected.is_some() {
-                    "injected override"
-                } else {
-                    "from the calibration topology"
-                }
-            );
-        }
-        let program = injected
-            .as_deref()
-            .unwrap_or_else(|| config.calibration.topology.projection())
-            .gpu_program();
+        let projection = config.calibration.topology.projection();
+        log::info!(
+            "GpuExecutor: projection '{}' from the calibration topology supplies the GPU program and coverage",
+            projection.name()
+        );
+        let program = projection.gpu_program();
         // Calibration validation happens once, inside with_gpu.
         let mut pipeline = StitchPipeline::with_gpu(
             gpu,
@@ -341,7 +307,6 @@ impl GpuExecutor {
         pipeline.set_full_range(config.full_range);
         Ok(Self {
             pipeline,
-            injected,
             residency: super::residency::Residency::default(),
             sync_readback: None,
             nv12: None,
@@ -1033,16 +998,13 @@ impl Executor {
         }
     }
 
-    /// The projection in effect: the calibration document's topology,
-    /// unless the GPU arm carries an injected override.
+    /// The projection in effect: a borrow of the calibration
+    /// document's topology on either arm.
     pub fn projection(&self) -> &dyn Projection {
         match self {
             Executor::Cpu(c) => c.projection(),
             #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g
-                .injected
-                .as_deref()
-                .unwrap_or_else(|| g.pipeline.calibration.topology.projection()),
+            Executor::Gpu(g) => g.pipeline.calibration.topology.projection(),
         }
     }
 

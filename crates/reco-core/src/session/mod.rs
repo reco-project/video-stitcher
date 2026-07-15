@@ -155,7 +155,6 @@ impl StitchSession {
                 // session-facing variants (Rgba8Unorm, Rgba8UnormSrgb,
                 // Bgra8UnormSrgb).
                 output_format: config.output_format.into(),
-                projection: None,
                 full_range: false,
             },
         )
