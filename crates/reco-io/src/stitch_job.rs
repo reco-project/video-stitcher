@@ -83,6 +83,10 @@ pub struct StitchJob {
     /// `JsonlSink` to the session that records every detection,
     /// filter decision, and pan decision for offline analysis.
     events_path: Option<std::path::PathBuf>,
+
+    /// Free-form text embedded in the output container's "comment"
+    /// metadata tag. See [`Self::metadata_comment`].
+    metadata_comment: Option<String>,
 }
 
 /// Configuration for optional replay recording (see
@@ -258,6 +262,7 @@ impl StitchJob {
             force_cpu_decode: false,
             lookahead_secs: 0.0,
             events_path: None,
+            metadata_comment: None,
         }
     }
 
@@ -302,6 +307,16 @@ impl StitchJob {
     /// Set the output resolution. Default: match input resolution.
     pub fn resolution(mut self, width: u32, height: u32) -> Self {
         self.resolution = Some((width, height));
+        self
+    }
+
+    /// Embed free-form text (e.g. a JSON snapshot of the export/AI
+    /// settings used) in the output container's "comment" metadata tag,
+    /// readable via `ffprobe -show_entries format_tags` or most media
+    /// tools, so a batch of test exports stays self-describing without
+    /// a separate sidecar file. `None` (default) writes no tag.
+    pub fn metadata_comment(mut self, comment: impl Into<String>) -> Self {
+        self.metadata_comment = Some(comment.into());
         self
     }
 
@@ -697,6 +712,7 @@ impl StitchJob {
             container: self.format.into(),
             gop_size: None,
             stream_url: None,
+            metadata_comment: self.metadata_comment.clone(),
         };
         let encoder = crate::adapters::FfmpegFileEncoder::new(
             &self.output,

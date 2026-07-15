@@ -82,6 +82,7 @@ impl Default for StackedEncoderConfig {
                 // default of 250.
                 gop_size: Some(30),
                 stream_url: None,
+                metadata_comment: None,
             },
             fps: (30, 1),
         }
