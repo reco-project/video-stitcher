@@ -96,7 +96,10 @@ impl VirtualCamera {
         Pose {
             yaw,
             pitch,
-            fov_degrees: None,
+            // A direction has no zoom; the default fov stands in so
+            // detection-mapping consumers (which read yaw/pitch only)
+            // get a well-formed pose.
+            ..Default::default()
         }
     }
 

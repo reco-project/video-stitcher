@@ -86,7 +86,7 @@ impl Panner for SweepPanner {
         Pose {
             yaw: yaw_phase * self.yaw_range,
             pitch: 0.0,
-            fov_degrees: Some(fov),
+            fov_degrees: fov,
         }
     }
 }
@@ -190,6 +190,6 @@ mod tests {
         let mut p = SweepPanner::new(0.8, 10.0).with_fov(42.0);
         let cal = test_cal();
         let out = p.decide(&WorldState::default(), &ctx(0, &cal));
-        assert_eq!(out.fov_degrees, Some(42.0));
+        assert_eq!(out.fov_degrees, 42.0);
     }
 }

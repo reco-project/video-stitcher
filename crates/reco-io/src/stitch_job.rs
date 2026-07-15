@@ -690,7 +690,6 @@ impl StitchJob {
         let viewport = reco_core::render::viewport::ViewportConfig {
             width: out_w,
             height: out_h,
-            ..Default::default()
         };
         let gpu_name;
         let mut session = match gpu {

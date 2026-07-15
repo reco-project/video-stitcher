@@ -29,22 +29,18 @@ fn centered_smooth(
 ) -> crate::geometry::Pose {
     let mut sum_yaw = raw_pose.yaw;
     let mut sum_pitch = raw_pose.pitch;
-    let mut sum_fov = raw_pose.fov_degrees.unwrap_or(0.0);
-    let mut fov_n = u32::from(raw_pose.fov_degrees.is_some());
+    let mut sum_fov = raw_pose.fov_degrees;
     let mut n = 1u32;
     for p in ahead.chain(past) {
         sum_yaw += p.yaw;
         sum_pitch += p.pitch;
-        if let Some(f) = p.fov_degrees {
-            sum_fov += f;
-            fov_n += 1;
-        }
+        sum_fov += p.fov_degrees;
         n += 1;
     }
     crate::geometry::Pose {
         yaw: sum_yaw / n as f32,
         pitch: sum_pitch / n as f32,
-        fov_degrees: (fov_n > 0).then(|| sum_fov / fov_n as f32),
+        fov_degrees: sum_fov / n as f32,
     }
 }
 

@@ -7,19 +7,17 @@
 
 use crate::geometry::Pose;
 
-/// Configuration for the output viewport.
+/// Configuration for the output viewport: pure output geometry.
+///
+/// Zoom is NOT here - fov travels with yaw/pitch in every
+/// [`Pose`], so there is no retained zoom state to fall out of sync
+/// with the pose stream.
 #[derive(Debug, Clone)]
 pub struct ViewportConfig {
     /// Output width in pixels.
     pub width: u32,
     /// Output height in pixels.
     pub height: u32,
-    /// Vertical field of view in degrees.
-    ///
-    /// Controls how "zoomed in" the output is. Larger values show more
-    /// of the panorama. Default: 75.0 (matches v1 Three.js camera FOV).
-    /// Note: this is vertical FOV per nalgebra's `Perspective3` convention.
-    pub fov_degrees: f32,
 }
 
 impl Default for ViewportConfig {
@@ -27,7 +25,6 @@ impl Default for ViewportConfig {
         Self {
             width: 1920,
             height: 1080,
-            fov_degrees: 75.0,
         }
     }
 }
@@ -53,24 +50,18 @@ impl ViewportConfig {
                 self.width, self.height
             ));
         }
-        if !(1.0..179.0).contains(&self.fov_degrees) {
-            return Err(format!(
-                "fov_degrees must be in (1, 179), got {}",
-                self.fov_degrees
-            ));
-        }
         Ok(())
     }
 }
 
 /// Resolved viewport state for a single frame.
 ///
-/// Combines the viewport configuration with the director's pan position
-/// to produce the final camera parameters for rendering.
+/// Combines the output geometry with the pose (pan + zoom) to produce
+/// the final camera parameters for rendering.
 #[derive(Debug, Clone)]
 pub struct ResolvedViewport {
     /// The viewport configuration.
     pub config: ViewportConfig,
-    /// The pan position for this frame.
+    /// The pose for this frame; its fov drives the projection matrix.
     pub position: Pose,
 }

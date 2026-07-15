@@ -1023,7 +1023,7 @@ impl Panner for FieldPanner {
         Pose {
             yaw: self.yaw,
             pitch: self.pitch,
-            fov_degrees: Some(self.current_fov),
+            fov_degrees: self.current_fov,
         }
     }
 
@@ -1505,7 +1505,7 @@ mod tests {
         let mut p = FieldPanner::new(30.0);
         let cal = cal();
         let out = p.decide(&tight_world(), &ctx(0, &cal));
-        assert!(out.fov_degrees.is_some());
+        assert!(out.fov_degrees.is_finite() && out.fov_degrees > 0.0);
     }
 
     fn frame_all_config() -> FieldPannerConfig {

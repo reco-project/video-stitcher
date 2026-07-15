@@ -359,7 +359,7 @@ mod tests {
             position: Some(Pose {
                 yaw,
                 pitch,
-                fov_degrees: None,
+                ..Default::default()
             }),
         }
     }

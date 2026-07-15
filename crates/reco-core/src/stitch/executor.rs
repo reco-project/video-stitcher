@@ -30,6 +30,7 @@ use crate::render::renderer::InputFormat;
 
 use crate::render::viewport::ViewportConfig;
 
+use crate::geometry::Pose;
 use crate::projection::{CoverageBoundary, Projection};
 
 use super::cpu::stitch_rgba;
@@ -77,12 +78,7 @@ pub enum StitchError {
 pub trait StitchExecutor {
     /// Stitch one frame set (one NV12 plane pair per camera, in
     /// projection order) to RGBA at the configured output size.
-    fn stitch(
-        &mut self,
-        planes: &[Nv12Planes<'_>],
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<Vec<u8>, StitchError>;
+    fn stitch(&mut self, planes: &[Nv12Planes<'_>], pose: Pose) -> Result<Vec<u8>, StitchError>;
 
     /// Output dimensions `(width, height)` in pixels.
     fn output_dims(&self) -> (u32, u32);
@@ -145,8 +141,7 @@ impl CpuExecutor {
     pub fn stitch_nv12(
         &self,
         planes: &[Nv12Planes<'_>],
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<Vec<u8>, StitchError> {
         stitch_rgba(
             self.projection(),
@@ -154,8 +149,7 @@ impl CpuExecutor {
             self.cam,
             &self.calib,
             &self.config,
-            yaw,
-            pitch,
+            pose,
             self.full_range,
         )
     }
@@ -165,35 +159,24 @@ impl CpuExecutor {
     /// GPU pipeline, which fixes its input format at construction);
     /// the [`StitchExecutor`] trait covers the NV12 contract, this
     /// inherent entry covers planar YUV sources (file decode).
-    pub fn stitch_yuv(
-        &self,
-        planes: &[YuvPlanes<'_>],
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<Vec<u8>, StitchError> {
+    pub fn stitch_yuv(&self, planes: &[YuvPlanes<'_>], pose: Pose) -> Result<Vec<u8>, StitchError> {
         super::cpu::stitch_rgba_yuv420p(
             self.projection(),
             planes,
             self.cam,
             &self.calib,
             &self.config,
-            yaw,
-            pitch,
+            pose,
             self.full_range,
         )
     }
 }
 
 impl StitchExecutor for CpuExecutor {
-    fn stitch(
-        &mut self,
-        planes: &[Nv12Planes<'_>],
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<Vec<u8>, StitchError> {
+    fn stitch(&mut self, planes: &[Nv12Planes<'_>], pose: Pose) -> Result<Vec<u8>, StitchError> {
         // Plane-size + camera-count validation lives in stitch_rgba, which
         // returns a typed error instead of panicking on a short/truncated frame.
-        self.stitch_nv12(planes, yaw, pitch)
+        self.stitch_nv12(planes, pose)
     }
 
     fn output_dims(&self) -> (u32, u32) {
@@ -249,7 +232,6 @@ impl GpuExecutorConfig {
             viewport: ViewportConfig {
                 width: 1920,
                 height: 1080,
-                ..Default::default()
             },
             input_width,
             input_height,
@@ -395,8 +377,7 @@ impl GpuExecutor {
         &mut self,
         left_slot: u8,
         right_slot: u8,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<wgpu::CommandBuffer, StitchError> {
         let bind_groups = self.residency.bind_groups.as_ref().ok_or_else(|| {
             StitchError::InvalidConfig(
@@ -405,15 +386,14 @@ impl GpuExecutor {
         })?;
         Ok(self
             .pipeline
-            .render_gpu_frame(bind_groups, left_slot, right_slot, yaw, pitch)?)
+            .render_gpu_frame(bind_groups, left_slot, right_slot, pose)?)
     }
 
     /// Render from a VRAM lookahead pool slot (buffered path).
     pub(crate) fn render_pool_slot(
         &mut self,
         slot: usize,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<wgpu::CommandBuffer, StitchError> {
         let pool = self
             .residency
@@ -423,8 +403,7 @@ impl GpuExecutor {
         Ok(self.pipeline.render_with_bind_groups(
             pool.left_bind_group(slot),
             pool.right_bind_group(slot),
-            yaw,
-            pitch,
+            pose,
         )?)
     }
 
@@ -774,8 +753,7 @@ impl GpuExecutor {
         &mut self,
         left_slot: usize,
         right_slot: usize,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<wgpu::CommandBuffer, StitchError> {
         let pool =
             self.residency.d3d11_staging.as_ref().ok_or_else(|| {
@@ -786,8 +764,7 @@ impl GpuExecutor {
             pool.uv_view(left_slot),
             pool.y_view(right_slot),
             pool.uv_view(right_slot),
-            yaw,
-            pitch,
+            pose,
         )?)
     }
 
@@ -896,12 +873,7 @@ impl GpuExecutor {
 
 #[cfg(feature = "gpu")]
 impl StitchExecutor for GpuExecutor {
-    fn stitch(
-        &mut self,
-        planes: &[Nv12Planes<'_>],
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<Vec<u8>, StitchError> {
+    fn stitch(&mut self, planes: &[Nv12Planes<'_>], pose: Pose) -> Result<Vec<u8>, StitchError> {
         // The GPU upload path is stereo-shaped today; mono programs
         // land with their own bind layout at the cylinder GPU step.
         let [left, right] = planes else {
@@ -928,9 +900,7 @@ impl StitchExecutor for GpuExecutor {
         }
         // Record the frame, submit it via the readback, then drain it
         // synchronously: one render in, this frame's RGBA out.
-        let cmd = self
-            .pipeline
-            .render_to_target_nv12(left, right, yaw, pitch)?;
+        let cmd = self.pipeline.render_to_target_nv12(left, right, pose)?;
         let tex = self.pipeline.render_target();
         let (ring, _) = self.sync_readback.as_mut().expect("created above");
         ring.readback(self.pipeline.gpu(), tex, cmd)?;
@@ -1038,28 +1008,6 @@ impl Executor {
             Executor::Cpu(c) => c.cam,
             #[cfg(feature = "gpu")]
             Executor::Gpu(g) => g.pipeline.source_info(),
-        }
-    }
-
-    /// Current vertical field of view in degrees.
-    pub fn fov(&self) -> f32 {
-        match self {
-            Executor::Cpu(c) => c.config.fov_degrees,
-            #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.pipeline.fov(),
-        }
-    }
-
-    /// Set the vertical field of view in degrees, clamped to
-    /// `[1.0, 179.0]` on both arms (the CPU projection math degenerates
-    /// at 0/180 exactly like the GPU perspective matrix would).
-    pub fn set_fov(&mut self, fov_degrees: f32) {
-        match self {
-            // Mirrors StitchPipeline::set_fov's clamp so the executors
-            // cannot diverge on out-of-range input.
-            Executor::Cpu(c) => c.config.fov_degrees = fov_degrees.clamp(1.0, 179.0),
-            #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.pipeline.set_fov(fov_degrees),
         }
     }
 
@@ -1191,16 +1139,11 @@ impl Executor {
 }
 
 impl StitchExecutor for Executor {
-    fn stitch(
-        &mut self,
-        planes: &[Nv12Planes<'_>],
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<Vec<u8>, StitchError> {
+    fn stitch(&mut self, planes: &[Nv12Planes<'_>], pose: Pose) -> Result<Vec<u8>, StitchError> {
         match self {
-            Executor::Cpu(c) => c.stitch(planes, yaw, pitch),
+            Executor::Cpu(c) => c.stitch(planes, pose),
             #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.stitch(planes, yaw, pitch),
+            Executor::Gpu(g) => g.stitch(planes, pose),
         }
     }
 
@@ -1279,7 +1222,6 @@ mod tests {
             let config = ViewportConfig {
                 width: out_w,
                 height: out_h,
-                fov_degrees: fov,
             };
             let mut backend =
                 CpuExecutor::new(cal.clone(), config, cam_w, cam_h, false).expect("cpu");
@@ -1307,7 +1249,12 @@ mod tests {
                     fov,
                     aspect_out,
                 );
-                let frac = black_frac(&backend.stitch(&[planes, planes], ry, rp).unwrap());
+                let pose = Pose {
+                    yaw: ry,
+                    pitch: rp,
+                    fov_degrees: fov,
+                };
+                let frac = black_frac(&backend.stitch(&[planes, planes], pose).unwrap());
                 assert!(
                     frac < 0.01,
                     "black fraction {frac:.4} at tilt={tilt} roll={roll} fov={fov:.1} target=({wy},{wp})"
@@ -1324,7 +1271,6 @@ mod tests {
             ViewportConfig {
                 width: w,
                 height: h,
-                ..Default::default()
             },
             w,
             h,
@@ -1343,7 +1289,6 @@ mod tests {
             ViewportConfig {
                 width: w,
                 height: h,
-                ..Default::default()
             },
             w,
             h,
@@ -1356,7 +1301,9 @@ mod tests {
             uv: &short,
         };
         // Must return a typed error, not panic (matches the GPU backend).
-        let err = backend.stitch(&[planes, planes], 0.0, 0.0).unwrap_err();
+        let err = backend
+            .stitch(&[planes, planes], Pose::default())
+            .unwrap_err();
         assert!(matches!(err, StitchError::FrameSizeMismatch { .. }));
     }
 
@@ -1373,13 +1320,16 @@ mod tests {
         let config = ViewportConfig {
             width: out_w,
             height: out_h,
-            ..Default::default()
         };
         let (ly, luv) = nv12(cam_w, cam_h, 0);
         let (ry, ruv) = nv12(cam_w, cam_h, 30);
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
-        let (yaw, pitch) = (0.08f32, -0.04f32);
+        let pose = Pose {
+            yaw: 0.08,
+            pitch: -0.04,
+            ..Default::default()
+        };
 
         let mut cpu = CpuExecutor::new(calib.clone(), config.clone(), cam_w, cam_h, false)
             .expect("cpu backend");
@@ -1397,7 +1347,7 @@ mod tests {
         let mut outputs = Vec::new();
         for b in backends {
             assert_eq!(b.output_dims(), (out_w, out_h));
-            outputs.push(b.stitch(&[left, right], yaw, pitch).expect("stitch"));
+            outputs.push(b.stitch(&[left, right], pose).expect("stitch"));
         }
         let (cpu_rgba, gpu_rgba) = (&outputs[0], &outputs[1]);
         assert_eq!(cpu_rgba.len(), (out_w * out_h * 4) as usize);

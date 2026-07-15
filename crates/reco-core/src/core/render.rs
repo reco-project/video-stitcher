@@ -74,7 +74,7 @@ impl super::StitchCore {
             #[cfg(feature = "gpu")]
             Executor::Gpu(_) => unreachable!("routed from the CPU arm"),
         };
-        let rgba = cpu.stitch_yuv(&[*left, *right], pose.yaw, pose.pitch)?;
+        let rgba = cpu.stitch_yuv(&[*left, *right], pose)?;
         Ok(self.deliver_cpu_frame(rgba, pose))
     }
 
@@ -90,9 +90,7 @@ impl super::StitchCore {
         let Executor::Gpu(gpu) = &self.executor else {
             unreachable!("routed from the GPU arm");
         };
-        let cmd = gpu
-            .pipeline
-            .render_to_target(left, right, pose.yaw, pose.pitch)?;
+        let cmd = gpu.pipeline.render_to_target(left, right, pose)?;
         // GPU stacked-replay pack runs before the readback so the
         // borrow checker sees `self.readback` free while the pack
         // runs. Queue ordering: `queue.write_texture` inside
@@ -136,10 +134,8 @@ impl super::StitchCore {
     /// session-start clock, runs detection when
     /// `frame_count % detection_interval == 0`, renders, reads back
     /// RGBA, pushes into the replay buffer, increments frame_count -
-    /// but bypasses the director and uses the caller-supplied
-    /// `(yaw, pitch)` directly. The FOV stays at whatever the
-    /// pipeline currently has (set via [`Self::set_fov`] or
-    /// `update_calibration`).
+    /// but bypasses the director and uses the caller-supplied pose
+    /// directly - fov included, like every render path.
     ///
     /// This is the canonical submit path for interactive UIs (OBS
     /// pan/zoom sliders, mouse-drag preview) where pose comes from
@@ -148,8 +144,7 @@ impl super::StitchCore {
         &mut self,
         left: &YuvPlanes<'_>,
         right: &YuvPlanes<'_>,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         self.anchor_session_start();
 
@@ -169,12 +164,6 @@ impl super::StitchCore {
             let (src_w, src_h) = self.executor.source_info();
             self.run_yuv_detection(left, right, src_w, src_h);
         }
-
-        let pose = Pose {
-            yaw,
-            pitch,
-            fov_degrees: None,
-        };
         match &self.executor {
             Executor::Cpu(_) => self.submit_cpu_yuv(left, right, pose),
             #[cfg(feature = "gpu")]
@@ -192,16 +181,13 @@ impl super::StitchCore {
         &mut self,
         left: &BgraPlanes<'_>,
         right: &BgraPlanes<'_>,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         self.anchor_session_start();
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
-        let cmd = gpu
-            .pipeline
-            .render_to_target_bgra(left, right, yaw, pitch)?;
+        let cmd = gpu.pipeline.render_to_target_bgra(left, right, pose)?;
         let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
@@ -216,11 +202,7 @@ impl super::StitchCore {
             replay.push(ReplayFrame {
                 rgba: bytes.to_vec(),
                 captured_at,
-                pose: Pose {
-                    yaw,
-                    pitch,
-                    fov_degrees: None,
-                },
+                pose,
             });
         }
         Ok(match rgba {
@@ -260,9 +242,7 @@ impl super::StitchCore {
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
-        let cmd = gpu
-            .pipeline
-            .render_to_target_bgra(left, right, pose.yaw, pose.pitch)?;
+        let cmd = gpu.pipeline.render_to_target_bgra(left, right, pose)?;
         let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
@@ -320,7 +300,7 @@ impl super::StitchCore {
                     #[cfg(feature = "gpu")]
                     Executor::Gpu(_) => unreachable!("routed from the CPU arm"),
                 };
-                let rgba = cpu.stitch_nv12(&[*left, *right], pose.yaw, pose.pitch)?;
+                let rgba = cpu.stitch_nv12(&[*left, *right], pose)?;
                 Ok(self.deliver_cpu_frame(rgba, pose))
             }
             #[cfg(feature = "gpu")]
@@ -339,9 +319,7 @@ impl super::StitchCore {
         let Executor::Gpu(gpu) = &self.executor else {
             unreachable!("routed from the GPU arm");
         };
-        let cmd = gpu
-            .pipeline
-            .render_to_target_nv12(left, right, pose.yaw, pose.pitch)?;
+        let cmd = gpu.pipeline.render_to_target_nv12(left, right, pose)?;
         self.pack_replay_from_pipeline();
         let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
         let Executor::Gpu(gpu) = &self.executor else {
@@ -397,7 +375,7 @@ impl super::StitchCore {
                     #[cfg(feature = "gpu")]
                     Executor::Gpu(_) => unreachable!("routed from the CPU arm"),
                 };
-                let rgba = cpu.stitch_yuv(&[*frame], pose.yaw, pose.pitch)?;
+                let rgba = cpu.stitch_yuv(&[*frame], pose)?;
                 Ok(self.deliver_cpu_frame(rgba, pose))
             }
             #[cfg(feature = "gpu")]
@@ -452,9 +430,8 @@ impl super::StitchCore {
     /// interactive preview path (GUI/CLI). No detection, no director, no
     /// readback; the caller supplies the (already oriented) pose.
     ///
-    /// The full pose is the render parameter: when `pose.fov_degrees` is
-    /// set it applies for this frame, so an out-of-tick FOV clamp can
-    /// never leave the view rendering a stale cached value.
+    /// The full pose is the render parameter - fov included, so there
+    /// is no cached zoom state to go stale between calls.
     #[cfg(feature = "gpu")]
     pub fn render_to_view(
         &mut self,
@@ -463,15 +440,10 @@ impl super::StitchCore {
         pose: Pose,
         view: &wgpu::TextureView,
     ) -> Result<(), StitchCoreError> {
-        if let Some(fov) = pose.fov_degrees {
-            self.executor.set_fov(fov);
-        }
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
-        Ok(gpu
-            .pipeline
-            .render_to_view(left, right, pose.yaw, pose.pitch, view)?)
+        Ok(gpu.pipeline.render_to_view(left, right, pose, view)?)
     }
 
     /// Render a stereo frame and read back NV12 bytes for encoding - the
@@ -486,14 +458,10 @@ impl super::StitchCore {
         right: &YuvPlanes<'_>,
         pose: Pose,
     ) -> Result<Option<&[u8]>, StitchCoreError> {
-        if let Some(fov) = pose.fov_degrees {
-            self.executor.set_fov(fov);
-        }
-        let (yaw, pitch) = (pose.yaw, pose.pitch);
         let Executor::Gpu(gpu) = &mut self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
-        let cmd = gpu.pipeline.render_to_target(left, right, yaw, pitch)?;
+        let cmd = gpu.pipeline.render_to_target(left, right, pose)?;
         gpu.convert_nv12(cmd)
             .map_err(|e| StitchCoreError::Config(format!("NV12 preview readback: {e}")))
     }
@@ -541,13 +509,12 @@ impl super::StitchCore {
         &self,
         left: &YuvPlanes<'_>,
         right: &YuvPlanes<'_>,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
-        Ok(gpu.pipeline.render_to_target(left, right, yaw, pitch)?)
+        Ok(gpu.pipeline.render_to_target(left, right, pose)?)
     }
 
     /// Render a stereo packed-RGBA/BGRA frame at an explicit pose.
@@ -557,15 +524,12 @@ impl super::StitchCore {
         &self,
         left: &BgraPlanes<'_>,
         right: &BgraPlanes<'_>,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
-        Ok(gpu
-            .pipeline
-            .render_to_target_bgra(left, right, yaw, pitch)?)
+        Ok(gpu.pipeline.render_to_target_bgra(left, right, pose)?)
     }
 
     /// Render from GPU-resident RGBA textures (e.g. Bayer demosaic output).
@@ -578,15 +542,14 @@ impl super::StitchCore {
         &self,
         left_rgba: &wgpu::Texture,
         right_rgba: &wgpu::Texture,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
         Ok(self
             .executor
             .gpu()
             .expect("zero-copy render paths require the GPU executor")
             .pipeline
-            .render_from_gpu_rgba(left_rgba, right_rgba, yaw, pitch)
+            .render_from_gpu_rgba(left_rgba, right_rgba, pose)
             .map_err(crate::stitch::StitchError::from)?)
     }
 
@@ -602,13 +565,12 @@ impl super::StitchCore {
     pub fn render_stereo_frame_at_pose(
         &self,
         frame: &crate::source::StereoFrame,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
-        Ok(gpu.pipeline.render_stereo_frame(frame, yaw, pitch)?)
+        Ok(gpu.pipeline.render_stereo_frame(frame, pose)?)
     }
 
     /// Render from four pre-imported textures at an explicit pose.
@@ -624,15 +586,14 @@ impl super::StitchCore {
         left_uv: &wgpu::Texture,
         right_y: &wgpu::Texture,
         right_uv: &wgpu::Texture,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
         Ok(self
             .executor
             .gpu_mut()
             .expect("zero-copy render paths require the GPU executor")
             .pipeline
-            .render_imported_textures(left_y, left_uv, right_y, right_uv, yaw, pitch)
+            .render_imported_textures(left_y, left_uv, right_y, right_uv, pose)
             .map_err(crate::stitch::StitchError::from)?)
     }
 }

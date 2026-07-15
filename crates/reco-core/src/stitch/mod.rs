@@ -275,6 +275,7 @@ mod tests {
     use super::test_support::{calib, nv12};
     #[cfg(feature = "gpu")]
     use crate::calibration::Calibration;
+    use crate::geometry::Pose;
     use crate::render::planes::Nv12Planes;
     use crate::render::viewport::ViewportConfig;
 
@@ -285,7 +286,6 @@ mod tests {
         let cfg = ViewportConfig {
             width: w,
             height: h,
-            ..Default::default()
         };
         let (ly, luv) = nv12(w, h, 0);
         let (ry, ruv) = nv12(w, h, 40);
@@ -298,8 +298,7 @@ mod tests {
             (w, h),
             &calib,
             &cfg,
-            0.0,
-            0.0,
+            Pose::default(),
             false,
         )
         .unwrap();
@@ -315,7 +314,6 @@ mod tests {
         let cfg = ViewportConfig {
             width: w,
             height: h,
-            ..Default::default()
         };
         let (ly, luv) = nv12(w, h, 0);
         let (ry, ruv) = nv12(w, h, 40);
@@ -328,8 +326,7 @@ mod tests {
             (w, h),
             &calib,
             &cfg,
-            0.0,
-            0.0,
+            Pose::default(),
             false,
         )
         .unwrap();
@@ -339,8 +336,7 @@ mod tests {
             (w, h),
             &calib,
             &cfg,
-            0.0,
-            0.0,
+            Pose::default(),
             false,
         )
         .unwrap();
@@ -376,13 +372,16 @@ mod tests {
         let config = ViewportConfig {
             width: out_w,
             height: out_h,
-            ..Default::default()
         };
         let (ly, luv) = nv12(cam_w, cam_h, 0);
         let (ry, ruv) = nv12(cam_w, cam_h, 30);
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
-        let (yaw, pitch) = (0.10f32, -0.05f32);
+        let pose = Pose {
+            yaw: 0.10,
+            pitch: -0.05,
+            ..Default::default()
+        };
 
         // GPU render -> RGBA. The readback is triple-buffered (N-2 latency), so
         // render the same frame three times to drain one result.
@@ -407,7 +406,7 @@ mod tests {
         let mut gpu_rgba: Option<Vec<u8>> = None;
         for _ in 0..3 {
             let cmd = pipeline
-                .render_to_target_nv12(&left, &right, yaw, pitch)
+                .render_to_target_nv12(&left, &right, pose)
                 .expect("render");
             let tex = pipeline.render_target();
             if let Some(bytes) = readback
@@ -426,8 +425,7 @@ mod tests {
             (cam_w, cam_h),
             &calib,
             &config,
-            yaw,
-            pitch,
+            pose,
             false,
         )
         .expect("cpu stitch");
@@ -469,7 +467,6 @@ mod tests {
         let config = ViewportConfig {
             width: out_w,
             height: out_h,
-            ..Default::default()
         };
         let (ly, lu, lv) = yuv420(cam_w, cam_h, 0);
         let (ry, ru, rv) = yuv420(cam_w, cam_h, 30);
@@ -483,7 +480,11 @@ mod tests {
             u: &ru,
             v: &rv,
         };
-        let (yaw, pitch) = (0.10f32, -0.05f32);
+        let pose = Pose {
+            yaw: 0.10,
+            pitch: -0.05,
+            ..Default::default()
+        };
 
         let pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
             gpu,
@@ -506,7 +507,7 @@ mod tests {
         let mut gpu_rgba: Option<Vec<u8>> = None;
         for _ in 0..3 {
             let cmd = pipeline
-                .render_to_target(&left, &right, yaw, pitch)
+                .render_to_target(&left, &right, pose)
                 .expect("render");
             let tex = pipeline.render_target();
             if let Some(bytes) = readback
@@ -524,8 +525,7 @@ mod tests {
             (cam_w, cam_h),
             &calib,
             &config,
-            yaw,
-            pitch,
+            pose,
             false,
         )
         .expect("cpu stitch yuv420p");
@@ -588,8 +588,7 @@ mod tests {
         cam: (u32, u32),
         left: &Nv12Planes,
         right: &Nv12Planes,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
         full_range: bool,
     ) -> Option<(Vec<u8>, Vec<u8>)> {
         use crate::render::renderer::InputFormat;
@@ -620,7 +619,7 @@ mod tests {
         let mut gpu_rgba = None;
         for _ in 0..3 {
             let cmd = pipeline
-                .render_to_target_nv12(left, right, yaw, pitch)
+                .render_to_target_nv12(left, right, pose)
                 .expect("render");
             let tex = pipeline.render_target();
             if let Some(b) = readback
@@ -637,8 +636,7 @@ mod tests {
             cam,
             calib,
             config,
-            yaw,
-            pitch,
+            pose,
             full_range,
         )
         .unwrap();
@@ -654,9 +652,13 @@ mod tests {
     #[cfg(feature = "gpu")]
     fn cpu_matches_gpu_across_regimes() {
         let (cam_w, cam_h) = (256u32, 144u32);
-        let cfg = |w: u32, h: u32, fov: f32| ViewportConfig {
+        let cfg = |w: u32, h: u32| ViewportConfig {
             width: w,
             height: h,
+        };
+        let pose = |yaw: f32, pitch: f32, fov: f32| Pose {
+            yaw,
+            pitch,
             fov_degrees: fov,
         };
         // Lens correction is now per-lens on the calibration.
@@ -687,74 +689,66 @@ mod tests {
         let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
-        let cases: [(&str, Calibration, ViewportConfig, f32, f32, bool); 7] = [
+        let cases: [(&str, Calibration, ViewportConfig, Pose, bool); 7] = [
             (
                 "wide-pan",
                 base.clone(),
-                cfg(192, 108, 75.0),
-                0.9,
-                0.0,
+                cfg(192, 108),
+                pose(0.9, 0.0, 75.0),
                 false,
             ),
             (
                 "wide-fov",
                 base.clone(),
-                cfg(192, 108, 130.0),
-                0.0,
-                0.0,
+                cfg(192, 108),
+                pose(0.0, 0.0, 130.0),
                 false,
             ),
             (
                 "off-center-cx",
                 calib_cx(0.12),
-                cfg(192, 108, 75.0),
-                0.2,
-                0.0,
+                cfg(192, 108),
+                pose(0.2, 0.0, 75.0),
                 false,
             ),
             (
                 "full-range",
                 base.clone(),
-                cfg(192, 108, 75.0),
-                0.1,
-                -0.05,
+                cfg(192, 108),
+                pose(0.1, -0.05, 75.0),
                 true,
             ),
             (
                 "lens-corr-0.5",
                 calib_corr(0.5),
-                cfg(192, 108, 75.0),
-                0.1,
-                -0.05,
+                cfg(192, 108),
+                pose(0.1, -0.05, 75.0),
                 false,
             ),
             (
                 "non-16:9 (4:3 out)",
                 base.clone(),
-                cfg(144, 108, 75.0),
-                0.1,
-                -0.05,
+                cfg(144, 108),
+                pose(0.1, -0.05, 75.0),
                 false,
             ),
             (
                 "tilt+roll-at-yaw",
                 calib_tilt_roll(0.26, 0.12),
-                cfg(192, 108, 75.0),
-                0.6,
-                0.0,
+                cfg(192, 108),
+                pose(0.6, 0.0, 75.0),
                 false,
             ),
         ];
         let mut ran = false;
-        for (label, calib, config, yaw, pitch, fr) in cases {
+        for (label, calib, config, case_pose, fr) in cases {
             let Some((g, c)) = gpu_cpu_rgba(
                 &calib,
                 &config,
                 (cam_w, cam_h),
                 &left,
                 &right,
-                yaw,
-                pitch,
+                case_pose,
                 fr,
             ) else {
                 eprintln!("skipping regimes: no GPU adapter");
@@ -785,28 +779,34 @@ mod tests {
             c.framing.axis_offset = off;
             c
         };
-        let cfg = |fov: f32| ViewportConfig {
-            width: 192,
-            height: 108,
-            fov_degrees: fov,
+        let cfg = |fov: f32| {
+            (
+                ViewportConfig {
+                    width: 192,
+                    height: 108,
+                },
+                Pose {
+                    fov_degrees: fov,
+                    ..Default::default()
+                },
+            )
         };
         // Each case puts a plane within NEAR_PLANE of the virtual camera before
         // the fix: axis offset below ~0.012, or FOV near the projection limit.
-        let cases: [(&str, Calibration, ViewportConfig); 3] = [
+        let cases: [(&str, Calibration, (ViewportConfig, Pose)); 3] = [
             ("axis-offset 0.005", axis(0.005), cfg(75.0)),
             ("axis-offset 0.012", axis(0.012), cfg(75.0)),
             ("fov 178", calib(cam_w, cam_h), cfg(178.0)),
         ];
         let mut ran = false;
-        for (label, cal, config) in cases {
+        for (label, cal, (config, case_pose)) in cases {
             let Some((g, c)) = gpu_cpu_rgba(
                 &cal,
                 &config,
                 (cam_w, cam_h),
                 &left,
                 &right,
-                0.0,
-                0.0,
+                case_pose,
                 false,
             ) else {
                 eprintln!("skipping near-plane: no GPU adapter");
@@ -831,7 +831,6 @@ mod tests {
         let config = ViewportConfig {
             width: 192,
             height: 108,
-            ..Default::default()
         };
         let (cy, cuv) = checker_nv12(cam_w, cam_h);
         let left = Nv12Planes { y: &cy, uv: &cuv };
@@ -842,8 +841,11 @@ mod tests {
             (cam_w, cam_h),
             &left,
             &right,
-            0.05,
-            -0.03,
+            Pose {
+                yaw: 0.05,
+                pitch: -0.03,
+                ..Default::default()
+            },
             false,
         ) else {
             return;
@@ -865,22 +867,17 @@ mod tests {
         let config = ViewportConfig {
             width: 192,
             height: 108,
+        };
+        let pose = Pose {
             fov_degrees: 140.0,
+            ..Default::default()
         };
         let (ly, luv) = textured_nv12(cam_w, cam_h, 0.0);
         let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
-        let Some((g, c)) = gpu_cpu_rgba(
-            &cal,
-            &config,
-            (cam_w, cam_h),
-            &left,
-            &right,
-            0.0,
-            0.0,
-            false,
-        ) else {
+        let Some((g, c)) = gpu_cpu_rgba(&cal, &config, (cam_w, cam_h), &left, &right, pose, false)
+        else {
             return;
         };
         let (mut gpu_black, mut leak) = (0u32, 0u32);
@@ -918,23 +915,19 @@ mod tests {
         let config = ViewportConfig {
             width: 192,
             height: 108,
-            ..Default::default()
         };
         let (ly, luv) = textured_nv12(cam_w, cam_h, 0.0);
         let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
-        let (yaw, pitch) = (0.10f32, -0.05f32);
-        let Some((gpu_rgba, cpu_rgba)) = gpu_cpu_rgba(
-            &cal,
-            &config,
-            (cam_w, cam_h),
-            &left,
-            &right,
-            yaw,
-            pitch,
-            false,
-        ) else {
+        let pose = Pose {
+            yaw: 0.10,
+            pitch: -0.05,
+            ..Default::default()
+        };
+        let Some((gpu_rgba, cpu_rgba)) =
+            gpu_cpu_rgba(&cal, &config, (cam_w, cam_h), &left, &right, pose, false)
+        else {
             return;
         };
 
@@ -949,8 +942,10 @@ mod tests {
             (cam_w, cam_h),
             &cal,
             &config,
-            yaw + 0.01,
-            pitch,
+            Pose {
+                yaw: pose.yaw + 0.01,
+                ..pose
+            },
             false,
         )
         .expect("cpu stitch");

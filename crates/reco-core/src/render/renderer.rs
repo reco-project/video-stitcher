@@ -814,14 +814,12 @@ impl Renderer {
         aspect: f32,
         encoder_label: &str,
     ) -> wgpu::CommandEncoder {
+        // The (1, 179) clamp lives here, where the pose becomes a
+        // matrix: 0 or 180 degrees would produce a NaN/Inf projection.
+        let fov_degrees = viewport.position.fov_degrees.clamp(1.0, 179.0);
         let projection = opengl_to_wgpu_matrix()
-            * Perspective3::new(
-                aspect,
-                viewport.config.fov_degrees.to_radians(),
-                NEAR_PLANE,
-                FAR_PLANE,
-            )
-            .to_homogeneous();
+            * Perspective3::new(aspect, fov_degrees.to_radians(), NEAR_PLANE, FAR_PLANE)
+                .to_homogeneous();
         let view = view_matrix(
             &scene.camera_position,
             viewport.position.yaw,

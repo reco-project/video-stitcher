@@ -83,7 +83,6 @@ impl PreviewBridge {
         let viewport = ViewportConfig {
             width: viewport_width,
             height: viewport_height,
-            fov_degrees: 75.0,
         };
 
         // Slint expects textures in a format it can sample. Rgba8Unorm is

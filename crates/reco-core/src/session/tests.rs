@@ -246,7 +246,7 @@ impl Panner for RecordingPanner {
         Pose {
             yaw: 0.001 * ctx.frame_index as f32,
             pitch: -0.0005 * ctx.frame_index as f32,
-            fov_degrees: None,
+            ..Default::default()
         }
     }
 }
@@ -261,7 +261,7 @@ impl Panner for NanPanner {
         Pose {
             yaw: f32::NAN,
             pitch: f32::NAN,
-            fov_degrees: None,
+            ..Default::default()
         }
     }
 }
@@ -282,7 +282,6 @@ fn build_test_session(
         .viewport(ViewportConfig {
             width: 64,
             height: 64,
-            fov_degrees: 75.0,
         })
         .detection_interval(detection_interval);
 
@@ -570,7 +569,6 @@ fn push_and_pull_share_one_ai_brain() {
             viewport: ViewportConfig {
                 width: 64,
                 height: 64,
-                fov_degrees: 75.0,
             },
             ..crate::stitch::GpuExecutorConfig::new(
                 test_calibration(),
@@ -634,7 +632,6 @@ fn build_cpu_session() -> StitchSession {
         ViewportConfig {
             width: 64,
             height: 64,
-            fov_degrees: 75.0,
         },
         W,
         H,
@@ -811,7 +808,6 @@ fn mono_cylinder_session_runs_end_to_end_without_gpu() {
         ViewportConfig {
             width: 64,
             height: 64,
-            fov_degrees: 60.0,
         },
         W,
         H,

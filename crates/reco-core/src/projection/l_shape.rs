@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 use crate::calibration::{
     Calibration, CalibrationError, Framing, Lens, expect_above, expect_finite, expect_in_range,
 };
-use crate::geometry::{FAR_PLANE, NEAR_PLANE, VirtualCamera, opengl_to_wgpu_matrix, view_matrix};
+use crate::geometry::{
+    FAR_PLANE, NEAR_PLANE, Pose, VirtualCamera, opengl_to_wgpu_matrix, view_matrix,
+};
 use crate::lens::kb4;
 use crate::precision::VALIDATION_EPSILON;
 use crate::projection::{CoverageBoundary, Projection, ProjectionContext};
@@ -362,8 +364,7 @@ fn l_shape_plane_maps(
     topology: &LShape,
     calib: &Calibration,
     config: &ViewportConfig,
-    yaw: f32,
-    pitch: f32,
+    pose: Pose,
 ) -> (PlaneMap, PlaneMap) {
     // Known limitation: both planes are sized with lens 0's aspect.
     // Mixed-aspect rigs are valid calibrations; per-plane aspects are
@@ -372,18 +373,16 @@ fn l_shape_plane_maps(
     let scene = topology.scene(&calib.framing, plane_aspect);
 
     let out_aspect = config.aspect_ratio();
+    // The (1, 179) clamp at the boundary where the pose becomes a
+    // matrix - the CPU dual of the GPU renderer's clamp.
+    let fov_degrees = pose.fov_degrees.clamp(1.0, 179.0);
     let projection = opengl_to_wgpu_matrix()
-        * Perspective3::new(
-            out_aspect,
-            config.fov_degrees.to_radians(),
-            NEAR_PLANE,
-            FAR_PLANE,
-        )
-        .to_homogeneous();
+        * Perspective3::new(out_aspect, fov_degrees.to_radians(), NEAR_PLANE, FAR_PLANE)
+            .to_homogeneous();
     let view = view_matrix(
         &scene.camera_position,
-        yaw,
-        pitch,
+        pose.yaw,
+        pose.pitch,
         calib.framing.tilt as f32,
         calib.framing.roll as f32,
     );
@@ -434,8 +433,7 @@ impl Projection for LShape {
     }
 
     fn surface_maps(&self, ctx: &ProjectionContext) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {
-        let (left, right) =
-            l_shape_plane_maps(self, ctx.calibration, ctx.viewport, ctx.yaw, ctx.pitch);
+        let (left, right) = l_shape_plane_maps(self, ctx.calibration, ctx.viewport, ctx.pose);
         vec![
             (Box::new(left), BlendRule::Opaque),
             (
@@ -535,7 +533,7 @@ mod tests {
         let cfg = ViewportConfig::default();
         let cal = crate::stitch::test_support::calib(1920, 1080);
         let topology = cal.topology.l_shape().unwrap();
-        let (left, right) = l_shape_plane_maps(topology, &cal, &cfg, 0.0, 0.0);
+        let (left, right) = l_shape_plane_maps(topology, &cal, &cfg, Pose::default());
         // Across the output, every covered pixel must report a UV inside [0,1],
         // and at least one plane must cover a healthy fraction of the frame.
         let mut covered = 0usize;

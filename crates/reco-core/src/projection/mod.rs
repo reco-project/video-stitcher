@@ -51,18 +51,17 @@ use nalgebra::{Point3, Vector3};
 // detect layer.
 
 /// One frame's geometry question, bundled: the document, the output
-/// viewport, and the pan state. FOV is deliberately absent - it is
-/// resolved into `viewport.fov_degrees` before any render call, so a
-/// second copy here could only disagree.
+/// viewport, and the pose. The pose carries fov alongside yaw/pitch -
+/// [`ViewportConfig`](crate::render::viewport::ViewportConfig) is
+/// zoom-free, so there is exactly one fov per frame and a second,
+/// disagreeing copy is unrepresentable.
 pub struct ProjectionContext<'a> {
     /// The calibration document (lenses, topology, framing).
     pub calibration: &'a Calibration,
-    /// Output viewport (dimensions + resolved FOV).
+    /// Output viewport geometry (dimensions).
     pub viewport: &'a crate::render::viewport::ViewportConfig,
-    /// Horizontal pan in radians.
-    pub yaw: f32,
-    /// Vertical pan in radians.
-    pub pitch: f32,
+    /// The render pose: yaw/pitch pan plus fov zoom, one bundle.
+    pub pose: Pose,
 }
 
 /// A panoramic projection geometry.
@@ -775,8 +774,7 @@ mod tests {
         let surfaces = cal.topology.projection().surface_maps(&ProjectionContext {
             calibration: &cal,
             viewport: &config,
-            yaw: 0.0,
-            pitch: 0.0,
+            pose: Pose::default(),
         });
         assert_eq!(surfaces.len(), 2);
         assert_eq!(surfaces[0].1, crate::stitch::BlendRule::Opaque);
@@ -820,8 +818,7 @@ mod tests {
         let surfaces = cal.topology.projection().surface_maps(&ProjectionContext {
             calibration: &cal,
             viewport: &config,
-            yaw: 0.0,
-            pitch: 0.0,
+            pose: Pose::default(),
         });
         assert_eq!(surfaces.len(), 1);
         assert_eq!(surfaces[0].1, crate::stitch::BlendRule::Opaque);

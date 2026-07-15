@@ -37,8 +37,8 @@ impl super::StitchCore {
 
     pub(super) fn resolve_current_pose(&mut self, fresh_detection: bool) -> Pose {
         // Pull raw director output (or default) and clamp through
-        // coverage. Then write the resolved FOV back onto the pipeline
-        // so the upcoming render uses it.
+        // coverage. The resolved pose - fov included - is the render
+        // parameter; there is no pipeline fov state to write back.
         //
         // `fresh_detection` is the ACTUAL run decision for this frame,
         // not the schedule-would-fire predicate. The BGRA submit path
@@ -58,15 +58,11 @@ impl super::StitchCore {
         // The toggle gates only the coverage clamp; the tilt/roll basis
         // inversion is unconditional - a tilted rig must render level
         // whether or not the viewport is constrained.
-        let clamped = if self.constrained_look {
+        if self.constrained_look {
             self.safe_clamp(raw)
         } else {
             self.orient_pose(raw)
-        };
-        if let Some(fov) = clamped.fov_degrees {
-            self.executor.set_fov(fov);
         }
-        clamped
     }
 
     /// Whether the detection schedule fires at `index` - true when a
@@ -179,7 +175,7 @@ impl super::StitchCore {
     /// The pull session's presentation pose: always-clamped resolve of
     /// the panner's latest decision (batch export never reveals black
     /// edges, independent of the constrained-look toggle), with the
-    /// `PosePresented` trace and the FOV write-back.
+    /// `PosePresented` trace.
     #[cfg_attr(not(feature = "gpu"), allow(dead_code))] // session (gpu-gated) drives this
     pub(crate) fn presented_clamped_pose(&mut self, index: u64) -> Pose {
         let pos = self.safe_clamp(self.previous_panner_pose);
@@ -190,9 +186,6 @@ impl super::StitchCore {
                     pose: pos,
                 },
             );
-        }
-        if let Some(fov) = pos.fov_degrees {
-            self.executor.set_fov(fov);
         }
         pos
     }

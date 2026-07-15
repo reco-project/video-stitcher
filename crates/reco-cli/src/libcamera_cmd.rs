@@ -78,11 +78,7 @@ pub fn run_libcamera(
         }
     }
 
-    let viewport = reco_core::render::viewport::ViewportConfig {
-        width,
-        height,
-        ..Default::default()
-    };
+    let viewport = reco_core::render::viewport::ViewportConfig { width, height };
 
     let gpu = reco_core::gpu::GpuContext::new_blocking()?;
 
@@ -178,7 +174,7 @@ pub fn run_libcamera(
             log::warn!("detection failed on this frame: {e}");
         }
         let pos = session.director_position();
-        session.process_frame(&frame, pos.yaw, pos.pitch)?;
+        session.process_frame(&frame, pos)?;
         println!("Warmup complete, starting capture...");
     }
 
@@ -197,7 +193,7 @@ pub fn run_libcamera(
             log::warn!("detection failed on this frame: {e}");
         }
         let pos = session.director_position();
-        session.process_frame(&frame, pos.yaw, pos.pitch)?;
+        session.process_frame(&frame, pos)?;
         frame_count += 1;
         progress.report(frame_count);
     }

@@ -167,7 +167,7 @@ impl Default for PoseControlConfig {
             rest_pose: Pose {
                 yaw: 0.0,
                 pitch: 0.0,
-                fov_degrees: Some(75.0),
+                fov_degrees: 75.0,
             },
         }
     }
@@ -203,7 +203,7 @@ impl PoseControl {
     /// initial target + current pose are set to `config.rest_pose`.
     pub fn new(config: PoseControlConfig) -> Self {
         let rest = config.rest_pose;
-        let fov = rest.fov_degrees.unwrap_or(75.0);
+        let fov = rest.fov_degrees;
         Self {
             target_yaw_rad: rest.yaw,
             target_pitch_rad: rest.pitch,
@@ -284,7 +284,7 @@ impl PoseControl {
                 let rest = self.config.rest_pose;
                 self.target_yaw_rad = rest.yaw;
                 self.target_pitch_rad = rest.pitch;
-                self.target_fov_deg = rest.fov_degrees.unwrap_or(self.target_fov_deg);
+                self.target_fov_deg = rest.fov_degrees;
             }
             HotkeyIntent::ToggleConstrained => { /* consumer-side */ }
         }
@@ -302,30 +302,19 @@ impl PoseControl {
     fn apply_pose_intent(&mut self, intent: PoseIntent) {
         let current = self.target_pose();
         match intent {
-            PoseIntent::SetYawRad(yaw) => self.set_target(Pose {
-                yaw,
-                pitch: current.pitch,
-                fov_degrees: None,
-            }),
-            PoseIntent::SetPitchRad(pitch) => self.set_target(Pose {
-                yaw: current.yaw,
-                pitch,
-                fov_degrees: None,
-            }),
+            PoseIntent::SetYawRad(yaw) => self.set_target(Pose { yaw, ..current }),
+            PoseIntent::SetPitchRad(pitch) => self.set_target(Pose { pitch, ..current }),
             PoseIntent::SetFovDeg(fov) => self.set_target_fov(fov),
             PoseIntent::DeltaYawRad(dy) => self.set_target(Pose {
                 yaw: current.yaw + dy,
-                pitch: current.pitch,
-                fov_degrees: None,
+                ..current
             }),
             PoseIntent::DeltaPitchRad(dp) => self.set_target(Pose {
-                yaw: current.yaw,
                 pitch: current.pitch + dp,
-                fov_degrees: None,
+                ..current
             }),
             PoseIntent::DeltaFovDeg(df) => {
-                let fov = current.fov_degrees.unwrap_or(self.current_fov_deg());
-                self.set_target_fov(fov + df);
+                self.set_target_fov(current.fov_degrees + df);
             }
             PoseIntent::Reset => self.apply_hotkey(HotkeyIntent::Reset),
         }
@@ -338,9 +327,7 @@ impl PoseControl {
     pub fn set_target(&mut self, pose: Pose) {
         self.target_yaw_rad = pose.yaw;
         self.target_pitch_rad = pose.pitch;
-        if let Some(fov) = pose.fov_degrees {
-            self.set_target_fov(fov);
-        }
+        self.set_target_fov(pose.fov_degrees);
     }
 
     /// Set the target FOV directly, in degrees. Clamped to the
@@ -425,7 +412,7 @@ impl PoseControl {
         Pose {
             yaw: self.target_yaw_rad,
             pitch: self.target_pitch_rad,
-            fov_degrees: Some(self.target_fov_deg),
+            fov_degrees: self.target_fov_deg,
         }
     }
 
@@ -434,7 +421,7 @@ impl PoseControl {
         Pose {
             yaw: self.current_yaw_rad,
             pitch: self.current_pitch_rad,
-            fov_degrees: Some(self.current_fov_deg),
+            fov_degrees: self.current_fov_deg,
         }
     }
 
@@ -496,7 +483,7 @@ mod tests {
         assert_eq!(cfg.fov_max_degrees, 150.0);
         assert_eq!(cfg.drag_deg_per_pixel, 0.1);
         assert_eq!(cfg.wheel_fov_per_tick, 3.0);
-        assert_eq!(cfg.rest_pose.fov_degrees, Some(75.0));
+        assert_eq!(cfg.rest_pose.fov_degrees, 75.0);
     }
 
     // ---- Drag ---------------------------------------------------------
@@ -579,7 +566,7 @@ mod tests {
         let rest = p.config.rest_pose;
         assert!((p.target_yaw_rad - rest.yaw).abs() < 1e-5);
         assert!((p.target_pitch_rad - rest.pitch).abs() < 1e-5);
-        assert_eq!(p.target_fov_deg, rest.fov_degrees.unwrap());
+        assert_eq!(p.target_fov_deg, rest.fov_degrees);
     }
 
     #[test]
@@ -651,7 +638,7 @@ mod tests {
         p.set_target(Pose {
             yaw: 0.5,
             pitch: -0.2,
-            fov_degrees: Some(60.0),
+            fov_degrees: 60.0,
         });
         assert_eq!(p.current_yaw_rad, c0);
         assert_eq!(p.target_yaw_rad, 0.5);

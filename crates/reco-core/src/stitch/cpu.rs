@@ -9,6 +9,7 @@
 //! implementation-defined unorm rounding), so it doubles as the agreement oracle.
 
 use crate::calibration::Calibration;
+use crate::geometry::Pose;
 use crate::projection::Projection;
 use crate::render::planes::{Nv12Planes, YuvPlanes};
 use crate::render::viewport::ViewportConfig;
@@ -47,7 +48,7 @@ fn check_plane(plane: &[u8], expected: usize) -> Result<(), StitchError> {
 /// * `cam` - source frame dimensions `(width, height)`.
 /// * `calib` - stereo calibration (intrinsics + plane layout).
 /// * `config` - output dimensions, FOV, blend width, rig and lens correction.
-/// * `yaw`, `pitch` - per-frame virtual-camera pan, in radians.
+/// * `pose` - per-frame virtual-camera pan (radians) + fov zoom (degrees).
 /// * `full_range` - `true` for full-range (0-255) YUV, `false` for limited
 ///   (16-235) BT.709, matching the source decoder.
 ///
@@ -62,8 +63,7 @@ pub(crate) fn stitch_rgba(
     cam: (u32, u32),
     calib: &Calibration,
     config: &ViewportConfig,
-    yaw: f32,
-    pitch: f32,
+    pose: Pose,
     full_range: bool,
 ) -> Result<Vec<u8>, StitchError> {
     let (cw, ch) = cam;
@@ -78,9 +78,7 @@ pub(crate) fn stitch_rgba(
         .iter()
         .map(|p| move |u, v| sample_nv12(p, cw, ch, u, v, full_range))
         .collect();
-    Ok(stitch_with(
-        projection, calib, config, yaw, pitch, &samplers,
-    ))
+    Ok(stitch_with(projection, calib, config, pose, &samplers))
 }
 
 /// Stitch two YUV420p (planar) camera frames into an RGBA panorama on the CPU.
@@ -95,8 +93,7 @@ pub(crate) fn stitch_rgba_yuv420p(
     cam: (u32, u32),
     calib: &Calibration,
     config: &ViewportConfig,
-    yaw: f32,
-    pitch: f32,
+    pose: Pose,
     full_range: bool,
 ) -> Result<Vec<u8>, StitchError> {
     let (cw, ch) = cam;
@@ -113,9 +110,7 @@ pub(crate) fn stitch_rgba_yuv420p(
         .iter()
         .map(|p| move |u, v| sample_yuv420p(p, cw, ch, u, v, full_range))
         .collect();
-    Ok(stitch_with(
-        projection, calib, config, yaw, pitch, &samplers,
-    ))
+    Ok(stitch_with(projection, calib, config, pose, &samplers))
 }
 
 /// The number of input frames must match what the projection consumes;
@@ -141,15 +136,13 @@ fn stitch_with(
     projection: &dyn Projection,
     calib: &Calibration,
     config: &ViewportConfig,
-    yaw: f32,
-    pitch: f32,
+    pose: Pose,
     samplers: &[impl Fn(f64, f64) -> [f64; 3]],
 ) -> Vec<u8> {
     let ctx = crate::projection::ProjectionContext {
         calibration: calib,
         viewport: config,
-        yaw,
-        pitch,
+        pose,
     };
     let surfaces = projection.surface_maps(&ctx);
     let sampler_refs: Vec<&dyn Fn(f64, f64) -> [f64; 3]> = samplers

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::calibration::{
     Calibration, CalibrationError, Framing, expect_above, expect_finite, expect_in_range,
 };
-use crate::geometry::VirtualCamera;
+use crate::geometry::{Pose, VirtualCamera};
 use crate::precision::VALIDATION_EPSILON;
 use crate::projection::{CoverageBoundary, Projection, ProjectionContext};
 use crate::render::viewport::ViewportConfig;
@@ -107,8 +107,7 @@ impl Projection for Cylinder {
                 &ctx.calibration.framing,
                 f64::from(ctx.calibration.lenses[0].height),
                 ctx.viewport,
-                ctx.yaw,
-                ctx.pitch,
+                ctx.pose,
             )),
             // Single surface: nothing underneath to blend with.
             BlendRule::Opaque,
@@ -218,10 +217,10 @@ impl CylinderMap {
     /// Build the map for one output frame at the given pose.
     ///
     /// The parameters split by lifetime: `cylinder` and `framing` are
-    /// the calibrated document (static), `yaw`/`pitch` are the
-    /// per-frame render pose, and the viewport FOV plus output
-    /// dimensions ride in `config`. `source_height_px` backs
-    /// `Cylinder::video_height`'s default.
+    /// the calibrated document (static), `pose` is the per-frame
+    /// render pose (pan + fov zoom), and the output dimensions ride
+    /// in `config`. `source_height_px` backs `Cylinder::video_height`'s
+    /// default.
     ///
     /// The mono camera basis looks along `-Z` with `+X` right and
     /// `+Y` up ([`VirtualCamera::mono`]), and the pose composition
@@ -232,8 +231,7 @@ impl CylinderMap {
         framing: &Framing,
         source_height_px: f64,
         config: &ViewportConfig,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Self {
         let base_forward = [0.0, 0.0, -1.0];
         let base_right = [1.0, 0.0, 0.0];
@@ -259,7 +257,7 @@ impl CylinderMap {
         // come from the rotated forward + up pair, exactly like the
         // look-at construction - deriving right from the pitch axis
         // would silently drop the rig roll.
-        let (yaw, pitch) = (f64::from(yaw), f64::from(pitch));
+        let (yaw, pitch) = (f64::from(pose.yaw), f64::from(pose.pitch));
         let pitch_axis = rotate(base_right, u, yaw);
         let forward = rotate(rotate(f0, u, yaw), pitch_axis, pitch);
         let up = rotate(rotate(u, u, yaw), pitch_axis, pitch);
@@ -271,7 +269,10 @@ impl CylinderMap {
             forward[0] * up[1] - forward[1] * up[0],
         ];
 
-        let tan_half_v = (f64::from(config.fov_degrees).to_radians() * 0.5).tan();
+        // The (1, 179) clamp at the boundary where the pose becomes a
+        // frustum - the same guard as the plane maps and the GPU pass.
+        let fov_degrees = pose.fov_degrees.clamp(1.0, 179.0);
+        let tan_half_v = (f64::from(fov_degrees).to_radians() * 0.5).tan();
         let aspect = f64::from(config.width) / f64::from(config.height);
 
         Self {
@@ -349,6 +350,14 @@ mod tests {
         ViewportConfig {
             width: 200,
             height: 100,
+        }
+    }
+
+    /// The 60-degree test frustum, riding in the pose like production.
+    fn pose(yaw: f32, pitch: f32) -> Pose {
+        Pose {
+            yaw,
+            pitch,
             fov_degrees: 60.0,
         }
     }
@@ -362,7 +371,13 @@ mod tests {
     }
 
     fn map(yaw: f32, pitch: f32) -> CylinderMap {
-        CylinderMap::new(&Cylinder::default(), &level(), SRC_H, &cfg(), yaw, pitch)
+        CylinderMap::new(
+            &Cylinder::default(),
+            &level(),
+            SRC_H,
+            &cfg(),
+            pose(yaw, pitch),
+        )
     }
 
     /// Rig-frame map over a tall painted band, so tilted/rolled
@@ -380,8 +395,7 @@ mod tests {
             },
             SRC_H,
             &cfg(),
-            yaw,
-            0.0,
+            pose(yaw, 0.0),
         )
     }
 
@@ -451,8 +465,7 @@ mod tests {
             &level(),
             SRC_H,
             &cfg(),
-            0.0,
-            0.0,
+            pose(0.0, 0.0),
         );
         let top = tall.sample_uv(100, 0).unwrap();
         let bottom = tall.sample_uv(100, 99).unwrap();

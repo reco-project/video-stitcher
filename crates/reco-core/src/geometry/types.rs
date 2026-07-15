@@ -21,12 +21,14 @@ pub struct Pose {
     /// `0.0` = level. Positive = looking up.
     pub pitch: f32,
 
-    /// Field of view in degrees, or `None` to use the pipeline's
-    /// default FOV.
+    /// Vertical field of view in degrees (nalgebra `Perspective3`
+    /// convention).
     ///
-    /// Typical range: 30.0 (zoomed in) to 120.0 (wide). The pipeline
-    /// default is 75.0.
-    pub fov_degrees: Option<f32>,
+    /// Typical range: 30.0 (zoomed in) to 120.0 (wide). The single
+    /// home for fov: it travels with yaw/pitch in every pose, and the
+    /// render boundary clamps it to `(1, 179)` before building a
+    /// projection matrix. There is no retained pipeline fov state.
+    pub fov_degrees: f32,
 }
 
 impl Default for Pose {
@@ -34,7 +36,7 @@ impl Default for Pose {
         Self {
             yaw: 0.0,
             pitch: 0.0,
-            fov_degrees: None,
+            fov_degrees: 75.0,
         }
     }
 }

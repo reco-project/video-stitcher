@@ -720,20 +720,15 @@ impl RecoSource {
                 self.try_init_pipeline();
                 self.warned_unsupported_format = false;
             } else {
-                // Advance the PoseControl interpolation once per
-                // tick and push the current pose / FOV into the
-                // pipeline. Smoothing means the actual submitted
-                // pose lags one tick behind the most recent drag or
-                // scroll, which gives the visible output a natural
-                // ease-in rather than jittering on every mouse
-                // event.
+                // Advance the PoseControl interpolation once per tick
+                // and submit at the eased pose - fov rides in it like
+                // yaw/pitch, so there is no pipeline zoom state to
+                // sync. Smoothing means the actual submitted pose lags
+                // one tick behind the most recent drag or scroll,
+                // which gives the visible output a natural ease-in
+                // rather than jittering on every mouse event.
                 self.pose.tick();
-                let yaw = self.pose.current_yaw_rad();
-                let pitch = self.pose.current_pitch_rad();
-                let fov = self.pose.current_fov_deg();
-                if let Some(core) = self.core.as_mut() {
-                    core.set_fov(fov);
-                }
+                let pose = self.pose.current_pose();
                 let result = match self.input_format {
                     InputFormat::Yuv420p => {
                         // Wrap OBS planes as StridedYuvPlanes and repack
@@ -744,7 +739,7 @@ impl RecoSource {
                         let left_tight = left_strided.copy_into(&mut self.left_repack);
                         let right_tight = right_strided.copy_into(&mut self.right_repack);
                         let session = self.core.as_mut().expect("checked above");
-                        session.submit_frame_yuv_at_pose(&left_tight, &right_tight, yaw, pitch)
+                        session.submit_frame_yuv_at_pose(&left_tight, &right_tight, pose)
                     }
                     InputFormat::Bgra => {
                         // BGRA sources: swizzle bytes into cached RGBA
@@ -756,7 +751,7 @@ impl RecoSource {
                         let left_bgra = build_bgra_planes(l, &mut self.left_repack);
                         let right_bgra = build_bgra_planes(r, &mut self.right_repack);
                         let session = self.core.as_mut().expect("checked above");
-                        session.submit_frame_bgra_at_pose(&left_bgra, &right_bgra, yaw, pitch)
+                        session.submit_frame_bgra_at_pose(&left_bgra, &right_bgra, pose)
                     }
                     InputFormat::Nv12 => {
                         // Not yet supported in reco-obs; guarded above.
@@ -1555,7 +1550,9 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
         src.pose.set_target(Pose {
             yaw: target_yaw_deg.to_radians(),
             pitch: target_pitch_deg.to_radians(),
-            fov_degrees: None,
+            // The sliders drive pan only; zoom keeps its current target
+            // (the wheel/hotkey path owns it).
+            ..src.pose.target_pose()
         });
 
         // Replay recording toggle + path. Recorder attachment itself

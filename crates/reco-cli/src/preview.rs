@@ -194,7 +194,7 @@ pub fn run_preview(
                 rest_pose: Pose {
                     yaw: 0.0,
                     pitch: 0.0,
-                    fov_degrees: Some(initial_fov),
+                    fov_degrees: initial_fov,
                 },
             })
         },
@@ -362,13 +362,8 @@ impl App {
                 let mut cfg = *self.pose.config();
                 cfg.fov_max_degrees = self.max_fov;
                 self.pose.set_config(cfg);
-                self.pose.set_target_fov(
-                    self.pose
-                        .target_pose()
-                        .fov_degrees
-                        .unwrap_or(self.max_fov)
-                        .min(self.max_fov),
-                );
+                self.pose
+                    .set_target_fov(self.pose.target_pose().fov_degrees.min(self.max_fov));
             }
         }
         self.needs_redraw = true;
@@ -441,7 +436,7 @@ impl App {
         let after = self.pose.current_pose();
         let dy = (after.yaw - before.yaw).abs();
         let dp = (after.pitch - before.pitch).abs();
-        let df = after.fov_degrees.unwrap_or(0.0) - before.fov_degrees.unwrap_or(0.0);
+        let df = after.fov_degrees - before.fov_degrees;
         dy > EPSILON || dp > EPSILON || df.abs() > FOV_EPSILON
     }
 }
@@ -500,7 +495,6 @@ impl ApplicationHandler for App {
         let viewport = reco_core::render::viewport::ViewportConfig {
             width: self.width,
             height: self.height,
-            ..Default::default()
         };
 
         let executor = GpuExecutor::new(
@@ -994,8 +988,7 @@ impl ApplicationHandler for App {
         let current = self.pose.current_pose();
         let smoothing_active = (target.yaw - current.yaw).abs() > 0.0001
             || (target.pitch - current.pitch).abs() > 0.0001
-            || (target.fov_degrees.unwrap_or(0.0) - current.fov_degrees.unwrap_or(0.0)).abs()
-                > 0.01;
+            || (target.fov_degrees - current.fov_degrees).abs() > 0.01;
 
         // Execute coalesced seek: rapid key presses accumulate into
         // pending_seek; only the final target runs here (one seek

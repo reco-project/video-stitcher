@@ -519,7 +519,7 @@ impl AppState {
                 rest_pose: Pose {
                     yaw: 0.0,
                     pitch: 0.0,
-                    fov_degrees: Some(FOV_DEFAULT),
+                    fov_degrees: FOV_DEFAULT,
                 },
                 ..PoseControlConfig::default()
             }),
@@ -569,7 +569,7 @@ impl AppState {
             rest_pose: Pose {
                 yaw: 0.0,
                 pitch: 0.0,
-                fov_degrees: Some(FOV_DEFAULT),
+                fov_degrees: FOV_DEFAULT,
             },
             ..PoseControlConfig::default()
         });
@@ -4305,9 +4305,7 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
         let current = s.pose.current_pose();
         app.set_yaw(current.yaw);
         app.set_pitch(current.pitch);
-        if let Some(fov) = current.fov_degrees {
-            app.set_fov(fov);
-        }
+        app.set_fov(current.fov_degrees);
         return true;
     }
     false
@@ -4447,9 +4445,6 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
 
             s.clamp_targets();
             let clamped_fov = s.pose.current_fov_deg();
-            if let Some(bridge) = s.bridge.as_mut() {
-                bridge.engine_mut().set_fov(clamped_fov);
-            }
             let img = s.render_current();
             // Seed calibration slider values from the baseline layout.
             let layout = s.cal_baseline.clone();
@@ -4724,9 +4719,6 @@ fn handle_calibration_result(
                     state.reset_view();
                     state.clamp_targets();
                     let clamped_fov = state.pose.current_fov_deg();
-                    if let Some(bridge) = state.bridge.as_mut() {
-                        bridge.engine_mut().set_fov(clamped_fov);
-                    }
                     let img = state.render_current();
                     let (in_w, in_h) = state.playback.input_dimensions().unwrap_or((0, 0));
 

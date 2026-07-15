@@ -265,7 +265,7 @@ mod tests {
                 Some(b) => Pose {
                     yaw: b.yaw,
                     pitch: b.pitch,
-                    fov_degrees: None,
+                    ..Default::default()
                 },
                 None => Pose::default(),
             }

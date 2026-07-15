@@ -188,7 +188,7 @@ impl StitchSession {
                 left_slot,
                 right_slot,
             } => {
-                self.render_gpu_resident(*left_slot, *right_slot, pos.yaw, pos.pitch)?;
+                self.render_gpu_resident(*left_slot, *right_slot, pos)?;
             }
             #[cfg(target_os = "linux")]
             StereoFrame::NvmmResident { left, right } => {
@@ -196,10 +196,10 @@ impl StitchSession {
                     // Buffered path: the frame was already imported + copied
                     // into the pool slot during produce; render from it. The
                     // slot args are ignored when current_vram_slot is set.
-                    self.render_gpu_resident(0, 0, pos.yaw, pos.pitch)?;
+                    self.render_gpu_resident(0, 0, pos)?;
                 } else {
                     // Immediate path: import the DMA-buf and render directly.
-                    self.render_nvmm_immediate(left, right, pos.yaw, pos.pitch)?;
+                    self.render_nvmm_immediate(left, right, pos)?;
                 }
             }
             #[cfg(target_os = "windows")]
@@ -212,12 +212,7 @@ impl StitchSession {
                 if let Some(staging_slot) = self.current_vram_slot {
                     // Buffered path: staging was done during produce.
                     // Render from the pre-staged slot.
-                    self.render_d3d11_from_slot(
-                        staging_slot,
-                        staging_slot + 1,
-                        pos.yaw,
-                        pos.pitch,
-                    )?;
+                    self.render_d3d11_from_slot(staging_slot, staging_slot + 1, pos)?;
                 } else {
                     // Immediate path: stage and render now.
                     let _ = self
@@ -236,11 +231,11 @@ impl StitchSession {
                     if first {
                         return Ok(());
                     }
-                    self.render_d3d11_staged(pos.yaw, pos.pitch)?;
+                    self.render_d3d11_staged(pos)?;
                 }
             }
             _ => {
-                self.process_frame(frame, pos.yaw, pos.pitch)?;
+                self.process_frame(frame, pos)?;
             }
         }
         let render_time = render_t0.elapsed();
@@ -277,18 +272,13 @@ impl StitchSession {
         feature = "profiling",
         tracing::instrument(skip_all, name = "session_process_frame")
     )]
-    pub fn process_frame(
-        &mut self,
-        frame: &StereoFrame,
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<(), SessionError> {
+    pub fn process_frame(&mut self, frame: &StereoFrame, pose: Pose) -> Result<(), SessionError> {
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         if let StereoFrame::MetalResident { left, right } = frame {
-            return self.process_metal_frame(left, right, yaw, pitch);
+            return self.process_metal_frame(left, right, pose);
         }
 
-        let render_buf = self.core.render_stereo_frame_at_pose(frame, yaw, pitch)?;
+        let render_buf = self.core.render_stereo_frame_at_pose(frame, pose)?;
         self.submit_render_output(render_buf)?;
         // GPU stacked-replay pack tap (M7). `render_stereo_frame_at_pose`
         // has just populated the renderer's internal plane textures
@@ -312,12 +302,11 @@ impl StitchSession {
         &mut self,
         left_rgba: &wgpu::Texture,
         right_rgba: &wgpu::Texture,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<(), SessionError> {
         let render_buf = self
             .core
-            .render_gpu_rgba_at_pose(left_rgba, right_rgba, yaw, pitch)?;
+            .render_gpu_rgba_at_pose(left_rgba, right_rgba, pose)?;
         self.submit_render_output(render_buf)?;
         self.core.pack_replay_from_pipeline();
         Ok(())
@@ -335,12 +324,11 @@ impl StitchSession {
         left_uv: &wgpu::Texture,
         right_y: &wgpu::Texture,
         right_uv: &wgpu::Texture,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<(), SessionError> {
         let render_buf = self
             .core
-            .render_imported_textures_at_pose(left_y, left_uv, right_y, right_uv, yaw, pitch)?;
+            .render_imported_textures_at_pose(left_y, left_uv, right_y, right_uv, pose)?;
         self.submit_render_output(render_buf)?;
 
         // Replay pack from the imported views (not internal plane textures,
@@ -362,8 +350,7 @@ impl StitchSession {
         &mut self,
         left: &crate::interop::metal::RetainedCVPixelBuffer,
         right: &crate::interop::metal::RetainedCVPixelBuffer,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<(), SessionError> {
         // SAFETY: RetainedCVPixelBuffer guarantees the pointers are valid.
         let [ly, lu, ry, ru] =
@@ -371,14 +358,7 @@ impl StitchSession {
                 .map_err(SessionError::ZeroCopy)?;
         // The imported planes must outlive the render + readback below
         // (each keeps its CVMetalTextureRef alive).
-        self.process_frame_imported_nv12(
-            &ly.texture,
-            &lu.texture,
-            &ry.texture,
-            &ru.texture,
-            yaw,
-            pitch,
-        )
+        self.process_frame_imported_nv12(&ly.texture, &lu.texture, &ry.texture, &ru.texture, pose)
     }
 
     /// Render a GpuResident frame: shared CUDA/Vulkan textures.
@@ -391,15 +371,14 @@ impl StitchSession {
         &mut self,
         left_slot: u8,
         right_slot: u8,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<(), SessionError> {
         // VRAM pool path: render from the staged pool slot.
         // Decode slots were already freed during produce.
         if let Some(vram_idx) = self.current_vram_slot {
             let render_buf = self
                 .gpu_exec()
-                .render_pool_slot(vram_idx, yaw, pitch)
+                .render_pool_slot(vram_idx, pose)
                 .map_err(crate::core::types::StitchCoreError::from)?;
             self.submit_render_output(render_buf)?;
             return Ok(());
@@ -408,7 +387,7 @@ impl StitchSession {
         // Shared texture path (non-buffered / immediate mode).
         let render_buf = self
             .gpu_exec()
-            .render_shared_slots(left_slot, right_slot, yaw, pitch)
+            .render_shared_slots(left_slot, right_slot, pose)
             .map_err(|e| SessionError::ZeroCopy(e.to_string()))?;
         self.submit_render_output(render_buf)?;
 
@@ -457,14 +436,13 @@ impl StitchSession {
         &mut self,
         left: &crate::source::NvmmPlaneInfo,
         right: &crate::source::NvmmPlaneInfo,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<(), SessionError> {
         let [ly, lu, ry, ru] = self
             .gpu_exec()
             .import_nvmm(left, right)
             .map_err(SessionError::ZeroCopy)?;
-        self.process_frame_imported_nv12(&ly, &lu, &ry, &ru, yaw, pitch)
+        self.process_frame_imported_nv12(&ly, &lu, &ry, &ru, pose)
     }
 
     /// Stage D3D11VA decoded frames into the executor's staging pool
@@ -508,22 +486,21 @@ impl StitchSession {
         &mut self,
         left_slot: usize,
         right_slot: usize,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<(), SessionError> {
         let render_buf = self
             .gpu_exec()
-            .render_d3d11_slots(left_slot, right_slot, yaw, pitch)
+            .render_d3d11_slots(left_slot, right_slot, pose)
             .map_err(|e| SessionError::ZeroCopy(e.to_string()))?;
         self.submit_render_output(render_buf)
     }
 
     /// Render from already-staged D3D11VA views (immediate path).
     #[cfg(target_os = "windows")]
-    fn render_d3d11_staged(&mut self, yaw: f32, pitch: f32) -> Result<(), SessionError> {
+    fn render_d3d11_staged(&mut self, pose: Pose) -> Result<(), SessionError> {
         let left_pool_slot = self.frame_count as usize % 2;
         let right_pool_slot = left_pool_slot + 2;
-        self.render_d3d11_from_slot(left_pool_slot, right_pool_slot, yaw, pitch)?;
+        self.render_d3d11_from_slot(left_pool_slot, right_pool_slot, pose)?;
 
         if let Some(views) = self
             .gpu_exec_ref()

@@ -17,10 +17,8 @@
 //!   implemented directly by the calibration topology's parameter
 //!   structs ([`LShape`](crate::projection::LShape),
 //!   [`Cylinder`](crate::projection::Cylinder)). The executor reads it
-//!   through the document (see
-//!   [`GpuExecutorConfig`](crate::stitch::GpuExecutorConfig) for the
-//!   injection override); the
-//!   engine reads it back for coverage construction.
+//!   through the document; the engine reads it back for coverage
+//!   construction.
 //! - [`crate::detect::detector::UnifiedDetector`] - collapsed CPU/CUDA/Metal
 //!   detector contract with `DetectorError` for remote-inference futures.
 //!   Wired via `StitchCore::set_detector`; detection runs on every
@@ -373,10 +371,10 @@ impl StitchCore {
         self.resolve_current_pose(false)
     }
 
-    /// Clamp a prospective `(yaw, pitch, fov)` triple through the
-    /// coverage boundary. No-op if no coverage is available (e.g. the
-    /// calibration produced a degenerate boundary). `fov_degrees: None`
-    /// uses the pipeline's current FOV.
+    /// Clamp a prospective pose through the coverage boundary. No-op
+    /// if no coverage is available (e.g. the calibration produced a
+    /// degenerate boundary). Pure: reads and returns poses, touches no
+    /// pipeline state.
     ///
     /// Input is treated as world-space (matches the director-output
     /// contract). Output is render-space: resolved through the shared
@@ -386,10 +384,7 @@ impl StitchCore {
         let Some(coverage) = &self.coverage else {
             return pose;
         };
-        let fov = pose
-            .fov_degrees
-            .unwrap_or_else(|| self.executor.fov())
-            .min(coverage.max_fov_degrees());
+        let fov = pose.fov_degrees.min(coverage.max_fov_degrees());
         let aspect = self.executor.viewport().aspect_ratio();
         let rig_tilt = self.executor.calibration().framing.tilt as f32;
         let rig_roll = self.executor.calibration().framing.roll as f32;
@@ -401,7 +396,7 @@ impl StitchCore {
         Pose {
             yaw,
             pitch,
-            fov_degrees: Some(fov),
+            fov_degrees: fov,
         }
     }
 
@@ -434,16 +429,6 @@ impl StitchCore {
     /// The active calibration document.
     pub fn calibration(&self) -> &Calibration {
         self.executor.calibration()
-    }
-
-    /// Set the vertical field of view in degrees.
-    pub fn set_fov(&mut self, fov_degrees: f32) {
-        self.executor.set_fov(fov_degrees);
-    }
-
-    /// Current vertical field of view in degrees.
-    pub fn fov(&self) -> f32 {
-        self.executor.fov()
     }
 
     /// Resize the output viewport. Returns the accepted `(width, height)`,
@@ -870,7 +855,6 @@ mod tests {
             ViewportConfig {
                 width: w,
                 height: h,
-                ..Default::default()
             },
             w,
             h,
@@ -887,16 +871,8 @@ mod tests {
         assert!(core.max_fov_degrees().is_some());
 
         // Live setters dispatch to the CPU arm (document mutation).
-        core.set_fov(50.0);
-        assert!((core.fov() - 50.0).abs() < f32::EPSILON);
-        // Out-of-range FOV clamps on the CPU arm exactly like the GPU
-        // pipeline does - the executors must not diverge here.
-        core.set_fov(0.0);
-        assert!(
-            (core.fov() - 1.0).abs() < f32::EPSILON,
-            "CPU arm clamps FOV to the valid range"
-        );
-        core.set_fov(50.0);
+        // fov is deliberately absent here: it rides in every pose, so
+        // there is no retained zoom state to set.
         core.set_blend_width(0.1);
         assert!((core.calibration().topology.blend_width() - 0.1).abs() < 1e-6);
         core.set_rig_tilt(0.2);
@@ -908,7 +884,7 @@ mod tests {
         let clamped = core.safe_clamp(Pose {
             yaw: 10.0,
             pitch: 10.0,
-            fov_degrees: Some(50.0),
+            fov_degrees: 50.0,
         });
         assert!(clamped.yaw.is_finite() && clamped.pitch.is_finite());
         assert!(
@@ -945,7 +921,7 @@ mod tests {
                 StitchCoreError::RequiresGpu
             ));
             assert!(matches!(
-                core.render_yuv_at_pose(&planes, &planes, 0.0, 0.0)
+                core.render_yuv_at_pose(&planes, &planes, Pose::default())
                     .unwrap_err(),
                 StitchCoreError::RequiresGpu
             ));
@@ -976,7 +952,6 @@ mod tests {
         let config = ViewportConfig {
             width: out_w,
             height: out_h,
-            ..Default::default()
         };
         let (ly, luv) = nv12(cam_w, cam_h, 0);
         let (ry, ruv) = nv12(cam_w, cam_h, 30);
@@ -1051,7 +1026,6 @@ mod tests {
                 viewport: ViewportConfig {
                     width: 160,
                     height: 90,
-                    ..Default::default()
                 },
                 ..GpuExecutorConfig::new(calib(cam_w, cam_h), cam_w, cam_h, InputFormat::Nv12)
             },
@@ -1132,7 +1106,6 @@ mod tests {
             ViewportConfig {
                 width: w,
                 height: h,
-                ..Default::default()
             },
             w,
             h,

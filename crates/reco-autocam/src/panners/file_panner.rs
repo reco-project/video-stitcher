@@ -21,6 +21,7 @@ impl FilePanner {
         let file = std::fs::File::open(path)?;
         let reader = std::io::BufReader::new(file);
         let mut poses = HashMap::new();
+        let mut last_fov = Pose::default().fov_degrees;
 
         for (i, line) in reader.lines().enumerate() {
             let line = line?;
@@ -34,13 +35,17 @@ impl FilePanner {
             let frame: u64 = cols[0].trim().parse()?;
             let yaw: f32 = cols[1].trim().parse()?;
             let pitch: f32 = cols[2].trim().parse()?;
-            let fov: Option<f32> = cols.get(3).and_then(|s| s.trim().parse().ok());
+            // Rows without an fov column hold the previous row's zoom,
+            // mirroring how FieldPanner holds fov on ball-only frames.
+            if let Some(fov) = cols.get(3).and_then(|s| s.trim().parse().ok()) {
+                last_fov = fov;
+            }
             poses.insert(
                 frame,
                 Pose {
                     yaw,
                     pitch,
-                    fov_degrees: fov,
+                    fov_degrees: last_fov,
                 },
             );
         }

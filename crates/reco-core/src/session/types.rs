@@ -301,7 +301,6 @@ impl StitchSessionBuilder {
         let viewport = self.viewport.unwrap_or(ViewportConfig {
             width: 1920,
             height: 1080,
-            ..Default::default()
         });
 
         let gpu = match self.gpu {
