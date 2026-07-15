@@ -767,6 +767,11 @@ export component RecoApp inherits Window {
     callback cancel-export();
     callback submit-bug-report(string, string, bool);
     in-out property <bool> bug-dialog-open: false;
+    // Confirmation shown when Start Export is clicked with no field ROI set -
+    // export still works without one, but AI framing/tracking degrades badly,
+    // so this catches the common "forgot to set it" mistake before a long
+    // export runs to completion.
+    in-out property <bool> no-roi-warning-open: false;
     in-out property <string> bug-user-contact: "";
     callback show-in-folder(string);
     callback toggle-recording(string, string);
@@ -2726,13 +2731,68 @@ export component RecoApp inherits Window {
                             // tracking and no warning.
                             enabled: root.export-output-path != ""
                                 && !(root.export-autocam-enabled && root.export-model-path == "");
-                            clicked => { root.start-export(); }
+                            clicked => {
+                                if !root.has-roi {
+                                    root.no-roi-warning-open = true;
+                                } else {
+                                    root.start-export();
+                                }
+                            }
                         }
                     }
                 }
                 }  // close ScrollView
             }
         }
+        // ── No-ROI export confirmation (modal) ──
+        //
+        // Rendered after the Export dialog so it stacks on top when both
+        // are open (Start Export is clicked from inside that dialog).
+        if root.no-roi-warning-open: Rectangle {
+            background: root.bg-scrim;
+            TouchArea { clicked => { root.no-roi-warning-open = false; } }
+
+            Rectangle {
+                width: 420px;
+                height: min(parent.height - 60px, 260px);
+                background: root.bg-surface;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: root.border-mid;
+                TouchArea {}
+
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 14px;
+
+                    Text { text: "No field ROI set"; color: root.text-heading; font-size: 18px; font-weight: 600; }
+
+                    Text {
+                        text: "This calibration has no field ROI. AI framing and tracking use it to stay on the pitch, so without one the export may frame poorly. Continue anyway?";
+                        color: root.text-muted;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+
+                    Rectangle { vertical-stretch: 1; }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+                        Button { text: "Cancel"; clicked => { root.no-roi-warning-open = false; } }
+                        Button {
+                            text: "Export Anyway";
+                            primary: true;
+                            clicked => {
+                                root.no-roi-warning-open = false;
+                                root.start-export();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // ── Lens profile picker dialog (modal) ──
         if root.lens-picker-open: Rectangle {
             background: root.bg-scrim;
