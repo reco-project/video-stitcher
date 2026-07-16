@@ -806,7 +806,7 @@ impl GpuExecutor {
             pool.uv_view(right_slot),
             yaw,
             pitch,
-        ))
+        )?)
     }
 
     /// Y/UV detection views over two staged slots, Arc-cloned so

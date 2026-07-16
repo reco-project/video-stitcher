@@ -234,7 +234,7 @@ impl Lens {
 /// Scene geometry parameters: which shape the sources are painted on.
 ///
 /// Serialized with a mandatory `type` tag (`"l-shape"` / `"cylinder"`).
-/// The matching [`Projection`](crate::projection::Projection) dispatches
+/// The matching [`Projection`] dispatches
 /// the actual geometry; this carries its parameters. The virtual-camera
 /// position lives in [`Framing`], not here.
 #[derive(Debug, Clone, Serialize, Deserialize)]
