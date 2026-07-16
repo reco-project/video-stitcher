@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use reco_core::render::viewport::ViewportSize;
 use reco_core::source::StereoFrame;
 use reco_io::gstreamer::camera::CameraConfig;
 
@@ -140,7 +141,7 @@ pub fn run_camera(
     }
     let field_roi = cal.field_roi.clone();
 
-    let viewport = reco_core::render::viewport::ViewportSize {
+    let viewport = ViewportSize {
         width,
         height,
         ..Default::default()

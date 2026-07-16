@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use reco_core::render::viewport::ViewportSize;
 use reco_core::source::FrameSource;
 
 use crate::helpers;
@@ -78,7 +79,7 @@ pub fn run_libcamera(
         }
     }
 
-    let viewport = reco_core::render::viewport::ViewportSize { width, height };
+    let viewport = ViewportSize { width, height };
 
     let gpu = reco_core::gpu::GpuContext::new_blocking()?;
 

@@ -107,7 +107,7 @@ impl StitchPipeline {
         gpu: GpuContext,
         program: &crate::render::GpuProgram,
         calibration: Calibration,
-        viewport: ViewportSize,
+        size: ViewportSize,
         input_width: u32,
         input_height: u32,
         output_format: impl Into<wgpu::TextureFormat>,
@@ -120,7 +120,7 @@ impl StitchPipeline {
         // NaN surfaces as a typed error instead of an index panic or a
         // GPU hang further down.
         calibration.validate()?;
-        if let Err(e) = viewport.validate() {
+        if let Err(e) = size.validate() {
             return Err(PipelineError::InvalidConfig { reason: e });
         }
         if input_width == 0 || input_height == 0 {
@@ -142,8 +142,8 @@ impl StitchPipeline {
         let renderer = Renderer::new(
             &gpu,
             program,
-            viewport.width,
-            viewport.height,
+            size.width,
+            size.height,
             input_width,
             input_height,
             output_format,
@@ -155,8 +155,8 @@ impl StitchPipeline {
 
         log::info!(
             "Pipeline initialized: {}x{} output, GPU: {}",
-            viewport.width,
-            viewport.height,
+            size.width,
+            size.height,
             gpu.adapter_info.name
         );
 
@@ -164,7 +164,7 @@ impl StitchPipeline {
             gpu,
             scene,
             calibration,
-            viewport,
+            viewport: size,
             renderer,
             input_width,
             input_height,

@@ -24,6 +24,7 @@ use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use crate::output::{AudioMode, Bitrate, Codec, Format, Quality};
+use reco_core::render::viewport::ViewportSize;
 use reco_core::session::StitchSession;
 use reco_core::session::types::FrameProgress;
 use reco_core::source::FrameSource;
@@ -687,7 +688,7 @@ impl StitchJob {
                 );
             }
         }
-        let viewport = reco_core::render::viewport::ViewportSize {
+        let viewport = ViewportSize {
             width: out_w,
             height: out_h,
         };

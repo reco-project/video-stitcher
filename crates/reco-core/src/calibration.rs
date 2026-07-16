@@ -165,22 +165,17 @@ pub(crate) fn expect_in_range(
 const VALIDATION_EPSILON: f64 = 1e-6;
 
 /// Reject a value that is not meaningfully positive: at or below
-/// [`VALIDATION_EPSILON`]. For fields the geometry divides by or
-/// normalizes with (focal lengths, camera offsets). Owning the
-/// epsilon here keeps the tolerance policy out of projection code.
+/// [`VALIDATION_EPSILON`]. For any field the math downstream divides
+/// by, normalizes with, or that is nonsensical at ~zero. The strict
+/// bound is the point: "equal to the threshold" is as degenerate as
+/// "below it". Owning the epsilon here keeps the tolerance policy out
+/// of projection code.
 pub(crate) fn expect_positive(field: &str, value: f64) -> Result<(), CalibrationError> {
-    expect_above(field, value, VALIDATION_EPSILON)
-}
-
-/// Reject a value at or below `epsilon`. The strict bound is the point:
-/// callers guard divisions and normalizations, where "equal to the
-/// threshold" is as degenerate as "below it".
-pub(crate) fn expect_above(field: &str, value: f64, epsilon: f64) -> Result<(), CalibrationError> {
-    if value <= epsilon {
+    if value <= VALIDATION_EPSILON {
         return Err(CalibrationError::ValueTooSmall {
             field: field.to_owned(),
             value,
-            epsilon,
+            epsilon: VALIDATION_EPSILON,
         });
     }
     Ok(())
@@ -840,12 +835,13 @@ mod tests {
         assert!(bad(|t| t.focal_length = 0.0).is_err());
         assert!(bad(|t| t.video_height = Some(f64::NAN)).is_err());
 
-        // The messages must state the documented (0, 360] sweep bounds,
-        // not float internals like MIN_POSITIVE.
+        // The messages must state the documented (0, 360] sweep bounds
+        // and the validation epsilon, not float internals like
+        // MIN_POSITIVE.
         let msg = bad(|t| t.sweep_deg = 361.0).unwrap_err().to_string();
         assert!(msg.contains("[0, 360]"), "{msg}");
         let msg = bad(|t| t.sweep_deg = 0.0).unwrap_err().to_string();
-        assert!(msg.contains("> 0,"), "{msg}");
+        assert!(msg.contains("> 0.000001,"), "{msg}");
     }
 
     #[test]

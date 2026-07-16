@@ -24,6 +24,7 @@ use std::time::Instant;
 use reco_control::pose_control::HotkeyIntent;
 use reco_control::{ControlIntent, PoseIntent};
 use reco_core::core::StitchCore;
+use reco_core::render::viewport::ViewportSize;
 use reco_core::sink::{OutputFrame, OutputSink, PixelFormat};
 use reco_core::source::{FrameSource, YuvData};
 use reco_core::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
@@ -492,7 +493,7 @@ impl ApplicationHandler for App {
         // (Blend was already resolved onto self.cal at load.)
         self.cal.framing.tilt = self.rig_tilt as f64;
         self.cal.framing.roll = self.rig_roll as f64;
-        let viewport = reco_core::render::viewport::ViewportSize {
+        let viewport = ViewportSize {
             width: self.width,
             height: self.height,
         };

@@ -8,8 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::calibration::{
-    Calibration, CalibrationError, Framing, expect_above, expect_finite, expect_in_range,
-    expect_positive,
+    Calibration, CalibrationError, Framing, expect_finite, expect_in_range, expect_positive,
 };
 use crate::geometry::{Pose, VirtualCamera};
 use crate::projection::{CoverageBoundary, Projection, ProjectionContext};
@@ -68,13 +67,13 @@ impl Cylinder {
         expect_positive("topology.focal_length", self.focal_length)?;
 
         expect_finite("topology.sweep_deg", self.sweep_deg)?;
-        expect_above("topology.sweep_deg", self.sweep_deg, 0.0)?;
+        expect_positive("topology.sweep_deg", self.sweep_deg)?;
         expect_in_range("topology.sweep_deg", self.sweep_deg, 0.0, 360.0)?;
 
         // Omitted = the source pixel height, always valid.
         if let Some(height) = self.video_height {
             expect_finite("topology.video_height", height)?;
-            expect_above("topology.video_height", height, 0.0)?;
+            expect_positive("topology.video_height", height)?;
         }
         Ok(())
     }
