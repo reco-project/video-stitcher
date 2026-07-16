@@ -293,8 +293,6 @@ struct AppState {
     lens_preview_side: String,
     /// Lens correction amount for the preview (0.0 = raw, 1.0 = full).
     lens_correction_amount: f32,
-    /// Set by the ROI editor thread. Timer tick reloads calibration when true.
-    roi_reload_pending: Option<Arc<AtomicBool>>,
     toasts: ToastManager,
     telemetry: Option<telemetry_client::TelemetryClient>,
 }
@@ -518,7 +516,6 @@ impl AppState {
             lens_preview_active: false,
             lens_preview_side: "left".into(),
             lens_correction_amount: 1.0,
-            roi_reload_pending: None,
             toasts: ToastManager::default(),
             telemetry: None,
         }
@@ -1214,19 +1211,145 @@ fn sync_roi_points(state: &AppState, app: &RecoApp) {
     let (xs, ys) = if let Some(cal) = &state.calibration
         && let Some(roi) = &cal.field_roi
     {
-        let side = if state.lens_preview_side == "right" {
-            &roi.right
-        } else {
-            &roi.left
-        };
-        let xs: Vec<f32> = side.iter().map(|p| p[0] as f32).collect();
-        let ys: Vec<f32> = side.iter().map(|p| p[1] as f32).collect();
+        let is_right = state.lens_preview_side == "right";
+        let side = if is_right { &roi.right } else { &roi.left };
+        let lens = &cal.lenses[if is_right { 1 } else { 0 }];
+        let display: Vec<[f64; 2]> = side
+            .iter()
+            .map(|p| raw_norm_to_rectified_norm(p[0], p[1], lens))
+            .collect();
+        let xs: Vec<f32> = display.iter().map(|p| p[0] as f32).collect();
+        let ys: Vec<f32> = display.iter().map(|p| p[1] as f32).collect();
         (xs, ys)
     } else {
         (vec![], vec![])
     };
+    let aspect = app.get_lens_frame_aspect();
+    app.set_roi_path_commands(roi_path_commands(&xs, &ys, aspect).into());
     app.set_roi_points_x(slint::ModelRc::new(slint::VecModel::from(xs)));
     app.set_roi_points_y(slint::ModelRc::new(slint::VecModel::from(ys)));
+}
+
+/// SVG path `commands` string closing the polygon through `(xs, ys)`
+/// (normalized `[0,1]`), for the ROI outline drawn alongside the vertex
+/// dots. Empty/single-point polygons draw nothing (a line needs at least
+/// two points).
+///
+/// `y` is divided by `aspect` (the camera's native width/height ratio) to
+/// match the `Path` element's `viewbox-height: 1.0 / lens-frame-aspect`
+/// in `main.slint` - the `Path` item always scales its viewbox into its
+/// box uniformly (aspect-preserving), so a plain 0..1 y would land at a
+/// different pixel than the vertex dots (which map y to `content-h`
+/// independently of x/`content-w`). Giving the viewbox the box's own
+/// aspect ratio and pre-scaling y here the same way makes the two match.
+fn roi_path_commands(xs: &[f32], ys: &[f32], aspect: f32) -> String {
+    if xs.len() < 2 {
+        return String::new();
+    }
+    let mut s = String::new();
+    for (i, (x, y)) in xs.iter().zip(ys).enumerate() {
+        let y = y / aspect;
+        if i == 0 {
+            s.push_str(&format!("M {x} {y} "));
+        } else {
+            s.push_str(&format!("L {x} {y} "));
+        }
+    }
+    s.push('Z');
+    s
+}
+
+/// Convert a point in the ROI editor's displayed preview (normalized
+/// `[0,1]`, rectified/undistorted - the lens-correction render always
+/// shown while editing) into the raw distorted-frame normalized `[0,1]`
+/// space `field_roi` is stored in and the AI detector consumes. Without
+/// this, a boundary traced on the rectified preview gets saved as if it
+/// were already in raw-frame coordinates - the two spaces are related by
+/// the lens's own KB4 distortion (strongly non-linear, especially near
+/// the frame edges), so the saved polygon silently drifts away from the
+/// pitch it was drawn around and the detector rejects real in-bounds
+/// detections. `lens` must be the calibration's lens for whichever
+/// camera side is currently being edited. See
+/// `reco_core::lens::undistorted_to_distorted`'s doc comment for the
+/// underlying math (mirrors `fisheye.wgsl`'s fragment shader exactly).
+fn rectified_norm_to_raw_norm(nx: f64, ny: f64, lens: &reco_core::calibration::Lens) -> [f64; 2] {
+    let (w, h) = (lens.width, lens.height);
+    let (raw_x, raw_y) =
+        reco_core::lens::undistorted_to_distorted(nx * w as f64, ny * h as f64, w, h, lens);
+    [
+        (raw_x / w as f64).clamp(0.0, 1.0),
+        (raw_y / h as f64).clamp(0.0, 1.0),
+    ]
+}
+
+/// Inverse of [`rectified_norm_to_raw_norm`] - convert a stored
+/// `field_roi` point (raw distorted-frame normalized) into the ROI
+/// editor's displayed (rectified) preview normalized space, so the
+/// overlay dots/outline and drag hit-testing land at their true
+/// on-screen position instead of wherever the raw fraction happens to
+/// fall in the visually very different rectified image. Falls back to
+/// the raw point unchanged if Newton-Raphson doesn't converge (only
+/// happens very close to the frame's extreme corners - see
+/// `reco_core::lens::distorted_to_undistorted`'s doc comment) so a point
+/// out there stays visible/grabbable near its true position instead of
+/// vanishing.
+fn raw_norm_to_rectified_norm(nx: f64, ny: f64, lens: &reco_core::calibration::Lens) -> [f64; 2] {
+    let (w, h) = (lens.width, lens.height);
+    match reco_core::lens::distorted_to_undistorted(nx * w as f64, ny * h as f64, w, h, lens) {
+        Some((ux, uy)) => [
+            (ux / w as f64).clamp(0.0, 1.0),
+            (uy / h as f64).clamp(0.0, 1.0),
+        ],
+        None => [nx, ny],
+    }
+}
+
+/// Hit-test radius (pixels, in the lens-preview content rect) for
+/// grabbing an existing ROI point to drag or delete.
+const ROI_HIT_RADIUS_PX: f32 = 10.0;
+
+/// Nearest ROI point to `(lx, ly)` within [`ROI_HIT_RADIUS_PX`], if any.
+/// `pts` are normalized `[0,1]`; `(cw, ch)` is the content rect size in
+/// pixels the click coordinates are already relative to.
+fn roi_hit_test(pts: &[[f64; 2]], lx: f32, ly: f32, cw: f32, ch: f32) -> Option<usize> {
+    pts.iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let dx = p[0] as f32 * cw - lx;
+            let dy = p[1] as f32 * ch - ly;
+            (i, (dx * dx + dy * dy).sqrt())
+        })
+        .filter(|(_, d)| *d <= ROI_HIT_RADIUS_PX)
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(i, _)| i)
+}
+
+/// Index at which to insert a newly-clicked point into an existing ROI
+/// polygon so the boundary stays a simple (non-self-crossing) loop
+/// regardless of click order, instead of always appending at the end -
+/// which draws a straight line from the polygon's last point to
+/// wherever the new point landed, producing a crossing/star-shaped
+/// outline unless points happen to be added walking the perimeter in
+/// order (confirmed - this is exactly what a user saw when adding a
+/// point after deleting others). Classic "cheapest insertion" heuristic:
+/// try inserting after each existing point (including the closing edge
+/// back to the first), and pick whichever adds the least extra
+/// perimeter length.
+fn roi_insert_index(pts: &[[f64; 2]], new: [f64; 2]) -> usize {
+    if pts.len() < 2 {
+        return pts.len();
+    }
+    let dist = |a: [f64; 2], b: [f64; 2]| ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt();
+    (0..pts.len())
+        .map(|i| {
+            let a = pts[i];
+            let b = pts[(i + 1) % pts.len()];
+            let added_length = dist(a, new) + dist(new, b) - dist(a, b);
+            (i + 1, added_length)
+        })
+        .min_by(|x, y| x.1.total_cmp(&y.1))
+        .map(|(idx, _)| idx)
+        .unwrap_or(pts.len())
 }
 
 /// Install the standard tracing subscriber + log bridge.
@@ -1931,176 +2054,156 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    // In-app field-ROI point editor (replaces the old browser-based
+    // tool): click the lens preview to add a point, drag an existing one
+    // to move it, right-click to delete it. All four callbacks read/
+    // write `s.calibration.field_roi` for `s.lens_preview_side`; drag
+    // moves are in-memory only (no disk write) and `roi_pointer_up`
+    // flushes the save once per gesture, reusing the same persistence
+    // tail `on_paste_roi` below uses.
+    let state_ref = Rc::clone(&state);
+    // Read-only: hit-tests an existing point without mutating anything.
+    // The Slint side uses this on pointer-down to decide whether the
+    // press landed on a point (start dragging it) or empty space
+    // (tentatively a click-to-add, confirmed only on release if the
+    // pointer never moved far enough to count as a pan instead - see
+    // `roi_pointer_add`).
+    app.on_roi_pointer_hit_test(move |lx, ly, cw, ch| {
+        if cw <= 0.0 || ch <= 0.0 {
+            return -1;
+        }
+        let s = state_ref.borrow();
+        let is_right = s.lens_preview_side == "right";
+        let Some(cal) = s.calibration.as_ref() else {
+            return -1;
+        };
+        let Some(roi) = cal.field_roi.as_ref() else {
+            return -1;
+        };
+        let pts = if is_right { &roi.right } else { &roi.left };
+        let lens = &cal.lenses[if is_right { 1 } else { 0 }];
+        let display: Vec<[f64; 2]> = pts
+            .iter()
+            .map(|p| raw_norm_to_rectified_norm(p[0], p[1], lens))
+            .collect();
+        roi_hit_test(&display, lx, ly, cw, ch)
+            .map(|i| i as i32)
+            .unwrap_or(-1)
+    });
+
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
-    app.on_launch_roi_editor(move || {
-        let paths = {
-            let s = state_ref.borrow();
-            match (
-                s.left_path.clone(),
-                s.right_path.clone(),
-                s.calibration_path.clone(),
-            ) {
-                (Some(l), Some(r), Some(c)) => Some((l, r, c)),
-                _ => None,
-            }
-        };
-        let Some((left, right, cal_path)) = paths else {
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "Cannot set ROI",
-                    "Need left video, right video, and calibration loaded.",
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
-            return;
-        };
-
-        // Use $HOME/.cache/reco instead of /tmp because snap-packaged
-        // browsers (Firefox) can't access /tmp due to sandboxing.
-        let cache_base = std::env::var("XDG_CACHE_HOME")
-            .map(PathBuf::from)
-            .or_else(|_| std::env::var("HOME").map(|h| PathBuf::from(h).join(".cache")))
-            .unwrap_or_else(|_| std::env::temp_dir());
-        let tmp_dir = cache_base.join("reco").join("roi");
-        if let Err(e) = std::fs::create_dir_all(&tmp_dir) {
-            log::error!("Failed to create ROI temp dir {}: {e}", tmp_dir.display());
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "ROI editor",
-                    format!("Cannot create temp dir: {e}"),
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
+    app.on_roi_pointer_add(move |lx, ly, cw, ch| {
+        if cw <= 0.0 || ch <= 0.0 {
             return;
         }
-        let left_png = tmp_dir.join("left.png");
-        let right_png = tmp_dir.join("right.png");
-
-        let current_secs = {
-            let s = state_ref.borrow();
-            if s.playback.fps() > 0.0 {
-                s.playback.frame_index() as f64 / s.playback.fps()
+        let mut s = state_ref.borrow_mut();
+        let is_right = s.lens_preview_side == "right";
+        let rectified = [
+            (lx / cw).clamp(0.0, 1.0) as f64,
+            (ly / ch).clamp(0.0, 1.0) as f64,
+        ];
+        if let Some(cal) = s.calibration.as_mut() {
+            let lens = cal.lenses[if is_right { 1 } else { 0 }].clone();
+            let norm = rectified_norm_to_raw_norm(rectified[0], rectified[1], &lens);
+            let roi = cal.field_roi.get_or_insert_with(Default::default);
+            let pts = if is_right {
+                &mut roi.right
             } else {
-                1.0
-            }
-        };
-        let _seek_str = format!("{:.2}", current_secs);
-        let frame_index = {
-            let s = state_ref.borrow();
-            s.playback.frame_index()
-        };
-        let extract_frame = |video: &std::path::Path, out: &std::path::Path, idx: u64| {
-            match reco_io::ffmpeg::calibration_io::extract_frames(video, &[idx]) {
-                Ok(frames) if !frames.is_empty() => {
-                    let yuv = &frames[0];
-                    let w = yuv.width as usize;
-                    let h = yuv.height as usize;
-                    let uv_w = w / 2;
-                    let mut rgb = vec![0u8; w * h * 3];
-                    for row in 0..h {
-                        for col in 0..w {
-                            let yi = row * w + col;
-                            let uvi = (row / 2) * uv_w + (col / 2);
-                            let y = yuv.y[yi] as f32;
-                            let u = yuv.u[uvi] as f32;
-                            let v = yuv.v[uvi] as f32;
-                            let r = y + 1.402 * (v - 128.0);
-                            let g = y - 0.344 * (u - 128.0) - 0.714 * (v - 128.0);
-                            let b = y + 1.772 * (u - 128.0);
-                            let pi = yi * 3;
-                            rgb[pi] = r.clamp(0.0, 255.0) as u8;
-                            rgb[pi + 1] = g.clamp(0.0, 255.0) as u8;
-                            rgb[pi + 2] = b.clamp(0.0, 255.0) as u8;
-                        }
-                    }
-                    if let Err(e) =
-                        image::save_buffer(out, &rgb, w as u32, h as u32, image::ColorType::Rgb8)
-                    {
-                        log::warn!("Failed to save ROI frame {}: {e}", out.display());
-                    }
-                }
-                Ok(_) => log::warn!("No frame decoded from {}", video.display()),
-                Err(e) => log::error!("Frame extraction failed for {}: {e}", video.display()),
-            }
-        };
-        extract_frame(&left, &left_png, frame_index);
-        extract_frame(&right, &right_png, frame_index);
-        log::info!(
-            "ROI frame extraction: left={} right={}",
-            left_png.exists(),
-            right_png.exists()
-        );
+                &mut roi.left
+            };
+            let idx = roi_insert_index(pts, norm);
+            pts.insert(idx, norm);
+        }
+        // A confirmed click-to-add is a complete gesture on its own (no
+        // separate `roi_pointer_up` follows it), so save right away.
+        if let Err(e) = s.save_calibration() {
+            log::error!("Failed to save calibration after ROI point add: {e}");
+        }
+        if let Some(app) = app_weak.upgrade() {
+            app.set_has_roi(true);
+            sync_roi_points(&s, &app);
+        }
+    });
 
-        use base64::Engine;
-        let b64 = base64::engine::general_purpose::STANDARD;
-
-        let left_data = std::fs::read(&left_png)
-            .ok()
-            .map(|bytes| format!("data:image/png;base64,{}", b64.encode(&bytes)))
-            .unwrap_or_default();
-        let right_data = std::fs::read(&right_png)
-            .ok()
-            .map(|bytes| format!("data:image/png;base64,{}", b64.encode(&bytes)))
-            .unwrap_or_default();
-
-        let cal_json_str = std::fs::read_to_string(&cal_path).unwrap_or_else(|_| "{}".into());
-
-        // Template is embedded at compile time so deployed binaries work
-        // without needing the source tree.
-        let template = include_str!("../../../resources/roi_editor.html");
-        let html = template
-            .replace("'{{LEFT_IMAGE_DATA}}'", &format!("'{left_data}'"))
-            .replace("'{{RIGHT_IMAGE_DATA}}'", &format!("'{right_data}'"))
-            .replace("{{CAL_JSON}}", &cal_json_str)
-            .replace("'{{CAL_PATH}}'", &format!("'{}'", cal_path.display()));
-
-        let out_html = tmp_dir.join("roi_editor.html");
-        if let Err(e) = std::fs::write(&out_html, &html) {
-            log::error!("Failed to write ROI editor HTML: {e}");
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "ROI editor",
-                    format!("Cannot write temp file: {e}"),
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_roi_pointer_drag(move |index, lx, ly, cw, ch| {
+        if cw <= 0.0 || ch <= 0.0 || index < 0 {
             return;
         }
-        log::info!(
-            "ROI editor: wrote {} bytes to {}, opening in browser",
-            html.len(),
-            out_html.display()
-        );
+        let mut s = state_ref.borrow_mut();
+        let is_right = s.lens_preview_side == "right";
+        let rectified = [
+            (lx / cw).clamp(0.0, 1.0) as f64,
+            (ly / ch).clamp(0.0, 1.0) as f64,
+        ];
+        if let Some(cal) = s.calibration.as_mut() {
+            let lens = cal.lenses[if is_right { 1 } else { 0 }].clone();
+            let norm = rectified_norm_to_raw_norm(rectified[0], rectified[1], &lens);
+            if let Some(roi) = cal.field_roi.as_mut() {
+                let pts = if is_right {
+                    &mut roi.right
+                } else {
+                    &mut roi.left
+                };
+                if let Some(p) = pts.get_mut(index as usize) {
+                    *p = norm;
+                }
+            }
+        }
+        if let Some(app) = app_weak.upgrade() {
+            sync_roi_points(&s, &app);
+        }
+    });
 
-        let open_result = open::that(out_html.as_os_str());
-        if let Err(e) = open_result {
-            log::error!("Failed to open ROI editor: {e}");
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "Cannot open browser",
-                    e.to_string(),
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
-        } else {
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Info,
-                    "ROI editor opened in browser",
-                    "Draw field boundary, click Save ROI, then come back here and click Paste ROI.",
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
+    let state_ref = Rc::clone(&state);
+    app.on_roi_pointer_up(move || {
+        let s = state_ref.borrow();
+        if let Err(e) = s.save_calibration() {
+            log::error!("Failed to save calibration after ROI edit: {e}");
+        }
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_roi_pointer_delete(move |lx, ly, cw, ch| {
+        if cw <= 0.0 || ch <= 0.0 {
+            return;
+        }
+        let mut s = state_ref.borrow_mut();
+        let is_right = s.lens_preview_side == "right";
+        let Some(i) = s.calibration.as_ref().and_then(|cal| {
+            let roi = cal.field_roi.as_ref()?;
+            let pts = if is_right { &roi.right } else { &roi.left };
+            let lens = &cal.lenses[if is_right { 1 } else { 0 }];
+            let display: Vec<[f64; 2]> = pts
+                .iter()
+                .map(|p| raw_norm_to_rectified_norm(p[0], p[1], lens))
+                .collect();
+            roi_hit_test(&display, lx, ly, cw, ch)
+        }) else {
+            return;
+        };
+        if let Some(roi) = s.calibration.as_mut().and_then(|c| c.field_roi.as_mut()) {
+            let pts = if is_right {
+                &mut roi.right
+            } else {
+                &mut roi.left
+            };
+            pts.remove(i);
+        }
+        let has = s
+            .calibration
+            .as_ref()
+            .and_then(|c| c.field_roi.as_ref())
+            .is_some_and(|r| !r.left.is_empty() || !r.right.is_empty());
+        if let Err(e) = s.save_calibration() {
+            log::error!("Failed to save calibration after ROI point delete: {e}");
+        }
+        if let Some(app) = app_weak.upgrade() {
+            app.set_has_roi(has);
+            sync_roi_points(&s, &app);
         }
     });
 
@@ -3272,6 +3375,9 @@ fn main() -> anyhow::Result<()> {
         s.lens_preview_active = app.get_lens_preview_active();
         s.lens_preview_side = app.get_lens_preview_side().to_string();
         sync_roi_points(&s, &app);
+        if let Some((w, h)) = s.playback.input_dimensions() {
+            app.set_lens_frame_aspect(w as f32 / h as f32);
+        }
         s.preview_dirty = true;
     });
 
@@ -3933,36 +4039,6 @@ fn main() -> anyhow::Result<()> {
                 {
                     s.user_settings.save();
                     s.last_window_size_save_at = None;
-                }
-            }
-
-            // Check if ROI editor finished and reload calibration.
-            if let Some(ref flag) = s.roi_reload_pending
-                && flag.load(Ordering::Relaxed)
-            {
-                s.roi_reload_pending = None;
-                if let Some(cal_path) = s.calibration_path.as_ref()
-                    && let Ok(cal) = Calibration::from_file(cal_path)
-                {
-                    let has_roi = cal
-                        .field_roi
-                        .as_ref()
-                        .is_some_and(|r| !r.left.is_empty() || !r.right.is_empty());
-                    s.calibration = Some(cal);
-                    if let Some(app) = app_weak.upgrade() {
-                        app.set_has_roi(has_roi);
-                        sync_roi_points(&s, &app);
-                        s.toasts.push(
-                            Severity::Info,
-                            "Field ROI updated",
-                            if has_roi {
-                                "ROI loaded from calibration"
-                            } else {
-                                "No ROI points saved"
-                            },
-                        );
-                        crate::toast::sync_to_ui(&s.toasts, &app);
-                    }
                 }
             }
 
@@ -4714,5 +4790,41 @@ fn handle_calibration_result(
                 crate::toast::sync_to_ui(&state.toasts, &app);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod roi_polygon_tests {
+    use super::roi_insert_index;
+
+    #[test]
+    fn first_two_points_append() {
+        let pts: Vec<[f64; 2]> = vec![];
+        assert_eq!(roi_insert_index(&pts, [0.1, 0.1]), 0);
+        let pts = vec![[0.1, 0.1]];
+        assert_eq!(roi_insert_index(&pts, [0.9, 0.9]), 1);
+    }
+
+    #[test]
+    fn inserts_along_the_nearest_edge_not_always_at_the_end() {
+        // A square, corners in perimeter order.
+        let pts = vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+        // Midpoint of the top edge (0,0)-(1,0) belongs between indices 0 and 1.
+        assert_eq!(roi_insert_index(&pts, [0.5, 0.0]), 1);
+        // Midpoint of the closing edge (0,1)-(0,0) belongs after the last point.
+        assert_eq!(roi_insert_index(&pts, [0.0, 0.5]), 4);
+    }
+
+    #[test]
+    fn out_of_order_clicks_still_close_a_simple_polygon() {
+        // Same square, but as a user would build it while deleting and
+        // re-adding: two opposite corners first, then the remaining two.
+        // Naive append-at-end would bowtie; cheapest-insertion should not.
+        let mut pts = vec![[0.0, 0.0], [1.0, 1.0]];
+        let idx = roi_insert_index(&pts, [1.0, 0.0]);
+        pts.insert(idx, [1.0, 0.0]);
+        let idx = roi_insert_index(&pts, [0.0, 1.0]);
+        pts.insert(idx, [0.0, 1.0]);
+        assert_eq!(pts, vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]);
     }
 }
