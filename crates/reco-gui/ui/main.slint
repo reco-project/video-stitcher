@@ -2621,12 +2621,14 @@ export component RecoApp inherits Window {
                             risk-active: root.lookahead-risk-active;
                         }
 
-                        Tip {
-                            tip: "Buffers the lookahead at 8-bit instead of the source's native bit depth, roughly halving its VRAM cost on 10-bit footage (e.g. DJI Action 4 HEVC) - lets a longer lookahead fit on lower-VRAM cards. No effect on already-8-bit sources. The same buffered frames feed the final render too, so this trades a little gradient smoothness (sky, grass, floodlit surfaces) for memory - leave off unless you're hitting a VRAM error.";
-                            CheckBox {
-                                text: "Reduce lookahead memory (8-bit)";
-                                checked <=> root.export-lookahead-reduced-bit-depth;
-                            }
+                        // Buffers the lookahead at 8-bit instead of the source's native bit
+                        // depth, roughly halving its VRAM cost on 10-bit footage (e.g. DJI
+                        // Action 4 HEVC) - lets a longer lookahead fit on lower-VRAM cards.
+                        // No effect on already-8-bit sources. Leave off unless hitting a
+                        // VRAM error, since it trades a little gradient smoothness for memory.
+                        CheckBox {
+                            text: "Reduce lookahead memory (8-bit)";
+                            checked <=> root.export-lookahead-reduced-bit-depth;
                         }
 
                         panner-advanced := SectionHeader {
