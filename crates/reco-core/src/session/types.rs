@@ -37,7 +37,7 @@ pub fn compute_frame_limit(duration_secs: Option<f64>, max_frames: Option<u64>, 
 pub struct SessionConfig {
     /// Camera calibration data.
     pub calibration: Calibration,
-    /// Output viewport (dimensions, blend width, FOV).
+    /// Output viewport dimensions.
     pub viewport: ViewportSize,
     /// Input frame width in pixels.
     pub input_width: u32,

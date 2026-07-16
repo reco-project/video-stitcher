@@ -47,7 +47,7 @@ fn check_plane(plane: &[u8], expected: usize) -> Result<(), StitchError> {
 /// * `left`, `right` - tightly packed NV12 source frames.
 /// * `cam` - source frame dimensions `(width, height)`.
 /// * `calib` - stereo calibration (intrinsics + plane layout).
-/// * `config` - output dimensions, FOV, blend width, rig and lens correction.
+/// * `config` - output dimensions.
 /// * `pose` - per-frame virtual-camera pan (radians) + fov zoom (degrees).
 /// * `full_range` - `true` for full-range (0-255) YUV, `false` for limited
 ///   (16-235) BT.709, matching the source decoder.

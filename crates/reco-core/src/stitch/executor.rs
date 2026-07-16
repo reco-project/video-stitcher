@@ -202,7 +202,7 @@ impl StitchExecutor for CpuExecutor {
 pub struct GpuExecutorConfig {
     /// Camera calibration document.
     pub calibration: Calibration,
-    /// Output viewport (dimensions, FOV).
+    /// Output viewport dimensions.
     pub viewport: ViewportSize,
     /// Input frame width in pixels (per camera).
     pub input_width: u32,
@@ -978,7 +978,7 @@ impl Executor {
         }
     }
 
-    /// The output viewport (dimensions + FOV).
+    /// The output viewport dimensions.
     pub fn viewport(&self) -> &ViewportSize {
         match self {
             Executor::Cpu(c) => &c.config,
