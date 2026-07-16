@@ -115,7 +115,8 @@ const FORBIDDEN_PATH_PREFIXES: &[&str] = &["http://", "https://", "concat:", "pi
 /// Extract mono PCM audio samples from a video file.
 ///
 /// Uses the `ffmpeg` CLI to extract up to 60 seconds of mono audio
-/// at the given sample rate. Returns signed 16-bit PCM samples.
+/// at the given sample rate, starting from the beginning of the file.
+/// Returns signed 16-bit PCM samples.
 ///
 /// Caps extraction at 60 seconds since that is more than enough for
 /// cross-correlation sync detection, and avoids slow HDD reads on
@@ -126,6 +127,22 @@ const FORBIDDEN_PATH_PREFIXES: &[&str] = &["http://", "https://", "concat:", "pi
 pub fn extract_audio_pcm(
     video_path: &Path,
     sample_rate: u32,
+) -> Result<Vec<i16>, CalibrationIoError> {
+    extract_audio_pcm_window(video_path, sample_rate, 0.0, 60.0)
+}
+
+/// Extract mono PCM audio samples from a windowed segment of a video file.
+///
+/// Like [`extract_audio_pcm`], but reads `duration_secs` of audio starting
+/// at `start_secs` instead of always starting from the beginning. Uses
+/// ffmpeg's input-side `-ss` for fast seeking. Intended for callers that
+/// need a short segment around an arbitrary point in a (possibly long)
+/// recording, e.g. a playhead-centered waveform preview.
+pub fn extract_audio_pcm_window(
+    video_path: &Path,
+    sample_rate: u32,
+    start_secs: f64,
+    duration_secs: f64,
 ) -> Result<Vec<i16>, CalibrationIoError> {
     let path_str = video_path
         .to_str()
@@ -142,11 +159,14 @@ pub fn extract_audio_pcm(
     }
 
     let mut cmd = std::process::Command::new("ffmpeg");
+    if start_secs > 0.0 {
+        cmd.args(["-ss", &start_secs.to_string()]);
+    }
     cmd.args([
         "-i",
         path_str,
         "-t",
-        "60",
+        &duration_secs.to_string(),
         "-vn",
         "-ac",
         "1",
