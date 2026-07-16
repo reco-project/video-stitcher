@@ -9,11 +9,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::calibration::{
     Calibration, CalibrationError, Framing, expect_above, expect_finite, expect_in_range,
+    expect_positive,
 };
 use crate::geometry::{Pose, VirtualCamera};
-use crate::precision::VALIDATION_EPSILON;
 use crate::projection::{CoverageBoundary, Projection, ProjectionContext};
-use crate::render::viewport::ViewportConfig;
+use crate::render::viewport::ViewportSize;
 use crate::stitch::{BlendRule, SurfaceMap, SurfaceUv};
 
 // Functions, not constants: serde's `default = "..."` attribute takes
@@ -65,11 +65,7 @@ impl Cylinder {
         expect_finite("topology.focal_length", self.focal_length)?;
         // Same guard as lens focal lengths: the coverage math divides
         // by the radius.
-        expect_above(
-            "topology.focal_length",
-            self.focal_length,
-            VALIDATION_EPSILON,
-        )?;
+        expect_positive("topology.focal_length", self.focal_length)?;
 
         expect_finite("topology.sweep_deg", self.sweep_deg)?;
         expect_above("topology.sweep_deg", self.sweep_deg, 0.0)?;
@@ -116,11 +112,11 @@ impl Projection for Cylinder {
 
     #[cfg(feature = "gpu")]
     fn gpu_program(&self) -> Option<crate::render::GpuProgram> {
-        // No mono GPU pass yet (Step 13 PR B): the cylinder composite
-        // is a fullscreen pass with its own bind layout, and a
-        // placeholder descriptor would bind cylindrical_mono.wgsl to
-        // the L-shape's plane pipeline and render garbage. None fails
-        // GPU-executor construction fast; the CPU path is complete.
+        // TODO: wire the mono GPU pass. The cylinder composite is a
+        // fullscreen pass with its own bind layout, and a placeholder
+        // descriptor would bind cylindrical_mono.wgsl to the L-shape's
+        // plane pipeline and render garbage. None fails GPU-executor
+        // construction fast; the CPU path is complete.
         None
     }
 
@@ -181,8 +177,8 @@ fn rotate(v: [f64; 3], k: [f64; 3], angle: f64) -> [f64; 3] {
 /// calibrated tilt means.
 /// SYNC_WITH: shaders/cylindrical_mono.wgsl - ray construction, the
 /// theta sign, and the bounds discard must match when the mono GPU
-/// pass lands (Step 13 PR B); no cylinder CPU/GPU oracle exists yet,
-/// so that PR must bring the agreement test with it.
+/// pass lands. TODO: no cylinder CPU/GPU oracle exists yet; the mono
+/// GPU pass must bring the agreement test with it.
 ///
 /// All quantities are precomputed f64 (the CPU side's precision
 /// convention; the GPU pass, when it lands, runs the same math in f32
@@ -230,7 +226,7 @@ impl CylinderMap {
         cylinder: &Cylinder,
         framing: &Framing,
         source_height_px: f64,
-        config: &ViewportConfig,
+        config: &ViewportSize,
         pose: Pose,
     ) -> Self {
         let base_forward = [0.0, 0.0, -1.0];
@@ -269,10 +265,7 @@ impl CylinderMap {
             forward[0] * up[1] - forward[1] * up[0],
         ];
 
-        // The (1, 179) clamp at the boundary where the pose becomes a
-        // frustum - the same guard as the plane maps and the GPU pass.
-        let fov_degrees = pose.fov_degrees.clamp(1.0, 179.0);
-        let tan_half_v = (f64::from(fov_degrees).to_radians() * 0.5).tan();
+        let tan_half_v = (f64::from(pose.render_fov()).to_radians() * 0.5).tan();
         let aspect = f64::from(config.width) / f64::from(config.height);
 
         Self {
@@ -346,8 +339,8 @@ mod tests {
     /// vertical band of atan(540/2400) = +-0.221 rad of pitch.
     const SRC_H: f64 = 1080.0;
 
-    fn cfg() -> ViewportConfig {
-        ViewportConfig {
+    fn cfg() -> ViewportSize {
+        ViewportSize {
             width: 200,
             height: 100,
         }

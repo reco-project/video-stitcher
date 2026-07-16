@@ -32,7 +32,7 @@ use reco_core::core::types::StitchCoreError;
 use reco_core::gpu::GpuContext;
 use reco_core::lens::preview::LensPreviewRenderer;
 use reco_core::render::pipeline::{PipelineError, YuvPlanes};
-use reco_core::render::viewport::ViewportConfig;
+use reco_core::render::viewport::ViewportSize;
 use reco_core::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 use reco_core::wgpu;
 
@@ -80,7 +80,7 @@ impl PreviewBridge {
         // engine below.
         let lens_correction_amount = calibration.lenses[0].correction;
 
-        let viewport = ViewportConfig {
+        let viewport = ViewportSize {
             width: viewport_width,
             height: viewport_height,
         };

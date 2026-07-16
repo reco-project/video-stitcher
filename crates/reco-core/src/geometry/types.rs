@@ -31,6 +31,18 @@ pub struct Pose {
     pub fov_degrees: f32,
 }
 
+impl Pose {
+    /// The fov this pose renders with: clamped to `(1, 179)` degrees.
+    ///
+    /// The single home for the render-boundary guard - 0 or 180 would
+    /// produce a NaN/Inf projection matrix (GPU) or a degenerate
+    /// frustum tangent (CPU maps). Every place a pose becomes a
+    /// matrix or ray basis goes through this.
+    pub fn render_fov(&self) -> f32 {
+        self.fov_degrees.clamp(1.0, 179.0)
+    }
+}
+
 impl Default for Pose {
     fn default() -> Self {
         Self {

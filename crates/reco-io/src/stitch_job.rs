@@ -687,7 +687,7 @@ impl StitchJob {
                 );
             }
         }
-        let viewport = reco_core::render::viewport::ViewportConfig {
+        let viewport = reco_core::render::viewport::ViewportSize {
             width: out_w,
             height: out_h,
         };

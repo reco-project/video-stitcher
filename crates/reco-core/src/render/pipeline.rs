@@ -10,7 +10,7 @@
 //! [`PipelineError`], the pipeline half of the engine's error type.
 
 use super::renderer::{InputFormat, RenderError, Renderer};
-use super::viewport::{ResolvedViewport, ViewportConfig};
+use super::viewport::ViewportSize;
 use crate::calibration::Calibration;
 use crate::geometry::Pose;
 use crate::gpu::{GpuContext, GpuError};
@@ -70,7 +70,7 @@ pub(crate) struct StitchPipeline {
     /// Calibration data (camera intrinsics + layout).
     pub(crate) calibration: Calibration,
     /// Output viewport configuration.
-    pub(crate) viewport: ViewportConfig,
+    pub(crate) viewport: ViewportSize,
     /// GPU renderer (textures, pipelines, bind groups).
     renderer: Renderer,
     /// Input frame dimensions.
@@ -107,7 +107,7 @@ impl StitchPipeline {
         gpu: GpuContext,
         program: &crate::render::GpuProgram,
         calibration: Calibration,
-        viewport: ViewportConfig,
+        viewport: ViewportSize,
         input_width: u32,
         input_height: u32,
         output_format: impl Into<wgpu::TextureFormat>,
@@ -184,8 +184,13 @@ impl StitchPipeline {
         &self.calibration
     }
 
+    /// The projection in effect: a borrow of the document's topology.
+    pub(crate) fn projection(&self) -> &dyn crate::projection::Projection {
+        self.calibration.topology.projection()
+    }
+
     /// The current output viewport configuration.
-    pub fn viewport(&self) -> &ViewportConfig {
+    pub fn viewport(&self) -> &ViewportSize {
         &self.viewport
     }
 
@@ -518,16 +523,12 @@ impl StitchPipeline {
         self.renderer
             .upload_right_yuv(&self.gpu, right.y, right.u, right.v)?;
 
-        let viewport = ResolvedViewport {
-            config: self.viewport.clone(),
-            position: pose,
-        };
-
         self.renderer.render_to_view(
             &self.gpu,
             scene,
             &self.calibration,
-            &viewport,
+            pose,
+            self.viewport.aspect_ratio(),
             self.calibration.topology.blend_width(),
             target_view,
         );
@@ -557,16 +558,11 @@ impl StitchPipeline {
         self.renderer
             .upload_right_yuv(&self.gpu, right.y, right.u, right.v)?;
 
-        let viewport = ResolvedViewport {
-            config: self.viewport.clone(),
-            position: pose,
-        };
-
         Ok(self.renderer.render_to_target(
             &self.gpu,
             scene,
             &self.calibration,
-            &viewport,
+            pose,
             self.calibration.topology.blend_width(),
         ))
     }
@@ -593,16 +589,11 @@ impl StitchPipeline {
         self.renderer
             .upload_right_nv12(&self.gpu, right.y, right.uv)?;
 
-        let viewport = ResolvedViewport {
-            config: self.viewport.clone(),
-            position: pose,
-        };
-
         Ok(self.renderer.render_to_target(
             &self.gpu,
             scene,
             &self.calibration,
-            &viewport,
+            pose,
             self.calibration.topology.blend_width(),
         ))
     }
@@ -629,16 +620,11 @@ impl StitchPipeline {
         self.renderer.upload_left_bgra(&self.gpu, left.rgba)?;
         self.renderer.upload_right_bgra(&self.gpu, right.rgba)?;
 
-        let viewport = ResolvedViewport {
-            config: self.viewport.clone(),
-            position: pose,
-        };
-
         Ok(self.renderer.render_to_target(
             &self.gpu,
             scene,
             &self.calibration,
-            &viewport,
+            pose,
             self.calibration.topology.blend_width(),
         ))
     }
@@ -690,16 +676,11 @@ impl StitchPipeline {
         let Some(scene) = &self.scene else {
             return Err(PipelineError::NoPlaneScene);
         };
-        let viewport = ResolvedViewport {
-            config: self.viewport.clone(),
-            position: pose,
-        };
-
         Ok(self.renderer.render_to_target(
             &self.gpu,
             scene,
             &self.calibration,
-            &viewport,
+            pose,
             self.calibration.topology.blend_width(),
         ))
     }

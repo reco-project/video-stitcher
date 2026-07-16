@@ -353,7 +353,7 @@ impl super::StitchCore {
     /// detector logs once and idles, and the panner runs without
     /// detections. The stacked replay recorder (2-tile format) is
     /// likewise skipped.
-    // TODO: wire mono detection + replay (Step 13 PR B).
+    // TODO: wire mono detection + replay.
     pub fn submit_frame_mono_yuv(
         &mut self,
         frame: &YuvPlanes<'_>,

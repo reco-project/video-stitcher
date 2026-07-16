@@ -35,7 +35,6 @@ use reco_calibrate::{LensProfileInfo, ProfileSource};
 use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_control::{ControlIntent, PoseIntent};
 use reco_core::calibration::Calibration;
-use reco_core::geometry::Pose;
 use reco_core::wgpu;
 
 use crate::playback::{PlayState, Playback};
@@ -70,7 +69,6 @@ const TICK_INTERVAL_MS: i64 = 2;
 /// FOV clamp range (degrees), matching CLI preview.
 const FOV_MIN: f32 = 20.0;
 const FOV_MAX: f32 = 150.0;
-const FOV_DEFAULT: f32 = 75.0;
 
 /// Mouse drag sensitivity passed to `PoseControlConfig`. `0.287`
 /// deg/px = 0.005 rad/px - matches the pre-migration GUI constant
@@ -516,11 +514,6 @@ impl AppState {
                 // i.e. PTZ-head convention. `invert_drag_x = true`
                 // keeps that exact feel.
                 invert_drag_x: true,
-                rest_pose: Pose {
-                    yaw: 0.0,
-                    pitch: 0.0,
-                    fov_degrees: FOV_DEFAULT,
-                },
                 ..PoseControlConfig::default()
             }),
             pending_seek: None,
@@ -566,11 +559,6 @@ impl AppState {
             fov_min_degrees: FOV_MIN,
             fov_max_degrees: FOV_MAX,
             invert_drag_x: true,
-            rest_pose: Pose {
-                yaw: 0.0,
-                pitch: 0.0,
-                fov_degrees: FOV_DEFAULT,
-            },
             ..PoseControlConfig::default()
         });
         self.pending_seek = None;

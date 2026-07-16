@@ -78,7 +78,7 @@ pub fn run_libcamera(
         }
     }
 
-    let viewport = reco_core::render::viewport::ViewportConfig { width, height };
+    let viewport = reco_core::render::viewport::ViewportSize { width, height };
 
     let gpu = reco_core::gpu::GpuContext::new_blocking()?;
 

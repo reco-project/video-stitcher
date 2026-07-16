@@ -23,10 +23,9 @@
 //! reduces CPU-GPU transfer from 8.3 MB to 3.1 MB per frame (62% less
 //! bandwidth) and eliminates CPU-side swscale color conversion entirely.
 
-use super::viewport::ResolvedViewport;
 use crate::calibration::{Calibration, Lens};
 use crate::geometry::{
-    FAR_PLANE, NEAR_PLANE, matrix4_to_columns, opengl_to_wgpu_matrix, view_matrix,
+    FAR_PLANE, NEAR_PLANE, Pose, matrix4_to_columns, opengl_to_wgpu_matrix, view_matrix,
 };
 use crate::gpu::GpuContext;
 use crate::projection::l_shape::PlaneScene;
@@ -808,22 +807,24 @@ impl Renderer {
         gpu: &GpuContext,
         scene: &PlaneScene,
         calibration: &Calibration,
-        viewport: &ResolvedViewport,
+        pose: Pose,
         blend_width: f32,
         target_view: &wgpu::TextureView,
         aspect: f32,
         encoder_label: &str,
     ) -> wgpu::CommandEncoder {
-        // The (1, 179) clamp lives here, where the pose becomes a
-        // matrix: 0 or 180 degrees would produce a NaN/Inf projection.
-        let fov_degrees = viewport.position.fov_degrees.clamp(1.0, 179.0);
         let projection = opengl_to_wgpu_matrix()
-            * Perspective3::new(aspect, fov_degrees.to_radians(), NEAR_PLANE, FAR_PLANE)
-                .to_homogeneous();
+            * Perspective3::new(
+                aspect,
+                pose.render_fov().to_radians(),
+                NEAR_PLANE,
+                FAR_PLANE,
+            )
+            .to_homogeneous();
         let view = view_matrix(
             &scene.camera_position,
-            viewport.position.yaw,
-            viewport.position.pitch,
+            pose.yaw,
+            pose.pitch,
             calibration.framing.tilt as f32,
             calibration.framing.roll as f32,
         );
@@ -917,7 +918,7 @@ impl Renderer {
         gpu: &GpuContext,
         scene: &PlaneScene,
         calibration: &Calibration,
-        viewport: &ResolvedViewport,
+        pose: Pose,
         blend_width: f32,
     ) -> wgpu::CommandBuffer {
         let aspect = self.output_width as f32 / self.output_height as f32;
@@ -925,7 +926,7 @@ impl Renderer {
             gpu,
             scene,
             calibration,
-            viewport,
+            pose,
             blend_width,
             &self.render_target_view,
             aspect,
@@ -951,16 +952,16 @@ impl Renderer {
         gpu: &GpuContext,
         scene: &PlaneScene,
         calibration: &Calibration,
-        viewport: &ResolvedViewport,
+        pose: Pose,
+        aspect: f32,
         blend_width: f32,
         target_view: &wgpu::TextureView,
     ) {
-        let aspect = viewport.config.aspect_ratio();
         let encoder = self.encode_stitch_pass(
             gpu,
             scene,
             calibration,
-            viewport,
+            pose,
             blend_width,
             target_view,
             aspect,

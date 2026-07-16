@@ -5,22 +5,18 @@
 //! [`crate::detect::panner::Panner`] emits the per-frame yaw/pitch that
 //! positions this rectangle.
 
-use crate::geometry::Pose;
-
-/// Configuration for the output viewport: pure output geometry.
-///
-/// Zoom is NOT here - fov travels with yaw/pitch in every
-/// [`Pose`], so there is no retained zoom state to fall out of sync
-/// with the pose stream.
+/// Output viewport geometry: the rectangle the panorama is rendered
+/// into. Zoom travels with yaw/pitch in every
+/// [`Pose`](crate::geometry::Pose), never here.
 #[derive(Debug, Clone)]
-pub struct ViewportConfig {
+pub struct ViewportSize {
     /// Output width in pixels.
     pub width: u32,
     /// Output height in pixels.
     pub height: u32,
 }
 
-impl Default for ViewportConfig {
+impl Default for ViewportSize {
     fn default() -> Self {
         Self {
             width: 1920,
@@ -29,7 +25,7 @@ impl Default for ViewportConfig {
     }
 }
 
-impl ViewportConfig {
+impl ViewportSize {
     /// Aspect ratio of the output (width / height).
     ///
     /// Returns 1.0 if height is zero (degenerate viewport).
@@ -52,16 +48,4 @@ impl ViewportConfig {
         }
         Ok(())
     }
-}
-
-/// Resolved viewport state for a single frame.
-///
-/// Combines the output geometry with the pose (pan + zoom) to produce
-/// the final camera parameters for rendering.
-#[derive(Debug, Clone)]
-pub struct ResolvedViewport {
-    /// The viewport configuration.
-    pub config: ViewportConfig,
-    /// The pose for this frame; its fov drives the projection matrix.
-    pub position: Pose,
 }

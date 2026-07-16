@@ -52,14 +52,14 @@ use nalgebra::{Point3, Vector3};
 
 /// One frame's geometry question, bundled: the document, the output
 /// viewport, and the pose. The pose carries fov alongside yaw/pitch -
-/// [`ViewportConfig`](crate::render::viewport::ViewportConfig) is
+/// [`ViewportSize`](crate::render::viewport::ViewportSize) is
 /// zoom-free, so there is exactly one fov per frame and a second,
 /// disagreeing copy is unrepresentable.
 pub struct ProjectionContext<'a> {
     /// The calibration document (lenses, topology, framing).
     pub calibration: &'a Calibration,
     /// Output viewport geometry (dimensions).
-    pub viewport: &'a crate::render::viewport::ViewportConfig,
+    pub viewport: &'a crate::render::viewport::ViewportSize,
     /// The render pose: yaw/pitch pan plus fov zoom, one bundle.
     pub pose: Pose,
 }
@@ -770,7 +770,7 @@ mod tests {
         // The L-shape emits exactly two surfaces: the opaque left base,
         // then the right fading in with the calibration's seam width.
         let cal = test_calibration();
-        let config = crate::render::viewport::ViewportConfig::default();
+        let config = crate::render::viewport::ViewportSize::default();
         let surfaces = cal.topology.projection().surface_maps(&ProjectionContext {
             calibration: &cal,
             viewport: &config,
@@ -814,7 +814,7 @@ mod tests {
     #[test]
     fn cylindrical_surface_maps_emit_one_opaque_surface() {
         let cal = cylinder_cal();
-        let config = crate::render::viewport::ViewportConfig::default();
+        let config = crate::render::viewport::ViewportSize::default();
         let surfaces = cal.topology.projection().surface_maps(&ProjectionContext {
             calibration: &cal,
             viewport: &config,

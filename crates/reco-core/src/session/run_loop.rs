@@ -3,6 +3,7 @@
 //! The `run` / `run_immediate` frame loop, source configuration, and
 //! GPU zero-copy frame stepping live here.
 
+use crate::geometry::Pose;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::StitchSession;
@@ -23,10 +24,10 @@ use crate::source::FrameSource;
 /// boundary regime. This is acceptable (no future data exists past EOF);
 /// it is documented so the boundary behavior is not mistaken for a bug.
 fn centered_smooth(
-    raw_pose: crate::geometry::Pose,
-    ahead: impl Iterator<Item = crate::geometry::Pose>,
-    past: impl Iterator<Item = crate::geometry::Pose>,
-) -> crate::geometry::Pose {
+    raw_pose: Pose,
+    ahead: impl Iterator<Item = Pose>,
+    past: impl Iterator<Item = Pose>,
+) -> Pose {
     let mut sum_yaw = raw_pose.yaw;
     let mut sum_pitch = raw_pose.pitch;
     let mut sum_fov = raw_pose.fov_degrees;
@@ -37,7 +38,7 @@ fn centered_smooth(
         sum_fov += p.fov_degrees;
         n += 1;
     }
-    crate::geometry::Pose {
+    Pose {
         yaw: sum_yaw / n as f32,
         pitch: sum_pitch / n as f32,
         fov_degrees: sum_fov / n as f32,

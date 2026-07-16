@@ -18,22 +18,24 @@
 //! wgpu-free builds.
 
 use crate::calibration::{Calibration, Framing, Lens, Topology};
-#[cfg(feature = "gpu")]
-use crate::gpu::GpuContext;
-#[cfg(feature = "gpu")]
-use crate::gpu::rgba_readback::{RgbaReadback, RgbaReadbackError};
-#[cfg(feature = "gpu")]
-use crate::render::pipeline::{PipelineError, StitchPipeline};
-use crate::render::planes::{Nv12Planes, YuvPlanes};
-#[cfg(feature = "gpu")]
-use crate::render::renderer::InputFormat;
-
-use crate::render::viewport::ViewportConfig;
-
 use crate::geometry::Pose;
 use crate::projection::{CoverageBoundary, Projection};
+use crate::render::planes::{Nv12Planes, YuvPlanes};
+use crate::render::viewport::ViewportSize;
 
 use super::cpu::stitch_rgba;
+
+// The GPU arm's imports, gated as one block with the code they serve.
+#[cfg(feature = "gpu")]
+use crate::gpu::{
+    GpuContext,
+    rgba_readback::{RgbaReadback, RgbaReadbackError},
+};
+#[cfg(feature = "gpu")]
+use crate::render::{
+    pipeline::{PipelineError, StitchPipeline},
+    renderer::InputFormat,
+};
 
 /// Errors a stitch executor can return.
 ///
@@ -90,7 +92,7 @@ pub trait StitchExecutor {
 /// CPU software backend - pure Rust, no GPU. The portable / GPU-less path.
 pub struct CpuExecutor {
     pub(crate) calib: Calibration,
-    pub(crate) config: ViewportConfig,
+    pub(crate) config: ViewportSize,
     pub(crate) cam: (u32, u32),
     pub(crate) full_range: bool,
 }
@@ -102,7 +104,7 @@ impl CpuExecutor {
     /// switches the projection automatically.
     pub fn new(
         calib: Calibration,
-        config: ViewportConfig,
+        config: ViewportSize,
         cam_w: u32,
         cam_h: u32,
         full_range: bool,
@@ -201,7 +203,7 @@ pub struct GpuExecutorConfig {
     /// Camera calibration document.
     pub calibration: Calibration,
     /// Output viewport (dimensions, FOV).
-    pub viewport: ViewportConfig,
+    pub viewport: ViewportSize,
     /// Input frame width in pixels (per camera).
     pub input_width: u32,
     /// Input frame height in pixels (per camera).
@@ -229,7 +231,7 @@ impl GpuExecutorConfig {
     ) -> Self {
         Self {
             calibration,
-            viewport: ViewportConfig {
+            viewport: ViewportSize {
                 width: 1920,
                 height: 1080,
             },
@@ -977,7 +979,7 @@ impl Executor {
     }
 
     /// The output viewport (dimensions + FOV).
-    pub fn viewport(&self) -> &ViewportConfig {
+    pub fn viewport(&self) -> &ViewportSize {
         match self {
             Executor::Cpu(c) => &c.config,
             #[cfg(feature = "gpu")]
@@ -991,7 +993,7 @@ impl Executor {
         match self {
             Executor::Cpu(c) => c.projection(),
             #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.pipeline.calibration.topology.projection(),
+            Executor::Gpu(g) => g.pipeline.projection(),
         }
     }
 
@@ -1219,7 +1221,7 @@ mod tests {
             let coverage = cal.topology.projection().coverage(&cal);
             let cam = cal.topology.projection().virtual_camera(&cal.framing);
             let fov = (coverage.max_fov_degrees() * fov_factor).min(60.0);
-            let config = ViewportConfig {
+            let config = ViewportSize {
                 width: out_w,
                 height: out_h,
             };
@@ -1268,7 +1270,7 @@ mod tests {
         let (w, h) = (64u32, 36u32);
         let backend = CpuExecutor::new(
             calib(w, h),
-            ViewportConfig {
+            ViewportSize {
                 width: w,
                 height: h,
             },
@@ -1286,7 +1288,7 @@ mod tests {
         let (w, h) = (64u32, 36u32);
         let mut backend = CpuExecutor::new(
             calib(w, h),
-            ViewportConfig {
+            ViewportSize {
                 width: w,
                 height: h,
             },
@@ -1317,7 +1319,7 @@ mod tests {
         let (cam_w, cam_h) = (192u32, 108u32);
         let (out_w, out_h) = (160u32, 90u32);
         let calib = calib(cam_w, cam_h);
-        let config = ViewportConfig {
+        let config = ViewportSize {
             width: out_w,
             height: out_h,
         };

@@ -9,15 +9,14 @@ use nalgebra::{Matrix3, Matrix4, Perspective3, Translation3, UnitQuaternion, Vec
 use serde::{Deserialize, Serialize};
 
 use crate::calibration::{
-    Calibration, CalibrationError, Framing, Lens, expect_above, expect_finite, expect_in_range,
+    Calibration, CalibrationError, Framing, Lens, expect_finite, expect_in_range, expect_positive,
 };
 use crate::geometry::{
     FAR_PLANE, NEAR_PLANE, Pose, VirtualCamera, opengl_to_wgpu_matrix, view_matrix,
 };
 use crate::lens::kb4;
-use crate::precision::VALIDATION_EPSILON;
 use crate::projection::{CoverageBoundary, Projection, ProjectionContext};
-use crate::render::viewport::ViewportConfig;
+use crate::render::viewport::ViewportSize;
 use crate::stitch::{BlendRule, SurfaceMap, SurfaceUv};
 
 /// Default seam blend width for calibrations that do not specify one.
@@ -75,7 +74,7 @@ impl LShape {
 
         expect_finite("topology.blend_width", f64::from(self.blend_width))?;
         // The seam smoothstep needs ordered edges; outside [0, 1] the blend
-        // is meaningless (the old ViewportConfig::validate enforced this).
+        // is meaningless (the old ViewportSize::validate enforced this).
         expect_in_range(
             "topology.blend_width",
             f64::from(self.blend_width),
@@ -86,11 +85,7 @@ impl LShape {
         // The off-axis camera placement is an L-shape concept: the two
         // planes are viewed from `[axis_offset, 0, axis_offset]`, and a
         // zero offset would normalize a zero vector in the view basis.
-        expect_above(
-            "framing.axis_offset",
-            framing.axis_offset,
-            VALIDATION_EPSILON,
-        )?;
+        expect_positive("framing.axis_offset", framing.axis_offset)?;
 
         Ok(())
     }
@@ -363,7 +358,7 @@ impl SurfaceMap for PlaneMap {
 fn l_shape_plane_maps(
     topology: &LShape,
     calib: &Calibration,
-    config: &ViewportConfig,
+    config: &ViewportSize,
     pose: Pose,
 ) -> (PlaneMap, PlaneMap) {
     // Known limitation: both planes are sized with lens 0's aspect.
@@ -373,12 +368,14 @@ fn l_shape_plane_maps(
     let scene = topology.scene(&calib.framing, plane_aspect);
 
     let out_aspect = config.aspect_ratio();
-    // The (1, 179) clamp at the boundary where the pose becomes a
-    // matrix - the CPU dual of the GPU renderer's clamp.
-    let fov_degrees = pose.fov_degrees.clamp(1.0, 179.0);
     let projection = opengl_to_wgpu_matrix()
-        * Perspective3::new(out_aspect, fov_degrees.to_radians(), NEAR_PLANE, FAR_PLANE)
-            .to_homogeneous();
+        * Perspective3::new(
+            out_aspect,
+            pose.render_fov().to_radians(),
+            NEAR_PLANE,
+            FAR_PLANE,
+        )
+        .to_homogeneous();
     let view = view_matrix(
         &scene.camera_position,
         pose.yaw,
@@ -530,7 +527,7 @@ mod tests {
 
     #[test]
     fn covered_pixels_return_uv_in_range() {
-        let cfg = ViewportConfig::default();
+        let cfg = ViewportSize::default();
         let cal = crate::stitch::test_support::calib(1920, 1080);
         let topology = cal.topology.l_shape().unwrap();
         let (left, right) = l_shape_plane_maps(topology, &cal, &cfg, Pose::default());

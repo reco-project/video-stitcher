@@ -52,7 +52,7 @@ impl VirtualCamera {
     }
 
     /// The mono (single-camera) basis: the camera sits on the
-    /// projection axis at [`MONO_CAMERA_POSITION`] looking at the
+    /// projection axis at `[0, 0, 1]` looking at the
     /// origin - forward `-Z`, right `+X`, up `+Y`. A unit offset
     /// rather than the origin itself: `new` normalizes the
     /// eye-to-origin direction, and a zero eye would produce NaN axes.

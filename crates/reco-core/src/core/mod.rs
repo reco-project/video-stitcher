@@ -94,7 +94,7 @@ pub struct StitchCore {
     pub(crate) cpu_frame: Vec<u8>,
     /// One-shot guard for the mono-detection warning (detection is
     /// L-shape-only until the mono mapping lands).
-    // TODO: remove once mono detection lands (Step 13 PR B).
+    // TODO: remove once mono detection lands.
     mono_detection_warned: bool,
     pub(crate) output_width: u32,
     pub(crate) output_height: u32,
@@ -846,13 +846,13 @@ mod tests {
     fn engine_over_cpu_executor_pure_logic_works() {
         use crate::core::StitchCore;
         use crate::render::planes::YuvPlanes;
-        use crate::render::viewport::ViewportConfig;
+        use crate::render::viewport::ViewportSize;
         use crate::stitch::{CpuExecutor, Executor, test_support::calib};
 
         let (w, h) = (64u32, 36u32);
         let executor = CpuExecutor::new(
             calib(w, h),
-            ViewportConfig {
+            ViewportSize {
                 width: w,
                 height: h,
             },
@@ -940,7 +940,7 @@ mod tests {
         use crate::core::types::RenderOutcome;
         use crate::render::planes::Nv12Planes;
         use crate::render::renderer::InputFormat;
-        use crate::render::viewport::ViewportConfig;
+        use crate::render::viewport::ViewportSize;
         use crate::stitch::test_support::{Agreement, AgreementBounds, calib, gpu_or_skip, nv12};
         use crate::stitch::{CpuExecutor, Executor, GpuExecutor, GpuExecutorConfig};
 
@@ -949,7 +949,7 @@ mod tests {
         };
         let (cam_w, cam_h) = (192u32, 108u32);
         let (out_w, out_h) = (160u32, 90u32);
-        let config = ViewportConfig {
+        let config = ViewportSize {
             width: out_w,
             height: out_h,
         };
@@ -1012,7 +1012,7 @@ mod tests {
         use crate::core::types::RenderOutcome;
         use crate::render::planes::Nv12Planes;
         use crate::render::renderer::InputFormat;
-        use crate::render::viewport::ViewportConfig;
+        use crate::render::viewport::ViewportSize;
         use crate::stitch::test_support::{calib, gpu_or_skip, nv12};
         use crate::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 
@@ -1023,7 +1023,7 @@ mod tests {
         let exec = GpuExecutor::new(
             gpu,
             GpuExecutorConfig {
-                viewport: ViewportConfig {
+                viewport: ViewportSize {
                     width: 160,
                     height: 90,
                 },
@@ -1099,11 +1099,11 @@ mod tests {
     }
 
     fn cpu_engine(w: u32, h: u32) -> crate::core::StitchCore {
-        use crate::render::viewport::ViewportConfig;
+        use crate::render::viewport::ViewportSize;
         use crate::stitch::{CpuExecutor, Executor, test_support::calib};
         let executor = CpuExecutor::new(
             calib(w, h),
-            ViewportConfig {
+            ViewportSize {
                 width: w,
                 height: h,
             },

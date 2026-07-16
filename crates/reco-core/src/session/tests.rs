@@ -19,7 +19,7 @@ use crate::detect::tracker::{TrackState, TrackedEntity, Tracker, WorldState};
 use crate::geometry::CameraId;
 use crate::geometry::Pose;
 use crate::projection::LShape;
-use crate::render::viewport::ViewportConfig;
+use crate::render::viewport::ViewportSize;
 use crate::sink::{OutputFrame, OutputSink, SinkError, SinkInput};
 use crate::source::{FramePair, FrameSource, SourceError, SourceInfo, StereoFrame, YuvData};
 
@@ -279,7 +279,7 @@ fn build_test_session(
     let mut builder = StitchSession::builder()
         .calibration(test_calibration())
         .input_dimensions(W, H)
-        .viewport(ViewportConfig {
+        .viewport(ViewportSize {
             width: 64,
             height: 64,
         })
@@ -566,7 +566,7 @@ fn push_and_pull_share_one_ai_brain() {
     let executor = crate::stitch::GpuExecutor::new(
         gpu,
         crate::stitch::GpuExecutorConfig {
-            viewport: ViewportConfig {
+            viewport: ViewportSize {
                 width: 64,
                 height: 64,
             },
@@ -629,7 +629,7 @@ fn push_and_pull_share_one_ai_brain() {
 fn build_cpu_session() -> StitchSession {
     let executor = crate::stitch::CpuExecutor::new(
         test_calibration(),
-        ViewportConfig {
+        ViewportSize {
             width: 64,
             height: 64,
         },
@@ -805,7 +805,7 @@ fn mono_cylinder_session_runs_end_to_end_without_gpu() {
     );
     let executor = crate::stitch::CpuExecutor::new(
         cal,
-        ViewportConfig {
+        ViewportSize {
             width: 64,
             height: 64,
         },

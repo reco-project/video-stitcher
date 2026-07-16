@@ -140,7 +140,7 @@ pub fn run_camera(
     }
     let field_roi = cal.field_roi.clone();
 
-    let viewport = reco_core::render::viewport::ViewportConfig {
+    let viewport = reco_core::render::viewport::ViewportSize {
         width,
         height,
         ..Default::default()

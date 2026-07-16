@@ -277,13 +277,13 @@ mod tests {
     use crate::calibration::Calibration;
     use crate::geometry::Pose;
     use crate::render::planes::Nv12Planes;
-    use crate::render::viewport::ViewportConfig;
+    use crate::render::viewport::ViewportSize;
 
     #[test]
     fn output_dimensions_and_opaque_alpha() {
         let (w, h) = (96u32, 54u32);
         let calib = calib(w, h);
-        let cfg = ViewportConfig {
+        let cfg = ViewportSize {
             width: w,
             height: h,
         };
@@ -311,7 +311,7 @@ mod tests {
     fn produces_covered_pixels_and_is_deterministic() {
         let (w, h) = (96u32, 54u32);
         let calib = calib(w, h);
-        let cfg = ViewportConfig {
+        let cfg = ViewportSize {
             width: w,
             height: h,
         };
@@ -369,7 +369,7 @@ mod tests {
         let (cam_w, cam_h) = (256u32, 144u32);
         let (out_w, out_h) = (192u32, 108u32);
         let calib = calib(cam_w, cam_h);
-        let config = ViewportConfig {
+        let config = ViewportSize {
             width: out_w,
             height: out_h,
         };
@@ -464,7 +464,7 @@ mod tests {
         let (cam_w, cam_h) = (256u32, 144u32);
         let (out_w, out_h) = (192u32, 108u32);
         let calib = calib(cam_w, cam_h);
-        let config = ViewportConfig {
+        let config = ViewportSize {
             width: out_w,
             height: out_h,
         };
@@ -584,7 +584,7 @@ mod tests {
     #[cfg(feature = "gpu")]
     fn gpu_cpu_rgba(
         calib: &Calibration,
-        config: &ViewportConfig,
+        config: &ViewportSize,
         cam: (u32, u32),
         left: &Nv12Planes,
         right: &Nv12Planes,
@@ -652,7 +652,7 @@ mod tests {
     #[cfg(feature = "gpu")]
     fn cpu_matches_gpu_across_regimes() {
         let (cam_w, cam_h) = (256u32, 144u32);
-        let cfg = |w: u32, h: u32| ViewportConfig {
+        let cfg = |w: u32, h: u32| ViewportSize {
             width: w,
             height: h,
         };
@@ -689,7 +689,7 @@ mod tests {
         let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
-        let cases: [(&str, Calibration, ViewportConfig, Pose, bool); 7] = [
+        let cases: [(&str, Calibration, ViewportSize, Pose, bool); 7] = [
             (
                 "wide-pan",
                 base.clone(),
@@ -781,7 +781,7 @@ mod tests {
         };
         let cfg = |fov: f32| {
             (
-                ViewportConfig {
+                ViewportSize {
                     width: 192,
                     height: 108,
                 },
@@ -793,7 +793,7 @@ mod tests {
         };
         // Each case puts a plane within NEAR_PLANE of the virtual camera before
         // the fix: axis offset below ~0.012, or FOV near the projection limit.
-        let cases: [(&str, Calibration, (ViewportConfig, Pose)); 3] = [
+        let cases: [(&str, Calibration, (ViewportSize, Pose)); 3] = [
             ("axis-offset 0.005", axis(0.005), cfg(75.0)),
             ("axis-offset 0.012", axis(0.012), cfg(75.0)),
             ("fov 178", calib(cam_w, cam_h), cfg(178.0)),
@@ -828,7 +828,7 @@ mod tests {
     fn cpu_matches_gpu_high_frequency() {
         let (cam_w, cam_h) = (256u32, 144u32);
         let cal = calib(cam_w, cam_h);
-        let config = ViewportConfig {
+        let config = ViewportSize {
             width: 192,
             height: 108,
         };
@@ -864,7 +864,7 @@ mod tests {
     fn cpu_black_region_matches_gpu() {
         let (cam_w, cam_h) = (256u32, 144u32);
         let cal = calib(cam_w, cam_h);
-        let config = ViewportConfig {
+        let config = ViewportSize {
             width: 192,
             height: 108,
         };
@@ -912,7 +912,7 @@ mod tests {
     fn agreement_oracle_detects_subpixel_offset() {
         let (cam_w, cam_h) = (256u32, 144u32);
         let cal = calib(cam_w, cam_h);
-        let config = ViewportConfig {
+        let config = ViewportSize {
             width: 192,
             height: 108,
         };

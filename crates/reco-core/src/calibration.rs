@@ -15,7 +15,6 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::precision::VALIDATION_EPSILON;
 use crate::projection::{self, Projection};
 
 /// Maximum allowed dimension (width or height) in pixels.
@@ -156,6 +155,23 @@ pub(crate) fn expect_in_range(
     Ok(())
 }
 
+/// Minimum positive value accepted for focal lengths and camera
+/// offsets - anything the geometry divides by or normalizes with.
+///
+/// Too loose and a near-zero value reaches the geometry, dividing by
+/// ~zero or normalizing a ~zero vector into NaN poses. Too tight and
+/// legitimate hand-edited calibrations start failing validation for
+/// values that render fine.
+const VALIDATION_EPSILON: f64 = 1e-6;
+
+/// Reject a value that is not meaningfully positive: at or below
+/// [`VALIDATION_EPSILON`]. For fields the geometry divides by or
+/// normalizes with (focal lengths, camera offsets). Owning the
+/// epsilon here keeps the tolerance policy out of projection code.
+pub(crate) fn expect_positive(field: &str, value: f64) -> Result<(), CalibrationError> {
+    expect_above(field, value, VALIDATION_EPSILON)
+}
+
 /// Reject a value at or below `epsilon`. The strict bound is the point:
 /// callers guard divisions and normalizations, where "equal to the
 /// threshold" is as degenerate as "below it".
@@ -167,6 +183,59 @@ pub(crate) fn expect_above(field: &str, value: f64, epsilon: f64) -> Result<(), 
             epsilon,
         });
     }
+    Ok(())
+}
+/// Validate one lens's intrinsics.
+fn validate_lens(lens: &Lens, index: usize) -> Result<(), CalibrationError> {
+    for (field, value) in [("width", lens.width), ("height", lens.height)] {
+        if value == 0 {
+            return Err(CalibrationError::ZeroDimension {
+                index,
+                field,
+                value,
+            });
+        }
+        if value > MAX_DIM {
+            return Err(CalibrationError::DimensionTooLarge {
+                index,
+                field,
+                value,
+                max: MAX_DIM,
+            });
+        }
+    }
+
+    for (name, val) in [("fx", lens.fx), ("fy", lens.fy)] {
+        let field = format!("lens[{index}].{name}");
+        expect_finite(&field, val)?;
+        expect_positive(&field, val)?;
+    }
+
+    for (name, val) in [("cx", lens.cx), ("cy", lens.cy)] {
+        expect_finite(&format!("lens[{index}].{name}"), val)?;
+    }
+
+    for (i, coeff) in lens.distortion.iter().enumerate() {
+        expect_finite(&format!("lens[{index}].distortion[{i}]"), *coeff)?;
+    }
+
+    let correction = format!("lens[{index}].correction");
+    expect_finite(&correction, f64::from(lens.correction))?;
+    // The shader interprets negative correction as its raw-bypass debug
+    // mode and the CPU path would extrapolate the KB4 lerp - reject
+    // anything outside the documented [0, 1] blend range.
+    expect_in_range(&correction, f64::from(lens.correction), 0.0, 1.0)?;
+
+    Ok(())
+}
+
+/// Validate the topology-independent framing parameters. Rules a
+/// topology imposes on the framing (the L-shape's minimum axis offset)
+/// live in that topology's own validate.
+fn validate_framing(f: &Framing) -> Result<(), CalibrationError> {
+    expect_finite("framing.axis_offset", f.axis_offset)?;
+    expect_finite("framing.tilt", f.tilt)?;
+    expect_finite("framing.roll", f.roll)?;
     Ok(())
 }
 
@@ -250,7 +319,7 @@ impl Lens {
     /// Aspect ratio of this lens's calibration frame (width / height).
     ///
     /// Returns 1.0 if height is zero (degenerate, rejected by
-    /// validation) - mirrors `ViewportConfig::aspect_ratio`.
+    /// validation) - mirrors `ViewportSize::aspect_ratio`.
     pub fn aspect(&self) -> f32 {
         if self.height == 0 {
             return 1.0;
@@ -584,65 +653,6 @@ pub enum CalibrationLoadError {
     /// Calibration values are invalid.
     #[error(transparent)]
     Invalid(#[from] CalibrationError),
-}
-
-/// Validate one lens's intrinsics.
-fn validate_lens(lens: &Lens, index: usize) -> Result<(), CalibrationError> {
-    for (field, value) in [("width", lens.width), ("height", lens.height)] {
-        if value == 0 {
-            return Err(CalibrationError::ZeroDimension {
-                index,
-                field,
-                value,
-            });
-        }
-        if value > MAX_DIM {
-            return Err(CalibrationError::DimensionTooLarge {
-                index,
-                field,
-                value,
-                max: MAX_DIM,
-            });
-        }
-    }
-
-    for (name, val) in [("fx", lens.fx), ("fy", lens.fy)] {
-        let field = format!("lens[{index}].{name}");
-        expect_finite(&field, val)?;
-        expect_above(&field, val, VALIDATION_EPSILON)?;
-    }
-
-    for (name, val) in [("cx", lens.cx), ("cy", lens.cy)] {
-        expect_finite(&format!("lens[{index}].{name}"), val)?;
-    }
-
-    for (i, coeff) in lens.distortion.iter().enumerate() {
-        expect_finite(&format!("lens[{index}].distortion[{i}]"), *coeff)?;
-    }
-
-    let correction = format!("lens[{index}].correction");
-    expect_finite(&correction, f64::from(lens.correction))?;
-    // The shader interprets negative correction as its raw-bypass debug
-    // mode and the CPU path would extrapolate the KB4 lerp - reject
-    // anything outside the documented [0, 1] blend range.
-    expect_in_range(&correction, f64::from(lens.correction), 0.0, 1.0)?;
-
-    Ok(())
-}
-
-/// Validate the topology-independent framing parameters. Rules a
-/// topology imposes on the framing (the L-shape's minimum axis offset)
-/// live in that topology's own validate.
-fn validate_framing(f: &Framing) -> Result<(), CalibrationError> {
-    for (name, val) in [
-        ("framing.axis_offset", f.axis_offset),
-        ("framing.tilt", f.tilt),
-        ("framing.roll", f.roll),
-    ] {
-        expect_finite(name, val)?;
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]

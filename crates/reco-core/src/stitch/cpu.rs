@@ -12,7 +12,7 @@ use crate::calibration::Calibration;
 use crate::geometry::Pose;
 use crate::projection::Projection;
 use crate::render::planes::{Nv12Planes, YuvPlanes};
-use crate::render::viewport::ViewportConfig;
+use crate::render::viewport::ViewportSize;
 
 use super::executor::StitchError;
 use super::{BlendRule, SurfaceMap};
@@ -62,13 +62,13 @@ pub(crate) fn stitch_rgba(
     planes: &[Nv12Planes<'_>],
     cam: (u32, u32),
     calib: &Calibration,
-    config: &ViewportConfig,
+    config: &ViewportSize,
     pose: Pose,
     full_range: bool,
 ) -> Result<Vec<u8>, StitchError> {
     let (cw, ch) = cam;
     check_source_dims(cw, ch)?;
-    check_camera_count(projection, planes.len())?;
+    check_frame_count(projection, planes.len())?;
     let (w, h) = (cw as usize, ch as usize);
     for p in planes {
         check_plane(p.y, w * h)?;
@@ -92,13 +92,13 @@ pub(crate) fn stitch_rgba_yuv420p(
     planes: &[YuvPlanes<'_>],
     cam: (u32, u32),
     calib: &Calibration,
-    config: &ViewportConfig,
+    config: &ViewportSize,
     pose: Pose,
     full_range: bool,
 ) -> Result<Vec<u8>, StitchError> {
     let (cw, ch) = cam;
     check_source_dims(cw, ch)?;
-    check_camera_count(projection, planes.len())?;
+    check_frame_count(projection, planes.len())?;
     let (w, h) = (cw as usize, ch as usize);
     let chroma = (w / 2) * (h / 2);
     for p in planes {
@@ -113,9 +113,9 @@ pub(crate) fn stitch_rgba_yuv420p(
     Ok(stitch_with(projection, calib, config, pose, &samplers))
 }
 
-/// The number of input frames must match what the projection consumes;
-/// a mismatch would silently sample the wrong camera.
-fn check_camera_count(projection: &dyn Projection, planes: usize) -> Result<(), StitchError> {
+/// The supplied frame count must match the camera count the
+/// projection consumes; a mismatch would silently sample the wrong camera.
+fn check_frame_count(projection: &dyn Projection, planes: usize) -> Result<(), StitchError> {
     if planes != projection.camera_count() {
         return Err(StitchError::InvalidConfig(format!(
             "projection '{}' consumes {} camera(s) but {planes} frame(s) were supplied",
@@ -135,7 +135,7 @@ fn check_camera_count(projection: &dyn Projection, planes: usize) -> Result<(), 
 fn stitch_with(
     projection: &dyn Projection,
     calib: &Calibration,
-    config: &ViewportConfig,
+    config: &ViewportSize,
     pose: Pose,
     samplers: &[impl Fn(f64, f64) -> [f64; 3]],
 ) -> Vec<u8> {

@@ -10,7 +10,7 @@ use crate::gpu::nv12_converter::Nv12Error;
 use crate::gpu::{GpuContext, GpuError, OutputFormat};
 use crate::render::pipeline::PipelineError;
 use crate::render::renderer::InputFormat;
-use crate::render::viewport::ViewportConfig;
+use crate::render::viewport::ViewportSize;
 use crate::session::sinks::SinkOptions;
 use crate::sink::{OutputSink, SinkError};
 use crate::source::SourceError;
@@ -38,7 +38,7 @@ pub struct SessionConfig {
     /// Camera calibration data.
     pub calibration: Calibration,
     /// Output viewport (dimensions, blend width, FOV).
-    pub viewport: ViewportConfig,
+    pub viewport: ViewportSize,
     /// Input frame width in pixels.
     pub input_width: u32,
     /// Input frame height in pixels.
@@ -200,7 +200,7 @@ const _: fn() = || {
 /// ```
 pub struct StitchSessionBuilder {
     pub(super) calibration: Option<Calibration>,
-    pub(super) viewport: Option<ViewportConfig>,
+    pub(super) viewport: Option<ViewportSize>,
     pub(super) input_width: Option<u32>,
     pub(super) input_height: Option<u32>,
     pub(super) output_format: OutputFormat,
@@ -221,7 +221,7 @@ impl StitchSessionBuilder {
     /// Set the output viewport configuration.
     ///
     /// Defaults to 1920x1080 with blend_width 0.15 if not set.
-    pub fn viewport(mut self, viewport: ViewportConfig) -> Self {
+    pub fn viewport(mut self, viewport: ViewportSize) -> Self {
         self.viewport = Some(viewport);
         self
     }
@@ -298,7 +298,7 @@ impl StitchSessionBuilder {
             SessionError::Config("StitchSessionBuilder: input_dimensions is required".into())
         })?;
 
-        let viewport = self.viewport.unwrap_or(ViewportConfig {
+        let viewport = self.viewport.unwrap_or(ViewportSize {
             width: 1920,
             height: 1080,
         });

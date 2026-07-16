@@ -32,7 +32,7 @@ use reco_core::geometry::Pose;
 use reco_core::gpu::GpuContext;
 use reco_core::render::pipeline::{BgraPlanes, FramePlaneView, StridedYuvPlanes};
 use reco_core::render::renderer::InputFormat;
-use reco_core::render::viewport::ViewportConfig;
+use reco_core::render::viewport::ViewportSize;
 use reco_core::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 
 use crate::ffi;
@@ -362,14 +362,14 @@ impl RecoSource {
         log::info!("reco-obs: GPU initialized: {}", gpu.gpu_name());
 
         // Forward calibration's rig tilt + roll into the viewport.
-        // Pre-Step-4b this used `..ViewportConfig::default()` which
+        // Pre-Step-4b this used `..ViewportSize::default()` which
         // silently zeroed both, so OBS rendered tilted-rig footage
         // with a skewed horizon while cli/preview did not.
         // RigCorrection in reco-core handles the rest.
-        let viewport = ViewportConfig {
+        let viewport = ViewportSize {
             width: self.output_width,
             height: self.output_height,
-            ..ViewportConfig::default()
+            ..ViewportSize::default()
         };
 
         let executor = GpuExecutor::new(
@@ -728,7 +728,7 @@ impl RecoSource {
                 // which gives the visible output a natural ease-in
                 // rather than jittering on every mouse event.
                 self.pose.tick();
-                let pose = self.pose.current_pose();
+                let current = self.pose.current_pose();
                 let result = match self.input_format {
                     InputFormat::Yuv420p => {
                         // Wrap OBS planes as StridedYuvPlanes and repack
@@ -739,7 +739,7 @@ impl RecoSource {
                         let left_tight = left_strided.copy_into(&mut self.left_repack);
                         let right_tight = right_strided.copy_into(&mut self.right_repack);
                         let session = self.core.as_mut().expect("checked above");
-                        session.submit_frame_yuv_at_pose(&left_tight, &right_tight, pose)
+                        session.submit_frame_yuv_at_pose(&left_tight, &right_tight, current)
                     }
                     InputFormat::Bgra => {
                         // BGRA sources: swizzle bytes into cached RGBA
@@ -751,7 +751,7 @@ impl RecoSource {
                         let left_bgra = build_bgra_planes(l, &mut self.left_repack);
                         let right_bgra = build_bgra_planes(r, &mut self.right_repack);
                         let session = self.core.as_mut().expect("checked above");
-                        session.submit_frame_bgra_at_pose(&left_bgra, &right_bgra, pose)
+                        session.submit_frame_bgra_at_pose(&left_bgra, &right_bgra, current)
                     }
                     InputFormat::Nv12 => {
                         // Not yet supported in reco-obs; guarded above.
