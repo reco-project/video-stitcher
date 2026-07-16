@@ -487,6 +487,13 @@ impl StitchCore {
         self.executor.set_blend_width(width);
     }
 
+    /// Toggle automatic per-camera seam-band color matching (GPU executor
+    /// only; see [`crate::stitch::Executor::set_color_match_enabled`]).
+    /// Off by default.
+    pub fn set_color_match_enabled(&mut self, enabled: bool) {
+        self.executor.set_color_match_enabled(enabled);
+    }
+
     /// Set the lens-correction strength on every lens (`0` = pinhole,
     /// `1` = full KB4).
     pub fn set_lens_correction_amount(&mut self, amount: f32) {

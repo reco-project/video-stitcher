@@ -117,6 +117,7 @@ pub fn run_export(
     codec_str: String,
     quality_str: String,
     blend: f32,
+    color_match_enabled: bool,
     start_secs: f32,
     end_secs: f32,
     autocam: AutocamUiConfig,
@@ -196,6 +197,7 @@ pub fn run_export(
     .format(format)
     .resolution(width, height)
     .blend_width(blend)
+    .color_match(color_match_enabled)
     .on_progress(move |p: &reco_core::session::types::FrameProgress| {
         let frames = p.frames_completed;
         let elapsed = progress_start.elapsed().as_secs_f64();

@@ -22,6 +22,7 @@
 //! )?;
 //! ```
 
+use super::color_match;
 use super::renderer::{InputFormat, RenderError, Renderer};
 use super::scene::SceneGeometry;
 use super::viewport::{ResolvedViewport, ViewportConfig};
@@ -78,6 +79,16 @@ pub struct StitchPipeline {
     pub(crate) calibration: Calibration,
     /// Output viewport configuration.
     pub(crate) viewport: ViewportConfig,
+    /// Periodic per-camera seam-band color measurement. Only the
+    /// CPU-upload render paths (`render_to_target`/`render_to_target_nv12`
+    /// and their `_to_view` counterparts) actually update this - BGRA and
+    /// GPU zero-copy paths have no CPU pixel access at render time, so
+    /// they render with whatever offset was last measured (identity
+    /// `[0,0,0]` if never updated). Interior mutability: the render
+    /// methods take `&self`.
+    color_match: std::cell::RefCell<color_match::ColorMatchState>,
+    /// Master toggle for color matching. Opt-in (see [`Self::with_gpu`]).
+    pub(crate) color_match_enabled: bool,
     /// GPU renderer (textures, pipelines, bind groups).
     renderer: Renderer,
     /// Input frame dimensions.
@@ -161,6 +172,17 @@ impl StitchPipeline {
             scene,
             calibration,
             viewport,
+            color_match: std::cell::RefCell::new(color_match::ColorMatchState::default()),
+            // Opt-in, unlike the original design's "on by default": this
+            // codebase treats CPU/GPU render agreement as load-bearing
+            // and test-gated (see the `stitch` module docs), and color
+            // matching has no CPU-side mirror (a genuinely new capability,
+            // GPU-only) - defaulting it on would silently change output
+            // for every existing consumer AND break the agreement-oracle
+            // tests the moment a source has non-uniform seam-band content
+            // (confirmed: this exact default broke 7 of them during
+            // development). Callers opt in via `set_color_match_enabled`.
+            color_match_enabled: false,
             renderer,
             input_width,
             input_height,
@@ -269,6 +291,20 @@ impl StitchPipeline {
     /// Set the seam blend width (per-frame uniform; no scene rebuild).
     pub fn set_blend_width(&mut self, width: f32) {
         self.calibration.topology.blend_width = width;
+    }
+
+    /// Toggle automatic per-camera seam-band color matching. When
+    /// disabled, rendering uses whatever offset was last measured
+    /// (freezes, does not reset to identity) until re-enabled.
+    pub fn set_color_match_enabled(&mut self, enabled: bool) {
+        self.color_match_enabled = enabled;
+    }
+
+    /// Current per-camera color-match offset uniforms: `(left, right)`.
+    /// Read by every render path; only updated by the CPU-upload paths
+    /// (see [`Self::color_match`]'s doc comment).
+    fn color_offsets(&self) -> ([f32; 3], [f32; 3]) {
+        self.color_match.borrow().offsets()
     }
 
     /// Update calibration parameters. Recomputes [`SceneGeometry`] from the
@@ -531,6 +567,16 @@ impl StitchPipeline {
         self.renderer
             .upload_right_yuv(&self.gpu, right.y, right.u, right.v)?;
 
+        if self.color_match_enabled {
+            self.color_match.borrow_mut().update_yuv420p(
+                left,
+                right,
+                &self.calibration.lenses[0],
+                &self.calibration.lenses[1],
+            );
+        }
+        let (left_color, right_color) = self.color_offsets();
+
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
             position: ViewportPosition {
@@ -546,6 +592,8 @@ impl StitchPipeline {
             &self.calibration,
             &viewport,
             self.calibration.topology.blend_width,
+            left_color,
+            right_color,
             target_view,
         );
         Ok(())
@@ -568,6 +616,16 @@ impl StitchPipeline {
         self.renderer
             .upload_right_nv12(&self.gpu, right.y, right.uv)?;
 
+        if self.color_match_enabled {
+            self.color_match.borrow_mut().update_nv12(
+                left,
+                right,
+                &self.calibration.lenses[0],
+                &self.calibration.lenses[1],
+            );
+        }
+        let (left_color, right_color) = self.color_offsets();
+
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
             position: ViewportPosition {
@@ -583,6 +641,8 @@ impl StitchPipeline {
             &self.calibration,
             &viewport,
             self.calibration.topology.blend_width,
+            left_color,
+            right_color,
             target_view,
         );
         Ok(())
@@ -609,6 +669,16 @@ impl StitchPipeline {
         self.renderer
             .upload_right_yuv(&self.gpu, right.y, right.u, right.v)?;
 
+        if self.color_match_enabled {
+            self.color_match.borrow_mut().update_yuv420p(
+                left,
+                right,
+                &self.calibration.lenses[0],
+                &self.calibration.lenses[1],
+            );
+        }
+        let (left_color, right_color) = self.color_offsets();
+
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
             position: ViewportPosition {
@@ -624,6 +694,8 @@ impl StitchPipeline {
             &self.calibration,
             &viewport,
             self.calibration.topology.blend_width,
+            left_color,
+            right_color,
         ))
     }
 
@@ -647,6 +719,16 @@ impl StitchPipeline {
         self.renderer
             .upload_right_nv12(&self.gpu, right.y, right.uv)?;
 
+        if self.color_match_enabled {
+            self.color_match.borrow_mut().update_nv12(
+                left,
+                right,
+                &self.calibration.lenses[0],
+                &self.calibration.lenses[1],
+            );
+        }
+        let (left_color, right_color) = self.color_offsets();
+
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
             position: ViewportPosition {
@@ -662,6 +744,8 @@ impl StitchPipeline {
             &self.calibration,
             &viewport,
             self.calibration.topology.blend_width,
+            left_color,
+            right_color,
         ))
     }
 
@@ -685,6 +769,13 @@ impl StitchPipeline {
         self.renderer.upload_left_bgra(&self.gpu, left.rgba)?;
         self.renderer.upload_right_bgra(&self.gpu, right.rgba)?;
 
+        // No CPU pixel access on this path (packed RGBA, not the raw YUV
+        // color-match sampling expects) - renders with whatever offset
+        // was last measured by a CPU-upload path, or identity if none.
+        // Documented limitation, matches `show_seam_line`'s and
+        // `color_match`'s own doc comments.
+        let (left_color, right_color) = self.color_offsets();
+
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
             position: ViewportPosition {
@@ -700,6 +791,8 @@ impl StitchPipeline {
             &self.calibration,
             &viewport,
             self.calibration.topology.blend_width,
+            left_color,
+            right_color,
         ))
     }
 
@@ -748,6 +841,10 @@ impl StitchPipeline {
     /// bind groups, then use this for subsequent frames with the same
     /// textures to avoid per-frame bind group allocation.
     pub fn render_to_target_gpu(&self, yaw: f32, pitch: f32) -> wgpu::CommandBuffer {
+        // No CPU pixel access on the zero-copy path - see
+        // `render_to_target_bgra`'s identical comment.
+        let (left_color, right_color) = self.color_offsets();
+
         let viewport = ResolvedViewport {
             config: self.viewport.clone(),
             position: ViewportPosition {
@@ -763,6 +860,8 @@ impl StitchPipeline {
             &self.calibration,
             &viewport,
             self.calibration.topology.blend_width,
+            left_color,
+            right_color,
         )
     }
 

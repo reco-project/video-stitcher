@@ -111,6 +111,13 @@ impl StitchSession {
         self.lookahead_frames = frames;
     }
 
+    /// Toggle automatic per-camera seam-band color matching (see
+    /// [`StitchCore::set_color_match_enabled`](crate::core::StitchCore::set_color_match_enabled)).
+    /// Off by default.
+    pub fn set_color_match_enabled(&mut self, enabled: bool) {
+        self.core.set_color_match_enabled(enabled);
+    }
+
     /// Attach a stacked-video replay recorder.
     ///
     /// Forwards to `StitchCore::set_stacked_recorder` on the

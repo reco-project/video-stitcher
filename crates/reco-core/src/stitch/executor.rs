@@ -531,6 +531,18 @@ impl Executor {
         }
     }
 
+    /// Toggle automatic per-camera seam-band color matching. GPU-only -
+    /// see [`crate::render::pipeline::StitchPipeline::set_color_match_enabled`]'s
+    /// doc comment for why this has no CPU-executor mirror (yet). No-op
+    /// on the CPU arm.
+    pub fn set_color_match_enabled(&mut self, enabled: bool) {
+        match self {
+            Executor::Cpu(_) => {}
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.set_color_match_enabled(enabled),
+        }
+    }
+
     /// Set the lens-correction strength on every lens, clamped to `[0, 1]`.
     pub fn set_lens_correction_amount(&mut self, amount: f32) {
         match self {

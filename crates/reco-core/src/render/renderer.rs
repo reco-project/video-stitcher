@@ -809,6 +809,8 @@ impl Renderer {
         calibration: &Calibration,
         viewport: &ResolvedViewport,
         blend_width: f32,
+        left_color_offset: [f32; 3],
+        right_color_offset: [f32; 3],
         target_view: &wgpu::TextureView,
         aspect: f32,
         encoder_label: &str,
@@ -840,6 +842,9 @@ impl Renderer {
             self.is_full_range,
         );
         left_uniforms.lens_preview[0] = calibration.lenses[0].correction;
+        left_uniforms.color_offset_blend[0] = left_color_offset[0];
+        left_uniforms.color_offset_blend[1] = left_color_offset[1];
+        left_uniforms.color_offset_blend[2] = left_color_offset[2];
 
         let right_mvp = projection * view * scene.model_matrix_right();
         let mut right_uniforms = build_gpu_uniforms(
@@ -852,6 +857,9 @@ impl Renderer {
             self.is_full_range,
         );
         right_uniforms.lens_preview[0] = calibration.lenses[1].correction;
+        right_uniforms.color_offset_blend[0] = right_color_offset[0];
+        right_uniforms.color_offset_blend[1] = right_color_offset[1];
+        right_uniforms.color_offset_blend[2] = right_color_offset[2];
 
         gpu.queue.write_buffer(
             &self.left.uniform_buffer,
@@ -913,6 +921,7 @@ impl Renderer {
         feature = "profiling",
         tracing::instrument(skip_all, name = "gpu_render_to_target")
     )]
+    #[allow(clippy::too_many_arguments)]
     pub fn render_to_target(
         &self,
         gpu: &GpuContext,
@@ -920,6 +929,8 @@ impl Renderer {
         calibration: &Calibration,
         viewport: &ResolvedViewport,
         blend_width: f32,
+        left_color_offset: [f32; 3],
+        right_color_offset: [f32; 3],
     ) -> wgpu::CommandBuffer {
         let aspect = self.output_width as f32 / self.output_height as f32;
         let encoder = self.encode_stitch_pass(
@@ -928,6 +939,8 @@ impl Renderer {
             calibration,
             viewport,
             blend_width,
+            left_color_offset,
+            right_color_offset,
             &self.render_target_view,
             aspect,
             "stitch_to_target",
@@ -947,6 +960,7 @@ impl Renderer {
     ///
     /// Unlike [`Self::render_to_target`], this does NOT read back the result to CPU.
     /// Used for interactive preview windows.
+    #[allow(clippy::too_many_arguments)]
     pub fn render_to_view(
         &self,
         gpu: &GpuContext,
@@ -954,6 +968,8 @@ impl Renderer {
         calibration: &Calibration,
         viewport: &ResolvedViewport,
         blend_width: f32,
+        left_color_offset: [f32; 3],
+        right_color_offset: [f32; 3],
         target_view: &wgpu::TextureView,
     ) {
         let aspect = viewport.config.width as f32 / viewport.config.height as f32;
@@ -963,6 +979,8 @@ impl Renderer {
             calibration,
             viewport,
             blend_width,
+            left_color_offset,
+            right_color_offset,
             target_view,
             aspect,
             "preview_frame",
