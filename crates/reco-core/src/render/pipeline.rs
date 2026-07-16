@@ -78,6 +78,10 @@ pub struct StitchPipeline {
     pub(crate) calibration: Calibration,
     /// Output viewport configuration.
     pub(crate) viewport: ViewportConfig,
+    /// Draw a debug line at the exact seam position. Pure visualization
+    /// (calibration-tuning aid), not calibration state - deliberately not
+    /// part of `Calibration` so toggling it never touches the saved file.
+    pub(crate) show_seam_line: bool,
     /// GPU renderer (textures, pipelines, bind groups).
     renderer: Renderer,
     /// Input frame dimensions.
@@ -161,6 +165,7 @@ impl StitchPipeline {
             scene,
             calibration,
             viewport,
+            show_seam_line: false,
             renderer,
             input_width,
             input_height,
@@ -269,6 +274,20 @@ impl StitchPipeline {
     /// Set the seam blend width (per-frame uniform; no scene rebuild).
     pub fn set_blend_width(&mut self, width: f32) {
         self.calibration.topology.blend_width = width;
+    }
+
+    /// Set the manual seam-position nudge (per-frame uniform; no scene
+    /// rebuild). See [`crate::calibration::Topology::seam_offset`].
+    pub fn set_seam_offset(&mut self, offset: f32) {
+        self.calibration.topology.seam_offset = offset;
+    }
+
+    /// Toggle the seam debug line (per-frame uniform; no scene rebuild).
+    /// Draws a thin highlight at the exact rendered seam position by
+    /// reusing the same alpha-threshold math the blend itself uses, so
+    /// it can never disagree with where the blend actually sits.
+    pub fn set_show_seam_line(&mut self, show: bool) {
+        self.show_seam_line = show;
     }
 
     /// Update calibration parameters. Recomputes [`SceneGeometry`] from the
@@ -546,6 +565,7 @@ impl StitchPipeline {
             &self.calibration,
             &viewport,
             self.calibration.topology.blend_width,
+            self.show_seam_line,
             target_view,
         );
         Ok(())
@@ -583,6 +603,7 @@ impl StitchPipeline {
             &self.calibration,
             &viewport,
             self.calibration.topology.blend_width,
+            self.show_seam_line,
             target_view,
         );
         Ok(())
@@ -624,6 +645,7 @@ impl StitchPipeline {
             &self.calibration,
             &viewport,
             self.calibration.topology.blend_width,
+            self.show_seam_line,
         ))
     }
 
@@ -662,6 +684,7 @@ impl StitchPipeline {
             &self.calibration,
             &viewport,
             self.calibration.topology.blend_width,
+            self.show_seam_line,
         ))
     }
 
@@ -700,6 +723,7 @@ impl StitchPipeline {
             &self.calibration,
             &viewport,
             self.calibration.topology.blend_width,
+            self.show_seam_line,
         ))
     }
 
@@ -763,6 +787,7 @@ impl StitchPipeline {
             &self.calibration,
             &viewport,
             self.calibration.topology.blend_width,
+            self.show_seam_line,
         )
     }
 

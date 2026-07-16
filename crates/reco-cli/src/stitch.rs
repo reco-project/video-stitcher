@@ -24,6 +24,8 @@ pub struct StitchArgs<'a> {
     pub width: u32,
     pub height: u32,
     pub blend: Option<f32>,
+    pub seam_offset: Option<f32>,
+    pub show_seam_line: bool,
     pub start_time: Option<f64>,
     pub end_time: Option<f64>,
     pub max_frames: Option<u64>,
@@ -125,6 +127,12 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
 
     if let Some(b) = args.blend {
         job = job.blend_width(b);
+    }
+    if let Some(o) = args.seam_offset {
+        job = job.seam_offset(o);
+    }
+    if args.show_seam_line {
+        job = job.show_seam_line(true);
     }
     if let Some(t) = args.start_time {
         job = job.start_time(t);

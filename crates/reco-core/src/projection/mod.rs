@@ -126,7 +126,10 @@ impl Projection for LShapeProjection {
             (Box::new(left), BlendRule::Opaque),
             (
                 Box::new(right),
-                BlendRule::Smoothstep(calibration.topology.blend_width as f64),
+                BlendRule::Smoothstep {
+                    width: calibration.topology.blend_width as f64,
+                    offset: calibration.topology.seam_offset as f64,
+                },
             ),
         ]
     }
@@ -497,6 +500,7 @@ mod tests {
                 x_rx: 0.0,
                 z_rz: 0.0,
                 blend_width: 0.05,
+                seam_offset: 0.0,
             },
             Framing {
                 axis_offset: 0.2398,
@@ -909,7 +913,10 @@ mod tests {
         assert_eq!(surfaces[0].1, crate::stitch::BlendRule::Opaque);
         assert_eq!(
             surfaces[1].1,
-            crate::stitch::BlendRule::Smoothstep(cal.topology.blend_width as f64)
+            crate::stitch::BlendRule::Smoothstep {
+                width: cal.topology.blend_width as f64,
+                offset: cal.topology.seam_offset as f64,
+            }
         );
     }
 

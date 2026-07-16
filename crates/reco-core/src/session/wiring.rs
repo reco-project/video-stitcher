@@ -111,6 +111,14 @@ impl StitchSession {
         self.lookahead_frames = frames;
     }
 
+    /// Toggle the seam debug line (see
+    /// [`StitchCore::set_show_seam_line`](crate::core::StitchCore::set_show_seam_line)).
+    /// Pure visualization aid - has no effect on the rendered seam blend
+    /// itself.
+    pub fn set_show_seam_line(&mut self, show: bool) {
+        self.core.set_show_seam_line(show);
+    }
+
     /// Attach a stacked-video replay recorder.
     ///
     /// Forwards to `StitchCore::set_stacked_recorder` on the

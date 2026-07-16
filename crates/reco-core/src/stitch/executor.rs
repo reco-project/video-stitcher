@@ -531,6 +531,28 @@ impl Executor {
         }
     }
 
+    /// Set the manual seam-position nudge (document field; no geometry
+    /// rebuild). See [`crate::calibration::Topology::seam_offset`].
+    pub fn set_seam_offset(&mut self, offset: f32) {
+        match self {
+            Executor::Cpu(c) => c.calib.topology.seam_offset = offset,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.set_seam_offset(offset),
+        }
+    }
+
+    /// Toggle the seam debug line. GPU-only visualization aid - the CPU
+    /// executor is a headless correctness oracle / GPU-less render path
+    /// with no interactive preview to draw a debug overlay onto, so this
+    /// is a no-op on that arm.
+    pub fn set_show_seam_line(&mut self, show: bool) {
+        match self {
+            Executor::Cpu(_) => {}
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.set_show_seam_line(show),
+        }
+    }
+
     /// Set the lens-correction strength on every lens, clamped to `[0, 1]`.
     pub fn set_lens_correction_amount(&mut self, amount: f32) {
         match self {
@@ -834,5 +856,63 @@ mod tests {
         assert_eq!(cpu_rgba.len(), (out_w * out_h * 4) as usize);
         Agreement::compare(gpu_rgba, cpu_rgba)
             .assert_within(AgreementBounds::DEFAULT, "backend cpu-vs-gpu");
+    }
+
+    /// Same as [`cpu_and_gpu_backends_agree`] but with a non-zero
+    /// `Topology::seam_offset` - the CPU (`BlendRule::Smoothstep::offset`)
+    /// and GPU (`fisheye.wgsl`'s `lens_preview.z`) seam-offset math must
+    /// shift the alpha threshold identically, or this codebase's
+    /// agreement-oracle guarantee would be silently broken for this
+    /// feature specifically.
+    #[test]
+    #[cfg(feature = "gpu")]
+    fn cpu_and_gpu_backends_agree_with_seam_offset() {
+        let Some(gpu) = gpu_or_skip() else {
+            return;
+        };
+
+        let (cam_w, cam_h) = (192u32, 108u32);
+        let (out_w, out_h) = (160u32, 90u32);
+        let mut calib = calib(cam_w, cam_h);
+        calib.topology.seam_offset = 0.08;
+        let config = ViewportConfig {
+            width: out_w,
+            height: out_h,
+            ..Default::default()
+        };
+        let (ly, luv) = nv12(cam_w, cam_h, 0);
+        let (ry, ruv) = nv12(cam_w, cam_h, 30);
+        let left = Nv12Planes { y: &ly, uv: &luv };
+        let right = Nv12Planes { y: &ry, uv: &ruv };
+        let (yaw, pitch) = (0.08f32, -0.04f32);
+
+        let mut cpu = CpuExecutor::new(
+            Box::new(crate::projection::LShapeProjection),
+            calib.clone(),
+            config.clone(),
+            cam_w,
+            cam_h,
+            false,
+        )
+        .expect("cpu backend");
+        let mut gpu = GpuExecutor::new(
+            gpu,
+            GpuExecutorConfig {
+                viewport: config,
+                ..GpuExecutorConfig::new(calib, cam_w, cam_h, InputFormat::Nv12)
+            },
+        )
+        .expect("gpu backend");
+
+        let backends: [&mut dyn StitchExecutor; 2] = [&mut cpu, &mut gpu];
+        let mut outputs = Vec::new();
+        for b in backends {
+            outputs.push(b.stitch(&left, &right, yaw, pitch).expect("stitch"));
+        }
+        let (cpu_rgba, gpu_rgba) = (&outputs[0], &outputs[1]);
+        Agreement::compare(gpu_rgba, cpu_rgba).assert_within(
+            AgreementBounds::DEFAULT,
+            "backend cpu-vs-gpu, seam_offset=0.08",
+        );
     }
 }

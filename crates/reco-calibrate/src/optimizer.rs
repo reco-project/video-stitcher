@@ -416,6 +416,7 @@ impl Optimizer for NelderMeadOptimizer {
             },
             z_rz: 0.0,
             blend_width: reco_core::calibration::DEFAULT_BLEND_WIDTH,
+            seam_offset: 0.0,
         };
         let framing = Framing {
             axis_offset: params.cam_d,

@@ -227,6 +227,13 @@ pub struct Topology {
     /// Seam blend width as a fraction of the plane overlap. `0.0` = hard seam.
     #[serde(default = "default_blend_width")]
     pub blend_width: f32,
+    /// Manual nudge of the seam position, in the right plane's own local
+    /// UV units (same space as `blend_width`). `0.0` (default) = seam sits
+    /// exactly where the plane geometry's own edge puts it. Shifts only
+    /// the alpha-crossfade threshold, never the plane geometry itself, so
+    /// it cannot open a coverage gap the way adjusting `intersect` can.
+    #[serde(default)]
+    pub seam_offset: f32,
 }
 
 /// Default seam blend width for calibrations that do not specify one.
@@ -236,6 +243,10 @@ pub const DEFAULT_BLEND_WIDTH: f32 = 0.05;
 fn default_blend_width() -> f32 {
     DEFAULT_BLEND_WIDTH
 }
+
+/// Safe bound (both directions) for [`Topology::seam_offset`], in the
+/// right plane's own local UV units.
+pub const SEAM_OFFSET_RANGE: f32 = 0.3;
 
 /// The virtual camera's calibrated coordinate frame: the axis/orientation that
 /// panning evolves *within*. Pan (yaw/pitch) and output framing (fov/size) are
@@ -598,6 +609,24 @@ fn validate_topology(t: &Topology) -> Result<(), CalibrationError> {
         });
     }
 
+    if !t.seam_offset.is_finite() {
+        return Err(CalibrationError::NonFiniteFloat {
+            field: "topology.seam_offset".to_owned(),
+            value: format!("{}", t.seam_offset),
+        });
+    }
+    // Bounded to a safe range within the coverage the geometry already
+    // guarantees - well past this and the shift itself (not the smoothstep
+    // math) starts pushing the visible seam into unrelated content.
+    if !(-SEAM_OFFSET_RANGE..=SEAM_OFFSET_RANGE).contains(&t.seam_offset) {
+        return Err(CalibrationError::OutOfRange {
+            field: "topology.seam_offset".to_owned(),
+            value: t.seam_offset as f64,
+            min: -SEAM_OFFSET_RANGE as f64,
+            max: SEAM_OFFSET_RANGE as f64,
+        });
+    }
+
     Ok(())
 }
 
@@ -721,6 +750,7 @@ mod tests {
                 x_rx: 0.0,
                 z_rz: 0.0,
                 blend_width: 0.05,
+                seam_offset: 0.0,
             },
             framing: Framing {
                 axis_offset: 0.25,

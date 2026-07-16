@@ -27,6 +27,12 @@ struct Uniforms {
     flags: vec4<u32>,
     // lens_preview.x: correction_amount (0.0 = no correction, 1.0 = full KB4)
     // lens_preview.y: split_view (> 0.5 = left half uncorrected, right half corrected)
+    // lens_preview.z: seam_offset (Topology::seam_offset) - manual nudge of
+    //   the seam-blend alpha threshold, in the right plane's own local UV
+    //   units. 0.0 = no-op (seam sits exactly where the plane geometry's
+    //   own edge puts it).
+    // lens_preview.w: show_seam_line (> 0.5 = draw a debug line at the
+    //   exact seam position, offset included)
     lens_preview: vec4<f32>,
 };
 
@@ -228,12 +234,25 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Apply YUV-space color transfer
     color = apply_color_transfer(color, u.color_scale.xyz, u.color_offset_blend.xyz);
 
-    // Compute alpha for seam blending (right plane fades in at left edge)
+    // Compute alpha for seam blending (right plane fades in at left edge).
+    // seam_offset (lens_preview.z) manually nudges the crossfade
+    // threshold within the coverage the calibration already guarantees -
+    // it shifts only this alpha math, never the plane geometry, so it
+    // cannot open a black gap the way moving the plane itself could.
     var alpha = 1.0;
     let blend_width = u.color_offset_blend.w;
+    let seam_offset = u.lens_preview.z;
+    let edge_dist = uv.x - seam_offset;
     if u.flags.x == 1u && blend_width > 0.0 {
-        let edge_dist = uv.x;
         alpha = smoothstep(0.0, blend_width, edge_dist);
+    }
+
+    // Seam debug line: a thin highlight at the exact seam position
+    // (offset included), reusing `edge_dist` from the alpha computation
+    // above so the line can never disagree with where the blend
+    // actually sits.
+    if u.flags.x == 1u && u.lens_preview.w > 0.5 && abs(edge_dist) < 0.0015 {
+        return vec4<f32>(1.0, 0.15, 0.15, 1.0);
     }
 
     // Split-view separator line (1px white at the midpoint)

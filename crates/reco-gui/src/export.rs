@@ -117,6 +117,8 @@ pub fn run_export(
     codec_str: String,
     quality_str: String,
     blend: f32,
+    seam_offset: f32,
+    show_seam_line: bool,
     start_secs: f32,
     end_secs: f32,
     autocam: AutocamUiConfig,
@@ -196,6 +198,8 @@ pub fn run_export(
     .format(format)
     .resolution(width, height)
     .blend_width(blend)
+    .seam_offset(seam_offset)
+    .show_seam_line(show_seam_line)
     .on_progress(move |p: &reco_core::session::types::FrameProgress| {
         let frames = p.frames_completed;
         let elapsed = progress_start.elapsed().as_secs_f64();
