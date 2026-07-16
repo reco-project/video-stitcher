@@ -34,6 +34,7 @@ pub struct StitchArgs<'a> {
     pub model_path: Option<&'a str>,
     pub detection_interval: u64,
     pub lookahead: f64,
+    pub lookahead_reduced_bit_depth: bool,
     pub tracking_mode: &'a str,
     pub quality_value: Option<u8>,
     pub preset: Option<String>,
@@ -153,6 +154,12 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
                 "Lookahead: {:.1}s buffer enabled (AI tracking active)",
                 args.lookahead
             );
+            if args.lookahead_reduced_bit_depth {
+                job = job.lookahead_reduced_bit_depth(true);
+                log::info!(
+                    "Lookahead bit depth: reduced to 8-bit (halved VRAM, 10-bit sources only)"
+                );
+            }
         } else {
             log::debug!(
                 "Lookahead {:.1}s ignored: no AI tracking (needs --model, non-sweep); \

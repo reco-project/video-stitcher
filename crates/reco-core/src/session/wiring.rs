@@ -111,6 +111,18 @@ impl StitchSession {
         self.lookahead_frames = frames;
     }
 
+    /// Opt into downconverting the lookahead pool to 8-bit NV12, even for
+    /// 10-bit sources. Off (`Native`) by default. Roughly halves the
+    /// pool's VRAM footprint for 10-bit sources, at the cost of losing
+    /// that extra bit depth in the final render too (the same buffered
+    /// frames feed both AI trajectory smoothing and the stitch render) -
+    /// see [`crate::session::vram_pool::LookaheadBitDepth`]. No effect on
+    /// 8-bit sources. Must be called before the first `run()`/produce
+    /// call that would otherwise lazily create the pool.
+    pub fn set_lookahead_bit_depth(&mut self, bit_depth: crate::session::LookaheadBitDepth) {
+        self.lookahead_bit_depth = bit_depth;
+    }
+
     /// Attach a stacked-video replay recorder.
     ///
     /// Forwards to `StitchCore::set_stacked_recorder` on the

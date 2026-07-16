@@ -210,15 +210,25 @@ impl StitchSession {
                 right_texture,
                 right_slice,
             } => {
-                if let Some(staging_slot) = self.current_vram_slot {
-                    // Buffered path: staging was done during produce.
-                    // Render from the pre-staged slot.
-                    self.render_d3d11_from_slot(
-                        staging_slot,
-                        staging_slot + 1,
-                        pos.yaw,
-                        pos.pitch,
-                    )?;
+                if let Some(vram_idx) = self.current_vram_slot {
+                    // Buffered path: the frame was already staged and
+                    // copied into the VramPool during produce (see
+                    // `copy_to_vram_pool_platform`). Render from the pool's
+                    // bind groups - mirrors Linux's `render_gpu_resident`
+                    // buffered-path branch exactly (same pool type, same
+                    // bind-group shape, just reached via a different
+                    // producer).
+                    let pool = self
+                        .vram_pool
+                        .as_ref()
+                        .expect("vram_pool must exist when current_vram_slot is set");
+                    let left_bg = pool.left_bind_group(vram_idx);
+                    let right_bg = pool.right_bind_group(vram_idx);
+                    let render_buf = self
+                        .core
+                        .pipeline_mut()
+                        .render_with_bind_groups(left_bg, right_bg, pos.yaw, pos.pitch);
+                    self.submit_render_output(render_buf)?;
                 } else {
                     // Immediate path: stage and render now.
                     let _ = self
@@ -542,23 +552,26 @@ impl StitchSession {
         if first_frame {
             let (w, h) = self.core.source_info();
             let needs_cuda = self.core.detector_needs_cuda_frames();
-            // For lookahead, size slots to the max frames simultaneously
-            // in flight (decoded but not yet rendered), x2 for left+right.
-            // Peak occupancy is n + post_smooth_half + 1 (buffer hits n+1
-            // right after a produce while the pose queue holds
-            // post_smooth_half). Slots are assigned by produce_index modulo
-            // n_slots with no occupancy check, so the pool must exceed peak
-            // occupancy or a producer would overwrite a frame still queued
-            // for render. +4 keeps a few frames of slack above the exact
-            // fit (the Linux VramPool uses ref-counted acquire/release; this
-            // path relies on the sizing margin instead). Without lookahead,
-            // 4 slots (double-buffered stereo) suffice.
-            let n_slots = if self.lookahead_frames > 0 {
-                let post_smooth_half = (self.lookahead_frames / 2).max(1);
-                (self.lookahead_frames + post_smooth_half + 4) * 2
-            } else {
-                4
-            };
+            // This pool only bridges the D3D11 shared-handle import: each
+            // staged frame is read (by detection, and by `copy_from_d3d11`
+            // into the long-lived `VramPool`) and explicitly polled to
+            // completion before the next produce reuses the same slot (see
+            // `copy_to_vram_pool_platform` below) - so a small, fixed,
+            // double-buffered-stereo pool suffices regardless of lookahead
+            // depth. The long-lived buffering that used to size this pool
+            // to the full lookahead window now lives in `VramPool` instead
+            // (mirrors Linux/macOS, where the D3D11-equivalent handoff is
+            // similarly short-lived).
+            //
+            // CUDA caveat: `needs_cuda`/`cuda_nv12_ptrs()` is currently
+            // dead code on Windows (nothing calls `cuda_nv12_ptrs`, see
+            // that method's doc comment) - if a future Windows CUDA
+            // detection path is wired up, it MUST add its own explicit
+            // `cuStreamSynchronize` (or equivalent) before this pool's next
+            // `stage_frame` reuses the same slot, since a small pool no
+            // longer provides the large implicit margin the old
+            // lookahead-scaled sizing gave for free.
+            let n_slots = 4;
             match crate::interop::d3d11::D3d11StagingPool::new(
                 self.core.gpu(),
                 w,
@@ -588,27 +601,6 @@ impl StitchSession {
         pool.stage_frame(left_texture, left_slice, left_pool_slot)?;
         pool.stage_frame(right_texture, right_slice, right_pool_slot)?;
         Ok(first_frame)
-    }
-
-    /// Render from specific D3D11 staging slots (buffered lookahead path).
-    #[cfg(target_os = "windows")]
-    fn render_d3d11_from_slot(
-        &mut self,
-        left_slot: usize,
-        right_slot: usize,
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<(), SessionError> {
-        let pool = self.d3d11_staging_pool.as_ref().unwrap();
-        let render_buf = self.core.render_imported_views_at_pose(
-            pool.y_view(left_slot),
-            pool.uv_view(left_slot),
-            pool.y_view(right_slot),
-            pool.uv_view(right_slot),
-            yaw,
-            pitch,
-        );
-        self.submit_render_output(render_buf)
     }
 
     /// Render from already-staged D3D11VA views (immediate path).
@@ -883,6 +875,13 @@ impl StitchSession {
         Ok(Some(slot))
     }
 
+    /// Stage a D3D11VA frame and copy it into the long-lived `VramPool`.
+    ///
+    /// Returns the `VramPool` slot (not the D3D11 staging slot - that pool
+    /// is now just a short-lived bridge, see `stage_d3d11_frames`'s doc
+    /// comment). Mirrors the Linux/macOS platform arms of this method:
+    /// stage into a small transient buffer, immediately copy into the
+    /// pool, return the pool's slot index.
     #[cfg(target_os = "windows")]
     fn copy_to_vram_pool_platform(
         &mut self,
@@ -906,7 +905,34 @@ impl StitchSession {
             let right_slot = (produce_index as usize * 2 + 1) % pool.n_slots();
             pool.stage_frame(*left_texture, *left_slice, left_slot)?;
             pool.stage_frame(*right_texture, *right_slice, right_slot)?;
-            return Ok(Some(left_slot));
+
+            if self.vram_pool.is_none() {
+                return Ok(Some(left_slot));
+            }
+            let d3d11_pool = self.d3d11_staging_pool.as_ref().unwrap();
+            let src_left = d3d11_pool.plane_source(left_slot);
+            let src_right = d3d11_pool.plane_source(right_slot);
+            let vram_pool = self.vram_pool.as_mut().unwrap();
+            let vram_slot = vram_pool.acquire().ok_or_else(|| {
+                SessionError::Config(format!(
+                    "VRAM pool exhausted ({} slots, {} available)",
+                    vram_pool.capacity(),
+                    vram_pool.available()
+                ))
+            })?;
+            let gpu = self.core.pipeline().gpu();
+            vram_pool.copy_from_d3d11(gpu, vram_slot, src_left, src_right);
+            // Explicit poll before returning: the D3D11 staging slots just
+            // used are reused (overwritten via CopySubresourceRegion) by a
+            // future produce as soon as this call returns. That D3D11-side
+            // write has no automatic ordering against this wgpu-side read
+            // of the same NT-shared-handle memory (D3D11 and DX12/wgpu are
+            // different device/queue objects - shared VRAM does not imply
+            // shared scheduling). Mirrors the same pattern already used
+            // after every Linux/macOS `copy_from_textures` call for the
+            // identical reason (see `copy_nvmm_to_vram_pool` above).
+            let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
+            return Ok(Some(vram_slot));
         }
         Ok(None)
     }

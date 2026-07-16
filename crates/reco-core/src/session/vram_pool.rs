@@ -10,7 +10,47 @@
 
 use std::collections::VecDeque;
 
-/// A single stereo NV12 frame in VRAM.
+/// Whether the lookahead pool buffers frames at the source's native pixel
+/// format or downconverts to 8-bit NV12 first.
+///
+/// The lookahead pool's job is to hold N future decoded stereo frames so
+/// the AI panner/tracker can smooth camera trajectory using future world-
+/// state - but the *same* buffered frames are also what the final stitch
+/// render consumes once it catches up (this is not an AI-only side
+/// buffer). For 10-bit sources (`GpuPixelFormat::P010`, e.g. DJI Action 4
+/// HEVC), each pool slot costs 2x the bytes of an 8-bit source, which is
+/// what makes deep lookahead windows VRAM-expensive on lower-VRAM cards.
+/// `Reduced8Bit` roughly halves that cost by discarding the source's extra
+/// bit depth before it enters the pool - a genuine (if subtle) whole-
+/// export quality tradeoff (more banding risk in smooth gradients: sky,
+/// pitch grass, floodlit surfaces), not a free lunch. See FRICTION.md
+/// "Lookahead pool VRAM cost scales with source bit depth".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LookaheadBitDepth {
+    /// Buffer frames at the source's native bit depth (current/default
+    /// behavior, unchanged from before this option existed).
+    #[default]
+    Native,
+    /// Downconvert to 8-bit NV12 before buffering. No effect when the
+    /// source is already 8-bit.
+    Reduced8Bit,
+}
+
+impl LookaheadBitDepth {
+    /// The pixel format the pool's own textures should be allocated in,
+    /// given the source's actual format.
+    pub fn pool_format(
+        self,
+        source_format: crate::render::renderer::GpuPixelFormat,
+    ) -> crate::render::renderer::GpuPixelFormat {
+        match self {
+            Self::Native => source_format,
+            Self::Reduced8Bit => crate::render::renderer::GpuPixelFormat::Nv12,
+        }
+    }
+}
+
+/// A single stereo frame in VRAM, at the pool's `pool_format`.
 struct VramSlot {
     left_y: wgpu::Texture,
     left_uv: wgpu::Texture,
@@ -20,12 +60,23 @@ struct VramSlot {
     right_bind_group: wgpu::BindGroup,
 }
 
-/// Pool of VRAM-resident stereo NV12 textures for frame buffering.
+/// Pool of VRAM-resident stereo NV12/P010 textures for frame buffering.
 pub(crate) struct VramPool {
     slots: Vec<VramSlot>,
     free: VecDeque<usize>,
     width: u32,
     height: u32,
+    /// Pixel format of the source textures passed to `copy_from_textures`.
+    source_format: crate::render::renderer::GpuPixelFormat,
+    /// Pixel format the pool's own slot textures are allocated in. Equal to
+    /// `source_format` unless `LookaheadBitDepth::Reduced8Bit` was
+    /// requested for a 10-bit source, in which case `copy_from_textures`
+    /// runs a GPU downconvert pass (see `downconverter`) instead of a raw
+    /// texture-to-texture copy.
+    pool_format: crate::render::renderer::GpuPixelFormat,
+    /// Built only when `pool_format != source_format` - a plain same-
+    /// format copy needs no shader pass.
+    downconverter: Option<crate::render::lookahead_downconvert::LookaheadDownconverter>,
 }
 
 impl VramPool {
@@ -41,19 +92,32 @@ impl VramPool {
     /// the wgpu OOM panic into a descriptive error. (Error scopes are
     /// avoided here: they deadlock once the driver is in a bad post-OOM
     /// state.)
+    ///
+    /// `source_format` is the pixel format of the textures that will be
+    /// passed to `copy_from_textures` (the decode/import format). `bit_depth`
+    /// selects whether the pool stores frames at that format unchanged
+    /// (`Native`) or downconverts to 8-bit NV12 first (`Reduced8Bit`) - see
+    /// [`LookaheadBitDepth`].
     pub fn new(
         gpu: &crate::gpu::GpuContext,
         pipeline: &crate::render::pipeline::StitchPipeline,
         width: u32,
         height: u32,
         n_slots: usize,
-        pixel_format: crate::render::renderer::GpuPixelFormat,
+        source_format: crate::render::renderer::GpuPixelFormat,
+        bit_depth: LookaheadBitDepth,
     ) -> Result<Self, String> {
-        let vram_bytes = estimate_vram(width, height, n_slots, pixel_format.bytes_per_sample());
+        let pool_format = bit_depth.pool_format(source_format);
+        let vram_bytes = estimate_vram(width, height, n_slots, pool_format.bytes_per_sample());
         let vram_mb = vram_bytes as f64 / (1024.0 * 1024.0);
 
-        let y_format = pixel_format.y_format();
-        let uv_format = pixel_format.uv_format();
+        let y_format = pool_format.y_format();
+        let uv_format = pool_format.uv_format();
+        let downconverter = if pool_format != source_format {
+            Some(crate::render::lookahead_downconvert::LookaheadDownconverter::new(gpu))
+        } else {
+            None
+        };
 
         let mut slots = Vec::with_capacity(n_slots);
         let mut free = VecDeque::with_capacity(n_slots);
@@ -75,7 +139,13 @@ impl VramPool {
                         sample_count: 1,
                         dimension: wgpu::TextureDimension::D2,
                         format: fmt,
-                        usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+                        // RENDER_ATTACHMENT is only exercised when
+                        // `downconverter` is Some (the downconvert render
+                        // pass writes into these textures); harmless to
+                        // request unconditionally otherwise.
+                        usage: wgpu::TextureUsages::COPY_DST
+                            | wgpu::TextureUsages::TEXTURE_BINDING
+                            | wgpu::TextureUsages::RENDER_ATTACHMENT,
                         view_formats: &[],
                     })
                 };
@@ -114,7 +184,13 @@ impl VramPool {
         }
 
         log::info!(
-            "VramPool: {n_slots} stereo NV12 slots at {width}x{height}, ~{vram_mb:.0} MB VRAM"
+            "VramPool: {n_slots} stereo {pool_format:?} slots at {width}x{height}, \
+             ~{vram_mb:.0} MB VRAM{}",
+            if downconverter.is_some() {
+                format!(" (downconverted from source {source_format:?})")
+            } else {
+                String::new()
+            }
         );
 
         Ok(Self {
@@ -122,6 +198,9 @@ impl VramPool {
             free,
             width,
             height,
+            source_format,
+            pool_format,
+            downconverter,
         })
     }
 
@@ -137,6 +216,14 @@ impl VramPool {
     }
 
     /// Copy from source textures (Y + UV per camera) into a pool slot.
+    ///
+    /// `src_*` must be in `self.source_format`. When the pool was built
+    /// with `LookaheadBitDepth::Native` (the common case), this is a plain
+    /// GPU-to-GPU `copy_texture_to_texture` - bit-exact, no shader
+    /// involved, identical to this method's behavior before
+    /// `LookaheadBitDepth` existed. When built with `Reduced8Bit` for a
+    /// 10-bit source, it instead runs the `LookaheadDownconverter` render
+    /// pass per plane (see `render::lookahead_downconvert`).
     pub fn copy_from_textures(
         &self,
         gpu: &crate::gpu::GpuContext,
@@ -153,60 +240,218 @@ impl VramPool {
                 label: Some("vram_pool_copy"),
             });
 
-        let copy_tex = |enc: &mut wgpu::CommandEncoder,
-                        src: &wgpu::Texture,
-                        dst: &wgpu::Texture,
-                        w: u32,
-                        h: u32| {
-            enc.copy_texture_to_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: src,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::TexelCopyTextureInfo {
-                    texture: dst,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::Extent3d {
-                    width: w,
-                    height: h,
-                    depth_or_array_layers: 1,
-                },
-            );
-        };
+        match &self.downconverter {
+            None => {
+                let copy_tex = |enc: &mut wgpu::CommandEncoder,
+                                src: &wgpu::Texture,
+                                dst: &wgpu::Texture,
+                                w: u32,
+                                h: u32| {
+                    enc.copy_texture_to_texture(
+                        wgpu::TexelCopyTextureInfo {
+                            texture: src,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d::ZERO,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        wgpu::TexelCopyTextureInfo {
+                            texture: dst,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d::ZERO,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        wgpu::Extent3d {
+                            width: w,
+                            height: h,
+                            depth_or_array_layers: 1,
+                        },
+                    );
+                };
 
-        copy_tex(
-            &mut encoder,
-            src_left_y,
-            &dst.left_y,
-            self.width,
-            self.height,
-        );
-        copy_tex(
-            &mut encoder,
-            src_left_uv,
-            &dst.left_uv,
-            self.width / 2,
-            self.height / 2,
-        );
-        copy_tex(
-            &mut encoder,
-            src_right_y,
-            &dst.right_y,
-            self.width,
-            self.height,
-        );
-        copy_tex(
-            &mut encoder,
-            src_right_uv,
-            &dst.right_uv,
-            self.width / 2,
-            self.height / 2,
-        );
+                copy_tex(
+                    &mut encoder,
+                    src_left_y,
+                    &dst.left_y,
+                    self.width,
+                    self.height,
+                );
+                copy_tex(
+                    &mut encoder,
+                    src_left_uv,
+                    &dst.left_uv,
+                    self.width / 2,
+                    self.height / 2,
+                );
+                copy_tex(
+                    &mut encoder,
+                    src_right_y,
+                    &dst.right_y,
+                    self.width,
+                    self.height,
+                );
+                copy_tex(
+                    &mut encoder,
+                    src_right_uv,
+                    &dst.right_uv,
+                    self.width / 2,
+                    self.height / 2,
+                );
+            }
+            Some(downconverter) => {
+                let view =
+                    |t: &wgpu::Texture| t.create_view(&wgpu::TextureViewDescriptor::default());
+                let (src_ly, src_luv, src_ry, src_ruv) = (
+                    view(src_left_y),
+                    view(src_left_uv),
+                    view(src_right_y),
+                    view(src_right_uv),
+                );
+                let (dst_ly, dst_luv, dst_ry, dst_ruv) = (
+                    view(&dst.left_y),
+                    view(&dst.left_uv),
+                    view(&dst.right_y),
+                    view(&dst.right_uv),
+                );
+                downconverter.convert_plane(&gpu.device, &mut encoder, &src_ly, &dst_ly, false);
+                downconverter.convert_plane(&gpu.device, &mut encoder, &src_luv, &dst_luv, true);
+                downconverter.convert_plane(&gpu.device, &mut encoder, &src_ry, &dst_ry, false);
+                downconverter.convert_plane(&gpu.device, &mut encoder, &src_ruv, &dst_ruv, true);
+            }
+        }
+
+        gpu.queue.submit(std::iter::once(encoder.finish()));
+    }
+
+    /// Copy a stereo frame from D3D11-imported multi-planar textures
+    /// (Windows only) into a pool slot.
+    ///
+    /// Unlike [`Self::copy_from_textures`] (Linux/macOS, where the source
+    /// is already two separate single-plane textures per camera), the
+    /// D3D11 source is one combined multi-planar texture per camera with
+    /// `TextureAspect::Plane0`/`Plane1` selecting Y/UV - see
+    /// [`crate::interop::d3d11::D3d11StagingPool::plane_source`]. When the
+    /// pool's format matches the source's, this does a plane-aspect-
+    /// selected `copy_texture_to_texture` (bit-exact, no shader - a raw
+    /// copy needs the source `texture` + aspect, not a view, which is why
+    /// this is a separate method from `copy_from_textures` rather than a
+    /// shared helper). When built with `LookaheadBitDepth::Reduced8Bit`,
+    /// runs the same `LookaheadDownconverter` render pass
+    /// `copy_from_textures` uses, via the pre-built plane views (a render
+    /// pass only needs a view).
+    pub fn copy_from_d3d11(
+        &self,
+        gpu: &crate::gpu::GpuContext,
+        slot: usize,
+        src_left: crate::interop::d3d11::D3d11PlaneSource<'_>,
+        src_right: crate::interop::d3d11::D3d11PlaneSource<'_>,
+    ) {
+        let dst = &self.slots[slot];
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("vram_pool_copy_from_d3d11"),
+            });
+
+        match &self.downconverter {
+            None => {
+                let copy = |enc: &mut wgpu::CommandEncoder,
+                            src_tex: &wgpu::Texture,
+                            aspect: wgpu::TextureAspect,
+                            dst_tex: &wgpu::Texture,
+                            w: u32,
+                            h: u32| {
+                    enc.copy_texture_to_texture(
+                        wgpu::TexelCopyTextureInfo {
+                            texture: src_tex,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d::ZERO,
+                            aspect,
+                        },
+                        wgpu::TexelCopyTextureInfo {
+                            texture: dst_tex,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d::ZERO,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        wgpu::Extent3d {
+                            width: w,
+                            height: h,
+                            depth_or_array_layers: 1,
+                        },
+                    );
+                };
+                copy(
+                    &mut encoder,
+                    src_left.texture,
+                    wgpu::TextureAspect::Plane0,
+                    &dst.left_y,
+                    self.width,
+                    self.height,
+                );
+                copy(
+                    &mut encoder,
+                    src_left.texture,
+                    wgpu::TextureAspect::Plane1,
+                    &dst.left_uv,
+                    self.width / 2,
+                    self.height / 2,
+                );
+                copy(
+                    &mut encoder,
+                    src_right.texture,
+                    wgpu::TextureAspect::Plane0,
+                    &dst.right_y,
+                    self.width,
+                    self.height,
+                );
+                copy(
+                    &mut encoder,
+                    src_right.texture,
+                    wgpu::TextureAspect::Plane1,
+                    &dst.right_uv,
+                    self.width / 2,
+                    self.height / 2,
+                );
+            }
+            Some(downconverter) => {
+                let view =
+                    |t: &wgpu::Texture| t.create_view(&wgpu::TextureViewDescriptor::default());
+                let (dst_ly, dst_luv, dst_ry, dst_ruv) = (
+                    view(&dst.left_y),
+                    view(&dst.left_uv),
+                    view(&dst.right_y),
+                    view(&dst.right_uv),
+                );
+                downconverter.convert_plane(
+                    &gpu.device,
+                    &mut encoder,
+                    src_left.y_view,
+                    &dst_ly,
+                    false,
+                );
+                downconverter.convert_plane(
+                    &gpu.device,
+                    &mut encoder,
+                    src_left.uv_view,
+                    &dst_luv,
+                    true,
+                );
+                downconverter.convert_plane(
+                    &gpu.device,
+                    &mut encoder,
+                    src_right.y_view,
+                    &dst_ry,
+                    false,
+                );
+                downconverter.convert_plane(
+                    &gpu.device,
+                    &mut encoder,
+                    src_right.uv_view,
+                    &dst_ruv,
+                    true,
+                );
+            }
+        }
 
         gpu.queue.submit(std::iter::once(encoder.finish()));
     }
@@ -346,6 +591,38 @@ pub fn lookahead_fit(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bit_depth_native_keeps_source_format() {
+        use crate::render::renderer::GpuPixelFormat;
+        assert_eq!(
+            LookaheadBitDepth::Native.pool_format(GpuPixelFormat::P010),
+            GpuPixelFormat::P010
+        );
+        assert_eq!(
+            LookaheadBitDepth::Native.pool_format(GpuPixelFormat::Nv12),
+            GpuPixelFormat::Nv12
+        );
+    }
+
+    #[test]
+    fn bit_depth_reduced_always_yields_nv12() {
+        use crate::render::renderer::GpuPixelFormat;
+        assert_eq!(
+            LookaheadBitDepth::Reduced8Bit.pool_format(GpuPixelFormat::P010),
+            GpuPixelFormat::Nv12
+        );
+        // No-op for sources that are already 8-bit.
+        assert_eq!(
+            LookaheadBitDepth::Reduced8Bit.pool_format(GpuPixelFormat::Nv12),
+            GpuPixelFormat::Nv12
+        );
+    }
+
+    #[test]
+    fn bit_depth_default_is_native() {
+        assert_eq!(LookaheadBitDepth::default(), LookaheadBitDepth::Native);
+    }
 
     #[test]
     fn pool_slots_match_buffered_sizing() {

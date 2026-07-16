@@ -276,8 +276,13 @@ impl StitchSession {
             // frame_processing.rs (peak occupancy + slack).
             let pool_size = n + post_smooth_half + 4;
             let (w, h) = self.core.pipeline().source_info();
+            // The pool's actual per-slot cost depends on lookahead_bit_depth,
+            // not just the source's native format - Reduced8Bit stores 8-bit
+            // NV12 regardless of source format, so the budget check must use
+            // the same (pool) format the allocation below will actually use.
+            let pool_pixel_format = self.lookahead_bit_depth.pool_format(self.gpu_pixel_format);
             let per_slot =
-                super::vram_pool::estimate_vram(w, h, 1, self.gpu_pixel_format.bytes_per_sample());
+                super::vram_pool::estimate_vram(w, h, 1, pool_pixel_format.bytes_per_sample());
             let required = per_slot * pool_size;
 
             // Pre-flight VRAM budget check: fail fast with a fit suggestion.
@@ -310,10 +315,27 @@ impl StitchSession {
                         let max_n = super::vram_pool::max_lookahead_frames(per_slot, budget);
                         let max_secs = max_n as f64 / fps;
                         let req_secs = n as f64 / fps;
+                        // A 10-bit source not already using Reduced8Bit has a
+                        // real fourth lever: halving the pool's per-slot cost
+                        // by dropping to 8-bit before buffering (see
+                        // `LookaheadBitDepth`). Only surfaced when it would
+                        // actually change anything, so 8-bit sources and
+                        // already-reduced sessions get the original message.
+                        let bit_depth_suggestion = if self.lookahead_bit_depth
+                            == super::vram_pool::LookaheadBitDepth::Native
+                            && self.gpu_pixel_format
+                                != super::vram_pool::LookaheadBitDepth::Reduced8Bit
+                                    .pool_format(self.gpu_pixel_format)
+                        {
+                            ", reduce the lookahead pool's bit depth (roughly halves its VRAM \
+                             cost for 10-bit sources, at some cost to gradient smoothness)"
+                        } else {
+                            ""
+                        };
                         return Err(SessionError::Config(format!(
                             "not enough VRAM for a {req_secs:.1}s lookahead: reduce the lookahead \
-                             to <= {max_secs:.1}s, use lower-resolution source footage, or free \
-                             GPU memory. The frame pool needs ~{:.1} GB ({pool_size} slots @ \
+                             to <= {max_secs:.1}s, use lower-resolution source footage{bit_depth_suggestion}, \
+                             or free GPU memory. The frame pool needs ~{:.1} GB ({pool_size} slots @ \
                              {w}x{h}); usable budget is ~{:.1} GB of {:.1} GB total.",
                             required as f64 / 1e9,
                             budget as f64 / 1e9,
@@ -331,26 +353,30 @@ impl StitchSession {
                 }
             }
 
-            // The VramPool is only consumed on Linux (CUDA/Vulkan copy) and
-            // macOS (Metal CVPixelBuffer import). On Windows the lookahead
-            // frames live in the separate D3D11 staging pool, so a VramPool
-            // here would be allocated-but-unused VRAM (it roughly doubles the
-            // footprint). The pre-flight budget check above still runs on all
-            // platforms; on Windows it sizes the D3D11 staging pool, whose
-            // total VRAM equals estimate_vram(w,h,1,bps)*pool_size.
-            #[cfg(not(target_os = "windows"))]
-            {
-                let pool = super::vram_pool::VramPool::new(
-                    self.core.pipeline().gpu(),
-                    self.core.pipeline(),
-                    w,
-                    h,
-                    pool_size,
-                    self.gpu_pixel_format,
-                )
-                .map_err(SessionError::Config)?;
-                self.vram_pool = Some(pool);
-            }
+            // The long-lived lookahead buffer is always a VramPool, on
+            // every platform. On Linux/macOS it is fed directly from
+            // already-separate shared CUDA/Vulkan or CVPixelBuffer plane
+            // textures (`copy_from_textures`). On Windows the D3D11VA
+            // decode path still stages each frame into a small, fixed-size
+            // `D3d11StagingPool` first (see `frame_processing.rs`'s
+            // `stage_d3d11_frames`) - that pool only bridges the D3D11
+            // shared-handle import, it is not itself the long-lived
+            // buffer - then copies from there into this VramPool
+            // (`copy_from_d3d11`). This mirrors Linux/macOS's own
+            // stage-then-buffer shape instead of diverging from it, and is
+            // what lets `LookaheadBitDepth::Reduced8Bit` apply uniformly
+            // across platforms.
+            let pool = super::vram_pool::VramPool::new(
+                self.core.pipeline().gpu(),
+                self.core.pipeline(),
+                w,
+                h,
+                pool_size,
+                self.gpu_pixel_format,
+                self.lookahead_bit_depth,
+            )
+            .map_err(SessionError::Config)?;
+            self.vram_pool = Some(pool);
         }
 
         let produce_one = |session: &mut StitchSession,
