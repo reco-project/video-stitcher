@@ -28,6 +28,19 @@ struct Uniforms {
     // lens_preview.x: correction_amount (0.0 = no correction, 1.0 = full KB4)
     // lens_preview.y: split_view (> 0.5 = left half uncorrected, right half corrected)
     lens_preview: vec4<f32>,
+    // Ground-plane tilt correction (see band_limited_ground_warp below).
+    // ground_tilt.x: tan(theta) tilt scalar, 0.0 = no-op
+    // ground_tilt.y: k, this camera's ground_tilt_k() focal-scale constant
+    // ground_tilt.z: this plane's aspect ratio (width / height)
+    // ground_tilt.w: unused padding
+    ground_tilt: vec4<f32>,
+    // Top-of-frame tilt correction - mirror of ground_tilt, one-sided the
+    // other way (see band_limited_top_warp below).
+    // top_tilt.x: tan(theta) tilt scalar, 0.0 = no-op
+    // top_tilt.y: k (same value as ground_tilt.y - same camera)
+    // top_tilt.z: ground_tilt_band_width (full-strength threshold)
+    // top_tilt.w: top_tilt_band_width (full-strength threshold)
+    top_tilt: vec4<f32>,
 };
 
 // YUV420P plane textures (Y = full res R8Unorm, U/V = half res R8Unorm)
@@ -159,6 +172,60 @@ fn sample_yuv(uv: vec2<f32>) -> vec4<f32> {
     return vec4<f32>(rgb, 1.0);
 }
 
+// ---- Ground/top-plane tilt correction ----
+//
+// Adds a small additional tilt near the bottom (ground) or top of frame,
+// where the flat two-plane approximation's parallax error is largest.
+// `t` (plane-space y) is in "plane width = 1.0" units; `c = tan(theta)`
+// is the extra tilt; `k = fy / (2 * width)` converts between them (see
+// `Lens::ground_tilt_k`'s doc comment for the full derivation). Must
+// mirror `stitch::geometry::{warp_ground_y, band_limited_ground_warp,
+// band_limited_top_warp}` exactly - the CPU dual is a correctness oracle
+// for this shader, not just a GPU-less fallback.
+
+const GROUND_TILT_BAND_START: f32 = 0.08;
+
+fn smoothstep_band(edge0: f32, edge1: f32, x: f32) -> f32 {
+    let t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+}
+
+fn warp_ground_y(t: f32, c: f32, k: f32) -> f32 {
+    var denom = 1.0 - c * t / k;
+    if abs(denom) < 1e-9 {
+        denom = select(-1e-9, 1e-9, denom >= 0.0);
+    }
+    return (k * c + t) / denom;
+}
+
+// One-sided in t, NOT abs(t): t>0 (near field/ground) ramps in, t<=0
+// (above the horizon) is always identity.
+fn band_limited_ground_warp(t: f32, c: f32, k: f32, band_full: f32) -> f32 {
+    if t <= 0.0 {
+        return t;
+    }
+    let full = max(band_full, GROUND_TILT_BAND_START + 0.01);
+    let weight = smoothstep_band(GROUND_TILT_BAND_START, full, t);
+    if weight == 0.0 {
+        return t;
+    }
+    return t + weight * (warp_ground_y(t, c, k) - t);
+}
+
+// Mirror of band_limited_ground_warp: t>=0 (at/below the horizon) is
+// always identity, only t<0 (top of frame) ramps in.
+fn band_limited_top_warp(t: f32, c: f32, k: f32, band_full: f32) -> f32 {
+    if t >= 0.0 {
+        return t;
+    }
+    let full = max(band_full, GROUND_TILT_BAND_START + 0.01);
+    let weight = smoothstep_band(GROUND_TILT_BAND_START, full, -t);
+    if weight == 0.0 {
+        return t;
+    }
+    return t + weight * (warp_ground_y(t, c, k) - t);
+}
+
 // ---- Fragment shader ----
 
 @fragment
@@ -169,7 +236,24 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // (Done here instead of the vertex shader because some embedded
     // GPU drivers pass vertex attributes directly to the fragment
     // stage, ignoring vertex shader output for user-defined varyings.)
-    let uv = in.uv * 2.0 - vec2<f32>(0.5);
+    var uv = in.uv * 2.0 - vec2<f32>(0.5);
+
+    // Ground/top tilt: operates on the RAW (non-extended) fragment uv.y,
+    // BEFORE the extended-UV remap above is used for anything else -
+    // must stay in this exact order to match the CPU dual in
+    // stitch::geometry::PlaneMap::sample_uv.
+    if u.ground_tilt.x != 0.0 || u.top_tilt.x != 0.0 {
+        var plane_y = (in.uv.y - 0.5) / u.ground_tilt.z;
+        if u.ground_tilt.x != 0.0 {
+            plane_y = band_limited_ground_warp(
+                plane_y, u.ground_tilt.x, u.ground_tilt.y, u.top_tilt.z);
+        }
+        if u.top_tilt.x != 0.0 {
+            plane_y = band_limited_top_warp(
+                plane_y, u.top_tilt.x, u.top_tilt.y, u.top_tilt.w);
+        }
+        uv.y = (plane_y * u.ground_tilt.z + 0.5) * 2.0 - 0.5;
+    }
 
     // Raw mode: negative correction bypasses all projection math
     // and samples the input texture directly at the fragment UV.

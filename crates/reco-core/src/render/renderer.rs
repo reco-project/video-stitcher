@@ -59,6 +59,8 @@ pub(crate) struct GpuUniforms {
     color_offset_blend: [f32; 4],
     flags: [u32; 4],
     pub(crate) lens_preview: [f32; 4],
+    ground_tilt: [f32; 4],
+    top_tilt: [f32; 4],
 }
 
 /// Vertex with 3D position and UV coordinates.
@@ -840,6 +842,21 @@ impl Renderer {
             self.is_full_range,
         );
         left_uniforms.lens_preview[0] = calibration.lenses[0].correction;
+        // z-plane (lenses[0]) <-> left - see the same swap-convention note
+        // in stitch::geometry::l_shape_plane_maps.
+        let left_k = calibration.lenses[0].ground_tilt_k() as f32;
+        left_uniforms.ground_tilt = [
+            calibration.topology.ground_tilt_z as f32,
+            left_k,
+            scene.plane_aspect,
+            0.0,
+        ];
+        left_uniforms.top_tilt = [
+            calibration.topology.top_tilt_z as f32,
+            left_k,
+            calibration.topology.ground_tilt_band_width as f32,
+            calibration.topology.top_tilt_band_width as f32,
+        ];
 
         let right_mvp = projection * view * scene.model_matrix_right();
         let mut right_uniforms = build_gpu_uniforms(
@@ -852,6 +869,20 @@ impl Renderer {
             self.is_full_range,
         );
         right_uniforms.lens_preview[0] = calibration.lenses[1].correction;
+        // x-plane (lenses[1]) <-> right.
+        let right_k = calibration.lenses[1].ground_tilt_k() as f32;
+        right_uniforms.ground_tilt = [
+            calibration.topology.ground_tilt_x as f32,
+            right_k,
+            scene.plane_aspect,
+            0.0,
+        ];
+        right_uniforms.top_tilt = [
+            calibration.topology.top_tilt_x as f32,
+            right_k,
+            calibration.topology.ground_tilt_band_width as f32,
+            calibration.topology.top_tilt_band_width as f32,
+        ];
 
         gpu.queue.write_buffer(
             &self.left.uniform_buffer,
@@ -1196,6 +1227,10 @@ pub(crate) fn build_gpu_uniforms(
         // Full correction for normal stitching. LensPreviewRenderer
         // overrides this field for the single-camera preview mode.
         lens_preview: [1.0, 0.0, 0.0, 0.0],
+        // Overwritten by encode_stitch_pass right after construction
+        // (mirrors lens_preview[0] above) - identity here (tilt=0.0).
+        ground_tilt: [0.0, 0.0, 0.0, 0.0],
+        top_tilt: [0.0, 0.0, 0.0, 0.0],
     }
 }
 

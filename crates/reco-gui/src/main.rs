@@ -931,6 +931,83 @@ impl AppState {
         }
     }
 
+    /// Set the ground-plane tilt correction for the x-plane. Reasonable
+    /// range is -0.3 to 0.3 (matches the calibration slider).
+    fn set_ground_tilt_x(&mut self, tilt: f32) {
+        let tilt = tilt.clamp(-0.3, 0.3);
+        // Mirror into the source-of-truth calibration, same rationale as
+        // set_blend_width - Topology slider edits clone-and-reapply the
+        // whole Topology and must not revert this to a stale value.
+        if let Some(cal) = self.calibration.as_mut() {
+            cal.topology.ground_tilt_x = tilt as f64;
+        }
+        if let Some(bridge) = self.bridge.as_mut() {
+            bridge.engine_mut().set_ground_tilt_x(tilt);
+            self.preview_dirty = true;
+        }
+    }
+
+    /// Set the ground-plane tilt correction for the z-plane.
+    fn set_ground_tilt_z(&mut self, tilt: f32) {
+        let tilt = tilt.clamp(-0.3, 0.3);
+        if let Some(cal) = self.calibration.as_mut() {
+            cal.topology.ground_tilt_z = tilt as f64;
+        }
+        if let Some(bridge) = self.bridge.as_mut() {
+            bridge.engine_mut().set_ground_tilt_z(tilt);
+            self.preview_dirty = true;
+        }
+    }
+
+    /// Set the top-of-frame tilt correction for the x-plane.
+    fn set_top_tilt_x(&mut self, tilt: f32) {
+        let tilt = tilt.clamp(-0.3, 0.3);
+        if let Some(cal) = self.calibration.as_mut() {
+            cal.topology.top_tilt_x = tilt as f64;
+        }
+        if let Some(bridge) = self.bridge.as_mut() {
+            bridge.engine_mut().set_top_tilt_x(tilt);
+            self.preview_dirty = true;
+        }
+    }
+
+    /// Set the top-of-frame tilt correction for the z-plane.
+    fn set_top_tilt_z(&mut self, tilt: f32) {
+        let tilt = tilt.clamp(-0.3, 0.3);
+        if let Some(cal) = self.calibration.as_mut() {
+            cal.topology.top_tilt_z = tilt as f64;
+        }
+        if let Some(bridge) = self.bridge.as_mut() {
+            bridge.engine_mut().set_top_tilt_z(tilt);
+            self.preview_dirty = true;
+        }
+    }
+
+    /// Set the ground-tilt band's full-strength threshold. Range 0.09-0.4
+    /// (matches the calibration slider).
+    fn set_ground_tilt_band_width(&mut self, width: f32) {
+        let width = width.clamp(0.09, 0.4);
+        if let Some(cal) = self.calibration.as_mut() {
+            cal.topology.ground_tilt_band_width = width as f64;
+        }
+        if let Some(bridge) = self.bridge.as_mut() {
+            bridge.engine_mut().set_ground_tilt_band_width(width);
+            self.preview_dirty = true;
+        }
+    }
+
+    /// Set the top-tilt band's full-strength threshold.
+    fn set_top_tilt_band_width(&mut self, width: f32) {
+        let width = width.clamp(0.09, 0.4);
+        if let Some(cal) = self.calibration.as_mut() {
+            cal.topology.top_tilt_band_width = width as f64;
+        }
+        if let Some(bridge) = self.bridge.as_mut() {
+            bridge.engine_mut().set_top_tilt_band_width(width);
+            self.preview_dirty = true;
+        }
+    }
+
     fn set_rig_tilt(&mut self, deg: f32) {
         if let Some(cal) = self.calibration.as_mut() {
             cal.framing.tilt = (deg as f64).to_radians();
@@ -2765,6 +2842,60 @@ fn main() -> anyhow::Result<()> {
 
     let state_ref = Rc::clone(&state);
     let app_weak = app.as_weak();
+    app.on_changed_cal_ground_tilt_x(move |v| {
+        state_ref.borrow_mut().set_ground_tilt_x(v);
+        if let Some(app) = app_weak.upgrade() {
+            app.set_cal_dirty(true);
+        }
+    });
+
+    let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
+    app.on_changed_cal_ground_tilt_z(move |v| {
+        state_ref.borrow_mut().set_ground_tilt_z(v);
+        if let Some(app) = app_weak.upgrade() {
+            app.set_cal_dirty(true);
+        }
+    });
+
+    let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
+    app.on_changed_cal_top_tilt_x(move |v| {
+        state_ref.borrow_mut().set_top_tilt_x(v);
+        if let Some(app) = app_weak.upgrade() {
+            app.set_cal_dirty(true);
+        }
+    });
+
+    let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
+    app.on_changed_cal_top_tilt_z(move |v| {
+        state_ref.borrow_mut().set_top_tilt_z(v);
+        if let Some(app) = app_weak.upgrade() {
+            app.set_cal_dirty(true);
+        }
+    });
+
+    let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
+    app.on_changed_cal_ground_tilt_band_width(move |v| {
+        state_ref.borrow_mut().set_ground_tilt_band_width(v);
+        if let Some(app) = app_weak.upgrade() {
+            app.set_cal_dirty(true);
+        }
+    });
+
+    let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
+    app.on_changed_cal_top_tilt_band_width(move |v| {
+        state_ref.borrow_mut().set_top_tilt_band_width(v);
+        if let Some(app) = app_weak.upgrade() {
+            app.set_cal_dirty(true);
+        }
+    });
+
+    let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
     app.on_changed_rig_tilt(move |deg| {
         state_ref.borrow_mut().set_rig_tilt(deg);
         if let Some(app) = app_weak.upgrade() {
@@ -2902,6 +3033,12 @@ fn main() -> anyhow::Result<()> {
             app.set_rig_tilt((layout.framing.tilt as f32).to_degrees());
             app.set_rig_roll((layout.framing.roll as f32).to_degrees());
             app.set_blend_width(layout.topology.blend_width);
+            app.set_cal_ground_tilt_x(layout.topology.ground_tilt_x as f32);
+            app.set_cal_ground_tilt_z(layout.topology.ground_tilt_z as f32);
+            app.set_cal_top_tilt_x(layout.topology.top_tilt_x as f32);
+            app.set_cal_top_tilt_z(layout.topology.top_tilt_z as f32);
+            app.set_cal_ground_tilt_band_width(layout.topology.ground_tilt_band_width as f32);
+            app.set_cal_top_tilt_band_width(layout.topology.top_tilt_band_width as f32);
             app.set_cal_dirty(false);
         }
     });
@@ -4352,6 +4489,14 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                     app.set_cal_intersect(layout.topology.intersect as f32);
                     app.set_cal_camera_axis_offset(layout.framing.axis_offset as f32);
                     app.set_cal_x_ty(layout.topology.x_ty as f32);
+                    app.set_cal_ground_tilt_x(layout.topology.ground_tilt_x as f32);
+                    app.set_cal_ground_tilt_z(layout.topology.ground_tilt_z as f32);
+                    app.set_cal_top_tilt_x(layout.topology.top_tilt_x as f32);
+                    app.set_cal_top_tilt_z(layout.topology.top_tilt_z as f32);
+                    app.set_cal_ground_tilt_band_width(
+                        layout.topology.ground_tilt_band_width as f32,
+                    );
+                    app.set_cal_top_tilt_band_width(layout.topology.top_tilt_band_width as f32);
                     app.set_cal_dirty(false);
                 }
                 if let Some(rt) = rig_tilt_rad {
@@ -4619,6 +4764,16 @@ fn handle_calibration_result(
                             app.set_cal_intersect(layout.topology.intersect as f32);
                             app.set_cal_camera_axis_offset(layout.framing.axis_offset as f32);
                             app.set_cal_x_ty(layout.topology.x_ty as f32);
+                            app.set_cal_ground_tilt_x(layout.topology.ground_tilt_x as f32);
+                            app.set_cal_ground_tilt_z(layout.topology.ground_tilt_z as f32);
+                            app.set_cal_top_tilt_x(layout.topology.top_tilt_x as f32);
+                            app.set_cal_top_tilt_z(layout.topology.top_tilt_z as f32);
+                            app.set_cal_ground_tilt_band_width(
+                                layout.topology.ground_tilt_band_width as f32,
+                            );
+                            app.set_cal_top_tilt_band_width(
+                                layout.topology.top_tilt_band_width as f32,
+                            );
                             app.set_cal_dirty(false);
                         }
                         if let Some(rt) = rig_tilt_rad {

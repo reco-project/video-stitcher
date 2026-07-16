@@ -531,6 +531,66 @@ impl Executor {
         }
     }
 
+    /// Set the ground-plane tilt correction for the x-plane (document
+    /// field; no geometry rebuild). See [`crate::calibration::Topology::ground_tilt_x`].
+    pub fn set_ground_tilt_x(&mut self, tilt: f32) {
+        match self {
+            Executor::Cpu(c) => c.calib.topology.ground_tilt_x = tilt as f64,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.set_ground_tilt_x(tilt),
+        }
+    }
+
+    /// Set the ground-plane tilt correction for the z-plane. See
+    /// [`crate::calibration::Topology::ground_tilt_z`].
+    pub fn set_ground_tilt_z(&mut self, tilt: f32) {
+        match self {
+            Executor::Cpu(c) => c.calib.topology.ground_tilt_z = tilt as f64,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.set_ground_tilt_z(tilt),
+        }
+    }
+
+    /// Set the top-of-frame tilt correction for the x-plane. See
+    /// [`crate::calibration::Topology::top_tilt_x`].
+    pub fn set_top_tilt_x(&mut self, tilt: f32) {
+        match self {
+            Executor::Cpu(c) => c.calib.topology.top_tilt_x = tilt as f64,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.set_top_tilt_x(tilt),
+        }
+    }
+
+    /// Set the top-of-frame tilt correction for the z-plane. See
+    /// [`crate::calibration::Topology::top_tilt_z`].
+    pub fn set_top_tilt_z(&mut self, tilt: f32) {
+        match self {
+            Executor::Cpu(c) => c.calib.topology.top_tilt_z = tilt as f64,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.set_top_tilt_z(tilt),
+        }
+    }
+
+    /// Set the ground-tilt band's full-strength threshold. See
+    /// [`crate::calibration::Topology::ground_tilt_band_width`].
+    pub fn set_ground_tilt_band_width(&mut self, width: f32) {
+        match self {
+            Executor::Cpu(c) => c.calib.topology.ground_tilt_band_width = width as f64,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.set_ground_tilt_band_width(width),
+        }
+    }
+
+    /// Set the top-tilt band's full-strength threshold. See
+    /// [`crate::calibration::Topology::top_tilt_band_width`].
+    pub fn set_top_tilt_band_width(&mut self, width: f32) {
+        match self {
+            Executor::Cpu(c) => c.calib.topology.top_tilt_band_width = width as f64,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.pipeline.set_top_tilt_band_width(width),
+        }
+    }
+
     /// Set the lens-correction strength on every lens, clamped to `[0, 1]`.
     pub fn set_lens_correction_amount(&mut self, amount: f32) {
         match self {
@@ -834,5 +894,64 @@ mod tests {
         assert_eq!(cpu_rgba.len(), (out_w * out_h * 4) as usize);
         Agreement::compare(gpu_rgba, cpu_rgba)
             .assert_within(AgreementBounds::DEFAULT, "backend cpu-vs-gpu");
+    }
+
+    #[test]
+    #[cfg(feature = "gpu")]
+    fn cpu_and_gpu_backends_agree_with_ground_top_tilt() {
+        let Some(gpu) = gpu_or_skip() else {
+            return;
+        };
+
+        let (cam_w, cam_h) = (192u32, 108u32);
+        let (out_w, out_h) = (160u32, 90u32);
+        let mut calib = calib(cam_w, cam_h);
+        calib.topology.ground_tilt_x = 0.09;
+        calib.topology.ground_tilt_z = -0.07;
+        calib.topology.top_tilt_x = -0.05;
+        calib.topology.top_tilt_z = 0.06;
+        calib.topology.ground_tilt_band_width = 0.22;
+        calib.topology.top_tilt_band_width = 0.18;
+        let config = ViewportConfig {
+            width: out_w,
+            height: out_h,
+            ..Default::default()
+        };
+        let (ly, luv) = nv12(cam_w, cam_h, 0);
+        let (ry, ruv) = nv12(cam_w, cam_h, 30);
+        let left = Nv12Planes { y: &ly, uv: &luv };
+        let right = Nv12Planes { y: &ry, uv: &ruv };
+        let (yaw, pitch) = (0.08f32, -0.04f32);
+
+        let mut cpu = CpuExecutor::new(
+            Box::new(crate::projection::LShapeProjection),
+            calib.clone(),
+            config.clone(),
+            cam_w,
+            cam_h,
+            false,
+        )
+        .expect("cpu backend");
+        let mut gpu = GpuExecutor::new(
+            gpu,
+            GpuExecutorConfig {
+                viewport: config,
+                ..GpuExecutorConfig::new(calib, cam_w, cam_h, InputFormat::Nv12)
+            },
+        )
+        .expect("gpu backend");
+
+        let backends: [&mut dyn StitchExecutor; 2] = [&mut cpu, &mut gpu];
+        let mut outputs = Vec::new();
+        for b in backends {
+            assert_eq!(b.output_dims(), (out_w, out_h));
+            outputs.push(b.stitch(&left, &right, yaw, pitch).expect("stitch"));
+        }
+        let (cpu_rgba, gpu_rgba) = (&outputs[0], &outputs[1]);
+        assert_eq!(cpu_rgba.len(), (out_w * out_h * 4) as usize);
+        Agreement::compare(gpu_rgba, cpu_rgba).assert_within(
+            AgreementBounds::DEFAULT,
+            "backend cpu-vs-gpu, ground/top tilt active",
+        );
     }
 }

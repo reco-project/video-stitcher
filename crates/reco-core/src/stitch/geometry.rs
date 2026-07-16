@@ -18,6 +18,55 @@ use crate::render::viewport::ViewportConfig;
 
 use super::{SurfaceMap, SurfaceUv};
 
+/// `|t|` at and beyond which a tilt correction reaches full strength - the
+/// ramp always *starts* here; see [`crate::calibration::Topology::ground_tilt_band_width`].
+pub(crate) const GROUND_TILT_BAND_START: f64 = 0.08;
+
+fn smoothstep_band(edge0: f64, edge1: f64, x: f64) -> f64 {
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Tangent-addition warp: adds an extra tilt `c = tan(theta)` to
+/// plane-space `t`, scaled by `k` (see [`Lens::ground_tilt_k`]).
+/// `warp_ground_y(t, 0.0, k) == t` exactly, so `c = 0` is a no-op.
+pub(crate) fn warp_ground_y(t: f64, c: f64, k: f64) -> f64 {
+    let mut denom = 1.0 - c * t / k;
+    if denom.abs() < 1e-9 {
+        denom = if denom >= 0.0 { 1e-9 } else { -1e-9 };
+    }
+    (k * c + t) / denom
+}
+
+/// Ground-plane tilt: one-sided in `t` (NOT `t.abs()`) - `t > 0` (near
+/// field/ground) ramps in via a smoothstep from [`GROUND_TILT_BAND_START`]
+/// to `band_full`; `t <= 0` (above the horizon) is always identity.
+pub(crate) fn band_limited_ground_warp(t: f64, c: f64, k: f64, band_full: f64) -> f64 {
+    if t <= 0.0 {
+        return t;
+    }
+    let full = band_full.max(GROUND_TILT_BAND_START + 0.01);
+    let weight = smoothstep_band(GROUND_TILT_BAND_START, full, t);
+    if weight == 0.0 {
+        return t;
+    }
+    t + weight * (warp_ground_y(t, c, k) - t)
+}
+
+/// Mirror of [`band_limited_ground_warp`]: `t >= 0` is always identity,
+/// only `t < 0` (top of frame) ramps in.
+pub(crate) fn band_limited_top_warp(t: f64, c: f64, k: f64, band_full: f64) -> f64 {
+    if t >= 0.0 {
+        return t;
+    }
+    let full = band_full.max(GROUND_TILT_BAND_START + 0.01);
+    let weight = smoothstep_band(GROUND_TILT_BAND_START, full, -t);
+    if weight == 0.0 {
+        return t;
+    }
+    t + weight * (warp_ground_y(t, c, k) - t)
+}
+
 /// Inverse map for one camera plane of the L-shape projection.
 ///
 /// Holds the per-frame inverse rasterization (output NDC -> plane-local) plus
@@ -50,10 +99,21 @@ pub(crate) struct PlaneMap {
     d: [f64; 4],
     /// Lens-correction amount in `[0, 1]` (`1` = full KB4, `0` = pinhole).
     correction: f64,
+    /// Ground-plane tilt `c = tan(theta)`, `0.0` = no-op.
+    ground_tilt_c: f64,
+    /// Top-of-frame tilt `c = tan(theta)`, `0.0` = no-op.
+    top_tilt_c: f64,
+    /// Shared focal-scale constant for both bands (see [`Lens::ground_tilt_k`]).
+    tilt_k: f64,
+    /// Ground band's full-strength threshold.
+    ground_tilt_band_width: f64,
+    /// Top band's full-strength threshold.
+    top_tilt_band_width: f64,
 }
 
 impl PlaneMap {
     /// Build a plane map from its model matrix and the shared view-projection.
+    #[allow(clippy::too_many_arguments)]
     fn new(
         model: Matrix4<f32>,
         view_projection: &Matrix4<f32>,
@@ -62,6 +122,10 @@ impl PlaneMap {
         out_h: u32,
         plane_aspect: f64,
         correction: f64,
+        ground_tilt_c: f64,
+        top_tilt_c: f64,
+        ground_tilt_band_width: f64,
+        top_tilt_band_width: f64,
     ) -> Self {
         let mvp = view_projection * model;
         // For a quad at z = 0 in model space, `clip = M3 * [x, y, 1]` where M3
@@ -94,6 +158,11 @@ impl PlaneMap {
             cy_n: cam.cy / h,
             d: cam.distortion,
             correction,
+            ground_tilt_c,
+            top_tilt_c,
+            tilt_k: cam.ground_tilt_k(),
+            ground_tilt_band_width,
+            top_tilt_band_width,
         }
     }
 }
@@ -132,13 +201,41 @@ impl SurfaceMap for PlaneMap {
         // Plane-local -> texture UV (inverse of the quad vertex layout:
         // `local_x = uv_x - 0.5`, `local_y = (0.5 - uv_y) / aspect`).
         let uv_x = local_x + 0.5;
-        let uv_y = 0.5 - local_y * self.plane_aspect;
+        let mut uv_y = 0.5 - local_y * self.plane_aspect;
 
         // The GPU rasterizes a FINITE quad (uv in [0,1]); the extended-UV remap
         // below only widens the sampling domain, not the rasterized footprint.
         // Reject pixels outside the quad so CPU coverage matches the GPU's.
+        // This must run on the RAW (pre-warp) uv_y - the tilt warp only
+        // remaps which source pixel a covered output pixel samples, it
+        // never changes which output pixels the quad covers (mirrors the
+        // GPU: rasterization uses the unwarped vertex positions, only the
+        // fragment shader applies the warp).
         if !(0.0..=1.0).contains(&uv_x) || !(0.0..=1.0).contains(&uv_y) {
             return None;
+        }
+
+        // Ground/top tilt: same order as fisheye.wgsl's fs_main - warp the
+        // raw (non-extended) uv_y before the extended-UV remap below.
+        if self.ground_tilt_c != 0.0 || self.top_tilt_c != 0.0 {
+            let mut plane_y = (uv_y - 0.5) / self.plane_aspect;
+            if self.ground_tilt_c != 0.0 {
+                plane_y = band_limited_ground_warp(
+                    plane_y,
+                    self.ground_tilt_c,
+                    self.tilt_k,
+                    self.ground_tilt_band_width,
+                );
+            }
+            if self.top_tilt_c != 0.0 {
+                plane_y = band_limited_top_warp(
+                    plane_y,
+                    self.top_tilt_c,
+                    self.tilt_k,
+                    self.top_tilt_band_width,
+                );
+            }
+            uv_y = plane_y * self.plane_aspect + 0.5;
         }
 
         // Shader's extended-UV remap (`uv * 2 - 0.5`) that widens the sampling
@@ -203,6 +300,9 @@ pub(crate) fn l_shape_plane_maps(
     let view_projection = projection * view;
 
     let aspect = plane_aspect as f64;
+    // z-plane (lenses[0]) <-> left, x-plane (lenses[1]) <-> right - verified
+    // against SceneGeometry::model_matrix_left/right's actual plane
+    // positions, not assumed from naming.
     let left = PlaneMap::new(
         scene.model_matrix_left(),
         &view_projection,
@@ -211,6 +311,10 @@ pub(crate) fn l_shape_plane_maps(
         config.height,
         aspect,
         calib.lenses[0].correction as f64,
+        calib.topology.ground_tilt_z,
+        calib.topology.top_tilt_z,
+        calib.topology.ground_tilt_band_width,
+        calib.topology.top_tilt_band_width,
     );
     let right = PlaneMap::new(
         scene.model_matrix_right(),
@@ -220,6 +324,10 @@ pub(crate) fn l_shape_plane_maps(
         config.height,
         aspect,
         calib.lenses[1].correction as f64,
+        calib.topology.ground_tilt_x,
+        calib.topology.top_tilt_x,
+        calib.topology.ground_tilt_band_width,
+        calib.topology.top_tilt_band_width,
     );
     (left, right)
 }
@@ -250,5 +358,51 @@ mod tests {
             covered > 0,
             "expected the planes to cover part of the output"
         );
+    }
+
+    #[test]
+    fn warp_ground_y_is_identity_when_tilt_is_zero() {
+        for t in [-0.5, -0.1, 0.0, 0.1, 0.3, 0.5] {
+            assert_eq!(warp_ground_y(t, 0.0, 0.19), t);
+        }
+    }
+
+    #[test]
+    fn band_limited_ground_warp_is_identity_below_band_start() {
+        // At and below GROUND_TILT_BAND_START, and everywhere t <= 0, the
+        // ramp weight is zero regardless of the tilt scalar.
+        let c = 0.1;
+        let k = 0.19;
+        let band_full = 0.2;
+        for t in [-0.3, -0.01, 0.0, GROUND_TILT_BAND_START] {
+            assert_eq!(band_limited_ground_warp(t, c, k, band_full), t);
+        }
+    }
+
+    #[test]
+    fn band_limited_ground_warp_shifts_beyond_band_start() {
+        let c = 0.1;
+        let k = 0.19;
+        let band_full = 0.2;
+        let t = 0.25; // beyond band_full, ramp fully engaged
+        let warped = band_limited_ground_warp(t, c, k, band_full);
+        assert_ne!(warped, t, "expected the tilt to actually shift t");
+        // At full ramp strength the result should equal the raw warp.
+        assert!((warped - warp_ground_y(t, c, k)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn band_limited_top_warp_is_one_sided_the_other_way() {
+        // Mirror of band_limited_ground_warp: identity for t >= 0 (at/below
+        // the horizon), ramps in only for t < 0 (top of frame).
+        let c = -0.08;
+        let k = 0.19;
+        let band_full = 0.2;
+        for t in [0.0, 0.01, 0.3] {
+            assert_eq!(band_limited_top_warp(t, c, k, band_full), t);
+        }
+        let t = -0.25;
+        let warped = band_limited_top_warp(t, c, k, band_full);
+        assert_ne!(warped, t, "expected the tilt to actually shift t");
     }
 }

@@ -416,6 +416,12 @@ impl Optimizer for NelderMeadOptimizer {
             },
             z_rz: 0.0,
             blend_width: reco_core::calibration::DEFAULT_BLEND_WIDTH,
+            ground_tilt_x: 0.0,
+            ground_tilt_z: 0.0,
+            top_tilt_x: 0.0,
+            top_tilt_z: 0.0,
+            ground_tilt_band_width: reco_core::calibration::DEFAULT_TILT_BAND_WIDTH,
+            top_tilt_band_width: reco_core::calibration::DEFAULT_TILT_BAND_WIDTH,
         };
         let framing = Framing {
             axis_offset: params.cam_d,

@@ -197,6 +197,19 @@ impl Lens {
             correction: 1.0,
         }
     }
+
+    /// Focal-scale constant `k` for [`Topology::ground_tilt_x`] /
+    /// [`Topology::ground_tilt_z`]'s `warp_ground_y(t, c, k)`: `k = fy /
+    /// (2 * width)`.
+    ///
+    /// `t` (plane-space y) is measured in "plane width = 1.0" units, not
+    /// pixels or radians, so the tangent-addition identity `warp(t, c, k)
+    /// = (k*c + t) / (1 - c*t/k)` needs this same-units focal-length scale
+    /// to convert between them - treating `t` as if it already equaled
+    /// `tan(phi)` applies the identity at the wrong scale.
+    pub fn ground_tilt_k(&self) -> f64 {
+        self.fy / (2.0 * self.width as f64)
+    }
 }
 
 /// 3D placement of the source planes plus the overlap seam.
@@ -227,6 +240,46 @@ pub struct Topology {
     /// Seam blend width as a fraction of the plane overlap. `0.0` = hard seam.
     #[serde(default = "default_blend_width")]
     pub blend_width: f32,
+
+    /// Ground-plane tilt correction for the x-plane (`lenses[1]`'s
+    /// content). `tan(theta)` of an additional tilt applied only near the
+    /// bottom of frame (close to the camera, where flat two-plane
+    /// parallax error is largest); mathematically identity below a
+    /// near-field threshold and ramped in via a smoothstep beyond it. See
+    /// [`crate::stitch::geometry::band_limited_ground_warp`] for the
+    /// exact math (the GPU shader is a direct port of that same
+    /// function). `0.0` (the default) is a no-op - existing calibrations
+    /// render unchanged.
+    #[serde(default)]
+    pub ground_tilt_x: f64,
+    /// Ground-plane tilt correction for the z-plane (`lenses[0]`'s
+    /// content). See [`Self::ground_tilt_x`] - same math, applied to the
+    /// other plane.
+    #[serde(default)]
+    pub ground_tilt_z: f64,
+    /// Top-of-frame tilt correction for the x-plane. Mirror image of
+    /// [`Self::ground_tilt_x`]: same band-limited tangent warp, but
+    /// one-sided the other way - identity at and below the horizon,
+    /// ramped in only near the top of frame (far background content).
+    /// `0.0` (the default) is a no-op.
+    #[serde(default)]
+    pub top_tilt_x: f64,
+    /// Top-of-frame tilt correction for the z-plane. See
+    /// [`Self::top_tilt_x`] - same math, applied to the other plane.
+    #[serde(default)]
+    pub top_tilt_z: f64,
+    /// `|t|` at and beyond which [`Self::ground_tilt_x`]/
+    /// [`Self::ground_tilt_z`]'s correction reaches full strength (the
+    /// ramp always *starts* at the fixed
+    /// [`crate::stitch::geometry::GROUND_TILT_BAND_START`] - only where
+    /// it finishes is adjustable). Default `0.16`.
+    #[serde(default = "default_tilt_band_width")]
+    pub ground_tilt_band_width: f64,
+    /// Same as [`Self::ground_tilt_band_width`], for
+    /// [`Self::top_tilt_x`]/[`Self::top_tilt_z`]'s band (ramping toward
+    /// the top of frame instead of the bottom).
+    #[serde(default = "default_tilt_band_width")]
+    pub top_tilt_band_width: f64,
 }
 
 /// Default seam blend width for calibrations that do not specify one.
@@ -235,6 +288,20 @@ pub const DEFAULT_BLEND_WIDTH: f32 = 0.05;
 
 fn default_blend_width() -> f32 {
     DEFAULT_BLEND_WIDTH
+}
+
+/// Inclusive bound for [`Topology::ground_tilt_x`]/`z`/[`Topology::top_tilt_x`]/`z`.
+pub const TILT_RANGE: f64 = 0.3;
+/// Inclusive bounds for [`Topology::ground_tilt_band_width`]/[`Topology::top_tilt_band_width`].
+pub const TILT_BAND_WIDTH_RANGE: (f64, f64) = (0.09, 0.4);
+
+/// Default tilt-correction band width - matches the value this band was
+/// fixed at before the field existed, so existing calibrations render
+/// unchanged.
+pub const DEFAULT_TILT_BAND_WIDTH: f64 = 0.16;
+
+fn default_tilt_band_width() -> f64 {
+    DEFAULT_TILT_BAND_WIDTH
 }
 
 /// The virtual camera's calibrated coordinate frame: the axis/orientation that
@@ -598,6 +665,48 @@ fn validate_topology(t: &Topology) -> Result<(), CalibrationError> {
         });
     }
 
+    for (name, val) in [
+        ("topology.ground_tilt_x", t.ground_tilt_x),
+        ("topology.ground_tilt_z", t.ground_tilt_z),
+        ("topology.top_tilt_x", t.top_tilt_x),
+        ("topology.top_tilt_z", t.top_tilt_z),
+    ] {
+        if !val.is_finite() {
+            return Err(CalibrationError::NonFiniteFloat {
+                field: name.to_owned(),
+                value: format!("{val}"),
+            });
+        }
+        if !(-TILT_RANGE..=TILT_RANGE).contains(&val) {
+            return Err(CalibrationError::OutOfRange {
+                field: name.to_owned(),
+                value: val,
+                min: -TILT_RANGE,
+                max: TILT_RANGE,
+            });
+        }
+    }
+
+    for (name, val) in [
+        ("topology.ground_tilt_band_width", t.ground_tilt_band_width),
+        ("topology.top_tilt_band_width", t.top_tilt_band_width),
+    ] {
+        if !val.is_finite() {
+            return Err(CalibrationError::NonFiniteFloat {
+                field: name.to_owned(),
+                value: format!("{val}"),
+            });
+        }
+        if !(TILT_BAND_WIDTH_RANGE.0..=TILT_BAND_WIDTH_RANGE.1).contains(&val) {
+            return Err(CalibrationError::OutOfRange {
+                field: name.to_owned(),
+                value: val,
+                min: TILT_BAND_WIDTH_RANGE.0,
+                max: TILT_BAND_WIDTH_RANGE.1,
+            });
+        }
+    }
+
     Ok(())
 }
 
@@ -721,6 +830,12 @@ mod tests {
                 x_rx: 0.0,
                 z_rz: 0.0,
                 blend_width: 0.05,
+                ground_tilt_x: 0.0,
+                ground_tilt_z: 0.0,
+                top_tilt_x: 0.0,
+                top_tilt_z: 0.0,
+                ground_tilt_band_width: 0.16,
+                top_tilt_band_width: 0.16,
             },
             framing: Framing {
                 axis_offset: 0.25,

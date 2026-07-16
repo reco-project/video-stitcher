@@ -517,6 +517,12 @@ export component RecoApp inherits Window {
     in-out property <float> cal-intersect: 0.0;
     in-out property <float> cal-camera-axis-offset: 0.0;
     in-out property <float> cal-x-ty: 0.0;
+    in-out property <float> cal-ground-tilt-x: 0.0;
+    in-out property <float> cal-ground-tilt-z: 0.0;
+    in-out property <float> cal-top-tilt-x: 0.0;
+    in-out property <float> cal-top-tilt-z: 0.0;
+    in-out property <float> cal-ground-tilt-band-width: 0.16;
+    in-out property <float> cal-top-tilt-band-width: 0.16;
     in-out property <bool> cal-dirty: false;  // true when user has edited
 
     // Side panel visibility (unified Controls + Stats).
@@ -712,6 +718,12 @@ export component RecoApp inherits Window {
     callback changed-cal-intersect(float);
     callback changed-cal-camera-axis-offset(float);
     callback changed-cal-x-ty(float);
+    callback changed-cal-ground-tilt-x(float);
+    callback changed-cal-ground-tilt-z(float);
+    callback changed-cal-top-tilt-x(float);
+    callback changed-cal-top-tilt-z(float);
+    callback changed-cal-ground-tilt-band-width(float);
+    callback changed-cal-top-tilt-band-width(float);
     callback save-calibration();
     callback reset-calibration();
     // Live lens parameter editing. Fires on any of the 8 sliders per
@@ -1533,6 +1545,60 @@ export component RecoApp inherits Window {
                             value <=> root.cal-x-ty;
                             decimals: 3;
                             changed(v) => { root.changed-cal-x-ty(v); }
+                        }
+
+                        LabeledSlider {
+                            label: "Ground tilt X";
+                            minimum: -0.3;
+                            maximum: 0.3;
+                            value <=> root.cal-ground-tilt-x;
+                            decimals: 5;
+                            changed(v) => { root.changed-cal-ground-tilt-x(v); }
+                        }
+
+                        LabeledSlider {
+                            label: "Ground tilt Z";
+                            minimum: -0.3;
+                            maximum: 0.3;
+                            value <=> root.cal-ground-tilt-z;
+                            decimals: 5;
+                            changed(v) => { root.changed-cal-ground-tilt-z(v); }
+                        }
+
+                        LabeledSlider {
+                            label: "Top tilt X";
+                            minimum: -0.3;
+                            maximum: 0.3;
+                            value <=> root.cal-top-tilt-x;
+                            decimals: 5;
+                            changed(v) => { root.changed-cal-top-tilt-x(v); }
+                        }
+
+                        LabeledSlider {
+                            label: "Top tilt Z";
+                            minimum: -0.3;
+                            maximum: 0.3;
+                            value <=> root.cal-top-tilt-z;
+                            decimals: 5;
+                            changed(v) => { root.changed-cal-top-tilt-z(v); }
+                        }
+
+                        LabeledSlider {
+                            label: "Ground tilt band width";
+                            minimum: 0.09;
+                            maximum: 0.4;
+                            value <=> root.cal-ground-tilt-band-width;
+                            decimals: 2;
+                            changed(v) => { root.changed-cal-ground-tilt-band-width(v); }
+                        }
+
+                        LabeledSlider {
+                            label: "Top tilt band width";
+                            minimum: 0.09;
+                            maximum: 0.4;
+                            value <=> root.cal-top-tilt-band-width;
+                            decimals: 2;
+                            changed(v) => { root.changed-cal-top-tilt-band-width(v); }
                         }
 
                         // Saving lives in one place: the "Save Calibration"

@@ -487,6 +487,43 @@ impl StitchCore {
         self.executor.set_blend_width(width);
     }
 
+    /// Set the ground-plane tilt correction for the x-plane (per-frame
+    /// uniform; coverage unaffected). See
+    /// [`crate::calibration::Topology::ground_tilt_x`].
+    pub fn set_ground_tilt_x(&mut self, tilt: f32) {
+        self.executor.set_ground_tilt_x(tilt);
+    }
+
+    /// Set the ground-plane tilt correction for the z-plane. See
+    /// [`crate::calibration::Topology::ground_tilt_z`].
+    pub fn set_ground_tilt_z(&mut self, tilt: f32) {
+        self.executor.set_ground_tilt_z(tilt);
+    }
+
+    /// Set the top-of-frame tilt correction for the x-plane. See
+    /// [`crate::calibration::Topology::top_tilt_x`].
+    pub fn set_top_tilt_x(&mut self, tilt: f32) {
+        self.executor.set_top_tilt_x(tilt);
+    }
+
+    /// Set the top-of-frame tilt correction for the z-plane. See
+    /// [`crate::calibration::Topology::top_tilt_z`].
+    pub fn set_top_tilt_z(&mut self, tilt: f32) {
+        self.executor.set_top_tilt_z(tilt);
+    }
+
+    /// Set the ground-tilt band's full-strength threshold. See
+    /// [`crate::calibration::Topology::ground_tilt_band_width`].
+    pub fn set_ground_tilt_band_width(&mut self, width: f32) {
+        self.executor.set_ground_tilt_band_width(width);
+    }
+
+    /// Set the top-tilt band's full-strength threshold. See
+    /// [`crate::calibration::Topology::top_tilt_band_width`].
+    pub fn set_top_tilt_band_width(&mut self, width: f32) {
+        self.executor.set_top_tilt_band_width(width);
+    }
+
     /// Set the lens-correction strength on every lens (`0` = pinhole,
     /// `1` = full KB4).
     pub fn set_lens_correction_amount(&mut self, amount: f32) {
