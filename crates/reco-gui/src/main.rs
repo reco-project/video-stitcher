@@ -1211,13 +1211,15 @@ fn sync_roi_points(state: &AppState, app: &RecoApp) {
     let (xs, ys) = if let Some(cal) = &state.calibration
         && let Some(roi) = &cal.field_roi
     {
-        let side = if state.lens_preview_side == "right" {
-            &roi.right
-        } else {
-            &roi.left
-        };
-        let xs: Vec<f32> = side.iter().map(|p| p[0] as f32).collect();
-        let ys: Vec<f32> = side.iter().map(|p| p[1] as f32).collect();
+        let is_right = state.lens_preview_side == "right";
+        let side = if is_right { &roi.right } else { &roi.left };
+        let lens = &cal.lenses[if is_right { 1 } else { 0 }];
+        let display: Vec<[f64; 2]> = side
+            .iter()
+            .map(|p| raw_norm_to_rectified_norm(p[0], p[1], lens))
+            .collect();
+        let xs: Vec<f32> = display.iter().map(|p| p[0] as f32).collect();
+        let ys: Vec<f32> = display.iter().map(|p| p[1] as f32).collect();
         (xs, ys)
     } else {
         (vec![], vec![])
@@ -1255,6 +1257,51 @@ fn roi_path_commands(xs: &[f32], ys: &[f32], aspect: f32) -> String {
     }
     s.push('Z');
     s
+}
+
+/// Convert a point in the ROI editor's displayed preview (normalized
+/// `[0,1]`, rectified/undistorted - the lens-correction render always
+/// shown while editing) into the raw distorted-frame normalized `[0,1]`
+/// space `field_roi` is stored in and the AI detector consumes. Without
+/// this, a boundary traced on the rectified preview gets saved as if it
+/// were already in raw-frame coordinates - the two spaces are related by
+/// the lens's own KB4 distortion (strongly non-linear, especially near
+/// the frame edges), so the saved polygon silently drifts away from the
+/// pitch it was drawn around and the detector rejects real in-bounds
+/// detections. `lens` must be the calibration's lens for whichever
+/// camera side is currently being edited. See
+/// `reco_core::lens::undistorted_to_distorted`'s doc comment for the
+/// underlying math (mirrors `fisheye.wgsl`'s fragment shader exactly).
+fn rectified_norm_to_raw_norm(nx: f64, ny: f64, lens: &reco_core::calibration::Lens) -> [f64; 2] {
+    let (w, h) = (lens.width, lens.height);
+    let (raw_x, raw_y) =
+        reco_core::lens::undistorted_to_distorted(nx * w as f64, ny * h as f64, w, h, lens);
+    [
+        (raw_x / w as f64).clamp(0.0, 1.0),
+        (raw_y / h as f64).clamp(0.0, 1.0),
+    ]
+}
+
+/// Inverse of [`rectified_norm_to_raw_norm`] - convert a stored
+/// `field_roi` point (raw distorted-frame normalized) into the ROI
+/// editor's displayed (rectified) preview normalized space, so the
+/// overlay dots/outline and drag hit-testing land at their true
+/// on-screen position instead of wherever the raw fraction happens to
+/// fall in the visually very different rectified image. Falls back to
+/// the raw point unchanged if Newton-Raphson doesn't converge (only
+/// happens very close to the frame's extreme corners - see
+/// `reco_core::lens::distorted_to_undistorted`'s doc comment) so a point
+/// out there stays visible/grabbable near its true position instead of
+/// vanishing.
+fn raw_norm_to_rectified_norm(nx: f64, ny: f64, lens: &reco_core::calibration::Lens) -> [f64; 2] {
+    let (w, h) = (lens.width, lens.height);
+    match reco_core::lens::distorted_to_undistorted(nx * w as f64, ny * h as f64, w, h, lens) {
+        Some((ux, uy)) => [
+            (ux / w as f64).clamp(0.0, 1.0),
+            (uy / h as f64).clamp(0.0, 1.0),
+        ],
+        None => [nx, ny],
+    }
 }
 
 /// Hit-test radius (pixels, in the lens-preview content rect) for
@@ -2026,12 +2073,20 @@ fn main() -> anyhow::Result<()> {
             return -1;
         }
         let s = state_ref.borrow();
-        let side = s.lens_preview_side.clone();
-        s.calibration
-            .as_ref()
-            .and_then(|c| c.field_roi.as_ref())
-            .map(|r| if side == "right" { &r.right } else { &r.left })
-            .and_then(|pts| roi_hit_test(pts, lx, ly, cw, ch))
+        let is_right = s.lens_preview_side == "right";
+        let Some(cal) = s.calibration.as_ref() else {
+            return -1;
+        };
+        let Some(roi) = cal.field_roi.as_ref() else {
+            return -1;
+        };
+        let pts = if is_right { &roi.right } else { &roi.left };
+        let lens = &cal.lenses[if is_right { 1 } else { 0 }];
+        let display: Vec<[f64; 2]> = pts
+            .iter()
+            .map(|p| raw_norm_to_rectified_norm(p[0], p[1], lens))
+            .collect();
+        roi_hit_test(&display, lx, ly, cw, ch)
             .map(|i| i as i32)
             .unwrap_or(-1)
     });
@@ -2043,14 +2098,16 @@ fn main() -> anyhow::Result<()> {
             return;
         }
         let mut s = state_ref.borrow_mut();
-        let side = s.lens_preview_side.clone();
-        let norm = [
+        let is_right = s.lens_preview_side == "right";
+        let rectified = [
             (lx / cw).clamp(0.0, 1.0) as f64,
             (ly / ch).clamp(0.0, 1.0) as f64,
         ];
         if let Some(cal) = s.calibration.as_mut() {
+            let lens = cal.lenses[if is_right { 1 } else { 0 }].clone();
+            let norm = rectified_norm_to_raw_norm(rectified[0], rectified[1], &lens);
             let roi = cal.field_roi.get_or_insert_with(Default::default);
-            let pts = if side == "right" {
+            let pts = if is_right {
                 &mut roi.right
             } else {
                 &mut roi.left
@@ -2076,19 +2133,23 @@ fn main() -> anyhow::Result<()> {
             return;
         }
         let mut s = state_ref.borrow_mut();
-        let side = s.lens_preview_side.clone();
-        let norm = [
+        let is_right = s.lens_preview_side == "right";
+        let rectified = [
             (lx / cw).clamp(0.0, 1.0) as f64,
             (ly / ch).clamp(0.0, 1.0) as f64,
         ];
-        if let Some(roi) = s.calibration.as_mut().and_then(|c| c.field_roi.as_mut()) {
-            let pts = if side == "right" {
-                &mut roi.right
-            } else {
-                &mut roi.left
-            };
-            if let Some(p) = pts.get_mut(index as usize) {
-                *p = norm;
+        if let Some(cal) = s.calibration.as_mut() {
+            let lens = cal.lenses[if is_right { 1 } else { 0 }].clone();
+            let norm = rectified_norm_to_raw_norm(rectified[0], rectified[1], &lens);
+            if let Some(roi) = cal.field_roi.as_mut() {
+                let pts = if is_right {
+                    &mut roi.right
+                } else {
+                    &mut roi.left
+                };
+                if let Some(p) = pts.get_mut(index as usize) {
+                    *p = norm;
+                }
             }
         }
         if let Some(app) = app_weak.upgrade() {
@@ -2111,18 +2172,21 @@ fn main() -> anyhow::Result<()> {
             return;
         }
         let mut s = state_ref.borrow_mut();
-        let side = s.lens_preview_side.clone();
-        let Some(i) = s
-            .calibration
-            .as_ref()
-            .and_then(|c| c.field_roi.as_ref())
-            .map(|r| if side == "right" { &r.right } else { &r.left })
-            .and_then(|pts| roi_hit_test(pts, lx, ly, cw, ch))
-        else {
+        let is_right = s.lens_preview_side == "right";
+        let Some(i) = s.calibration.as_ref().and_then(|cal| {
+            let roi = cal.field_roi.as_ref()?;
+            let pts = if is_right { &roi.right } else { &roi.left };
+            let lens = &cal.lenses[if is_right { 1 } else { 0 }];
+            let display: Vec<[f64; 2]> = pts
+                .iter()
+                .map(|p| raw_norm_to_rectified_norm(p[0], p[1], lens))
+                .collect();
+            roi_hit_test(&display, lx, ly, cw, ch)
+        }) else {
             return;
         };
         if let Some(roi) = s.calibration.as_mut().and_then(|c| c.field_roi.as_mut()) {
-            let pts = if side == "right" {
+            let pts = if is_right {
                 &mut roi.right
             } else {
                 &mut roi.left

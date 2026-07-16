@@ -204,6 +204,131 @@ pub fn undistorted_to_distorted(
     (fx * x * scale + cx, fy * y * scale + cy)
 }
 
+/// Newton-Raphson iteration cap for [`distorted_to_undistorted`] - mirrors
+/// `projection::inverse_fisheye`'s tuning (same KB4 polynomial, same
+/// convergence behavior).
+const MAX_ITERATIONS: usize = 20;
+/// Convergence threshold (radians) for [`distorted_to_undistorted`].
+const CONVERGENCE_EPS: f64 = 1e-10;
+
+/// Map a pixel position in the distorted (fisheye) image back to the
+/// corresponding pixel in the undistorted output image - the numeric
+/// inverse of [`undistorted_to_distorted`].
+///
+/// The forward KB4 map (`theta -> theta_d`) has no closed-form inverse,
+/// so this solves `theta_d(theta) = theta_d_target` via Newton-Raphson
+/// (mirrors `projection::inverse_fisheye`'s iteration, but recovers the
+/// point using this module's plane-fitted output intrinsics - see
+/// [`undistorted_to_distorted`]'s doc comment for why those differ from
+/// the stitch-plane convention `inverse_fisheye` uses - so the two
+/// aren't interchangeable despite solving the same polynomial).
+///
+/// Returns `None` if Newton-Raphson fails to converge (a degenerate
+/// input, e.g. a point at the lens's blind spot where the derivative
+/// vanishes).
+///
+/// # Arguments
+/// * `src_x`, `src_y` - Pixel position in the distorted (original) image
+/// * `width`, `height` - Frame dimensions
+/// * `params` - Camera intrinsics and KB4 distortion coefficients
+///
+/// # Returns
+/// `(out_x, out_y)` - Corresponding pixel in the undistorted image.
+pub fn distorted_to_undistorted(
+    src_x: f64,
+    src_y: f64,
+    width: u32,
+    height: u32,
+    params: &Lens,
+) -> Option<(f64, f64)> {
+    let w = width as f64;
+    let h = height as f64;
+
+    // Scale original intrinsics to frame resolution (SYNC_WITH
+    // undistorted_to_distorted).
+    let sx = w / params.width as f64;
+    let sy = h / params.height as f64;
+    let fx = params.fx * sx;
+    let fy = params.fy * sy;
+    let cx = params.cx * sx;
+    let cy = params.cy * sy;
+
+    // Must match undistorted_to_distorted's output intrinsics
+    // (plane-fitted FOV).
+    let out_fx = fx / 2.0;
+    let out_fy = fy / 2.0;
+    let out_cx = (w + 2.0 * cx) / 4.0;
+    let out_cy = (h + 2.0 * cy) / 4.0;
+
+    // Normalized distorted-side ray. `undistorted_to_distorted` computes
+    // `(src_x, src_y) = (fx*x*scale + cx, fy*y*scale + cy)` where
+    // `scale = theta_d/r` and `r = |x, y|` - so `|dx, dy| = r*scale =
+    // theta_d` directly, letting us skip straight to solving for theta.
+    let dx = (src_x - cx) / fx;
+    let dy = (src_y - cy) / fy;
+    let theta_d = (dx * dx + dy * dy).sqrt();
+
+    if theta_d < 1e-12 {
+        // At the optical center - no distortion.
+        return Some((out_cx, out_cy));
+    }
+
+    let k = params.distortion;
+    let mut theta = theta_d; // initial guess
+    let mut converged = false;
+    for _ in 0..MAX_ITERATIONS {
+        let f = kb4::theta_d(theta, &k) - theta_d;
+        let f_prime = kb4::theta_d_prime(theta, &k);
+
+        if f_prime.abs() < 1e-15 {
+            return None; // degenerate
+        }
+
+        let delta = f / f_prime;
+        theta -= delta;
+
+        if delta.abs() < CONVERGENCE_EPS {
+            converged = true;
+            break;
+        }
+    }
+
+    // Near frame edges/corners this module's extended-plane convention
+    // (out_fx = fx/2, doubling the effective FOV per output pixel vs.
+    // `projection::inverse_fisheye`'s stitch-plane convention) reaches
+    // large theta values where Newton-Raphson can fail to converge
+    // within MAX_ITERATIONS, or - worse - silently land on a theta that
+    // never actually satisfies theta_d(theta) == theta_d_target (the
+    // loop exits on hitting MAX_ITERATIONS, not on failure, so a caller
+    // trusting the raw post-loop `theta` unconditionally can get a wildly
+    // wrong point back with no signal anything went wrong). Verify the
+    // root actually solves the equation before using it - a physically
+    // meaningless theta (e.g. > ~89 degrees, beyond any real fisheye's
+    // usable FOV) is rejected too, since it indicates runaway iteration
+    // rather than a legitimate extreme-angle solution.
+    if !converged
+        || theta.abs() > std::f64::consts::FRAC_PI_2 * 0.99
+        || (kb4::theta_d(theta, &k) - theta_d).abs() > 1e-6
+    {
+        return None;
+    }
+
+    let r = theta.tan();
+    let scale = if theta.abs() < 1e-12 {
+        1.0
+    } else {
+        theta_d / r
+    };
+    if !scale.is_finite() {
+        return None;
+    }
+
+    let x = dx / scale;
+    let y = dy / scale;
+
+    Some((out_fx * x + out_cx, out_fy * y + out_cy))
+}
+
 /// Bilinear interpolation sample from a grayscale image.
 #[inline]
 fn bilinear_sample(data: &[u8], w: u32, h: u32, x: f64, y: f64) -> u8 {
@@ -232,6 +357,97 @@ fn bilinear_sample(data: &[u8], w: u32, h: u32, x: f64, y: f64) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn distorted_to_undistorted_roundtrips_with_undistorted_to_distorted() {
+        // DJI Action 4 KB4 coefficients (real user calibration, per the
+        // ROI-editor coordinate-space bug investigation this fix comes
+        // from).
+        let params = Lens::fisheye(
+            3840,
+            2880,
+            1457.07373046875,
+            1457.07373046875,
+            1920.0,
+            1440.0,
+            [
+                0.15513110160827637,
+                0.1371408998966217,
+                -0.0938614010810852,
+                0.0041704000905156136,
+            ],
+        );
+        let (w, h) = (3840u32, 2880u32);
+
+        // Grid of undistorted (output) pixel positions, forward-mapped
+        // to distorted space then back - should recover the original
+        // point within numerical tolerance. Stays in [0.3, 0.7] (well
+        // inside the frame): this module's extended-plane convention
+        // reaches large theta faster than a plain stitch-plane
+        // normalization would, so points near the edges/corners are
+        // expected to hit the documented "Newton-Raphson doesn't
+        // converge at extreme angles" case (returns `None`) - covered
+        // separately below instead of treated as a roundtrip failure.
+        let mut converged_count = 0;
+        for gx in 3..=7 {
+            for gy in 3..=7 {
+                let out_x = w as f64 * gx as f64 / 10.0;
+                let out_y = h as f64 * gy as f64 / 10.0;
+                let (src_x, src_y) = undistorted_to_distorted(out_x, out_y, w, h, &params);
+                if !(0.0..=w as f64).contains(&src_x) || !(0.0..=h as f64).contains(&src_y) {
+                    continue;
+                }
+                let Some((back_x, back_y)) = distorted_to_undistorted(src_x, src_y, w, h, &params)
+                else {
+                    continue;
+                };
+                converged_count += 1;
+                assert!(
+                    (back_x - out_x).abs() < 0.5,
+                    "x roundtrip failed at grid ({gx},{gy}): {out_x} -> {src_x} -> {back_x}"
+                );
+                assert!(
+                    (back_y - out_y).abs() < 0.5,
+                    "y roundtrip failed at grid ({gx},{gy}): {out_y} -> {src_y} -> {back_y}"
+                );
+            }
+        }
+        assert!(
+            converged_count >= 20,
+            "expected most of the central grid to converge, got {converged_count}"
+        );
+    }
+
+    #[test]
+    fn distorted_to_undistorted_rejects_extreme_corner_instead_of_returning_garbage() {
+        // The exact case that first caught the missing convergence
+        // check: a point 10% in from the top-left corner, which this
+        // module's extended-plane (halved-focal-length) convention
+        // pushes well past Newton-Raphson's safe convergence radius.
+        // Before the fix this silently returned a wildly wrong point
+        // (hundreds of thousands of pixels off) instead of `None`.
+        let params = Lens::fisheye(
+            3840,
+            2880,
+            1457.07373046875,
+            1457.07373046875,
+            1920.0,
+            1440.0,
+            [
+                0.15513110160827637,
+                0.1371408998966217,
+                -0.0938614010810852,
+                0.0041704000905156136,
+            ],
+        );
+        let (w, h) = (3840u32, 2880u32);
+        let (src_x, src_y) = undistorted_to_distorted(384.0, 288.0, w, h, &params);
+        let result = distorted_to_undistorted(src_x, src_y, w, h, &params);
+        assert!(
+            result.is_none_or(|(bx, by)| (bx - 384.0).abs() < 0.5 && (by - 288.0).abs() < 0.5),
+            "should either converge to the true point or report failure, not return garbage: {result:?}"
+        );
+    }
 
     #[test]
     fn kb4_forward_scale_zero_radius() {
