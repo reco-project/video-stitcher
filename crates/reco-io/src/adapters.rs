@@ -548,6 +548,7 @@ pub fn create_encoder(
         container: ffmpeg::encoder::Container::default(),
         gop_size: None,
         stream_url: None,
+        metadata_comment: None,
     };
     let encoder = FfmpegFileEncoder::new(path, width, height, fps, &enc_config)?;
     let name = encoder.encoder_name().to_string();

@@ -458,6 +458,11 @@ pub struct EncoderConfig {
     /// output file AND this RTMP endpoint. Single encode pass, zero
     /// extra CPU. Stream failures are non-fatal (recording continues).
     pub stream_url: Option<String>,
+    /// Free-form text written to the output container's "comment"
+    /// metadata tag (visible via `ffprobe`/most media tools). Intended
+    /// for a JSON snapshot of the export/AI settings actually used, so
+    /// test exports remain self-describing. `None` writes no tag.
+    pub metadata_comment: Option<String>,
 }
 
 type OpenedVideoEncoder = (
@@ -690,6 +695,17 @@ impl VideoEncoder {
                     } else {
                         None
                     };
+
+                    // Container metadata must be set before
+                    // write_header - the muxer bakes it into the
+                    // header (moov `udta` atom for MP4, Matroska's
+                    // Tags element, etc.) and won't pick up later
+                    // changes.
+                    if let Some(ref comment) = config.metadata_comment {
+                        let mut meta = ffmpeg::Dictionary::new();
+                        meta.set("comment", comment);
+                        octx.set_metadata(meta);
+                    }
 
                     // Fragmented MP4 needs `movflags` so the muxer
                     // writes an `empty_moov` up front and flushes

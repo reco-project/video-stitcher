@@ -107,6 +107,29 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
             reco_io::stitch_job::InputPath::Single(std::path::PathBuf::from(s))
         }
     };
+    // Snapshot the settings actually used for this export into the
+    // output container's "comment" tag, so a batch of test exports
+    // with varying AI/blend settings stays self-describing without a
+    // separate sidecar file (`ffprobe -show_entries format_tags`).
+    let metadata_comment = serde_json::json!({
+        "reco_export": {
+            "codec": args.codec,
+            "quality": args.quality,
+            "quality_value": args.quality_value,
+            "resolution": format!("{}x{}", args.width, args.height),
+            "blend_width": args.blend,
+            "autocam": {
+                "model_path": args.model_path,
+                "tracking_mode": args.tracking_mode,
+                "detection_interval": args.detection_interval,
+                "lookahead_secs": args.lookahead,
+                "panner_preset": args.panner_preset,
+                "panner_config_path": args.panner_config_path,
+            }
+        }
+    })
+    .to_string();
+
     let mut job = reco_io::StitchJob::with_calibration(
         to_input(args.left),
         to_input(args.right),
@@ -116,6 +139,7 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     .codec(parse_codec(args.codec))
     .quality(parse_quality(args.quality))
     .resolution(args.width, args.height)
+    .metadata_comment(metadata_comment)
     .on_progress(move |p: &reco_core::session::types::FrameProgress| {
         // Use the session's own elapsed clock so the reported
         // rate excludes one-time GPU / encoder / ORT init and
