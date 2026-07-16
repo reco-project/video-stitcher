@@ -75,7 +75,10 @@ fn cpu_frames<'a>(
 }
 
 /// Per-camera CUDA NV12 frames from the shared-texture slot pointers.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+///
+/// Linux only - the only caller (the `GpuResident` zero-copy match arm)
+/// is `#[cfg(target_os = "linux")]`.
+#[cfg(target_os = "linux")]
 pub(super) fn cuda_nv12_frames(
     left_buf: &crate::interop::zero_copy::GpuBufInfo,
     right_buf: &crate::interop::zero_copy::GpuBufInfo,
@@ -506,7 +509,10 @@ impl StitchSession {
     }
 
     /// Run GPU-resident detection from CUDA NV12 shared textures.
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    ///
+    /// Linux only - the only caller (the `GpuResident` zero-copy match
+    /// arm) is `#[cfg(target_os = "linux")]`.
+    #[cfg(target_os = "linux")]
     pub(crate) fn detect_and_update_director_gpu(
         &mut self,
         left_buf: &crate::interop::zero_copy::GpuBufInfo,

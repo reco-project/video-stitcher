@@ -65,13 +65,15 @@ enum WindowsDecodeState {
         right: crate::stitch_job::InputPath,
         sync_offset: i64,
     },
+    // No join_handles/shutdown flag here, unlike the Linux CUDA path
+    // (LinuxZeroCopyState): the D3D11VA decode threads exit via channel
+    // drop, with no ordering hazard on shutdown that a flag needs to
+    // coordinate.
     Running {
         pair_rx: std::sync::mpsc::Receiver<(
             crate::ffmpeg::decoder::D3d11Frame,
             crate::ffmpeg::decoder::D3d11Frame,
         )>,
-        join_handles: Vec<std::thread::JoinHandle<()>>,
-        shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
     },
 }
 
@@ -107,11 +109,7 @@ impl WindowsZeroCopyState {
             let right = right.clone();
             let sync_offset = *sync_offset;
             let pair_rx = crate::zero_copy::spawn_d3d11_decode_pair(&left, &right, sync_offset);
-            self.decode = WindowsDecodeState::Running {
-                pair_rx,
-                join_handles: Vec::new(),
-                shutdown: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            };
+            self.decode = WindowsDecodeState::Running { pair_rx };
         }
     }
 }
@@ -775,14 +773,14 @@ impl Drop for SmartFileSource {
         // channel, causing decode threads to exit when send() fails.
         // Without this, orphaned decode threads keep the process alive.
         #[cfg(target_os = "windows")]
-        if let SourceMode::D3d11ZeroCopy(state) = &mut self.mode {
-            if let WindowsDecodeState::Running { pair_rx, .. } = &mut state.decode {
-                drop(std::mem::replace(
-                    pair_rx,
-                    std::sync::mpsc::sync_channel(0).1,
-                ));
-                log::debug!("D3D11VA source dropped, decode threads signalled to exit");
-            }
+        if let SourceMode::D3d11ZeroCopy(state) = &mut self.mode
+            && let WindowsDecodeState::Running { pair_rx } = &mut state.decode
+        {
+            drop(std::mem::replace(
+                pair_rx,
+                std::sync::mpsc::sync_channel(0).1,
+            ));
+            log::debug!("D3D11VA source dropped, decode threads signalled to exit");
         }
         // MetalZeroCopy: the Receiver is owned directly by the enum
         // variant and drops naturally when the mode is replaced.

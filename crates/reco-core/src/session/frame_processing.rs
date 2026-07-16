@@ -585,8 +585,12 @@ impl StitchSession {
         let right_pool_slot = left_pool_slot + 2;
 
         let pool = self.d3d11_staging_pool.as_mut().unwrap();
-        pool.stage_frame(left_texture, left_slice, left_pool_slot)?;
-        pool.stage_frame(right_texture, right_slice, right_pool_slot)?;
+        // SAFETY: left_texture/right_texture are FFmpeg D3D11VA decode
+        // textures (AVFrame::data[0]) valid for this call's duration.
+        unsafe {
+            pool.stage_frame(left_texture, left_slice, left_pool_slot)?;
+            pool.stage_frame(right_texture, right_slice, right_pool_slot)?;
+        }
         Ok(first_frame)
     }
 
@@ -904,8 +908,12 @@ impl StitchSession {
             let pool = self.d3d11_staging_pool.as_mut().unwrap();
             let left_slot = (produce_index as usize * 2) % pool.n_slots();
             let right_slot = (produce_index as usize * 2 + 1) % pool.n_slots();
-            pool.stage_frame(*left_texture, *left_slice, left_slot)?;
-            pool.stage_frame(*right_texture, *right_slice, right_slot)?;
+            // SAFETY: left_texture/right_texture are FFmpeg D3D11VA decode
+            // textures (AVFrame::data[0]) valid for this call's duration.
+            unsafe {
+                pool.stage_frame(*left_texture, *left_slice, left_slot)?;
+                pool.stage_frame(*right_texture, *right_slice, right_slot)?;
+            }
             return Ok(Some(left_slot));
         }
         Ok(None)
