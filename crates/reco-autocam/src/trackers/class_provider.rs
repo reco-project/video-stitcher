@@ -80,10 +80,10 @@ impl Tracker for ClassProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reco_core::geometry::CameraId;
+    use reco_core::geometry::CameraIndex;
     use reco_core::geometry::Pose;
 
-    fn det(camera: CameraId, yaw: f32, pitch: f32, conf: f32) -> MappedDetection {
+    fn det(camera: CameraIndex, yaw: f32, pitch: f32, conf: f32) -> MappedDetection {
         MappedDetection {
             camera,
             class_id: 0,
@@ -102,16 +102,16 @@ mod tests {
     fn emits_one_entity_per_in_class_detection() {
         let mut t = ClassProvider::new(0);
         let dets = vec![
-            det(CameraId::Left, 0.0, 0.0, 0.9),
-            det(CameraId::Left, 0.5, 0.0, 0.8),
-            det(CameraId::Right, -0.5, 0.0, 0.7),
+            det(0, 0.0, 0.0, 0.9),
+            det(0, 0.5, 0.0, 0.8),
+            det(1, -0.5, 0.0, 0.7),
         ];
         let out = t.update(&dets, 0.0);
         assert_eq!(out.len(), 3);
         assert!(out.iter().all(|e| e.state == TrackState::Tracking));
         // Positions and confidence pass straight through.
         assert!((out[0].yaw - 0.0).abs() < 1e-6 && (out[0].confidence - 0.9).abs() < 1e-6);
-        assert!((out[2].yaw + 0.5).abs() < 1e-6 && out[2].origin == CameraId::Right);
+        assert!((out[2].yaw + 0.5).abs() < 1e-6 && out[2].origin == 1);
     }
 
     #[test]
@@ -120,10 +120,7 @@ mod tests {
         // detections; the provider must be deterministic so entities
         // don't flicker without any coast state.
         let mut t = ClassProvider::new(0);
-        let dets = vec![
-            det(CameraId::Left, 0.1, 0.0, 0.9),
-            det(CameraId::Left, 0.2, 0.0, 0.9),
-        ];
+        let dets = vec![det(0, 0.1, 0.0, 0.9), det(0, 0.2, 0.0, 0.9)];
         let a = t.update(&dets, 0.0);
         let b = t.update(&dets, 16.7);
         assert_eq!(a.len(), b.len());
@@ -141,9 +138,9 @@ mod tests {
     #[test]
     fn only_configured_class_is_emitted() {
         let mut t = ClassProvider::new(0);
-        let mut other = det(CameraId::Left, 0.3, 0.0, 0.9);
+        let mut other = det(0, 0.3, 0.0, 0.9);
         other.class_id = 5;
-        let out = t.update(&[other, det(CameraId::Left, 0.1, 0.0, 0.9)], 0.0);
+        let out = t.update(&[other, det(0, 0.1, 0.0, 0.9)], 0.0);
         assert_eq!(out.len(), 1, "the class-5 detection is filtered out");
         assert!((out[0].yaw - 0.1).abs() < 1e-6);
     }
@@ -151,7 +148,7 @@ mod tests {
     #[test]
     fn detection_without_position_is_skipped() {
         let mut t = ClassProvider::new(0);
-        let mut no_pos = det(CameraId::Left, 0.3, 0.0, 0.9);
+        let mut no_pos = det(0, 0.3, 0.0, 0.9);
         no_pos.position = None;
         let out = t.update(&[no_pos], 0.0);
         assert!(out.is_empty());

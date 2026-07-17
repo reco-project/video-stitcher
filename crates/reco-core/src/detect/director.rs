@@ -13,7 +13,7 @@
 //! trait is gone; only these value types remain. Rename deferred to
 //! avoid a repo-wide import churn.
 
-use crate::geometry::CameraId;
+use crate::geometry::CameraIndex;
 use crate::geometry::Pose;
 
 /// A detection mapped to panorama coordinates.
@@ -27,7 +27,7 @@ use crate::geometry::Pose;
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct MappedDetection {
     /// Which camera this detection came from.
-    pub camera: CameraId,
+    pub camera: CameraIndex,
 
     /// Detection class index from the model (e.g. 0 = "ball", 1 = "person").
     /// Map to a human-readable label via the detector's `class_names()`.

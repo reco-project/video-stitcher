@@ -176,7 +176,7 @@ mod tests {
                 confidence: 1.0,
                 state: reco_core::detect::tracker::TrackState::Tracking,
                 age_frames: 1,
-                origin: reco_core::geometry::CameraId::Left,
+                origin: 0,
             }),
             players: Vec::new(),
         };

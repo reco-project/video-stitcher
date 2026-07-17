@@ -1131,7 +1131,7 @@ mod tests {
         }
         fn detect(
             &mut self,
-            _camera: crate::geometry::CameraId,
+            _camera: crate::geometry::CameraIndex,
             _frame: &crate::detect::detector::DetectorFrame<'_>,
         ) -> Result<Vec<crate::detect::detector::Detection>, crate::detect::detector::DetectorError>
         {
@@ -1184,7 +1184,7 @@ mod tests {
         use crate::detect::detector::{
             ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame, UnifiedDetector,
         };
-        use crate::geometry::CameraId;
+        use crate::geometry::CameraIndex;
 
         struct RecordingDetector;
         impl UnifiedDetector for RecordingDetector {
@@ -1193,7 +1193,7 @@ mod tests {
             }
             fn detect(
                 &mut self,
-                camera: CameraId,
+                camera: CameraIndex,
                 frame: &DetectorFrame<'_>,
             ) -> Result<Vec<Detection>, DetectorError> {
                 match frame {
@@ -1227,11 +1227,11 @@ mod tests {
                 }),
             )
         };
-        core.run_detection_frames(&[frame(CameraId::Left), frame(CameraId::Right)]);
+        core.run_detection_frames(&[frame(0), frame(1)]);
 
         let dets = core.last_detections();
         assert_eq!(dets.len(), 2);
-        assert_eq!(dets[0].camera, CameraId::Left);
-        assert_eq!(dets[1].camera, CameraId::Right);
+        assert_eq!(dets[0].camera, 0);
+        assert_eq!(dets[1].camera, 1);
     }
 }

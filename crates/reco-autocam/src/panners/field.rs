@@ -1053,7 +1053,6 @@ impl Panner for FieldPanner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reco_core::geometry::CameraId;
 
     #[test]
     fn sanitized_orders_inverted_fov_and_no_panic() {
@@ -1121,7 +1120,7 @@ mod tests {
             confidence,
             state: TrackState::Tracking,
             age_frames: 5,
-            origin: CameraId::Left,
+            origin: 0,
         }
     }
 
@@ -1134,7 +1133,7 @@ mod tests {
             confidence: 0.8,
             state: TrackState::Tracking,
             age_frames: 1,
-            origin: CameraId::Left,
+            origin: 0,
         }
     }
 

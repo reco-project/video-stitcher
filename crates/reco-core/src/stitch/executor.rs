@@ -513,12 +513,11 @@ impl GpuExecutor {
         right: &crate::source::NvmmPlaneInfo,
     ) -> Option<
         [(
-            crate::geometry::CameraId,
+            crate::geometry::CameraIndex,
             crate::detect::detector::DetectorFrame<'static>,
         ); 2],
     > {
         use crate::detect::detector::DetectorFrame;
-        use crate::geometry::CameraId;
 
         let (det_left, det_right) = self.residency.nvmm_det.as_mut()?;
         unsafe {
@@ -533,7 +532,7 @@ impl GpuExecutor {
         }
         Some([
             (
-                CameraId::Left,
+                0,
                 DetectorFrame::CudaRgbaLetterboxed {
                     ptr: det_left.data_ptr,
                     src_width: left.width,
@@ -541,7 +540,7 @@ impl GpuExecutor {
                 },
             ),
             (
-                CameraId::Right,
+                1,
                 DetectorFrame::CudaRgbaLetterboxed {
                     ptr: det_right.data_ptr,
                     src_width: right.width,

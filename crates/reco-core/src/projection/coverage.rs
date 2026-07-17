@@ -3,7 +3,7 @@
 use std::f32::consts::FRAC_PI_2;
 
 use crate::calibration::Calibration;
-use crate::geometry::CameraId;
+
 use crate::projection::l_shape::PlaneScene;
 
 use crate::geometry::VirtualCamera;
@@ -149,8 +149,8 @@ impl CoverageBoundary {
         let mut left_points: Vec<(f32, f32)> = Vec::new();
         let mut right_points: Vec<(f32, f32)> = Vec::new();
 
-        for &camera in &[CameraId::Left, CameraId::Right] {
-            let points = if camera == CameraId::Left {
+        for &camera in &[0, 1] {
+            let points = if camera == 0 {
                 &mut left_points
             } else {
                 &mut right_points

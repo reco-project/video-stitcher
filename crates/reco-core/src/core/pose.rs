@@ -8,7 +8,7 @@
 use crate::detect::detector::{ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame};
 use crate::detect::director::MappedDetection;
 use crate::detect::tracker::WorldState;
-use crate::geometry::CameraId;
+use crate::geometry::CameraIndex;
 use crate::geometry::Pose;
 use crate::projection;
 use crate::render::planes::YuvPlanes;
@@ -207,7 +207,7 @@ impl super::StitchCore {
     /// Errors are warned-and-dropped: a flaky inference call must not
     /// crash the render loop. `UnsupportedFrameKind` logs at debug -
     /// it is the expected answer while a caller probes backends.
-    pub fn run_detection_frames(&mut self, frames: &[(CameraId, DetectorFrame<'_>)]) {
+    pub fn run_detection_frames(&mut self, frames: &[(CameraIndex, DetectorFrame<'_>)]) {
         let Some(ref mut detector) = self.detector else {
             return;
         };
@@ -237,7 +237,7 @@ impl super::StitchCore {
     ) {
         self.run_detection_frames(&[
             (
-                CameraId::Left,
+                0,
                 DetectorFrame::Cpu(RawFrame {
                     y: left.y,
                     chroma: ChromaFormat::Yuv420p {
@@ -249,7 +249,7 @@ impl super::StitchCore {
                 }),
             ),
             (
-                CameraId::Right,
+                1,
                 DetectorFrame::Cpu(RawFrame {
                     y: right.y,
                     chroma: ChromaFormat::Yuv420p {
@@ -274,7 +274,7 @@ impl super::StitchCore {
     ) {
         self.run_detection_frames(&[
             (
-                CameraId::Left,
+                0,
                 DetectorFrame::Cpu(RawFrame {
                     y: left.y,
                     chroma: ChromaFormat::Nv12 { uv: left.uv },
@@ -283,7 +283,7 @@ impl super::StitchCore {
                 }),
             ),
             (
-                CameraId::Right,
+                1,
                 DetectorFrame::Cpu(RawFrame {
                     y: right.y,
                     chroma: ChromaFormat::Nv12 { uv: right.uv },

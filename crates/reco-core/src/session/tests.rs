@@ -16,7 +16,7 @@ use crate::detect::detector::{Detection, DetectorError, DetectorFrame, UnifiedDe
 use crate::detect::director::MappedDetection;
 use crate::detect::panner::{PanContext, Panner};
 use crate::detect::tracker::{TrackState, TrackedEntity, Tracker, WorldState};
-use crate::geometry::CameraId;
+use crate::geometry::CameraIndex;
 use crate::geometry::Pose;
 use crate::projection::LShape;
 use crate::render::viewport::ViewportSize;
@@ -122,7 +122,7 @@ impl UnifiedDetector for MockDetector {
 
     fn detect(
         &mut self,
-        _camera: CameraId,
+        _camera: CameraIndex,
         _frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
         self.call_count.fetch_add(1, Ordering::Relaxed);
@@ -169,7 +169,7 @@ impl Tracker for MockTracker {
             confidence: 1.0,
             state: TrackState::Tracking,
             age_frames: 1,
-            origin: CameraId::Left,
+            origin: 0,
         }]
     }
 
@@ -326,7 +326,7 @@ fn tracker_receives_detections() {
     let call_count = Arc::new(AtomicU64::new(0));
     let canned = vec![
         Detection {
-            camera: CameraId::Left,
+            camera: 0,
             class_id: 0,
             confidence: 0.9,
             center_x: 0.5,
@@ -335,7 +335,7 @@ fn tracker_receives_detections() {
             height: 0.1,
         },
         Detection {
-            camera: CameraId::Right,
+            camera: 1,
             class_id: 1,
             confidence: 0.8,
             center_x: 0.3,
@@ -391,7 +391,7 @@ fn tracker_receives_detections() {
 fn detection_interval_respected() {
     let call_count = Arc::new(AtomicU64::new(0));
     let canned = vec![Detection {
-        camera: CameraId::Left,
+        camera: 0,
         class_id: 0,
         confidence: 0.9,
         center_x: 0.5,
@@ -514,7 +514,7 @@ fn compute_frame_limit_negative_fps_uses_fallback() {
 fn push_and_pull_share_one_ai_brain() {
     const FRAMES: u64 = 6;
     let canned = vec![Detection {
-        camera: CameraId::Left,
+        camera: 0,
         class_id: 0,
         confidence: 0.9,
         center_x: 0.5,

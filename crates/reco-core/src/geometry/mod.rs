@@ -19,7 +19,7 @@ mod virtual_camera;
 // until a consumer demonstrates the need.
 pub use matrices::{FAR_PLANE, NEAR_PLANE, view_matrix};
 pub use rig_correction::{resolve_render_pose, world_to_render_pose};
-pub use types::{CameraId, Pose};
+pub use types::{CameraIndex, Pose};
 pub use virtual_camera::VirtualCamera;
 
 #[cfg(feature = "gpu")]

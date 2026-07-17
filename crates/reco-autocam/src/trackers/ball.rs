@@ -41,7 +41,7 @@
 
 use reco_core::detect::director::MappedDetection;
 use reco_core::detect::tracker::{TrackState, TrackedEntity, Tracker};
-use reco_core::geometry::CameraId;
+use reco_core::geometry::CameraIndex;
 
 use crate::trackers::filters::{CoastStatus, Coaster};
 
@@ -91,7 +91,7 @@ pub struct BallTracker {
 struct LastKnown {
     yaw: f32,
     pitch: f32,
-    origin: CameraId,
+    origin: CameraIndex,
 }
 
 impl BallTracker {
@@ -349,7 +349,14 @@ mod tests {
     use super::*;
     use reco_core::geometry::Pose;
 
-    fn det(camera: CameraId, yaw: f32, pitch: f32, conf: f32, cx: f32, cy: f32) -> MappedDetection {
+    fn det(
+        camera: CameraIndex,
+        yaw: f32,
+        pitch: f32,
+        conf: f32,
+        cx: f32,
+        cy: f32,
+    ) -> MappedDetection {
         MappedDetection {
             camera,
             class_id: 0,
@@ -374,19 +381,19 @@ mod tests {
     #[test]
     fn first_detection_emits_tracking() {
         let mut t = BallTracker::new(0);
-        let d = det(CameraId::Left, 0.2, 0.1, 0.8, 0.5, 0.5);
+        let d = det(0, 0.2, 0.1, 0.8, 0.5, 0.5);
         let out = t.update(&[d], 0.0);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].state, TrackState::Tracking);
         assert_eq!(out[0].yaw, 0.2);
         assert_eq!(out[0].pitch, 0.1);
-        assert_eq!(out[0].origin, CameraId::Left);
+        assert_eq!(out[0].origin, 0);
     }
 
     #[test]
     fn non_matching_class_id_ignored() {
         let mut t = BallTracker::new(32); // sports ball
-        let d = det(CameraId::Left, 0.2, 0.1, 0.8, 0.5, 0.5);
+        let d = det(0, 0.2, 0.1, 0.8, 0.5, 0.5);
         // d has class_id=0, tracker wants 32 — should be ignored.
         let out = t.update(&[d], 0.0);
         assert!(out.is_empty());
@@ -395,7 +402,7 @@ mod tests {
     #[test]
     fn missing_position_ignored() {
         let mut t = BallTracker::new(0);
-        let mut d = det(CameraId::Left, 0.2, 0.1, 0.8, 0.5, 0.5);
+        let mut d = det(0, 0.2, 0.1, 0.8, 0.5, 0.5);
         d.position = None;
         let out = t.update(&[d], 0.0);
         assert!(out.is_empty());
@@ -405,7 +412,7 @@ mod tests {
     fn coast_then_reacquire() {
         let mut t = BallTracker::new(0).with_max_coast_frames(3);
         // Frame 1: acquire.
-        let d1 = det(CameraId::Left, 0.2, 0.1, 0.8, 0.5, 0.5);
+        let d1 = det(0, 0.2, 0.1, 0.8, 0.5, 0.5);
         let out1 = t.update(&[d1], 0.0);
         assert_eq!(out1[0].state, TrackState::Tracking);
         // Frames 2-3: no detection, coasting.
@@ -414,7 +421,7 @@ mod tests {
         let out3 = t.update(&[], 33.3);
         assert_eq!(out3[0].state, TrackState::Coasting);
         // Frame 4: reacquire — state back to Tracking.
-        let d4 = det(CameraId::Left, 0.21, 0.11, 0.7, 0.51, 0.51);
+        let d4 = det(0, 0.21, 0.11, 0.7, 0.51, 0.51);
         let out4 = t.update(&[d4], 50.0);
         assert_eq!(out4[0].state, TrackState::Tracking);
     }
@@ -422,7 +429,7 @@ mod tests {
     #[test]
     fn coast_then_lost() {
         let mut t = BallTracker::new(0).with_max_coast_frames(2);
-        let d = det(CameraId::Left, 0.2, 0.1, 0.8, 0.5, 0.5);
+        let d = det(0, 0.2, 0.1, 0.8, 0.5, 0.5);
         t.update(&[d], 0.0);
         t.update(&[], 16.6); // coast 1
         t.update(&[], 33.3); // coast 2
@@ -438,10 +445,10 @@ mod tests {
     fn max_jump_rejects_implausible_detection() {
         let mut t = BallTracker::new(0).with_max_jump_rad(0.1);
         // Acquire at yaw=0.
-        let d1 = det(CameraId::Left, 0.0, 0.0, 0.9, 0.5, 0.5);
+        let d1 = det(0, 0.0, 0.0, 0.9, 0.5, 0.5);
         t.update(&[d1], 0.0);
         // Big jump to yaw=1.0 — exceeds 0.1 gate.
-        let d2 = det(CameraId::Left, 1.0, 0.0, 0.9, 0.5, 0.5);
+        let d2 = det(0, 1.0, 0.0, 0.9, 0.5, 0.5);
         let out = t.update(&[d2], 16.6);
         // No fresh accepted — tracker coasts on the last known.
         assert_eq!(out[0].state, TrackState::Coasting);
@@ -452,17 +459,17 @@ mod tests {
     fn cross_camera_handoff_tracks() {
         let mut t = BallTracker::new(0).with_max_jump_rad(0.3);
         // Acquire on left at yaw=0.15.
-        let d1 = det(CameraId::Left, 0.15, 0.0, 0.8, 0.9, 0.5);
+        let d1 = det(0, 0.15, 0.0, 0.8, 0.9, 0.5);
         let out1 = t.update(&[d1], 0.0);
-        assert_eq!(out1[0].origin, CameraId::Left);
+        assert_eq!(out1[0].origin, 0);
         // Next frame: right camera reports the same ball at close yaw.
         // Even though pixel coords are totally different (ball now at
         // left edge of right frame), the panorama yaw distance (0.05)
         // is within max_jump — tracker must switch cameras.
-        let d2 = det(CameraId::Right, 0.20, 0.0, 0.75, 0.05, 0.5);
+        let d2 = det(1, 0.20, 0.0, 0.75, 0.05, 0.5);
         let out2 = t.update(&[d2], 16.6);
         assert_eq!(out2[0].state, TrackState::Tracking);
-        assert_eq!(out2[0].origin, CameraId::Right);
+        assert_eq!(out2[0].origin, 1);
     }
 
     #[test]
@@ -477,11 +484,11 @@ mod tests {
             confidence: 0.9,
             state: TrackState::Tracking,
             age_frames: 5,
-            origin: CameraId::Right,
+            origin: 1,
         };
         t.set_players(&[player]);
         // Ball at yaw=0.2 is 0.8 rad from player — rejected.
-        let d = det(CameraId::Left, 0.2, 0.0, 0.9, 0.5, 0.5);
+        let d = det(0, 0.2, 0.0, 0.9, 0.5, 0.5);
         let out = t.update(&[d], 0.0);
         assert!(out.is_empty());
     }
@@ -490,7 +497,7 @@ mod tests {
     fn player_anchor_no_op_when_no_players_set() {
         let mut t = BallTracker::new(0).with_player_anchor_rad(0.1);
         // No set_players() call — filter should not reject.
-        let d = det(CameraId::Left, 0.2, 0.0, 0.9, 0.5, 0.5);
+        let d = det(0, 0.2, 0.0, 0.9, 0.5, 0.5);
         let out = t.update(&[d], 0.0);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].state, TrackState::Tracking);
@@ -514,7 +521,7 @@ mod tests {
             confidence: 0.9,
             state: TrackState::Tracking,
             age_frames: 3,
-            origin: CameraId::Right,
+            origin: 1,
         };
         let world = WorldState {
             ball: None,
@@ -523,7 +530,7 @@ mod tests {
         t.observe_world(&world);
         // A ball far from the (only) player must be rejected by the
         // anchor filter — proves observe_world propagated players.
-        let d = det(CameraId::Left, 0.2, 0.0, 0.9, 0.5, 0.5);
+        let d = det(0, 0.2, 0.0, 0.9, 0.5, 0.5);
         let out = t.update(&[d], 0.0);
         assert!(out.is_empty(), "observe_world did not populate anchors");
     }
@@ -542,11 +549,11 @@ mod tests {
             confidence: 0.9,
             state: TrackState::Tracking,
             age_frames: 1,
-            origin: CameraId::Right,
+            origin: 1,
         };
         t.set_players(&[player]);
         t.observe_world(&WorldState::default());
-        let d = det(CameraId::Left, 0.2, 0.0, 0.9, 0.5, 0.5);
+        let d = det(0, 0.2, 0.0, 0.9, 0.5, 0.5);
         let out = t.update(&[d], 0.0);
         assert_eq!(out.len(), 1, "empty world should reset anchors");
     }
@@ -555,13 +562,13 @@ mod tests {
     fn prefers_closer_candidate_over_higher_confidence() {
         let mut t = BallTracker::new(0).with_max_jump_rad(1.0);
         // Acquire at yaw=0.0.
-        let d0 = det(CameraId::Left, 0.0, 0.0, 0.9, 0.5, 0.5);
+        let d0 = det(0, 0.0, 0.0, 0.9, 0.5, 0.5);
         t.update(&[d0], 0.0);
         // Two candidates: one high-conf far (0.4 rad), one low-conf close (0.05 rad).
         // Score balances proximity against confidence (0.1-rad weight);
         // the close candidate wins because proximity dominates.
-        let far = det(CameraId::Left, 0.40, 0.0, 0.95, 0.5, 0.5);
-        let near = det(CameraId::Left, 0.05, 0.0, 0.55, 0.5, 0.5);
+        let far = det(0, 0.40, 0.0, 0.95, 0.5, 0.5);
+        let near = det(0, 0.05, 0.0, 0.55, 0.5, 0.5);
         let out = t.update(&[far, near], 16.6);
         assert_eq!(out.len(), 1);
         assert!(

@@ -28,7 +28,7 @@ pub use l_shape::{DEFAULT_BLEND_WIDTH, LShape};
 pub use geometry::point_in_polygon;
 
 use crate::calibration::{Calibration, Framing, Lens};
-use crate::geometry::CameraId;
+use crate::geometry::CameraIndex;
 use crate::geometry::Pose;
 use crate::geometry::VirtualCamera;
 use crate::stitch::{BlendRule, SurfaceMap};
@@ -47,7 +47,7 @@ use nalgebra::{Point3, Vector3};
 // to keep in sync. The trait dispatches the CPU surface maps, the GPU
 // program descriptor, coverage construction and the virtual-camera
 // basis; the detection-side forward maps (`camera_to_panorama`) are
-// the next fold-in - their `CameraId`/`Pose` currency already lives in
+// the next fold-in - their `CameraIndex`/`Pose` currency already lives in
 // the geometry leaf, so nothing blocks the move.
 
 /// One frame's geometry question, bundled: the document, the output
@@ -142,17 +142,17 @@ const CONVERGENCE_EPS: f64 = 1e-10;
 ///
 /// ```rust
 /// use reco_core::projection::camera_to_panorama;
-/// use reco_core::geometry::CameraId;
+/// use reco_core::geometry::CameraIndex;
 /// use reco_core::calibration::Calibration;
 ///
 /// # fn example(cal: &Calibration) {
-/// if let Some(pos) = camera_to_panorama(CameraId::Left, 0.5, 0.5, cal) {
+/// if let Some(pos) = camera_to_panorama(0, 0.5, 0.5, cal) {
 ///     println!("Center of left camera maps to yaw={:.3}, pitch={:.3}", pos.yaw, pos.pitch);
 /// }
 /// # }
 /// ```
 pub fn camera_to_panorama(
-    camera: CameraId,
+    camera: CameraIndex,
     norm_x: f32,
     norm_y: f32,
     calibration: &Calibration,
@@ -165,16 +165,15 @@ pub fn camera_to_panorama(
 /// [`camera_to_panorama`] against an already-derived plane scene - the
 /// coverage sampler maps thousands of edge points against one scene.
 pub(crate) fn camera_to_panorama_in_scene(
-    camera: CameraId,
+    camera: CameraIndex,
     norm_x: f32,
     norm_y: f32,
     calibration: &Calibration,
     scene: &PlaneScene,
 ) -> Option<Pose> {
-    let params = match camera {
-        CameraId::Left => &calibration.lenses[0],
-        CameraId::Right => &calibration.lenses[1],
-    };
+    // The index doubles as the lens lookup; out-of-range cameras map
+    // to None like any other unmappable input.
+    let params = calibration.lenses.get(camera)?;
 
     // Step 1: Inverse fisheye - camera pixel [0,1] -> plane UV (extended space)
     let plane_uv = inverse_fisheye(norm_x as f64, norm_y as f64, params)?;
@@ -289,7 +288,7 @@ fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &Lens) -> Option<(f64, f64)
 }
 
 /// Convert a plane UV (in extended shader space) to a 3D world point.
-fn plane_uv_to_world(uv: (f64, f64), camera: CameraId, scene: &PlaneScene) -> Point3<f32> {
+fn plane_uv_to_world(uv: (f64, f64), camera: CameraIndex, scene: &PlaneScene) -> Point3<f32> {
     // Extended UV -> texture UV [0,1]
     let tex_u = ((uv.0 + 0.5) / 2.0) as f32;
     let tex_v = ((uv.1 + 0.5) / 2.0) as f32;
@@ -299,9 +298,13 @@ fn plane_uv_to_world(uv: (f64, f64), camera: CameraId, scene: &PlaneScene) -> Po
     let local_y = (0.5 - tex_v) / scene.plane_aspect;
 
     let local_point = nalgebra::Vector4::new(local_x, local_y, 0.0, 1.0);
-    let model = match camera {
-        CameraId::Left => scene.model_matrix_left(),
-        CameraId::Right => scene.model_matrix_right(),
+    // Reachable only with a lens-validated index (the caller resolved
+    // `lenses[camera]` first), so on the two-camera L-shape this is a
+    // binary choice.
+    let model = if camera == 0 {
+        scene.model_matrix_left()
+    } else {
+        scene.model_matrix_right()
     };
 
     let world = model * local_point;
@@ -381,7 +384,7 @@ mod tests {
         let cx = cal.lenses[0].cx as f32 / cal.lenses[0].width as f32;
         let cy = cal.lenses[0].cy as f32 / cal.lenses[0].height as f32;
 
-        let pos = camera_to_panorama(CameraId::Left, cx, cy, &cal);
+        let pos = camera_to_panorama(0, cx, cy, &cal);
         assert!(pos.is_some(), "optical center should map successfully");
         let pos = pos.unwrap();
         // The optical center should produce a valid yaw/pitch (no NaN)
@@ -393,8 +396,8 @@ mod tests {
     fn left_camera_left_edge_yaw_differs_from_center() {
         let cal = test_calibration();
 
-        let center = camera_to_panorama(CameraId::Left, 0.5, 0.5, &cal).unwrap();
-        let left_edge = camera_to_panorama(CameraId::Left, 0.1, 0.5, &cal).unwrap();
+        let center = camera_to_panorama(0, 0.5, 0.5, &cal).unwrap();
+        let left_edge = camera_to_panorama(0, 0.1, 0.5, &cal).unwrap();
 
         // The left edge of the left camera image maps to a different
         // part of the panorama than the center; this test just
@@ -414,8 +417,8 @@ mod tests {
     fn right_camera_produces_different_yaw_than_left() {
         let cal = test_calibration();
 
-        let left_center = camera_to_panorama(CameraId::Left, 0.5, 0.5, &cal).unwrap();
-        let right_center = camera_to_panorama(CameraId::Right, 0.5, 0.5, &cal).unwrap();
+        let left_center = camera_to_panorama(0, 0.5, 0.5, &cal).unwrap();
+        let right_center = camera_to_panorama(1, 0.5, 0.5, &cal).unwrap();
 
         // The two cameras face different directions, so their centers
         // should map to different yaw values

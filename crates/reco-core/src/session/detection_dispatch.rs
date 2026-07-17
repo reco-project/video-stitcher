@@ -11,7 +11,7 @@
 use super::StitchSession;
 use crate::core::StitchCore;
 use crate::detect::detector::DetectorFrame;
-use crate::geometry::CameraId;
+use crate::geometry::CameraIndex;
 use crate::session::types::SessionError;
 use crate::source::FrameSet;
 
@@ -22,13 +22,13 @@ fn cpu_frames<'a>(
     frame: &'a FrameSet,
     width: u32,
     height: u32,
-) -> Option<[(CameraId, DetectorFrame<'a>); 2]> {
+) -> Option<[(CameraIndex, DetectorFrame<'a>); 2]> {
     use crate::detect::detector::{ChromaFormat, RawFrame};
     match frame {
         FrameSet::Yuv420p(cams) => match cams.as_slice() {
             [left, right] => Some([
                 (
-                    CameraId::Left,
+                    0,
                     DetectorFrame::Cpu(RawFrame {
                         y: &left.y,
                         chroma: ChromaFormat::Yuv420p {
@@ -40,7 +40,7 @@ fn cpu_frames<'a>(
                     }),
                 ),
                 (
-                    CameraId::Right,
+                    1,
                     DetectorFrame::Cpu(RawFrame {
                         y: &right.y,
                         chroma: ChromaFormat::Yuv420p {
@@ -57,7 +57,7 @@ fn cpu_frames<'a>(
         FrameSet::Nv12(cams) => match cams.as_slice() {
             [left, right] => Some([
                 (
-                    CameraId::Left,
+                    0,
                     DetectorFrame::Cpu(RawFrame {
                         y: &left.y,
                         chroma: ChromaFormat::Nv12 { uv: &left.uv },
@@ -66,7 +66,7 @@ fn cpu_frames<'a>(
                     }),
                 ),
                 (
-                    CameraId::Right,
+                    1,
                     DetectorFrame::Cpu(RawFrame {
                         y: &right.y,
                         chroma: ChromaFormat::Nv12 { uv: &right.uv },
@@ -90,14 +90,14 @@ pub(super) fn cuda_nv12_frames(
     right_slot: u8,
     left_rotation: i32,
     right_rotation: i32,
-) -> [(CameraId, DetectorFrame<'static>); 2] {
+) -> [(CameraIndex, DetectorFrame<'static>); 2] {
     use crate::detect::detector::GpuNv12Frame;
     let ls = left_slot as usize;
     let rs = right_slot as usize;
     let is_10bit = left_buf.pixel_format == crate::render::renderer::GpuPixelFormat::P010;
     [
         (
-            CameraId::Left,
+            0,
             DetectorFrame::Cuda(GpuNv12Frame {
                 y_ptr: left_buf.y_ptr[ls],
                 uv_ptr: left_buf.uv_ptr[ls],
@@ -110,7 +110,7 @@ pub(super) fn cuda_nv12_frames(
             }),
         ),
         (
-            CameraId::Right,
+            1,
             DetectorFrame::Cuda(GpuNv12Frame {
                 y_ptr: right_buf.y_ptr[rs],
                 uv_ptr: right_buf.uv_ptr[rs],
@@ -138,10 +138,10 @@ pub(super) fn wgpu_nv12_frames<'a>(
     height: u32,
     left_rotation: i32,
     right_rotation: i32,
-) -> [(CameraId, DetectorFrame<'a>); 2] {
+) -> [(CameraIndex, DetectorFrame<'a>); 2] {
     [
         (
-            CameraId::Left,
+            0,
             DetectorFrame::WgpuNv12 {
                 y_view: left_y,
                 uv_view: left_uv,
@@ -151,7 +151,7 @@ pub(super) fn wgpu_nv12_frames<'a>(
             },
         ),
         (
-            CameraId::Right,
+            1,
             DetectorFrame::WgpuNv12 {
                 y_view: right_y,
                 uv_view: right_uv,
@@ -170,10 +170,10 @@ pub(super) fn metal_frames(
     right_cvpb: crate::interop::metal::CVPixelBufferRef,
     width: u32,
     height: u32,
-) -> [(CameraId, DetectorFrame<'static>); 2] {
+) -> [(CameraIndex, DetectorFrame<'static>); 2] {
     [
         (
-            CameraId::Left,
+            0,
             DetectorFrame::Metal {
                 cv_pixel_buffer: left_cvpb,
                 width,
@@ -181,7 +181,7 @@ pub(super) fn metal_frames(
             },
         ),
         (
-            CameraId::Right,
+            1,
             DetectorFrame::Metal {
                 cv_pixel_buffer: right_cvpb,
                 width,
@@ -357,7 +357,7 @@ impl StitchSession {
         self.detect_and_update_director_with(elapsed, |core| {
             core.run_detection_frames(&[
                 (
-                    CameraId::Left,
+                    0,
                     DetectorFrame::Rgba {
                         data: left_rgba,
                         width,
@@ -365,7 +365,7 @@ impl StitchSession {
                     },
                 ),
                 (
-                    CameraId::Right,
+                    1,
                     DetectorFrame::Rgba {
                         data: right_rgba,
                         width,
@@ -392,7 +392,7 @@ impl StitchSession {
         self.detect_and_update_director_with(elapsed, |core| {
             core.run_detection_frames(&[
                 (
-                    CameraId::Left,
+                    0,
                     DetectorFrame::CudaRgba {
                         ptr: left_ptr,
                         pitch: left_pitch,
@@ -401,7 +401,7 @@ impl StitchSession {
                     },
                 ),
                 (
-                    CameraId::Right,
+                    1,
                     DetectorFrame::CudaRgba {
                         ptr: right_ptr,
                         pitch: right_pitch,
@@ -427,7 +427,7 @@ impl StitchSession {
             crate::profile_scope!("detect_preletterboxed_total");
             core.run_detection_frames(&[
                 (
-                    CameraId::Left,
+                    0,
                     DetectorFrame::CudaRgbaLetterboxed {
                         ptr: left_ptr,
                         src_width,
@@ -435,7 +435,7 @@ impl StitchSession {
                     },
                 ),
                 (
-                    CameraId::Right,
+                    1,
                     DetectorFrame::CudaRgbaLetterboxed {
                         ptr: right_ptr,
                         src_width,

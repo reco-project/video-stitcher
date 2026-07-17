@@ -1,7 +1,7 @@
 //! The pose and source-identity currency every layer shares.
 //!
 //! `Pose` travels from human input and AI directors through
-//! the clamp and orient stages into the render; `CameraId` names which
+//! the clamp and orient stages into the render; `CameraIndex` names which
 //! source a detection or sample came from. Both live in the geometry
 //! leaf so no layer has to import another layer's domain to talk about
 //! a pose.
@@ -53,20 +53,11 @@ impl Default for Pose {
     }
 }
 
-/// Which camera produced this frame.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum CameraId {
-    /// Left camera (plane in X-Z space).
-    Left,
-    /// Right camera (plane in X-Y space).
-    Right,
-}
-
-impl std::fmt::Display for CameraId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Left => f.write_str("L"),
-            Self::Right => f.write_str("R"),
-        }
-    }
-}
+/// Which camera produced a frame or detection: the index into
+/// `calibration.lenses`, in projection order (the L-shape's camera 0
+/// is the X-Z plane, camera 1 the X-Y plane).
+///
+/// A plain index, not an enum: the calibration document is the
+/// authority on how many cameras exist, and serialized forms (the
+/// events JSONL) carry the same integer.
+pub type CameraIndex = usize;

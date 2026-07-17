@@ -33,7 +33,7 @@
 //!   future tracker variants ship in `reco-autocam::trackers`.
 
 use super::director::MappedDetection;
-use crate::geometry::CameraId;
+use crate::geometry::CameraIndex;
 
 /// A tri-valued lifecycle flag attached to every [`TrackedEntity`].
 ///
@@ -99,7 +99,7 @@ pub struct TrackedEntity {
     /// Which camera observed the most recent accepted measurement.
     /// Diagnostic field only — downstream logic should route through
     /// [`yaw`](Self::yaw) / [`pitch`](Self::pitch), not by origin.
-    pub origin: CameraId,
+    pub origin: CameraIndex,
 }
 
 /// The merged per-frame output of every registered tracker.
@@ -214,7 +214,7 @@ mod tests {
             confidence: 0.9,
             state: TrackState::Tracking,
             age_frames: 1,
-            origin: CameraId::Left,
+            origin: 0,
         }
     }
 

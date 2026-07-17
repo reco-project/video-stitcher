@@ -231,7 +231,7 @@ mod tests {
     use super::*;
     use crate::calibration::{Calibration, Framing, Lens};
     use crate::detect::tracker::{TrackState, TrackedEntity, WorldState};
-    use crate::geometry::CameraId;
+
     use crate::projection::LShape;
 
     /// A fixture calibration shaped like the v1 test JSON without
@@ -285,7 +285,7 @@ mod tests {
                 confidence: 0.9,
                 state: TrackState::Tracking,
                 age_frames: 5,
-                origin: CameraId::Left,
+                origin: 0,
             }),
             players: vec![],
         };
