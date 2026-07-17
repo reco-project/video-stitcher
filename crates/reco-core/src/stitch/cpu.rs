@@ -68,7 +68,7 @@ pub(crate) fn stitch_rgba(
 ) -> Result<Vec<u8>, StitchError> {
     let (cw, ch) = cam;
     check_source_dims(cw, ch)?;
-    check_frame_count(projection, planes.len())?;
+    check_camera_count(projection, planes.len())?;
     let (w, h) = (cw as usize, ch as usize);
     for p in planes {
         check_plane(p.y, w * h)?;
@@ -98,7 +98,7 @@ pub(crate) fn stitch_rgba_yuv420p(
 ) -> Result<Vec<u8>, StitchError> {
     let (cw, ch) = cam;
     check_source_dims(cw, ch)?;
-    check_frame_count(projection, planes.len())?;
+    check_camera_count(projection, planes.len())?;
     let (w, h) = (cw as usize, ch as usize);
     let chroma = (w / 2) * (h / 2);
     for p in planes {
@@ -115,7 +115,7 @@ pub(crate) fn stitch_rgba_yuv420p(
 
 /// The supplied frame count must match the camera count the
 /// projection consumes; a mismatch would silently sample the wrong camera.
-fn check_frame_count(projection: &dyn Projection, planes: usize) -> Result<(), StitchError> {
+fn check_camera_count(projection: &dyn Projection, planes: usize) -> Result<(), StitchError> {
     if planes != projection.camera_count() {
         return Err(StitchError::InvalidConfig(format!(
             "projection '{}' consumes {} camera(s) but {planes} frame(s) were supplied",
