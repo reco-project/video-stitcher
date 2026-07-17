@@ -75,7 +75,8 @@ impl Playback {
         right: &InputPath,
         sync_offset: i64,
     ) -> Result<(), SourceError> {
-        let source = FfmpegFileSource::open_from_inputs(left, right, sync_offset, false)?;
+        let source =
+            FfmpegFileSource::open_inputs(&[left.clone(), right.clone()], sync_offset, false)?;
         let info = source.info();
         let fps = info.fps;
         self.total_frames = source.total_frames();

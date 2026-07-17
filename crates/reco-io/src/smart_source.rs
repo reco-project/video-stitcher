@@ -50,8 +50,6 @@ pub struct SmartFileSource {
 
 enum SourceMode {
     Cpu(crate::adapters::FfmpegFileSource),
-    /// Single pre-stitched panorama for mono topologies.
-    Mono(crate::adapters::FfmpegMonoSource),
     #[cfg(target_os = "linux")]
     GpuZeroCopy(Box<LinuxZeroCopyState>),
     #[cfg(target_os = "macos")]
@@ -208,30 +206,35 @@ impl SmartFileSource {
             )
         } else {
             Self::open_cpu(
-                left,
-                right,
+                &[left.clone(), right.clone()],
                 sync_offset,
                 false,
                 info,
                 pixel_format,
                 full_range,
-                left_rotation,
-                right_rotation,
             )
         }
     }
 
+    /// Open a CPU-decode source for any number of inputs (projection
+    /// order). Format, fps, and color range are probed from input 0;
+    /// per-input rotation is probed by the decode layer.
     pub fn open_cpu_only(
-        left: &crate::stitch_job::InputPath,
-        right: &crate::stitch_job::InputPath,
+        inputs: &[crate::stitch_job::InputPath],
         sync_offset: i64,
         software_decode: bool,
     ) -> Result<Self, SourceError> {
-        let left_probe_path = left.first_path();
+        let [first, ..] = inputs else {
+            return Err(SourceError::Init {
+                path: "(none)".into(),
+                reason: "at least one input video is required".into(),
+            });
+        };
+        let probe_path = first.first_path();
 
-        let probe = crate::ffmpeg::decoder::VideoDecoder::open(left_probe_path).map_err(|e| {
+        let probe = crate::ffmpeg::decoder::VideoDecoder::open(probe_path).map_err(|e| {
             SourceError::Init {
-                path: left_probe_path.display().to_string(),
+                path: probe_path.display().to_string(),
                 reason: format!("{e}"),
             }
         })?;
@@ -245,53 +248,37 @@ impl SmartFileSource {
         };
         let pixel_format = probe.pixel_format();
         let full_range = probe.is_full_range();
-        let left_rotation = probe.rotation();
         drop(probe);
 
-        let right_rotation = crate::ffmpeg::decoder::VideoDecoder::open(right.first_path())
-            .map(|d| d.rotation())
-            .unwrap_or_else(|e| {
-                log::warn!("Failed to probe right video for rotation ({e}), assuming 0 degrees");
-                0
-            });
-
         Self::open_cpu(
-            left,
-            right,
+            inputs,
             sync_offset,
             software_decode,
             info,
             pixel_format,
             full_range,
-            left_rotation,
-            right_rotation,
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn open_cpu(
-        left: &crate::stitch_job::InputPath,
-        right: &crate::stitch_job::InputPath,
+        inputs: &[crate::stitch_job::InputPath],
         sync_offset: i64,
         software_decode: bool,
         info: SourceInfo,
         pixel_format: GpuPixelFormat,
         full_range: bool,
-        left_rotation: i32,
-        right_rotation: i32,
     ) -> Result<Self, SourceError> {
-        let source = crate::adapters::FfmpegFileSource::open_from_inputs(
-            left,
-            right,
-            sync_offset,
-            software_decode,
-        )?;
+        let source =
+            crate::adapters::FfmpegFileSource::open_inputs(inputs, sync_offset, software_decode)?;
         log::info!(
-            "SmartFileSource: CPU decode ({}x{}, {pixel_format:?}{})",
+            "SmartFileSource: CPU decode ({} camera(s), {}x{}, {pixel_format:?}{})",
+            inputs.len(),
             info.width,
             info.height,
             if full_range { ", full-range" } else { "" }
         );
+        let left_rotation = source.left_rotation();
+        let right_rotation = source.right_rotation();
         Ok(Self {
             mode: SourceMode::Cpu(source),
             info,
@@ -547,33 +534,6 @@ impl SmartFileSource {
         )
     }
 
-    /// Open a single-input mono source (cylinder calibrations).
-    ///
-    /// Always CPU frames - the mono GPU pass is not wired yet.
-    /// `software_decode` forces the software decoder (`--cpu`).
-    pub fn open_mono(
-        input: &crate::stitch_job::InputPath,
-        software_decode: bool,
-    ) -> Result<Self, SourceError> {
-        let source = crate::adapters::FfmpegMonoSource::open(input, software_decode)?;
-        let info = source.info();
-        log::info!(
-            "SmartFileSource: mono CPU decode ({}x{})",
-            info.width,
-            info.height
-        );
-        Ok(Self {
-            mode: SourceMode::Mono(source),
-            info,
-            pixel_format: GpuPixelFormat::Nv12,
-            full_range: false,
-            left_rotation: 0,
-            right_rotation: 0,
-            decode_mode: "CPU mono",
-            exhausted: false,
-        })
-    }
-
     /// Human-readable description of the active decode path.
     pub fn decode_mode(&self) -> &'static str {
         self.decode_mode
@@ -644,7 +604,6 @@ impl FrameSource for SmartFileSource {
 
     fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
         match &mut self.mode {
-            SourceMode::Mono(source) => source.next_frame(),
             SourceMode::Cpu(source) => {
                 let frame = source.next_frame()?;
                 if frame.is_none() {
@@ -713,12 +672,11 @@ impl FrameSource for SmartFileSource {
     }
 
     fn is_gpu_resident(&self) -> bool {
-        !matches!(self.mode, SourceMode::Cpu(_) | SourceMode::Mono(_))
+        !matches!(self.mode, SourceMode::Cpu(_))
     }
 
     fn skip_frames(&mut self, count: u64) -> Result<u64, SourceError> {
         match &mut self.mode {
-            SourceMode::Mono(source) => source.skip_frames(count),
             #[cfg(target_os = "linux")]
             SourceMode::GpuZeroCopy(state) => {
                 let rx = state
@@ -790,7 +748,6 @@ impl FrameSource for SmartFileSource {
         // implement `try_next_frame`, so their local flag is sufficient).
         match &self.mode {
             SourceMode::Cpu(source) => self.exhausted || source.is_exhausted(),
-            SourceMode::Mono(_) => self.exhausted,
             #[cfg(target_os = "linux")]
             SourceMode::GpuZeroCopy(_) => self.exhausted,
             #[cfg(target_os = "macos")]

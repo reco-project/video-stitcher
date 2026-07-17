@@ -147,7 +147,7 @@ pub fn run_export(
 
     use reco_core::source::FrameSource;
     if let Ok(source) =
-        reco_io::adapters::FfmpegFileSource::open_from_inputs(&left, &right, 0, false)
+        reco_io::adapters::FfmpegFileSource::open_inputs(&[left.clone(), right.clone()], 0, false)
         && let Some(full_total) = source.total_frames()
     {
         let fps = reco_io::adapters::FfmpegFileSource::frame_rate(left.first_path())
@@ -189,8 +189,7 @@ pub fn run_export(
     }
 
     let mut job = reco_io::StitchJob::with_calibration(
-        left.clone(),
-        right.clone(),
+        [left.clone(), right.clone()],
         cal,
         effective_output.clone(),
     )

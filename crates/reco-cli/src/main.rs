@@ -120,13 +120,12 @@ struct Cli {
 enum Commands {
     /// Stitch camera video files into a panoramic output.
     Stitch {
-        /// Path to the left camera video file (or the single
-        /// pre-stitched panorama for cylinder calibrations).
-        left: String,
-
-        /// Path to the right camera video file. Omit for single-input
-        /// (cylinder) calibrations.
-        right: Option<String>,
+        /// Input videos, one per camera in projection order (two for
+        /// L-shape calibrations, one pre-stitched panorama for the
+        /// cylinder). Chain multi-segment recordings per input with
+        /// `;` (e.g. `a1.mp4;a2.mp4 b1.mp4;b2.mp4`).
+        #[arg(required = true, num_args = 1..)]
+        inputs: Vec<String>,
 
         /// Path to the calibration JSON file.
         #[arg(short, long)]
@@ -777,8 +776,7 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Stitch {
-            left,
-            right,
+            inputs,
             calibration,
             output,
             width,
@@ -809,8 +807,7 @@ fn main() -> anyhow::Result<()> {
             panner_preset,
         } => stitch::run_stitch(
             stitch::StitchArgs {
-                left: &left,
-                right: right.as_deref(),
+                inputs: &inputs,
                 calibration: &calibration,
                 output: &output,
                 width,

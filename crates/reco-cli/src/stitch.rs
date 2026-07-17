@@ -1,4 +1,5 @@
-//! Stitch subcommand: encode two video files into a panoramic output.
+//! Stitch subcommand: encode per-camera video files into a panoramic
+//! output.
 //!
 //! Uses `StitchJob` (Layer 3 API) for all cases, including autocam.
 //! The `on_session` callback wires up detection and direction when a
@@ -17,8 +18,8 @@ use std::sync::atomic::AtomicBool;
 /// across features.
 #[allow(dead_code)]
 pub struct StitchArgs<'a> {
-    pub left: &'a str,
-    pub right: Option<&'a str>,
+    /// Input videos, one per camera in projection order.
+    pub inputs: &'a [String],
     pub calibration: &'a str,
     pub output: &'a str,
     pub width: u32,
@@ -107,17 +108,11 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
             reco_io::stitch_job::InputPath::Single(std::path::PathBuf::from(s))
         }
     };
-    let mut job = match args.right {
-        Some(right) => reco_io::StitchJob::with_calibration(
-            to_input(args.left),
-            to_input(right),
-            cal,
-            args.output,
-        ),
-        // One input: the calibration must carry a mono topology
-        // (StitchJob::run rejects the mismatch with a typed error).
-        None => reco_io::StitchJob::mono_with_calibration(to_input(args.left), cal, args.output),
-    };
+    // Arity is not decided here: StitchJob::run validates the input
+    // count against the calibration's topology with a typed error.
+    let inputs: Vec<reco_io::stitch_job::InputPath> =
+        args.inputs.iter().map(|s| to_input(s)).collect();
+    let mut job = reco_io::StitchJob::with_calibration(inputs, cal, args.output);
     job = job
         .codec(parse_codec(args.codec))
         .quality(parse_quality(args.quality))
