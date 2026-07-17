@@ -494,7 +494,8 @@ impl StitchPipeline {
             }),
             #[allow(unreachable_patterns)]
             _ => Err(PipelineError::UnsupportedFrameVariant {
-                reason: "unsupported FrameSet variant for CPU render path",
+                reason: "GPU-resident FrameSet variants use their platform render \
+                         paths, not the CPU-upload render",
             }),
         }
     }

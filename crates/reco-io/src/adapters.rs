@@ -468,7 +468,7 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         // the final target. This method is blocking for strategy 1 and
         // semi-blocking for strategy 2 (spawns threads, returns before
         // first frame is decoded).
-        if frame > self.current_frame {
+        if frame >= self.current_frame {
             let skip = frame - self.current_frame;
             let max_forward = (self.info.fps * 10.0) as u64;
             if skip <= max_forward {

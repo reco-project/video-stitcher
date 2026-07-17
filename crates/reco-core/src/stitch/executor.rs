@@ -138,7 +138,7 @@ impl CpuExecutor {
         self.calib.topology.projection()
     }
 
-    /// Stitch one NV12 frame pair to RGBA at the configured output
+    /// Stitch one NV12 frame set to RGBA at the configured output
     /// size. `&self` on purpose: the CPU stitch is stateless per call
     /// (the [`StitchExecutor`] trait's `&mut self` accommodates the
     /// GPU arm's readback ring).
@@ -158,7 +158,7 @@ impl CpuExecutor {
         )
     }
 
-    /// Stitch one YUV420P frame pair to RGBA at the configured output
+    /// Stitch one YUV420P frame set to RGBA at the configured output
     /// size. The CPU kernel is format-flexible per call (unlike the
     /// GPU pipeline, which fixes its input format at construction);
     /// the [`StitchExecutor`] trait covers the NV12 contract, this

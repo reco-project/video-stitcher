@@ -1,4 +1,4 @@
-//! GPU-aware stereo file source with automatic backend selection.
+//! GPU-aware file source with automatic backend selection.
 //!
 //! [`SmartFileSource`] is the standard way to open video files for stitching.
 //! It probes the input, detects the best decode path (GPU zero-copy or CPU),
@@ -518,19 +518,17 @@ impl SmartFileSource {
         info: SourceInfo,
         pixel_format: GpuPixelFormat,
         full_range: bool,
-        left_rotation: i32,
-        right_rotation: i32,
+        _left_rotation: i32,
+        _right_rotation: i32,
     ) -> Result<Self, SourceError> {
         log::info!("SmartFileSource: zero-copy not yet implemented for this platform, using CPU");
         Self::open_cpu(
-            left,
-            right,
+            &[left.clone(), right.clone()],
             sync_offset,
+            false,
             info,
             pixel_format,
             full_range,
-            left_rotation,
-            right_rotation,
         )
     }
 

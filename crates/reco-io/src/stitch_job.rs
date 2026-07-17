@@ -1,7 +1,7 @@
 //! One-shot file-to-file stitching (Layer 3 API).
 //!
-//! [`StitchJob`] is the simplest way to stitch two video files into a
-//! panoramic output. It handles all orchestration internally: GPU
+//! [`StitchJob`] is the simplest way to stitch per-camera video files
+//! into a panoramic output. It handles all orchestration internally: GPU
 //! initialization (or the all-software path via [`StitchJob::cpu`]),
 //! zero-copy detection, encoder creation, decode thread management,
 //! and audio passthrough.
@@ -207,12 +207,6 @@ impl From<&Path> for InputPath {
 impl From<PathBuf> for InputPath {
     fn from(p: PathBuf) -> Self {
         Self::Single(p)
-    }
-}
-
-impl<P: AsRef<Path>> From<Vec<P>> for InputPath {
-    fn from(paths: Vec<P>) -> Self {
-        Self::Chained(paths.iter().map(|p| p.as_ref().to_path_buf()).collect())
     }
 }
 

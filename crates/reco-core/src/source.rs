@@ -348,6 +348,21 @@ pub enum FrameSet {
     NvmmResident([NvmmPlaneInfo; 2]),
 }
 
+impl FrameSet {
+    /// Consume a two-camera YUV420P set into its per-camera payloads.
+    ///
+    /// `None` for any other shape - the interactive stereo consumers
+    /// (CLI preview, GUI playback) that retain decoded frames are
+    /// two-camera CPU paths by construction and use this instead of
+    /// re-deriving the downcast.
+    pub fn into_yuv_pair(self) -> Option<[YuvData; 2]> {
+        match self {
+            Self::Yuv420p(cams) => <[YuvData; 2]>::try_from(cams).ok(),
+            _ => None,
+        }
+    }
+}
+
 /// Metadata about the frame source.
 #[derive(Debug, Clone)]
 pub struct SourceInfo {
@@ -388,7 +403,7 @@ pub trait FrameSource: Send {
     /// Source metadata (dimensions, frame rate).
     fn info(&self) -> SourceInfo;
 
-    /// Get the next stereo frame, or `None` if the source is exhausted.
+    /// Get the next frame set, or `None` if the source is exhausted.
     ///
     /// For live sources (cameras), this blocks until a frame is available.
     /// For file sources, returns `None` at end of file.
@@ -434,6 +449,10 @@ pub trait FrameSource: Send {
     /// The session applies rotation automatically: the CPU path handles it
     /// via buffer reversal in the decoder, while the GPU zero-copy path
     /// uses a shader UV flip.
+    ///
+    /// Pair-shaped on purpose for now: the session consumes rotation
+    /// for GPU-resident sources only, which are two-camera; the
+    /// accessors go per-camera when the FrameSource seam does.
     fn left_rotation(&self) -> i32 {
         0
     }

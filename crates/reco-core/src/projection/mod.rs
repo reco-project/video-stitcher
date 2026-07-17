@@ -301,6 +301,7 @@ fn plane_uv_to_world(uv: (f64, f64), camera: CameraIndex, scene: &PlaneScene) ->
     // Reachable only with a lens-validated index (the caller resolved
     // `lenses[camera]` first), so on the two-camera L-shape this is a
     // binary choice.
+    debug_assert!(camera < 2, "the L-shape mapping is two-camera");
     let model = if camera == 0 {
         scene.model_matrix_left()
     } else {

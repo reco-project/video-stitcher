@@ -58,13 +58,10 @@ const SEEK_STEP_SECS: f64 = 5.0;
 /// Panics if the set is not two-camera `Yuv420p` (preview always uses
 /// CPU decode of a stereo pair; its GPU render path is two-camera).
 fn unwrap_yuv_pair(frame: reco_core::source::FrameSet) -> (YuvData, YuvData) {
-    match frame {
-        reco_core::source::FrameSet::Yuv420p(cams) => match <[YuvData; 2]>::try_from(cams) {
-            Ok([left, right]) => (left, right),
-            Err(_) => panic!("preview expects two-camera Yuv420p sets"),
-        },
-        _ => panic!("preview expects Yuv420p frames"),
-    }
+    let Some([left, right]) = frame.into_yuv_pair() else {
+        panic!("preview expects two-camera Yuv420p sets");
+    };
+    (left, right)
 }
 
 /// Configuration for the interactive preview window.

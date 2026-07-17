@@ -4065,6 +4065,11 @@ fn main() -> anyhow::Result<()> {
                                 ),
                                 reco_io::stitch_job::StitchError::Session(
                                     reco_core::session::types::SessionError::Config(detail),
+                                )
+                                | reco_io::stitch_job::StitchError::Session(
+                                    reco_core::session::types::SessionError::Core(
+                                        reco_core::core::types::StitchCoreError::Config(detail),
+                                    ),
                                 ) => ("Export failed", detail.clone()),
                                 other => (
                                     "Export failed",

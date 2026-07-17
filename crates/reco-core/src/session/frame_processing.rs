@@ -248,7 +248,7 @@ impl StitchSession {
         Ok(())
     }
 
-    /// Render a single CPU-resident stereo frame and deliver it to the sinks.
+    /// Render a single CPU-resident frame set and deliver it to the sinks.
     ///
     /// Handles YUV420P and NV12 input formats. For GPU-resident frames
     /// (zero-copy path), use [`submit_render_output`](Self::submit_render_output)

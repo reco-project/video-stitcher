@@ -42,9 +42,9 @@ impl super::StitchCore {
         frames: &crate::source::FrameSet,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         use crate::source::FrameSet;
-        self.anchor_session_start();
         match frames {
             FrameSet::Yuv420p(cams) => {
+                self.anchor_session_start();
                 // Feed the stacked-video replay recorder before render
                 // so the recording captures the exact planes the
                 // pipeline will see. Errors inside the recorder are
@@ -75,6 +75,7 @@ impl super::StitchCore {
                 }
             }
             FrameSet::Nv12(cams) => {
+                self.anchor_session_start();
                 // The stacked replay recorder is YUV420P-native and
                 // does not tap NV12 submits today.
                 let ran_detection = self.detect_nv12_set(cams);

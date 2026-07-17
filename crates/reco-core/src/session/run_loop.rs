@@ -554,6 +554,14 @@ impl StitchSession {
                 self.lookahead_frames
             );
         }
+        // The CPU loop skips the GPU-source configuration entirely, but
+        // color range is a per-source property the software stitch
+        // consumes too - without this, full-range sources rendered with
+        // the limited-range conversion.
+        if source.is_full_range() {
+            self.core.set_full_range(true);
+            log::info!("CPU stitch: full-range YUV source, using full-range conversion");
+        }
         let (nv12_w, nv12_h) = self.nv12_delivery_dims();
         let render_w = self.core.executor.viewport_size().width;
         log::info!(
