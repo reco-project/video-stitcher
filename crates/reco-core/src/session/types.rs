@@ -38,7 +38,7 @@ pub struct SessionConfig {
     /// Camera calibration data.
     pub calibration: Calibration,
     /// Output viewport dimensions.
-    pub viewport: ViewportSize,
+    pub viewport_size: ViewportSize,
     /// Input frame width in pixels.
     pub input_width: u32,
     /// Input frame height in pixels.
@@ -200,7 +200,7 @@ const _: fn() = || {
 /// ```
 pub struct StitchSessionBuilder {
     pub(super) calibration: Option<Calibration>,
-    pub(super) viewport: Option<ViewportSize>,
+    pub(super) viewport_size: Option<ViewportSize>,
     pub(super) input_width: Option<u32>,
     pub(super) input_height: Option<u32>,
     pub(super) output_format: OutputFormat,
@@ -218,11 +218,9 @@ impl StitchSessionBuilder {
         self
     }
 
-    /// Set the output viewport configuration.
-    ///
-    /// Defaults to 1920x1080 with blend_width 0.15 if not set.
-    pub fn viewport(mut self, viewport: ViewportSize) -> Self {
-        self.viewport = Some(viewport);
+    /// Set the output viewport size. Defaults to 1920x1080 if not set.
+    pub fn viewport_size(mut self, viewport_size: ViewportSize) -> Self {
+        self.viewport_size = Some(viewport_size);
         self
     }
 
@@ -298,7 +296,7 @@ impl StitchSessionBuilder {
             SessionError::Config("StitchSessionBuilder: input_dimensions is required".into())
         })?;
 
-        let viewport = self.viewport.unwrap_or(ViewportSize {
+        let viewport_size = self.viewport_size.unwrap_or(ViewportSize {
             width: 1920,
             height: 1080,
         });
@@ -310,7 +308,7 @@ impl StitchSessionBuilder {
 
         let config = SessionConfig {
             calibration,
-            viewport,
+            viewport_size,
             input_width,
             input_height,
             output_format: self.output_format,

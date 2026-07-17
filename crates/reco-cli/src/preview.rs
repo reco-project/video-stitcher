@@ -493,7 +493,7 @@ impl ApplicationHandler for App {
         // (Blend was already resolved onto self.cal at load.)
         self.cal.framing.tilt = self.rig_tilt as f64;
         self.cal.framing.roll = self.rig_roll as f64;
-        let viewport = ViewportSize {
+        let viewport_size = ViewportSize {
             width: self.width,
             height: self.height,
         };
@@ -502,7 +502,7 @@ impl ApplicationHandler for App {
             gpu,
             GpuExecutorConfig {
                 calibration: self.cal.clone(),
-                viewport,
+                viewport_size,
                 input_width: self.input_width,
                 input_height: self.input_height,
                 input_format: reco_core::render::renderer::InputFormat::Yuv420p,

@@ -59,7 +59,7 @@ pub struct ProjectionContext<'a> {
     /// The calibration document (lenses, topology, framing).
     pub calibration: &'a Calibration,
     /// Output viewport geometry (dimensions).
-    pub viewport: &'a crate::render::viewport::ViewportSize,
+    pub viewport_size: &'a crate::render::viewport::ViewportSize,
     /// The render pose: yaw/pitch pan plus fov zoom, one bundle.
     pub pose: Pose,
 }
@@ -773,7 +773,7 @@ mod tests {
         let config = crate::render::viewport::ViewportSize::default();
         let surfaces = cal.topology.projection().surface_maps(&ProjectionContext {
             calibration: &cal,
-            viewport: &config,
+            viewport_size: &config,
             pose: Pose::default(),
         });
         assert_eq!(surfaces.len(), 2);
@@ -817,7 +817,7 @@ mod tests {
         let config = crate::render::viewport::ViewportSize::default();
         let surfaces = cal.topology.projection().surface_maps(&ProjectionContext {
             calibration: &cal,
-            viewport: &config,
+            viewport_size: &config,
             pose: Pose::default(),
         });
         assert_eq!(surfaces.len(), 1);

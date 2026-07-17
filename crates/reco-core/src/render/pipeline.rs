@@ -70,7 +70,7 @@ pub(crate) struct StitchPipeline {
     /// Calibration data (camera intrinsics + layout).
     pub(crate) calibration: Calibration,
     /// Output viewport configuration.
-    pub(crate) viewport: ViewportSize,
+    pub(crate) viewport_size: ViewportSize,
     /// GPU renderer (textures, pipelines, bind groups).
     renderer: Renderer,
     /// Input frame dimensions.
@@ -164,7 +164,7 @@ impl StitchPipeline {
             gpu,
             scene,
             calibration,
-            viewport: size,
+            viewport_size: size,
             renderer,
             input_width,
             input_height,
@@ -190,8 +190,8 @@ impl StitchPipeline {
     }
 
     /// The current output viewport configuration.
-    pub fn viewport(&self) -> &ViewportSize {
-        &self.viewport
+    pub fn viewport_size(&self) -> &ViewportSize {
+        &self.viewport_size
     }
 
     /// Input frame dimensions as `(width, height)`.
@@ -243,8 +243,8 @@ impl StitchPipeline {
             log::warn!("resize({width}, {height}) ignored: dimensions must be non-zero");
             return None;
         }
-        self.viewport.width = width;
-        self.viewport.height = height;
+        self.viewport_size.width = width;
+        self.viewport_size.height = height;
         Some((width, height))
     }
 
@@ -528,7 +528,7 @@ impl StitchPipeline {
             scene,
             &self.calibration,
             pose,
-            self.viewport.aspect_ratio(),
+            self.viewport_size.aspect_ratio(),
             self.calibration.topology.blend_width(),
             target_view,
         );

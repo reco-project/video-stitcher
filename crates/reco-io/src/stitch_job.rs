@@ -688,7 +688,7 @@ impl StitchJob {
                 );
             }
         }
-        let viewport = ViewportSize {
+        let viewport_size = ViewportSize {
             width: out_w,
             height: out_h,
         };
@@ -705,7 +705,7 @@ impl StitchJob {
                 };
                 let session_config = reco_core::session::types::SessionConfig {
                     calibration: cal,
-                    viewport,
+                    viewport_size,
                     input_width: info.width,
                     input_height: info.height,
                     output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
@@ -719,7 +719,7 @@ impl StitchJob {
                 gpu_name = "software (CPU)".to_string();
                 let executor = reco_core::stitch::CpuExecutor::new(
                     cal,
-                    viewport,
+                    viewport_size,
                     info.width,
                     info.height,
                     false,

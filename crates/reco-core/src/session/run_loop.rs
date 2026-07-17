@@ -557,11 +557,11 @@ impl StitchSession {
             );
         }
         let (nv12_w, nv12_h) = self.nv12_delivery_dims();
-        let render_w = self.core.executor.viewport().width;
+        let render_w = self.core.executor.viewport_size().width;
         log::info!(
             "CPU stitch loop: software render at {}x{}, NV12 delivery {nv12_w}x{nv12_h}",
             render_w,
-            self.core.executor.viewport().height
+            self.core.executor.viewport_size().height
         );
 
         let mut nv12 = Vec::new();

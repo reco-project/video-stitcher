@@ -80,7 +80,7 @@ impl PreviewBridge {
         // engine below.
         let lens_correction_amount = calibration.lenses[0].correction;
 
-        let viewport = ViewportSize {
+        let viewport_size = ViewportSize {
             width: viewport_width,
             height: viewport_height,
         };
@@ -93,7 +93,7 @@ impl PreviewBridge {
             gpu,
             GpuExecutorConfig {
                 calibration,
-                viewport,
+                viewport_size,
                 input_width,
                 input_height,
                 input_format: reco_core::render::renderer::InputFormat::Yuv420p,

@@ -366,7 +366,7 @@ impl RecoSource {
         // silently zeroed both, so OBS rendered tilted-rig footage
         // with a skewed horizon while cli/preview did not.
         // RigCorrection in reco-core handles the rest.
-        let viewport = ViewportSize {
+        let viewport_size = ViewportSize {
             width: self.output_width,
             height: self.output_height,
             ..ViewportSize::default()
@@ -376,7 +376,7 @@ impl RecoSource {
             gpu,
             GpuExecutorConfig {
                 calibration,
-                viewport,
+                viewport_size,
                 input_width: self.input_width,
                 input_height: self.input_height,
                 input_format: self.input_format,

@@ -92,7 +92,7 @@ pub trait StitchExecutor {
 /// CPU software backend - pure Rust, no GPU. The portable / GPU-less path.
 pub struct CpuExecutor {
     pub(crate) calib: Calibration,
-    pub(crate) config: ViewportSize,
+    pub(crate) viewport_size: ViewportSize,
     pub(crate) cam: (u32, u32),
     pub(crate) full_range: bool,
 }
@@ -104,7 +104,7 @@ impl CpuExecutor {
     /// switches the projection automatically.
     pub fn new(
         calib: Calibration,
-        config: ViewportSize,
+        size: ViewportSize,
         cam_w: u32,
         cam_h: u32,
         full_range: bool,
@@ -112,7 +112,7 @@ impl CpuExecutor {
         calib
             .validate()
             .map_err(|e| StitchError::InvalidConfig(e.to_string()))?;
-        config.validate().map_err(StitchError::InvalidConfig)?;
+        size.validate().map_err(StitchError::InvalidConfig)?;
         if cam_w < 2 || cam_h < 2 {
             return Err(StitchError::InvalidConfig(format!(
                 "source dimensions must be >= 2, got {cam_w}x{cam_h}"
@@ -125,7 +125,7 @@ impl CpuExecutor {
 
         Ok(Self {
             calib,
-            config,
+            viewport_size: size,
             cam: (cam_w, cam_h),
             full_range,
         })
@@ -150,7 +150,7 @@ impl CpuExecutor {
             planes,
             self.cam,
             &self.calib,
-            &self.config,
+            &self.viewport_size,
             pose,
             self.full_range,
         )
@@ -167,7 +167,7 @@ impl CpuExecutor {
             planes,
             self.cam,
             &self.calib,
-            &self.config,
+            &self.viewport_size,
             pose,
             self.full_range,
         )
@@ -182,7 +182,7 @@ impl StitchExecutor for CpuExecutor {
     }
 
     fn output_dims(&self) -> (u32, u32) {
-        (self.config.width, self.config.height)
+        (self.viewport_size.width, self.viewport_size.height)
     }
 
     fn name(&self) -> &'static str {
@@ -203,7 +203,7 @@ pub struct GpuExecutorConfig {
     /// Camera calibration document.
     pub calibration: Calibration,
     /// Output viewport dimensions.
-    pub viewport: ViewportSize,
+    pub viewport_size: ViewportSize,
     /// Input frame width in pixels (per camera).
     pub input_width: u32,
     /// Input frame height in pixels (per camera).
@@ -231,7 +231,7 @@ impl GpuExecutorConfig {
     ) -> Self {
         Self {
             calibration,
-            viewport: ViewportSize {
+            viewport_size: ViewportSize {
                 width: 1920,
                 height: 1080,
             },
@@ -299,7 +299,7 @@ impl GpuExecutor {
             gpu,
             &program,
             config.calibration,
-            config.viewport,
+            config.viewport_size,
             config.input_width,
             config.input_height,
             config.output_format,
@@ -823,7 +823,7 @@ impl GpuExecutor {
     /// NV12 output dimensions: the viewport rounded down to NV12-safe
     /// values (shared rounding rule with the CPU delivery path).
     pub(crate) fn nv12_dims(&self) -> (u32, u32) {
-        let vp = self.pipeline.viewport();
+        let vp = self.pipeline.viewport_size();
         crate::render::nv12_cpu::nv12_dims(vp.width, vp.height)
     }
 
@@ -840,7 +840,7 @@ impl GpuExecutor {
         let dims = self.nv12_dims();
         if self.nv12.as_ref().is_none_or(|(_, built)| *built != dims) {
             let (w, h) = dims;
-            let vp = self.pipeline.viewport();
+            let vp = self.pipeline.viewport_size();
             if (vp.width, vp.height) != dims {
                 log::info!(
                     "GpuExecutor: NV12 delivery rounds {}x{} viewport to {w}x{h}",
@@ -914,7 +914,7 @@ impl StitchExecutor for GpuExecutor {
     }
 
     fn output_dims(&self) -> (u32, u32) {
-        let v = self.pipeline.viewport();
+        let v = self.pipeline.viewport_size();
         (v.width, v.height)
     }
 
@@ -979,11 +979,11 @@ impl Executor {
     }
 
     /// The output viewport dimensions.
-    pub fn viewport(&self) -> &ViewportSize {
+    pub fn viewport_size(&self) -> &ViewportSize {
         match self {
-            Executor::Cpu(c) => &c.config,
+            Executor::Cpu(c) => &c.viewport_size,
             #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.pipeline.viewport(),
+            Executor::Gpu(g) => g.pipeline.viewport_size(),
         }
     }
 
@@ -1022,8 +1022,8 @@ impl Executor {
                     log::warn!("resize({width}, {height}) ignored: dimensions must be non-zero");
                     return None;
                 }
-                c.config.width = width;
-                c.config.height = height;
+                c.viewport_size.width = width;
+                c.viewport_size.height = height;
                 Some((width, height))
             }
             #[cfg(feature = "gpu")]
@@ -1338,7 +1338,7 @@ mod tests {
         let mut gpu = GpuExecutor::new(
             gpu,
             GpuExecutorConfig {
-                viewport: config,
+                viewport_size: config,
                 ..GpuExecutorConfig::new(calib, cam_w, cam_h, InputFormat::Nv12)
             },
         )

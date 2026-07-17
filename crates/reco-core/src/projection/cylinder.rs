@@ -101,7 +101,7 @@ impl Projection for Cylinder {
                 self,
                 &ctx.calibration.framing,
                 f64::from(ctx.calibration.lenses[0].height),
-                ctx.viewport,
+                ctx.viewport_size,
                 ctx.pose,
             )),
             // Single surface: nothing underneath to blend with.
@@ -214,7 +214,7 @@ impl CylinderMap {
     /// The parameters split by lifetime: `cylinder` and `framing` are
     /// the calibrated document (static), `pose` is the per-frame
     /// render pose (pan + fov zoom), and the output dimensions ride
-    /// in `config`. `source_height_px` backs `Cylinder::video_height`'s
+    /// in `size`. `source_height_px` backs `Cylinder::video_height`'s
     /// default.
     ///
     /// The mono camera basis looks along `-Z` with `+X` right and
@@ -225,7 +225,7 @@ impl CylinderMap {
         cylinder: &Cylinder,
         framing: &Framing,
         source_height_px: f64,
-        config: &ViewportSize,
+        size: &ViewportSize,
         pose: Pose,
     ) -> Self {
         let base_forward = [0.0, 0.0, -1.0];
@@ -265,7 +265,7 @@ impl CylinderMap {
         ];
 
         let tan_half_v = (f64::from(pose.render_fov()).to_radians() * 0.5).tan();
-        let aspect = f64::from(config.width) / f64::from(config.height);
+        let aspect = f64::from(size.width) / f64::from(size.height);
 
         Self {
             forward,
@@ -276,8 +276,8 @@ impl CylinderMap {
             radius: cylinder.focal_length,
             sweep: cylinder.sweep_deg.to_radians(),
             half_height: cylinder.video_height.unwrap_or(source_height_px) * 0.5,
-            out_w: f64::from(config.width),
-            out_h: f64::from(config.height),
+            out_w: f64::from(size.width),
+            out_h: f64::from(size.height),
         }
     }
 }

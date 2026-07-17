@@ -141,7 +141,7 @@ pub fn run_camera(
     }
     let field_roi = cal.field_roi.clone();
 
-    let viewport = ViewportSize {
+    let viewport_size = ViewportSize {
         width,
         height,
         ..Default::default()
@@ -163,7 +163,7 @@ pub fn run_camera(
 
     let session_config = reco_core::session::types::SessionConfig {
         calibration: cal,
-        viewport,
+        viewport_size,
         input_width: capture_width,
         input_height: capture_height,
         output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,

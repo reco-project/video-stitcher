@@ -279,7 +279,7 @@ fn build_test_session(
     let mut builder = StitchSession::builder()
         .calibration(test_calibration())
         .input_dimensions(W, H)
-        .viewport(ViewportSize {
+        .viewport_size(ViewportSize {
             width: 64,
             height: 64,
         })
@@ -566,7 +566,7 @@ fn push_and_pull_share_one_ai_brain() {
     let executor = crate::stitch::GpuExecutor::new(
         gpu,
         crate::stitch::GpuExecutorConfig {
-            viewport: ViewportSize {
+            viewport_size: ViewportSize {
                 width: 64,
                 height: 64,
             },

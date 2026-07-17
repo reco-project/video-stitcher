@@ -190,7 +190,7 @@ impl StitchCore {
     /// after construction via [`Self::enable_replay_buffer`].
     pub fn new(executor: Executor) -> Result<Self, StitchCoreError> {
         let (output_width, output_height) = {
-            let viewport = executor.viewport();
+            let viewport = executor.viewport_size();
             (viewport.width, viewport.height)
         };
         // The pipelined RGBA ring is GPU delivery machinery; the CPU
@@ -385,7 +385,7 @@ impl StitchCore {
             return pose;
         };
         let fov = pose.fov_degrees.min(coverage.max_fov_degrees());
-        let aspect = self.executor.viewport().aspect_ratio();
+        let aspect = self.executor.viewport_size().aspect_ratio();
         let rig_tilt = self.executor.calibration().framing.tilt as f32;
         let rig_roll = self.executor.calibration().framing.roll as f32;
         let framing = &self.executor.calibration().framing;
@@ -658,7 +658,7 @@ impl StitchCore {
     // -----------------------------------------------------------------
 
     /// Output dimensions in pixels. Identical to
-    /// `config.viewport.{width,height}` at construction.
+    /// `config.viewport_size.{width,height}` at construction.
     pub fn output_dims(&self) -> (u32, u32) {
         (self.output_width, self.output_height)
     }
@@ -965,7 +965,7 @@ mod tests {
         let gpu_exec = GpuExecutor::new(
             gpu,
             GpuExecutorConfig {
-                viewport: config,
+                viewport_size: config,
                 ..GpuExecutorConfig::new(calib(cam_w, cam_h), cam_w, cam_h, InputFormat::Nv12)
             },
         )
@@ -1023,7 +1023,7 @@ mod tests {
         let exec = GpuExecutor::new(
             gpu,
             GpuExecutorConfig {
-                viewport: ViewportSize {
+                viewport_size: ViewportSize {
                     width: 160,
                     height: 90,
                 },

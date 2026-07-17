@@ -79,7 +79,7 @@ pub fn run_libcamera(
         }
     }
 
-    let viewport = ViewportSize { width, height };
+    let viewport_size = ViewportSize { width, height };
 
     let gpu = reco_core::gpu::GpuContext::new_blocking()?;
 
@@ -88,7 +88,7 @@ pub fn run_libcamera(
 
     let session_config = reco_core::session::types::SessionConfig {
         calibration: cal,
-        viewport,
+        viewport_size,
         input_width: capture_width,
         input_height: capture_height,
         output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
