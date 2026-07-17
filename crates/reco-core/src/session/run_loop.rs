@@ -546,8 +546,6 @@ impl StitchSession {
         interrupted: &AtomicBool,
         on_progress: &mut Option<ProgressCallback>,
     ) -> Result<u64, SessionError> {
-        use crate::source::StereoFrame;
-
         let start = std::time::Instant::now();
         if self.lookahead_frames > 0 {
             log::warn!(
@@ -584,30 +582,7 @@ impl StitchSession {
             }
 
             let stitch_t0 = std::time::Instant::now();
-            let outcome = match &frame {
-                StereoFrame::Mono(yuv) => self.core.submit_frame_mono_yuv(&yuv.as_planes())?,
-                StereoFrame::Yuv420p(pair) => self
-                    .core
-                    .submit_frame_yuv(&pair.left.as_planes(), &pair.right.as_planes())?,
-                StereoFrame::Nv12(pair) => {
-                    let left = crate::render::planes::Nv12Planes {
-                        y: &pair.left.y,
-                        uv: &pair.left.uv,
-                    };
-                    let right = crate::render::planes::Nv12Planes {
-                        y: &pair.right.y,
-                        uv: &pair.right.uv,
-                    };
-                    self.core.submit_frame_nv12(&left, &right)?
-                }
-                _ => {
-                    return Err(SessionError::Config(
-                        "the CPU session consumes CPU-resident frames only (YUV420P / \
-                         NV12); zero-copy sources need the GPU executor"
-                            .into(),
-                    ));
-                }
-            };
+            let outcome = self.core.submit_frame(&frame)?;
             let crate::core::types::RenderOutcome::Rgba(rgba) = outcome else {
                 unreachable!("the CPU executor stitches synchronously - no warmup");
             };

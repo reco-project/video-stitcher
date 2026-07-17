@@ -13,63 +13,70 @@ use crate::core::StitchCore;
 use crate::detect::detector::DetectorFrame;
 use crate::geometry::CameraId;
 use crate::session::types::SessionError;
-use crate::source::StereoFrame;
+use crate::source::FrameSet;
 
-/// Per-camera CPU frames for a CPU-resident stereo pair; `None` for
-/// GPU-resident variants (their arms build residency-specific frames).
+/// Per-camera CPU frames for a CPU-resident two-camera set; `None` for
+/// GPU-resident variants (their arms build residency-specific frames)
+/// and for set shapes without a detection mapping (mono).
 fn cpu_frames<'a>(
-    frame: &'a StereoFrame,
+    frame: &'a FrameSet,
     width: u32,
     height: u32,
 ) -> Option<[(CameraId, DetectorFrame<'a>); 2]> {
     use crate::detect::detector::{ChromaFormat, RawFrame};
     match frame {
-        StereoFrame::Yuv420p(pair) => Some([
-            (
-                CameraId::Left,
-                DetectorFrame::Cpu(RawFrame {
-                    y: &pair.left.y,
-                    chroma: ChromaFormat::Yuv420p {
-                        u: &pair.left.u,
-                        v: &pair.left.v,
-                    },
-                    width,
-                    height,
-                }),
-            ),
-            (
-                CameraId::Right,
-                DetectorFrame::Cpu(RawFrame {
-                    y: &pair.right.y,
-                    chroma: ChromaFormat::Yuv420p {
-                        u: &pair.right.u,
-                        v: &pair.right.v,
-                    },
-                    width,
-                    height,
-                }),
-            ),
-        ]),
-        StereoFrame::Nv12(pair) => Some([
-            (
-                CameraId::Left,
-                DetectorFrame::Cpu(RawFrame {
-                    y: &pair.left.y,
-                    chroma: ChromaFormat::Nv12 { uv: &pair.left.uv },
-                    width,
-                    height,
-                }),
-            ),
-            (
-                CameraId::Right,
-                DetectorFrame::Cpu(RawFrame {
-                    y: &pair.right.y,
-                    chroma: ChromaFormat::Nv12 { uv: &pair.right.uv },
-                    width,
-                    height,
-                }),
-            ),
-        ]),
+        FrameSet::Yuv420p(cams) => match cams.as_slice() {
+            [left, right] => Some([
+                (
+                    CameraId::Left,
+                    DetectorFrame::Cpu(RawFrame {
+                        y: &left.y,
+                        chroma: ChromaFormat::Yuv420p {
+                            u: &left.u,
+                            v: &left.v,
+                        },
+                        width,
+                        height,
+                    }),
+                ),
+                (
+                    CameraId::Right,
+                    DetectorFrame::Cpu(RawFrame {
+                        y: &right.y,
+                        chroma: ChromaFormat::Yuv420p {
+                            u: &right.u,
+                            v: &right.v,
+                        },
+                        width,
+                        height,
+                    }),
+                ),
+            ]),
+            _ => None,
+        },
+        FrameSet::Nv12(cams) => match cams.as_slice() {
+            [left, right] => Some([
+                (
+                    CameraId::Left,
+                    DetectorFrame::Cpu(RawFrame {
+                        y: &left.y,
+                        chroma: ChromaFormat::Nv12 { uv: &left.uv },
+                        width,
+                        height,
+                    }),
+                ),
+                (
+                    CameraId::Right,
+                    DetectorFrame::Cpu(RawFrame {
+                        y: &right.y,
+                        chroma: ChromaFormat::Nv12 { uv: &right.uv },
+                        width,
+                        height,
+                    }),
+                ),
+            ]),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -209,17 +216,14 @@ impl StitchSession {
     /// advance the panner.
     pub(crate) fn detect_and_track_only(
         &mut self,
-        frame: &StereoFrame,
+        frame: &FrameSet,
         elapsed: std::time::Duration,
         produce_index: u64,
     ) -> Result<crate::detect::tracker::WorldState, SessionError> {
         if self.core.detection_due(produce_index) {
             match frame {
                 #[cfg(target_os = "linux")]
-                StereoFrame::GpuResident {
-                    left_slot,
-                    right_slot,
-                } => {
+                FrameSet::GpuResident { slots } => {
                     if self.core.detector_needs_cuda_frames() {
                         let bufs = self.core.executor.gpu().and_then(|g| g.cuda_buf_info());
                         if let Some((left_buf, right_buf)) = bufs {
@@ -227,8 +231,8 @@ impl StitchSession {
                             let frames = cuda_nv12_frames(
                                 &left_buf,
                                 &right_buf,
-                                *left_slot,
-                                *right_slot,
+                                slots[0],
+                                slots[1],
                                 self.left_rotation,
                                 self.right_rotation,
                             );
@@ -236,8 +240,8 @@ impl StitchSession {
                         }
                     } else if let Some(views) = self.shared_views() {
                         crate::profile_scope!("detect_wgpu_nv12");
-                        let ls = *left_slot as usize;
-                        let rs = *right_slot as usize;
+                        let ls = slots[0] as usize;
+                        let rs = slots[1] as usize;
                         let (w, h) = self.core.source_info();
                         let frames = wgpu_nv12_frames(
                             &views[ls * 2],
@@ -253,7 +257,7 @@ impl StitchSession {
                     }
                 }
                 #[cfg(target_os = "windows")]
-                StereoFrame::D3d11Resident { .. } => {
+                FrameSet::D3d11Resident(..) => {
                     let views = self
                         .gpu_exec_ref()
                         .d3d11_slots(produce_index)
@@ -275,13 +279,13 @@ impl StitchSession {
                     }
                 }
                 #[cfg(any(target_os = "macos", target_os = "ios"))]
-                StereoFrame::MetalResident { left, right } => {
+                FrameSet::MetalResident([left, right]) => {
                     let frames =
                         metal_frames(left.as_ptr(), right.as_ptr(), left.width(), left.height());
                     self.core.run_detection_frames(&frames);
                 }
                 #[cfg(target_os = "linux")]
-                StereoFrame::NvmmResident { left, right } => {
+                FrameSet::NvmmResident([left, right]) => {
                     crate::profile_scope!("detect_preletterboxed_total");
                     if let Some(frames) = self.gpu_exec().nvmm_detector_frames(left, right) {
                         self.core.run_detection_frames(&frames);
@@ -304,7 +308,7 @@ impl StitchSession {
     /// Allocate the NVMM detection surfaces for the Jetson zero-copy path.
     ///
     /// Call once before [`run`](Self::run) when feeding a
-    /// `StereoFrame::NvmmResident` source (mirrors
+    /// `FrameSet::NvmmResident` source (mirrors
     /// [`setup_gpu_source`](Self::setup_gpu_source) for the desktop GPU
     /// path). `model_size` is the detector's square input dimension (e.g.
     /// 1280); `src_width`/`src_height` are the capture resolution, used to
@@ -322,10 +326,10 @@ impl StitchSession {
             .map_err(SessionError::ZeroCopy)
     }
 
-    /// Run detection on a CPU-resident stereo frame (YUV420P / NV12).
+    /// Run detection on a CPU-resident frame set (YUV420P / NV12).
     pub fn detect_and_update_director(
         &mut self,
-        frame: &StereoFrame,
+        frame: &FrameSet,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
         let (w, h) = self.core.source_info();

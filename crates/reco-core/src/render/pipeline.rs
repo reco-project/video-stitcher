@@ -41,7 +41,7 @@ pub enum PipelineError {
     #[error("this topology has no GPU plane scene; the mono GPU pass is not wired yet")]
     NoPlaneScene,
 
-    /// Wrong StereoFrame variant for this render method.
+    /// Wrong FrameSet variant for this render method.
     #[error("unsupported frame variant: {reason}")]
     UnsupportedFrameVariant {
         /// Description of the mismatch.
@@ -459,47 +459,42 @@ impl StitchPipeline {
         self.render_to_target_gpu(pose)
     }
 
-    /// Process a CPU-resident stereo frame and return the render command buffer.
+    /// Process a CPU-resident frame set and return the render command buffer.
     ///
     /// Handles YUV420P vs NV12 format differences internally.
     /// For GPU-resident frames, use [`Self::render_gpu_frame`] instead.
-    pub fn render_stereo_frame(
+    ///
+    /// The GPU render program is two-camera (the mono GPU pass is not
+    /// wired yet), so any other set length gets a typed error here.
+    pub fn render_frame_set(
         &self,
-        frame: &crate::source::StereoFrame,
+        frames: &crate::source::FrameSet,
         pose: Pose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
-        use crate::source::StereoFrame;
-        match frame {
-            StereoFrame::Yuv420p(pair) => {
-                let left = YuvPlanes {
-                    y: &pair.left.y,
-                    u: &pair.left.u,
-                    v: &pair.left.v,
-                };
-                let right = YuvPlanes {
-                    y: &pair.right.y,
-                    u: &pair.right.u,
-                    v: &pair.right.v,
-                };
-                self.render_to_target(&left, &right, pose)
-            }
-            StereoFrame::Nv12(pair) => {
-                let left = Nv12Planes {
-                    y: &pair.left.y,
-                    uv: &pair.left.uv,
-                };
-                let right = Nv12Planes {
-                    y: &pair.right.y,
-                    uv: &pair.right.uv,
-                };
-                self.render_to_target_nv12(&left, &right, pose)
-            }
-            StereoFrame::GpuResident { .. } => Err(PipelineError::UnsupportedFrameVariant {
+        use crate::source::FrameSet;
+        match frames {
+            FrameSet::Yuv420p(cams) => match cams.as_slice() {
+                [left, right] => self.render_to_target(&left.as_planes(), &right.as_planes(), pose),
+                _ => Err(PipelineError::UnsupportedFrameVariant {
+                    reason: "the GPU render program is two-camera; the mono GPU pass \
+                             is not wired yet",
+                }),
+            },
+            FrameSet::Nv12(cams) => match cams.as_slice() {
+                [left, right] => {
+                    self.render_to_target_nv12(&left.as_planes(), &right.as_planes(), pose)
+                }
+                _ => Err(PipelineError::UnsupportedFrameVariant {
+                    reason: "the GPU render program is two-camera; the mono GPU pass \
+                             is not wired yet",
+                }),
+            },
+            FrameSet::GpuResident { .. } => Err(PipelineError::UnsupportedFrameVariant {
                 reason: "GpuResident frames must use render_gpu_frame()",
             }),
             #[allow(unreachable_patterns)]
             _ => Err(PipelineError::UnsupportedFrameVariant {
-                reason: "unsupported StereoFrame variant for CPU render path",
+                reason: "unsupported FrameSet variant for CPU render path",
             }),
         }
     }

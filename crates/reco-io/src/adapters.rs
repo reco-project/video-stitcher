@@ -6,7 +6,7 @@
 //! plumbing lives here.
 
 use reco_core::sink::{OutputFrame, OutputSink, PixelFormat, SinkError, SinkInput};
-use reco_core::source::{FramePair, SourceError, SourceInfo, StereoFrame, YuvData};
+use reco_core::source::{FrameSet, SourceError, SourceInfo, YuvData};
 
 #[cfg(feature = "ffmpeg")]
 use crate::ffmpeg;
@@ -62,7 +62,7 @@ fn input_duration_secs(input: &crate::stitch_job::InputPath) -> Option<f64> {
 /// - Negative offset: skip N frames from the **left** video (left started first)
 #[cfg(feature = "ffmpeg")]
 pub struct FfmpegFileSource {
-    rx: std::sync::mpsc::Receiver<FramePair>,
+    rx: std::sync::mpsc::Receiver<FrameSet>,
     info: SourceInfo,
     decode_backend: ffmpeg::decoder::DecodeBackend,
     /// GPU pixel format (NV12 8-bit or P010 10-bit).
@@ -346,11 +346,11 @@ impl FfmpegFileSource {
         sync_offset: i64,
         seek_secs: Option<f64>,
         software_decode: bool,
-    ) -> std::sync::mpsc::Receiver<FramePair> {
+    ) -> std::sync::mpsc::Receiver<FrameSet> {
         let left_rx = Self::spawn_single_decoder_at(left, "left", seek_secs, software_decode);
         let right_rx = Self::spawn_single_decoder_at(right, "right", seek_secs, software_decode);
 
-        let (tx, rx) = std::sync::mpsc::sync_channel::<FramePair>(4);
+        let (tx, rx) = std::sync::mpsc::sync_channel::<FrameSet>(4);
 
         std::thread::Builder::new()
             .name("decode_pair".into())
@@ -376,7 +376,7 @@ impl FfmpegFileSource {
                 }
 
                 while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
-                    if tx.send(FramePair { left, right }).is_err() {
+                    if tx.send(FrameSet::Yuv420p(vec![left, right])).is_err() {
                         break;
                     }
                 }
@@ -405,11 +405,11 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         self.pixel_format
     }
 
-    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
         match self.rx.recv() {
-            Ok(pair) => {
+            Ok(frames) => {
                 self.current_frame += 1;
-                Ok(Some(StereoFrame::Yuv420p(pair)))
+                Ok(Some(frames))
             }
             Err(_) => {
                 self.exhausted = true;
@@ -418,11 +418,11 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         }
     }
 
-    fn try_next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+    fn try_next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
         match self.rx.try_recv() {
-            Ok(pair) => {
+            Ok(frames) => {
                 self.current_frame += 1;
-                Ok(Some(StereoFrame::Yuv420p(pair)))
+                Ok(Some(frames))
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => Ok(None),
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
@@ -573,7 +573,7 @@ pub fn create_encoder(
 /// Single-video source for mono topologies (pre-stitched panoramas).
 ///
 /// Decodes one file on a background thread and delivers
-/// [`StereoFrame::Mono`] frames - the single-input dual of
+/// one-camera [`FrameSet`]s - the single-input dual of
 /// [`FfmpegFileSource`] for cylinder calibrations.
 #[cfg(feature = "ffmpeg")]
 pub struct FfmpegMonoSource {
@@ -631,14 +631,14 @@ impl reco_core::source::FrameSource for FfmpegMonoSource {
         self.info.clone()
     }
 
-    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
         if self.exhausted {
             return Ok(None);
         }
         match self.rx.recv() {
             Ok(yuv) => {
                 self.current_frame += 1;
-                Ok(Some(StereoFrame::Mono(yuv)))
+                Ok(Some(FrameSet::Yuv420p(vec![yuv])))
             }
             Err(_) => {
                 self.exhausted = true;

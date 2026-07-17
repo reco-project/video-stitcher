@@ -1,12 +1,12 @@
 //! Per-frame render and encode methods for [`StitchSession`].
 //!
-//! These methods are called once per frame to render a stereo pair,
+//! These methods are called once per frame to render a frame set,
 //! convert to NV12, and fan out to attached sinks.
 
 use super::StitchSession;
 use crate::geometry::Pose;
 use crate::session::types::{FrameLoopContext, SessionError};
-use crate::source::StereoFrame;
+use crate::source::FrameSet;
 
 impl StitchSession {
     /// Get the current viewport position from the director, or default.
@@ -23,7 +23,7 @@ impl StitchSession {
     /// Full per-frame pipeline: detect, pose, render, replay, telemetry.
     ///
     /// Dispatches to the correct detection and render path per
-    /// [`StereoFrame`] variant. Every variant gets the same five stages;
+    /// [`FrameSet`] variant. Every variant gets the same five stages;
     /// the dispatch inside each stage takes platform shortcuts (CUDA
     /// shared textures, Metal IOSurface import, D3D11 staging, etc.).
     ///
@@ -35,7 +35,7 @@ impl StitchSession {
     )]
     pub(crate) fn process_frame_any(
         &mut self,
-        frame: &StereoFrame,
+        frame: &FrameSet,
         elapsed: std::time::Duration,
         decode_time: std::time::Duration,
         frame_t0: std::time::Instant,
@@ -52,21 +52,14 @@ impl StitchSession {
             let detect_t0 = std::time::Instant::now();
             let ran_detection = match frame {
                 #[cfg(target_os = "linux")]
-                StereoFrame::GpuResident {
-                    left_slot,
-                    right_slot,
-                } => {
+                FrameSet::GpuResident { slots } => {
                     if self.core.detector_needs_cuda_frames() {
                         if self.frame_count == 0 {
                             log::info!("GpuResident detection: CUDA path (TensorRT/ORT-CUDA)");
                         }
                         if let Some((left_buf, right_buf)) = &ctx.gpu_buf_info {
                             self.detect_and_update_director_gpu(
-                                left_buf,
-                                right_buf,
-                                *left_slot,
-                                *right_slot,
-                                elapsed,
+                                left_buf, right_buf, slots[0], slots[1], elapsed,
                             )?;
                             due
                         } else {
@@ -85,8 +78,8 @@ impl StitchSession {
                                 "GpuResident detection: wgpu shared texture views (ORT/wgpu preprocess)"
                             );
                         }
-                        let ls = *left_slot as usize;
-                        let rs = *right_slot as usize;
+                        let ls = slots[0] as usize;
+                        let rs = slots[1] as usize;
                         if due {
                             crate::profile_scope!("detect_wgpu_nv12");
                             let (w, h) = self.core.source_info();
@@ -115,7 +108,7 @@ impl StitchSession {
                     }
                 }
                 #[cfg(target_os = "linux")]
-                StereoFrame::NvmmResident { left, right } => {
+                FrameSet::NvmmResident([left, right]) => {
                     // Immediate (non-lookahead) NVMM detection: letterbox via
                     // NvBufSurfTransform, then detect. (The buffered path runs
                     // detection during produce and skips this whole step.)
@@ -129,7 +122,7 @@ impl StitchSession {
                     due
                 }
                 #[cfg(any(target_os = "macos", target_os = "ios"))]
-                StereoFrame::MetalResident { left, right } => {
+                FrameSet::MetalResident([left, right]) => {
                     self.detect_and_update_director_metal(
                         left.as_ptr(),
                         right.as_ptr(),
@@ -140,7 +133,7 @@ impl StitchSession {
                     due
                 }
                 #[cfg(target_os = "windows")]
-                StereoFrame::D3d11Resident { .. } => {
+                FrameSet::D3d11Resident(..) => {
                     let left_slot = self.frame_count as usize % 2;
                     let right_slot = left_slot + 2;
                     if let Some(views) = self.gpu_exec_ref().d3d11_views(left_slot, right_slot) {
@@ -184,14 +177,11 @@ impl StitchSession {
         let render_t0 = std::time::Instant::now();
         match frame {
             #[cfg(target_os = "linux")]
-            StereoFrame::GpuResident {
-                left_slot,
-                right_slot,
-            } => {
-                self.render_gpu_resident(*left_slot, *right_slot, pos)?;
+            FrameSet::GpuResident { slots } => {
+                self.render_gpu_resident(slots[0], slots[1], pos)?;
             }
             #[cfg(target_os = "linux")]
-            StereoFrame::NvmmResident { left, right } => {
+            FrameSet::NvmmResident([left, right]) => {
                 if self.current_vram_slot.is_some() {
                     // Buffered path: the frame was already imported + copied
                     // into the pool slot during produce; render from it. The
@@ -203,12 +193,7 @@ impl StitchSession {
                 }
             }
             #[cfg(target_os = "windows")]
-            StereoFrame::D3d11Resident {
-                left_texture,
-                left_slice,
-                right_texture,
-                right_slice,
-            } => {
+            FrameSet::D3d11Resident([left, right]) => {
                 if let Some(staging_slot) = self.current_vram_slot {
                     // Buffered path: staging was done during produce.
                     // Render from the pre-staged slot.
@@ -222,10 +207,10 @@ impl StitchSession {
                         .poll(wgpu::PollType::wait_indefinitely());
                     let staging_t0 = std::time::Instant::now();
                     let first = self.stage_d3d11_frames(
-                        *left_texture,
-                        *left_slice,
-                        *right_texture,
-                        *right_slice,
+                        left.texture,
+                        left.slice,
+                        right.texture,
+                        right.slice,
                     )?;
                     upload_time = staging_t0.elapsed();
                     if first {
@@ -272,19 +257,19 @@ impl StitchSession {
         feature = "profiling",
         tracing::instrument(skip_all, name = "session_process_frame")
     )]
-    pub fn process_frame(&mut self, frame: &StereoFrame, pose: Pose) -> Result<(), SessionError> {
+    pub fn process_frame(&mut self, frame: &FrameSet, pose: Pose) -> Result<(), SessionError> {
         #[cfg(any(target_os = "macos", target_os = "ios"))]
-        if let StereoFrame::MetalResident { left, right } = frame {
+        if let FrameSet::MetalResident([left, right]) = frame {
             return self.process_metal_frame(left, right, pose);
         }
 
-        let render_buf = self.core.render_stereo_frame_at_pose(frame, pose)?;
+        let render_buf = self.core.render_frame_set_at_pose(frame, pose)?;
         self.submit_render_output(render_buf)?;
-        // GPU stacked-replay pack tap (M7). `render_stereo_frame_at_pose`
+        // GPU stacked-replay pack tap (M7). `render_frame_set_at_pose`
         // has just populated the renderer's internal plane textures
         // via `queue.write_texture`, so the packer's pipeline-view
         // path can read them. No-op when the packer isn't enabled.
-        // Zero-copy `StereoFrame::GpuResident` goes through
+        // Zero-copy `FrameSet::GpuResident` goes through
         // `step_gpu_with_bufs` (Linux) which taps the pack with
         // external views instead.
         self.core.pack_replay_from_pipeline();
@@ -601,7 +586,7 @@ impl StitchSession {
     /// Returns the slot index for rendering, or None for CPU frames.
     pub(crate) fn copy_to_vram_pool(
         &mut self,
-        frame: &StereoFrame,
+        frame: &FrameSet,
         produce_index: u64,
     ) -> Result<Option<usize>, SessionError> {
         self.copy_to_vram_pool_platform(frame, produce_index)
@@ -618,16 +603,11 @@ impl StitchSession {
     /// No-op on platforms that do not use the GPU decode slot-free
     /// channel (Windows D3D11 stages into a persistent pool; macOS
     /// imports CVPixelBuffers).
-    pub(crate) fn release_gpu_decode_slot(&self, frame: &StereoFrame) {
+    pub(crate) fn release_gpu_decode_slot(&self, frame: &FrameSet) {
         #[cfg(target_os = "linux")]
         {
-            if let StereoFrame::GpuResident {
-                left_slot,
-                right_slot,
-            } = frame
-            {
-                self.gpu_exec_ref()
-                    .release_decode_slots(*left_slot, *right_slot);
+            if let FrameSet::GpuResident { slots } = frame {
+                self.gpu_exec_ref().release_decode_slots(slots[0], slots[1]);
             }
         }
         #[cfg(not(target_os = "linux"))]
@@ -639,24 +619,21 @@ impl StitchSession {
     #[cfg(target_os = "linux")]
     fn copy_to_vram_pool_platform(
         &mut self,
-        frame: &StereoFrame,
+        frame: &FrameSet,
         _produce_index: u64,
     ) -> Result<Option<usize>, SessionError> {
         // NVMM zero-copy: import the DMA-buf as Vulkan textures and copy
         // them into a VRAM pool slot - the same import-then-copy pattern
         // as the macOS Metal arm, just sourced from an NvBufSurface fd
         // instead of a CVPixelBuffer.
-        if let StereoFrame::NvmmResident { left, right } = frame {
+        if let FrameSet::NvmmResident([left, right]) = frame {
             return self
                 .gpu_exec()
                 .stage_nvmm_to_pool(left, right)
                 .map_err(SessionError::ZeroCopy);
         }
         let (ls, rs) = match frame {
-            StereoFrame::GpuResident {
-                left_slot,
-                right_slot,
-            } => (*left_slot as usize, *right_slot as usize),
+            FrameSet::GpuResident { slots } => (slots[0] as usize, slots[1] as usize),
             _ => return Ok(None),
         };
         // The decode slot is NOT released here. Detection reads it
@@ -671,16 +648,10 @@ impl StitchSession {
     #[cfg(target_os = "windows")]
     fn copy_to_vram_pool_platform(
         &mut self,
-        frame: &StereoFrame,
+        frame: &FrameSet,
         produce_index: u64,
     ) -> Result<Option<usize>, SessionError> {
-        if let StereoFrame::D3d11Resident {
-            left_texture,
-            left_slice,
-            right_texture,
-            right_slice,
-        } = frame
-        {
+        if let FrameSet::D3d11Resident([left, right]) = frame {
             let needs_cuda = self.core.detector_needs_cuda_frames();
             let lookahead_frames = self.lookahead_frames;
             let pixel_format = self.gpu_pixel_format;
@@ -693,10 +664,10 @@ impl StitchSession {
                 .expect("staging pool created above");
             self.gpu_exec()
                 .stage_d3d11_frames(
-                    *left_texture,
-                    *left_slice,
-                    *right_texture,
-                    *right_slice,
+                    left.texture,
+                    left.slice,
+                    right.texture,
+                    right.slice,
                     left_slot,
                     right_slot,
                 )
@@ -709,10 +680,10 @@ impl StitchSession {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     fn copy_to_vram_pool_platform(
         &mut self,
-        frame: &StereoFrame,
+        frame: &FrameSet,
         _produce_index: u64,
     ) -> Result<Option<usize>, SessionError> {
-        if let StereoFrame::MetalResident { left, right } = frame {
+        if let FrameSet::MetalResident([left, right]) = frame {
             // SAFETY: RetainedCVPixelBuffer guarantees the pointers are valid.
             let [ly, lu, ry, ru] =
                 unsafe { self.gpu_exec().import_metal(left.as_ptr(), right.as_ptr()) }
@@ -735,7 +706,7 @@ impl StitchSession {
     )))]
     fn copy_to_vram_pool_platform(
         &mut self,
-        _frame: &StereoFrame,
+        _frame: &FrameSet,
         _produce_index: u64,
     ) -> Result<Option<usize>, SessionError> {
         Ok(None)

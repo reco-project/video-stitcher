@@ -253,7 +253,7 @@ impl super::StitchCore {
     /// Runs the GPU pack from the pipeline's internal plane
     /// textures. Used by CPU-upload submit paths where
     /// `queue.write_texture` has just populated the renderer's
-    /// own textures - fires from `submit_frame_yuv*` and from the
+    /// own textures - fires from the `submit_frame` push path and from the
     /// session's `process_frame` non-zero-copy branch. Zero-copy
     /// paths take [`Self::pack_gpu_stacked_replay_from_views`]
     /// instead because their source data lives in shared

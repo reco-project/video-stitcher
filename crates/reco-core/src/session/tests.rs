@@ -21,7 +21,7 @@ use crate::geometry::Pose;
 use crate::projection::LShape;
 use crate::render::viewport::ViewportSize;
 use crate::sink::{OutputFrame, OutputSink, SinkError, SinkInput};
-use crate::source::{FramePair, FrameSource, SourceError, SourceInfo, StereoFrame, YuvData};
+use crate::source::{FrameSet, FrameSource, SourceError, SourceInfo, YuvData};
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
@@ -52,7 +52,7 @@ fn test_calibration() -> Calibration {
 }
 
 /// Create a valid YUV420P stereo frame pair of solid gray.
-fn solid_frame() -> StereoFrame {
+fn solid_frame() -> FrameSet {
     let y_size = (W * H) as usize;
     let uv_size = ((W / 2) * (H / 2)) as usize;
     let yuv = YuvData {
@@ -60,10 +60,7 @@ fn solid_frame() -> StereoFrame {
         u: vec![128u8; uv_size],
         v: vec![128u8; uv_size],
     };
-    StereoFrame::Yuv420p(FramePair {
-        left: yuv.clone(),
-        right: yuv,
-    })
+    FrameSet::Yuv420p(vec![yuv.clone(), yuv])
 }
 
 // ─── MockSource ────────────────────────────────────────────────────────
@@ -92,7 +89,7 @@ impl FrameSource for MockSource {
         }
     }
 
-    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
         if self.remaining == 0 {
             return Ok(None);
         }
@@ -505,7 +502,7 @@ fn compute_frame_limit_negative_fps_uses_fallback() {
 
 /// The one-AI-stack guard, in two halves. (1) Entry-point parity:
 /// the same scripted detector + tracker + panner, fed the same frames
-/// through `StitchCore::submit_frame_yuv` and `StitchSession::run`,
+/// through `StitchCore::submit_frame` and `StitchSession::run`,
 /// must see identical inputs in identical order - frame indices,
 /// previous-pose threading, detector call counts. (2) The pull side
 /// must have driven the ENGINE's stack, observed through the core's
@@ -593,20 +590,8 @@ fn push_and_pull_share_one_ai_brain() {
     }));
 
     for _ in 0..FRAMES {
-        let StereoFrame::Yuv420p(pair) = solid_frame() else {
-            unreachable!("solid_frame is YUV420P")
-        };
-        let left = crate::render::planes::YuvPlanes {
-            y: &pair.left.y,
-            u: &pair.left.u,
-            v: &pair.left.v,
-        };
-        let right = crate::render::planes::YuvPlanes {
-            y: &pair.right.y,
-            u: &pair.right.u,
-            v: &pair.right.v,
-        };
-        core.submit_frame_yuv(&left, &right).expect("submit");
+        let frames = solid_frame();
+        core.submit_frame(&frames).expect("submit");
     }
 
     let pull = pull_log.lock().unwrap();
@@ -739,11 +724,8 @@ fn cpu_session_rejects_gpu_resident_frames() {
                 total_frames: None,
             }
         }
-        fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
-            Ok(Some(StereoFrame::GpuResident {
-                left_slot: 0,
-                right_slot: 0,
-            }))
+        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+            Ok(Some(FrameSet::GpuResident { slots: [0, 0] }))
         }
     }
 
@@ -752,9 +734,14 @@ fn cpu_session_rejects_gpu_resident_frames() {
     let err = session
         .run(&mut ResidentSource, u64::MAX, &interrupted, None)
         .expect_err("resident frames must be rejected on the CPU executor");
+    // The rejection is the engine's: `submit_frame` refuses resident
+    // sets with a typed config error, which the session wraps.
     assert!(
-        matches!(err, SessionError::Config(_)),
-        "expected a typed config error, got: {err}"
+        matches!(
+            err,
+            SessionError::Core(crate::core::types::StitchCoreError::Config(_))
+        ),
+        "expected the engine's typed config error, got: {err}"
     );
 }
 
@@ -763,7 +750,7 @@ fn cpu_session_rejects_gpu_resident_frames() {
 ///
 /// Doubles as the minimal mono-consumer example: a calibration built
 /// from `Lens::flat` + `Cylinder` + a zero `Framing`, a
-/// `FrameSource` yielding `StereoFrame::Mono`, and a plain session
+/// `FrameSource` yielding a one-camera `FrameSet`, and a plain session
 /// run on the CPU executor - no GPU context is created on this path.
 #[test]
 fn mono_cylinder_session_runs_end_to_end_without_gpu() {
@@ -778,18 +765,18 @@ fn mono_cylinder_session_runs_end_to_end_without_gpu() {
                 total_frames: None,
             }
         }
-        fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
             if self.0 == 0 {
                 return Ok(None);
             }
             self.0 -= 1;
             let y_size = (W * H) as usize;
             let uv_size = ((W / 2) * (H / 2)) as usize;
-            Ok(Some(StereoFrame::Mono(YuvData {
+            Ok(Some(FrameSet::Yuv420p(vec![YuvData {
                 y: vec![128u8; y_size],
                 u: vec![128u8; uv_size],
                 v: vec![128u8; uv_size],
-            })))
+            }])))
         }
     }
 

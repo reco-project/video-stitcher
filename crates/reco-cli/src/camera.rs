@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use reco_core::render::viewport::ViewportSize;
-use reco_core::source::StereoFrame;
+use reco_core::source::FrameSet;
 use reco_io::gstreamer::camera::CameraConfig;
 
 use crate::helpers;
@@ -559,7 +559,7 @@ pub fn run_camera(
         // NvBufSurfTransform for detection. No CPU copies at all.
         //
         // Driven by the session's unified frame loop (`run` / `run_buffered`)
-        // through the `FrameSource` + `StereoFrame::NvmmResident` path - the
+        // through the `FrameSource` + `FrameSet::NvmmResident` path - the
         // same machinery the file-stitch path uses. So lookahead, centered
         // smoothing, and the VRAM pool all work here for free; the per-frame
         // import + NvBufSurfTransform happen inside the session's produce
@@ -611,18 +611,18 @@ pub fn run_camera(
         let mut source = reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(&cam_config)?;
 
         // Warm up: discard first frame (camera ISP + pipeline init)
-        if let Some(pair) = source.next_pair()? {
-            let stereo = StereoFrame::Nv12(pair);
-            session.detect_and_update_director(&stereo, start.elapsed())?;
+        if let Some((left, right)) = source.next_pair()? {
+            let frames = FrameSet::Nv12(vec![left, right]);
+            session.detect_and_update_director(&frames, start.elapsed())?;
             let pos = session.director_position();
-            session.process_frame(&stereo, pos)?;
+            session.process_frame(&frames, pos)?;
             println!("Warmup complete, starting capture...");
         }
 
         let progress = helpers::ProgressReporter::new(30);
 
         while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
-            let pair = {
+            let (left, right) = {
                 reco_core::profile_scope!("wait_capture");
                 match source.next_pair()? {
                     Some(p) => p,
@@ -630,10 +630,10 @@ pub fn run_camera(
                 }
             };
 
-            let stereo = StereoFrame::Nv12(pair);
-            session.detect_and_update_director(&stereo, start.elapsed())?;
+            let frames = FrameSet::Nv12(vec![left, right]);
+            session.detect_and_update_director(&frames, start.elapsed())?;
             let pos = session.director_position();
-            session.process_frame(&stereo, pos)?;
+            session.process_frame(&frames, pos)?;
             frame_count += 1;
             progress.report(frame_count);
         }
@@ -724,14 +724,14 @@ impl reco_calibrate::live::LiveFramePairSource for Nv12CameraCalibSource {
                 return None;
             }
             match self.source.next_pair() {
-                Ok(Some(pair)) => {
+                Ok(Some((left, right))) => {
                     self.frame_count += 1;
                     if self.frame_count < self.fps && self.frame_count > 1 {
                         continue;
                     }
                     return Some((
-                        nv12_to_yuv(&pair.left, self.width, self.height),
-                        nv12_to_yuv(&pair.right, self.width, self.height),
+                        nv12_to_yuv(&left, self.width, self.height),
+                        nv12_to_yuv(&right, self.width, self.height),
                     ));
                 }
                 Ok(None) => return None,

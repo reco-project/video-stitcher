@@ -19,7 +19,7 @@
 //! ```
 
 use reco_core::render::renderer::GpuPixelFormat;
-use reco_core::source::{FrameSource, SourceError, SourceInfo, StereoFrame};
+use reco_core::source::{FrameSet, FrameSource, SourceError, SourceInfo};
 
 /// GPU-aware stereo file source that auto-selects the optimal decode path.
 ///
@@ -84,7 +84,7 @@ struct WindowsZeroCopyState {
     ///
     /// The `_frame_ref` inside each D3d11Frame pins the decode pool slice
     /// in FFmpeg's surface allocator. Without this, the slice is recycled
-    /// as soon as the raw pointers are extracted into `StereoFrame::D3d11Resident`,
+    /// as soon as the raw pointers are extracted into `FrameSet::D3d11Resident`,
     /// and the decoder thread can overwrite the surface before `stage_frame`
     /// copies it - causing frame reordering glitches on Intel and NVIDIA.
     ///
@@ -642,7 +642,7 @@ impl FrameSource for SmartFileSource {
         self.info.clone()
     }
 
-    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
         match &mut self.mode {
             SourceMode::Mono(source) => source.next_frame(),
             SourceMode::Cpu(source) => {
@@ -659,9 +659,8 @@ impl FrameSource for SmartFileSource {
                     .as_ref()
                     .expect("frame_rx taken during shutdown");
                 match rx.recv() {
-                    Ok(signal) => Ok(Some(StereoFrame::GpuResident {
-                        left_slot: signal.left_slot,
-                        right_slot: signal.right_slot,
+                    Ok(signal) => Ok(Some(FrameSet::GpuResident {
+                        slots: [signal.left_slot, signal.right_slot],
                     })),
                     Err(_) => {
                         self.exhausted = true;
@@ -671,10 +670,7 @@ impl FrameSource for SmartFileSource {
             }
             #[cfg(target_os = "macos")]
             SourceMode::MetalZeroCopy(rx) => match rx.recv() {
-                Ok(pair) => Ok(Some(StereoFrame::MetalResident {
-                    left: pair.left,
-                    right: pair.right,
-                })),
+                Ok(pair) => Ok(Some(FrameSet::MetalResident([pair.left, pair.right]))),
                 Err(_) => {
                     self.exhausted = true;
                     Ok(None)
@@ -689,19 +685,23 @@ impl FrameSource for SmartFileSource {
                 };
                 match pair_rx.recv() {
                     Ok((left, right)) => {
-                        let stereo = StereoFrame::D3d11Resident {
-                            left_texture: left.texture,
-                            left_slice: left.array_slice,
-                            right_texture: right.texture,
-                            right_slice: right.array_slice,
-                        };
+                        let frames = FrameSet::D3d11Resident([
+                            reco_core::source::D3d11CameraFrame {
+                                texture: left.texture,
+                                slice: left.array_slice,
+                            },
+                            reco_core::source::D3d11CameraFrame {
+                                texture: right.texture,
+                                slice: right.array_slice,
+                            },
+                        ]);
                         // Keep the D3d11Frame pair alive so FFmpeg doesn't
                         // recycle the decode pool slices before stage_frame
                         // copies them. The previous guard is dropped here,
                         // which is safe because its staging copy already
                         // completed in the previous loop iteration.
                         state.live_frame_guard = Some((left, right));
-                        Ok(Some(stereo))
+                        Ok(Some(frames))
                     }
                     Err(_) => {
                         self.exhausted = true;

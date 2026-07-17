@@ -1,8 +1,8 @@
 //! `StitchCore` - push-first canonical entry point for the stitching engine.
 //!
 //! Live sports production is the primary use case, so the canonical
-//! API is push-based: consumers call `StitchCore::submit_frame_yuv` /
-//! `submit_frame_bgra` whenever a new frame pair is ready, and the
+//! API is push-based: consumers call `StitchCore::submit_frame`
+//! whenever a new frame set is ready, and the
 //! core owns the render substrate, readback, detection, pose
 //! resolution, coverage, and the replay ring buffer.
 //!
@@ -569,8 +569,8 @@ impl StitchCore {
 
     /// Enable or disable constrained-look clamping.
     ///
-    /// When `true`, [`Self::submit_frame_yuv`] / `..._bgra` /
-    /// `submit_frame_*_at_pose` pass the director's (or caller's)
+    /// When `true`, [`Self::submit_frame`] and the
+    /// `submit_frame_*_at_pose` variants pass the director's (or caller's)
     /// pose through [`Self::safe_clamp`] before rendering.
     /// When `false`, the raw pose is used verbatim; the FOV max is
     /// still respected (pipeline-set) but coverage-based yaw/pitch
@@ -845,7 +845,6 @@ mod tests {
     #[test]
     fn engine_over_cpu_executor_pure_logic_works() {
         use crate::core::StitchCore;
-        use crate::render::planes::YuvPlanes;
         use crate::render::viewport::ViewportSize;
         use crate::stitch::{CpuExecutor, Executor, test_support::calib};
 
@@ -896,12 +895,13 @@ mod tests {
         // (no warmup), at the resized output dimensions.
         let y = vec![0u8; (w * h) as usize];
         let uv = vec![128u8; (w * h / 4) as usize];
-        let planes = YuvPlanes {
-            y: &y,
-            u: &uv,
-            v: &uv,
+        let cam = crate::source::YuvData {
+            y,
+            u: uv.clone(),
+            v: uv,
         };
-        match core.submit_frame_yuv(&planes, &planes) {
+        let frames = crate::source::FrameSet::Yuv420p(vec![cam.clone(), cam]);
+        match core.submit_frame(&frames) {
             Ok(crate::core::types::RenderOutcome::Rgba(bytes)) => {
                 assert_eq!(bytes.len(), 48 * 26 * 4);
             }
@@ -916,6 +916,10 @@ mod tests {
         // (the methods exist only when the gpu feature compiles them).
         #[cfg(feature = "gpu")]
         {
+            let crate::source::FrameSet::Yuv420p(cams) = &frames else {
+                unreachable!("constructed above");
+            };
+            let planes = cams[0].as_planes();
             assert!(matches!(
                 core.flush().unwrap_err(),
                 StitchCoreError::RequiresGpu
@@ -928,8 +932,50 @@ mod tests {
         }
     }
 
+    /// The FrameSet arity invariant: a set whose length does not match
+    /// the projection's camera count is rejected with a typed error at
+    /// the submit boundary (`check_camera_count` on the CPU stitch
+    /// path), never silently mis-sampled. This is the enforcement
+    /// artifact for the "len == camera_count" claim on [`FrameSet`].
+    #[test]
+    fn submit_frame_rejects_camera_count_mismatch() {
+        use crate::core::StitchCore;
+        use crate::render::viewport::ViewportSize;
+        use crate::stitch::{CpuExecutor, Executor, test_support::calib};
+
+        let (w, h) = (64u32, 36u32);
+        let executor = CpuExecutor::new(
+            calib(w, h), // L-shape: camera_count == 2
+            ViewportSize {
+                width: w,
+                height: h,
+            },
+            w,
+            h,
+            false,
+        )
+        .expect("cpu executor");
+        let mut core = StitchCore::new(Executor::Cpu(Box::new(executor))).expect("cpu engine");
+
+        let cam = crate::source::YuvData {
+            y: vec![0u8; (w * h) as usize],
+            u: vec![128u8; (w * h / 4) as usize],
+            v: vec![128u8; (w * h / 4) as usize],
+        };
+        let mono_set = crate::source::FrameSet::Yuv420p(vec![cam]);
+        // RenderOutcome borrows the core and is not Debug; unwrap by match.
+        let err = match core.submit_frame(&mono_set) {
+            Ok(_) => panic!("a 1-camera set on a 2-camera projection must be rejected"),
+            Err(e) => e,
+        };
+        assert!(
+            err.to_string().contains("2 camera(s) but 1 frame(s)"),
+            "expected the camera-count mismatch error, got: {err}"
+        );
+    }
+
     /// Engine-level executor agreement: the same submit API
-    /// (`submit_frame_nv12`) driven over a CPU engine and a GPU engine
+    /// (`submit_frame`, NV12 set) driven over a CPU engine and a GPU engine
     /// produces the same frame within the established oracle bounds.
     /// The Step-12 guarantee: swapping the executor does not change
     /// the picture.
@@ -938,7 +984,6 @@ mod tests {
     fn cpu_and_gpu_engines_agree_via_submit_nv12() {
         use crate::core::StitchCore;
         use crate::core::types::RenderOutcome;
-        use crate::render::planes::Nv12Planes;
         use crate::render::renderer::InputFormat;
         use crate::render::viewport::ViewportSize;
         use crate::stitch::test_support::{Agreement, AgreementBounds, calib, gpu_or_skip, nv12};
@@ -955,8 +1000,10 @@ mod tests {
         };
         let (ly, luv) = nv12(cam_w, cam_h, 0);
         let (ry, ruv) = nv12(cam_w, cam_h, 30);
-        let left = Nv12Planes { y: &ly, uv: &luv };
-        let right = Nv12Planes { y: &ry, uv: &ruv };
+        let frames = crate::source::FrameSet::Nv12(vec![
+            crate::source::Nv12Data { y: ly, uv: luv },
+            crate::source::Nv12Data { y: ry, uv: ruv },
+        ]);
 
         let cpu_exec = CpuExecutor::new(calib(cam_w, cam_h), config.clone(), cam_w, cam_h, false)
             .expect("cpu executor");
@@ -973,10 +1020,7 @@ mod tests {
         let mut gpu_core = StitchCore::new(Executor::Gpu(Box::new(gpu_exec))).expect("gpu engine");
 
         // CPU: synchronous - the first submit yields the frame.
-        let cpu_rgba = match cpu_core
-            .submit_frame_nv12(&left, &right)
-            .expect("cpu submit")
-        {
+        let cpu_rgba = match cpu_core.submit_frame(&frames).expect("cpu submit") {
             RenderOutcome::Rgba(bytes) => bytes.to_vec(),
             RenderOutcome::Warmup => panic!("CPU submit is synchronous - no warmup"),
         };
@@ -986,9 +1030,7 @@ mod tests {
         // (same input, same resolved pose), so any yielded frame works.
         let mut gpu_rgba = None;
         for _ in 0..3 {
-            if let RenderOutcome::Rgba(bytes) = gpu_core
-                .submit_frame_nv12(&left, &right)
-                .expect("gpu submit")
+            if let RenderOutcome::Rgba(bytes) = gpu_core.submit_frame(&frames).expect("gpu submit")
             {
                 gpu_rgba = Some(bytes.to_vec());
                 break;
@@ -1010,7 +1052,6 @@ mod tests {
     fn resize_then_submit_yields_resized_frames() {
         use crate::core::StitchCore;
         use crate::core::types::RenderOutcome;
-        use crate::render::planes::Nv12Planes;
         use crate::render::renderer::InputFormat;
         use crate::render::viewport::ViewportSize;
         use crate::stitch::test_support::{calib, gpu_or_skip, nv12};
@@ -1035,20 +1076,20 @@ mod tests {
 
         let (ly, luv) = nv12(cam_w, cam_h, 0);
         let (ry, ruv) = nv12(cam_w, cam_h, 30);
-        let left = Nv12Planes { y: &ly, uv: &luv };
-        let right = Nv12Planes { y: &ry, uv: &ruv };
+        let frames = crate::source::FrameSet::Nv12(vec![
+            crate::source::Nv12Data { y: ly, uv: luv },
+            crate::source::Nv12Data { y: ry, uv: ruv },
+        ]);
 
         // Warm the ring at the original size, then resize.
-        let _ = core.submit_frame_nv12(&left, &right).expect("submit");
+        let _ = core.submit_frame(&frames).expect("submit");
         assert_eq!(core.resize(128, 72), Some((128, 72)));
 
         // The rebuilt ring delivers frames at the new size by the
         // third post-resize submit.
         let mut delivered = None;
         for _ in 0..3 {
-            if let RenderOutcome::Rgba(bytes) =
-                core.submit_frame_nv12(&left, &right).expect("submit")
-            {
+            if let RenderOutcome::Rgba(bytes) = core.submit_frame(&frames).expect("submit") {
                 delivered = Some(bytes.len());
                 break;
             }

@@ -106,7 +106,16 @@ impl Playback {
         match source.next_frame()? {
             Some(stereo) => {
                 let (left, right) = match stereo {
-                    reco_core::source::StereoFrame::Yuv420p(pair) => (pair.left, pair.right),
+                    reco_core::source::FrameSet::Yuv420p(cams) => {
+                        match <[reco_core::source::YuvData; 2]>::try_from(cams) {
+                            Ok([left, right]) => (left, right),
+                            Err(_) => {
+                                return Err(SourceError::Read {
+                                    reason: "GUI preview expects two-camera Yuv420p sets".into(),
+                                });
+                            }
+                        }
+                    }
                     _ => {
                         return Err(SourceError::Read {
                             reason: "GUI preview expects Yuv420p frames".into(),
@@ -168,7 +177,16 @@ impl Playback {
         match source.try_next_frame()? {
             Some(stereo) => {
                 let (left, right) = match stereo {
-                    reco_core::source::StereoFrame::Yuv420p(pair) => (pair.left, pair.right),
+                    reco_core::source::FrameSet::Yuv420p(cams) => {
+                        match <[reco_core::source::YuvData; 2]>::try_from(cams) {
+                            Ok([left, right]) => (left, right),
+                            Err(_) => {
+                                return Err(SourceError::Read {
+                                    reason: "GUI preview expects two-camera Yuv420p sets".into(),
+                                });
+                            }
+                        }
+                    }
                     _ => {
                         return Err(SourceError::Read {
                             reason: "GUI preview expects Yuv420p frames".into(),
