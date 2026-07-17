@@ -28,8 +28,10 @@ use nalgebra::Vector3;
 /// them on top, and `view_matrix` + `world_to_render_pose` both compose
 /// through that one construction.
 /// World-space eye position of the mono (single-camera) rig: on the
-/// projection axis, one unit back along `+Z`. Consumers reach it
-/// through [`VirtualCamera::mono`].
+/// projection axis, one unit back along `+Z`. A unit offset rather
+/// than the origin itself: `new` normalizes the eye-to-origin
+/// direction, and a zero eye would produce NaN axes. Consumers reach
+/// it through [`VirtualCamera::mono`].
 const MONO_CAMERA_POSITION: [f32; 3] = [0.0, 0.0, 1.0];
 
 #[derive(Debug, Clone, Copy)]
@@ -52,10 +54,8 @@ impl VirtualCamera {
     }
 
     /// The mono (single-camera) basis: the camera sits on the
-    /// projection axis at `[0, 0, 1]` looking at the
-    /// origin - forward `-Z`, right `+X`, up `+Y`. A unit offset
-    /// rather than the origin itself: `new` normalizes the
-    /// eye-to-origin direction, and a zero eye would produce NaN axes.
+    /// projection axis at `[0, 0, 1]` looking at the origin -
+    /// forward `-Z`, right `+X`, up `+Y`.
     pub fn mono() -> Self {
         Self::new(&MONO_CAMERA_POSITION)
     }
