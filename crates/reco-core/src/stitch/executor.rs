@@ -104,7 +104,7 @@ impl CpuExecutor {
     /// switches the projection automatically.
     pub fn new(
         calib: Calibration,
-        size: ViewportSize,
+        viewport_size: ViewportSize,
         cam_w: u32,
         cam_h: u32,
         full_range: bool,
@@ -112,7 +112,9 @@ impl CpuExecutor {
         calib
             .validate()
             .map_err(|e| StitchError::InvalidConfig(e.to_string()))?;
-        size.validate().map_err(StitchError::InvalidConfig)?;
+        viewport_size
+            .validate()
+            .map_err(StitchError::InvalidConfig)?;
         if cam_w < 2 || cam_h < 2 {
             return Err(StitchError::InvalidConfig(format!(
                 "source dimensions must be >= 2, got {cam_w}x{cam_h}"
@@ -125,7 +127,7 @@ impl CpuExecutor {
 
         Ok(Self {
             calib,
-            viewport_size: size,
+            viewport_size,
             cam: (cam_w, cam_h),
             full_range,
         })

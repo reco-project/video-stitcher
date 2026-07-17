@@ -369,7 +369,7 @@ mod tests {
         let (cam_w, cam_h) = (256u32, 144u32);
         let (out_w, out_h) = (192u32, 108u32);
         let calib = calib(cam_w, cam_h);
-        let config = ViewportSize {
+        let viewport_size = ViewportSize {
             width: out_w,
             height: out_h,
         };
@@ -393,7 +393,7 @@ mod tests {
                 .gpu_program()
                 .expect("L-shape supplies a GPU program"),
             calib.clone(),
-            config.clone(),
+            viewport_size.clone(),
             cam_w,
             cam_h,
             wgpu::TextureFormat::Rgba8Unorm,
@@ -424,7 +424,7 @@ mod tests {
             &[left, right],
             (cam_w, cam_h),
             &calib,
-            &config,
+            &viewport_size,
             pose,
             false,
         )
@@ -464,7 +464,7 @@ mod tests {
         let (cam_w, cam_h) = (256u32, 144u32);
         let (out_w, out_h) = (192u32, 108u32);
         let calib = calib(cam_w, cam_h);
-        let config = ViewportSize {
+        let viewport_size = ViewportSize {
             width: out_w,
             height: out_h,
         };
@@ -494,7 +494,7 @@ mod tests {
                 .gpu_program()
                 .expect("L-shape supplies a GPU program"),
             calib.clone(),
-            config.clone(),
+            viewport_size.clone(),
             cam_w,
             cam_h,
             wgpu::TextureFormat::Rgba8Unorm,
@@ -524,7 +524,7 @@ mod tests {
             &[left, right],
             (cam_w, cam_h),
             &calib,
-            &config,
+            &viewport_size,
             pose,
             false,
         )
@@ -584,7 +584,7 @@ mod tests {
     #[cfg(feature = "gpu")]
     fn gpu_cpu_rgba(
         calib: &Calibration,
-        config: &ViewportSize,
+        viewport_size: &ViewportSize,
         cam: (u32, u32),
         left: &Nv12Planes,
         right: &Nv12Planes,
@@ -602,7 +602,7 @@ mod tests {
                 .gpu_program()
                 .expect("L-shape supplies a GPU program"),
             calib.clone(),
-            config.clone(),
+            viewport_size.clone(),
             cam_w,
             cam_h,
             wgpu::TextureFormat::Rgba8Unorm,
@@ -612,8 +612,8 @@ mod tests {
         pipeline.set_full_range(full_range);
         let mut readback = crate::gpu::rgba_readback::RgbaReadback::new(
             pipeline.gpu(),
-            config.width,
-            config.height,
+            viewport_size.width,
+            viewport_size.height,
         )
         .expect("readback");
         let mut gpu_rgba = None;
@@ -635,7 +635,7 @@ mod tests {
             &[*left, *right],
             cam,
             calib,
-            config,
+            viewport_size,
             pose,
             full_range,
         )
@@ -741,10 +741,10 @@ mod tests {
             ),
         ];
         let mut ran = false;
-        for (label, calib, config, case_pose, fr) in cases {
+        for (label, calib, viewport_size, case_pose, fr) in cases {
             let Some((g, c)) = gpu_cpu_rgba(
                 &calib,
-                &config,
+                &viewport_size,
                 (cam_w, cam_h),
                 &left,
                 &right,
@@ -799,10 +799,10 @@ mod tests {
             ("fov 178", calib(cam_w, cam_h), cfg(178.0)),
         ];
         let mut ran = false;
-        for (label, cal, (config, case_pose)) in cases {
+        for (label, cal, (viewport_size, case_pose)) in cases {
             let Some((g, c)) = gpu_cpu_rgba(
                 &cal,
-                &config,
+                &viewport_size,
                 (cam_w, cam_h),
                 &left,
                 &right,
@@ -828,7 +828,7 @@ mod tests {
     fn cpu_matches_gpu_high_frequency() {
         let (cam_w, cam_h) = (256u32, 144u32);
         let cal = calib(cam_w, cam_h);
-        let config = ViewportSize {
+        let viewport_size = ViewportSize {
             width: 192,
             height: 108,
         };
@@ -837,7 +837,7 @@ mod tests {
         let right = Nv12Planes { y: &cy, uv: &cuv };
         let Some((g, c)) = gpu_cpu_rgba(
             &cal,
-            &config,
+            &viewport_size,
             (cam_w, cam_h),
             &left,
             &right,
@@ -864,7 +864,7 @@ mod tests {
     fn cpu_black_region_matches_gpu() {
         let (cam_w, cam_h) = (256u32, 144u32);
         let cal = calib(cam_w, cam_h);
-        let config = ViewportSize {
+        let viewport_size = ViewportSize {
             width: 192,
             height: 108,
         };
@@ -876,8 +876,15 @@ mod tests {
         let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
-        let Some((g, c)) = gpu_cpu_rgba(&cal, &config, (cam_w, cam_h), &left, &right, pose, false)
-        else {
+        let Some((g, c)) = gpu_cpu_rgba(
+            &cal,
+            &viewport_size,
+            (cam_w, cam_h),
+            &left,
+            &right,
+            pose,
+            false,
+        ) else {
             return;
         };
         let (mut gpu_black, mut leak) = (0u32, 0u32);
@@ -912,7 +919,7 @@ mod tests {
     fn agreement_oracle_detects_subpixel_offset() {
         let (cam_w, cam_h) = (256u32, 144u32);
         let cal = calib(cam_w, cam_h);
-        let config = ViewportSize {
+        let viewport_size = ViewportSize {
             width: 192,
             height: 108,
         };
@@ -925,9 +932,15 @@ mod tests {
             pitch: -0.05,
             ..Default::default()
         };
-        let Some((gpu_rgba, cpu_rgba)) =
-            gpu_cpu_rgba(&cal, &config, (cam_w, cam_h), &left, &right, pose, false)
-        else {
+        let Some((gpu_rgba, cpu_rgba)) = gpu_cpu_rgba(
+            &cal,
+            &viewport_size,
+            (cam_w, cam_h),
+            &left,
+            &right,
+            pose,
+            false,
+        ) else {
             return;
         };
 
@@ -941,7 +954,7 @@ mod tests {
             &[left, right],
             (cam_w, cam_h),
             &cal,
-            &config,
+            &viewport_size,
             Pose {
                 yaw: pose.yaw + 0.01,
                 ..pose

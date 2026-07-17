@@ -358,7 +358,7 @@ impl SurfaceMap for PlaneMap {
 fn l_shape_plane_maps(
     topology: &LShape,
     calib: &Calibration,
-    size: &ViewportSize,
+    viewport_size: &ViewportSize,
     pose: Pose,
 ) -> (PlaneMap, PlaneMap) {
     // Known limitation: both planes are sized with lens 0's aspect.
@@ -367,7 +367,7 @@ fn l_shape_plane_maps(
     let plane_aspect = calib.lenses[0].aspect();
     let scene = topology.scene(&calib.framing, plane_aspect);
 
-    let out_aspect = size.aspect_ratio();
+    let out_aspect = viewport_size.aspect_ratio();
     let projection = opengl_to_wgpu_matrix()
         * Perspective3::new(
             out_aspect,
@@ -390,8 +390,8 @@ fn l_shape_plane_maps(
         scene.model_matrix_left(),
         &view_projection,
         &calib.lenses[0],
-        size.width,
-        size.height,
+        viewport_size.width,
+        viewport_size.height,
         aspect,
         calib.lenses[0].correction as f64,
     );
@@ -399,8 +399,8 @@ fn l_shape_plane_maps(
         scene.model_matrix_right(),
         &view_projection,
         &calib.lenses[1],
-        size.width,
-        size.height,
+        viewport_size.width,
+        viewport_size.height,
         aspect,
         calib.lenses[1].correction as f64,
     );
