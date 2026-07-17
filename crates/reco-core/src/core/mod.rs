@@ -916,17 +916,8 @@ mod tests {
         // (the methods exist only when the gpu feature compiles them).
         #[cfg(feature = "gpu")]
         {
-            let crate::source::FrameSet::Yuv420p(cams) = &frames else {
-                unreachable!("constructed above");
-            };
-            let planes = cams[0].as_planes();
             assert!(matches!(
                 core.flush().unwrap_err(),
-                StitchCoreError::RequiresGpu
-            ));
-            assert!(matches!(
-                core.render_yuv_at_pose(&planes, &planes, Pose::default())
-                    .unwrap_err(),
                 StitchCoreError::RequiresGpu
             ));
         }

@@ -293,8 +293,14 @@ impl super::StitchCore {
     /// Submit a stereo BGRA frame pair at an explicit pose. See
     /// [`Self::submit_frame_yuv_at_pose`] for semantics.
     ///
-    /// Does not run detection (BGRA backends are not yet supported;
-    /// see [`Self::submit_frame_bgra`] for the rationale).
+    /// Does not run detection: YOLO backends today consume YUV or
+    /// NV12 `RawFrame` variants, and wrapping BGRA bytes as a YUV
+    /// frame would need a color-space conversion we are not paying
+    /// for. Consumers that want detection on BGRA sources (OBS
+    /// Browser Source, screen capture) attach a detector that
+    /// understands BGRA once such a backend exists; until then BGRA
+    /// submits tick the director with the last detections from any
+    /// earlier YUV submits.
     #[cfg(feature = "gpu")]
     pub fn submit_frame_bgra_at_pose(
         &mut self,
@@ -303,61 +309,6 @@ impl super::StitchCore {
         pose: Pose,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         self.anchor_session_start();
-        let Executor::Gpu(gpu) = &self.executor else {
-            return Err(StitchCoreError::RequiresGpu);
-        };
-        let cmd = gpu.pipeline.render_to_target_bgra(left, right, pose)?;
-        let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
-        let Executor::Gpu(gpu) = &self.executor else {
-            return Err(StitchCoreError::RequiresGpu);
-        };
-        let rgba = self
-            .readback
-            .as_mut()
-            .expect("gpu engine owns the readback ring")
-            .readback(gpu.pipeline.gpu(), gpu.pipeline.render_target(), cmd)?;
-        self.frame_count += 1;
-        if let (Some(replay), Some(bytes)) = (self.replay.as_mut(), rgba) {
-            replay.push(ReplayFrame {
-                rgba: bytes.to_vec(),
-                captured_at,
-                pose,
-            });
-        }
-        Ok(match rgba {
-            Some(bytes) => RenderOutcome::Rgba(bytes),
-            None => RenderOutcome::Warmup,
-        })
-    }
-
-    /// Submit a stereo packed-RGBA/BGRA frame pair and render the
-    /// current pose.
-    ///
-    /// Requires the core to have been built with `InputFormat::Bgra`.
-    /// See [`Self::submit_frame`] for return semantics.
-    #[cfg(feature = "gpu")]
-    pub fn submit_frame_bgra(
-        &mut self,
-        left: &BgraPlanes<'_>,
-        right: &BgraPlanes<'_>,
-    ) -> Result<RenderOutcome<'_>, StitchCoreError> {
-        self.anchor_session_start();
-
-        // BGRA detection path: YOLO backends today consume YUV or
-        // NV12 `RawFrame` variants. Wrapping BGRA bytes as a YUV
-        // frame would require a color-space conversion we're not
-        // paying for yet - consumers that want detection on BGRA
-        // sources (OBS Browser Source, screen capture) attach a
-        // detector that understands BGRA once such a backend exists.
-        // For now, BGRA submits tick the director with the last
-        // detections (potentially from earlier YUV submits) but do
-        // not run detection themselves.
-
-        // `fresh_detection = false`: BGRA submits never run detection by
-        // design (see comment above). Directors must see this frame as
-        // "reusing cached detections" even on interval ticks, otherwise
-        // hysteresis counters over-fire.
-        let pose = self.resolve_current_pose(false);
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
@@ -524,45 +475,6 @@ impl super::StitchCore {
     // dispatch. They are also the render primitives for multi-output
     // consumers (record + stream, zero-copy compositor).
     // -----------------------------------------------------------------
-
-    /// Render a stereo YUV420P frame at an explicit pose.
-    ///
-    /// Does not run detection, does not tick the director, does not
-    /// read back RGBA. Consumers that want the full `submit_*` loop
-    /// (detection + director + readback) should call
-    /// [`Self::submit_frame`] instead.
-    ///
-    /// The caller is responsible for consuming the render by
-    /// submitting the returned command buffer (directly or chained
-    /// into further GPU work); the engine's readback and NV12
-    /// delivery paths do this internally.
-    #[cfg(feature = "gpu")]
-    pub fn render_yuv_at_pose(
-        &self,
-        left: &YuvPlanes<'_>,
-        right: &YuvPlanes<'_>,
-        pose: Pose,
-    ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
-        let Executor::Gpu(gpu) = &self.executor else {
-            return Err(StitchCoreError::RequiresGpu);
-        };
-        Ok(gpu.pipeline.render_to_target(left, right, pose)?)
-    }
-
-    /// Render a stereo packed-RGBA/BGRA frame at an explicit pose.
-    /// See [`Self::render_yuv_at_pose`] for semantics.
-    #[cfg(feature = "gpu")]
-    pub fn render_bgra_at_pose(
-        &self,
-        left: &BgraPlanes<'_>,
-        right: &BgraPlanes<'_>,
-        pose: Pose,
-    ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
-        let Executor::Gpu(gpu) = &self.executor else {
-            return Err(StitchCoreError::RequiresGpu);
-        };
-        Ok(gpu.pipeline.render_to_target_bgra(left, right, pose)?)
-    }
 
     /// Render from GPU-resident RGBA textures (e.g. Bayer demosaic output).
     ///

@@ -50,7 +50,7 @@ pub enum StitchCoreError {
 }
 
 /// Returned from every [`super::StitchCore::submit_frame`] /
-/// [`super::StitchCore::submit_frame_bgra`] call.
+/// `submit_frame_*_at_pose` call.
 ///
 /// On the GPU executor, readback is triple-buffered: the first two
 /// calls produce [`RenderOutcome::Warmup`] while the staging ring
