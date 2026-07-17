@@ -474,13 +474,13 @@ pub fn run_camera(
                     }
                 };
 
-                if let Some((r, b)) = awb.update(&*left_bytes, capture_width, capture_height) {
+                if let Some((r, b)) = awb.update(&left_bytes, capture_width, capture_height) {
                     isp.wb_r = r;
                     isp.wb_b = b;
                     demosaic_left.update_params(session.gpu(), &isp);
                     demosaic_right.update_params(session.gpu(), &isp);
                 }
-                ae.update(&*left_bytes, capture_width, capture_height);
+                ae.update(&left_bytes, capture_width, capture_height);
 
                 {
                     reco_core::profile_scope!("demosaic");
@@ -490,8 +490,8 @@ pub fn run_camera(
                             label: Some("bayer_demosaic"),
                         },
                     );
-                    demosaic_left.encode_demosaic(gpu, &mut encoder, &*left_bytes);
-                    demosaic_right.encode_demosaic(gpu, &mut encoder, &*right_bytes);
+                    demosaic_left.encode_demosaic(gpu, &mut encoder, &left_bytes);
+                    demosaic_right.encode_demosaic(gpu, &mut encoder, &right_bytes);
                     gpu.queue().submit(std::iter::once(encoder.finish()));
                 }
 
@@ -541,8 +541,7 @@ pub fn run_camera(
                 session.process_frame_gpu_rgba(
                     demosaic_left.output_texture(),
                     demosaic_right.output_texture(),
-                    pos.yaw,
-                    pos.pitch,
+                    pos,
                 )?;
                 frame_count += 1;
                 progress.report(frame_count);
