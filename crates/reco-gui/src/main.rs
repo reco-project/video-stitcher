@@ -1748,17 +1748,13 @@ fn main() -> anyhow::Result<()> {
                             reco_io::stitch_job::InputPath::Chained(all)
                         }
                         None => {
-                            if paths.len() == 1 {
-                                reco_io::stitch_job::InputPath::Single(
-                                    paths.into_iter().next().unwrap(),
-                                )
-                            } else {
+                            if paths.len() > 1 {
                                 log::info!(
                                     "Left: {} segments selected, chaining via concat demuxer",
                                     paths.len()
                                 );
-                                reco_io::stitch_job::InputPath::Chained(paths)
                             }
+                            reco_io::stitch_job::InputPath::from_segments(paths)
                         }
                     }
                 };
@@ -1834,17 +1830,13 @@ fn main() -> anyhow::Result<()> {
                             reco_io::stitch_job::InputPath::Chained(all)
                         }
                         None => {
-                            if paths.len() == 1 {
-                                reco_io::stitch_job::InputPath::Single(
-                                    paths.into_iter().next().unwrap(),
-                                )
-                            } else {
+                            if paths.len() > 1 {
                                 log::info!(
                                     "Right: {} segments selected, chaining via concat demuxer",
                                     paths.len()
                                 );
-                                reco_io::stitch_job::InputPath::Chained(paths)
                             }
+                            reco_io::stitch_job::InputPath::from_segments(paths)
                         }
                     }
                 };
@@ -4342,13 +4334,8 @@ fn run_autoload(
         spec.right.len(),
         spec.cal.display()
     );
-    let make_input = |paths: &[PathBuf]| {
-        if paths.len() == 1 {
-            reco_io::stitch_job::InputPath::Single(paths[0].clone())
-        } else {
-            reco_io::stitch_job::InputPath::Chained(paths.to_vec())
-        }
-    };
+    let make_input =
+        |paths: &[PathBuf]| reco_io::stitch_job::InputPath::from_segments(paths.to_vec());
     {
         let mut s = state.borrow_mut();
         s.left_input = Some(make_input(&spec.left));

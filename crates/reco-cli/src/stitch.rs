@@ -90,28 +90,14 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     #[cfg_attr(not(feature = "autocam"), allow(unused_variables))]
     let field_roi = cal.field_roi.clone();
 
-    // Accept `a.mp4;b.mp4;c.mp4` to chain segments via the concat demuxer
-    // (mirrors the GUI's multi-segment selection). A single path stays Single.
-    let to_input = |s: &str| -> reco_io::stitch_job::InputPath {
-        let parts: Vec<std::path::PathBuf> = s
-            .split(';')
-            .filter(|p| !p.is_empty())
-            .map(std::path::PathBuf::from)
-            .collect();
-        if parts.len() > 1 {
-            log::info!(
-                "CLI input: {} segments, chaining via concat demuxer",
-                parts.len()
-            );
-            reco_io::stitch_job::InputPath::Chained(parts)
-        } else {
-            reco_io::stitch_job::InputPath::Single(std::path::PathBuf::from(s))
-        }
-    };
     // Arity is not decided here: StitchJob::run validates the input
     // count against the calibration's topology with a typed error.
-    let inputs: Vec<reco_io::stitch_job::InputPath> =
-        args.inputs.iter().map(|s| to_input(s)).collect();
+    // Each input accepts `a.mp4;b.mp4` segment chaining.
+    let inputs: Vec<reco_io::stitch_job::InputPath> = args
+        .inputs
+        .iter()
+        .map(|s| reco_io::stitch_job::InputPath::parse_segments(s))
+        .collect();
     let mut job = reco_io::StitchJob::with_calibration(inputs, cal, args.output);
     job = job
         .codec(parse_codec(args.codec))

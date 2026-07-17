@@ -152,6 +152,44 @@ impl InputPath {
             Self::Chained(v) => v.clone(),
         }
     }
+
+    /// Build from an ordered, non-empty segment list: one path stays
+    /// [`Single`](Self::Single), several chain via the concat demuxer.
+    /// The vec-shaped twin of [`Self::parse_segments`] for consumers
+    /// that collect paths themselves (file pickers, env specs).
+    pub fn from_segments(mut paths: Vec<PathBuf>) -> Self {
+        debug_assert!(!paths.is_empty(), "an input needs at least one segment");
+        if paths.len() == 1 {
+            Self::Single(paths.remove(0))
+        } else {
+            Self::Chained(paths)
+        }
+    }
+
+    /// Parse a `;`-separated segment string (`a.mp4;b.mp4;c.mp4`) into
+    /// a chained input; a single path stays `Single`. Segments are
+    /// trimmed and empty entries (doubled or trailing `;`) dropped, so
+    /// `"a.mp4;"` is the single input `a.mp4`, not a path with a
+    /// stray semicolon. A string with no usable segment keeps the raw
+    /// text so `open` reports it as an invalid path.
+    pub fn parse_segments(s: &str) -> Self {
+        let parts: Vec<PathBuf> = s
+            .split(';')
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(PathBuf::from)
+            .collect();
+        if parts.is_empty() {
+            return Self::Single(PathBuf::from(s.trim()));
+        }
+        if parts.len() > 1 {
+            log::info!(
+                "input: {} segments, chaining via concat demuxer",
+                parts.len()
+            );
+        }
+        Self::from_segments(parts)
+    }
 }
 
 impl From<&str> for InputPath {
@@ -1141,6 +1179,34 @@ mod tests {
             msg.contains("consumes 2 camera input(s), but 1 were given"),
             "expected the typed arity error, got: {msg}"
         );
+    }
+
+    #[test]
+    fn parse_segments_handles_single_chained_and_stray_separators() {
+        assert!(matches!(
+            InputPath::parse_segments("a.mp4"),
+            InputPath::Single(p) if p == std::path::Path::new("a.mp4")
+        ));
+        assert!(matches!(
+            InputPath::parse_segments("a.mp4;b.mp4"),
+            InputPath::Chained(v) if v.len() == 2
+        ));
+        // A trailing separator is one input, not a path with a stray
+        // semicolon (the old CLI closure wrapped the raw string).
+        assert!(matches!(
+            InputPath::parse_segments("a.mp4;"),
+            InputPath::Single(p) if p == std::path::Path::new("a.mp4")
+        ));
+        assert!(matches!(
+            InputPath::parse_segments(" a.mp4 ; b.mp4 "),
+            InputPath::Chained(v) if v == vec![PathBuf::from("a.mp4"), PathBuf::from("b.mp4")]
+        ));
+        // Nothing usable: the raw text flows into open()'s
+        // invalid-path reporting instead of an empty chain.
+        assert!(matches!(
+            InputPath::parse_segments(";;"),
+            InputPath::Single(p) if p == std::path::Path::new(";;")
+        ));
     }
 
     #[test]
