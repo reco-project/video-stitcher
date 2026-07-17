@@ -46,9 +46,9 @@ use nalgebra::{Point3, Vector3};
 // additions without reshaping the core API and without a second object
 // to keep in sync. The trait dispatches the CPU surface maps, the GPU
 // program descriptor, coverage construction and the virtual-camera
-// basis; the detection-side forward maps (`camera_to_panorama`) fold in
-// once their `CameraId`/`Pose` currency moves out of the
-// detect layer.
+// basis; the detection-side forward maps (`camera_to_panorama`) are
+// the next fold-in - their `CameraId`/`Pose` currency already lives in
+// the geometry leaf, so nothing blocks the move.
 
 /// One frame's geometry question, bundled: the document, the output
 /// viewport, and the pose. The pose carries fov alongside yaw/pitch -
