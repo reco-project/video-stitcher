@@ -141,11 +141,7 @@ pub fn run_camera(
     }
     let field_roi = cal.field_roi.clone();
 
-    let viewport_size = ViewportSize {
-        width,
-        height,
-        ..Default::default()
-    };
+    let viewport_size = ViewportSize { width, height };
 
     let gpu = reco_core::gpu::GpuContext::new_blocking()?;
 
@@ -620,7 +616,7 @@ pub fn run_camera(
             let stereo = StereoFrame::Nv12(pair);
             session.detect_and_update_director(&stereo, start.elapsed())?;
             let pos = session.director_position();
-            session.process_frame(&stereo, pos.yaw, pos.pitch)?;
+            session.process_frame(&stereo, pos)?;
             println!("Warmup complete, starting capture...");
         }
 
@@ -638,7 +634,7 @@ pub fn run_camera(
             let stereo = StereoFrame::Nv12(pair);
             session.detect_and_update_director(&stereo, start.elapsed())?;
             let pos = session.director_position();
-            session.process_frame(&stereo, pos.yaw, pos.pitch)?;
+            session.process_frame(&stereo, pos)?;
             frame_count += 1;
             progress.report(frame_count);
         }
@@ -671,7 +667,7 @@ pub fn run_camera(
 
             session.detect_and_update_director(&frame, start.elapsed())?;
             let pos = session.director_position();
-            session.process_frame(&frame, pos.yaw, pos.pitch)?;
+            session.process_frame(&frame, pos)?;
             frame_count += 1;
             progress.report(frame_count);
         }
