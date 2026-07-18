@@ -607,6 +607,21 @@ impl AppState {
         Ok(())
     }
 
+    /// Whether the calibration currently loaded is the one configured in
+    /// preferences as the Default Calibration - i.e. saving now would
+    /// overwrite the fallback future sessions rely on, not just this
+    /// session's own file. `None == None` deliberately doesn't count (no
+    /// default configured means nothing to protect).
+    fn is_default_calibration(&self) -> bool {
+        match (
+            &self.calibration_path,
+            &self.user_settings.default_calibration_path,
+        ) {
+            (Some(current), Some(default)) => current == default,
+            _ => false,
+        }
+    }
+
     /// Restore PlaneLayout to the values loaded at init (or after auto-cal).
     fn reset_calibration(&mut self) {
         if let Some(layout) = self.cal_baseline_layout.clone() {
@@ -2375,6 +2390,14 @@ fn main() -> anyhow::Result<()> {
                 .unwrap_or_default()
                 .into(),
         );
+        app.set_prefs_default_calibration_path(
+            s.user_settings
+                .default_calibration_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default()
+                .into(),
+        );
         app.set_recording_codec(s.user_settings.recording_codec.clone().into());
         app.set_recording_quality(s.user_settings.recording_quality.clone().into());
         app.set_recording_folder(
@@ -2405,6 +2428,12 @@ fn main() -> anyhow::Result<()> {
             None
         } else {
             Some(PathBuf::from(model_path))
+        };
+        let default_cal_path = app.get_prefs_default_calibration_path().to_string();
+        s.user_settings.default_calibration_path = if default_cal_path.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(default_cal_path))
         };
         s.user_settings.recording_codec = app.get_recording_codec().to_string();
         s.user_settings.recording_quality = app.get_recording_quality().to_string();
@@ -2456,6 +2485,18 @@ fn main() -> anyhow::Result<()> {
             && let Some(app) = app_weak.upgrade()
         {
             app.set_prefs_ai_model_path(path.to_string_lossy().to_string().into());
+        }
+    });
+
+    let app_weak = app.as_weak();
+    app.on_pick_prefs_default_calibration(move || {
+        let dialog = rfd::FileDialog::new()
+            .set_title("Select default calibration")
+            .add_filter("Calibration JSON", &["json"]);
+        if let Some(path) = dialog.pick_file()
+            && let Some(app) = app_weak.upgrade()
+        {
+            app.set_prefs_default_calibration_path(path.to_string_lossy().to_string().into());
         }
     });
 
@@ -2853,9 +2894,10 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
-    let app_weak = app.as_weak();
-    let state_ref = Rc::clone(&state);
-    app.on_save_calibration(move || {
+    // Shared by both `save-calibration` (after the default-calibration
+    // check passes) and `confirm-save-calibration` (user already said
+    // "yes, overwrite the default" in the warning modal).
+    fn do_save_calibration(state_ref: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) {
         let save_result = state_ref.borrow().save_calibration();
         match save_result {
             Err(e) => {
@@ -2881,6 +2923,24 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+    }
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_save_calibration(move || {
+        if state_ref.borrow().is_default_calibration() {
+            if let Some(app) = app_weak.upgrade() {
+                app.set_overwrite_default_cal_warning_open(true);
+            }
+            return;
+        }
+        do_save_calibration(&state_ref, &app_weak);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_confirm_save_calibration(move || {
+        do_save_calibration(&state_ref, &app_weak);
     });
 
     let app_weak = app.as_weak();
@@ -4195,6 +4255,20 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
     let mut s = state.borrow_mut();
     if let Some(app) = app_weak.upgrade() {
         sync_segments(&s, &app);
+    }
+    // No calibration explicitly picked yet: fall back to the user's
+    // configured Default Calibration (preferences), if any and if it
+    // still exists on disk - this is the one place every left/right/
+    // calibration pick path converges before `try_init`, so it covers
+    // "no calibration otherwise available" generically instead of
+    // duplicating the fallback at each pick site.
+    if s.calibration_path.is_none()
+        && let Some(default_cal) = s.user_settings.default_calibration()
+    {
+        if let Some(app) = app_weak.upgrade() {
+            app.set_calibration_path(display_name(&default_cal).into());
+        }
+        s.calibration_path = Some(default_cal);
     }
     // Capture the pre-init clip length so we can distinguish an input
     // change (new load / appended segments) from a calibration-only
