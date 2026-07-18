@@ -48,6 +48,13 @@ pub struct GuiSettings {
     #[serde(default)]
     pub ai_model_path: Option<PathBuf>,
 
+    /// Calibration file to fall back to whenever no calibration is
+    /// otherwise loaded/picked for a session (see `try_init_and_update`'s
+    /// fallback). `None` means no default is configured - the app
+    /// behaves as it always has, requiring an explicit pick.
+    #[serde(default)]
+    pub default_calibration_path: Option<PathBuf>,
+
     /// Last window size, remembered across restarts. `None` means
     /// "use Slint's preferred-width / preferred-height defaults".
     #[serde(default)]
@@ -116,6 +123,7 @@ impl Default for GuiSettings {
             default_quality: default_quality(),
             default_blend_width: default_blend_width(),
             ai_model_path: None,
+            default_calibration_path: None,
             window_size: None,
             window_maximized: false,
             recording_codec: default_codec(),
@@ -168,6 +176,17 @@ impl GuiSettings {
         self.recent_calibration.push(path);
         self.save();
     }
+
+    /// The configured default-calibration fallback, if set and if it
+    /// still exists on disk - a deleted/moved default should silently
+    /// stop applying rather than pointing `calibration_path` at a dead
+    /// file (see `try_init_and_update`).
+    pub fn default_calibration(&self) -> Option<PathBuf> {
+        self.default_calibration_path
+            .as_ref()
+            .filter(|p| p.exists())
+            .cloned()
+    }
 }
 
 #[cfg(test)]
@@ -192,5 +211,33 @@ mod tests {
         assert_eq!(s.default_codec, "hevc");
         assert_eq!(s.default_quality, "balanced");
         assert!(s.recent_left.is_empty());
+    }
+
+    #[test]
+    fn default_calibration_none_when_unset() {
+        let s = GuiSettings::default();
+        assert!(s.default_calibration().is_none());
+    }
+
+    #[test]
+    fn default_calibration_none_when_file_no_longer_exists() {
+        let mut s = GuiSettings::default();
+        s.default_calibration_path = Some(PathBuf::from("does-not-exist.json"));
+        assert!(s.default_calibration().is_none());
+    }
+
+    #[test]
+    fn default_calibration_returns_path_when_it_exists() {
+        let dir = std::env::temp_dir().join(format!(
+            "reco-gui-settings-test-default-cal-{}",
+            std::process::id(),
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("default.json");
+        std::fs::write(&path, b"{}").unwrap();
+
+        let mut s = GuiSettings::default();
+        s.default_calibration_path = Some(path.clone());
+        assert_eq!(s.default_calibration(), Some(path));
     }
 }
