@@ -23,12 +23,19 @@ Usage:
 
 import argparse
 import json
+import os
 import sys
 from collections import defaultdict
 from pathlib import Path
 
-import cv2
-import numpy as np
+# OpenCV's FFmpeg backend gives up after a fixed number of packet reads
+# per grabFrame; on files with audio streams the video packets can sit
+# beyond that budget and capture fails with "packet read max attempts
+# exceeded". Must be set before cv2 is imported.
+os.environ.setdefault("OPENCV_FFMPEG_READ_ATTEMPTS", "16384")
+
+import cv2  # noqa: E402
+import numpy as np  # noqa: E402
 
 COCO_NAMES = {
     0: "person", 32: "sports ball", 37: "skateboard",
