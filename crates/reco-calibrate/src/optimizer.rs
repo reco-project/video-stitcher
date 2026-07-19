@@ -19,7 +19,8 @@
 
 use argmin::core::{CostFunction, Error, Executor, State};
 use argmin::solver::neldermead::NelderMead;
-use reco_core::calibration::{Framing, LShapeTopology};
+use reco_core::calibration::Framing;
+use reco_core::projection::LShape;
 
 use crate::error::CalibrateError;
 use crate::geometry::{self, OptParams};
@@ -32,7 +33,7 @@ use crate::types::{CalibrationConfig, MatchedPoint};
 /// Trait for calibration parameter optimizers.
 ///
 /// Implementations take a set of matched points and configuration, and
-/// return the optimal [`LShapeTopology`] with its residual error. This
+/// return the optimal [`LShape`] with its residual error. This
 /// abstraction allows swapping optimization backends without changing
 /// the calibration pipeline.
 pub trait Optimizer {
@@ -41,7 +42,7 @@ pub trait Optimizer {
         &self,
         points: &[MatchedPoint],
         config: &CalibrationConfig,
-    ) -> Result<(LShapeTopology, Framing, f64), CalibrateError>;
+    ) -> Result<(LShape, Framing, f64), CalibrateError>;
 }
 
 // ---------------------------------------------------------------------------
@@ -309,7 +310,7 @@ impl Optimizer for NelderMeadOptimizer {
         &self,
         points: &[MatchedPoint],
         config: &CalibrationConfig,
-    ) -> Result<(LShapeTopology, Framing, f64), CalibrateError> {
+    ) -> Result<(LShape, Framing, f64), CalibrateError> {
         let lock = config.optimizer.lock_cam_d;
         let lock_zrx = config.optimizer.lock_z_rx;
         let enable_xrx = config.optimizer.enable_x_rx;
@@ -404,7 +405,7 @@ impl Optimizer for NelderMeadOptimizer {
             (false, true) => params_from_vec_no_zrx(&best_p),
             (false, false) => params_from_vec(&best_p),
         };
-        let topology = LShapeTopology {
+        let topology = LShape {
             intersect: params.intersect,
             x_ty: params.x_ty,
             x_rz: params.x_rz,
@@ -415,7 +416,7 @@ impl Optimizer for NelderMeadOptimizer {
                 0.0
             },
             z_rz: 0.0,
-            blend_width: reco_core::calibration::DEFAULT_BLEND_WIDTH,
+            blend_width: reco_core::projection::DEFAULT_BLEND_WIDTH,
         };
         let framing = Framing {
             axis_offset: params.cam_d,
@@ -448,7 +449,7 @@ impl Clone for CalibrationCost<'_> {
 pub fn optimize(
     points: &[MatchedPoint],
     config: &CalibrationConfig,
-) -> Result<(LShapeTopology, Framing, f64), CalibrateError> {
+) -> Result<(LShape, Framing, f64), CalibrateError> {
     NelderMeadOptimizer.optimize(points, config)
 }
 

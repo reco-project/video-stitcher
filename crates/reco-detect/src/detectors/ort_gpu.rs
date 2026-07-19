@@ -26,7 +26,7 @@ use ort::value::{Shape, TensorRefMut};
 use reco_core::detect::detector::{
     Detection, DetectorError, DetectorFrame, GpuNv12Frame, UnifiedDetector,
 };
-use reco_core::geometry::CameraId;
+use reco_core::geometry::CameraIndex;
 use reco_core::interop::cuda::{
     CUdeviceptr, cuda_ensure_context, cuda_mem_alloc, cuda_mem_free, cuda_memset_d8,
 };
@@ -230,7 +230,7 @@ impl OrtGpuDetector {
     /// original error text verbatim.
     fn detect_gpu_raw(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         frame: &GpuNv12Frame,
     ) -> Result<Vec<Detection>, DetectorError> {
         let GpuNv12Frame {
@@ -395,7 +395,7 @@ impl UnifiedDetector for OrtGpuDetector {
 
     fn detect(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
         // CUDA-residency backend: accept `Cuda(GpuNv12Frame)` and

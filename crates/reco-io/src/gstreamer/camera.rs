@@ -12,9 +12,7 @@
 use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
-use reco_core::source::{
-    FramePair, Nv12Data, Nv12FramePair, SourceError, SourceInfo, StereoFrame, YuvData,
-};
+use reco_core::source::{FrameSet, Nv12Data, SourceError, SourceInfo, YuvData};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -382,10 +380,10 @@ fn spawn_nv12_capture_thread(
 /// Stereo camera source using GStreamer (I420 output).
 ///
 /// Each camera runs in its own thread pulling frames from appsink.
-/// A pairing thread zips left+right into `FramePair`s and sends
-/// them through a bounded channel.
+/// A pairing thread zips left+right into a [`FrameSet`] and sends
+/// it through a bounded channel.
 pub struct GstreamerCameraSource {
-    rx: mpsc::Receiver<FramePair>,
+    rx: mpsc::Receiver<FrameSet>,
     info: SourceInfo,
 }
 
@@ -412,13 +410,13 @@ impl GstreamerCameraSource {
             config.fps,
         );
 
-        let (tx, rx) = mpsc::sync_channel::<FramePair>(2);
+        let (tx, rx) = mpsc::sync_channel::<FrameSet>(2);
 
         std::thread::Builder::new()
             .name("capture_pair".into())
             .spawn(move || {
                 while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
-                    if tx.send(FramePair { left, right }).is_err() {
+                    if tx.send(FrameSet::Yuv420p(vec![left, right])).is_err() {
                         break;
                     }
                 }
@@ -449,9 +447,9 @@ impl reco_core::source::FrameSource for GstreamerCameraSource {
         self.info.clone()
     }
 
-    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
         match self.rx.recv() {
-            Ok(pair) => Ok(Some(StereoFrame::Yuv420p(pair))),
+            Ok(frames) => Ok(Some(frames)),
             Err(_) => Ok(None),
         }
     }
@@ -466,7 +464,7 @@ impl reco_core::source::FrameSource for GstreamerCameraSource {
 ///
 /// Implements graceful shutdown via `Drop` to avoid Argus teardown crashes.
 pub struct GstreamerNv12CameraSource {
-    rx: mpsc::Receiver<Nv12FramePair>,
+    rx: mpsc::Receiver<(Nv12Data, Nv12Data)>,
     info: SourceInfo,
     stop: Arc<AtomicBool>,
 }
@@ -498,13 +496,13 @@ impl GstreamerNv12CameraSource {
             stop.clone(),
         );
 
-        let (tx, rx) = mpsc::sync_channel::<Nv12FramePair>(2);
+        let (tx, rx) = mpsc::sync_channel::<(Nv12Data, Nv12Data)>(2);
 
         std::thread::Builder::new()
             .name("capture_pair".into())
             .spawn(move || {
                 while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
-                    if tx.send(Nv12FramePair { left, right }).is_err() {
+                    if tx.send((left, right)).is_err() {
                         break;
                     }
                 }
@@ -539,8 +537,11 @@ impl GstreamerNv12CameraSource {
         self.info.clone()
     }
 
-    /// Get the next stereo NV12 frame pair, or `None` if the source is exhausted.
-    pub fn next_pair(&mut self) -> Result<Option<Nv12FramePair>, SourceError> {
+    /// Get the next `(left, right)` NV12 frame pair, or `None` if the
+    /// source is exhausted. The per-camera accessor for genuinely
+    /// pair-shaped consumers (stereo calibration); pipeline consumers
+    /// use [`FrameSource::next_frame`](reco_core::source::FrameSource).
+    pub fn next_pair(&mut self) -> Result<Option<(Nv12Data, Nv12Data)>, SourceError> {
         match self.rx.recv() {
             Ok(pair) => Ok(Some(pair)),
             Err(_) => Ok(None),
@@ -553,11 +554,9 @@ impl reco_core::source::FrameSource for GstreamerNv12CameraSource {
         self.info.clone()
     }
 
-    fn next_frame(
-        &mut self,
-    ) -> Result<Option<reco_core::source::StereoFrame>, reco_core::source::SourceError> {
+    fn next_frame(&mut self) -> Result<Option<FrameSet>, reco_core::source::SourceError> {
         self.next_pair()
-            .map(|opt| opt.map(reco_core::source::StereoFrame::Nv12))
+            .map(|opt| opt.map(|(left, right)| FrameSet::Nv12(vec![left, right])))
     }
 }
 
@@ -847,14 +846,14 @@ mod nvmm_source {
             self.info.clone()
         }
 
-        /// Pull the next NVMM stereo frame as [`StereoFrame::NvmmResident`].
+        /// Pull the next NVMM stereo frame as [`FrameSet::NvmmResident`].
         ///
         /// Releases the previous frame's DMA-buf first (deferred release):
         /// the capture thread blocks until released, and the session has
         /// finished importing + detecting the prior frame by the time this
         /// is called again, so the buffer is safe to recycle. Exactly one
         /// frame is ever unreleased.
-        fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
             if self.outstanding {
                 self.release_previous();
                 self.outstanding = false;
@@ -862,10 +861,10 @@ mod nvmm_source {
             match self.next_pair()? {
                 Some(pair) => {
                     self.outstanding = true;
-                    Ok(Some(StereoFrame::NvmmResident {
-                        left: to_plane_info(&pair.left),
-                        right: to_plane_info(&pair.right),
-                    }))
+                    Ok(Some(FrameSet::NvmmResident([
+                        to_plane_info(&pair.left),
+                        to_plane_info(&pair.right),
+                    ])))
                 }
                 None => Ok(None),
             }

@@ -8,7 +8,7 @@
 //! [`GpuExecutor`], reached through [`crate::core::StitchCore`], which owns
 //! one executor as its render substrate.
 //!
-//! - [`CpuExecutor`] binds a [`Projection`] and drives the pure-Rust gather.
+//! - [`CpuExecutor`] reads the document's [`Projection`] and drives the pure-Rust gather.
 //! - [`GpuExecutor`] owns the wgpu `StitchPipeline` (there is no other
 //!   owner) plus a private blocking-readback ring for the synchronous
 //!   contract.
@@ -18,21 +18,24 @@
 //! wgpu-free builds.
 
 use crate::calibration::{Calibration, Framing, Lens, Topology};
-#[cfg(feature = "gpu")]
-use crate::gpu::GpuContext;
-#[cfg(feature = "gpu")]
-use crate::gpu::rgba_readback::{RgbaReadback, RgbaReadbackError};
-#[cfg(feature = "gpu")]
-use crate::render::pipeline::{PipelineError, StitchPipeline};
+use crate::geometry::Pose;
+use crate::projection::{CoverageBoundary, Projection};
 use crate::render::planes::{Nv12Planes, YuvPlanes};
-#[cfg(feature = "gpu")]
-use crate::render::renderer::InputFormat;
-use crate::render::scene::SceneGeometry;
-use crate::render::viewport::ViewportConfig;
-
-use crate::projection::Projection;
+use crate::render::viewport::ViewportSize;
 
 use super::cpu::stitch_rgba;
+
+// The GPU arm's imports, gated as one block with the code they serve.
+#[cfg(feature = "gpu")]
+use crate::gpu::{
+    GpuContext,
+    rgba_readback::{RgbaReadback, RgbaReadbackError},
+};
+#[cfg(feature = "gpu")]
+use crate::render::{
+    pipeline::{PipelineError, StitchPipeline},
+    renderer::InputFormat,
+};
 
 /// Errors a stitch executor can return.
 ///
@@ -48,6 +51,13 @@ pub enum StitchError {
     #[cfg(feature = "gpu")]
     #[error("gpu readback: {0}")]
     Readback(#[from] RgbaReadbackError),
+    /// The projection is CPU-only: it has no GPU program to bind.
+    #[cfg(feature = "gpu")]
+    #[error("projection '{projection}' has no GPU program yet; construct the CPU executor instead")]
+    NoGpuProgram {
+        /// Name of the CPU-only projection.
+        projection: &'static str,
+    },
     /// Backend configuration is invalid (e.g. degenerate dimensions).
     #[error("invalid stitch config: {0}")]
     InvalidConfig(String),
@@ -70,12 +80,7 @@ pub enum StitchError {
 pub trait StitchExecutor {
     /// Stitch one frame set (one NV12 plane pair per camera, in
     /// projection order) to RGBA at the configured output size.
-    fn stitch(
-        &mut self,
-        planes: &[Nv12Planes<'_>],
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<Vec<u8>, StitchError>;
+    fn stitch(&mut self, planes: &[Nv12Planes<'_>], pose: Pose) -> Result<Vec<u8>, StitchError>;
 
     /// Output dimensions `(width, height)` in pixels.
     fn output_dims(&self) -> (u32, u32);
@@ -86,25 +91,20 @@ pub trait StitchExecutor {
 
 /// CPU software backend - pure Rust, no GPU. The portable / GPU-less path.
 pub struct CpuExecutor {
-    /// The bound projection: dispatches the per-frame surface maps.
-    pub(crate) projection: Box<dyn Projection>,
     pub(crate) calib: Calibration,
-    pub(crate) config: ViewportConfig,
+    pub(crate) viewport_size: ViewportSize,
     pub(crate) cam: (u32, u32),
     pub(crate) full_range: bool,
-    /// Plane-placement geometry derived from `calib`, cached for the
-    /// engine's coverage construction (the stitch kernel re-derives its
-    /// own per call). Rebuilt by the [`Executor`] mutation methods.
-    pub(crate) scene: SceneGeometry,
 }
 
 impl CpuExecutor {
-    /// Configure a CPU executor: bind a projection to a fixed source size
-    /// and output viewport.
+    /// Configure a CPU executor for a fixed source size and output
+    /// viewport. The projection is the calibration document's topology
+    /// (zero-copy: the document is the engine), so a document edit
+    /// switches the projection automatically.
     pub fn new(
-        projection: Box<dyn Projection>,
         calib: Calibration,
-        config: ViewportConfig,
+        viewport_size: ViewportSize,
         cam_w: u32,
         cam_h: u32,
         full_range: bool,
@@ -112,99 +112,79 @@ impl CpuExecutor {
         calib
             .validate()
             .map_err(|e| StitchError::InvalidConfig(e.to_string()))?;
-        config.validate().map_err(StitchError::InvalidConfig)?;
-        if usize::from(projection.camera_count()) != calib.lenses.len() {
-            return Err(StitchError::InvalidConfig(format!(
-                "projection '{}' consumes {} cameras but the calibration has {} lenses",
-                projection.name(),
-                projection.camera_count(),
-                calib.lenses.len()
-            )));
-        }
+        viewport_size
+            .validate()
+            .map_err(StitchError::InvalidConfig)?;
         if cam_w < 2 || cam_h < 2 {
             return Err(StitchError::InvalidConfig(format!(
                 "source dimensions must be >= 2, got {cam_w}x{cam_h}"
             )));
         }
-        let scene = derive_scene(&calib);
+        log::debug!(
+            "CpuExecutor: projection '{}' from the calibration topology",
+            calib.topology.projection().name()
+        );
+
         Ok(Self {
-            projection,
             calib,
-            config,
+            viewport_size,
             cam: (cam_w, cam_h),
             full_range,
-            scene,
         })
     }
 
-    /// Stitch one NV12 frame pair to RGBA at the configured output
+    /// The projection in effect: a borrow of the document's topology.
+    pub(crate) fn projection(&self) -> &dyn Projection {
+        self.calib.topology.projection()
+    }
+
+    /// Stitch one NV12 frame set to RGBA at the configured output
     /// size. `&self` on purpose: the CPU stitch is stateless per call
     /// (the [`StitchExecutor`] trait's `&mut self` accommodates the
     /// GPU arm's readback ring).
     pub fn stitch_nv12(
         &self,
         planes: &[Nv12Planes<'_>],
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<Vec<u8>, StitchError> {
         stitch_rgba(
-            self.projection.as_ref(),
+            self.projection(),
             planes,
             self.cam,
             &self.calib,
-            &self.config,
-            yaw,
-            pitch,
+            &self.viewport_size,
+            pose,
             self.full_range,
         )
     }
 
-    /// Stitch one YUV420P frame pair to RGBA at the configured output
+    /// Stitch one YUV420P frame set to RGBA at the configured output
     /// size. The CPU kernel is format-flexible per call (unlike the
     /// GPU pipeline, which fixes its input format at construction);
     /// the [`StitchExecutor`] trait covers the NV12 contract, this
     /// inherent entry covers planar YUV sources (file decode).
-    pub fn stitch_yuv(
-        &self,
-        planes: &[YuvPlanes<'_>],
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<Vec<u8>, StitchError> {
+    pub fn stitch_yuv(&self, planes: &[YuvPlanes<'_>], pose: Pose) -> Result<Vec<u8>, StitchError> {
         super::cpu::stitch_rgba_yuv420p(
-            self.projection.as_ref(),
+            self.projection(),
             planes,
             self.cam,
             &self.calib,
-            &self.config,
-            yaw,
-            pitch,
+            &self.viewport_size,
+            pose,
             self.full_range,
         )
     }
 }
 
-/// Plane-placement geometry for a calibration document (both stereo
-/// cameras share the lens aspect). One derivation, shared by the CPU
-/// executor's cache and its mutation paths - mirrors what
-/// `StitchPipeline::update_calibration` does on the GPU side.
-fn derive_scene(calib: &Calibration) -> SceneGeometry {
-    SceneGeometry::for_calibration(calib)
-}
-
 impl StitchExecutor for CpuExecutor {
-    fn stitch(
-        &mut self,
-        planes: &[Nv12Planes<'_>],
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<Vec<u8>, StitchError> {
+    fn stitch(&mut self, planes: &[Nv12Planes<'_>], pose: Pose) -> Result<Vec<u8>, StitchError> {
         // Plane-size + camera-count validation lives in stitch_rgba, which
         // returns a typed error instead of panicking on a short/truncated frame.
-        self.stitch_nv12(planes, yaw, pitch)
+        self.stitch_nv12(planes, pose)
     }
 
     fn output_dims(&self) -> (u32, u32) {
-        (self.config.width, self.config.height)
+        (self.viewport_size.width, self.viewport_size.height)
     }
 
     fn name(&self) -> &'static str {
@@ -215,16 +195,17 @@ impl StitchExecutor for CpuExecutor {
 /// Configuration for building a [`GpuExecutor`].
 ///
 /// Owns everything the GPU pipeline needs to know about the frames it
-/// will stitch: the calibration document, the output viewport, source
-/// dimensions and pixel formats, and the projection. Engine-level
-/// concerns (detection, trackers, replay) deliberately live on
+/// will stitch: the calibration document, the output viewport, and the
+/// source dimensions and pixel formats. The projection is the
+/// document's topology (zero-copy). Engine-level concerns (detection,
+/// trackers, replay) deliberately live on
 /// [`StitchCore`](crate::core::StitchCore), not here.
 #[cfg(feature = "gpu")]
 pub struct GpuExecutorConfig {
     /// Camera calibration document.
     pub calibration: Calibration,
-    /// Output viewport (dimensions, FOV).
-    pub viewport: ViewportConfig,
+    /// Output viewport dimensions.
+    pub viewport_size: ViewportSize,
     /// Input frame width in pixels (per camera).
     pub input_width: u32,
     /// Input frame height in pixels (per camera).
@@ -236,10 +217,6 @@ pub struct GpuExecutorConfig {
     /// for consumers that prefer to swizzle on upload instead of on
     /// readback.
     pub output_format: wgpu::TextureFormat,
-    /// Projection to stitch through. `None` resolves the projection
-    /// matching the calibration's topology (the out-of-tree injection
-    /// point for custom projections).
-    pub projection: Option<Box<dyn Projection>>,
     /// Whether source YUV uses full-range (JPEG) quantization.
     pub full_range: bool,
 }
@@ -247,8 +224,7 @@ pub struct GpuExecutorConfig {
 #[cfg(feature = "gpu")]
 impl GpuExecutorConfig {
     /// New config with required fields only; defaults everywhere else
-    /// (1080p viewport, `Rgba8Unorm` output, L-shape projection,
-    /// limited-range YUV).
+    /// (1080p viewport, `Rgba8Unorm` output, limited-range YUV).
     pub fn new(
         calibration: Calibration,
         input_width: u32,
@@ -257,16 +233,14 @@ impl GpuExecutorConfig {
     ) -> Self {
         Self {
             calibration,
-            viewport: ViewportConfig {
+            viewport_size: ViewportSize {
                 width: 1920,
                 height: 1080,
-                ..Default::default()
             },
             input_width,
             input_height,
             input_format,
             output_format: wgpu::TextureFormat::Rgba8Unorm,
-            projection: None,
             full_range: false,
         }
     }
@@ -284,9 +258,6 @@ impl GpuExecutorConfig {
 #[cfg(feature = "gpu")]
 pub struct GpuExecutor {
     pub(crate) pipeline: StitchPipeline,
-    /// The bound projection: supplied the pipeline's GPU program at
-    /// construction and dispatches coverage construction for the engine.
-    pub(crate) projection: Box<dyn Projection>,
     /// Resident-frame machinery: shared decode textures, the VRAM
     /// lookahead pool, decode backpressure. Populated lazily by the
     /// configure/stage methods; empty for pure CPU-frame consumers.
@@ -309,32 +280,28 @@ impl GpuExecutor {
     /// pull an async runtime into non-test code; callers create it via
     /// [`GpuContext::new`].
     pub fn new(gpu: GpuContext, config: GpuExecutorConfig) -> Result<Self, StitchError> {
-        let projection: Box<dyn Projection> = config.projection.unwrap_or_else(|| {
-            let p = crate::projection::for_topology(&config.calibration.topology);
-            log::debug!(
-                "no projection injected; resolved '{}' from the calibration topology",
-                p.name()
+        let projection = config.calibration.topology.projection();
+        // Fail fast on CPU-only projections: binding a placeholder
+        // program would render garbage frames instead of an error.
+        let Some(program) = projection.gpu_program() else {
+            log::warn!(
+                "GpuExecutor: projection '{}' has no GPU program yet; refusing construction (the CPU executor covers it)",
+                projection.name()
             );
-            p
-        });
-        if usize::from(projection.camera_count()) != config.calibration.lenses.len() {
-            return Err(StitchError::InvalidConfig(format!(
-                "projection '{}' consumes {} cameras but the calibration has {} lenses",
-                projection.name(),
-                projection.camera_count(),
-                config.calibration.lenses.len()
-            )));
-        }
+            return Err(StitchError::NoGpuProgram {
+                projection: projection.name(),
+            });
+        };
         log::info!(
-            "GpuExecutor: projection '{}' supplies the GPU program and coverage",
+            "GpuExecutor: projection '{}' from the calibration topology supplies the GPU program and coverage",
             projection.name()
         );
         // Calibration validation happens once, inside with_gpu.
         let mut pipeline = StitchPipeline::with_gpu(
             gpu,
-            &projection.gpu_program(),
+            &program,
             config.calibration,
-            config.viewport,
+            config.viewport_size,
             config.input_width,
             config.input_height,
             config.output_format,
@@ -343,7 +310,6 @@ impl GpuExecutor {
         pipeline.set_full_range(config.full_range);
         Ok(Self {
             pipeline,
-            projection,
             residency: super::residency::Residency::default(),
             sync_readback: None,
             nv12: None,
@@ -415,8 +381,7 @@ impl GpuExecutor {
         &mut self,
         left_slot: u8,
         right_slot: u8,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<wgpu::CommandBuffer, StitchError> {
         let bind_groups = self.residency.bind_groups.as_ref().ok_or_else(|| {
             StitchError::InvalidConfig(
@@ -425,27 +390,25 @@ impl GpuExecutor {
         })?;
         Ok(self
             .pipeline
-            .render_gpu_frame(bind_groups, left_slot, right_slot, yaw, pitch))
+            .render_gpu_frame(bind_groups, left_slot, right_slot, pose)?)
     }
 
     /// Render from a VRAM lookahead pool slot (buffered path).
     pub(crate) fn render_pool_slot(
         &mut self,
         slot: usize,
-        yaw: f32,
-        pitch: f32,
-    ) -> wgpu::CommandBuffer {
+        pose: Pose,
+    ) -> Result<wgpu::CommandBuffer, StitchError> {
         let pool = self
             .residency
             .pool
             .as_ref()
             .expect("render_pool_slot requires the lookahead pool");
-        self.pipeline.render_with_bind_groups(
+        Ok(self.pipeline.render_with_bind_groups(
             pool.left_bind_group(slot),
             pool.right_bind_group(slot),
-            yaw,
-            pitch,
-        )
+            pose,
+        )?)
     }
 
     /// Copy the shared decode slots into a pool slot so the decode
@@ -550,12 +513,11 @@ impl GpuExecutor {
         right: &crate::source::NvmmPlaneInfo,
     ) -> Option<
         [(
-            crate::geometry::CameraId,
+            crate::geometry::CameraIndex,
             crate::detect::detector::DetectorFrame<'static>,
         ); 2],
     > {
         use crate::detect::detector::DetectorFrame;
-        use crate::geometry::CameraId;
 
         let (det_left, det_right) = self.residency.nvmm_det.as_mut()?;
         unsafe {
@@ -570,7 +532,7 @@ impl GpuExecutor {
         }
         Some([
             (
-                CameraId::Left,
+                0,
                 DetectorFrame::CudaRgbaLetterboxed {
                     ptr: det_left.data_ptr,
                     src_width: left.width,
@@ -578,7 +540,7 @@ impl GpuExecutor {
                 },
             ),
             (
-                CameraId::Right,
+                1,
                 DetectorFrame::CudaRgbaLetterboxed {
                     ptr: det_right.data_ptr,
                     src_width: right.width,
@@ -794,8 +756,7 @@ impl GpuExecutor {
         &mut self,
         left_slot: usize,
         right_slot: usize,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<wgpu::CommandBuffer, StitchError> {
         let pool =
             self.residency.d3d11_staging.as_ref().ok_or_else(|| {
@@ -806,9 +767,8 @@ impl GpuExecutor {
             pool.uv_view(left_slot),
             pool.y_view(right_slot),
             pool.uv_view(right_slot),
-            yaw,
-            pitch,
-        ))
+            pose,
+        )?)
     }
 
     /// Y/UV detection views over two staged slots, Arc-cloned so
@@ -864,7 +824,7 @@ impl GpuExecutor {
     /// NV12 output dimensions: the viewport rounded down to NV12-safe
     /// values (shared rounding rule with the CPU delivery path).
     pub(crate) fn nv12_dims(&self) -> (u32, u32) {
-        let vp = self.pipeline.viewport();
+        let vp = self.pipeline.viewport_size();
         crate::render::nv12_cpu::nv12_dims(vp.width, vp.height)
     }
 
@@ -881,7 +841,7 @@ impl GpuExecutor {
         let dims = self.nv12_dims();
         if self.nv12.as_ref().is_none_or(|(_, built)| *built != dims) {
             let (w, h) = dims;
-            let vp = self.pipeline.viewport();
+            let vp = self.pipeline.viewport_size();
             if (vp.width, vp.height) != dims {
                 log::info!(
                     "GpuExecutor: NV12 delivery rounds {}x{} viewport to {w}x{h}",
@@ -916,12 +876,7 @@ impl GpuExecutor {
 
 #[cfg(feature = "gpu")]
 impl StitchExecutor for GpuExecutor {
-    fn stitch(
-        &mut self,
-        planes: &[Nv12Planes<'_>],
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<Vec<u8>, StitchError> {
+    fn stitch(&mut self, planes: &[Nv12Planes<'_>], pose: Pose) -> Result<Vec<u8>, StitchError> {
         // The GPU upload path is stereo-shaped today; mono programs
         // land with their own bind layout at the cylinder GPU step.
         let [left, right] = planes else {
@@ -948,9 +903,7 @@ impl StitchExecutor for GpuExecutor {
         }
         // Record the frame, submit it via the readback, then drain it
         // synchronously: one render in, this frame's RGBA out.
-        let cmd = self
-            .pipeline
-            .render_to_target_nv12(left, right, yaw, pitch)?;
+        let cmd = self.pipeline.render_to_target_nv12(left, right, pose)?;
         let tex = self.pipeline.render_target();
         let (ring, _) = self.sync_readback.as_mut().expect("created above");
         ring.readback(self.pipeline.gpu(), tex, cmd)?;
@@ -962,7 +915,7 @@ impl StitchExecutor for GpuExecutor {
     }
 
     fn output_dims(&self) -> (u32, u32) {
-        let v = self.pipeline.viewport();
+        let v = self.pipeline.viewport_size();
         (v.width, v.height)
     }
 
@@ -1026,31 +979,30 @@ impl Executor {
         }
     }
 
-    /// The output viewport (dimensions + FOV).
-    pub fn viewport(&self) -> &ViewportConfig {
+    /// The output viewport dimensions.
+    pub fn viewport_size(&self) -> &ViewportSize {
         match self {
-            Executor::Cpu(c) => &c.config,
+            Executor::Cpu(c) => &c.viewport_size,
             #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.pipeline.viewport(),
+            Executor::Gpu(g) => g.pipeline.viewport_size(),
         }
     }
 
-    /// The derived plane-placement geometry for the active calibration.
-    pub fn scene(&self) -> &SceneGeometry {
-        match self {
-            Executor::Cpu(c) => &c.scene,
-            #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => &g.pipeline.scene,
-        }
-    }
-
-    /// The bound projection.
+    /// The projection in effect: a borrow of the calibration
+    /// document's topology on either arm.
     pub fn projection(&self) -> &dyn Projection {
         match self {
-            Executor::Cpu(c) => c.projection.as_ref(),
+            Executor::Cpu(c) => c.projection(),
             #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.projection.as_ref(),
+            Executor::Gpu(g) => g.pipeline.projection(),
         }
+    }
+
+    /// The projection's coverage boundary over this executor's
+    /// document: `projection().coverage(calibration())` always pair,
+    /// so the executor offers the pairing directly.
+    pub fn coverage(&self) -> CoverageBoundary {
+        self.projection().coverage(self.calibration())
     }
 
     /// Source frame dimensions `(width, height)` per camera.
@@ -1059,28 +1011,6 @@ impl Executor {
             Executor::Cpu(c) => c.cam,
             #[cfg(feature = "gpu")]
             Executor::Gpu(g) => g.pipeline.source_info(),
-        }
-    }
-
-    /// Current vertical field of view in degrees.
-    pub fn fov(&self) -> f32 {
-        match self {
-            Executor::Cpu(c) => c.config.fov_degrees,
-            #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.pipeline.fov(),
-        }
-    }
-
-    /// Set the vertical field of view in degrees, clamped to
-    /// `[1.0, 179.0]` on both arms (the CPU projection math degenerates
-    /// at 0/180 exactly like the GPU perspective matrix would).
-    pub fn set_fov(&mut self, fov_degrees: f32) {
-        match self {
-            // Mirrors StitchPipeline::set_fov's clamp so the executors
-            // cannot diverge on out-of-range input.
-            Executor::Cpu(c) => c.config.fov_degrees = fov_degrees.clamp(1.0, 179.0),
-            #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.pipeline.set_fov(fov_degrees),
         }
     }
 
@@ -1093,8 +1023,8 @@ impl Executor {
                     log::warn!("resize({width}, {height}) ignored: dimensions must be non-zero");
                     return None;
                 }
-                c.config.width = width;
-                c.config.height = height;
+                c.viewport_size.width = width;
+                c.viewport_size.height = height;
                 Some((width, height))
             }
             #[cfg(feature = "gpu")]
@@ -1165,7 +1095,6 @@ impl Executor {
     pub fn update_calibration(&mut self, calibration: Calibration) {
         match self {
             Executor::Cpu(c) => {
-                c.scene = derive_scene(&calibration);
                 c.calib = calibration;
             }
             #[cfg(feature = "gpu")]
@@ -1178,7 +1107,6 @@ impl Executor {
         match self {
             Executor::Cpu(c) => {
                 c.calib.topology = topology;
-                c.scene = derive_scene(&c.calib);
             }
             #[cfg(feature = "gpu")]
             Executor::Gpu(g) => g.pipeline.update_topology(topology),
@@ -1190,7 +1118,6 @@ impl Executor {
         match self {
             Executor::Cpu(c) => {
                 c.calib.framing = framing;
-                c.scene = derive_scene(&c.calib);
             }
             #[cfg(feature = "gpu")]
             Executor::Gpu(g) => g.pipeline.update_framing(framing),
@@ -1207,7 +1134,6 @@ impl Executor {
                 if let Some(r) = right {
                     c.calib.lenses[1] = r;
                 }
-                c.scene = derive_scene(&c.calib);
             }
             #[cfg(feature = "gpu")]
             Executor::Gpu(g) => g.pipeline.update_camera_params(left, right),
@@ -1216,16 +1142,11 @@ impl Executor {
 }
 
 impl StitchExecutor for Executor {
-    fn stitch(
-        &mut self,
-        planes: &[Nv12Planes<'_>],
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<Vec<u8>, StitchError> {
+    fn stitch(&mut self, planes: &[Nv12Planes<'_>], pose: Pose) -> Result<Vec<u8>, StitchError> {
         match self {
-            Executor::Cpu(c) => c.stitch(planes, yaw, pitch),
+            Executor::Cpu(c) => c.stitch(planes, pose),
             #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.stitch(planes, yaw, pitch),
+            Executor::Gpu(g) => g.stitch(planes, pose),
         }
     }
 
@@ -1266,10 +1187,7 @@ mod tests {
     /// geometry, which the GPU shares verbatim via `l_shape_plane_maps`.
     #[test]
     fn clamped_poses_render_no_black_edges() {
-        use crate::geometry::VirtualCamera;
         use crate::geometry::resolve_render_pose;
-        use crate::projection::CoverageBoundary;
-        use crate::render::scene::SceneGeometry;
 
         let (cam_w, cam_h) = (256u32, 144u32);
         let (out_w, out_h) = (192u32, 108u32);
@@ -1301,24 +1219,15 @@ mod tests {
             let mut cal = calib(cam_w, cam_h);
             cal.framing.tilt = tilt;
             cal.framing.roll = roll;
-            let scene = SceneGeometry::for_calibration(&cal);
-            let coverage = CoverageBoundary::from_calibration(&cal, &scene);
-            let cam = VirtualCamera::new(&scene.camera_position);
+            let coverage = cal.topology.projection().coverage(&cal);
+            let cam = cal.topology.projection().virtual_camera(&cal.framing);
             let fov = (coverage.max_fov_degrees() * fov_factor).min(60.0);
-            let config = ViewportConfig {
+            let config = ViewportSize {
                 width: out_w,
                 height: out_h,
-                fov_degrees: fov,
             };
-            let mut backend = CpuExecutor::new(
-                Box::new(crate::projection::LShapeProjection),
-                cal.clone(),
-                config,
-                cam_w,
-                cam_h,
-                false,
-            )
-            .expect("cpu");
+            let mut backend =
+                CpuExecutor::new(cal.clone(), config, cam_w, cam_h, false).expect("cpu");
 
             for &(wy, wp) in &[
                 (0.0f32, 0.0f32),
@@ -1343,7 +1252,12 @@ mod tests {
                     fov,
                     aspect_out,
                 );
-                let frac = black_frac(&backend.stitch(&[planes, planes], ry, rp).unwrap());
+                let pose = Pose {
+                    yaw: ry,
+                    pitch: rp,
+                    fov_degrees: fov,
+                };
+                let frac = black_frac(&backend.stitch(&[planes, planes], pose).unwrap());
                 assert!(
                     frac < 0.01,
                     "black fraction {frac:.4} at tilt={tilt} roll={roll} fov={fov:.1} target=({wy},{wp})"
@@ -1356,12 +1270,10 @@ mod tests {
     fn cpu_backend_reports_dims_and_name() {
         let (w, h) = (64u32, 36u32);
         let backend = CpuExecutor::new(
-            Box::new(crate::projection::LShapeProjection),
             calib(w, h),
-            ViewportConfig {
+            ViewportSize {
                 width: w,
                 height: h,
-                ..Default::default()
             },
             w,
             h,
@@ -1376,12 +1288,10 @@ mod tests {
     fn cpu_backend_rejects_undersized_planes() {
         let (w, h) = (64u32, 36u32);
         let mut backend = CpuExecutor::new(
-            Box::new(crate::projection::LShapeProjection),
             calib(w, h),
-            ViewportConfig {
+            ViewportSize {
                 width: w,
                 height: h,
-                ..Default::default()
             },
             w,
             h,
@@ -1394,7 +1304,9 @@ mod tests {
             uv: &short,
         };
         // Must return a typed error, not panic (matches the GPU backend).
-        let err = backend.stitch(&[planes, planes], 0.0, 0.0).unwrap_err();
+        let err = backend
+            .stitch(&[planes, planes], Pose::default())
+            .unwrap_err();
         assert!(matches!(err, StitchError::FrameSizeMismatch { .. }));
     }
 
@@ -1408,30 +1320,26 @@ mod tests {
         let (cam_w, cam_h) = (192u32, 108u32);
         let (out_w, out_h) = (160u32, 90u32);
         let calib = calib(cam_w, cam_h);
-        let config = ViewportConfig {
+        let config = ViewportSize {
             width: out_w,
             height: out_h,
-            ..Default::default()
         };
         let (ly, luv) = nv12(cam_w, cam_h, 0);
         let (ry, ruv) = nv12(cam_w, cam_h, 30);
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
-        let (yaw, pitch) = (0.08f32, -0.04f32);
+        let pose = Pose {
+            yaw: 0.08,
+            pitch: -0.04,
+            ..Default::default()
+        };
 
-        let mut cpu = CpuExecutor::new(
-            Box::new(crate::projection::LShapeProjection),
-            calib.clone(),
-            config.clone(),
-            cam_w,
-            cam_h,
-            false,
-        )
-        .expect("cpu backend");
+        let mut cpu = CpuExecutor::new(calib.clone(), config.clone(), cam_w, cam_h, false)
+            .expect("cpu backend");
         let mut gpu = GpuExecutor::new(
             gpu,
             GpuExecutorConfig {
-                viewport: config,
+                viewport_size: config,
                 ..GpuExecutorConfig::new(calib, cam_w, cam_h, InputFormat::Nv12)
             },
         )
@@ -1442,11 +1350,44 @@ mod tests {
         let mut outputs = Vec::new();
         for b in backends {
             assert_eq!(b.output_dims(), (out_w, out_h));
-            outputs.push(b.stitch(&[left, right], yaw, pitch).expect("stitch"));
+            outputs.push(b.stitch(&[left, right], pose).expect("stitch"));
         }
         let (cpu_rgba, gpu_rgba) = (&outputs[0], &outputs[1]);
         assert_eq!(cpu_rgba.len(), (out_w * out_h * 4) as usize);
         Agreement::compare(gpu_rgba, cpu_rgba)
             .assert_within(AgreementBounds::DEFAULT, "backend cpu-vs-gpu");
+    }
+
+    #[test]
+    #[cfg(feature = "gpu")]
+    fn gpu_backend_refuses_cpu_only_projections() {
+        let Some(gpu) = gpu_or_skip() else {
+            return;
+        };
+
+        // The cylinder has no GPU program yet: construction must fail
+        // with the typed error, never bind a placeholder pipeline.
+        let (cam_w, cam_h) = (192u32, 108u32);
+        let cal = Calibration::new(
+            vec![Lens::flat(cam_w, cam_h)],
+            crate::projection::Cylinder::default(),
+            Framing {
+                axis_offset: 0.0,
+                tilt: 0.0,
+                roll: 0.0,
+            },
+        );
+        let Err(err) = GpuExecutor::new(
+            gpu,
+            GpuExecutorConfig::new(cal, cam_w, cam_h, InputFormat::Nv12),
+        ) else {
+            panic!("cylinder+GPU must fail fast");
+        };
+        assert!(matches!(
+            err,
+            StitchError::NoGpuProgram {
+                projection: "cylindrical-mono-1camera"
+            }
+        ));
     }
 }

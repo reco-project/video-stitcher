@@ -30,7 +30,7 @@
 //! ## Modularity
 //!
 //! The crate defines traits for pluggable components:
-//! - [`source::FrameSource`] — delivers stereo frame pairs (files, cameras, streams)
+//! - [`source::FrameSource`] — delivers per-camera frame sets (files, cameras, streams)
 //! - [`detect::detector::UnifiedDetector`] — detects objects in raw frames (e.g. ball tracking)
 //! - [`detect::tracker::Tracker`] — turns detections into stable tracked entities
 //! - [`detect::panner::Panner`] — turns the tracked world state into a viewport pose

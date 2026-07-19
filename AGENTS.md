@@ -37,6 +37,7 @@ cargo fmt --all               # Auto-format
 cargo doc --no-deps --open    # Generate and open docs
 cargo run -p reco-cli -- info # Show GPU info
 cargo run -p reco-cli -- stitch left.mp4 right.mp4 -c match.json -o out.mp4
+cargo run -p reco-cli -- stitch panorama.mp4 -c cylinder.json -o out.mp4   # mono (cylinder topology)
 cargo run -p reco-cli -- preview left.mp4 right.mp4 -c match.json
 cargo run --release -p reco-cli --features profiling -- stitch left.mp4 right.mp4 -c match.json -o out.mp4 --max-frames 300  # Profile 300 frames → reco-trace.json (open in ui.perfetto.dev)
 ```
@@ -55,8 +56,12 @@ cargo run --release -p reco-cli --features profiling -- stitch left.mp4 right.mp
 - Doc comments (`///`) on all public items
 - Module-level docs (`//!`) explaining purpose
 - Tests in each module (`#[cfg(test)] mod tests`)
-- All PRs must pass: `cargo fmt --check && cargo clippy && cargo test`
-- Clippy must also pass with `--features profiling`
+- All PRs must pass CI's full matrix (`.github/workflows/rust.yml`), not just
+  the default build: clippy `-D warnings` on every feature lane (default,
+  `profiling`, `gstreamer`, `libcamera`, `load-dynamic`,
+  `--no-default-features`) plus rustdoc under `RUSTDOCFLAGS="-D warnings"`.
+  Feature-gated code compiles in exactly one lane - skipping a lane ships
+  code no compiler ever saw. Run the matrix locally before pushing.
 - Keep commit messages and PR descriptions concise and technical (what
   changed + why), especially when written by an AI agent - no filler, no
   marketing tone
@@ -74,4 +79,11 @@ cargo run --release -p reco-cli --features profiling -- stitch left.mp4 right.mp
 - Performance matters: this processes video frames in real time
 - Modular: reco-core must be usable as a standalone Rust crate
 - Explicit over implicit: no hidden defaults, no magic
+- The calibration document is the engine: runtime objects derive from it,
+  never the reverse, and there is no second copy to keep in sync
+- Docs that claim something is enforced, gated, or covered must point at
+  the artifact that enforces it (test, CI lane, validation) - otherwise
+  the claim does not ship
+- Public items need a living consumer: speculative API surface gets cut,
+  not kept for later
 - Verify changes actually run - exercise the binary or tests, not just `cargo check`

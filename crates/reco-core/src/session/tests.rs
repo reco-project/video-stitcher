@@ -11,16 +11,17 @@ use std::sync::{Arc, Mutex};
 
 use super::StitchSession;
 use super::types::*;
-use crate::calibration::{Calibration, Framing, LShapeTopology, Lens};
+use crate::calibration::{Calibration, Framing, Lens};
 use crate::detect::detector::{Detection, DetectorError, DetectorFrame, UnifiedDetector};
 use crate::detect::director::MappedDetection;
 use crate::detect::panner::{PanContext, Panner};
 use crate::detect::tracker::{TrackState, TrackedEntity, Tracker, WorldState};
-use crate::geometry::CameraId;
-use crate::geometry::ViewportPosition;
-use crate::render::viewport::ViewportConfig;
+use crate::geometry::CameraIndex;
+use crate::geometry::Pose;
+use crate::projection::LShape;
+use crate::render::viewport::ViewportSize;
 use crate::sink::{OutputFrame, OutputSink, SinkError, SinkInput};
-use crate::source::{FramePair, FrameSource, SourceError, SourceInfo, StereoFrame, YuvData};
+use crate::source::{FrameSet, FrameSource, SourceError, SourceInfo, YuvData};
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
@@ -33,7 +34,7 @@ fn test_calibration() -> Calibration {
     let cam = || Lens::fisheye(W, H, 32.0, 32.0, 32.0, 32.0, [0.0; 4]);
     Calibration::new(
         vec![cam(), cam()],
-        LShapeTopology {
+        LShape {
             intersect: 0.5,
             x_ty: 0.0,
             x_rz: 0.0,
@@ -51,7 +52,7 @@ fn test_calibration() -> Calibration {
 }
 
 /// Create a valid YUV420P stereo frame pair of solid gray.
-fn solid_frame() -> StereoFrame {
+fn solid_frame() -> FrameSet {
     let y_size = (W * H) as usize;
     let uv_size = ((W / 2) * (H / 2)) as usize;
     let yuv = YuvData {
@@ -59,10 +60,7 @@ fn solid_frame() -> StereoFrame {
         u: vec![128u8; uv_size],
         v: vec![128u8; uv_size],
     };
-    StereoFrame::Yuv420p(FramePair {
-        left: yuv.clone(),
-        right: yuv,
-    })
+    FrameSet::Yuv420p(vec![yuv.clone(), yuv])
 }
 
 // ─── MockSource ────────────────────────────────────────────────────────
@@ -91,7 +89,7 @@ impl FrameSource for MockSource {
         }
     }
 
-    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
         if self.remaining == 0 {
             return Ok(None);
         }
@@ -124,7 +122,7 @@ impl UnifiedDetector for MockDetector {
 
     fn detect(
         &mut self,
-        _camera: CameraId,
+        _camera: CameraIndex,
         _frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
         self.call_count.fetch_add(1, Ordering::Relaxed);
@@ -171,7 +169,7 @@ impl Tracker for MockTracker {
             confidence: 1.0,
             state: TrackState::Tracking,
             age_frames: 1,
-            origin: CameraId::Left,
+            origin: 0,
         }]
     }
 
@@ -182,11 +180,11 @@ impl Tracker for MockTracker {
 
 /// Mock panner that returns a fixed position regardless of the world.
 struct MockPanner {
-    position: ViewportPosition,
+    position: Pose,
 }
 
 impl Panner for MockPanner {
-    fn decide(&mut self, _world: &WorldState, _ctx: &PanContext<'_>) -> ViewportPosition {
+    fn decide(&mut self, _world: &WorldState, _ctx: &PanContext<'_>) -> Pose {
         self.position
     }
 }
@@ -233,19 +231,19 @@ impl OutputSink for MockEncoder {
 /// frame. Two entry points driving one AI stack must produce
 /// identical logs.
 struct RecordingPanner {
-    log: Arc<Mutex<Vec<(u64, ViewportPosition)>>>,
+    log: Arc<Mutex<Vec<(u64, Pose)>>>,
 }
 
 impl Panner for RecordingPanner {
-    fn decide(&mut self, _world: &WorldState, ctx: &PanContext<'_>) -> ViewportPosition {
+    fn decide(&mut self, _world: &WorldState, ctx: &PanContext<'_>) -> Pose {
         self.log
             .lock()
             .unwrap()
             .push((ctx.frame_index, ctx.previous_position));
-        ViewportPosition {
+        Pose {
             yaw: 0.001 * ctx.frame_index as f32,
             pitch: -0.0005 * ctx.frame_index as f32,
-            fov_degrees: None,
+            ..Default::default()
         }
     }
 }
@@ -256,11 +254,11 @@ impl Panner for RecordingPanner {
 struct NanPanner;
 
 impl Panner for NanPanner {
-    fn decide(&mut self, _world: &WorldState, _ctx: &PanContext<'_>) -> ViewportPosition {
-        ViewportPosition {
+    fn decide(&mut self, _world: &WorldState, _ctx: &PanContext<'_>) -> Pose {
+        Pose {
             yaw: f32::NAN,
             pitch: f32::NAN,
-            fov_degrees: None,
+            ..Default::default()
         }
     }
 }
@@ -278,10 +276,9 @@ fn build_test_session(
     let mut builder = StitchSession::builder()
         .calibration(test_calibration())
         .input_dimensions(W, H)
-        .viewport(ViewportConfig {
+        .viewport_size(ViewportSize {
             width: 64,
             height: 64,
-            fov_degrees: 75.0,
         })
         .detection_interval(detection_interval);
 
@@ -329,7 +326,7 @@ fn tracker_receives_detections() {
     let call_count = Arc::new(AtomicU64::new(0));
     let canned = vec![
         Detection {
-            camera: CameraId::Left,
+            camera: 0,
             class_id: 0,
             confidence: 0.9,
             center_x: 0.5,
@@ -338,7 +335,7 @@ fn tracker_receives_detections() {
             height: 0.1,
         },
         Detection {
-            camera: CameraId::Right,
+            camera: 1,
             class_id: 1,
             confidence: 0.8,
             center_x: 0.3,
@@ -359,7 +356,7 @@ fn tracker_receives_detections() {
         .expect("session build");
     session.set_ball_tracker(Box::new(tracker));
     session.set_panner(Box::new(MockPanner {
-        position: ViewportPosition::default(),
+        position: Pose::default(),
     }));
 
     let mut source = MockSource::new(3);
@@ -394,7 +391,7 @@ fn tracker_receives_detections() {
 fn detection_interval_respected() {
     let call_count = Arc::new(AtomicU64::new(0));
     let canned = vec![Detection {
-        camera: CameraId::Left,
+        camera: 0,
         class_id: 0,
         confidence: 0.9,
         center_x: 0.5,
@@ -505,7 +502,7 @@ fn compute_frame_limit_negative_fps_uses_fallback() {
 
 /// The one-AI-stack guard, in two halves. (1) Entry-point parity:
 /// the same scripted detector + tracker + panner, fed the same frames
-/// through `StitchCore::submit_frame_yuv` and `StitchSession::run`,
+/// through `StitchCore::submit_frame` and `StitchSession::run`,
 /// must see identical inputs in identical order - frame indices,
 /// previous-pose threading, detector call counts. (2) The pull side
 /// must have driven the ENGINE's stack, observed through the core's
@@ -517,7 +514,7 @@ fn compute_frame_limit_negative_fps_uses_fallback() {
 fn push_and_pull_share_one_ai_brain() {
     const FRAMES: u64 = 6;
     let canned = vec![Detection {
-        camera: CameraId::Left,
+        camera: 0,
         class_id: 0,
         confidence: 0.9,
         center_x: 0.5,
@@ -566,10 +563,9 @@ fn push_and_pull_share_one_ai_brain() {
     let executor = crate::stitch::GpuExecutor::new(
         gpu,
         crate::stitch::GpuExecutorConfig {
-            viewport: ViewportConfig {
+            viewport_size: ViewportSize {
                 width: 64,
                 height: 64,
-                fov_degrees: 75.0,
             },
             ..crate::stitch::GpuExecutorConfig::new(
                 test_calibration(),
@@ -594,20 +590,8 @@ fn push_and_pull_share_one_ai_brain() {
     }));
 
     for _ in 0..FRAMES {
-        let StereoFrame::Yuv420p(pair) = solid_frame() else {
-            unreachable!("solid_frame is YUV420P")
-        };
-        let left = crate::render::planes::YuvPlanes {
-            y: &pair.left.y,
-            u: &pair.left.u,
-            v: &pair.left.v,
-        };
-        let right = crate::render::planes::YuvPlanes {
-            y: &pair.right.y,
-            u: &pair.right.u,
-            v: &pair.right.v,
-        };
-        core.submit_frame_yuv(&left, &right).expect("submit");
+        let frames = solid_frame();
+        core.submit_frame(&frames).expect("submit");
     }
 
     let pull = pull_log.lock().unwrap();
@@ -629,12 +613,10 @@ fn push_and_pull_share_one_ai_brain() {
 /// Build a session over the CPU executor - no GPU anywhere.
 fn build_cpu_session() -> StitchSession {
     let executor = crate::stitch::CpuExecutor::new(
-        Box::new(crate::projection::LShapeProjection),
         test_calibration(),
-        ViewportConfig {
+        ViewportSize {
             width: 64,
             height: 64,
-            fov_degrees: 75.0,
         },
         W,
         H,
@@ -742,11 +724,8 @@ fn cpu_session_rejects_gpu_resident_frames() {
                 total_frames: None,
             }
         }
-        fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
-            Ok(Some(StereoFrame::GpuResident {
-                left_slot: 0,
-                right_slot: 0,
-            }))
+        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+            Ok(Some(FrameSet::GpuResident { slots: [0, 0] }))
         }
     }
 
@@ -755,9 +734,14 @@ fn cpu_session_rejects_gpu_resident_frames() {
     let err = session
         .run(&mut ResidentSource, u64::MAX, &interrupted, None)
         .expect_err("resident frames must be rejected on the CPU executor");
+    // The rejection is the engine's: `submit_frame` refuses resident
+    // sets with a typed config error, which the session wraps.
     assert!(
-        matches!(err, SessionError::Config(_)),
-        "expected a typed config error, got: {err}"
+        matches!(
+            err,
+            SessionError::Core(crate::core::types::StitchCoreError::Config(_))
+        ),
+        "expected the engine's typed config error, got: {err}"
     );
 }
 
@@ -765,8 +749,8 @@ fn cpu_session_rejects_gpu_resident_frames() {
 /// source -> engine mono submit (CPU cylinder stitch) -> NV12 -> sink.
 ///
 /// Doubles as the minimal mono-consumer example: a calibration built
-/// from `Lens::flat` + `CylinderTopology` + a zero `Framing`, a
-/// `FrameSource` yielding `StereoFrame::Mono`, and a plain session
+/// from `Lens::flat` + `Cylinder` + a zero `Framing`, a
+/// `FrameSource` yielding a one-camera `FrameSet`, and a plain session
 /// run on the CPU executor - no GPU context is created on this path.
 #[test]
 fn mono_cylinder_session_runs_end_to_end_without_gpu() {
@@ -781,25 +765,25 @@ fn mono_cylinder_session_runs_end_to_end_without_gpu() {
                 total_frames: None,
             }
         }
-        fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
             if self.0 == 0 {
                 return Ok(None);
             }
             self.0 -= 1;
             let y_size = (W * H) as usize;
             let uv_size = ((W / 2) * (H / 2)) as usize;
-            Ok(Some(StereoFrame::Mono(YuvData {
+            Ok(Some(FrameSet::Yuv420p(vec![YuvData {
                 y: vec![128u8; y_size],
                 u: vec![128u8; uv_size],
                 v: vec![128u8; uv_size],
-            })))
+            }])))
         }
     }
 
     const FRAMES: u64 = 4;
     let cal = Calibration::new(
         vec![crate::calibration::Lens::flat(W, H)],
-        crate::calibration::CylinderTopology::default(),
+        crate::projection::Cylinder::default(),
         Framing {
             axis_offset: 0.0,
             tilt: 0.0,
@@ -807,12 +791,10 @@ fn mono_cylinder_session_runs_end_to_end_without_gpu() {
         },
     );
     let executor = crate::stitch::CpuExecutor::new(
-        Box::new(crate::projection::CylindricalProjection),
         cal,
-        ViewportConfig {
+        ViewportSize {
             width: 64,
             height: 64,
-            fov_degrees: 60.0,
         },
         W,
         H,
