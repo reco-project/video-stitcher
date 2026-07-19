@@ -569,10 +569,12 @@ pub fn run_camera(
 
             let mut source = GstreamerNvmmCameraSource::open(&cam_config)?;
 
-            // Allocate the NvBufSurfTransform detection surfaces. The model
-            // input is square; all shipped yolo26 engines use 1280x1280.
-            // Skipped when there is no detector (sweep / no model) - the
-            // detection arm then no-ops and the director still advances.
+            // Allocate the NvBufSurfTransform detection surfaces. The
+            // model input is square, but the size here ASSUMES a
+            // 1280x1280 engine: 640 builds ship too and get a
+            // mismatched letterbox from this constant. The size
+            // belongs to engine introspection (the ORT and Metal
+            // backends already read it from the model), not here.
             if ai_tracking {
                 let model_size = 1280u32;
                 session
