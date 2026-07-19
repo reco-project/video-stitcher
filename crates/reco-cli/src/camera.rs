@@ -310,7 +310,7 @@ pub fn run_camera(
         // non-Jetson the same default applies per session discussion
         // (NVENC + NV12 pack shader combo deferred to #271).
         let encoder_config = reco_io::stacked_video::encoder::StackedEncoderConfig {
-            fps: (capture_fps as i32, 1),
+            fps: Some((capture_fps as i32, 1)),
             ..Default::default()
         };
         let recorder = reco_io::stacked_video::replay::session_gpu_recorder(

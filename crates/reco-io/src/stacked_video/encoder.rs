@@ -43,8 +43,13 @@ pub struct StackedEncoderConfig {
     /// handles YUV420P-to-NV12 interleave automatically when
     /// a hardware encoder is selected.
     pub inner: EncoderConfig,
-    /// Output frames-per-second (numerator, denominator).
-    pub fps: (i32, i32),
+    /// Output frames-per-second (numerator, denominator). `None` means
+    /// "follow the source": [`crate::StitchJob`] resolves it from the
+    /// probed source rate before opening the encoder. A bare
+    /// [`StackedEncoder`] opened with `None` falls back to 30fps with a
+    /// warning - a 60fps session recorded at a 30fps time base plays
+    /// half-speed.
+    pub fps: Option<(i32, i32)>,
 }
 
 impl Default for StackedEncoderConfig {
@@ -82,7 +87,7 @@ impl Default for StackedEncoderConfig {
                 gop_size: Some(30),
                 stream_url: None,
             },
-            fps: (30, 1),
+            fps: None,
         }
     }
 }
@@ -108,7 +113,14 @@ impl StackedEncoder {
         output_path: &Path,
         config: StackedEncoderConfig,
     ) -> Result<Self, StackedEncodeError> {
-        let fps = ffmpeg_next::Rational(config.fps.0, config.fps.1);
+        let (fps_num, fps_den) = config.fps.unwrap_or_else(|| {
+            log::warn!(
+                "StackedEncoder opened without an fps; defaulting to 30fps - \
+                 pass the source rate via StackedEncoderConfig::fps"
+            );
+            (30, 1)
+        });
+        let fps = ffmpeg_next::Rational(fps_num, fps_den);
         let encoder = VideoEncoder::new(
             output_path,
             layout.packed_width(),

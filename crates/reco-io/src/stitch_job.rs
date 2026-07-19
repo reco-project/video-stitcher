@@ -846,12 +846,20 @@ impl StitchJob {
         )?;
 
         #[cfg(feature = "stacked-output")]
-        if let Some(ref mut cfg) = self.replay_recording
-            && cfg.encoder_config.inner.encoder_name.is_none()
-        {
-            cfg.encoder_config.inner.encoder_name =
-                crate::ffmpeg::encoder::VideoEncoder::replay_encoder_name(&enc_name)
-                    .map(String::from);
+        if let Some(ref mut cfg) = self.replay_recording {
+            if cfg.encoder_config.inner.encoder_name.is_none() {
+                cfg.encoder_config.inner.encoder_name =
+                    crate::ffmpeg::encoder::VideoEncoder::replay_encoder_name(&enc_name)
+                        .map(String::from);
+            }
+            if cfg.encoder_config.fps.is_none() {
+                cfg.encoder_config.fps = Some(fps_rational);
+                log::info!(
+                    "replay recording follows the source rate {}/{}",
+                    fps_rational.0,
+                    fps_rational.1
+                );
+            }
         }
 
         // Resolve processing window (start_time / end_time / max_frames).
