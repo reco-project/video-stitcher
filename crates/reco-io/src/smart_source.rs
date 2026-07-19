@@ -277,8 +277,8 @@ impl SmartFileSource {
             info.height,
             if full_range { ", full-range" } else { "" }
         );
-        let left_rotation = source.left_rotation();
-        let right_rotation = source.right_rotation();
+        let left_rotation = source.rotation(0);
+        let right_rotation = source.rotation(1);
         Ok(Self {
             mode: SourceMode::Cpu(source),
             info,

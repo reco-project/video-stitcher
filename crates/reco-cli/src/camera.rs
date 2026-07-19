@@ -9,7 +9,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use reco_core::render::viewport::ViewportSize;
-use reco_core::source::FrameSet;
 use reco_io::gstreamer::camera::CameraConfig;
 
 use crate::helpers;
@@ -608,11 +607,12 @@ pub fn run_camera(
         anyhow::bail!("NVMM zero-copy is only available on Linux/Jetson");
     } else if use_nv12_capture {
         // NV12 path: skip nvvidconv format conversion, upload 2 planes
+        use reco_core::source::FrameSource;
         let mut source = reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(&cam_config)?;
 
-        // Warm up: discard first frame (camera ISP + pipeline init)
-        if let Some((left, right)) = source.next_pair()? {
-            let frames = FrameSet::Nv12(vec![left, right]);
+        // Warm up: render the first frame outside the progress loop so
+        // camera ISP + GPU pipeline init don't skew the reported rate.
+        if let Some(frames) = source.next_frame()? {
             session.detect_and_update_director(&frames, start.elapsed())?;
             let pos = session.director_position();
             session.process_frame(&frames, pos)?;
@@ -622,15 +622,14 @@ pub fn run_camera(
         let progress = helpers::ProgressReporter::new(30);
 
         while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
-            let (left, right) = {
+            let frames = {
                 reco_core::profile_scope!("wait_capture");
-                match source.next_pair()? {
-                    Some(p) => p,
+                match source.next_frame()? {
+                    Some(f) => f,
                     None => break,
                 }
             };
 
-            let frames = FrameSet::Nv12(vec![left, right]);
             session.detect_and_update_director(&frames, start.elapsed())?;
             let pos = session.director_position();
             session.process_frame(&frames, pos)?;

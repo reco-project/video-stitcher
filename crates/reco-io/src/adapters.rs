@@ -210,14 +210,10 @@ impl FfmpegFileSource {
         self.pixel_format
     }
 
-    /// Camera 0 stream rotation from metadata (0, 90, 180, 270 degrees).
-    pub fn left_rotation(&self) -> i32 {
-        self.rotations[0]
-    }
-
-    /// Camera 1 stream rotation from metadata (0 for single-input jobs).
-    pub fn right_rotation(&self) -> i32 {
-        self.rotations.get(1).copied().unwrap_or(0)
+    /// One camera's stream rotation from metadata (0, 90, 180, 270
+    /// degrees), 0 for cameras this job does not have.
+    pub fn rotation(&self, camera: reco_core::geometry::CameraIndex) -> i32 {
+        self.rotations.get(camera).copied().unwrap_or(0)
     }
 
     /// Whether this source's decode backend supports zero-copy GPU transfer.
@@ -413,11 +409,11 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
     }
 
     fn left_rotation(&self) -> i32 {
-        FfmpegFileSource::left_rotation(self)
+        self.rotation(0)
     }
 
     fn right_rotation(&self) -> i32 {
-        FfmpegFileSource::right_rotation(self)
+        self.rotation(1)
     }
 
     fn gpu_pixel_format(&self) -> reco_core::render::renderer::GpuPixelFormat {
