@@ -6,7 +6,7 @@
 //! inner detector with `DetectorFrame::PreprocessedChw`.
 
 use reco_core::detect::detector::{Detection, DetectorError, DetectorFrame, UnifiedDetector};
-use reco_core::geometry::CameraId;
+use reco_core::geometry::CameraIndex;
 use reco_detect::wgpu_preprocess::WgpuPreprocessor;
 
 /// Detector wrapper that adds wgpu NV12 preprocessing.
@@ -49,7 +49,7 @@ impl UnifiedDetector for WgpuPreprocessingDetector {
 
     fn detect(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
         match frame {

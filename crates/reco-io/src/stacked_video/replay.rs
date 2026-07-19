@@ -8,7 +8,7 @@
 //! frame is passed through to the stitch pipeline unmodified while a
 //! copy is packed into the replay encoder on the same thread.
 //!
-//! Only the CPU `StereoFrame::Yuv420p` variant is recorded today:
+//! Only two-camera CPU `FrameSet::Yuv420p` sets are recorded today:
 //!
 //! - `Nv12` (Jetson ISP / NVDEC on Linux): not yet supported;
 //!   would need an NV12 pack variant or a one-off Nv12->Yuv420p
@@ -27,7 +27,7 @@ use reco_core::core::types::StackedReplayGpuRecorder as CoreStackedGpuRecorder;
 use reco_core::core::types::StackedReplayRecorder as CoreStackedReplayRecorder;
 use reco_core::gpu::yuv_stack_packer::StackedAtlas;
 use reco_core::render::pipeline::YuvPlanes;
-use reco_core::source::{FrameSource, SourceError, SourceInfo, StereoFrame, YuvFrame};
+use reco_core::source::{FrameSet, FrameSource, SourceError, SourceInfo, YuvFrame};
 use std::path::Path;
 
 /// Decorator FrameSource that also writes source frames to a
@@ -98,25 +98,25 @@ impl ReplayRecordingSource {
         self.frames_recorded
     }
 
-    fn record(&mut self, frame: &StereoFrame) {
+    fn record(&mut self, frame: &FrameSet) {
         let Some(ref mut encoder) = self.encoder else {
             return;
         };
         match frame {
-            StereoFrame::Yuv420p(pair) => {
+            FrameSet::Yuv420p(cams) if cams.len() == 2 => {
                 let info = self.inner.info();
                 let left = YuvFrame {
-                    y: pair.left.y.clone(),
-                    u: pair.left.u.clone(),
-                    v: pair.left.v.clone(),
+                    y: cams[0].y.clone(),
+                    u: cams[0].u.clone(),
+                    v: cams[0].v.clone(),
                     width: info.width,
                     height: info.height,
                     timestamp_us: 0,
                 };
                 let right = YuvFrame {
-                    y: pair.right.y.clone(),
-                    u: pair.right.u.clone(),
-                    v: pair.right.v.clone(),
+                    y: cams[1].y.clone(),
+                    u: cams[1].u.clone(),
+                    v: cams[1].v.clone(),
                     width: info.width,
                     height: info.height,
                     timestamp_us: 0,
@@ -140,9 +140,10 @@ impl ReplayRecordingSource {
             _ => {
                 if !self.warned_non_yuv420p {
                     log::warn!(
-                        "replay recording: source yields non-Yuv420p frames; \
-                         recording disabled for this session (Nv12/GPU-resident \
-                         variants need a separate pack path, not implemented yet)"
+                        "replay recording: source yields frames outside the 2-tile \
+                         Yuv420p format; recording disabled for this session \
+                         (Nv12/GPU-resident/mono sets need a separate pack path, \
+                         not implemented yet)"
                     );
                     self.warned_non_yuv420p = true;
                     self.encoder = None;
@@ -157,7 +158,7 @@ impl FrameSource for ReplayRecordingSource {
         self.inner.info()
     }
 
-    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
         let frame = self.inner.next_frame()?;
         if let Some(ref f) = frame {
             self.record(f);
@@ -165,7 +166,7 @@ impl FrameSource for ReplayRecordingSource {
         Ok(frame)
     }
 
-    fn try_next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+    fn try_next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
         let frame = self.inner.try_next_frame()?;
         if let Some(ref f) = frame {
             self.record(f);

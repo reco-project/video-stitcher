@@ -1,7 +1,7 @@
 //! One-shot file-to-file stitching (Layer 3 API).
 //!
-//! [`StitchJob`] is the simplest way to stitch two video files into a
-//! panoramic output. It handles all orchestration internally: GPU
+//! [`StitchJob`] is the simplest way to stitch per-camera video files
+//! into a panoramic output. It handles all orchestration internally: GPU
 //! initialization (or the all-software path via [`StitchJob::cpu`]),
 //! zero-copy detection, encoder creation, decode thread management,
 //! and audio passthrough.
@@ -12,7 +12,7 @@
 //! use reco_io::StitchJob;
 //! use reco_io::output::{Codec, Quality};
 //!
-//! StitchJob::new("left.mp4", "right.mp4", "match.json", "output.mp4")
+//! StitchJob::new(["left.mp4", "right.mp4"], "match.json", "output.mp4")
 //!     .codec(Codec::HEVC)
 //!     .quality(Quality::High)
 //!     .on_progress(|p| println!("{:.0}%", p.percent()))
@@ -24,6 +24,7 @@ use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use crate::output::{AudioMode, Bitrate, Codec, Format, Quality};
+use reco_core::render::viewport::ViewportSize;
 use reco_core::session::StitchSession;
 use reco_core::session::types::FrameProgress;
 use reco_core::source::FrameSource;
@@ -34,9 +35,11 @@ use reco_core::source::FrameSource;
 /// [`run`](Self::run) to execute. All GPU, encoder, and decode lifecycle
 /// is managed internally.
 pub struct StitchJob {
-    left: InputPath,
-    /// `None` for mono (single-input) topologies.
-    right: Option<InputPath>,
+    /// One input per camera, in projection order (index i pairs with
+    /// `calibration.lenses[i]`). Arity is validated against the
+    /// calibration's topology in [`run`](Self::run) before any decoder
+    /// spins up.
+    inputs: Vec<InputPath>,
     calibration: CalibrationSource,
     output: PathBuf,
 
@@ -149,6 +152,44 @@ impl InputPath {
             Self::Chained(v) => v.clone(),
         }
     }
+
+    /// Build from an ordered, non-empty segment list: one path stays
+    /// [`Single`](Self::Single), several chain via the concat demuxer.
+    /// The vec-shaped twin of [`Self::parse_segments`] for consumers
+    /// that collect paths themselves (file pickers, env specs).
+    pub fn from_segments(mut paths: Vec<PathBuf>) -> Self {
+        debug_assert!(!paths.is_empty(), "an input needs at least one segment");
+        if paths.len() == 1 {
+            Self::Single(paths.remove(0))
+        } else {
+            Self::Chained(paths)
+        }
+    }
+
+    /// Parse a `;`-separated segment string (`a.mp4;b.mp4;c.mp4`) into
+    /// a chained input; a single path stays `Single`. Segments are
+    /// trimmed and empty entries (doubled or trailing `;`) dropped, so
+    /// `"a.mp4;"` is the single input `a.mp4`, not a path with a
+    /// stray semicolon. A string with no usable segment keeps the raw
+    /// text so `open` reports it as an invalid path.
+    pub fn parse_segments(s: &str) -> Self {
+        let parts: Vec<PathBuf> = s
+            .split(';')
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(PathBuf::from)
+            .collect();
+        if parts.is_empty() {
+            return Self::Single(PathBuf::from(s.trim()));
+        }
+        if parts.len() > 1 {
+            log::info!(
+                "input: {} segments, chaining via concat demuxer",
+                parts.len()
+            );
+        }
+        Self::from_segments(parts)
+    }
 }
 
 impl From<&str> for InputPath {
@@ -166,12 +207,6 @@ impl From<&Path> for InputPath {
 impl From<PathBuf> for InputPath {
     fn from(p: PathBuf) -> Self {
         Self::Single(p)
-    }
-}
-
-impl<P: AsRef<Path>> From<Vec<P>> for InputPath {
-    fn from(paths: Vec<P>) -> Self {
-        Self::Chained(paths.iter().map(|p| p.as_ref().to_path_buf()).collect())
     }
 }
 
@@ -232,15 +267,17 @@ pub enum StitchError {
 
 impl StitchJob {
     /// Create a job from file paths (loads calibration from JSON).
+    ///
+    /// `inputs` is one video per camera in projection order; the
+    /// calibration's topology decides how many are required (the
+    /// L-shape consumes two, the cylinder one).
     pub fn new(
-        left: impl Into<InputPath>,
-        right: impl Into<InputPath>,
+        inputs: impl IntoIterator<Item = impl Into<InputPath>>,
         calibration: impl AsRef<Path>,
         output: impl AsRef<Path>,
     ) -> Self {
         Self {
-            left: left.into(),
-            right: Some(right.into()),
+            inputs: inputs.into_iter().map(Into::into).collect(),
             calibration: CalibrationSource::File(calibration.as_ref().to_path_buf()),
             output: output.as_ref().to_path_buf(),
             codec: Codec::default(),
@@ -268,43 +305,13 @@ impl StitchJob {
         }
     }
 
-    /// Create a single-input job for mono topologies (the cylinder's
-    /// pre-stitched panorama). The calibration document must carry a
-    /// mono topology; [`run`](Self::run) rejects the mismatch.
-    pub fn mono(
-        input: impl Into<InputPath>,
-        calibration: impl AsRef<Path>,
-        output: impl AsRef<Path>,
-    ) -> Self {
-        let mut job = Self::new(
-            input,
-            InputPath::Single(PathBuf::new()),
-            calibration,
-            output,
-        );
-        job.right = None;
-        job
-    }
-
     /// Create a job with in-memory calibration (no JSON file needed).
     pub fn with_calibration(
-        left: impl Into<InputPath>,
-        right: impl Into<InputPath>,
+        inputs: impl IntoIterator<Item = impl Into<InputPath>>,
         calibration: reco_core::calibration::Calibration,
         output: impl AsRef<Path>,
     ) -> Self {
-        let mut job = Self::new(left, right, Path::new(""), output);
-        job.calibration = CalibrationSource::Memory(Box::new(calibration));
-        job
-    }
-
-    /// [`Self::mono`] with an in-memory calibration.
-    pub fn mono_with_calibration(
-        input: impl Into<InputPath>,
-        calibration: reco_core::calibration::Calibration,
-        output: impl AsRef<Path>,
-    ) -> Self {
-        let mut job = Self::mono(input, Path::new(""), output);
+        let mut job = Self::new(inputs, Path::new(""), output);
         job.calibration = CalibrationSource::Memory(Box::new(calibration));
         job
     }
@@ -450,7 +457,7 @@ impl StitchJob {
     /// # Example
     ///
     /// ```rust,ignore
-    /// StitchJob::new("left.mp4", "right.mp4", "match.json", "out.mp4")
+    /// StitchJob::new(["left.mp4", "right.mp4"], "match.json", "out.mp4")
     ///     .with_replay_recording("replay.mkv")
     ///     .run(&interrupted)?;
     /// ```
@@ -565,7 +572,7 @@ impl StitchJob {
     /// ```rust,ignore
     /// use reco_autocam::{AutocamConfig, TrackingMode};
     ///
-    /// StitchJob::new("left.mp4", "right.mp4", "match.json", "out.mp4")
+    /// StitchJob::new(["left.mp4", "right.mp4"], "match.json", "out.mp4")
     ///     .on_session(|session, source| {
     ///         let config = AutocamConfig::new("model.onnx")
     ///             .with_tracking_mode(TrackingMode::Field)
@@ -606,30 +613,25 @@ impl StitchJob {
         }
 
         // Input arity must match the calibration's topology before any
-        // decoder spins up.
-        let mono = cal.topology.camera_count() == 1;
-        match (mono, &self.right) {
-            (true, Some(_)) => {
-                return Err(StitchError::Other(
-                    "this calibration's topology consumes one input video, but two were \
-                     given"
-                        .into(),
-                ));
-            }
-            (false, None) => {
-                return Err(StitchError::Other(
-                    "this calibration's topology needs left and right input videos".into(),
-                ));
-            }
-            _ => {}
+        // decoder spins up. The topology decides the camera count -
+        // never the number of inputs handed in.
+        let camera_count = cal.topology.camera_count();
+        if self.inputs.len() != camera_count {
+            return Err(StitchError::Other(format!(
+                "this calibration's topology consumes {camera_count} camera input(s), \
+                 but {} were given",
+                self.inputs.len()
+            )));
         }
+        let mono = camera_count == 1;
 
         // Decode + render strategy. --cpu never touches the GPU;
         // otherwise the GPU renders and decode is zero-copy unless
         // forced off. Mono topologies render on the CPU executor
-        // regardless (the mono GPU pass is not wired yet).
+        // regardless (the mono GPU pass is not wired yet); zero-copy
+        // decode selection is a two-camera path.
         log::debug!(
-            "StitchJob::run: mono={mono} cpu_stitch={} force_cpu_decode={}",
+            "StitchJob::run: cameras={camera_count} cpu_stitch={} force_cpu_decode={}",
             self.cpu_stitch,
             self.force_cpu_decode
         );
@@ -637,25 +639,34 @@ impl StitchJob {
             if !self.cpu_stitch {
                 log::info!("mono topology: software render (the mono GPU pass is not wired yet)");
             }
+            // effective_sync passes through so the decode layer logs
+            // the single-input ignore instead of silently zeroing it.
             (
                 None,
-                crate::SmartFileSource::open_mono(&self.left, self.cpu_stitch)?,
+                crate::SmartFileSource::open_cpu_only(
+                    &self.inputs,
+                    effective_sync,
+                    self.cpu_stitch,
+                )?,
             )
         } else if self.cpu_stitch {
             log::info!("CPU stitch: software render + software decode, no GPU touched (--cpu)");
-            let right = self.right.as_ref().expect("arity checked above");
             (
                 None,
-                crate::SmartFileSource::open_cpu_only(&self.left, right, effective_sync, true)?,
+                crate::SmartFileSource::open_cpu_only(&self.inputs, effective_sync, true)?,
             )
         } else {
-            let right = self.right.as_ref().expect("arity checked above");
             let gpu = reco_core::gpu::GpuContext::new_blocking()?;
             let source = if self.force_cpu_decode {
                 log::info!("Force CPU decode: zero-copy disabled by --no-zero-copy");
-                crate::SmartFileSource::open_cpu_only(&self.left, right, effective_sync, false)?
+                crate::SmartFileSource::open_cpu_only(&self.inputs, effective_sync, false)?
             } else {
-                crate::SmartFileSource::open(&self.left, right, &gpu, effective_sync)?
+                crate::SmartFileSource::open(
+                    &self.inputs[0],
+                    &self.inputs[1],
+                    &gpu,
+                    effective_sync,
+                )?
             };
             (Some(gpu), source)
         };
@@ -687,10 +698,9 @@ impl StitchJob {
                 );
             }
         }
-        let viewport = reco_core::render::viewport::ViewportConfig {
+        let viewport_size = ViewportSize {
             width: out_w,
             height: out_h,
-            ..Default::default()
         };
         let gpu_name;
         let mut session = match gpu {
@@ -705,7 +715,7 @@ impl StitchJob {
                 };
                 let session_config = reco_core::session::types::SessionConfig {
                     calibration: cal,
-                    viewport,
+                    viewport_size,
                     input_width: info.width,
                     input_height: info.height,
                     output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
@@ -717,11 +727,9 @@ impl StitchJob {
             }
             None => {
                 gpu_name = "software (CPU)".to_string();
-                let projection = reco_core::projection::for_topology(&cal.topology);
                 let executor = reco_core::stitch::CpuExecutor::new(
-                    projection,
                     cal,
-                    viewport,
+                    viewport_size,
                     info.width,
                     info.height,
                     false,
@@ -744,7 +752,7 @@ impl StitchJob {
 
         // Configure lookahead buffer if requested.
         if self.lookahead_secs > 0.0 {
-            let fps = crate::adapters::FfmpegFileSource::frame_rate(self.left.first_path())
+            let fps = crate::adapters::FfmpegFileSource::frame_rate(self.inputs[0].first_path())
                 .map(|(n, d)| if d != 0 { n as f64 / d as f64 } else { 30.0 })
                 .unwrap_or(30.0);
             let frames = (self.lookahead_secs * fps).round() as usize;
@@ -789,18 +797,16 @@ impl StitchJob {
         // Resolve audio source paths from AudioMode. All chained segments are
         // included so passthrough spans the whole recording, not just file 1.
         let audio_source = match &self.audio {
-            AudioMode::CopyFrom(0) => Some(self.left.all_paths()),
-            AudioMode::CopyFrom(1) => match &self.right {
-                Some(right) => Some(right.all_paths()),
+            AudioMode::CopyFrom(n) => match self.inputs.get(*n) {
+                Some(input) => Some(input.all_paths()),
                 None => {
-                    log::warn!("AudioMode::CopyFrom(1) - a mono job has no right input");
+                    log::warn!(
+                        "AudioMode::CopyFrom({n}) - this job has {} input(s)",
+                        self.inputs.len()
+                    );
                     None
                 }
             },
-            AudioMode::CopyFrom(n) => {
-                log::warn!("AudioMode::CopyFrom({n}) - only 0 (left) and 1 (right) are valid");
-                None
-            }
             AudioMode::Disabled => None,
         };
 
@@ -1123,6 +1129,79 @@ impl StitchJob {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The arity check runs against the topology BEFORE any decoder or
+    /// GPU spins up: with nonexistent input paths, a wrong input count
+    /// must surface as the typed arity error, never as a file-open
+    /// error (which would prove a decoder was touched first).
+    #[test]
+    fn run_rejects_arity_mismatch_before_opening_inputs() {
+        let cam = || {
+            reco_core::calibration::Lens::fisheye(
+                640,
+                360,
+                320.0,
+                320.0,
+                320.0,
+                180.0,
+                [-0.02, 0.004, 0.0, 0.0],
+            )
+        };
+        let cal = reco_core::calibration::Calibration::new(
+            vec![cam(), cam()],
+            reco_core::projection::LShape {
+                intersect: 0.5,
+                x_ty: 0.0,
+                x_rz: 0.0,
+                z_rx: 0.0,
+                x_rx: 0.0,
+                z_rz: 0.0,
+                blend_width: 0.05,
+            },
+            reco_core::calibration::Framing {
+                axis_offset: 0.25,
+                tilt: 0.0,
+                roll: 0.0,
+            },
+        );
+        let job =
+            StitchJob::with_calibration(["does-not-exist.mp4"], cal, "arity-mismatch-out.mp4");
+        let interrupted = std::sync::atomic::AtomicBool::new(false);
+        let err = job.run(&interrupted).expect_err("1 input vs 2 cameras");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("consumes 2 camera input(s), but 1 were given"),
+            "expected the typed arity error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn parse_segments_handles_single_chained_and_stray_separators() {
+        assert!(matches!(
+            InputPath::parse_segments("a.mp4"),
+            InputPath::Single(p) if p == std::path::Path::new("a.mp4")
+        ));
+        assert!(matches!(
+            InputPath::parse_segments("a.mp4;b.mp4"),
+            InputPath::Chained(v) if v.len() == 2
+        ));
+        // A trailing separator is one input, not a path with a stray
+        // semicolon (the old CLI closure wrapped the raw string).
+        assert!(matches!(
+            InputPath::parse_segments("a.mp4;"),
+            InputPath::Single(p) if p == std::path::Path::new("a.mp4")
+        ));
+        assert!(matches!(
+            InputPath::parse_segments(" a.mp4 ; b.mp4 "),
+            InputPath::Chained(v) if v == vec![PathBuf::from("a.mp4"), PathBuf::from("b.mp4")]
+        ));
+        // Nothing usable: the raw text flows into open()'s
+        // invalid-path reporting instead of an empty chain.
+        assert!(matches!(
+            InputPath::parse_segments(";;"),
+            InputPath::Single(p) if p == std::path::Path::new(";;")
+        ));
+    }
 
     #[test]
     fn all_paths_returns_every_chained_segment() {

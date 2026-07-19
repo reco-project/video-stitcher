@@ -25,7 +25,7 @@ use std::collections::HashMap;
 
 use reco_core::calibration::FieldRoi;
 use reco_core::detect::detector::{Detection, DetectorError, DetectorFrame, UnifiedDetector};
-use reco_core::geometry::CameraId;
+use reco_core::geometry::CameraIndex;
 use reco_core::projection::point_in_polygon;
 
 /// Where on a detection's bounding box the ROI test samples.
@@ -80,8 +80,12 @@ fn filter_by_roi(
         .into_iter()
         .filter(|d| {
             let polygon = match d.camera {
-                CameraId::Left => &roi.left,
-                CameraId::Right => &roi.right,
+                0 => &roi.left,
+                1 => &roi.right,
+                // FieldRoi is pair-shaped until the schema v2 split;
+                // a camera with no defined polygon goes unfiltered,
+                // same as an empty polygon.
+                _ => return true,
             };
             if polygon.len() < 3 {
                 return true;
@@ -157,7 +161,7 @@ impl UnifiedDetector for RoiFilteredDetector {
 
     fn detect(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
         let detections = self.inner.detect(camera, frame)?;
@@ -179,14 +183,14 @@ mod tests {
     use super::*;
     use reco_core::calibration::FieldRoi;
     use reco_core::detect::detector::Detection;
-    use reco_core::geometry::CameraId;
+    use reco_core::geometry::CameraIndex;
 
-    fn make_detection(camera: CameraId, cx: f32, cy: f32, w: f32, h: f32) -> Detection {
+    fn make_detection(camera: CameraIndex, cx: f32, cy: f32, w: f32, h: f32) -> Detection {
         make_detection_class(camera, 0, cx, cy, w, h)
     }
 
     fn make_detection_class(
-        camera: CameraId,
+        camera: CameraIndex,
         class_id: u16,
         cx: f32,
         cy: f32,
@@ -225,14 +229,14 @@ mod tests {
     #[test]
     fn detection_inside_roi_passes() {
         let roi = full_roi();
-        let det = make_detection(CameraId::Left, 0.5, 0.4, 0.1, 0.2);
+        let det = make_detection(0, 0.5, 0.4, 0.1, 0.2);
         assert_eq!(filter(vec![det], &roi).len(), 1);
     }
 
     #[test]
     fn detection_outside_roi_filtered() {
         let roi = small_roi();
-        let det = make_detection(CameraId::Left, 0.05, 0.05, 0.1, 0.2);
+        let det = make_detection(0, 0.05, 0.05, 0.1, 0.2);
         assert!(filter(vec![det], &roi).is_empty());
     }
 
@@ -242,7 +246,7 @@ mod tests {
             left: vec![],
             right: vec![],
         };
-        let det = make_detection(CameraId::Left, 0.5, 0.5, 0.1, 0.2);
+        let det = make_detection(0, 0.5, 0.5, 0.1, 0.2);
         assert_eq!(filter(vec![det], &roi).len(), 1);
     }
 
@@ -252,7 +256,7 @@ mod tests {
             left: vec![[0.0, 0.0], [1.0, 1.0]],
             right: vec![],
         };
-        let det = make_detection(CameraId::Left, 0.5, 0.5, 0.1, 0.2);
+        let det = make_detection(0, 0.5, 0.5, 0.1, 0.2);
         assert_eq!(filter(vec![det], &roi).len(), 1);
     }
 
@@ -262,8 +266,8 @@ mod tests {
             left: vec![[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]],
             right: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
         };
-        let det_left = make_detection(CameraId::Left, 0.05, 0.05, 0.1, 0.2);
-        let det_right = make_detection(CameraId::Right, 0.05, 0.05, 0.1, 0.2);
+        let det_left = make_detection(0, 0.05, 0.05, 0.1, 0.2);
+        let det_right = make_detection(1, 0.05, 0.05, 0.1, 0.2);
         assert!(filter(vec![det_left], &roi).is_empty());
         assert_eq!(filter(vec![det_right], &roi).len(), 1);
     }
@@ -271,8 +275,8 @@ mod tests {
     #[test]
     fn mixed_detections_filter_correctly() {
         let roi = small_roi();
-        let inside = make_detection(CameraId::Left, 0.5, 0.4, 0.1, 0.2);
-        let outside = make_detection(CameraId::Left, 0.05, 0.05, 0.1, 0.2);
+        let inside = make_detection(0, 0.5, 0.4, 0.1, 0.2);
+        let outside = make_detection(0, 0.05, 0.05, 0.1, 0.2);
         let filtered = filter(vec![inside, outside], &roi);
         assert_eq!(filtered.len(), 1);
         assert!((filtered[0].center_x - 0.5).abs() < f32::EPSILON);
@@ -286,7 +290,7 @@ mod tests {
         // (0.5, 0.7), height 0.3 -> feet at y=0.85 outside, center
         // at y=0.7 inside. A ball class with Center anchor passes.
         let roi = small_roi();
-        let ball = make_detection_class(CameraId::Left, 0, 0.5, 0.7, 0.1, 0.3);
+        let ball = make_detection_class(0, 0, 0.5, 0.7, 0.1, 0.3);
         assert_eq!(filter(vec![ball], &roi).len(), 1);
     }
 
@@ -295,7 +299,7 @@ mod tests {
         // Same geometry as above but as a Player (class=1) with
         // Bottom anchor: feet at y=0.85 outside -> rejected.
         let roi = small_roi();
-        let player = make_detection_class(CameraId::Left, 1, 0.5, 0.7, 0.1, 0.3);
+        let player = make_detection_class(0, 1, 0.5, 0.7, 0.1, 0.3);
         let mut anchors = HashMap::new();
         anchors.insert(1u16, RoiAnchor::Bottom);
         let filtered = filter_by_roi(vec![player], &roi, &anchors, RoiAnchor::Center);
@@ -308,8 +312,8 @@ mod tests {
         // Center default + Bottom for players, ball survives and
         // player gets dropped.
         let roi = small_roi();
-        let ball = make_detection_class(CameraId::Left, 0, 0.5, 0.7, 0.1, 0.3);
-        let player = make_detection_class(CameraId::Left, 1, 0.5, 0.7, 0.1, 0.3);
+        let ball = make_detection_class(0, 0, 0.5, 0.7, 0.1, 0.3);
+        let player = make_detection_class(0, 1, 0.5, 0.7, 0.1, 0.3);
         let mut anchors = HashMap::new();
         anchors.insert(1u16, RoiAnchor::Bottom);
         let filtered = filter_by_roi(vec![ball, player], &roi, &anchors, RoiAnchor::Center);
@@ -322,7 +326,7 @@ mod tests {
         // Locks the public-API shape: builder method + lookup via
         // detect() path work together.
         let roi = small_roi();
-        let det = make_detection_class(CameraId::Left, 7, 0.5, 0.7, 0.1, 0.3);
+        let det = make_detection_class(0, 7, 0.5, 0.7, 0.1, 0.3);
         let mut anchors = HashMap::new();
         anchors.insert(7u16, RoiAnchor::Bottom);
         assert!(filter_by_roi(vec![det], &roi, &anchors, RoiAnchor::Center).is_empty());

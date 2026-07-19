@@ -109,7 +109,7 @@ impl StitchSession {
     pub fn builder() -> StitchSessionBuilder {
         StitchSessionBuilder {
             calibration: None,
-            viewport: None,
+            viewport_size: None,
             input_width: None,
             input_height: None,
             output_format: OutputFormat::Rgba8Unorm,
@@ -146,7 +146,7 @@ impl StitchSession {
             gpu,
             GpuExecutorConfig {
                 calibration: config.calibration,
-                viewport: config.viewport,
+                viewport_size: config.viewport_size,
                 input_width: config.input_width,
                 input_height: config.input_height,
                 input_format: config.input_format,
@@ -155,7 +155,6 @@ impl StitchSession {
                 // session-facing variants (Rgba8Unorm, Rgba8UnormSrgb,
                 // Bgra8UnormSrgb).
                 output_format: config.output_format.into(),
-                projection: None,
                 full_range: false,
             },
         )
@@ -277,7 +276,7 @@ impl StitchSession {
     /// the shared rounding rule over the executor-agnostic viewport,
     /// so CPU and GPU sessions hand sinks identically-sized frames.
     pub(crate) fn nv12_delivery_dims(&self) -> (u32, u32) {
-        let vp = self.core.executor.viewport();
+        let vp = self.core.executor.viewport_size();
         crate::render::nv12_cpu::nv12_dims(vp.width, vp.height)
     }
 

@@ -20,16 +20,6 @@ A lightweight `reco_io::probe_duration(path)` would remove one.
 
 **Impact**: Low. Blocked on Slint upstream exposing the adapter reference.
 
-### N12. YuvPlanes hand-constructed in every render call site
-
-**Impact**: Low. A `YuvData::planes()` returning `YuvPlanes<'_>` would
-remove per-call boilerplate across GUI and CLI.
-
-### N13. StereoFrame::into_yuv420p is missing
-
-**Impact**: Low. `as_yuv420p()` returning `Option<(YuvPlanes, YuvPlanes)>`
-would centralize the destructure done in 5+ sites.
-
 ### N16. Recording lags preview and drops frames during panning
 
 **Impact**: High. NV12 readback runs on the UI thread, stalling the

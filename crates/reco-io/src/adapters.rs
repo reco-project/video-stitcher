@@ -6,7 +6,7 @@
 //! plumbing lives here.
 
 use reco_core::sink::{OutputFrame, OutputSink, PixelFormat, SinkError, SinkInput};
-use reco_core::source::{FramePair, SourceError, SourceInfo, StereoFrame, YuvData};
+use reco_core::source::{FrameSet, SourceError, SourceInfo, YuvData};
 
 #[cfg(feature = "ffmpeg")]
 use crate::ffmpeg;
@@ -48,30 +48,31 @@ fn input_duration_secs(input: &crate::stitch_job::InputPath) -> Option<f64> {
     }
 }
 
-/// Stereo file source backed by two FFmpeg decoders.
+/// File source backed by one FFmpeg decoder per camera.
 ///
-/// Opens two video files (left + right camera) and delivers synchronized
-/// YUV420P frame pairs. Each decoder runs in its own thread; frames are
-/// paired after applying a temporal sync offset.
+/// Opens one video per camera (projection order) and delivers
+/// synchronized YUV420P [`FrameSet`]s. Each decoder runs in its own
+/// thread; a zip thread assembles the per-camera frames after applying
+/// the temporal sync offset.
 ///
 /// ## Sync Offset
 ///
-/// When cameras don't start recording at the same instant, a frame offset
-/// aligns them temporally. Use [`Self::open_with_offset`]:
-/// - Positive offset: skip N frames from the **right** video (right started first)
-/// - Negative offset: skip N frames from the **left** video (left started first)
+/// When cameras don't start recording at the same instant, a frame
+/// offset aligns them temporally (defined between exactly two cameras;
+/// see [`Self::open_with_offset`]):
+/// - Positive offset: skip N frames from camera 1 (it started first)
+/// - Negative offset: skip N frames from camera 0 (it started first)
 #[cfg(feature = "ffmpeg")]
 pub struct FfmpegFileSource {
-    rx: std::sync::mpsc::Receiver<FramePair>,
+    rx: std::sync::mpsc::Receiver<FrameSet>,
     info: SourceInfo,
     decode_backend: ffmpeg::decoder::DecodeBackend,
     /// GPU pixel format (NV12 8-bit or P010 10-bit).
     pixel_format: reco_core::render::renderer::GpuPixelFormat,
-    /// Rotation from stream metadata (0, 90, 180, 270).
-    left_rotation: i32,
-    right_rotation: i32,
-    left_input: crate::stitch_job::InputPath,
-    right_input: crate::stitch_job::InputPath,
+    /// Per-camera rotation from stream metadata (0, 90, 180, 270),
+    /// in projection order.
+    rotations: Vec<i32>,
+    inputs: Vec<crate::stitch_job::InputPath>,
     sync_offset: i64,
     /// Software decode forced at open; seek respawns must reuse it.
     software_decode: bool,
@@ -103,53 +104,54 @@ impl FfmpegFileSource {
         right_path: &std::path::Path,
         sync_offset: i64,
     ) -> Result<Self, SourceError> {
-        Self::open_from_inputs(
-            &crate::stitch_job::InputPath::Single(left_path.to_path_buf()),
-            &crate::stitch_job::InputPath::Single(right_path.to_path_buf()),
+        Self::open_inputs(
+            &[
+                crate::stitch_job::InputPath::Single(left_path.to_path_buf()),
+                crate::stitch_job::InputPath::Single(right_path.to_path_buf()),
+            ],
             sync_offset,
             false,
         )
     }
 
-    /// Open from `InputPath` to support chained multi-segment files.
+    /// Open from a per-camera `InputPath` list in projection order.
     ///
     /// Accepts `InputPath` to support chained multi-segment files
-    /// (GoPro/DJI auto-split). Probing uses the first segment.
-    pub fn open_from_inputs(
-        left: &crate::stitch_job::InputPath,
-        right: &crate::stitch_job::InputPath,
+    /// (GoPro/DJI auto-split). Format, fps, and decode backend are
+    /// probed from input 0's first segment; rotation is probed per
+    /// input. The frame-count estimate uses the shortest input.
+    pub fn open_inputs(
+        inputs: &[crate::stitch_job::InputPath],
         sync_offset: i64,
         software_decode: bool,
     ) -> Result<Self, SourceError> {
-        let left_probe_path = left.first_path();
-        let right_probe_path = right.first_path();
+        let [first, ..] = inputs else {
+            return Err(SourceError::Init {
+                path: "(none)".into(),
+                reason: "at least one input video is required".into(),
+            });
+        };
+        for input in inputs {
+            reco_core::source::validate_input_path(input.first_path())?;
+        }
 
-        reco_core::source::validate_input_path(left_probe_path)?;
-        reco_core::source::validate_input_path(right_probe_path)?;
-
-        let probe = ffmpeg::decoder::VideoDecoder::open(left_probe_path).map_err(|e| {
-            SourceError::Init {
-                path: left_probe_path.display().to_string(),
+        let probe_path = first.first_path();
+        let probe =
+            ffmpeg::decoder::VideoDecoder::open(probe_path).map_err(|e| SourceError::Init {
+                path: probe_path.display().to_string(),
                 reason: format!("{e}"),
-            }
-        })?;
+            })?;
         let fps_r = probe.frame_rate();
         let fps = probe.fps();
-        let left_dur = input_duration_secs(left);
-        let right_dur = input_duration_secs(right);
-        let effective_dur = match (left_dur, right_dur) {
-            (Some(l), Some(r)) => {
-                if (l - r).abs() > 1.0 {
-                    log::info!(
-                        "Duration mismatch: left={l:.1}s, right={r:.1}s, using shorter ({:.1}s)",
-                        l.min(r)
-                    );
-                }
-                Some(l.min(r))
-            }
-            (Some(d), None) | (None, Some(d)) => Some(d),
-            (None, None) => None,
-        };
+        let durations: Vec<Option<f64>> = inputs.iter().map(input_duration_secs).collect();
+        let effective_dur = durations.iter().flatten().copied().reduce(f64::min);
+        if let (Some(min), Some(max)) = (
+            effective_dur,
+            durations.iter().flatten().copied().reduce(f64::max),
+        ) && max - min > 1.0
+        {
+            log::info!("Duration mismatch across inputs: {min:.1}s..{max:.1}s, using shortest");
+        }
         let total_frame_count = effective_dur.map(|dur| (dur * fps) as u64);
         let info = SourceInfo {
             width: probe.width(),
@@ -160,35 +162,33 @@ impl FfmpegFileSource {
         };
         let decode_backend = probe.backend();
         let pixel_format = probe.pixel_format();
-        let left_rotation = probe.rotation();
+        let first_rotation = probe.rotation();
         drop(probe);
 
-        let right_rotation = ffmpeg::decoder::VideoDecoder::open(right_probe_path)
-            .map(|d| d.rotation())
-            .unwrap_or_else(|e| {
-                log::warn!("Failed to probe right video for rotation ({e}), assuming 0 degrees");
-                0
-            });
+        let rotations: Vec<i32> = std::iter::once(first_rotation)
+            .chain(inputs[1..].iter().map(|input| {
+                ffmpeg::decoder::VideoDecoder::open(input.first_path())
+                    .map(|d| d.rotation())
+                    .unwrap_or_else(|e| {
+                        log::warn!(
+                            "Failed to probe {} for rotation ({e}), assuming 0 degrees",
+                            input.first_path().display()
+                        );
+                        0
+                    })
+            }))
+            .collect();
 
-        let left_owned = left.clone();
-        let right_owned = right.clone();
-        let rx = Self::spawn_decode_pipeline_from_inputs(
-            left_owned.clone(),
-            right_owned.clone(),
-            sync_offset,
-            None,
-            software_decode,
-        );
+        let inputs = inputs.to_vec();
+        let rx = Self::spawn_decode_pipeline(inputs.clone(), sync_offset, None, software_decode);
 
         Ok(Self {
             rx,
             info,
             decode_backend,
             pixel_format,
-            left_rotation,
-            right_rotation,
-            left_input: left_owned,
-            right_input: right_owned,
+            rotations,
+            inputs,
             sync_offset,
             software_decode,
             total_frame_count,
@@ -210,14 +210,10 @@ impl FfmpegFileSource {
         self.pixel_format
     }
 
-    /// Left stream rotation from metadata (0, 90, 180, 270 degrees).
-    pub fn left_rotation(&self) -> i32 {
-        self.left_rotation
-    }
-
-    /// Right stream rotation from metadata.
-    pub fn right_rotation(&self) -> i32 {
-        self.right_rotation
+    /// One camera's stream rotation from metadata (0, 90, 180, 270
+    /// degrees), 0 for cameras this job does not have.
+    pub fn rotation(&self, camera: reco_core::geometry::CameraIndex) -> i32 {
+        self.rotations.get(camera).copied().unwrap_or(0)
     }
 
     /// Whether this source's decode backend supports zero-copy GPU transfer.
@@ -254,7 +250,7 @@ impl FfmpegFileSource {
 
     fn spawn_single_decoder_at(
         input: crate::stitch_job::InputPath,
-        label: &'static str,
+        label: String,
         seek_secs: Option<f64>,
         software_decode: bool,
     ) -> std::sync::mpsc::Receiver<YuvData> {
@@ -340,48 +336,67 @@ impl FfmpegFileSource {
         rx
     }
 
-    fn spawn_decode_pipeline_from_inputs(
-        left: crate::stitch_job::InputPath,
-        right: crate::stitch_job::InputPath,
+    fn spawn_decode_pipeline(
+        inputs: Vec<crate::stitch_job::InputPath>,
         sync_offset: i64,
         seek_secs: Option<f64>,
         software_decode: bool,
-    ) -> std::sync::mpsc::Receiver<FramePair> {
-        let left_rx = Self::spawn_single_decoder_at(left, "left", seek_secs, software_decode);
-        let right_rx = Self::spawn_single_decoder_at(right, "right", seek_secs, software_decode);
+    ) -> std::sync::mpsc::Receiver<FrameSet> {
+        let rxs: Vec<_> = inputs
+            .into_iter()
+            .enumerate()
+            .map(|(i, input)| {
+                Self::spawn_single_decoder_at(input, format!("cam{i}"), seek_secs, software_decode)
+            })
+            .collect();
 
-        let (tx, rx) = std::sync::mpsc::sync_channel::<FramePair>(4);
+        let (tx, rx) = std::sync::mpsc::sync_channel::<FrameSet>(4);
 
         std::thread::Builder::new()
-            .name("decode_pair".into())
+            .name("decode_zip".into())
             .spawn(move || {
-                // Apply sync offset: skip frames from the camera that started first.
-                if sync_offset > 0 {
-                    // Right started first — skip N right frames.
-                    for _ in 0..sync_offset {
-                        if right_rx.recv().is_err() {
-                            return;
+                // Temporal alignment is defined between exactly two
+                // cameras (positive = camera 1 started first, negative
+                // = camera 0). Other arities have no alignment pair.
+                if let [cam0_rx, cam1_rx] = rxs.as_slice() {
+                    if sync_offset > 0 {
+                        for _ in 0..sync_offset {
+                            if cam1_rx.recv().is_err() {
+                                return;
+                            }
                         }
-                    }
-                    log::debug!("Sync offset: skipped {sync_offset} right frames");
-                } else if sync_offset < 0 {
-                    // Left started first — skip N left frames.
-                    let skip = sync_offset.unsigned_abs();
-                    for _ in 0..skip {
-                        if left_rx.recv().is_err() {
-                            return;
+                        log::debug!("Sync offset: skipped {sync_offset} camera-1 frames");
+                    } else if sync_offset < 0 {
+                        let skip = sync_offset.unsigned_abs();
+                        for _ in 0..skip {
+                            if cam0_rx.recv().is_err() {
+                                return;
+                            }
                         }
+                        log::debug!("Sync offset: skipped {skip} camera-0 frames");
                     }
-                    log::debug!("Sync offset: skipped {skip} left frames");
+                } else if sync_offset != 0 {
+                    log::info!(
+                        "Sync offset {sync_offset} ignored: alignment is defined for \
+                         two-camera jobs, this job has {}",
+                        rxs.len()
+                    );
                 }
 
-                while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
-                    if tx.send(FramePair { left, right }).is_err() {
+                'zip: loop {
+                    let mut cams = Vec::with_capacity(rxs.len());
+                    for rx in &rxs {
+                        match rx.recv() {
+                            Ok(frame) => cams.push(frame),
+                            Err(_) => break 'zip,
+                        }
+                    }
+                    if tx.send(FrameSet::Yuv420p(cams)).is_err() {
                         break;
                     }
                 }
             })
-            .expect("spawn pairing thread");
+            .expect("spawn decode zip thread");
 
         rx
     }
@@ -394,22 +409,22 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
     }
 
     fn left_rotation(&self) -> i32 {
-        self.left_rotation
+        self.rotation(0)
     }
 
     fn right_rotation(&self) -> i32 {
-        self.right_rotation
+        self.rotation(1)
     }
 
     fn gpu_pixel_format(&self) -> reco_core::render::renderer::GpuPixelFormat {
         self.pixel_format
     }
 
-    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
         match self.rx.recv() {
-            Ok(pair) => {
+            Ok(frames) => {
                 self.current_frame += 1;
-                Ok(Some(StereoFrame::Yuv420p(pair)))
+                Ok(Some(frames))
             }
             Err(_) => {
                 self.exhausted = true;
@@ -418,11 +433,11 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         }
     }
 
-    fn try_next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+    fn try_next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
         match self.rx.try_recv() {
-            Ok(pair) => {
+            Ok(frames) => {
                 self.current_frame += 1;
-                Ok(Some(StereoFrame::Yuv420p(pair)))
+                Ok(Some(frames))
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => Ok(None),
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
@@ -449,7 +464,7 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         // the final target. This method is blocking for strategy 1 and
         // semi-blocking for strategy 2 (spawns threads, returns before
         // first frame is decoded).
-        if frame > self.current_frame {
+        if frame >= self.current_frame {
             let skip = frame - self.current_frame;
             let max_forward = (self.info.fps * 10.0) as u64;
             if skip <= max_forward {
@@ -469,9 +484,8 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         // Drop old receiver - disconnects current decode threads which
         // exit on the next send() failure. Spawns fresh decoders that
         // seek to the target keyframe and skip to the exact PTS.
-        self.rx = Self::spawn_decode_pipeline_from_inputs(
-            self.left_input.clone(),
-            self.right_input.clone(),
+        self.rx = Self::spawn_decode_pipeline(
+            self.inputs.clone(),
             self.sync_offset,
             Some(secs),
             self.software_decode,
@@ -566,130 +580,6 @@ pub fn create_encoder(
     let encoder = FfmpegFileEncoder::new(path, width, height, fps, &enc_config)?;
     let name = encoder.encoder_name().to_string();
     Ok((encoder, name))
-}
-
-// -- FFmpeg Mono Source --
-
-/// Single-video source for mono topologies (pre-stitched panoramas).
-///
-/// Decodes one file on a background thread and delivers
-/// [`StereoFrame::Mono`] frames - the single-input dual of
-/// [`FfmpegFileSource`] for cylinder calibrations.
-#[cfg(feature = "ffmpeg")]
-pub struct FfmpegMonoSource {
-    rx: std::sync::mpsc::Receiver<YuvData>,
-    info: SourceInfo,
-    input: crate::stitch_job::InputPath,
-    software_decode: bool,
-    current_frame: u64,
-    exhausted: bool,
-}
-
-#[cfg(feature = "ffmpeg")]
-impl FfmpegMonoSource {
-    /// Open a mono source. `software_decode` forces the software
-    /// decoder (the `--cpu` path).
-    pub fn open(
-        input: &crate::stitch_job::InputPath,
-        software_decode: bool,
-    ) -> Result<Self, SourceError> {
-        let probe_path = input.first_path();
-        reco_core::source::validate_input_path(probe_path)?;
-        let probe =
-            ffmpeg::decoder::VideoDecoder::open(probe_path).map_err(|e| SourceError::Init {
-                path: probe_path.display().to_string(),
-                reason: format!("{e}"),
-            })?;
-        let fps_r = probe.frame_rate();
-        let fps = probe.fps();
-        let total_frames = input_duration_secs(input).map(|dur| (dur * fps) as u64);
-        let info = SourceInfo {
-            width: probe.width(),
-            height: probe.height(),
-            fps,
-            fps_rational: Some((fps_r.0, fps_r.1)),
-            total_frames,
-        };
-        drop(probe);
-
-        let rx =
-            FfmpegFileSource::spawn_single_decoder_at(input.clone(), "mono", None, software_decode);
-        Ok(Self {
-            rx,
-            info,
-            input: input.clone(),
-            software_decode,
-            current_frame: 0,
-            exhausted: false,
-        })
-    }
-}
-
-#[cfg(feature = "ffmpeg")]
-impl reco_core::source::FrameSource for FfmpegMonoSource {
-    fn info(&self) -> SourceInfo {
-        self.info.clone()
-    }
-
-    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
-        if self.exhausted {
-            return Ok(None);
-        }
-        match self.rx.recv() {
-            Ok(yuv) => {
-                self.current_frame += 1;
-                Ok(Some(StereoFrame::Mono(yuv)))
-            }
-            Err(_) => {
-                self.exhausted = true;
-                Ok(None)
-            }
-        }
-    }
-
-    fn total_frames(&self) -> Option<u64> {
-        self.info.total_frames
-    }
-
-    fn skip_frames(&mut self, count: u64) -> Result<u64, SourceError> {
-        self.seek(self.current_frame + count)?;
-        Ok(count)
-    }
-
-    fn seek(&mut self, frame: u64) -> Result<(), SourceError> {
-        // Same two strategies as `FfmpegFileSource::seek`: a short
-        // forward seek drains the already-running decoder; anything
-        // else respawns it at the target keyframe. Decode-and-discard
-        // for a large `start_time` would decode the entire prefix.
-        if frame >= self.current_frame {
-            let skip = frame - self.current_frame;
-            let max_forward = (self.info.fps * 10.0) as u64;
-            if skip <= max_forward {
-                for _ in 0..skip {
-                    match self.rx.recv() {
-                        Ok(_) => self.current_frame += 1,
-                        Err(_) => {
-                            self.exhausted = true;
-                            break;
-                        }
-                    }
-                }
-                return Ok(());
-            }
-        }
-
-        let secs = frame as f64 / self.info.fps;
-        log::debug!("mono seek to frame {frame} ({secs:.1}s)");
-        self.rx = FfmpegFileSource::spawn_single_decoder_at(
-            self.input.clone(),
-            "mono",
-            Some(secs),
-            self.software_decode,
-        );
-        self.current_frame = frame;
-        self.exhausted = false;
-        Ok(())
-    }
 }
 
 // -- FFmpeg File Encoder --
