@@ -1,6 +1,6 @@
 //! Virtual camera basis for yaw/pitch decomposition.
 
-use crate::geometry::ViewportPosition;
+use crate::geometry::Pose;
 
 use nalgebra::Vector3;
 
@@ -28,10 +28,11 @@ use nalgebra::Vector3;
 /// them on top, and `view_matrix` + `world_to_render_pose` both compose
 /// through that one construction.
 /// World-space eye position of the mono (single-camera) rig: on the
-/// projection axis, one unit back along `+Z`. The single home for the
-/// convention shared by [`VirtualCamera::mono`], the mono scene
-/// geometry, and the cylinder map.
-pub const MONO_CAMERA_POSITION: [f32; 3] = [0.0, 0.0, 1.0];
+/// projection axis, one unit back along `+Z`. A unit offset rather
+/// than the origin itself: `new` normalizes the eye-to-origin
+/// direction, and a zero eye would produce NaN axes. Consumers reach
+/// it through [`VirtualCamera::mono`].
+const MONO_CAMERA_POSITION: [f32; 3] = [0.0, 0.0, 1.0];
 
 #[derive(Debug, Clone, Copy)]
 pub struct VirtualCamera {
@@ -53,10 +54,8 @@ impl VirtualCamera {
     }
 
     /// The mono (single-camera) basis: the camera sits on the
-    /// projection axis at [`MONO_CAMERA_POSITION`] looking at the
-    /// origin - forward `-Z`, right `+X`, up `+Y`. A unit offset
-    /// rather than the origin itself: `new` normalizes the
-    /// eye-to-origin direction, and a zero eye would produce NaN axes.
+    /// projection axis at `[0, 0, 1]` looking at the origin -
+    /// forward `-Z`, right `+X`, up `+Y`.
     pub fn mono() -> Self {
         Self::new(&MONO_CAMERA_POSITION)
     }
@@ -75,7 +74,7 @@ impl VirtualCamera {
 
     /// Decompose a world-space direction into yaw/pitch relative to
     /// the base forward axis.
-    pub fn direction_to_yaw_pitch(&self, dir: &Vector3<f32>) -> ViewportPosition {
+    pub fn direction_to_yaw_pitch(&self, dir: &Vector3<f32>) -> Pose {
         // Pitch: elevation angle from the horizontal plane.
         let pitch = dir.y.clamp(-1.0, 1.0).asin();
 
@@ -94,10 +93,13 @@ impl VirtualCamera {
             0.0
         };
 
-        ViewportPosition {
+        Pose {
             yaw,
             pitch,
-            fov_degrees: None,
+            // A direction has no zoom; the default fov stands in so
+            // detection-mapping consumers (which read yaw/pitch only)
+            // get a well-formed pose.
+            ..Default::default()
         }
     }
 

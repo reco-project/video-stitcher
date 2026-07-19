@@ -21,7 +21,7 @@ use ort::value::TensorRef;
 use reco_core::detect::detector::{
     ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame, UnifiedDetector,
 };
-use reco_core::geometry::CameraId;
+use reco_core::geometry::CameraIndex;
 
 use super::{postprocess, postprocess_balldet};
 
@@ -215,7 +215,7 @@ impl CpuYoloDetector {
     /// vec for backwards compatibility.
     fn detect_raw(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         frame: &RawFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
         reco_core::profile_scope!("yolo_detect");
@@ -298,7 +298,7 @@ impl CpuYoloDetector {
 
     fn detect_preprocessed(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         data: &[f32],
         input_size: u32,
         src_width: u32,
@@ -367,7 +367,7 @@ impl UnifiedDetector for CpuYoloDetector {
 
     fn detect(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
         // `DetectorFrame` is `#[non_exhaustive]`, so we pattern-match

@@ -9,9 +9,10 @@
 //! implementation-defined unorm rounding), so it doubles as the agreement oracle.
 
 use crate::calibration::Calibration;
+use crate::geometry::Pose;
 use crate::projection::Projection;
 use crate::render::planes::{Nv12Planes, YuvPlanes};
-use crate::render::viewport::ViewportConfig;
+use crate::render::viewport::ViewportSize;
 
 use super::executor::StitchError;
 use super::{BlendRule, SurfaceMap};
@@ -46,8 +47,8 @@ fn check_plane(plane: &[u8], expected: usize) -> Result<(), StitchError> {
 /// * `left`, `right` - tightly packed NV12 source frames.
 /// * `cam` - source frame dimensions `(width, height)`.
 /// * `calib` - stereo calibration (intrinsics + plane layout).
-/// * `config` - output dimensions, FOV, blend width, rig and lens correction.
-/// * `yaw`, `pitch` - per-frame virtual-camera pan, in radians.
+/// * `viewport_size` - output dimensions.
+/// * `pose` - per-frame virtual-camera pan (radians) + fov zoom (degrees).
 /// * `full_range` - `true` for full-range (0-255) YUV, `false` for limited
 ///   (16-235) BT.709, matching the source decoder.
 ///
@@ -61,9 +62,8 @@ pub(crate) fn stitch_rgba(
     planes: &[Nv12Planes<'_>],
     cam: (u32, u32),
     calib: &Calibration,
-    config: &ViewportConfig,
-    yaw: f32,
-    pitch: f32,
+    viewport_size: &ViewportSize,
+    pose: Pose,
     full_range: bool,
 ) -> Result<Vec<u8>, StitchError> {
     let (cw, ch) = cam;
@@ -79,7 +79,11 @@ pub(crate) fn stitch_rgba(
         .map(|p| move |u, v| sample_nv12(p, cw, ch, u, v, full_range))
         .collect();
     Ok(stitch_with(
-        projection, calib, config, yaw, pitch, &samplers,
+        projection,
+        calib,
+        viewport_size,
+        pose,
+        &samplers,
     ))
 }
 
@@ -94,9 +98,8 @@ pub(crate) fn stitch_rgba_yuv420p(
     planes: &[YuvPlanes<'_>],
     cam: (u32, u32),
     calib: &Calibration,
-    config: &ViewportConfig,
-    yaw: f32,
-    pitch: f32,
+    viewport_size: &ViewportSize,
+    pose: Pose,
     full_range: bool,
 ) -> Result<Vec<u8>, StitchError> {
     let (cw, ch) = cam;
@@ -114,14 +117,18 @@ pub(crate) fn stitch_rgba_yuv420p(
         .map(|p| move |u, v| sample_yuv420p(p, cw, ch, u, v, full_range))
         .collect();
     Ok(stitch_with(
-        projection, calib, config, yaw, pitch, &samplers,
+        projection,
+        calib,
+        viewport_size,
+        pose,
+        &samplers,
     ))
 }
 
-/// The number of input frames must match what the projection consumes;
-/// a mismatch would silently sample the wrong camera.
+/// The supplied frame count must match the camera count the
+/// projection consumes; a mismatch would silently sample the wrong camera.
 fn check_camera_count(projection: &dyn Projection, planes: usize) -> Result<(), StitchError> {
-    if planes != usize::from(projection.camera_count()) {
+    if planes != projection.camera_count() {
         return Err(StitchError::InvalidConfig(format!(
             "projection '{}' consumes {} camera(s) but {planes} frame(s) were supplied",
             projection.name(),
@@ -140,17 +147,26 @@ fn check_camera_count(projection: &dyn Projection, planes: usize) -> Result<(), 
 fn stitch_with(
     projection: &dyn Projection,
     calib: &Calibration,
-    config: &ViewportConfig,
-    yaw: f32,
-    pitch: f32,
+    viewport_size: &ViewportSize,
+    pose: Pose,
     samplers: &[impl Fn(f64, f64) -> [f64; 3]],
 ) -> Vec<u8> {
-    let surfaces = projection.surface_maps(calib, config, yaw, pitch);
+    let ctx = crate::projection::ProjectionContext {
+        calibration: calib,
+        viewport_size,
+        pose,
+    };
+    let surfaces = projection.surface_maps(&ctx);
     let sampler_refs: Vec<&dyn Fn(f64, f64) -> [f64; 3]> = samplers
         .iter()
         .map(|s| s as &dyn Fn(f64, f64) -> [f64; 3])
         .collect();
-    composite_rgba(&surfaces, &sampler_refs, config.width, config.height)
+    composite_rgba(
+        &surfaces,
+        &sampler_refs,
+        viewport_size.width,
+        viewport_size.height,
+    )
 }
 
 /// Composite an ordered surface list into an opaque RGBA buffer.

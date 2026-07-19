@@ -8,7 +8,7 @@
 
 use reco_core::detect::panner::{PanContext, Panner};
 use reco_core::detect::tracker::WorldState;
-use reco_core::geometry::ViewportPosition;
+use reco_core::geometry::Pose;
 
 /// A debugging panner that sweeps the virtual camera left-right.
 ///
@@ -70,7 +70,7 @@ impl SweepPanner {
 }
 
 impl Panner for SweepPanner {
-    fn decide(&mut self, _world: &WorldState, ctx: &PanContext<'_>) -> ViewportPosition {
+    fn decide(&mut self, _world: &WorldState, ctx: &PanContext<'_>) -> Pose {
         let t = ctx.frame_index as f32 / self.fps;
         let yaw_phase = (t * std::f32::consts::TAU / self.cycle_secs).sin();
 
@@ -83,10 +83,10 @@ impl Panner for SweepPanner {
             self.fov_degrees
         };
 
-        ViewportPosition {
+        Pose {
             yaw: yaw_phase * self.yaw_range,
             pitch: 0.0,
-            fov_degrees: Some(fov),
+            fov_degrees: fov,
         }
     }
 }
@@ -94,13 +94,14 @@ impl Panner for SweepPanner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reco_core::calibration::{Calibration, Framing, LShapeTopology, Lens};
+    use reco_core::calibration::{Calibration, Framing, Lens};
+    use reco_core::projection::LShape;
 
     fn test_cal() -> Calibration {
         let cam = || Lens::fisheye(1920, 1080, 900.0, 900.0, 960.0, 540.0, [0.0; 4]);
         Calibration::new(
             vec![cam(), cam()],
-            LShapeTopology {
+            LShape {
                 intersect: 0.54,
                 x_ty: 0.0,
                 x_rz: 0.0,
@@ -121,7 +122,7 @@ mod tests {
         PanContext {
             frame_index,
             timestamp_ms: frame_index as f64 * (1000.0 / 30.0),
-            previous_position: ViewportPosition::default(),
+            previous_position: Pose::default(),
             calibration: cal,
         }
     }
@@ -175,7 +176,7 @@ mod tests {
                 confidence: 1.0,
                 state: reco_core::detect::tracker::TrackState::Tracking,
                 age_frames: 1,
-                origin: reco_core::geometry::CameraId::Left,
+                origin: 0,
             }),
             players: Vec::new(),
         };
@@ -189,6 +190,6 @@ mod tests {
         let mut p = SweepPanner::new(0.8, 10.0).with_fov(42.0);
         let cal = test_cal();
         let out = p.decide(&WorldState::default(), &ctx(0, &cal));
-        assert_eq!(out.fov_degrees, Some(42.0));
+        assert_eq!(out.fov_degrees, 42.0);
     }
 }
