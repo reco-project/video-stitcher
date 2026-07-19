@@ -848,6 +848,11 @@ impl VideoEncoder {
         opts.set("bf", &bf);
         let encoder = enc.open_with(opts)?;
         ost.set_parameters(&encoder);
+        // Stamp both stream rates so our own outputs re-probe cleanly on
+        // every consumer path (Matroska and fragmented MP4 don't derive
+        // them from sample timing the way plain mov does).
+        ost.set_rate(fps);
+        ost.set_avg_frame_rate(fps);
 
         // Note: write_header is called by the caller (new()) after optional
         // audio stream setup. output_time_base is read after write_header.
