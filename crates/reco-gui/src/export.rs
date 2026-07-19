@@ -146,14 +146,13 @@ pub fn run_export(
     post_status("Probing source...".into());
 
     use reco_core::source::FrameSource;
+    let fps = reco_io::adapters::FfmpegFileSource::frame_rate(left.first_path())
+        .map(|(n, d)| if d != 0 { n as f64 / d as f64 } else { 30.0 })
+        .unwrap_or(30.0);
     if let Ok(source) =
         reco_io::adapters::FfmpegFileSource::open_inputs(&[left.clone(), right.clone()], 0, false)
         && let Some(full_total) = source.total_frames()
     {
-        let fps = reco_io::adapters::FfmpegFileSource::frame_rate(left.first_path())
-            .map(|(n, d)| if d != 0 { n as f64 / d as f64 } else { 30.0 })
-            .unwrap_or(30.0);
-
         let start_frames = if start_secs > 0.0 {
             (start_secs as f64 * fps) as u64
         } else {
@@ -230,7 +229,7 @@ pub fn run_export(
     });
 
     if start_secs > 0.0 {
-        let skip_frames = (start_secs as f64 * 30.0) as u64;
+        let skip_frames = (start_secs as f64 * fps) as u64;
         post_status(format!(
             "Seeking to {start_secs:.0}s (skipping ~{skip_frames} frames)..."
         ));
