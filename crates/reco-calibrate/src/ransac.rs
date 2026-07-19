@@ -55,7 +55,7 @@ pub fn ransac_fundamental(
 
     for _ in 0..max_iters {
         // Sample 8 random indices
-        let sample: Vec<usize> = indices.choose_multiple(&mut rng, 8).copied().collect();
+        let sample: Vec<usize> = indices.sample(&mut rng, 8).copied().collect();
 
         // Estimate F from the 8-point sample
         let f = match estimate_fundamental_8pt(pts1, pts2, &sample) {
