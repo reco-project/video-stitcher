@@ -67,7 +67,7 @@ fn main() {
     for run in 1..=runs {
         println!("[run {run}] before: {}", vram());
         let out = format!("vram_repro_run{run}.mp4");
-        let mut job = reco_io::StitchJob::new(left.as_str(), right.as_str(), cal.as_str(), &out)
+        let mut job = reco_io::StitchJob::new([left.as_str(), right.as_str()], cal.as_str(), &out)
             .resolution(1920, 1080)
             .max_frames(max_frames);
 

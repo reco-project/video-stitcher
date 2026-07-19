@@ -1,8 +1,8 @@
 //! `StitchCore` - push-first canonical entry point for the stitching engine.
 //!
 //! Live sports production is the primary use case, so the canonical
-//! API is push-based: consumers call `StitchCore::submit_frame_yuv` /
-//! `submit_frame_bgra` whenever a new frame pair is ready, and the
+//! API is push-based: consumers call `StitchCore::submit_frame`
+//! whenever a new frame set is ready, and the
 //! core owns the render substrate, readback, detection, pose
 //! resolution, coverage, and the replay ring buffer.
 //!
@@ -13,11 +13,12 @@
 //!
 //! `StitchCore` composes the foundation traits:
 //!
-//! - [`crate::projection::Projection`] - camera-geometry contract; today's
-//!   L-shape is [`LShapeProjection`](crate::projection::LShapeProjection).
-//!   Bound to the executor at construction (see
-//!   [`GpuExecutorConfig`](crate::stitch::GpuExecutorConfig)); the
-//!   engine reads it back for coverage construction.
+//! - [`crate::projection::Projection`] - camera-geometry contract,
+//!   implemented directly by the calibration topology's parameter
+//!   structs ([`LShape`](crate::projection::LShape),
+//!   [`Cylinder`](crate::projection::Cylinder)). The executor reads it
+//!   through the document; the engine reads it back for coverage
+//!   construction.
 //! - [`crate::detect::detector::UnifiedDetector`] - collapsed CPU/CUDA/Metal
 //!   detector contract with `DetectorError` for remote-inference futures.
 //!   Wired via `StitchCore::set_detector`; detection runs on every
@@ -46,7 +47,7 @@ use crate::detect::detector::UnifiedDetector;
 use crate::detect::director::MappedDetection;
 use crate::detect::panner::Panner;
 use crate::detect::tracker::Tracker;
-use crate::geometry::ViewportPosition;
+use crate::geometry::Pose;
 #[cfg(feature = "gpu")]
 use crate::gpu::rgba_readback::RgbaReadback;
 #[cfg(feature = "gpu")]
@@ -93,7 +94,7 @@ pub struct StitchCore {
     pub(crate) cpu_frame: Vec<u8>,
     /// One-shot guard for the mono-detection warning (detection is
     /// L-shape-only until the mono mapping lands).
-    // TODO: remove once mono detection lands (Step 13 PR B).
+    // TODO: remove once mono detection lands.
     mono_detection_warned: bool,
     pub(crate) output_width: u32,
     pub(crate) output_height: u32,
@@ -112,13 +113,13 @@ pub struct StitchCore {
     pub(crate) player_tracker: Option<Box<dyn Tracker>>,
     /// Camera-motion policy. Consumes the assembled
     /// [`WorldState`](crate::detect::tracker::WorldState) each frame and emits
-    /// a [`ViewportPosition`]. When unset, the pose stays at the
+    /// a [`Pose`]. When unset, the pose stays at the
     /// pipeline default.
     pub(crate) panner: Option<Box<dyn Panner>>,
     /// Previous frame's resolved pose, passed to the panner in its
     /// [`PanContext`](crate::detect::panner::PanContext) so panners can
     /// compute first-order motion deltas statelessly.
-    pub(crate) previous_panner_pose: ViewportPosition,
+    pub(crate) previous_panner_pose: Pose,
 
     /// Structured observability sink for the detect -> track -> pan
     /// chain (see [`crate::detect::pipeline_event`]). Owned by the
@@ -189,7 +190,7 @@ impl StitchCore {
     /// after construction via [`Self::enable_replay_buffer`].
     pub fn new(executor: Executor) -> Result<Self, StitchCoreError> {
         let (output_width, output_height) = {
-            let viewport = executor.viewport();
+            let viewport = executor.viewport_size();
             (viewport.width, viewport.height)
         };
         // The pipelined RGBA ring is GPU delivery machinery; the CPU
@@ -210,9 +211,7 @@ impl StitchCore {
 
         // The projection owns coverage construction: a new projection
         // brings its own boundary representation with it.
-        let coverage = executor
-            .projection()
-            .coverage(executor.calibration(), executor.scene());
+        let coverage = executor.coverage();
 
         Ok(Self {
             executor,
@@ -226,7 +225,7 @@ impl StitchCore {
             ball_tracker: None,
             player_tracker: None,
             panner: None,
-            previous_panner_pose: ViewportPosition::default(),
+            previous_panner_pose: Pose::default(),
             event_sink: None,
             detector: None,
             detection_interval: 1,
@@ -364,7 +363,7 @@ impl StitchCore {
     /// through coverage + FOV limits. Exposed so interactive consumers
     /// (OBS pan/zoom, GUI drag) can preview where the core *would*
     /// render if they submit right now.
-    pub fn current_pose(&mut self) -> ViewportPosition {
+    pub fn current_pose(&mut self) -> Pose {
         // A peek does no detection work of its own, so the director
         // sees `fresh_detection = false`. The next real submit will
         // fire the schedule-driven detection path and pass the actual
@@ -372,34 +371,32 @@ impl StitchCore {
         self.resolve_current_pose(false)
     }
 
-    /// Clamp a prospective `(yaw, pitch, fov)` triple through the
-    /// coverage boundary. No-op if no coverage is available (e.g. the
-    /// calibration produced a degenerate boundary). `fov_degrees: None`
-    /// uses the pipeline's current FOV.
+    /// Clamp a prospective pose through the coverage boundary. No-op
+    /// if no coverage is available (e.g. the calibration produced a
+    /// degenerate boundary). Pure: reads and returns poses, touches no
+    /// pipeline state.
     ///
     /// Input is treated as world-space (matches the director-output
     /// contract). Output is render-space: resolved through the shared
     /// `resolve_render_pose` authority (world-space clamp + roll-aware
     /// tilt/roll basis inversion), identical to the export/director path.
-    pub fn safe_clamp(&self, pose: ViewportPosition) -> ViewportPosition {
+    pub fn safe_clamp(&self, pose: Pose) -> Pose {
         let Some(coverage) = &self.coverage else {
             return pose;
         };
-        let fov = pose
-            .fov_degrees
-            .unwrap_or_else(|| self.executor.fov())
-            .min(coverage.max_fov_degrees());
-        let aspect = self.executor.viewport().aspect_ratio();
+        let fov = pose.fov_degrees.min(coverage.max_fov_degrees());
+        let aspect = self.executor.viewport_size().aspect_ratio();
         let rig_tilt = self.executor.calibration().framing.tilt as f32;
         let rig_roll = self.executor.calibration().framing.roll as f32;
-        let cam = crate::geometry::VirtualCamera::new(&self.executor.scene().camera_position);
+        let framing = &self.executor.calibration().framing;
+        let cam = self.executor.projection().virtual_camera(framing);
         let (yaw, pitch) = crate::geometry::resolve_render_pose(
             coverage, &cam, rig_tilt, rig_roll, pose.yaw, pose.pitch, fov, aspect,
         );
-        ViewportPosition {
+        Pose {
             yaw,
             pitch,
-            fov_degrees: Some(fov),
+            fov_degrees: fov,
         }
     }
 
@@ -408,9 +405,9 @@ impl StitchCore {
     /// any coverage clamping. The orient half of [`Self::safe_clamp`];
     /// the unconstrained render path uses it so disabling the clamp never
     /// disables horizon leveling.
-    pub fn orient_pose(&self, world: ViewportPosition) -> ViewportPosition {
+    pub fn orient_pose(&self, world: Pose) -> Pose {
         let framing = &self.executor.calibration().framing;
-        let cam = crate::geometry::VirtualCamera::new(&self.executor.scene().camera_position);
+        let cam = self.executor.projection().virtual_camera(framing);
         let (yaw, pitch) = crate::geometry::world_to_render_pose(
             &cam,
             world.yaw,
@@ -418,7 +415,7 @@ impl StitchCore {
             framing.tilt as f32,
             framing.roll as f32,
         );
-        ViewportPosition {
+        Pose {
             yaw,
             pitch,
             fov_degrees: world.fov_degrees,
@@ -432,16 +429,6 @@ impl StitchCore {
     /// The active calibration document.
     pub fn calibration(&self) -> &Calibration {
         self.executor.calibration()
-    }
-
-    /// Set the vertical field of view in degrees.
-    pub fn set_fov(&mut self, fov_degrees: f32) {
-        self.executor.set_fov(fov_degrees);
-    }
-
-    /// Current vertical field of view in degrees.
-    pub fn fov(&self) -> f32 {
-        self.executor.fov()
     }
 
     /// Resize the output viewport. Returns the accepted `(width, height)`,
@@ -549,11 +536,7 @@ impl StitchCore {
     }
 
     fn rebuild_coverage(&mut self) {
-        self.coverage = Some(
-            self.executor
-                .projection()
-                .coverage(self.executor.calibration(), self.executor.scene()),
-        );
+        self.coverage = Some(self.executor.coverage());
     }
 
     fn refresh_coverage_orientation(&mut self) {
@@ -586,8 +569,8 @@ impl StitchCore {
 
     /// Enable or disable constrained-look clamping.
     ///
-    /// When `true`, [`Self::submit_frame_yuv`] / `..._bgra` /
-    /// `submit_frame_*_at_pose` pass the director's (or caller's)
+    /// When `true`, [`Self::submit_frame`] and the
+    /// `submit_frame_*_at_pose` variants pass the director's (or caller's)
     /// pose through [`Self::safe_clamp`] before rendering.
     /// When `false`, the raw pose is used verbatim; the FOV max is
     /// still respected (pipeline-set) but coverage-based yaw/pitch
@@ -630,7 +613,7 @@ impl StitchCore {
     /// Camera count the active projection consumes (one submitted frame
     /// per camera plane). For today's stereo L-shape this is `2`; a
     /// mono projection exposes `1`.
-    pub fn camera_count(&self) -> u8 {
+    pub fn camera_count(&self) -> usize {
         self.executor.projection().camera_count()
     }
 
@@ -675,7 +658,7 @@ impl StitchCore {
     // -----------------------------------------------------------------
 
     /// Output dimensions in pixels. Identical to
-    /// `config.viewport.{width,height}` at construction.
+    /// `config.viewport_size.{width,height}` at construction.
     pub fn output_dims(&self) -> (u32, u32) {
         (self.output_width, self.output_height)
     }
@@ -736,7 +719,7 @@ mod tests {
 
     use crate::core::replay_buffer::ReplayBuffer;
     use crate::core::types::{RenderOutcome, ReplayFrame, StitchCoreError};
-    use crate::geometry::ViewportPosition;
+    use crate::geometry::Pose;
 
     /// Assert `ReplayBuffer` trims old frames as the newest ages past
     /// `max_duration`. This is the core guarantee OBS A16 relies on:
@@ -748,7 +731,7 @@ mod tests {
             buf.push(ReplayFrame {
                 rgba: vec![i as u8; 4],
                 captured_at: Duration::from_millis(i as u64 * 1000),
-                pose: ViewportPosition::default(),
+                pose: Pose::default(),
             });
         }
         // Newest is at 4s; anything older than 2s should be evicted.
@@ -767,12 +750,12 @@ mod tests {
         buf.push(ReplayFrame {
             rgba: vec![],
             captured_at: Duration::from_millis(0),
-            pose: ViewportPosition::default(),
+            pose: Pose::default(),
         });
         buf.push(ReplayFrame {
             rgba: vec![],
             captured_at: Duration::from_millis(100),
-            pose: ViewportPosition::default(),
+            pose: Pose::default(),
         });
         // Newest - max_duration = 0, so frame at 0ms is exactly on the
         // boundary and retained.
@@ -800,7 +783,7 @@ mod tests {
             buf.push(ReplayFrame {
                 rgba: vec![i; 4],
                 captured_at: Duration::from_millis(i as u64 * 100),
-                pose: ViewportPosition::default(),
+                pose: Pose::default(),
             });
         }
         // snapshot returns oldest-to-newest, no consumption.
@@ -823,7 +806,7 @@ mod tests {
         buf.push(ReplayFrame {
             rgba: vec![0u8; 4],
             captured_at: Duration::ZERO,
-            pose: ViewportPosition::default(),
+            pose: Pose::default(),
         });
         assert!(!buf.is_empty());
         buf.clear();
@@ -841,12 +824,12 @@ mod tests {
         buf.push(ReplayFrame {
             rgba: vec![],
             captured_at: Duration::from_millis(100),
-            pose: ViewportPosition::default(),
+            pose: Pose::default(),
         });
         buf.push(ReplayFrame {
             rgba: vec![],
             captured_at: Duration::from_millis(850),
-            pose: ViewportPosition::default(),
+            pose: Pose::default(),
         });
         assert_eq!(buf.buffered_duration(), Duration::from_millis(750));
         assert_eq!(
@@ -862,18 +845,15 @@ mod tests {
     #[test]
     fn engine_over_cpu_executor_pure_logic_works() {
         use crate::core::StitchCore;
-        use crate::render::planes::YuvPlanes;
-        use crate::render::viewport::ViewportConfig;
+        use crate::render::viewport::ViewportSize;
         use crate::stitch::{CpuExecutor, Executor, test_support::calib};
 
         let (w, h) = (64u32, 36u32);
         let executor = CpuExecutor::new(
-            Box::new(crate::projection::LShapeProjection),
             calib(w, h),
-            ViewportConfig {
+            ViewportSize {
                 width: w,
                 height: h,
-                ..Default::default()
             },
             w,
             h,
@@ -890,16 +870,8 @@ mod tests {
         assert!(core.max_fov_degrees().is_some());
 
         // Live setters dispatch to the CPU arm (document mutation).
-        core.set_fov(50.0);
-        assert!((core.fov() - 50.0).abs() < f32::EPSILON);
-        // Out-of-range FOV clamps on the CPU arm exactly like the GPU
-        // pipeline does - the executors must not diverge here.
-        core.set_fov(0.0);
-        assert!(
-            (core.fov() - 1.0).abs() < f32::EPSILON,
-            "CPU arm clamps FOV to the valid range"
-        );
-        core.set_fov(50.0);
+        // fov is deliberately absent here: it rides in every pose, so
+        // there is no retained zoom state to set.
         core.set_blend_width(0.1);
         assert!((core.calibration().topology.blend_width() - 0.1).abs() < 1e-6);
         core.set_rig_tilt(0.2);
@@ -908,10 +880,10 @@ mod tests {
         assert_eq!(core.output_dims(), (48, 26));
 
         // Coverage clamp works CPU-side (pure geometry).
-        let clamped = core.safe_clamp(ViewportPosition {
+        let clamped = core.safe_clamp(Pose {
             yaw: 10.0,
             pitch: 10.0,
-            fov_degrees: Some(50.0),
+            fov_degrees: 50.0,
         });
         assert!(clamped.yaw.is_finite() && clamped.pitch.is_finite());
         assert!(
@@ -923,12 +895,13 @@ mod tests {
         // (no warmup), at the resized output dimensions.
         let y = vec![0u8; (w * h) as usize];
         let uv = vec![128u8; (w * h / 4) as usize];
-        let planes = YuvPlanes {
-            y: &y,
-            u: &uv,
-            v: &uv,
+        let cam = crate::source::YuvData {
+            y,
+            u: uv.clone(),
+            v: uv,
         };
-        match core.submit_frame_yuv(&planes, &planes) {
+        let frames = crate::source::FrameSet::Yuv420p(vec![cam.clone(), cam]);
+        match core.submit_frame(&frames) {
             Ok(crate::core::types::RenderOutcome::Rgba(bytes)) => {
                 assert_eq!(bytes.len(), 48 * 26 * 4);
             }
@@ -947,16 +920,53 @@ mod tests {
                 core.flush().unwrap_err(),
                 StitchCoreError::RequiresGpu
             ));
-            assert!(matches!(
-                core.render_yuv_at_pose(&planes, &planes, 0.0, 0.0)
-                    .unwrap_err(),
-                StitchCoreError::RequiresGpu
-            ));
         }
     }
 
+    /// The FrameSet arity invariant: a set whose length does not match
+    /// the projection's camera count is rejected with a typed error at
+    /// the submit boundary (`check_camera_count` on the CPU stitch
+    /// path), never silently mis-sampled. This is the enforcement
+    /// artifact for the "len == camera_count" claim on [`FrameSet`].
+    #[test]
+    fn submit_frame_rejects_camera_count_mismatch() {
+        use crate::core::StitchCore;
+        use crate::render::viewport::ViewportSize;
+        use crate::stitch::{CpuExecutor, Executor, test_support::calib};
+
+        let (w, h) = (64u32, 36u32);
+        let executor = CpuExecutor::new(
+            calib(w, h), // L-shape: camera_count == 2
+            ViewportSize {
+                width: w,
+                height: h,
+            },
+            w,
+            h,
+            false,
+        )
+        .expect("cpu executor");
+        let mut core = StitchCore::new(Executor::Cpu(Box::new(executor))).expect("cpu engine");
+
+        let cam = crate::source::YuvData {
+            y: vec![0u8; (w * h) as usize],
+            u: vec![128u8; (w * h / 4) as usize],
+            v: vec![128u8; (w * h / 4) as usize],
+        };
+        let mono_set = crate::source::FrameSet::Yuv420p(vec![cam]);
+        // RenderOutcome borrows the core and is not Debug; unwrap by match.
+        let err = match core.submit_frame(&mono_set) {
+            Ok(_) => panic!("a 1-camera set on a 2-camera projection must be rejected"),
+            Err(e) => e,
+        };
+        assert!(
+            err.to_string().contains("2 camera(s) but 1 frame(s)"),
+            "expected the camera-count mismatch error, got: {err}"
+        );
+    }
+
     /// Engine-level executor agreement: the same submit API
-    /// (`submit_frame_nv12`) driven over a CPU engine and a GPU engine
+    /// (`submit_frame`, NV12 set) driven over a CPU engine and a GPU engine
     /// produces the same frame within the established oracle bounds.
     /// The Step-12 guarantee: swapping the executor does not change
     /// the picture.
@@ -965,9 +975,8 @@ mod tests {
     fn cpu_and_gpu_engines_agree_via_submit_nv12() {
         use crate::core::StitchCore;
         use crate::core::types::RenderOutcome;
-        use crate::render::planes::Nv12Planes;
         use crate::render::renderer::InputFormat;
-        use crate::render::viewport::ViewportConfig;
+        use crate::render::viewport::ViewportSize;
         use crate::stitch::test_support::{Agreement, AgreementBounds, calib, gpu_or_skip, nv12};
         use crate::stitch::{CpuExecutor, Executor, GpuExecutor, GpuExecutorConfig};
 
@@ -976,31 +985,25 @@ mod tests {
         };
         let (cam_w, cam_h) = (192u32, 108u32);
         let (out_w, out_h) = (160u32, 90u32);
-        let config = ViewportConfig {
+        let config = ViewportSize {
             width: out_w,
             height: out_h,
-            ..Default::default()
         };
         let (ly, luv) = nv12(cam_w, cam_h, 0);
         let (ry, ruv) = nv12(cam_w, cam_h, 30);
-        let left = Nv12Planes { y: &ly, uv: &luv };
-        let right = Nv12Planes { y: &ry, uv: &ruv };
+        let frames = crate::source::FrameSet::Nv12(vec![
+            crate::source::Nv12Data { y: ly, uv: luv },
+            crate::source::Nv12Data { y: ry, uv: ruv },
+        ]);
 
-        let cpu_exec = CpuExecutor::new(
-            Box::new(crate::projection::LShapeProjection),
-            calib(cam_w, cam_h),
-            config.clone(),
-            cam_w,
-            cam_h,
-            false,
-        )
-        .expect("cpu executor");
+        let cpu_exec = CpuExecutor::new(calib(cam_w, cam_h), config.clone(), cam_w, cam_h, false)
+            .expect("cpu executor");
         let mut cpu_core = StitchCore::new(Executor::Cpu(Box::new(cpu_exec))).expect("cpu engine");
 
         let gpu_exec = GpuExecutor::new(
             gpu,
             GpuExecutorConfig {
-                viewport: config,
+                viewport_size: config,
                 ..GpuExecutorConfig::new(calib(cam_w, cam_h), cam_w, cam_h, InputFormat::Nv12)
             },
         )
@@ -1008,10 +1011,7 @@ mod tests {
         let mut gpu_core = StitchCore::new(Executor::Gpu(Box::new(gpu_exec))).expect("gpu engine");
 
         // CPU: synchronous - the first submit yields the frame.
-        let cpu_rgba = match cpu_core
-            .submit_frame_nv12(&left, &right)
-            .expect("cpu submit")
-        {
+        let cpu_rgba = match cpu_core.submit_frame(&frames).expect("cpu submit") {
             RenderOutcome::Rgba(bytes) => bytes.to_vec(),
             RenderOutcome::Warmup => panic!("CPU submit is synchronous - no warmup"),
         };
@@ -1021,9 +1021,7 @@ mod tests {
         // (same input, same resolved pose), so any yielded frame works.
         let mut gpu_rgba = None;
         for _ in 0..3 {
-            if let RenderOutcome::Rgba(bytes) = gpu_core
-                .submit_frame_nv12(&left, &right)
-                .expect("gpu submit")
+            if let RenderOutcome::Rgba(bytes) = gpu_core.submit_frame(&frames).expect("gpu submit")
             {
                 gpu_rgba = Some(bytes.to_vec());
                 break;
@@ -1045,9 +1043,8 @@ mod tests {
     fn resize_then_submit_yields_resized_frames() {
         use crate::core::StitchCore;
         use crate::core::types::RenderOutcome;
-        use crate::render::planes::Nv12Planes;
         use crate::render::renderer::InputFormat;
-        use crate::render::viewport::ViewportConfig;
+        use crate::render::viewport::ViewportSize;
         use crate::stitch::test_support::{calib, gpu_or_skip, nv12};
         use crate::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 
@@ -1058,10 +1055,9 @@ mod tests {
         let exec = GpuExecutor::new(
             gpu,
             GpuExecutorConfig {
-                viewport: ViewportConfig {
+                viewport_size: ViewportSize {
                     width: 160,
                     height: 90,
-                    ..Default::default()
                 },
                 ..GpuExecutorConfig::new(calib(cam_w, cam_h), cam_w, cam_h, InputFormat::Nv12)
             },
@@ -1071,20 +1067,20 @@ mod tests {
 
         let (ly, luv) = nv12(cam_w, cam_h, 0);
         let (ry, ruv) = nv12(cam_w, cam_h, 30);
-        let left = Nv12Planes { y: &ly, uv: &luv };
-        let right = Nv12Planes { y: &ry, uv: &ruv };
+        let frames = crate::source::FrameSet::Nv12(vec![
+            crate::source::Nv12Data { y: ly, uv: luv },
+            crate::source::Nv12Data { y: ry, uv: ruv },
+        ]);
 
         // Warm the ring at the original size, then resize.
-        let _ = core.submit_frame_nv12(&left, &right).expect("submit");
+        let _ = core.submit_frame(&frames).expect("submit");
         assert_eq!(core.resize(128, 72), Some((128, 72)));
 
         // The rebuilt ring delivers frames at the new size by the
         // third post-resize submit.
         let mut delivered = None;
         for _ in 0..3 {
-            if let RenderOutcome::Rgba(bytes) =
-                core.submit_frame_nv12(&left, &right).expect("submit")
-            {
+            if let RenderOutcome::Rgba(bytes) = core.submit_frame(&frames).expect("submit") {
                 delivered = Some(bytes.len());
                 break;
             }
@@ -1126,7 +1122,7 @@ mod tests {
         }
         fn detect(
             &mut self,
-            _camera: crate::geometry::CameraId,
+            _camera: crate::geometry::CameraIndex,
             _frame: &crate::detect::detector::DetectorFrame<'_>,
         ) -> Result<Vec<crate::detect::detector::Detection>, crate::detect::detector::DetectorError>
         {
@@ -1135,15 +1131,13 @@ mod tests {
     }
 
     fn cpu_engine(w: u32, h: u32) -> crate::core::StitchCore {
-        use crate::render::viewport::ViewportConfig;
+        use crate::render::viewport::ViewportSize;
         use crate::stitch::{CpuExecutor, Executor, test_support::calib};
         let executor = CpuExecutor::new(
-            Box::new(crate::projection::LShapeProjection),
             calib(w, h),
-            ViewportConfig {
+            ViewportSize {
                 width: w,
                 height: h,
-                ..Default::default()
             },
             w,
             h,
@@ -1181,7 +1175,7 @@ mod tests {
         use crate::detect::detector::{
             ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame, UnifiedDetector,
         };
-        use crate::geometry::CameraId;
+        use crate::geometry::CameraIndex;
 
         struct RecordingDetector;
         impl UnifiedDetector for RecordingDetector {
@@ -1190,7 +1184,7 @@ mod tests {
             }
             fn detect(
                 &mut self,
-                camera: CameraId,
+                camera: CameraIndex,
                 frame: &DetectorFrame<'_>,
             ) -> Result<Vec<Detection>, DetectorError> {
                 match frame {
@@ -1224,11 +1218,11 @@ mod tests {
                 }),
             )
         };
-        core.run_detection_frames(&[frame(CameraId::Left), frame(CameraId::Right)]);
+        core.run_detection_frames(&[frame(0), frame(1)]);
 
         let dets = core.last_detections();
         assert_eq!(dets.len(), 2);
-        assert_eq!(dets[0].camera, CameraId::Left);
-        assert_eq!(dets[1].camera, CameraId::Right);
+        assert_eq!(dets[0].camera, 0);
+        assert_eq!(dets[1].camera, 1);
     }
 }

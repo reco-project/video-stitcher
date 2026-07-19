@@ -2,7 +2,7 @@
 //!
 //! The pipeline doesn't care where frames come from - video files,
 //! live cameras, network streams, or test patterns. Each source
-//! implements [`FrameSource`] and delivers stereo frame pairs in
+//! implements [`FrameSource`] and delivers per-camera frame sets in
 //! YUV420P or NV12 format.
 //!
 //! ## Implementations (in `reco-io`)
@@ -197,8 +197,8 @@ impl YuvFrame {
 
 /// Owned YUV420P plane data (without dimensions).
 ///
-/// Used internally when dimensions are tracked separately
-/// (e.g. in [`FramePair`] where both frames share dimensions).
+/// Used when dimensions are tracked separately - all cameras in a
+/// [`FrameSet`] share the dimensions carried by [`SourceInfo`].
 #[derive(Debug, Clone)]
 pub struct YuvData {
     /// Y (luma) plane, full resolution.
@@ -233,29 +233,29 @@ pub struct Nv12Data {
     pub uv: Vec<u8>,
 }
 
-/// A stereo frame pair from the source.
-///
-/// Contains left and right camera data as YUV420P planes (CPU-resident).
-/// Both frames must have the same dimensions.
-#[derive(Debug, Clone)]
-pub struct FramePair {
-    /// Left camera YUV420P data.
-    pub left: YuvData,
-    /// Right camera YUV420P data.
-    pub right: YuvData,
+impl Nv12Data {
+    /// Borrow as pipeline-ready plane references.
+    pub fn as_planes(&self) -> crate::render::planes::Nv12Planes<'_> {
+        crate::render::planes::Nv12Planes {
+            y: &self.y,
+            uv: &self.uv,
+        }
+    }
 }
 
-/// A stereo NV12 frame pair from the source.
+/// One camera's D3D11VA decoded frame: an array texture plus the slice
+/// index within the decode pool.
 ///
-/// Contains left and right camera data as NV12 planes (CPU-resident).
-/// NV12 is the native output of NVIDIA ISP (nvarguscamerasrc) and NVDEC,
-/// so this avoids an NV12 -> I420 conversion on capture.
-#[derive(Debug, Clone)]
-pub struct Nv12FramePair {
-    /// Left camera NV12 data.
-    pub left: Nv12Data,
-    /// Right camera NV12 data.
-    pub right: Nv12Data,
+/// Non-owning - the pointer is only valid while the source pins the
+/// underlying decode slice alive (until the session has staged the
+/// frame into shared textures).
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone, Copy)]
+pub struct D3d11CameraFrame {
+    /// D3D11 array texture pointer (ID3D11Texture2D*).
+    pub texture: *mut std::ffi::c_void,
+    /// Array slice index within the D3D11VA decode pool.
+    pub slice: usize,
 }
 
 /// Per-camera metadata for an NVMM zero-copy frame (Jetson).
@@ -294,65 +294,73 @@ pub struct NvmmPlaneInfo {
 #[cfg(target_os = "linux")]
 unsafe impl Send for NvmmPlaneInfo {}
 
-/// A stereo frame in any supported format.
+/// One time instant's frames from every camera, in projection order
+/// (index `i` pairs with `calibration.lenses[i]`).
 ///
-/// Sources produce whichever format is most efficient for their backend:
+/// Residency - where the pixel data lives - is a set-level property:
+/// every source decides its backend once at open (one decode path, one
+/// shared texture pool for all cameras), so one variant covers the
+/// whole set and a mixed-residency set is unrepresentable.
+///
+/// Sources produce whichever variant is most efficient for their backend:
 /// - File decode (CPU path): `Yuv420p`
 /// - Jetson ISP / NVDEC NV12: `Nv12`
 /// - CUDA/Vulkan zero-copy shared textures: `GpuResident`
 /// - VideoToolbox/Metal zero-copy: `MetalResident`
+/// - Windows D3D11VA zero-copy: `D3d11Resident`
 /// - Jetson NVMM zero-copy (DMA-buf + NvBufSurface): `NvmmResident`
+///
+/// CPU variants carry one entry per camera; the stitch boundary
+/// rejects a length that does not match the projection's camera count
+/// (`check_camera_count` in `stitch::cpu`, mirrored by the submit
+/// dispatch). Platform zero-copy variants are pinned to two cameras by
+/// type - their decode channels and texture pools are pair-shaped by
+/// design and guarded, not generalized.
 #[non_exhaustive]
-pub enum StereoFrame {
-    /// A single pre-stitched panorama frame for mono topologies (the
-    /// cylinder): CPU-resident YUV420P planes of the one source.
-    Mono(YuvData),
+pub enum FrameSet {
     /// CPU-resident YUV420P planes (3 planes per camera).
-    Yuv420p(FramePair),
+    Yuv420p(Vec<YuvData>),
     /// CPU-resident NV12 planes (2 planes per camera).
-    Nv12(Nv12FramePair),
-    /// GPU-resident: data already written to shared textures by the source.
-    /// The `u8` values are double-buffer slot indices that the pipeline
-    /// uses to select the correct bind group.
+    Nv12(Vec<Nv12Data>),
+    /// GPU-resident: data already written to shared textures by the
+    /// source. Values are double-buffer slot indices (0 or 1), one per
+    /// camera, that the pipeline uses to select the correct bind group.
     GpuResident {
-        /// Left camera double-buffer slot index (0 or 1).
-        left_slot: u8,
-        /// Right camera double-buffer slot index (0 or 1).
-        right_slot: u8,
+        /// Per-camera double-buffer slot indices.
+        slots: [u8; 2],
     },
-    /// macOS zero-copy: retained CVPixelBuffers from VideoToolbox decode.
-    /// The session imports these as Metal textures each frame.
+    /// macOS zero-copy: retained CVPixelBuffers from VideoToolbox
+    /// decode, one per camera. The session imports these as Metal
+    /// textures each frame.
     #[cfg(any(target_os = "macos", target_os = "ios"))]
-    MetalResident {
-        /// Left camera retained pixel buffer.
-        left: crate::interop::metal::RetainedCVPixelBuffer,
-        /// Right camera retained pixel buffer.
-        right: crate::interop::metal::RetainedCVPixelBuffer,
-    },
-    /// Windows D3D11VA zero-copy: decoded frame still on D3D11 GPU memory.
-    /// The session stages these into shared NV12 textures for wgpu rendering.
+    MetalResident([crate::interop::metal::RetainedCVPixelBuffer; 2]),
+    /// Windows D3D11VA zero-copy: decoded frames still on D3D11 GPU
+    /// memory, one per camera. The session stages these into shared
+    /// NV12 textures for wgpu rendering.
     #[cfg(target_os = "windows")]
-    D3d11Resident {
-        /// D3D11 array texture pointer (ID3D11Texture2D*) for left camera.
-        left_texture: *mut std::ffi::c_void,
-        /// Array slice index within the D3D11VA decode pool for left camera.
-        left_slice: usize,
-        /// D3D11 array texture pointer (ID3D11Texture2D*) for right camera.
-        right_texture: *mut std::ffi::c_void,
-        /// Array slice index within the D3D11VA decode pool for right camera.
-        right_slice: usize,
-    },
-    /// Jetson NVMM zero-copy: NV12 frames in NvBufSurface DMA-buf memory.
-    /// The session imports the DMA-buf as Vulkan textures for rendering
-    /// (copied into the VRAM pool) and runs `NvBufSurfTransform` on the
-    /// surface pointer for detection. Produced by the NVMM camera source.
+    D3d11Resident([D3d11CameraFrame; 2]),
+    /// Jetson NVMM zero-copy: NV12 frames in NvBufSurface DMA-buf
+    /// memory, one per camera. The session imports the DMA-bufs as
+    /// Vulkan textures for rendering (copied into the VRAM pool) and
+    /// runs `NvBufSurfTransform` on the surface pointers for detection.
+    /// Produced by the NVMM camera source.
     #[cfg(target_os = "linux")]
-    NvmmResident {
-        /// Left camera NVMM plane metadata.
-        left: NvmmPlaneInfo,
-        /// Right camera NVMM plane metadata.
-        right: NvmmPlaneInfo,
-    },
+    NvmmResident([NvmmPlaneInfo; 2]),
+}
+
+impl FrameSet {
+    /// Consume a two-camera YUV420P set into its per-camera payloads.
+    ///
+    /// `None` for any other shape - the interactive stereo consumers
+    /// (CLI preview, GUI playback) that retain decoded frames are
+    /// two-camera CPU paths by construction and use this instead of
+    /// re-deriving the downcast.
+    pub fn into_yuv_pair(self) -> Option<[YuvData; 2]> {
+        match self {
+            Self::Yuv420p(cams) => <[YuvData; 2]>::try_from(cams).ok(),
+            _ => None,
+        }
+    }
 }
 
 /// Metadata about the frame source.
@@ -373,11 +381,11 @@ pub struct SourceInfo {
     pub total_frames: Option<u64>,
 }
 
-/// Trait for stereo frame sources.
+/// Trait for frame sources.
 ///
-/// A frame source delivers stereo frame pairs to the pipeline in whatever
-/// format is most efficient for the backend. The pipeline handles format
-/// differences internally via [`StereoFrame`].
+/// A frame source delivers one [`FrameSet`] per time instant to the
+/// pipeline in whatever format is most efficient for the backend. The
+/// pipeline handles format differences internally via the set's variant.
 ///
 /// Implementations handle their own threading (e.g. dedicated capture
 /// threads with bounded channels). The pipeline calls [`Self::next_frame`]
@@ -395,11 +403,11 @@ pub trait FrameSource: Send {
     /// Source metadata (dimensions, frame rate).
     fn info(&self) -> SourceInfo;
 
-    /// Get the next stereo frame, or `None` if the source is exhausted.
+    /// Get the next frame set, or `None` if the source is exhausted.
     ///
     /// For live sources (cameras), this blocks until a frame is available.
     /// For file sources, returns `None` at end of file.
-    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError>;
+    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError>;
 
     /// Non-blocking attempt to get the next frame.
     ///
@@ -408,14 +416,14 @@ pub trait FrameSource: Send {
     /// that need to poll without blocking the UI thread.
     ///
     /// Default implementation delegates to [`Self::next_frame`] (blocking).
-    fn try_next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+    fn try_next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
         self.next_frame()
     }
 
     /// Whether this source delivers GPU-resident frames.
     ///
     /// When `true`, [`next_frame`](Self::next_frame) may return
-    /// [`StereoFrame::GpuResident`] or `StereoFrame::MetalResident`.
+    /// [`FrameSet::GpuResident`] or `FrameSet::MetalResident`.
     /// The session uses this to configure GPU bind groups and select
     /// the optimal render path automatically.
     fn is_gpu_resident(&self) -> bool {
@@ -441,6 +449,10 @@ pub trait FrameSource: Send {
     /// The session applies rotation automatically: the CPU path handles it
     /// via buffer reversal in the decoder, while the GPU zero-copy path
     /// uses a shader UV flip.
+    ///
+    /// Pair-shaped on purpose for now: the session consumes rotation
+    /// for GPU-resident sources only, which are two-camera; the
+    /// accessors go per-camera when the FrameSource seam does.
     fn left_rotation(&self) -> i32 {
         0
     }

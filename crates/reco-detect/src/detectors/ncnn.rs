@@ -22,7 +22,7 @@ use std::path::Path;
 use reco_core::detect::detector::{
     ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame, UnifiedDetector,
 };
-use reco_core::geometry::CameraId;
+use reco_core::geometry::CameraIndex;
 
 // ── NCNN C API FFI ──────────────────────────────────────────────────
 
@@ -256,7 +256,7 @@ impl NcnnYoloDetector {
     }
 
     /// Parse YOLO output and apply NMS.
-    fn postprocess(&self, output: *const c_void, camera: CameraId) -> Vec<Detection> {
+    fn postprocess(&self, output: *const c_void, camera: CameraIndex) -> Vec<Detection> {
         let w = unsafe { ncnn_mat_get_w(output) } as usize;
         let h = unsafe { ncnn_mat_get_h(output) } as usize;
         let data = unsafe { std::slice::from_raw_parts(ncnn_mat_get_data(output), w * h) };
@@ -360,7 +360,7 @@ impl NcnnYoloDetector {
     /// compatibility.
     fn detect_raw(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         frame: &RawFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
         reco_core::profile_scope!("ncnn_yolo_detect");
@@ -415,7 +415,7 @@ impl UnifiedDetector for NcnnYoloDetector {
 
     fn detect(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
         // CPU-residency backend: accept only `Cpu(_)`; anything else

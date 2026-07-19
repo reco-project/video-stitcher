@@ -35,7 +35,6 @@ use reco_calibrate::{LensProfileInfo, ProfileSource};
 use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_control::{ControlIntent, PoseIntent};
 use reco_core::calibration::Calibration;
-use reco_core::geometry::ViewportPosition;
 use reco_core::wgpu;
 
 use crate::playback::{PlayState, Playback};
@@ -70,7 +69,6 @@ const TICK_INTERVAL_MS: i64 = 2;
 /// FOV clamp range (degrees), matching CLI preview.
 const FOV_MIN: f32 = 20.0;
 const FOV_MAX: f32 = 150.0;
-const FOV_DEFAULT: f32 = 75.0;
 
 /// Mouse drag sensitivity passed to `PoseControlConfig`. `0.287`
 /// deg/px = 0.005 rad/px - matches the pre-migration GUI constant
@@ -516,11 +514,6 @@ impl AppState {
                 // i.e. PTZ-head convention. `invert_drag_x = true`
                 // keeps that exact feel.
                 invert_drag_x: true,
-                rest_pose: ViewportPosition {
-                    yaw: 0.0,
-                    pitch: 0.0,
-                    fov_degrees: Some(FOV_DEFAULT),
-                },
                 ..PoseControlConfig::default()
             }),
             pending_seek: None,
@@ -566,11 +559,6 @@ impl AppState {
             fov_min_degrees: FOV_MIN,
             fov_max_degrees: FOV_MAX,
             invert_drag_x: true,
-            rest_pose: ViewportPosition {
-                yaw: 0.0,
-                pitch: 0.0,
-                fov_degrees: Some(FOV_DEFAULT),
-            },
             ..PoseControlConfig::default()
         });
         self.pending_seek = None;
@@ -608,7 +596,7 @@ impl AppState {
 
     /// Apply an edited Topology to the renderer. `preview_dirty`
     /// triggers a re-render on the next timer tick.
-    fn apply_layout(&mut self, layout: reco_core::calibration::LShapeTopology) {
+    fn apply_layout(&mut self, layout: reco_core::projection::LShape) {
         if let Some(cal) = self.calibration.as_mut() {
             cal.topology = reco_core::calibration::Topology::LShape(layout.clone());
         }
@@ -1760,17 +1748,13 @@ fn main() -> anyhow::Result<()> {
                             reco_io::stitch_job::InputPath::Chained(all)
                         }
                         None => {
-                            if paths.len() == 1 {
-                                reco_io::stitch_job::InputPath::Single(
-                                    paths.into_iter().next().unwrap(),
-                                )
-                            } else {
+                            if paths.len() > 1 {
                                 log::info!(
                                     "Left: {} segments selected, chaining via concat demuxer",
                                     paths.len()
                                 );
-                                reco_io::stitch_job::InputPath::Chained(paths)
                             }
+                            reco_io::stitch_job::InputPath::from_segments(paths)
                         }
                     }
                 };
@@ -1846,17 +1830,13 @@ fn main() -> anyhow::Result<()> {
                             reco_io::stitch_job::InputPath::Chained(all)
                         }
                         None => {
-                            if paths.len() == 1 {
-                                reco_io::stitch_job::InputPath::Single(
-                                    paths.into_iter().next().unwrap(),
-                                )
-                            } else {
+                            if paths.len() > 1 {
                                 log::info!(
                                     "Right: {} segments selected, chaining via concat demuxer",
                                     paths.len()
                                 );
-                                reco_io::stitch_job::InputPath::Chained(paths)
                             }
+                            reco_io::stitch_job::InputPath::from_segments(paths)
                         }
                     }
                 };
@@ -4085,6 +4065,11 @@ fn main() -> anyhow::Result<()> {
                                 ),
                                 reco_io::stitch_job::StitchError::Session(
                                     reco_core::session::types::SessionError::Config(detail),
+                                )
+                                | reco_io::stitch_job::StitchError::Session(
+                                    reco_core::session::types::SessionError::Core(
+                                        reco_core::core::types::StitchCoreError::Config(detail),
+                                    ),
                                 ) => ("Export failed", detail.clone()),
                                 other => (
                                     "Export failed",
@@ -4305,9 +4290,7 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
         let current = s.pose.current_pose();
         app.set_yaw(current.yaw);
         app.set_pitch(current.pitch);
-        if let Some(fov) = current.fov_degrees {
-            app.set_fov(fov);
-        }
+        app.set_fov(current.fov_degrees);
         return true;
     }
     false
@@ -4356,13 +4339,8 @@ fn run_autoload(
         spec.right.len(),
         spec.cal.display()
     );
-    let make_input = |paths: &[PathBuf]| {
-        if paths.len() == 1 {
-            reco_io::stitch_job::InputPath::Single(paths[0].clone())
-        } else {
-            reco_io::stitch_job::InputPath::Chained(paths.to_vec())
-        }
-    };
+    let make_input =
+        |paths: &[PathBuf]| reco_io::stitch_job::InputPath::from_segments(paths.to_vec());
     {
         let mut s = state.borrow_mut();
         s.left_input = Some(make_input(&spec.left));
@@ -4447,9 +4425,6 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
 
             s.clamp_targets();
             let clamped_fov = s.pose.current_fov_deg();
-            if let Some(bridge) = s.bridge.as_mut() {
-                bridge.engine_mut().set_fov(clamped_fov);
-            }
             let img = s.render_current();
             // Seed calibration slider values from the baseline layout.
             let layout = s.cal_baseline.clone();
@@ -4724,9 +4699,6 @@ fn handle_calibration_result(
                     state.reset_view();
                     state.clamp_targets();
                     let clamped_fov = state.pose.current_fov_deg();
-                    if let Some(bridge) = state.bridge.as_mut() {
-                        bridge.engine_mut().set_fov(clamped_fov);
-                    }
                     let img = state.render_current();
                     let (in_w, in_h) = state.playback.input_dimensions().unwrap_or((0, 0));
 

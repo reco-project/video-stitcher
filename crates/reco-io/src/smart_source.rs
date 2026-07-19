@@ -1,4 +1,4 @@
-//! GPU-aware stereo file source with automatic backend selection.
+//! GPU-aware file source with automatic backend selection.
 //!
 //! [`SmartFileSource`] is the standard way to open video files for stitching.
 //! It probes the input, detects the best decode path (GPU zero-copy or CPU),
@@ -19,7 +19,7 @@
 //! ```
 
 use reco_core::render::renderer::GpuPixelFormat;
-use reco_core::source::{FrameSource, SourceError, SourceInfo, StereoFrame};
+use reco_core::source::{FrameSet, FrameSource, SourceError, SourceInfo};
 
 /// GPU-aware stereo file source that auto-selects the optimal decode path.
 ///
@@ -50,8 +50,6 @@ pub struct SmartFileSource {
 
 enum SourceMode {
     Cpu(crate::adapters::FfmpegFileSource),
-    /// Single pre-stitched panorama for mono topologies.
-    Mono(crate::adapters::FfmpegMonoSource),
     #[cfg(target_os = "linux")]
     GpuZeroCopy(Box<LinuxZeroCopyState>),
     #[cfg(target_os = "macos")]
@@ -84,7 +82,7 @@ struct WindowsZeroCopyState {
     ///
     /// The `_frame_ref` inside each D3d11Frame pins the decode pool slice
     /// in FFmpeg's surface allocator. Without this, the slice is recycled
-    /// as soon as the raw pointers are extracted into `StereoFrame::D3d11Resident`,
+    /// as soon as the raw pointers are extracted into `FrameSet::D3d11Resident`,
     /// and the decoder thread can overwrite the surface before `stage_frame`
     /// copies it - causing frame reordering glitches on Intel and NVIDIA.
     ///
@@ -208,30 +206,35 @@ impl SmartFileSource {
             )
         } else {
             Self::open_cpu(
-                left,
-                right,
+                &[left.clone(), right.clone()],
                 sync_offset,
                 false,
                 info,
                 pixel_format,
                 full_range,
-                left_rotation,
-                right_rotation,
             )
         }
     }
 
+    /// Open a CPU-decode source for any number of inputs (projection
+    /// order). Format, fps, and color range are probed from input 0;
+    /// per-input rotation is probed by the decode layer.
     pub fn open_cpu_only(
-        left: &crate::stitch_job::InputPath,
-        right: &crate::stitch_job::InputPath,
+        inputs: &[crate::stitch_job::InputPath],
         sync_offset: i64,
         software_decode: bool,
     ) -> Result<Self, SourceError> {
-        let left_probe_path = left.first_path();
+        let [first, ..] = inputs else {
+            return Err(SourceError::Init {
+                path: "(none)".into(),
+                reason: "at least one input video is required".into(),
+            });
+        };
+        let probe_path = first.first_path();
 
-        let probe = crate::ffmpeg::decoder::VideoDecoder::open(left_probe_path).map_err(|e| {
+        let probe = crate::ffmpeg::decoder::VideoDecoder::open(probe_path).map_err(|e| {
             SourceError::Init {
-                path: left_probe_path.display().to_string(),
+                path: probe_path.display().to_string(),
                 reason: format!("{e}"),
             }
         })?;
@@ -245,53 +248,37 @@ impl SmartFileSource {
         };
         let pixel_format = probe.pixel_format();
         let full_range = probe.is_full_range();
-        let left_rotation = probe.rotation();
         drop(probe);
 
-        let right_rotation = crate::ffmpeg::decoder::VideoDecoder::open(right.first_path())
-            .map(|d| d.rotation())
-            .unwrap_or_else(|e| {
-                log::warn!("Failed to probe right video for rotation ({e}), assuming 0 degrees");
-                0
-            });
-
         Self::open_cpu(
-            left,
-            right,
+            inputs,
             sync_offset,
             software_decode,
             info,
             pixel_format,
             full_range,
-            left_rotation,
-            right_rotation,
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn open_cpu(
-        left: &crate::stitch_job::InputPath,
-        right: &crate::stitch_job::InputPath,
+        inputs: &[crate::stitch_job::InputPath],
         sync_offset: i64,
         software_decode: bool,
         info: SourceInfo,
         pixel_format: GpuPixelFormat,
         full_range: bool,
-        left_rotation: i32,
-        right_rotation: i32,
     ) -> Result<Self, SourceError> {
-        let source = crate::adapters::FfmpegFileSource::open_from_inputs(
-            left,
-            right,
-            sync_offset,
-            software_decode,
-        )?;
+        let source =
+            crate::adapters::FfmpegFileSource::open_inputs(inputs, sync_offset, software_decode)?;
         log::info!(
-            "SmartFileSource: CPU decode ({}x{}, {pixel_format:?}{})",
+            "SmartFileSource: CPU decode ({} camera(s), {}x{}, {pixel_format:?}{})",
+            inputs.len(),
             info.width,
             info.height,
             if full_range { ", full-range" } else { "" }
         );
+        let left_rotation = source.rotation(0);
+        let right_rotation = source.rotation(1);
         Ok(Self {
             mode: SourceMode::Cpu(source),
             info,
@@ -531,47 +518,18 @@ impl SmartFileSource {
         info: SourceInfo,
         pixel_format: GpuPixelFormat,
         full_range: bool,
-        left_rotation: i32,
-        right_rotation: i32,
+        _left_rotation: i32,
+        _right_rotation: i32,
     ) -> Result<Self, SourceError> {
         log::info!("SmartFileSource: zero-copy not yet implemented for this platform, using CPU");
         Self::open_cpu(
-            left,
-            right,
+            &[left.clone(), right.clone()],
             sync_offset,
+            false,
             info,
             pixel_format,
             full_range,
-            left_rotation,
-            right_rotation,
         )
-    }
-
-    /// Open a single-input mono source (cylinder calibrations).
-    ///
-    /// Always CPU frames - the mono GPU pass is not wired yet.
-    /// `software_decode` forces the software decoder (`--cpu`).
-    pub fn open_mono(
-        input: &crate::stitch_job::InputPath,
-        software_decode: bool,
-    ) -> Result<Self, SourceError> {
-        let source = crate::adapters::FfmpegMonoSource::open(input, software_decode)?;
-        let info = source.info();
-        log::info!(
-            "SmartFileSource: mono CPU decode ({}x{})",
-            info.width,
-            info.height
-        );
-        Ok(Self {
-            mode: SourceMode::Mono(source),
-            info,
-            pixel_format: GpuPixelFormat::Nv12,
-            full_range: false,
-            left_rotation: 0,
-            right_rotation: 0,
-            decode_mode: "CPU mono",
-            exhausted: false,
-        })
     }
 
     /// Human-readable description of the active decode path.
@@ -642,9 +600,8 @@ impl FrameSource for SmartFileSource {
         self.info.clone()
     }
 
-    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
         match &mut self.mode {
-            SourceMode::Mono(source) => source.next_frame(),
             SourceMode::Cpu(source) => {
                 let frame = source.next_frame()?;
                 if frame.is_none() {
@@ -659,9 +616,8 @@ impl FrameSource for SmartFileSource {
                     .as_ref()
                     .expect("frame_rx taken during shutdown");
                 match rx.recv() {
-                    Ok(signal) => Ok(Some(StereoFrame::GpuResident {
-                        left_slot: signal.left_slot,
-                        right_slot: signal.right_slot,
+                    Ok(signal) => Ok(Some(FrameSet::GpuResident {
+                        slots: [signal.left_slot, signal.right_slot],
                     })),
                     Err(_) => {
                         self.exhausted = true;
@@ -671,10 +627,7 @@ impl FrameSource for SmartFileSource {
             }
             #[cfg(target_os = "macos")]
             SourceMode::MetalZeroCopy(rx) => match rx.recv() {
-                Ok(pair) => Ok(Some(StereoFrame::MetalResident {
-                    left: pair.left,
-                    right: pair.right,
-                })),
+                Ok(pair) => Ok(Some(FrameSet::MetalResident([pair.left, pair.right]))),
                 Err(_) => {
                     self.exhausted = true;
                     Ok(None)
@@ -689,19 +642,23 @@ impl FrameSource for SmartFileSource {
                 };
                 match pair_rx.recv() {
                     Ok((left, right)) => {
-                        let stereo = StereoFrame::D3d11Resident {
-                            left_texture: left.texture,
-                            left_slice: left.array_slice,
-                            right_texture: right.texture,
-                            right_slice: right.array_slice,
-                        };
+                        let frames = FrameSet::D3d11Resident([
+                            reco_core::source::D3d11CameraFrame {
+                                texture: left.texture,
+                                slice: left.array_slice,
+                            },
+                            reco_core::source::D3d11CameraFrame {
+                                texture: right.texture,
+                                slice: right.array_slice,
+                            },
+                        ]);
                         // Keep the D3d11Frame pair alive so FFmpeg doesn't
                         // recycle the decode pool slices before stage_frame
                         // copies them. The previous guard is dropped here,
                         // which is safe because its staging copy already
                         // completed in the previous loop iteration.
                         state.live_frame_guard = Some((left, right));
-                        Ok(Some(stereo))
+                        Ok(Some(frames))
                     }
                     Err(_) => {
                         self.exhausted = true;
@@ -713,12 +670,11 @@ impl FrameSource for SmartFileSource {
     }
 
     fn is_gpu_resident(&self) -> bool {
-        !matches!(self.mode, SourceMode::Cpu(_) | SourceMode::Mono(_))
+        !matches!(self.mode, SourceMode::Cpu(_))
     }
 
     fn skip_frames(&mut self, count: u64) -> Result<u64, SourceError> {
         match &mut self.mode {
-            SourceMode::Mono(source) => source.skip_frames(count),
             #[cfg(target_os = "linux")]
             SourceMode::GpuZeroCopy(state) => {
                 let rx = state
@@ -790,7 +746,6 @@ impl FrameSource for SmartFileSource {
         // implement `try_next_frame`, so their local flag is sufficient).
         match &self.mode {
             SourceMode::Cpu(source) => self.exhausted || source.is_exhausted(),
-            SourceMode::Mono(_) => self.exhausted,
             #[cfg(target_os = "linux")]
             SourceMode::GpuZeroCopy(_) => self.exhausted,
             #[cfg(target_os = "macos")]

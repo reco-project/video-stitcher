@@ -113,12 +113,26 @@ def load_events(path):
     return frames, max_frame
 
 
+
+# The pipeline serializes `camera` as the camera index (0 = left,
+# 1 = right). Older JSONL files carried "Left"/"Right" strings; both
+# normalize to the index here so old captures stay readable.
+CAMERA_NAMES = {"left": 0, "right": 1}
+
+
+def det_camera(det):
+    cam = det.get("camera")
+    if isinstance(cam, int):
+        return cam
+    if isinstance(cam, str):
+        return CAMERA_NAMES.get(cam.lower(), -1)
+    return -1
+
 def draw_detections(img, detections, camera_filter, h, w):
     """Draw bounding boxes from DetectionsRaw. Returns detection count."""
     count = 0
     for det in detections:
-        cam = det.get("camera", "").lower()
-        if cam != camera_filter:
+        if det_camera(det) != camera_filter:
             continue
         cx, cy = det["camera_center"]
         sw, sh = det["camera_size"]
@@ -150,8 +164,7 @@ def draw_filter_removed(img, filter_events, camera_filter, h, w):
         removed = before_ids - after_ids
 
         for det in fev.get("before", []):
-            cam = det.get("camera", "").lower()
-            if cam != camera_filter:
+            if det_camera(det) != camera_filter:
                 continue
             key = (det["camera_center"][0], det["camera_center"][1])
             if key not in removed:
@@ -253,8 +266,7 @@ def draw_shared_overlay(img, frame_idx, frame_data, total_frames, fps):
 def draw_stale_detections(img, detections, camera_filter, h, w):
     """Draw last-known detections dimmed (for non-detection interval frames)."""
     for det in detections:
-        cam = det.get("camera", "").lower()
-        if cam != camera_filter:
+        if det_camera(det) != camera_filter:
             continue
         cx, cy = det["camera_center"]
         sw, sh = det["camera_size"]
@@ -287,10 +299,10 @@ def annotate_frame(left_img, right_img, frame_idx, frame_data, last_detections,
     panel_h = left.shape[0]
     fresh = len(frame_data["detections_raw"]) > 0
     if fresh:
-        draw_detections(left, frame_data["detections_raw"], "left", panel_h, panel_w)
+        draw_detections(left, frame_data["detections_raw"], 0, panel_h, panel_w)
     elif last_detections:
-        draw_stale_detections(left, last_detections, "left", panel_h, panel_w)
-    draw_filter_removed(left, frame_data["detection_filter"], "left", panel_h, panel_w)
+        draw_stale_detections(left, last_detections, 0, panel_h, panel_w)
+    draw_filter_removed(left, frame_data["detection_filter"], 0, panel_h, panel_w)
     draw_roi(left, roi_left, panel_h, panel_w)
     draw_camera_label(left, "L", panel_h, panel_w)
 
@@ -298,10 +310,10 @@ def annotate_frame(left_img, right_img, frame_idx, frame_data, last_detections,
         right = resize_keep_aspect(right_img, panel_w)
         rh = right.shape[0]
         if fresh:
-            draw_detections(right, frame_data["detections_raw"], "right", rh, panel_w)
+            draw_detections(right, frame_data["detections_raw"], 1, rh, panel_w)
         elif last_detections:
-            draw_stale_detections(right, last_detections, "right", rh, panel_w)
-        draw_filter_removed(right, frame_data["detection_filter"], "right", rh, panel_w)
+            draw_stale_detections(right, last_detections, 1, rh, panel_w)
+        draw_filter_removed(right, frame_data["detection_filter"], 1, rh, panel_w)
         draw_roi(right, roi_right, rh, panel_w)
         draw_camera_label(right, "R", rh, panel_w)
         combined = np.hstack([left, right]) if hstack else np.vstack([left, right])

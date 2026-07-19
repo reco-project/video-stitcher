@@ -1,6 +1,6 @@
 //! Value types shared by every pose-resolution path.
 //!
-//! [`ViewportPosition`] is the camera's yaw / pitch / FOV triple, the
+//! [`Pose`] is the camera's yaw / pitch / FOV triple, the
 //! output of any [`Panner`](super::panner::Panner) and the input the
 //! renderer crops the panorama with. [`MappedDetection`] is a raw
 //! detection enriched with panorama-space coordinates; trackers
@@ -13,8 +13,8 @@
 //! trait is gone; only these value types remain. Rename deferred to
 //! avoid a repo-wide import churn.
 
-use crate::geometry::CameraId;
-use crate::geometry::ViewportPosition;
+use crate::geometry::CameraIndex;
+use crate::geometry::Pose;
 
 /// A detection mapped to panorama coordinates.
 ///
@@ -22,12 +22,12 @@ use crate::geometry::ViewportPosition;
 /// External consumers (coaching, VAR, stats) observe detections via
 /// [`PipelineEventSink`](super::pipeline_event::PipelineEventSink).
 /// Wraps a raw camera-space detection with a panorama-space
-/// [`ViewportPosition`] computed via
+/// [`Pose`] computed via
 /// [`camera_to_panorama`](crate::projection::camera_to_panorama).
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct MappedDetection {
     /// Which camera this detection came from.
-    pub camera: CameraId,
+    pub camera: CameraIndex,
 
     /// Detection class index from the model (e.g. 0 = "ball", 1 = "person").
     /// Map to a human-readable label via the detector's `class_names()`.
@@ -47,5 +47,5 @@ pub struct MappedDetection {
 
     /// Position in panorama space (yaw/pitch).
     /// `None` if the detection couldn't be mapped (e.g. outside camera FOV).
-    pub position: Option<ViewportPosition>,
+    pub position: Option<Pose>,
 }
