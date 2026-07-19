@@ -47,6 +47,11 @@ ignore = [
     # move to quick-xml 0.41+. Mirror of the audit-job ignore in rust.yml.
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
+    # rustybuzz 0.20 - unmaintained (2026-07); maintainer points to
+    # harfrust. Transitive via slint's text stack (resvg -> usvg).
+    # Maintenance status only, not a vulnerability. Revisit when slint
+    # migrates. Mirror of the audit-job ignore in rust.yml.
+    "RUSTSEC-2026-0206",
 ]
 
 # ---------------------------------------------------------------------------

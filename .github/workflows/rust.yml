@@ -157,9 +157,10 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           # quick-xml DoS advisories: transitive via the Linux GUI stack
-          # (zbus_xml / wayland-scanner), local-input only. Justified in
+          # (zbus_xml / wayland-scanner), local-input only. rustybuzz:
+          # unmaintained, transitive via slint's text stack. Justified in
           # deny.toml; keep the two lists in sync.
-          ignore: RUSTSEC-2026-0194, RUSTSEC-2026-0195
+          ignore: RUSTSEC-2026-0194, RUSTSEC-2026-0195, RUSTSEC-2026-0206
 
   # ===========================================================================
   # msrv — the Rust toolchain we officially support.
