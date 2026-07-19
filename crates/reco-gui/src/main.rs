@@ -442,13 +442,6 @@ fn build_bug_report(state: &AppState, app_weak: &slint::Weak<RecoApp>) -> String
         report.push_str(&format!("\n## Files\n- Calibration: {name}\n"));
     }
 
-    report.push_str(
-        "\n## Description\n\
-         <!-- What happened? What did you expect? -->\n\n\
-         ## Steps to reproduce\n\
-         <!-- 1. ... 2. ... 3. ... -->\n",
-    );
-
     if let Some(log_path) = log_file_path()
         && let Ok(contents) = std::fs::read_to_string(&log_path)
     {
