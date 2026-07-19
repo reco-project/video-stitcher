@@ -364,13 +364,17 @@ impl Drop for V4l2Camera {
 // and the File fd is Send.
 unsafe impl Send for V4l2Camera {}
 
+/// A left+right pair of raw Bayer frames, Arc-shared between the capture
+/// threads and the consumer (no per-frame allocation or copy).
+pub type BayerFramePair = (Arc<Vec<u8>>, Arc<Vec<u8>>);
+
 /// Stereo pair of V4L2 cameras for raw Bayer capture.
 ///
 /// Each camera runs in its own thread (parallel DQBUF, no phase-offset
 /// penalty). A pairing thread zips left+right into stereo pairs using
 /// Arc-shared buffers (no per-frame allocation or copy in the hot path).
 pub struct V4l2StereoCameraSource {
-    rx: std::sync::mpsc::Receiver<(Arc<Vec<u8>>, Arc<Vec<u8>>)>,
+    rx: std::sync::mpsc::Receiver<BayerFramePair>,
     info: reco_core::source::SourceInfo,
     stop: Arc<AtomicBool>,
 }
@@ -485,7 +489,7 @@ impl V4l2StereoCameraSource {
     ///
     /// Each Arc<Vec<u8>> is `width * height * 2` bytes of little-endian
     /// u16 (R16Uint). Arc-shared to avoid copying between threads.
-    pub fn next_pair(&mut self) -> io::Result<Option<(Arc<Vec<u8>>, Arc<Vec<u8>>)>> {
+    pub fn next_pair(&mut self) -> io::Result<Option<BayerFramePair>> {
         match self.rx.recv() {
             Ok(pair) => Ok(Some(pair)),
             Err(_) => Ok(None),

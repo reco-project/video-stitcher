@@ -3,18 +3,18 @@
 //! Holds N decoded frames with their detection metadata so the
 //! panner can see future WorldStates when deciding the current
 //! frame's viewport position. Works for both CPU-resident frames
-//! (`StereoFrame::Yuv420p` / `Nv12`) and GPU-resident frames, where
+//! (`FrameSet::Yuv420p` / `Nv12`) and GPU-resident frames, where
 //! the pixels live in the VRAM pool and `vram_slot` indexes them.
 
 use std::collections::VecDeque;
 
 use crate::detect::director::MappedDetection;
 use crate::detect::tracker::WorldState;
-use crate::source::StereoFrame;
+use crate::source::FrameSet;
 
 /// A single buffered frame: decoded pixels + detection metadata.
 pub(crate) struct BufferedFrame {
-    pub frame: StereoFrame,
+    pub frame: FrameSet,
     pub world_state: WorldState,
     pub detections: Vec<MappedDetection>,
     pub elapsed_ms: f64,
@@ -84,16 +84,16 @@ mod tests {
 
     fn make_frame(ball_yaw: f32) -> BufferedFrame {
         BufferedFrame {
-            frame: StereoFrame::Nv12(crate::source::Nv12FramePair {
-                left: crate::source::Nv12Data {
+            frame: FrameSet::Nv12(vec![
+                crate::source::Nv12Data {
                     y: vec![128; 4],
                     uv: vec![128; 2],
                 },
-                right: crate::source::Nv12Data {
+                crate::source::Nv12Data {
                     y: vec![128; 4],
                     uv: vec![128; 2],
                 },
-            }),
+            ]),
             world_state: WorldState {
                 ball: Some(TrackedEntity {
                     id: 0,
@@ -103,7 +103,7 @@ mod tests {
                     confidence: 0.9,
                     state: TrackState::Tracking,
                     age_frames: 1,
-                    origin: crate::geometry::CameraId::Left,
+                    origin: 0,
                 }),
                 players: vec![],
             },

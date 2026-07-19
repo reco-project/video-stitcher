@@ -17,7 +17,7 @@ use std::path::Path;
 use crate::coreml_inference::CoreMlModel;
 use crate::metal_compute::MetalPreprocessPipeline;
 use reco_core::detect::detector::{Detection, DetectorError, DetectorFrame, UnifiedDetector};
-use reco_core::geometry::CameraId;
+use reco_core::geometry::CameraIndex;
 use reco_core::gpu::GpuContext;
 use reco_core::interop::metal::CVPixelBufferRef;
 
@@ -218,7 +218,7 @@ impl UnifiedDetector for MetalYoloDetector {
 
     fn detect(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
         // Metal-residency backend: matches `Metal { cv_pixel_buffer,

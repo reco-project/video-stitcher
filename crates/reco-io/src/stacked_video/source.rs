@@ -8,14 +8,12 @@
 //!   for N-arbitrary consumers (replay scrubbing, analysis).
 //! - The [`reco_core::source::FrameSource`] impl accepts only
 //!   `capacity == 2` layouts and yields
-//!   [`reco_core::source::StereoFrame::Yuv420p`] pairs so the
+//!   [`reco_core::source::FrameSet::Yuv420p`] sets so the
 //!   stitch pipeline can drive off a stacked recording as if it
 //!   were two independent cameras.
 use super::{GridLayout, StackError, unpack_yuv420p};
 use crate::ffmpeg::decoder::{DecodeError, VideoDecoder};
-use reco_core::source::{
-    FramePair, FrameSource, SourceError, SourceInfo, StereoFrame, YuvData, YuvFrame,
-};
+use reco_core::source::{FrameSet, FrameSource, SourceError, SourceInfo, YuvData, YuvFrame};
 use std::path::Path;
 use thiserror::Error;
 
@@ -123,7 +121,7 @@ impl FrameSource for StackedSource {
         }
     }
 
-    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
         if self.layout.capacity() != 2 {
             return Err(SourceError::Read {
                 reason: format!(
@@ -147,17 +145,17 @@ impl FrameSource for StackedSource {
                     reason: format!("expected 2 tiles, got {}", v.len()),
                 })?;
         let [left, right] = tiles;
-        Ok(Some(StereoFrame::Yuv420p(FramePair {
-            left: YuvData {
+        Ok(Some(FrameSet::Yuv420p(vec![
+            YuvData {
                 y: left.y,
                 u: left.u,
                 v: left.v,
             },
-            right: YuvData {
+            YuvData {
                 y: right.y,
                 u: right.u,
                 v: right.v,
             },
-        })))
+        ])))
     }
 }

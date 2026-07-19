@@ -10,11 +10,11 @@
 //! [`PipelineError`], the pipeline half of the engine's error type.
 
 use super::renderer::{InputFormat, RenderError, Renderer};
-use super::scene::SceneGeometry;
-use super::viewport::{ResolvedViewport, ViewportConfig};
+use super::viewport::ViewportSize;
 use crate::calibration::Calibration;
-use crate::geometry::ViewportPosition;
+use crate::geometry::Pose;
 use crate::gpu::{GpuContext, GpuError};
+use crate::projection::l_shape::PlaneScene;
 
 use thiserror::Error;
 
@@ -36,7 +36,12 @@ pub enum PipelineError {
     #[error("render error: {0}")]
     Render(#[from] RenderError),
 
-    /// Wrong StereoFrame variant for this render method.
+    /// The active topology has no GPU plane pass (the mono cylinder,
+    /// until its projection-owned fullscreen pass lands).
+    #[error("this topology has no GPU plane scene; the mono GPU pass is not wired yet")]
+    NoPlaneScene,
+
+    /// Wrong FrameSet variant for this render method.
     #[error("unsupported frame variant: {reason}")]
     UnsupportedFrameVariant {
         /// Description of the mismatch.
@@ -59,12 +64,13 @@ pub enum PipelineError {
 pub(crate) struct StitchPipeline {
     /// GPU device and queue.
     pub(crate) gpu: GpuContext,
-    /// 3D scene layout computed from calibration.
-    pub(crate) scene: SceneGeometry,
+    /// L-shape plane placement. `None` for plane-less topologies -
+    /// their GPU pass carries its own geometry when it lands.
+    pub(crate) scene: Option<PlaneScene>,
     /// Calibration data (camera intrinsics + layout).
     pub(crate) calibration: Calibration,
     /// Output viewport configuration.
-    pub(crate) viewport: ViewportConfig,
+    pub(crate) viewport_size: ViewportSize,
     /// GPU renderer (textures, pipelines, bind groups).
     renderer: Renderer,
     /// Input frame dimensions.
@@ -83,6 +89,16 @@ pub(crate) struct GpuSourceBindGroups {
 }
 
 impl StitchPipeline {
+    /// The L-shape's plane placement for the GPU uniforms, when the
+    /// topology has planes. Both planes share lens 0's aspect (the
+    /// documented limitation, kept identical to the CPU maps).
+    fn derive_plane_scene(calibration: &Calibration) -> Option<PlaneScene> {
+        calibration
+            .topology
+            .l_shape()
+            .map(|t| t.scene(&calibration.framing, calibration.lenses[0].aspect()))
+    }
+
     /// Create a pipeline with an existing GPU context and custom output format.
     ///
     /// Used by the preview window which needs a specific surface format
@@ -91,7 +107,7 @@ impl StitchPipeline {
         gpu: GpuContext,
         program: &crate::render::GpuProgram,
         calibration: Calibration,
-        viewport: ViewportConfig,
+        viewport_size: ViewportSize,
         input_width: u32,
         input_height: u32,
         output_format: impl Into<wgpu::TextureFormat>,
@@ -104,7 +120,7 @@ impl StitchPipeline {
         // NaN surfaces as a typed error instead of an index panic or a
         // GPU hang further down.
         calibration.validate()?;
-        if let Err(e) = viewport.validate() {
+        if let Err(e) = viewport_size.validate() {
             return Err(PipelineError::InvalidConfig { reason: e });
         }
         if input_width == 0 || input_height == 0 {
@@ -122,23 +138,25 @@ impl StitchPipeline {
         }
 
         let output_format = output_format.into();
-        let scene = SceneGeometry::for_calibration(&calibration);
+        let scene = Self::derive_plane_scene(&calibration);
         let renderer = Renderer::new(
             &gpu,
             program,
-            viewport.width,
-            viewport.height,
+            viewport_size.width,
+            viewport_size.height,
             input_width,
             input_height,
             output_format,
             input_format,
-            &scene,
+            // Quad geometry: the source aspect, independent of whether
+            // the topology has planes (harmless placeholder otherwise).
+            calibration.lenses[0].aspect(),
         );
 
         log::info!(
             "Pipeline initialized: {}x{} output, GPU: {}",
-            viewport.width,
-            viewport.height,
+            viewport_size.width,
+            viewport_size.height,
             gpu.adapter_info.name
         );
 
@@ -146,7 +164,7 @@ impl StitchPipeline {
             gpu,
             scene,
             calibration,
-            viewport,
+            viewport_size,
             renderer,
             input_width,
             input_height,
@@ -166,9 +184,14 @@ impl StitchPipeline {
         &self.calibration
     }
 
+    /// The projection in effect: a borrow of the document's topology.
+    pub(crate) fn projection(&self) -> &dyn crate::projection::Projection {
+        self.calibration.topology.projection()
+    }
+
     /// The current output viewport configuration.
-    pub fn viewport(&self) -> &ViewportConfig {
-        &self.viewport
+    pub fn viewport_size(&self) -> &ViewportSize {
+        &self.viewport_size
     }
 
     /// Input frame dimensions as `(width, height)`.
@@ -220,22 +243,9 @@ impl StitchPipeline {
             log::warn!("resize({width}, {height}) ignored: dimensions must be non-zero");
             return None;
         }
-        self.viewport.width = width;
-        self.viewport.height = height;
+        self.viewport_size.width = width;
+        self.viewport_size.height = height;
         Some((width, height))
-    }
-
-    /// Set the vertical field of view in degrees.
-    ///
-    /// Values are clamped to `[1.0, 179.0]` to prevent degenerate
-    /// projection matrices (0 or 180 would produce NaN/Inf).
-    pub fn set_fov(&mut self, fov_degrees: f32) {
-        self.viewport.fov_degrees = fov_degrees.clamp(1.0, 179.0);
-    }
-
-    /// Get the current field of view in degrees.
-    pub fn fov(&self) -> f32 {
-        self.viewport.fov_degrees
     }
 
     /// Set the lens distortion correction amount for every lens (per-frame
@@ -256,13 +266,13 @@ impl StitchPipeline {
         }
     }
 
-    /// Update calibration parameters. Recomputes [`SceneGeometry`] from the
+    /// Update calibration parameters. Recomputes the plane scene from the
     /// new layout. Takes effect on the next render call (uniforms are rebuilt
     /// each frame from the stored calibration and scene).
     ///
     /// No GPU pipeline recreation needed - only the uniform data changes.
     pub fn update_calibration(&mut self, calibration: Calibration) {
-        self.scene = SceneGeometry::for_calibration(&calibration);
+        self.scene = Self::derive_plane_scene(&calibration);
         self.calibration = calibration;
         log::debug!("Pipeline calibration updated");
     }
@@ -296,7 +306,7 @@ impl StitchPipeline {
     /// side's `Lens` on the stored calibration; the next render
     /// picks it up automatically.
     ///
-    /// Does not recompute `SceneGeometry` because the plane layout is
+    /// Does not recompute the plane scene because the plane layout is
     /// unchanged; only the camera intrinsics (which live on the stored
     /// calibration and are re-read each frame) need updating.
     pub fn update_camera_params(
@@ -368,14 +378,13 @@ impl StitchPipeline {
         bind_groups: &GpuSourceBindGroups,
         left_slot: u8,
         right_slot: u8,
-        yaw: f32,
-        pitch: f32,
-    ) -> wgpu::CommandBuffer {
+        pose: Pose,
+    ) -> Result<wgpu::CommandBuffer, PipelineError> {
         self.renderer
             .set_left_bind_group(bind_groups.left[left_slot as usize].clone());
         self.renderer
             .set_right_bind_group(bind_groups.right[right_slot as usize].clone());
-        self.render_to_target_gpu(yaw, pitch)
+        self.render_to_target_gpu(pose)
     }
 
     /// Create a texture bind group from Y + UV textures.
@@ -394,12 +403,11 @@ impl StitchPipeline {
         &mut self,
         left_bg: &wgpu::BindGroup,
         right_bg: &wgpu::BindGroup,
-        yaw: f32,
-        pitch: f32,
-    ) -> wgpu::CommandBuffer {
+        pose: Pose,
+    ) -> Result<wgpu::CommandBuffer, PipelineError> {
         self.renderer.set_left_bind_group(left_bg.clone());
         self.renderer.set_right_bind_group(right_bg.clone());
-        self.render_to_target_gpu(yaw, pitch)
+        self.render_to_target_gpu(pose)
     }
 
     /// Render from imported GPU textures (e.g. Metal/VideoToolbox zero-copy).
@@ -414,9 +422,8 @@ impl StitchPipeline {
         left_uv: &wgpu::Texture,
         right_y: &wgpu::Texture,
         right_uv: &wgpu::Texture,
-        yaw: f32,
-        pitch: f32,
-    ) -> wgpu::CommandBuffer {
+        pose: Pose,
+    ) -> Result<wgpu::CommandBuffer, PipelineError> {
         let left_bg = self
             .renderer
             .create_texture_bind_group(left_y, left_uv, "metal_left");
@@ -425,7 +432,7 @@ impl StitchPipeline {
             .create_texture_bind_group(right_y, right_uv, "metal_right");
         self.renderer.set_left_bind_group(left_bg);
         self.renderer.set_right_bind_group(right_bg);
-        self.render_to_target_gpu(yaw, pitch)
+        self.render_to_target_gpu(pose)
     }
 
     /// Render from pre-built GPU texture views.
@@ -439,9 +446,8 @@ impl StitchPipeline {
         left_uv: &wgpu::TextureView,
         right_y: &wgpu::TextureView,
         right_uv: &wgpu::TextureView,
-        yaw: f32,
-        pitch: f32,
-    ) -> wgpu::CommandBuffer {
+        pose: Pose,
+    ) -> Result<wgpu::CommandBuffer, PipelineError> {
         let left_bg = self
             .renderer
             .create_bind_group_from_views(left_y, left_uv, "d3d11_left");
@@ -450,51 +456,46 @@ impl StitchPipeline {
             .create_bind_group_from_views(right_y, right_uv, "d3d11_right");
         self.renderer.set_left_bind_group(left_bg);
         self.renderer.set_right_bind_group(right_bg);
-        self.render_to_target_gpu(yaw, pitch)
+        self.render_to_target_gpu(pose)
     }
 
-    /// Process a CPU-resident stereo frame and return the render command buffer.
+    /// Process a CPU-resident frame set and return the render command buffer.
     ///
     /// Handles YUV420P vs NV12 format differences internally.
     /// For GPU-resident frames, use [`Self::render_gpu_frame`] instead.
-    pub fn render_stereo_frame(
+    ///
+    /// The GPU render program is two-camera (the mono GPU pass is not
+    /// wired yet), so any other set length gets a typed error here.
+    pub fn render_frame_set(
         &self,
-        frame: &crate::source::StereoFrame,
-        yaw: f32,
-        pitch: f32,
+        frames: &crate::source::FrameSet,
+        pose: Pose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
-        use crate::source::StereoFrame;
-        match frame {
-            StereoFrame::Yuv420p(pair) => {
-                let left = YuvPlanes {
-                    y: &pair.left.y,
-                    u: &pair.left.u,
-                    v: &pair.left.v,
-                };
-                let right = YuvPlanes {
-                    y: &pair.right.y,
-                    u: &pair.right.u,
-                    v: &pair.right.v,
-                };
-                self.render_to_target(&left, &right, yaw, pitch)
-            }
-            StereoFrame::Nv12(pair) => {
-                let left = Nv12Planes {
-                    y: &pair.left.y,
-                    uv: &pair.left.uv,
-                };
-                let right = Nv12Planes {
-                    y: &pair.right.y,
-                    uv: &pair.right.uv,
-                };
-                self.render_to_target_nv12(&left, &right, yaw, pitch)
-            }
-            StereoFrame::GpuResident { .. } => Err(PipelineError::UnsupportedFrameVariant {
+        use crate::source::FrameSet;
+        match frames {
+            FrameSet::Yuv420p(cams) => match cams.as_slice() {
+                [left, right] => self.render_to_target(&left.as_planes(), &right.as_planes(), pose),
+                _ => Err(PipelineError::UnsupportedFrameVariant {
+                    reason: "the GPU render program is two-camera; the mono GPU pass \
+                             is not wired yet",
+                }),
+            },
+            FrameSet::Nv12(cams) => match cams.as_slice() {
+                [left, right] => {
+                    self.render_to_target_nv12(&left.as_planes(), &right.as_planes(), pose)
+                }
+                _ => Err(PipelineError::UnsupportedFrameVariant {
+                    reason: "the GPU render program is two-camera; the mono GPU pass \
+                             is not wired yet",
+                }),
+            },
+            FrameSet::GpuResident { .. } => Err(PipelineError::UnsupportedFrameVariant {
                 reason: "GpuResident frames must use render_gpu_frame()",
             }),
             #[allow(unreachable_patterns)]
             _ => Err(PipelineError::UnsupportedFrameVariant {
-                reason: "unsupported StereoFrame variant for CPU render path",
+                reason: "GPU-resident FrameSet variants use their platform render \
+                         paths, not the CPU-upload render",
             }),
         }
     }
@@ -507,29 +508,23 @@ impl StitchPipeline {
         &self,
         left: &YuvPlanes<'_>,
         right: &YuvPlanes<'_>,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
         target_view: &wgpu::TextureView,
     ) -> Result<(), PipelineError> {
+        let Some(scene) = &self.scene else {
+            return Err(PipelineError::NoPlaneScene);
+        };
         self.renderer
             .upload_left_yuv(&self.gpu, left.y, left.u, left.v)?;
         self.renderer
             .upload_right_yuv(&self.gpu, right.y, right.u, right.v)?;
 
-        let viewport = ResolvedViewport {
-            config: self.viewport.clone(),
-            position: ViewportPosition {
-                yaw,
-                pitch,
-                fov_degrees: None,
-            },
-        };
-
         self.renderer.render_to_view(
             &self.gpu,
-            &self.scene,
+            scene,
             &self.calibration,
-            &viewport,
+            pose,
+            self.viewport_size.aspect_ratio(),
             self.calibration.topology.blend_width(),
             target_view,
         );
@@ -549,28 +544,21 @@ impl StitchPipeline {
         &self,
         left: &YuvPlanes<'_>,
         right: &YuvPlanes<'_>,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
+        let Some(scene) = &self.scene else {
+            return Err(PipelineError::NoPlaneScene);
+        };
         self.renderer
             .upload_left_yuv(&self.gpu, left.y, left.u, left.v)?;
         self.renderer
             .upload_right_yuv(&self.gpu, right.y, right.u, right.v)?;
 
-        let viewport = ResolvedViewport {
-            config: self.viewport.clone(),
-            position: ViewportPosition {
-                yaw,
-                pitch,
-                fov_degrees: None,
-            },
-        };
-
         Ok(self.renderer.render_to_target(
             &self.gpu,
-            &self.scene,
+            scene,
             &self.calibration,
-            &viewport,
+            pose,
             self.calibration.topology.blend_width(),
         ))
     }
@@ -588,27 +576,20 @@ impl StitchPipeline {
         &self,
         left: &Nv12Planes<'_>,
         right: &Nv12Planes<'_>,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
+        let Some(scene) = &self.scene else {
+            return Err(PipelineError::NoPlaneScene);
+        };
         self.renderer.upload_left_nv12(&self.gpu, left.y, left.uv)?;
         self.renderer
             .upload_right_nv12(&self.gpu, right.y, right.uv)?;
 
-        let viewport = ResolvedViewport {
-            config: self.viewport.clone(),
-            position: ViewportPosition {
-                yaw,
-                pitch,
-                fov_degrees: None,
-            },
-        };
-
         Ok(self.renderer.render_to_target(
             &self.gpu,
-            &self.scene,
+            scene,
             &self.calibration,
-            &viewport,
+            pose,
             self.calibration.topology.blend_width(),
         ))
     }
@@ -627,26 +608,19 @@ impl StitchPipeline {
         &self,
         left: &BgraPlanes<'_>,
         right: &BgraPlanes<'_>,
-        yaw: f32,
-        pitch: f32,
+        pose: Pose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
+        let Some(scene) = &self.scene else {
+            return Err(PipelineError::NoPlaneScene);
+        };
         self.renderer.upload_left_bgra(&self.gpu, left.rgba)?;
         self.renderer.upload_right_bgra(&self.gpu, right.rgba)?;
 
-        let viewport = ResolvedViewport {
-            config: self.viewport.clone(),
-            position: ViewportPosition {
-                yaw,
-                pitch,
-                fov_degrees: None,
-            },
-        };
-
         Ok(self.renderer.render_to_target(
             &self.gpu,
-            &self.scene,
+            scene,
             &self.calibration,
-            &viewport,
+            pose,
             self.calibration.topology.blend_width(),
         ))
     }
@@ -661,9 +635,8 @@ impl StitchPipeline {
         &self,
         left_rgba: &wgpu::Texture,
         right_rgba: &wgpu::Texture,
-        yaw: f32,
-        pitch: f32,
-    ) -> wgpu::CommandBuffer {
+        pose: Pose,
+    ) -> Result<wgpu::CommandBuffer, PipelineError> {
         // Copy demosaiced textures into stitch pipeline input planes
         let mut copy_encoder =
             self.gpu
@@ -680,7 +653,7 @@ impl StitchPipeline {
             .submit(std::iter::once(copy_encoder.finish()));
 
         // Render stitch (reads from the just-populated input textures)
-        self.render_to_target_gpu(yaw, pitch)
+        self.render_to_target_gpu(pose)
     }
 
     /// Render to the internal target without upload or readback (zero-copy path).
@@ -695,23 +668,17 @@ impl StitchPipeline {
     /// bound. Call [`Self::render_imported_textures`] once to set up
     /// bind groups, then use this for subsequent frames with the same
     /// textures to avoid per-frame bind group allocation.
-    pub fn render_to_target_gpu(&self, yaw: f32, pitch: f32) -> wgpu::CommandBuffer {
-        let viewport = ResolvedViewport {
-            config: self.viewport.clone(),
-            position: ViewportPosition {
-                yaw,
-                pitch,
-                fov_degrees: None,
-            },
+    pub fn render_to_target_gpu(&self, pose: Pose) -> Result<wgpu::CommandBuffer, PipelineError> {
+        let Some(scene) = &self.scene else {
+            return Err(PipelineError::NoPlaneScene);
         };
-
-        self.renderer.render_to_target(
+        Ok(self.renderer.render_to_target(
             &self.gpu,
-            &self.scene,
+            scene,
             &self.calibration,
-            &viewport,
+            pose,
             self.calibration.topology.blend_width(),
-        )
+        ))
     }
 
     /// Enable 180-degree UV flip for the GPU zero-copy path.

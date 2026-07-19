@@ -12,7 +12,7 @@
 //! they must run on the original camera frames before stitching.
 //! The slight wide-angle distortion is negligible for detection accuracy.
 
-use crate::geometry::CameraId;
+use crate::geometry::CameraIndex;
 
 /// Raw camera frame data for detection.
 ///
@@ -58,7 +58,7 @@ pub enum ChromaFormat<'a> {
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Detection {
     /// Which camera this detection came from.
-    pub camera: CameraId,
+    pub camera: CameraIndex,
 
     /// Detection class index from the model (e.g. 0 = "ball", 1 = "person").
     /// Map to a human-readable label via the detector's `class_names()`.
@@ -323,7 +323,7 @@ pub trait UnifiedDetector: Send {
     ///   the call.
     fn detect(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError>;
 
@@ -396,7 +396,7 @@ mod tests {
 
         fn detect(
             &mut self,
-            camera: CameraId,
+            camera: CameraIndex,
             frame: &DetectorFrame<'_>,
         ) -> Result<Vec<Detection>, DetectorError> {
             match frame {
@@ -432,11 +432,9 @@ mod tests {
         let mut det: Box<dyn UnifiedDetector> = Box::new(FakeDetector {
             labels: vec!["ball".into()],
         });
-        let out = det
-            .detect(CameraId::Left, &DetectorFrame::Cpu(raw))
-            .unwrap();
+        let out = det.detect(0, &DetectorFrame::Cpu(raw)).unwrap();
         assert_eq!(out.len(), 1);
-        assert_eq!(out[0].camera, CameraId::Left);
+        assert_eq!(out[0].camera, 0);
     }
 
     #[test]
@@ -456,7 +454,7 @@ mod tests {
             width: 2,
             height: 2,
         };
-        assert!(det.detect(CameraId::Left, &DetectorFrame::Cpu(raw)).is_ok());
+        assert!(det.detect(0, &DetectorFrame::Cpu(raw)).is_ok());
     }
 
     #[test]

@@ -29,7 +29,7 @@ use reco_core::detect::detector::ChromaFormat;
 use reco_core::detect::detector::{
     Detection, DetectorError, DetectorFrame, GpuNv12Frame, UnifiedDetector,
 };
-use reco_core::geometry::CameraId;
+use reco_core::geometry::CameraIndex;
 use reco_core::interop::cuda::{
     CUdeviceptr, cuda_ensure_context, cuda_mem_alloc, cuda_mem_free, cuda_memcpy_dtoh,
     cuda_memcpy_htod_2d, cuda_memset_d8, cuda_synchronize,
@@ -314,7 +314,7 @@ impl TrtGpuDetector {
     /// telemetry dashboards can still break down failures by origin.
     fn detect_gpu_raw(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         frame: &GpuNv12Frame,
     ) -> Result<Vec<Detection>, DetectorError> {
         let GpuNv12Frame {
@@ -458,7 +458,7 @@ impl TrtGpuDetector {
     /// Assumes `self.tensor_f32` is populated with the normalized input.
     fn run_inference_and_postprocess(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         source_width: u32,
         source_height: u32,
     ) -> Result<Vec<Detection>, DetectorError> {
@@ -538,7 +538,7 @@ impl UnifiedDetector for TrtGpuDetector {
 
     fn detect(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
         // CUDA-residency backend: accept `Cuda(GpuNv12Frame)` for
@@ -599,7 +599,7 @@ impl TrtGpuDetector {
     /// to use the zero-copy [`DetectorFrame::Cuda`] route.
     fn detect_cpu_nv12_upload(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         y_host: &[u8],
         uv_host: &[u8],
         width: u32,
@@ -674,7 +674,7 @@ impl TrtGpuDetector {
     /// NPP C4 resize + CUDA normalize only, no upload.
     fn detect_gpu_rgba(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         rgba_ptr: CUdeviceptr,
         width: u32,
         height: u32,
@@ -736,7 +736,7 @@ impl TrtGpuDetector {
     /// Only normalize + inference remain.
     fn detect_preletterboxed(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         rgba_ptr: CUdeviceptr,
         src_width: u32,
         src_height: u32,
@@ -764,7 +764,7 @@ impl TrtGpuDetector {
     /// ignored), TRT inference. No CPU conversion, no intermediate buffer.
     fn detect_cpu_rgba_upload(
         &mut self,
-        camera: CameraId,
+        camera: CameraIndex,
         rgba_host: &[u8],
         width: u32,
         height: u32,
