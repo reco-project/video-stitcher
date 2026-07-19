@@ -75,7 +75,8 @@ impl Playback {
         right: &InputPath,
         sync_offset: i64,
     ) -> Result<(), SourceError> {
-        let source = FfmpegFileSource::open_from_inputs(left, right, sync_offset, false)?;
+        let source =
+            FfmpegFileSource::open_inputs(&[left.clone(), right.clone()], sync_offset, false)?;
         let info = source.info();
         let fps = info.fps;
         self.total_frames = source.total_frames();
@@ -105,13 +106,10 @@ impl Playback {
 
         match source.next_frame()? {
             Some(stereo) => {
-                let (left, right) = match stereo {
-                    reco_core::source::StereoFrame::Yuv420p(pair) => (pair.left, pair.right),
-                    _ => {
-                        return Err(SourceError::Read {
-                            reason: "GUI preview expects Yuv420p frames".into(),
-                        });
-                    }
+                let Some([left, right]) = stereo.into_yuv_pair() else {
+                    return Err(SourceError::Read {
+                        reason: "GUI preview expects two-camera Yuv420p sets".into(),
+                    });
                 };
                 self.current_frame = Some(StereoYuv { left, right });
                 self.frame_index += 1;
@@ -167,13 +165,10 @@ impl Playback {
         // Non-blocking: returns None if no frame decoded yet.
         match source.try_next_frame()? {
             Some(stereo) => {
-                let (left, right) = match stereo {
-                    reco_core::source::StereoFrame::Yuv420p(pair) => (pair.left, pair.right),
-                    _ => {
-                        return Err(SourceError::Read {
-                            reason: "GUI preview expects Yuv420p frames".into(),
-                        });
-                    }
+                let Some([left, right]) = stereo.into_yuv_pair() else {
+                    return Err(SourceError::Read {
+                        reason: "GUI preview expects two-camera Yuv420p sets".into(),
+                    });
                 };
                 self.current_frame = Some(StereoYuv { left, right });
                 self.frame_index += 1;

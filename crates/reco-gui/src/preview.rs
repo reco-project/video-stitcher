@@ -32,7 +32,7 @@ use reco_core::core::types::StitchCoreError;
 use reco_core::gpu::GpuContext;
 use reco_core::lens::preview::LensPreviewRenderer;
 use reco_core::render::pipeline::{PipelineError, YuvPlanes};
-use reco_core::render::viewport::ViewportConfig;
+use reco_core::render::viewport::ViewportSize;
 use reco_core::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 use reco_core::wgpu;
 
@@ -80,10 +80,9 @@ impl PreviewBridge {
         // engine below.
         let lens_correction_amount = calibration.lenses[0].correction;
 
-        let viewport = ViewportConfig {
+        let viewport_size = ViewportSize {
             width: viewport_width,
             height: viewport_height,
-            fov_degrees: 75.0,
         };
 
         // Slint expects textures in a format it can sample. Rgba8Unorm is
@@ -94,12 +93,11 @@ impl PreviewBridge {
             gpu,
             GpuExecutorConfig {
                 calibration,
-                viewport,
+                viewport_size,
                 input_width,
                 input_height,
                 input_format: reco_core::render::renderer::InputFormat::Yuv420p,
                 output_format: texture_format,
-                projection: None,
                 full_range: false,
             },
         )?;
@@ -125,7 +123,7 @@ impl PreviewBridge {
         &mut self,
         left: &YuvPlanes<'_>,
         right: &YuvPlanes<'_>,
-        pose: reco_core::geometry::ViewportPosition,
+        pose: reco_core::geometry::Pose,
     ) -> Result<slint::Image, StitchCoreError> {
         let device = self.engine.gpu().device();
 

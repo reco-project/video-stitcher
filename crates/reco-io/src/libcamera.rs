@@ -18,7 +18,7 @@
 //!                                                     FrameSource::next_frame()
 //! ```
 
-use reco_core::source::{FramePair, SourceError, SourceInfo, StereoFrame, YuvData};
+use reco_core::source::{FrameSet, SourceError, SourceInfo, YuvData};
 use std::io::Read;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
@@ -52,7 +52,7 @@ pub struct LibcameraConfig {
 /// It bypasses GStreamer and FFmpeg entirely, providing the lowest
 /// possible latency path from the camera ISP to the GPU renderer.
 pub struct LibcameraCameraSource {
-    rx: mpsc::Receiver<FramePair>,
+    rx: mpsc::Receiver<FrameSet>,
     info: SourceInfo,
     /// rpicam-vid child processes. One in single-camera mode, two in stereo.
     children: Vec<Child>,
@@ -167,7 +167,7 @@ impl LibcameraCameraSource {
             },
         );
 
-        let (tx, rx) = mpsc::sync_channel::<FramePair>(2);
+        let (tx, rx) = mpsc::sync_channel::<FrameSet>(2);
 
         let children = if single_camera {
             // Single-camera mode: one rpicam-vid, duplicate each frame.
@@ -183,11 +183,8 @@ impl LibcameraCameraSource {
                 .name("libcam_dup".into())
                 .spawn(move || {
                     while let Ok(frame) = cam_rx.recv() {
-                        let pair = FramePair {
-                            left: frame.clone(),
-                            right: frame,
-                        };
-                        if tx.send(pair).is_err() {
+                        let frames = FrameSet::Yuv420p(vec![frame.clone(), frame]);
+                        if tx.send(frames).is_err() {
                             break;
                         }
                     }
@@ -218,7 +215,7 @@ impl LibcameraCameraSource {
                 .name("libcam_pair".into())
                 .spawn(move || {
                     while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
-                        if tx.send(FramePair { left, right }).is_err() {
+                        if tx.send(FrameSet::Yuv420p(vec![left, right])).is_err() {
                             break;
                         }
                     }
@@ -258,9 +255,9 @@ impl reco_core::source::FrameSource for LibcameraCameraSource {
         self.info.clone()
     }
 
-    fn next_frame(&mut self) -> Result<Option<StereoFrame>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
         match self.rx.recv() {
-            Ok(pair) => Ok(Some(StereoFrame::Yuv420p(pair))),
+            Ok(frames) => Ok(Some(frames)),
             Err(_) => Ok(None),
         }
     }

@@ -17,7 +17,7 @@ pub mod trt;
 use std::path::Path;
 
 use reco_core::detect::detector::Detection;
-use reco_core::geometry::CameraId;
+use reco_core::geometry::CameraIndex;
 
 /// Parse YOLO end-to-end NMS output `[1, N, 6]` into detections.
 ///
@@ -29,7 +29,7 @@ use reco_core::geometry::CameraId;
 pub fn postprocess(
     data: &[f32],
     n: usize,
-    camera: CameraId,
+    camera: CameraIndex,
     confidence_threshold: f32,
     scale: f32,
     pad_x: f32,
@@ -127,7 +127,7 @@ pub fn postprocess(
 pub fn postprocess_balldet(
     data: &[f32],
     n: usize,
-    camera: CameraId,
+    camera: CameraIndex,
     confidence_threshold: f32,
     scale: f32,
     pad_x: f32,
@@ -236,7 +236,6 @@ pub fn read_labels_file(path: impl AsRef<Path>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reco_core::geometry::CameraId;
 
     /// Build a synthetic [1, N, 6] flat tensor with the given detections.
     /// Each detection is [x1, y1, x2, y2, confidence, class_id].
@@ -266,7 +265,7 @@ mod tests {
         let dets = postprocess(
             &data,
             1,
-            CameraId::Left,
+            0,
             0.10,
             scale(),
             pad_x(),
@@ -295,7 +294,7 @@ mod tests {
         let dets = postprocess(
             &data,
             2,
-            CameraId::Right,
+            1,
             0.10,
             scale(),
             pad_x(),
@@ -316,7 +315,7 @@ mod tests {
         let dets = postprocess(
             &data,
             0,
-            CameraId::Left,
+            0,
             0.10,
             scale(),
             pad_x(),
@@ -338,7 +337,7 @@ mod tests {
         let dets = postprocess(
             &data,
             2,
-            CameraId::Left,
+            0,
             0.10,
             scale(),
             pad_x(),
@@ -358,7 +357,7 @@ mod tests {
         let dets = postprocess(
             &data,
             1,
-            CameraId::Left,
+            0,
             0.10,
             scale(),
             pad_x(),
@@ -377,7 +376,7 @@ mod tests {
         let dets = postprocess(
             &data,
             1,
-            CameraId::Left,
+            0,
             0.10,
             scale(),
             pad_x(),
@@ -399,7 +398,7 @@ mod tests {
         let dets = postprocess(
             &data,
             0,
-            CameraId::Left,
+            0,
             0.10,
             scale(),
             pad_x(),
@@ -417,7 +416,7 @@ mod tests {
         let dets = postprocess(
             &data,
             1,
-            CameraId::Left,
+            0,
             0.10,
             scale(),
             pad_x(),
@@ -440,7 +439,7 @@ mod tests {
         let dets = postprocess(
             &data,
             1,
-            CameraId::Left,
+            0,
             0.10,
             scale(),
             pad_x(),
@@ -471,7 +470,7 @@ mod tests {
         let dets = postprocess(
             &data,
             1,
-            CameraId::Left,
+            0,
             0.10,
             scale(),
             pad_x(),
@@ -491,7 +490,7 @@ mod tests {
         let dets = postprocess(
             &data,
             1,
-            CameraId::Left,
+            0,
             0.10,
             scale(),
             pad_x(),
@@ -511,7 +510,7 @@ mod tests {
             let dets = postprocess(
                 &data,
                 1,
-                CameraId::Left,
+                0,
                 0.10,
                 scale(),
                 pad_x(),
@@ -532,7 +531,7 @@ mod tests {
         let dets = postprocess(
             &data,
             1,
-            CameraId::Left,
+            0,
             0.10,
             scale(),
             pad_x(),
@@ -550,7 +549,7 @@ mod tests {
         let dets = postprocess(
             &data,
             1,
-            CameraId::Left,
+            0,
             0.10,
             scale(),
             pad_x(),
@@ -568,7 +567,7 @@ mod tests {
         let dets_left = postprocess(
             &data,
             1,
-            CameraId::Left,
+            0,
             0.10,
             scale(),
             pad_x(),
@@ -579,7 +578,7 @@ mod tests {
         let dets_right = postprocess(
             &data,
             1,
-            CameraId::Right,
+            1,
             0.10,
             scale(),
             pad_x(),
@@ -588,15 +587,15 @@ mod tests {
             FRAME_H,
         );
 
-        assert_eq!(dets_left[0].camera, CameraId::Left);
-        assert_eq!(dets_right[0].camera, CameraId::Right);
+        assert_eq!(dets_left[0].camera, 0);
+        assert_eq!(dets_right[0].camera, 1);
     }
 
     #[test]
     fn postprocess_balldet_decodes_cxcywh_with_conf_in_col5() {
         // [cx, cy, w, h, obj=1, conf]; scale=1, no pad, 1000x1000 frame.
         let data = vec![500.0, 250.0, 40.0, 40.0, 1.0, 0.90];
-        let dets = postprocess_balldet(&data, 1, CameraId::Left, 0.25, 1.0, 0.0, 0.0, 1000, 1000);
+        let dets = postprocess_balldet(&data, 1, 0, 0.25, 1.0, 0.0, 0.0, 1000, 1000);
         assert_eq!(dets.len(), 1);
         assert_eq!(dets[0].class_id, 0, "single ball class");
         assert!((dets[0].confidence - 0.90).abs() < 1e-6, "conf from col 5");
@@ -613,7 +612,7 @@ mod tests {
             505.0, 252.0, 40.0, 40.0, 1.0, 0.80, // overlaps -> NMS-dropped
             100.0, 100.0, 30.0, 30.0, 1.0, 0.70, // far -> kept
         ];
-        let dets = postprocess_balldet(&data, 4, CameraId::Left, 0.25, 1.0, 0.0, 0.0, 1000, 1000);
+        let dets = postprocess_balldet(&data, 4, 0, 0.25, 1.0, 0.0, 0.0, 1000, 1000);
         assert_eq!(dets.len(), 2, "low-conf filtered + overlap NMS-deduped");
         assert!(
             (dets[0].confidence - 0.90).abs() < 1e-6,

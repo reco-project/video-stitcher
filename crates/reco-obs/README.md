@@ -4,7 +4,7 @@ OBS Studio source plugin. Embeds the reco stitching engine inside an OBS source 
 
 ## What it does
 
-- **Async-frame ingestion** — OBS delivers raw frames via `obs_source_get_frame`; reco-obs pushes them into `StitchCore::submit_frame_bgra` / `submit_frame_yuv`.
+- **Async-frame ingestion** — OBS delivers raw frames via `obs_source_get_frame`; reco-obs pushes them into `StitchCore::submit_frame_bgra_at_pose` / `submit_frame_yuv_at_pose`.
 - **Interactive pan/zoom** — mouse drag + wheel + keyboard translate to `ControlIntent`s → `PoseControl` → renderer.
 - **Live calibration** (M6 A14) — "Calibrate from current sources" action drives `reco_calibrate::calibrate_from_live` off the plugin's dual-source buffer.
 - **Replay recording** — opt-in stacked-video recording to disk (the M6.5 A18 push-API path), independent of OBS Record/Stream.

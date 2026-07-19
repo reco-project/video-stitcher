@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use reco_core::source::StereoFrame;
+use reco_core::render::viewport::ViewportSize;
 use reco_io::gstreamer::camera::CameraConfig;
 
 use crate::helpers;
@@ -140,11 +140,7 @@ pub fn run_camera(
     }
     let field_roi = cal.field_roi.clone();
 
-    let viewport = reco_core::render::viewport::ViewportConfig {
-        width,
-        height,
-        ..Default::default()
-    };
+    let viewport_size = ViewportSize { width, height };
 
     let gpu = reco_core::gpu::GpuContext::new_blocking()?;
 
@@ -162,7 +158,7 @@ pub fn run_camera(
 
     let session_config = reco_core::session::types::SessionConfig {
         calibration: cal,
-        viewport,
+        viewport_size,
         input_width: capture_width,
         input_height: capture_height,
         output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
@@ -477,13 +473,13 @@ pub fn run_camera(
                     }
                 };
 
-                if let Some((r, b)) = awb.update(&*left_bytes, capture_width, capture_height) {
+                if let Some((r, b)) = awb.update(&left_bytes, capture_width, capture_height) {
                     isp.wb_r = r;
                     isp.wb_b = b;
                     demosaic_left.update_params(session.gpu(), &isp);
                     demosaic_right.update_params(session.gpu(), &isp);
                 }
-                ae.update(&*left_bytes, capture_width, capture_height);
+                ae.update(&left_bytes, capture_width, capture_height);
 
                 {
                     reco_core::profile_scope!("demosaic");
@@ -493,8 +489,8 @@ pub fn run_camera(
                             label: Some("bayer_demosaic"),
                         },
                     );
-                    demosaic_left.encode_demosaic(gpu, &mut encoder, &*left_bytes);
-                    demosaic_right.encode_demosaic(gpu, &mut encoder, &*right_bytes);
+                    demosaic_left.encode_demosaic(gpu, &mut encoder, &left_bytes);
+                    demosaic_right.encode_demosaic(gpu, &mut encoder, &right_bytes);
                     gpu.queue().submit(std::iter::once(encoder.finish()));
                 }
 
@@ -544,8 +540,7 @@ pub fn run_camera(
                 session.process_frame_gpu_rgba(
                     demosaic_left.output_texture(),
                     demosaic_right.output_texture(),
-                    pos.yaw,
-                    pos.pitch,
+                    pos,
                 )?;
                 frame_count += 1;
                 progress.report(frame_count);
@@ -563,7 +558,7 @@ pub fn run_camera(
         // NvBufSurfTransform for detection. No CPU copies at all.
         //
         // Driven by the session's unified frame loop (`run` / `run_buffered`)
-        // through the `FrameSource` + `StereoFrame::NvmmResident` path - the
+        // through the `FrameSource` + `FrameSet::NvmmResident` path - the
         // same machinery the file-stitch path uses. So lookahead, centered
         // smoothing, and the VRAM pool all work here for free; the per-frame
         // import + NvBufSurfTransform happen inside the session's produce
@@ -574,10 +569,12 @@ pub fn run_camera(
 
             let mut source = GstreamerNvmmCameraSource::open(&cam_config)?;
 
-            // Allocate the NvBufSurfTransform detection surfaces. The model
-            // input is square; all shipped yolo26 engines use 1280x1280.
-            // Skipped when there is no detector (sweep / no model) - the
-            // detection arm then no-ops and the director still advances.
+            // Allocate the NvBufSurfTransform detection surfaces. The
+            // model input is square, but the size here ASSUMES a
+            // 1280x1280 engine: 640 builds ship too and get a
+            // mismatched letterbox from this constant. The size
+            // belongs to engine introspection (the ORT and Metal
+            // backends already read it from the model), not here.
             if ai_tracking {
                 let model_size = 1280u32;
                 session
@@ -612,32 +609,32 @@ pub fn run_camera(
         anyhow::bail!("NVMM zero-copy is only available on Linux/Jetson");
     } else if use_nv12_capture {
         // NV12 path: skip nvvidconv format conversion, upload 2 planes
+        use reco_core::source::FrameSource;
         let mut source = reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(&cam_config)?;
 
-        // Warm up: discard first frame (camera ISP + pipeline init)
-        if let Some(pair) = source.next_pair()? {
-            let stereo = StereoFrame::Nv12(pair);
-            session.detect_and_update_director(&stereo, start.elapsed())?;
+        // Warm up: render the first frame outside the progress loop so
+        // camera ISP + GPU pipeline init don't skew the reported rate.
+        if let Some(frames) = source.next_frame()? {
+            session.detect_and_update_director(&frames, start.elapsed())?;
             let pos = session.director_position();
-            session.process_frame(&stereo, pos.yaw, pos.pitch)?;
+            session.process_frame(&frames, pos)?;
             println!("Warmup complete, starting capture...");
         }
 
         let progress = helpers::ProgressReporter::new(30);
 
         while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
-            let pair = {
+            let frames = {
                 reco_core::profile_scope!("wait_capture");
-                match source.next_pair()? {
-                    Some(p) => p,
+                match source.next_frame()? {
+                    Some(f) => f,
                     None => break,
                 }
             };
 
-            let stereo = StereoFrame::Nv12(pair);
-            session.detect_and_update_director(&stereo, start.elapsed())?;
+            session.detect_and_update_director(&frames, start.elapsed())?;
             let pos = session.director_position();
-            session.process_frame(&stereo, pos.yaw, pos.pitch)?;
+            session.process_frame(&frames, pos)?;
             frame_count += 1;
             progress.report(frame_count);
         }
@@ -670,7 +667,7 @@ pub fn run_camera(
 
             session.detect_and_update_director(&frame, start.elapsed())?;
             let pos = session.director_position();
-            session.process_frame(&frame, pos.yaw, pos.pitch)?;
+            session.process_frame(&frame, pos)?;
             frame_count += 1;
             progress.report(frame_count);
         }
@@ -728,14 +725,14 @@ impl reco_calibrate::live::LiveFramePairSource for Nv12CameraCalibSource {
                 return None;
             }
             match self.source.next_pair() {
-                Ok(Some(pair)) => {
+                Ok(Some((left, right))) => {
                     self.frame_count += 1;
                     if self.frame_count < self.fps && self.frame_count > 1 {
                         continue;
                     }
                     return Some((
-                        nv12_to_yuv(&pair.left, self.width, self.height),
-                        nv12_to_yuv(&pair.right, self.width, self.height),
+                        nv12_to_yuv(&left, self.width, self.height),
+                        nv12_to_yuv(&right, self.width, self.height),
                     ));
                 }
                 Ok(None) => return None,

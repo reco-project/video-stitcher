@@ -94,7 +94,7 @@ reco-obs         OBS Studio source plugin (async-frame ingestion, BGRA, interact
 
 **Dependency direction:** consumers (`cli` / `gui` / `obs`) depend on the four library crates (`autocam`, `calibrate`, `detect`, `io`); all four depend on `reco-core`. `reco-control` is consumed by `cli` / `gui` / `obs`.
 
-Push-based is the canonical ingestion path: consumers call `StitchCore::submit_frame_yuv` / `submit_frame_bgra` per frame. Batch file processing (`StitchSession::run`) is a thin pull-adapter on top.
+Push-based is the canonical ingestion path: consumers call `StitchCore::submit_frame` with a per-camera `FrameSet` each frame (interactive consumers use the `submit_frame_*_at_pose` variants). Batch file processing (`StitchSession::run`) is a thin pull-adapter on top.
 
 ## Building
 
