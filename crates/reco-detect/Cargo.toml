@@ -15,7 +15,7 @@ ort = ["dep:ort", "dep:dirs"]
 cuda = ["ort", "ort/cuda"]
 tensorrt = ["ort", "ort/tensorrt"]
 coreml = ["ort", "ort/coreml"]
-load-dynamic = ["ort", "ort/load-dynamic"]
+load-dynamic = ["ort", "ort/load-dynamic", "dep:libloading"]
 tensorrt-native = []
 ncnn = []
 profiling = ["reco-core/profiling", "dep:tracing"]
@@ -24,6 +24,7 @@ profiling = ["reco-core/profiling", "dep:tracing"]
 reco-core = { path = "../reco-core" }
 ort = { version = "2.0.0-rc.12", optional = true }
 dirs = { version = "6", optional = true }
+libloading = { version = "0.9", optional = true }
 wgpu = "28"
 bytemuck = { version = "1", features = ["derive"] }
 log = "0.4"

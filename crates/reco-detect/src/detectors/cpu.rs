@@ -51,7 +51,7 @@ impl CpuYoloDetector {
     ///
     /// Class labels are auto-detected from the ONNX model's `names` metadata
     /// (standard for Ultralytics exports). Falls back to `["ball"]` if not found.
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, ort::Error> {
+    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, crate::ort_session::SessionError> {
         Self::with_config(path, 0.10, Vec::new())
     }
 
@@ -63,7 +63,7 @@ impl CpuYoloDetector {
         path: impl AsRef<Path>,
         confidence_threshold: f32,
         labels: Vec<String>,
-    ) -> Result<Self, ort::Error> {
+    ) -> Result<Self, crate::ort_session::SessionError> {
         let (session, input_size, labels) =
             crate::ort_session::create_ort_session(path.as_ref(), labels)?;
 
