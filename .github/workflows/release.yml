@@ -180,6 +180,19 @@ jobs:
       # ----------------------------------------------------------------
       # Build
       # ----------------------------------------------------------------
+      # dlopen("libonnxruntime.so"/".dylib") consults the executable's
+      # runpath, so $ORIGIN/@loader_path lets the bundled runtime resolve
+      # from the extracted tarball without ORT_DYLIB_PATH or a system
+      # install (#446).
+      - name: Set bundled-library rpath (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            echo 'RUSTFLAGS=-C link-arg=-Wl,-rpath,@loader_path' >> "$GITHUB_ENV"
+          else
+            echo 'RUSTFLAGS=-C link-arg=-Wl,-rpath,$ORIGIN' >> "$GITHUB_ENV"
+          fi
+
       - name: Build release binaries
         run: |
           cargo build --release --target ${{ matrix.target }} -p reco-cli --features load-dynamic
@@ -234,6 +247,15 @@ jobs:
           staging="reco-cli-${{ github.ref_name }}-${{ matrix.name }}"
           mkdir "$staging"
           cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "$staging/"
+          # Bundle ONNX Runtime under the exact name ort dlopens; a
+          # missing runtime used to hang --model runs outright (#446).
+          if [ -n "$ORT_LIB" ] && [ -f "$ORT_LIB" ]; then
+            if [ "$RUNNER_OS" = "macOS" ]; then
+              cp "$ORT_LIB" "$staging/libonnxruntime.dylib"
+            else
+              cp "$ORT_LIB" "$staging/libonnxruntime.so"
+            fi
+          fi
           cp LICENSE "$staging/"
           tar czf "$staging.tar.gz" "$staging"
 
@@ -245,9 +267,14 @@ jobs:
             staging="reco-gui-${{ github.ref_name }}-${{ matrix.name }}"
             mkdir "$staging"
             cp "$gui_bin" "$staging/"
-            # Bundle ONNX Runtime for AI detection
+            # Bundle ONNX Runtime under the exact name ort dlopens - the
+            # versioned filename it previously kept was never found (#446).
             if [ -n "$ORT_LIB" ] && [ -f "$ORT_LIB" ]; then
-              cp "$ORT_LIB" "$staging/"
+              if [ "$RUNNER_OS" = "macOS" ]; then
+                cp "$ORT_LIB" "$staging/libonnxruntime.dylib"
+              else
+                cp "$ORT_LIB" "$staging/libonnxruntime.so"
+              fi
             fi
             cp LICENSE "$staging/"
             tar czf "$staging.tar.gz" "$staging"
