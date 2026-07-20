@@ -165,19 +165,38 @@ impl FfmpegFileSource {
         let first_rotation = probe.rotation();
         drop(probe);
 
-        let rotations: Vec<i32> = std::iter::once(first_rotation)
-            .chain(inputs[1..].iter().map(|input| {
-                ffmpeg::decoder::VideoDecoder::open(input.first_path())
-                    .map(|d| d.rotation())
-                    .unwrap_or_else(|e| {
-                        log::warn!(
-                            "Failed to probe {} for rotation ({e}), assuming 0 degrees",
-                            input.first_path().display()
-                        );
-                        0
-                    })
-            }))
-            .collect();
+        // All inputs must share one frame rate: the session clock, trim
+        // math, and encoder run on the first input's rate, so a mismatched
+        // camera would silently drift out of sync over the match (#315).
+        // 0.5 fps tolerance absorbs probe rounding (30000/1001 vs 30/1)
+        // without letting 25-vs-30 or 30-vs-60 setups through.
+        let mut rotations = vec![first_rotation];
+        for input in &inputs[1..] {
+            match ffmpeg::decoder::VideoDecoder::open(input.first_path()) {
+                Ok(d) => {
+                    let r = d.frame_rate();
+                    let input_fps = r.0 as f64 / r.1 as f64;
+                    if (input_fps - fps).abs() > 0.5 {
+                        return Err(SourceError::Init {
+                            path: input.first_path().display().to_string(),
+                            reason: format!(
+                                "frame rate mismatch: this input is {input_fps:.2} fps but the \
+                                 first input is {fps:.2} fps; record all cameras at the same \
+                                 frame rate (mixed rates are not supported yet)"
+                            ),
+                        });
+                    }
+                    rotations.push(d.rotation());
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to probe {} for rotation/frame rate ({e}), assuming 0 degrees",
+                        input.first_path().display()
+                    );
+                    rotations.push(0);
+                }
+            }
+        }
 
         let inputs = inputs.to_vec();
         let rx = Self::spawn_decode_pipeline(inputs.clone(), sync_offset, None, software_decode);
