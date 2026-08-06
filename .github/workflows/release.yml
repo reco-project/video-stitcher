@@ -344,10 +344,25 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Download AI model assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download v0.5.2 \
+            --repo "${{ github.repository }}" \
+            --pattern "yolo26n.onnx" \
+            --pattern "yolo26n_640.onnx" \
+            --dir artifacts
+          cd artifacts
+          sha256sum --check <<'CHECKSUMS'
+          3f6e5b6c9adaaf7f033810526f12826557e92fafaffa6df2d0ed06512f5e3821  yolo26n.onnx
+          30fde6857b65f6256c9924c3340810a03f73fc42503df9e34156089bda9496ac  yolo26n_640.onnx
+          CHECKSUMS
+
       - name: Generate checksums
         run: |
           cd artifacts
-          sha256sum reco-* > SHA256SUMS
+          sha256sum reco-* yolo26n.onnx yolo26n_640.onnx > SHA256SUMS
 
       - name: Create GitHub Release
         env:
