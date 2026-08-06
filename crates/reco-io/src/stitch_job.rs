@@ -185,6 +185,14 @@ impl StitchResult {
     }
 }
 
+fn audio_sync_skip_frames(audio: &AudioMode, sync_offset: i64) -> u64 {
+    match audio {
+        AudioMode::CopyFrom(0) if sync_offset < 0 => sync_offset.unsigned_abs(),
+        AudioMode::CopyFrom(1) if sync_offset > 0 => sync_offset as u64,
+        AudioMode::CopyFrom(_) | AudioMode::Disabled => 0,
+    }
+}
+
 /// Errors from [`StitchJob::run`].
 #[derive(Debug, Clone, thiserror::Error)]
 #[non_exhaustive]
@@ -693,6 +701,14 @@ impl StitchJob {
             }
             AudioMode::Disabled => None,
         };
+        let audio_sync_skip = audio_sync_skip_frames(&self.audio, effective_sync);
+        let audio_start_time = start_secs + audio_sync_skip as f64 / fps;
+        if audio_sync_skip > 0 {
+            log::info!(
+                "Audio sync: skipping {audio_sync_skip} frames ({:.3}s) from the selected audio source",
+                audio_sync_skip as f64 / fps,
+            );
+        }
 
         let enc_config = crate::ffmpeg::encoder::EncoderConfig {
             encoder_name: self.encoder_name.clone(),
@@ -701,7 +717,7 @@ impl StitchJob {
             quality: self.quality_value,
             preset: self.preset.clone(),
             audio_source,
-            audio_start_time: start_secs,
+            audio_start_time,
             container: self.format.into(),
             gop_size: None,
             stream_url: None,
@@ -1030,5 +1046,15 @@ mod tests {
         );
         // first_path stays the first segment; all_paths must not drop the rest.
         assert_eq!(chained.first_path(), std::path::Path::new("a.mp4"));
+    }
+
+    #[test]
+    fn audio_sync_skips_only_the_audio_source_whose_video_was_skipped() {
+        assert_eq!(audio_sync_skip_frames(&AudioMode::CopyFrom(0), -15), 15);
+        assert_eq!(audio_sync_skip_frames(&AudioMode::CopyFrom(1), -15), 0);
+        assert_eq!(audio_sync_skip_frames(&AudioMode::CopyFrom(0), 15), 0);
+        assert_eq!(audio_sync_skip_frames(&AudioMode::CopyFrom(1), 15), 15);
+        assert_eq!(audio_sync_skip_frames(&AudioMode::CopyFrom(0), 0), 0);
+        assert_eq!(audio_sync_skip_frames(&AudioMode::Disabled, -15), 0);
     }
 }
