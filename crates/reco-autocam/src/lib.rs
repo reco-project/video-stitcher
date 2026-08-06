@@ -72,12 +72,22 @@ pub use wgpu_detector::WgpuPreprocessingDetector;
 // because it wraps `Box<dyn UnifiedDetector>`.
 pub use tracking_mode::TrackingMode;
 
-// Path is only used in the ort-backed class-name lookup
-// (reco_detect::create_ort_session) and the CpuYoloDetector
-// fallback. Both are cfg'd behind `feature = "ort"`, so this
-// import follows the same gate.
-#[cfg(feature = "ort")]
+use std::io;
 use std::path::Path;
+
+/// Verify that an AI model file or model directory exists.
+///
+/// Call this at user-input boundaries before opening video sources. Regular
+/// files cover ONNX, TensorRT, and CoreML models; directories cover NCNN.
+pub fn validate_model_path(path: &Path) -> io::Result<()> {
+    if path.as_os_str().is_empty() || !path.try_exists()? {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("AI model path does not exist: {}", path.display()),
+        ));
+    }
+    Ok(())
+}
 
 /// Set up automatic camera control on any [`DetectionTarget`](reco_core::detect::DetectionTarget).
 ///
@@ -185,6 +195,10 @@ pub fn setup_autocam(
     fps: f32,
     source_is_gpu_resident: bool,
 ) -> Result<bool, Box<dyn std::error::Error>> {
+    if config.tracking_mode != TrackingMode::Sweep {
+        validate_model_path(&config.model_path)?;
+    }
+
     #[cfg(not(any(feature = "ort", feature = "tensorrt-native", feature = "ncnn")))]
     {
         let _ = (target, config, fps);
@@ -593,4 +607,30 @@ fn resolve_or(class_names: &[String], candidates: &[&str], default_id: u16) -> u
         );
         default_id
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_path_validation_accepts_files_and_directories() {
+        let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        assert!(validate_model_path(crate_dir).is_ok());
+        assert!(validate_model_path(&crate_dir.join("Cargo.toml")).is_ok());
+    }
+
+    #[test]
+    fn model_path_validation_rejects_empty_and_missing_paths() {
+        let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let missing = crate_dir.join("model-that-does-not-exist.onnx");
+        assert_eq!(
+            validate_model_path(&missing).unwrap_err().kind(),
+            io::ErrorKind::NotFound
+        );
+        assert_eq!(
+            validate_model_path(Path::new("")).unwrap_err().kind(),
+            io::ErrorKind::NotFound
+        );
+    }
 }

@@ -130,6 +130,14 @@ pub fn run_export(
     let quality: Quality = quality_str.parse().unwrap_or_default();
 
     #[cfg(feature = "autocam")]
+    if autocam.enabled && autocam.tracking_mode != "sweep" && !autocam.model_path.is_empty() {
+        let model_path = std::path::Path::new(&autocam.model_path);
+        if let Err(e) = reco_autocam::validate_model_path(model_path) {
+            return ExportOutcome::Failed(reco_io::stitch_job::StitchError::Other(e.to_string()));
+        }
+    }
+
+    #[cfg(feature = "autocam")]
     let field_roi = cal.field_roi.clone();
 
     let post_status = |text: String| {
