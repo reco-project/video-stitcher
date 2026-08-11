@@ -591,6 +591,15 @@ export component RecoApp inherits Window {
     in-out property <int> lens-candidates-count: 0;
     in-out property <bool> lens-info-available: false;
 
+    // `audio-sync-expanded` mirrors the section's collapse state into
+    // Rust (which only computes the envelope while expanded); the rest
+    // back the audio-sync waveform panel below.
+    in-out property <bool> audio-sync-expanded: false;
+    in-out property <[float]> audio-envelope-left: [];
+    in-out property <[float]> audio-envelope-right: [];
+    in-out property <float> audio-window-frames: 5.0;
+    in-out property <float> audio-waveform-height-px: 90.0;
+
     // Opt-in use of IMU-derived camera orientation as initial seeds
     // for the bundle-adjustment optimizer. Helpful on clips whose first
     // frame is pointed off-axis; harmful if the IMU is noisy. Default
@@ -708,6 +717,7 @@ export component RecoApp inherits Window {
     callback changed-rig-roll(float);
     callback changed-sync-offset(int);
     callback changed-fov(float);
+    callback changed-audio-window-frames(float);
     // Live calibration editing.
     callback changed-cal-intersect(float);
     callback changed-cal-camera-axis-offset(float);
@@ -1394,6 +1404,150 @@ export component RecoApp inherits Window {
                     }
 
                     if !root.lens-preview-active: Rectangle { height: 1px; background: root.border-subtle; }
+
+                    // ── Audio Sync (collapsible): overlaid L/R waveform
+                    // around the playhead, so a sync_offset error shows up
+                    // as a visible shift between the two traces. Placed
+                    // above Lens - sync is checked/adjusted more often
+                    // than lens fine-tuning during a normal calibration
+                    // pass.
+                    audio-section := SectionHeader {
+                        title: "Audio Sync Waveform";
+                        expanded <=> root.audio-sync-expanded;
+                    }
+
+                    if audio-section.expanded: VerticalLayout {
+                        spacing: 4px;
+
+                        Text {
+                            text: "L (blue) / R (orange), " + root.audio-window-frames + " frames around playhead. Aligned peaks = in sync.";
+                            color: #888; font-size: 11px; wrap: word-wrap;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 12px;
+                            HorizontalLayout {
+                                spacing: 3px;
+                                Text { text: "Window:"; color: #888; font-size: 10px; vertical-alignment: center; }
+                                LineEdit {
+                                    text: root.audio-window-frames;
+                                    width: 64px;
+                                    edited(v) => {
+                                        root.audio-window-frames = v.to-float();
+                                        root.changed-audio-window-frames(v.to-float());
+                                    }
+                                }
+                                Text { text: "frames"; color: #888; font-size: 10px; vertical-alignment: center; }
+                            }
+                            HorizontalLayout {
+                                spacing: 3px;
+                                Text { text: "Height:"; color: #888; font-size: 10px; vertical-alignment: center; }
+                                LineEdit {
+                                    text: root.audio-waveform-height-px;
+                                    width: 64px;
+                                    edited(v) => {
+                                        root.audio-waveform-height-px = min(300, max(40, v.to-float()));
+                                    }
+                                }
+                                Text { text: "px"; color: #888; font-size: 10px; vertical-alignment: center; }
+                            }
+                        }
+
+                        waveform-area := Rectangle {
+                            height: root.audio-waveform-height-px * 1px;
+                            background: #1a1a1a;
+                            border-radius: 4px;
+                            clip: true;
+
+                            property <float> bucket-count: max(1, root.audio-envelope-left.length) * 1.0;
+                            property <length> bar-w: waveform-area.width / bucket-count;
+
+                            // Background grid, purely a reading aid:
+                            // horizontal thirds + a vertical line
+                            // every 8 buckets.
+                            for row in [0.25, 0.5, 0.75]: Rectangle {
+                                x: 0px; width: waveform-area.width;
+                                y: waveform-area.height * row; height: 1px;
+                                background: #ffffff16;
+                            }
+                            for i in 9: Rectangle {
+                                x: waveform-area.width * (i + 1) / 10; width: 1px;
+                                y: 0px; height: waveform-area.height;
+                                background: #ffffff10;
+                            }
+
+                            // Both channels are plain (unmirrored) lines
+                            // sharing one axis - 0 at the bottom, loudest
+                            // point at the top - so a real sync offset
+                            // reads as a horizontal shift between the two
+                            // lines' peaks, same as any two-series line
+                            // chart.
+                            //
+                            // Each point is a thin horizontal marker PLUS
+                            // a vertical connector to the next point's
+                            // height, so consecutive buckets join into a
+                            // continuous "staircase" line instead of
+                            // reading as scattered dots. Not a `Path`:
+                            // Slint fits a `Path`'s viewbox uniformly,
+                            // which would squash a wide/short envelope
+                            // flat; and Rectangle has no rotation for a
+                            // true diagonal stroke, so this approximates
+                            // one.
+                            for v[idx] in root.audio-envelope-left: Rectangle {
+                                x: idx * waveform-area.bar-w;
+                                width: waveform-area.bar-w;
+                                height: 1px;
+                                y: waveform-area.height * (1.0 - v) - 0.5px;
+                                background: #5fb8ff;
+                            }
+                            for v[idx] in root.audio-envelope-left: Rectangle {
+                                property <bool> has-next: idx + 1 < root.audio-envelope-left.length;
+                                property <float> next-v: has-next ? root.audio-envelope-left[idx + 1] : v;
+                                property <length> y0: waveform-area.height * (1.0 - v);
+                                property <length> y1: waveform-area.height * (1.0 - next-v);
+                                visible: has-next;
+                                x: (idx + 1) * waveform-area.bar-w - 0.5px;
+                                width: 1px;
+                                y: min(y0, y1);
+                                height: max(y0, y1) - min(y0, y1) + 1px;
+                                background: #5fb8ff;
+                            }
+                            for v[idx] in root.audio-envelope-right: Rectangle {
+                                x: idx * waveform-area.bar-w;
+                                width: waveform-area.bar-w;
+                                height: 1px;
+                                y: waveform-area.height * (1.0 - v) - 0.5px;
+                                background: #ff9f5f;
+                            }
+                            for v[idx] in root.audio-envelope-right: Rectangle {
+                                property <bool> has-next: idx + 1 < root.audio-envelope-right.length;
+                                property <float> next-v: has-next ? root.audio-envelope-right[idx + 1] : v;
+                                property <length> y0: waveform-area.height * (1.0 - v);
+                                property <length> y1: waveform-area.height * (1.0 - next-v);
+                                visible: has-next;
+                                x: (idx + 1) * waveform-area.bar-w - 0.5px;
+                                width: 1px;
+                                y: min(y0, y1);
+                                height: max(y0, y1) - min(y0, y1) + 1px;
+                                background: #ff9f5f;
+                            }
+
+                            Rectangle {
+                                x: waveform-area.width * 0.5 - 1px;
+                                width: 2px;
+                                height: waveform-area.height;
+                                background: #ffffff55;
+                            }
+
+                            if root.audio-envelope-left.length == 0 && root.audio-envelope-right.length == 0: Text {
+                                text: "Computing…";
+                                color: #888; font-size: 10px;
+                                x: 6px; y: 6px;
+                            }
+                        }
+                    }
+
+                    if !audio-section.expanded: Rectangle { height: 1px; background: #2a2a2a; }
 
                     // ── Lens (collapsible: info always, sliders on demand) ──
                     lens-section := SectionHeader {

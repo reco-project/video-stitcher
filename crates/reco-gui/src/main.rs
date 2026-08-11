@@ -21,6 +21,7 @@ mod preview;
 mod settings;
 mod telemetry_client;
 mod toast;
+mod waveform;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -89,6 +90,28 @@ const POSE_SMOOTHING: f32 = 0.25;
 /// NVDEC codec reinit that costs ~50ms. Without debouncing, a drag
 /// saturates the GPU with hundreds of pending reinits.
 const SEEK_DEBOUNCE_MS: u64 = 120;
+
+/// Width of the audio-sync waveform window, in frames of video at the
+/// source's own fps - converted to seconds of audio at recompute time
+/// since fps is only known once a file is loaded. Frame-based (not a
+/// fixed duration) because the whole point is spotting a frame-scale
+/// `sync_offset` error as a shifted transient; a multi-second window
+/// dilutes that shift into a barely-visible fraction of the display.
+const AUDIO_WAVEFORM_WINDOW_FRAMES: f64 = 5.0;
+/// Clamp range for the user-adjustable waveform window width (frames).
+const AUDIO_WAVEFORM_WINDOW_FRAMES_RANGE: (f64, f64) = (1.0, 300.0);
+/// Number of bars drawn per waveform track.
+const AUDIO_WAVEFORM_BUCKETS: usize = 240;
+/// Minimum wall-clock time between recompute triggers. Each recompute
+/// shells out to `ffmpeg` twice (left + right), so this throttles how
+/// often that happens during continuous playback.
+const AUDIO_WAVEFORM_THROTTLE_MS: u64 = 500;
+/// Minimum playhead movement, in frames, that warrants a recompute -
+/// also converted to seconds at recompute time. Frame-based for the same
+/// reason as the window width: keeps the recenter threshold proportional
+/// to the (now much narrower) window instead of the window being fully
+/// skipped past between recomputes.
+const AUDIO_WAVEFORM_RECENTER_FRAMES: f64 = 3.0;
 
 /// Calibration payload sent from the background worker: the computed
 /// match calibration plus the lens profile info each side resolved to,
@@ -204,6 +227,25 @@ struct AppState {
     recording_frames: u64,
     /// Receives calibration results from the background thread.
     cal_rx: Option<std::sync::mpsc::Receiver<CalibrationResult>>,
+    /// Left/right audio-sync waveform envelopes currently displayed,
+    /// downsampled around `audio_envelope_center_secs`. Empty until the
+    /// first recompute (see [`AppState::maybe_recompute_audio_envelope`]).
+    audio_envelope_left: Vec<f32>,
+    audio_envelope_right: Vec<f32>,
+    /// User-adjustable window width (frames), clamped to
+    /// `AUDIO_WAVEFORM_WINDOW_FRAMES_RANGE`. Defaults to
+    /// `AUDIO_WAVEFORM_WINDOW_FRAMES`.
+    audio_window_frames: f64,
+    /// Playhead time (seconds) the displayed envelope was computed for.
+    /// Recompute triggers once the playhead has moved far enough from
+    /// this. Starts at `NEG_INFINITY` so the first expand always computes.
+    audio_envelope_center_secs: f64,
+    /// `Some` while a background extraction job is in flight; polled and
+    /// cleared by `maybe_recompute_audio_envelope`.
+    audio_envelope_rx: Option<std::sync::mpsc::Receiver<(Vec<f32>, Vec<f32>)>>,
+    /// Wall-clock time of the last triggered recompute, for throttling
+    /// during continuous playback (each recompute shells out to ffmpeg).
+    audio_envelope_triggered_at: Option<Instant>,
     /// wgpu handles captured from Slint's rendering notifier. `None`
     /// until the window has completed its first rendering setup.
     shared_gpu: Option<SharedGpu>,
@@ -460,6 +502,12 @@ impl AppState {
             recording_path: None,
             recording_frames: 0,
             cal_rx: None,
+            audio_envelope_left: Vec::new(),
+            audio_envelope_right: Vec::new(),
+            audio_window_frames: AUDIO_WAVEFORM_WINDOW_FRAMES,
+            audio_envelope_center_secs: f64::NEG_INFINITY,
+            audio_envelope_rx: None,
+            audio_envelope_triggered_at: None,
             shared_gpu: None,
             #[cfg(feature = "automation")]
             autoload: AutoloadSpec::from_env(),
@@ -945,7 +993,111 @@ impl AppState {
             }
             log::info!("Sync offset changed to {offset} frames");
             self.preview_dirty = true;
+            // Force the audio-sync waveform to recompute against the new
+            // offset instead of showing the stale pre-change envelope.
+            self.audio_envelope_center_secs = f64::NEG_INFINITY;
         }
+    }
+
+    /// Update the audio-sync waveform's window width (frames), clamped to
+    /// `AUDIO_WAVEFORM_WINDOW_FRAMES_RANGE`, and force the next tick's
+    /// `maybe_recompute_audio_envelope` to recompute against it instead of
+    /// showing the stale pre-change envelope.
+    fn set_audio_window_frames(&mut self, frames: f32) {
+        self.audio_window_frames = (frames as f64).clamp(
+            AUDIO_WAVEFORM_WINDOW_FRAMES_RANGE.0,
+            AUDIO_WAVEFORM_WINDOW_FRAMES_RANGE.1,
+        );
+        self.audio_envelope_center_secs = f64::NEG_INFINITY;
+    }
+
+    /// Poll for a completed audio-sync waveform envelope and, if the
+    /// playhead has moved far enough since the last one, trigger a new
+    /// background recompute. Called from the playback timer tick; cheap
+    /// when idle (a few field reads), since the actual `ffmpeg`
+    /// extraction only runs on a background thread when genuinely
+    /// warranted.
+    fn maybe_recompute_audio_envelope(&mut self, app_weak: &slint::Weak<RecoApp>) {
+        if let Some(rx) = &self.audio_envelope_rx {
+            if let Ok((left, right)) = rx.try_recv() {
+                self.audio_envelope_rx = None;
+                self.audio_envelope_left = left.clone();
+                self.audio_envelope_right = right.clone();
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_audio_envelope_left(slint::ModelRc::new(slint::VecModel::from(left)));
+                    app.set_audio_envelope_right(slint::ModelRc::new(slint::VecModel::from(right)));
+                }
+                return;
+            }
+        }
+
+        if self.audio_envelope_rx.is_some() {
+            return; // job already in flight
+        }
+
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        if !app.get_audio_sync_expanded() {
+            return;
+        }
+        let (Some(left_path), Some(right_path)) = (self.left_path.clone(), self.right_path.clone())
+        else {
+            return;
+        };
+        let fps = self.playback.fps();
+        if fps <= 0.0 {
+            return;
+        }
+
+        let window_secs = self.audio_window_frames / fps;
+        let recenter_secs = AUDIO_WAVEFORM_RECENTER_FRAMES / fps;
+        let center_secs = self.playback.frame_index() as f64 / fps;
+        let moved_enough = (center_secs - self.audio_envelope_center_secs).abs() >= recenter_secs;
+        let throttled = self
+            .audio_envelope_triggered_at
+            .is_some_and(|t| t.elapsed() < Duration::from_millis(AUDIO_WAVEFORM_THROTTLE_MS));
+        if !moved_enough || throttled {
+            return;
+        }
+
+        self.audio_envelope_center_secs = center_secs;
+        self.audio_envelope_triggered_at = Some(Instant::now());
+
+        // `playback.frame_index()` is a synced-timeline index: frame k of
+        // the synced stream is raw left frame `k + max(-sync_offset, 0)`
+        // and raw right frame `k + max(sync_offset, 0)` (see
+        // `adapters::spawn_decode_pipeline_from_inputs`, which skips
+        // frames from whichever camera started first). Extracting both
+        // channels' audio windows at the same raw `center_secs` - as if
+        // `sync_offset` were always 0 - would make the waveform blind to
+        // the very thing it exists to verify: a correct offset should
+        // pull the two traces' transients into alignment, and a wrong one
+        // should show a residual shift.
+        let sync_offset = self.calibration.as_ref().map_or(0, |c| c.sync_offset);
+        let left_center_secs = center_secs + (-sync_offset).max(0) as f64 / fps;
+        let right_center_secs = center_secs + sync_offset.max(0) as f64 / fps;
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.audio_envelope_rx = Some(rx);
+        std::thread::spawn(move || {
+            let mut left = crate::waveform::extract_window_envelope(
+                &left_path,
+                left_center_secs,
+                window_secs,
+                AUDIO_WAVEFORM_BUCKETS,
+            )
+            .unwrap_or_default();
+            let mut right = crate::waveform::extract_window_envelope(
+                &right_path,
+                right_center_secs,
+                window_secs,
+                AUDIO_WAVEFORM_BUCKETS,
+            )
+            .unwrap_or_default();
+            crate::waveform::normalize_pair_to_peak(&mut left, &mut right);
+            let _ = tx.send((left, right));
+        });
     }
 
     /// Re-open the playback source from the current chained inputs without
@@ -2788,6 +2940,11 @@ fn main() -> anyhow::Result<()> {
         state_ref.borrow_mut().set_fov(deg);
     });
 
+    let state_ref = Rc::clone(&state);
+    app.on_changed_audio_window_frames(move |frames| {
+        state_ref.borrow_mut().set_audio_window_frames(frames);
+    });
+
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     app.on_seek_relative(move |secs| {
@@ -3691,6 +3848,11 @@ fn main() -> anyhow::Result<()> {
             }
 
             let mut s = state_ref.borrow_mut();
+
+            // Independent of rendering: the audio-sync waveform must keep
+            // computing even while paused, when nothing else in this timer
+            // tick would otherwise be dirty.
+            s.maybe_recompute_audio_envelope(&app_weak);
 
             // Check for update notification from the background thread.
             if let Ok(mut guard) = update_check.try_lock()
