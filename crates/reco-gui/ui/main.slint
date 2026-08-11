@@ -166,13 +166,16 @@ component VramRiskSlider inherits VerticalLayout {
 }
 
 /// Collapsible section header with clear hover feedback.
+/// Collapsible section header with clear hover feedback.
 component SectionHeader inherits Rectangle {
     in property <string> title;
     in-out property <bool> expanded: false;
 
-    height: 30px;
-    border-radius: 4px;
-    background: section-touch.has-hover ? #2e2e2e : #1e1e1e;
+    height: 34px;
+    border-radius: 8px;
+    background: root.expanded ? #191d21 : section-touch.has-hover ? #24282c : transparent;
+    border-width: 1px;
+    border-color: root.expanded ? #2a2e33 : transparent;
 
     section-touch := TouchArea {
         clicked => { root.expanded = !root.expanded; }
@@ -180,25 +183,123 @@ component SectionHeader inherits Rectangle {
     }
 
     HorizontalLayout {
-        padding-left: 6px;
-        padding-right: 6px;
-        spacing: 6px;
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
 
-        Text {
-            text: root.expanded ? "▾" : "▸";
-            color: root.expanded ? #aaa : #666;
-            font-size: 11px;
-            vertical-alignment: center;
-            width: 14px;
+        // Expanded/collapsed state marker: filled yellow when open, so an
+        // open panel is unmistakable even from a glance across the whole
+        // stack of section headers.
+        Rectangle {
+            width: 9px;
+            height: 9px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 3px;
+            background: root.expanded ? #e5b84b : transparent;
+            border-width: 1px;
+            border-color: root.expanded ? #e5b84b : #454b52;
         }
         Text {
             text: root.title;
-            color: #eee;
-            font-size: 13px;
-            font-weight: 600;
+            color: #dcdfe3;
+            font-size: 12.5px;
+            font-weight: 550;
             vertical-alignment: center;
             horizontal-stretch: 1;
         }
+        // Chevron: points right when collapsed, down when open.
+        Text {
+            text: root.expanded ? "⌄" : "›";
+            color: root.expanded ? #9aa0a7 : #6a7077;
+            font-size: root.expanded ? 13px : 15px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+/// Small flat transport button (jump/step/play/stop icons). The default
+/// `Button` widget from std-widgets renders noticeably bulkier than this
+/// - fine for the toolbar's full-size buttons, but too heavy for a tight
+/// 6-up icon cluster under the timeline.
+component TransportButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    // The play/pause button in the cluster is emphasized (accent-tinted,
+    // slightly wider) so the primary transport action reads at a glance.
+    in property <bool> emphasized: false;
+    callback clicked();
+
+    width: root.emphasized ? 34px : 28px;
+    height: 24px;
+    border-radius: 6px;
+    background: !root.enabled ? #1c1f22
+        : root.emphasized
+            ? (touch.has-hover ? #2c4a56 : #263842)
+            : (touch.pressed ? #1f2226 : touch.has-hover ? #2e333a : #24282c);
+    border-width: 1px;
+    border-color: !root.enabled ? #2a2e33 : root.emphasized ? #33505e : #34393f;
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { root.clicked(); }
+    }
+
+    Text {
+        text: root.text;
+        color: !root.enabled ? #565b61 : root.emphasized ? #6fd0fa : #d8d8d8;
+        font-size: 11px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        width: 100%;
+        height: 100%;
+    }
+}
+
+/// Flat action button, the app-wide replacement for std-widgets `Button`.
+/// One consistent control language across the toolbar and panels: fixed
+/// 28px height, 7px radius, flat control fill with a hover lighten. The
+/// `primary` variant (blue) is used for the single dominant action in a
+/// context (Export, Save, an active toggle). Auto-sizes to its label; put
+/// it in a layout with `horizontal-stretch: 1` or set `width` to override.
+component FlatButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    in property <bool> primary: false;
+    callback clicked();
+
+    height: 28px;
+    border-radius: 7px;
+    border-width: 1px;
+
+    property <color> base: root.primary ? #2f7bd6 : #24282c;
+    property <color> hover: root.primary ? #3d89e2 : #2e333a;
+    background: !root.enabled ? #1c1f22
+        : touch.pressed ? (root.primary ? #2a6fc2 : #1f2226)
+        : touch.has-hover ? hover
+        : base;
+    border-color: !root.enabled ? #2a2e33 : root.primary ? #2f7bd6 : #34393f;
+
+    min-width: label.min-width;
+    preferred-width: label.preferred-width;
+
+    label := HorizontalLayout {
+        padding-left: 13px;
+        padding-right: 13px;
+        Text {
+            text: root.text;
+            color: !root.enabled ? #565b61 : root.primary ? #ffffff : #dcdfe3;
+            font-size: 12px;
+            font-weight: root.primary ? 600 : 500;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { root.clicked(); }
     }
 }
 
@@ -325,8 +426,8 @@ component SegmentList inherits Rectangle {
 
     property <int> drag-from: -1; // row being dragged, or -1 when idle
     property <int> drag-to: -1; // insertion gap [0..count] under the cursor
-    property <length> row-h: 26px;
-    property <length> row-gap: 4px;
+    property <length> row-h: 32px;
+    property <length> row-gap: 5px;
     property <length> rowstep: root.row-h + root.row-gap;
     property <int> count: root.segments.length;
 
@@ -336,7 +437,9 @@ component SegmentList inherits Rectangle {
         spacing: root.row-gap;
         for seg[idx] in root.segments: Rectangle {
             height: root.row-h;
-            border-radius: 4px;
+            border-radius: 7px;
+            border-width: 1px;
+            border-color: #34393f;
             background: root.card-bg;
             // The dragged row dims to a "ghost"; the drop position is shown
             // by the insertion line below, not a per-row outline.
@@ -407,7 +510,7 @@ component SegmentList inherits Rectangle {
                     height: 18px;
                     border-radius: 3px;
                     background: rm.has-hover ? #3a2020 : transparent;
-                    Text { text: "×"; color: #888; font-size: 13px; horizontal-alignment: center; vertical-alignment: center; }
+                    Text { text: "×"; color: rm.has-hover ? #ff6b6b : #6a7077; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; }
                     rm := TouchArea { clicked => { root.remove(idx); } }
                 }
             }
@@ -445,24 +548,24 @@ export component RecoApp inherits Window {
     // ── Theme colors ──
     in-out property <bool> dark-mode: true;
 
-    property <color> bg-base: dark-mode ? #121212 : #f5f5f5;
-    property <color> bg-panel: dark-mode ? #1a1a1a : #eaeaea;
-    property <color> bg-bar: dark-mode ? #1e1e1e : #e0e0e0;
-    property <color> bg-surface: dark-mode ? #222 : #fff;
-    property <color> bg-card: dark-mode ? #242424 : #ddd;
-    property <color> bg-hover: dark-mode ? #2e2e2e : #c8c8c8;
-    property <color> bg-preview: dark-mode ? #0a0a0a : #444;
+    property <color> bg-base: dark-mode ? #101214 : #f5f5f5;
+    property <color> bg-panel: dark-mode ? #17191c : #eaeaea;
+    property <color> bg-bar: dark-mode ? #1a1d20 : #e0e0e0;
+    property <color> bg-surface: dark-mode ? #202327 : #fff;
+    property <color> bg-card: dark-mode ? #202327 : #ddd;
+    property <color> bg-hover: dark-mode ? #2e333a : #c8c8c8;
+    property <color> bg-preview: dark-mode ? #0d0e10 : #444;
     property <color> bg-scrim: dark-mode ? #000000aa : #000000aa;
-    property <color> border-subtle: dark-mode ? #333 : #ccc;
-    property <color> border-mid: dark-mode ? #444 : #aaa;
-    property <color> text-primary: dark-mode ? #eee : #111;
-    property <color> text-body: dark-mode ? #ccc : #222;
-    property <color> text-secondary: dark-mode ? #aaa : #333;
-    property <color> text-muted: dark-mode ? #888 : #444;
-    property <color> text-dim: dark-mode ? #666 : #555;
-    property <color> text-faint: dark-mode ? #555 : #666;
-    property <color> text-heading: dark-mode ? #fff : #111;
-    property <color> accent: dark-mode ? #8ae68a : #2a7a2a;
+    property <color> border-subtle: dark-mode ? #2a2e33 : #ccc;
+    property <color> border-mid: dark-mode ? #34393f : #aaa;
+    property <color> text-primary: dark-mode ? #dcdfe3 : #111;
+    property <color> text-body: dark-mode ? #c4c8cd : #222;
+    property <color> text-secondary: dark-mode ? #9aa0a7 : #333;
+    property <color> text-muted: dark-mode ? #777d84 : #444;
+    property <color> text-dim: dark-mode ? #6a7077 : #555;
+    property <color> text-faint: dark-mode ? #474c52 : #666;
+    property <color> text-heading: dark-mode ? #f0f2f4 : #111;
+    property <color> accent: dark-mode ? #74d69a : #2a7a2a;
     property <color> accent-info: dark-mode ? #8f8 : #2a8a2a;
     property <color> accent-warn: dark-mode ? #e8a060 : #c07020;
     property <color> accent-error: dark-mode ? #f88 : #c44;
@@ -861,7 +964,7 @@ export component RecoApp inherits Window {
                 spacing: 6px;
                 alignment: start;
 
-                Button {
+                FlatButton {
                     text: root.files-panel-open ? "◀ Files" : "Files ▶";
                     clicked => { root.files-panel-open = !root.files-panel-open; }
                 }
@@ -875,36 +978,38 @@ export component RecoApp inherits Window {
 
                 Rectangle { horizontal-stretch: 1; }
 
-                Button { text: "?"; clicked => { root.shortcuts-dialog-open = true; } }
-                Button { text: "⚙"; clicked => { root.open-prefs-dialog(); } }
+                FlatButton { text: "?"; clicked => { root.shortcuts-dialog-open = true; } }
+                FlatButton { text: "⚙"; clicked => { root.open-prefs-dialog(); } }
 
-                Button {
+                FlatButton {
                     text: "Export…";
                     enabled: root.files-loaded && !root.export-in-progress;
                     primary: true;
                     clicked => { root.open-export-dialog(); }
                 }
 
-            }
+                // Panel toggle, in the toolbar row's own flow at the far
+                // right (not a bare floating Rectangle, which Slint would
+                // otherwise center inside the outer toolbar Rectangle).
+                Rectangle {
+                    width: 30px;
+                    height: 30px;
+                    border-radius: 6px;
+                    background: panel-toggle-touch.has-hover ? root.bg-hover : transparent;
 
-            // Panel toggle pinned to the window's far right
-            Rectangle {
-                width: 36px;
-                height: 42px;
-                background: panel-toggle-touch.has-hover ? root.bg-hover : transparent;
+                    panel-toggle-touch := TouchArea {
+                        enabled: root.files-loaded;
+                        clicked => { root.controls-open = !root.controls-open; }
+                        mouse-cursor: pointer;
+                    }
 
-                panel-toggle-touch := TouchArea {
-                    enabled: root.files-loaded;
-                    clicked => { root.controls-open = !root.controls-open; }
-                    mouse-cursor: pointer;
-                }
-
-                Text {
-                    text: root.controls-open ? "▶" : "◀";
-                    color: root.files-loaded ? root.text-secondary : root.text-faint;
-                    font-size: 16px;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
+                    Text {
+                        text: root.controls-open ? "⇥" : "⇤";
+                        color: root.files-loaded ? root.text-secondary : root.text-faint;
+                        font-size: 15px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
                 }
             }
         }
@@ -948,8 +1053,8 @@ export component RecoApp inherits Window {
                         HorizontalLayout {
                             spacing: 6px;
                             Text { text: "Left"; color: #8ae68a; font-size: 12px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
-                            Button { text: "+"; clicked => { root.pick-left-video(); } }
-                            Button { text: "Clear"; enabled: root.left-path != ""; clicked => { root.clear-left(); } }
+                            FlatButton { text: "+"; clicked => { root.pick-left-video(); } }
+                            FlatButton { text: "Clear"; enabled: root.left-path != ""; clicked => { root.clear-left(); } }
                         }
 
                         if root.left-segments.length == 0: Text {
@@ -971,8 +1076,8 @@ export component RecoApp inherits Window {
                         HorizontalLayout {
                             spacing: 6px;
                             Text { text: "Right"; color: #8ae68a; font-size: 12px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
-                            Button { text: "+"; clicked => { root.pick-right-video(); } }
-                            Button { text: "Clear"; enabled: root.right-path != ""; clicked => { root.clear-right(); } }
+                            FlatButton { text: "+"; clicked => { root.pick-right-video(); } }
+                            FlatButton { text: "Clear"; enabled: root.right-path != ""; clicked => { root.clear-right(); } }
                         }
 
                         if root.right-segments.length == 0: Text {
@@ -994,7 +1099,7 @@ export component RecoApp inherits Window {
 
                         if root.has-both-videos: HorizontalLayout {
                             spacing: 4px;
-                            Button {
+                            FlatButton {
                                 text: root.calibrating
                                     ? "Calibrating..."
                                     : (root.files-loaded ? "Re-calibrate" : "Auto Calibrate");
@@ -1002,7 +1107,7 @@ export component RecoApp inherits Window {
                                 horizontal-stretch: 1;
                                 clicked => { root.auto-calibrate(); }
                             }
-                            Button {
+                            FlatButton {
                                 text: "Load…";
                                 clicked => { root.pick-calibration(); }
                             }
@@ -1146,10 +1251,10 @@ export component RecoApp inherits Window {
                                 accepted => { root.sync-offset = self.text.to-float(); root.changed-sync-offset(self.text.to-float()); }
                             }
                             Text { text: "frames"; color: #777; font-size: 10px; vertical-alignment: center; }
-                            Button { text: "Apply"; clicked => { root.sync-offset = sync-input.text.to-float(); root.changed-sync-offset(sync-input.text.to-float()); } }
+                            FlatButton { text: "Apply"; clicked => { root.sync-offset = sync-input.text.to-float(); root.changed-sync-offset(sync-input.text.to-float()); } }
                         }
 
-                        if root.files-loaded && (root.cal-dirty || root.lens-dirty): Button {
+                        if root.files-loaded && (root.cal-dirty || root.lens-dirty): FlatButton {
                             text: "Save Calibration";
                             primary: true;
                             clicked => { root.save-calibration(); }
@@ -1171,12 +1276,12 @@ export component RecoApp inherits Window {
 
                         if root.files-loaded: HorizontalLayout {
                             spacing: 4px;
-                            Button {
+                            FlatButton {
                                 text: root.has-roi ? "Edit ROI..." : "Set ROI...";
                                 horizontal-stretch: 1;
                                 clicked => { root.launch-roi-editor(); }
                             }
-                            Button {
+                            FlatButton {
                                 text: "Paste ROI";
                                 clicked => { root.paste-roi(); }
                             }
@@ -1199,7 +1304,7 @@ export component RecoApp inherits Window {
 
                         Rectangle { height: 1px; background: root.border-subtle; }
 
-                        Button {
+                        FlatButton {
                             text: "Recent…";
                             enabled: root.recent-left-paths.length > 0
                                    || root.recent-right-paths.length > 0
@@ -1330,6 +1435,36 @@ export component RecoApp inherits Window {
                         return accept;
                     }
                 }
+
+                // Current view state, surfaced over the preview where the
+                // eye already is. Non-interactive (no TouchArea) so pan/zoom
+                // drag underneath still works. Hidden until a clip loads.
+                if root.files-loaded: Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    y: 12px;
+                    width: fov-pill.preferred-width + 24px;
+                    height: 26px;
+                    border-radius: 13px;
+                    background: #0d0f11d0;
+                    border-width: 1px;
+                    border-color: #2a2e33;
+                    fov-pill := HorizontalLayout {
+                        spacing: 7px;
+                        alignment: center;
+                        Text {
+                            text: "FOV " + round(root.fov) + "°";
+                            color: #9aa0a7;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+                        if root.use-constrained-look: Text {
+                            text: "· Constrained";
+                            color: #6a7077;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
             }
 
             // Right-side controls panel. Collapsible sections keep
@@ -1388,7 +1523,7 @@ export component RecoApp inherits Window {
                         toggled => { root.changed-constrained-look(); }
                     }
 
-                    if !root.lens-preview-active: Button {
+                    if !root.lens-preview-active: FlatButton {
                         text: "Reset View";
                         clicked => { root.reset-view(); }
                     }
@@ -1425,7 +1560,7 @@ export component RecoApp inherits Window {
                             color: #777; font-size: 11px;
                         }
 
-                        Button {
+                        FlatButton {
                             text: "Browse profiles...";
                             clicked => { root.lens-picker-open = true; }
                         }
@@ -1449,8 +1584,8 @@ export component RecoApp inherits Window {
 
                         if root.lens-preview-active: HorizontalLayout {
                             spacing: 4px;
-                            Button { text: "Left"; primary: root.lens-preview-side == "left"; clicked => { root.lens-preview-side = "left"; root.changed-lens-preview(); } }
-                            Button { text: "Right"; primary: root.lens-preview-side == "right"; clicked => { root.lens-preview-side = "right"; root.changed-lens-preview(); } }
+                            FlatButton { text: "Left"; primary: root.lens-preview-side == "left"; clicked => { root.lens-preview-side = "left"; root.changed-lens-preview(); } }
+                            FlatButton { text: "Right"; primary: root.lens-preview-side == "right"; clicked => { root.lens-preview-side = "right"; root.changed-lens-preview(); } }
                         }
 
                         // Fine-tune: auto-expands in lens preview mode
@@ -1464,9 +1599,9 @@ export component RecoApp inherits Window {
 
                             HorizontalLayout {
                                 spacing: 4px;
-                                Button { text: "Left"; primary: root.lens-selected-camera == "left"; clicked => { root.lens-selected-camera = "left"; } }
-                                Button { text: "Right"; primary: root.lens-selected-camera == "right"; clicked => { root.lens-selected-camera = "right"; } }
-                                Button { text: "Both"; primary: root.lens-selected-camera == "both"; clicked => { root.lens-selected-camera = "both"; } }
+                                FlatButton { text: "Left"; primary: root.lens-selected-camera == "left"; clicked => { root.lens-selected-camera = "left"; } }
+                                FlatButton { text: "Right"; primary: root.lens-selected-camera == "right"; clicked => { root.lens-selected-camera = "right"; } }
+                                FlatButton { text: "Both"; primary: root.lens-selected-camera == "both"; clicked => { root.lens-selected-camera = "both"; } }
                             }
 
                             if root.lens-selected-camera == "left" || root.lens-selected-camera == "both": VerticalLayout {
@@ -1493,7 +1628,7 @@ export component RecoApp inherits Window {
                                 LabeledSlider { label: "k4"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k4; decimals: 2; changed(v) => { root.changed-lens-param(); } }
                             }
 
-                            Button { text: "Reset Lens"; enabled: root.lens-dirty; clicked => { root.reset-lens(); } }
+                            FlatButton { text: "Reset Lens"; enabled: root.lens-dirty; clicked => { root.reset-lens(); } }
                         }
                     }
 
@@ -1540,7 +1675,7 @@ export component RecoApp inherits Window {
                         // cal/lens dirty, saves the whole calibration incl. lens
                         // + blend). This section keeps only the contextual
                         // layout Reset so there is no duplicate save button.
-                        Button {
+                        FlatButton {
                             text: "Reset";
                             enabled: root.cal-dirty;
                             clicked => { root.reset-calibration(); }
@@ -1598,9 +1733,14 @@ export component RecoApp inherits Window {
                 spacing: 6px;
 
                 // Playback buttons
-                Button { text: "|<"; enabled: root.files-loaded; clicked => { root.step-backward(); } }
-                Button { text: root.playing ? "||" : "▶"; enabled: root.files-loaded; clicked => { root.toggle-playback(); } }
-                Button { text: ">|"; enabled: root.files-loaded; clicked => { root.step-forward(); } }
+                TransportButton { text: "|<"; enabled: root.files-loaded; clicked => { root.step-backward(); } }
+                TransportButton {
+                    text: root.playing ? "||" : "▶";
+                    enabled: root.files-loaded;
+                    emphasized: true;
+                    clicked => { root.toggle-playback(); }
+                }
+                TransportButton { text: ">|"; enabled: root.files-loaded; clicked => { root.step-forward(); } }
 
                 Text {
                     text: root.current-time-text;
@@ -1723,12 +1863,12 @@ export component RecoApp inherits Window {
                     horizontal-stretch: 1;
                 }
 
-                if root.export-in-progress: Button {
+                if root.export-in-progress: FlatButton {
                     text: "Cancel";
                     clicked => { root.cancel-export(); }
                 }
 
-                if !root.export-in-progress && root.last-output-path != "": Button {
+                if !root.export-in-progress && root.last-output-path != "": FlatButton {
                     text: "Show in folder";
                     clicked => { root.show-in-folder(root.last-output-path); }
                 }
@@ -1800,7 +1940,7 @@ export component RecoApp inherits Window {
                             font-size: 16px;
                             font-weight: 600;
                         }
-                        Button {
+                        FlatButton {
                             text: "Clear all";
                             clicked => {
                                 root.clear-recent-files();
@@ -1942,7 +2082,7 @@ export component RecoApp inherits Window {
 
                     HorizontalLayout {
                         alignment: end;
-                        Button {
+                        FlatButton {
                             text: "Close";
                             clicked => { root.recent-dialog-open = false; }
                         }
@@ -2014,10 +2154,10 @@ export component RecoApp inherits Window {
 
                     HorizontalLayout {
                         spacing: 8px;
-                        Button { text: "Website"; clicked => { root.open-website(); } }
-                        Button { text: "Forum"; clicked => { root.open-forum(); } }
+                        FlatButton { text: "Website"; clicked => { root.open-website(); } }
+                        FlatButton { text: "Forum"; clicked => { root.open-forum(); } }
                         Rectangle { horizontal-stretch: 1; }
-                        Button {
+                        FlatButton {
                             text: "Close";
                             clicked => { root.shortcuts-dialog-open = false; }
                         }
@@ -2093,7 +2233,7 @@ export component RecoApp inherits Window {
                             placeholder-text: "Path to .onnx, or leave empty";
                             horizontal-stretch: 1;
                         }
-                        Button {
+                        FlatButton {
                             text: "Browse…";
                             clicked => { root.pick-prefs-model(); }
                         }
@@ -2133,7 +2273,7 @@ export component RecoApp inherits Window {
                             placeholder-text: "Same as source video (default)";
                             horizontal-stretch: 1;
                         }
-                        Button {
+                        FlatButton {
                             text: "Browse…";
                             clicked => { root.pick-recording-folder(); }
                         }
@@ -2170,11 +2310,11 @@ export component RecoApp inherits Window {
                     HorizontalLayout {
                         alignment: end;
                         spacing: 8px;
-                        Button {
+                        FlatButton {
                             text: "Cancel";
                             clicked => { root.prefs-dialog-open = false; }
                         }
-                        Button {
+                        FlatButton {
                             text: "Save";
                             primary: true;
                             clicked => {
@@ -2240,8 +2380,8 @@ export component RecoApp inherits Window {
                     HorizontalLayout {
                         spacing: 8px;
                         alignment: end;
-                        Button { text: "Cancel"; clicked => { root.bug-dialog-open = false; } }
-                        Button {
+                        FlatButton { text: "Cancel"; clicked => { root.bug-dialog-open = false; } }
+                        FlatButton {
                             text: "Send Report";
                             primary: true;
                             enabled: bug-msg.text != "";
@@ -2316,7 +2456,7 @@ export component RecoApp inherits Window {
                             placeholder-text: "Pick a destination file, or type a path…";
                             horizontal-stretch: 1;
                         }
-                        Button {
+                        FlatButton {
                             text: "Save to…";
                             clicked => { root.pick-export-output(); }
                         }
@@ -2503,7 +2643,7 @@ export component RecoApp inherits Window {
                                 read-only: true;
                                 horizontal-stretch: 1;
                             }
-                            Button {
+                            FlatButton {
                                 text: "Model…";
                                 clicked => { root.pick-export-model(); }
                             }
@@ -2713,12 +2853,12 @@ export component RecoApp inherits Window {
                             horizontal-stretch: 1;
                         }
 
-                        Button {
+                        FlatButton {
                             text: "Cancel";
                             clicked => { root.export-dialog-open = false; root.export-error-text = ""; }
                         }
 
-                        Button {
+                        FlatButton {
                             text: "Start Export";
                             primary: true;
                             // Block when AI tracking is on but no model is
@@ -2828,11 +2968,11 @@ export component RecoApp inherits Window {
                     HorizontalLayout {
                         spacing: 8px;
                         alignment: end;
-                        Button {
+                        FlatButton {
                             text: "Load from file...";
                             clicked => { root.lens-pick-file(); }
                         }
-                        Button {
+                        FlatButton {
                             text: "Close";
                             clicked => { root.lens-picker-open = false; }
                         }
