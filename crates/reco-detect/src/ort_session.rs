@@ -264,7 +264,25 @@ pub fn create_ort_session(
     };
 
     // DirectML EP for Windows (AMD/Intel/NVIDIA via DX12).
-    #[cfg(target_os = "windows")]
+    //
+    // Mutually exclusive with TensorRT/CUDA in the same session: ORT
+    // rejects the combination outright at `commit_from_file` time with
+    // "DML EP can only be used with CPU EPs" - a declarative check on the
+    // registered provider *list*, independent of whether TensorRT/CUDA
+    // actually loads on this machine. Reproduced 2026-08-13 the first
+    // time a Windows build ever compiled `tensorrt` + the (unconditional
+    // on Windows) `directml` dependency together - both got queued onto
+    // the same builder below and every export crashed with "AI tracking
+    // failed: DML EP can only be used with CPU EPs", frozen preview and
+    // all. Gating this block out whenever `tensorrt`/`cuda` are compiled
+    // in restores the working single-GPU-EP-plus-CPU-fallback chain in
+    // both cases: TensorRT/CUDA alone (with implicit CPU fallback if
+    // unavailable) when either is compiled in, DirectML alone otherwise -
+    // never queue two mutually-exclusive GPU EPs onto one builder.
+    #[cfg(all(
+        target_os = "windows",
+        not(any(feature = "tensorrt", feature = "cuda"))
+    ))]
     let mut builder = {
         match builder.with_execution_providers([ort::ep::DirectML::default().build()]) {
             Ok(b) => {
