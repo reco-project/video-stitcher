@@ -2447,6 +2447,19 @@ fn main() -> anyhow::Result<()> {
         let _ = open::that("https://forum.reco-project.org/");
     });
 
+    // User-initiated now (toolbar button, see `update-available` in
+    // main.slint) rather than an automatic browser-open the moment the
+    // background version check finds a newer release.
+    let app_weak = app.as_weak();
+    app.on_open_update_page(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let tag = app.get_update_tag();
+        let url = format!("https://github.com/reco-project/video-stitcher/releases/tag/{tag}");
+        let _ = open::that(&url);
+    });
+
     let app_weak = app.as_weak();
     app.on_pick_prefs_model(move || {
         let dialog = rfd::FileDialog::new()
@@ -3693,22 +3706,24 @@ fn main() -> anyhow::Result<()> {
             let mut s = state_ref.borrow_mut();
 
             // Check for update notification from the background thread.
+            // Surfaced as a toolbar button (`update-available`/`update-tag`)
+            // the user can click when they're ready, not an unasked
+            // browser tab - see `open-update-page`'s handler below for
+            // where the actual `open::that` call now lives.
             if let Ok(mut guard) = update_check.try_lock()
                 && let Some(tag) = guard.take()
                 && let Some(app) = app_weak.upgrade()
             {
-                        let url = format!(
-                            "https://github.com/reco-project/video-stitcher/releases/tag/{tag}"
-                        );
                         s.toasts.push_with_ttl(
                             Severity::Info,
                             format!("Update available: {tag}"),
-                            "Opening download page in your browser.",
+                            "Click \"Update available\" in the toolbar to open the download page.",
                             Duration::from_secs(30),
                         );
                         log::info!("Toast pushed for update {tag}");
                         crate::toast::sync_to_ui(&s.toasts, &app);
-                        let _ = open::that(&url);
+                        app.set_update_available(true);
+                        app.set_update_tag(tag.into());
             }
 
             // Poll for calibration results from the background thread.

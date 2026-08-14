@@ -494,6 +494,12 @@ export component RecoApp inherits Window {
     in-out property <float> fps: 0.0;
     in-out property <bool> calibrating: false;
     in-out property <string> calibration-step: "";
+    // Set once the background update-check thread finds a newer GitHub
+    // release; drives the toolbar's "Update available" button instead of
+    // auto-opening a browser tab (see `open-update-page` below).
+    in-out property <bool> update-available: false;
+    in-out property <string> update-tag: "";
+    callback open-update-page();
     in-out property <bool> has-both-videos: left-path != "" && right-path != "";
     in-out property <bool> has-roi: false;
     in-out property <[float]> roi-points-x: [];
@@ -877,6 +883,16 @@ export component RecoApp inherits Window {
 
                 Button { text: "?"; clicked => { root.shortcuts-dialog-open = true; } }
                 Button { text: "⚙"; clicked => { root.open-prefs-dialog(); } }
+
+                // Only ever appears once the background version check
+                // actually finds a newer release; clicking opens the
+                // download page - no more auto-opening a browser tab
+                // unasked (see `open-update-page` / `update-available`'s
+                // doc comment).
+                if root.update-available: Button {
+                    text: "Update available (" + root.update-tag + ")";
+                    clicked => { root.open-update-page(); }
+                }
 
                 Button {
                     text: "Export…";
