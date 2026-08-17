@@ -202,6 +202,33 @@ component SectionHeader inherits Rectangle {
     }
 }
 
+/// Bordered card grouping related sliders under a small-caps title, so a
+/// long flat list of controls reads as distinct sections at a glance
+/// instead of one undifferentiated column.
+component CalGroupBox inherits Rectangle {
+    in property <string> title;
+
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: #333;
+    background: #1a1a1a;
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 10px;
+
+        Text {
+            text: root.title;
+            color: #888;
+            font-size: 10.5px;
+            font-weight: 700;
+            letter-spacing: 0.6px;
+        }
+
+        @children
+    }
+}
+
 // Toast notification payload. Kept flat (no nested structs) so the
 // Rust side can push via the generated `VecModel<Toast>` without
 // wrapping ceremony. `id` is an opaque Rust-side counter used as the
@@ -1017,61 +1044,69 @@ export component RecoApp inherits Window {
                             }
 
                             if cal-advanced.expanded: VerticalLayout {
-                                spacing: 4px;
+                                spacing: 10px;
 
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "Frames:"; color: #888; font-size: 11px; vertical-alignment: center; }
-                                    ComboBox {
-                                        model: ["2", "4", "6", "8"];
-                                        current-value: root.calibration-frames;
-                                        width: 56px;
-                                        enabled: !root.calibrating;
-                                        selected(v) => { root.calibration-frames = max(2, v.to-float()); }
+                                CalGroupBox {
+                                    title: "SAMPLING";
+
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        Text { text: "Frames:"; color: #888; font-size: 11px; vertical-alignment: center; }
+                                        ComboBox {
+                                            model: ["2", "4", "6", "8"];
+                                            current-value: root.calibration-frames;
+                                            width: 56px;
+                                            enabled: !root.calibrating;
+                                            selected(v) => { root.calibration-frames = max(2, v.to-float()); }
+                                        }
+
+                                        CheckBox {
+                                            text: "IMU seeds";
+                                            checked <=> root.use-imu-seeds;
+                                            enabled: !root.calibrating;
+                                        }
                                     }
 
-                                    CheckBox {
-                                        text: "IMU seeds";
-                                        checked <=> root.use-imu-seeds;
-                                        enabled: !root.calibrating;
+                                    LabeledSlider {
+                                        label: "Skip end";
+                                        minimum: 0;
+                                        maximum: 60;
+                                        value <=> root.cal-skip-end-secs;
+                                        suffix: "s";
+                                        decimals: 0;
+                                        changed(v) => {}
                                     }
                                 }
 
-                                LabeledSlider {
-                                    label: "AKAZE threshold";
-                                    minimum: 0.00005;
-                                    maximum: 0.005;
-                                    value <=> root.cal-akaze-threshold;
-                                    decimals: 4;
-                                    changed(v) => {}
-                                }
+                                CalGroupBox {
+                                    title: "FEATURE DETECTION";
 
-                                LabeledSlider {
-                                    label: "Detect Y min";
-                                    minimum: 0;
-                                    maximum: 0.5;
-                                    value <=> root.cal-detect-y-min;
-                                    decimals: 2;
-                                    changed(v) => {}
-                                }
+                                    LabeledSlider {
+                                        label: "AKAZE threshold";
+                                        minimum: 0.00005;
+                                        maximum: 0.005;
+                                        value <=> root.cal-akaze-threshold;
+                                        decimals: 4;
+                                        changed(v) => {}
+                                    }
 
-                                LabeledSlider {
-                                    label: "Detect Y max";
-                                    minimum: 0.5;
-                                    maximum: 1.0;
-                                    value <=> root.cal-detect-y-max;
-                                    decimals: 2;
-                                    changed(v) => {}
-                                }
+                                    LabeledSlider {
+                                        label: "Detect Y min";
+                                        minimum: 0;
+                                        maximum: 0.5;
+                                        value <=> root.cal-detect-y-min;
+                                        decimals: 2;
+                                        changed(v) => {}
+                                    }
 
-                                LabeledSlider {
-                                    label: "Skip end";
-                                    minimum: 0;
-                                    maximum: 60;
-                                    value <=> root.cal-skip-end-secs;
-                                    suffix: "s";
-                                    decimals: 0;
-                                    changed(v) => {}
+                                    LabeledSlider {
+                                        label: "Detect Y max";
+                                        minimum: 0.5;
+                                        maximum: 1.0;
+                                        value <=> root.cal-detect-y-max;
+                                        decimals: 2;
+                                        changed(v) => {}
+                                    }
                                 }
                             }
                         }
@@ -1108,93 +1143,106 @@ export component RecoApp inherits Window {
 
                         if root.files-loaded: Text { text: "Stitching"; color: #aaa; font-size: 12px; font-weight: 600; }
 
-                        if root.files-loaded: LabeledSlider {
-                            label: "Seam blend";
-                            minimum: 0;
-                            maximum: 0.3;
-                            value <=> root.blend-width;
-                            decimals: 2;
-                            changed(v) => { root.changed-blend-width(v); }
-                        }
+                        if root.files-loaded: VerticalLayout {
+                            spacing: 10px;
 
-                        if root.files-loaded: LabeledSlider {
-                            label: "Rig tilt";
-                            minimum: -30;
-                            maximum: 30;
-                            value <=> root.rig-tilt;
-                            suffix: "°";
-                            decimals: 1;
-                            changed(v) => { root.changed-rig-tilt(v); }
-                        }
+                            CalGroupBox {
+                                title: "SEAM";
 
-                        if root.files-loaded: LabeledSlider {
-                            label: "Rig roll";
-                            minimum: -15;
-                            maximum: 15;
-                            value <=> root.rig-roll;
-                            suffix: "°";
-                            decimals: 1;
-                            changed(v) => { root.changed-rig-roll(v); }
-                        }
-
-                        if root.files-loaded: HorizontalLayout {
-                            spacing: 4px;
-                            Text { text: "Sync offset"; color: #aaa; font-size: 11px; vertical-alignment: center; }
-                            sync-input := LineEdit {
-                                text: root.sync-offset;
-                                width: 70px;
-                                accepted => { root.sync-offset = self.text.to-float(); root.changed-sync-offset(self.text.to-float()); }
+                                LabeledSlider {
+                                    label: "Seam blend";
+                                    minimum: 0;
+                                    maximum: 0.3;
+                                    value <=> root.blend-width;
+                                    decimals: 2;
+                                    changed(v) => { root.changed-blend-width(v); }
+                                }
                             }
-                            Text { text: "frames"; color: #777; font-size: 10px; vertical-alignment: center; }
-                            Button { text: "Apply"; clicked => { root.sync-offset = sync-input.text.to-float(); root.changed-sync-offset(sync-input.text.to-float()); } }
-                        }
 
-                        if root.files-loaded && (root.cal-dirty || root.lens-dirty): Button {
-                            text: "Save Calibration";
-                            primary: true;
-                            clicked => { root.save-calibration(); }
-                        }
+                            CalGroupBox {
+                                title: "RIG ALIGNMENT";
 
-                        // Field ROI status
-                        if root.files-loaded: Rectangle { height: 1px; background: root.border-subtle; }
+                                LabeledSlider {
+                                    label: "Rig tilt";
+                                    minimum: -30;
+                                    maximum: 30;
+                                    value <=> root.rig-tilt;
+                                    suffix: "°";
+                                    decimals: 1;
+                                    changed(v) => { root.changed-rig-tilt(v); }
+                                }
 
-                        if root.files-loaded: HorizontalLayout {
-                            spacing: 6px;
-                            Text {
-                                text: root.has-roi ? "Field ROI: loaded" : "Field ROI: none";
-                                color: root.has-roi ? #8ae68a : #777;
-                                font-size: 11px;
-                                vertical-alignment: center;
-                                horizontal-stretch: 1;
+                                LabeledSlider {
+                                    label: "Rig roll";
+                                    minimum: -15;
+                                    maximum: 15;
+                                    value <=> root.rig-roll;
+                                    suffix: "°";
+                                    decimals: 1;
+                                    changed(v) => { root.changed-rig-roll(v); }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 4px;
+                                    Text { text: "Sync offset"; color: #aaa; font-size: 11px; vertical-alignment: center; }
+                                    sync-input := LineEdit {
+                                        text: root.sync-offset;
+                                        width: 70px;
+                                        accepted => { root.sync-offset = self.text.to-float(); root.changed-sync-offset(self.text.to-float()); }
+                                    }
+                                    Text { text: "frames"; color: #777; font-size: 10px; vertical-alignment: center; }
+                                    Button { text: "Apply"; clicked => { root.sync-offset = sync-input.text.to-float(); root.changed-sync-offset(sync-input.text.to-float()); } }
+                                }
                             }
-                        }
 
-                        if root.files-loaded: HorizontalLayout {
-                            spacing: 4px;
-                            Button {
-                                text: root.has-roi ? "Edit ROI..." : "Set ROI...";
-                                horizontal-stretch: 1;
-                                clicked => { root.launch-roi-editor(); }
+                            if root.cal-dirty || root.lens-dirty: Button {
+                                text: "Save Calibration";
+                                primary: true;
+                                clicked => { root.save-calibration(); }
                             }
-                            Button {
-                                text: "Paste ROI";
-                                clicked => { root.paste-roi(); }
-                            }
-                        }
 
-                        if root.files-loaded: LineEdit {
-                            placeholder-text: "Or paste ROI JSON here...";
-                            accepted(text) => {
-                                root.roi-manual-json = text;
-                                root.paste-roi();
-                            }
-                        }
+                            CalGroupBox {
+                                title: "FIELD ROI";
 
-                        if root.files-loaded && !root.has-roi: Text {
-                            text: "Draw in browser, Copy ROI, then Paste or type JSON above.";
-                            color: root.text-dim;
-                            font-size: 10px;
-                            wrap: word-wrap;
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Text {
+                                        text: root.has-roi ? "Field ROI: loaded" : "Field ROI: none";
+                                        color: root.has-roi ? #8ae68a : #777;
+                                        font-size: 11px;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 4px;
+                                    Button {
+                                        text: root.has-roi ? "Edit ROI..." : "Set ROI...";
+                                        horizontal-stretch: 1;
+                                        clicked => { root.launch-roi-editor(); }
+                                    }
+                                    Button {
+                                        text: "Paste ROI";
+                                        clicked => { root.paste-roi(); }
+                                    }
+                                }
+
+                                LineEdit {
+                                    placeholder-text: "Or paste ROI JSON here...";
+                                    accepted(text) => {
+                                        root.roi-manual-json = text;
+                                        root.paste-roi();
+                                    }
+                                }
+
+                                if !root.has-roi: Text {
+                                    text: "Draw in browser, Copy ROI, then Paste or type JSON above.";
+                                    color: root.text-dim;
+                                    font-size: 10px;
+                                    wrap: word-wrap;
+                                }
+                            }
                         }
 
                         Rectangle { height: 1px; background: root.border-subtle; }
@@ -1453,13 +1501,7 @@ export component RecoApp inherits Window {
                             Button { text: "Right"; primary: root.lens-preview-side == "right"; clicked => { root.lens-preview-side = "right"; root.changed-lens-preview(); } }
                         }
 
-                        // Fine-tune: auto-expands in lens preview mode
-                        lens-tune := SectionHeader {
-                            title: "Fine-tune";
-                            expanded: root.lens-preview-active;
-                        }
-
-                        if lens-tune.expanded: VerticalLayout {
+                        VerticalLayout {
                             spacing: 4px;
 
                             HorizontalLayout {
@@ -1469,28 +1511,32 @@ export component RecoApp inherits Window {
                                 Button { text: "Both"; primary: root.lens-selected-camera == "both"; clicked => { root.lens-selected-camera = "both"; } }
                             }
 
-                            if root.lens-selected-camera == "left" || root.lens-selected-camera == "both": VerticalLayout {
-                                spacing: 3px;
-                                LabeledSlider { label: "fx"; minimum: root.lens-fx-min; maximum: root.lens-fx-max; value <=> root.lens-left-fx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "fy"; minimum: root.lens-fy-min; maximum: root.lens-fy-max; value <=> root.lens-left-fy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "cx"; minimum: root.lens-cx-min; maximum: root.lens-cx-max; value <=> root.lens-left-cx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "cy"; minimum: root.lens-cy-min; maximum: root.lens-cy-max; value <=> root.lens-left-cy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "k1"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k1; decimals: 2; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "k2"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k2; decimals: 2; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "k3"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k3; decimals: 2; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "k4"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k4; decimals: 2; changed(v) => { root.changed-lens-param(); } }
-                            }
+                            CalGroupBox {
+                                title: "LENS PARAMETERS";
 
-                            if root.lens-selected-camera == "right": VerticalLayout {
-                                spacing: 3px;
-                                LabeledSlider { label: "fx"; minimum: root.lens-fx-min; maximum: root.lens-fx-max; value <=> root.lens-right-fx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "fy"; minimum: root.lens-fy-min; maximum: root.lens-fy-max; value <=> root.lens-right-fy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "cx"; minimum: root.lens-cx-min; maximum: root.lens-cx-max; value <=> root.lens-right-cx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "cy"; minimum: root.lens-cy-min; maximum: root.lens-cy-max; value <=> root.lens-right-cy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "k1"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k1; decimals: 2; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "k2"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k2; decimals: 2; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "k3"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k3; decimals: 2; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "k4"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k4; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                if root.lens-selected-camera == "left" || root.lens-selected-camera == "both": VerticalLayout {
+                                    spacing: 3px;
+                                    LabeledSlider { label: "fx"; minimum: root.lens-fx-min; maximum: root.lens-fx-max; value <=> root.lens-left-fx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "fy"; minimum: root.lens-fy-min; maximum: root.lens-fy-max; value <=> root.lens-left-fy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "cx"; minimum: root.lens-cx-min; maximum: root.lens-cx-max; value <=> root.lens-left-cx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "cy"; minimum: root.lens-cy-min; maximum: root.lens-cy-max; value <=> root.lens-left-cy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "k1"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k1; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "k2"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k2; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "k3"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k3; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "k4"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k4; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                }
+
+                                if root.lens-selected-camera == "right": VerticalLayout {
+                                    spacing: 3px;
+                                    LabeledSlider { label: "fx"; minimum: root.lens-fx-min; maximum: root.lens-fx-max; value <=> root.lens-right-fx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "fy"; minimum: root.lens-fy-min; maximum: root.lens-fy-max; value <=> root.lens-right-fy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "cx"; minimum: root.lens-cx-min; maximum: root.lens-cx-max; value <=> root.lens-right-cx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "cy"; minimum: root.lens-cy-min; maximum: root.lens-cy-max; value <=> root.lens-right-cy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "k1"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k1; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "k2"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k2; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "k3"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k3; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "k4"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k4; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                }
                             }
 
                             Button { text: "Reset Lens"; enabled: root.lens-dirty; clicked => { root.reset-lens(); } }
@@ -1506,33 +1552,37 @@ export component RecoApp inherits Window {
                     }
 
                     if cal-section.expanded: VerticalLayout {
-                        spacing: 8px;
+                        spacing: 10px;
 
-                        LabeledSlider {
-                            label: "Intersect";
-                            minimum: -1.0;
-                            maximum: 1.0;
-                            value <=> root.cal-intersect;
-                            decimals: 3;
-                            changed(v) => { root.changed-cal-intersect(v); }
-                        }
+                        CalGroupBox {
+                            title: "GLOBAL PARAMETERS";
 
-                        LabeledSlider {
-                            label: "Camera axis offset";
-                            minimum: -0.6;
-                            maximum: 0.6;
-                            value <=> root.cal-camera-axis-offset;
-                            decimals: 3;
-                            changed(v) => { root.changed-cal-camera-axis-offset(v); }
-                        }
+                            LabeledSlider {
+                                label: "Intersect";
+                                minimum: -1.0;
+                                maximum: 1.0;
+                                value <=> root.cal-intersect;
+                                decimals: 3;
+                                changed(v) => { root.changed-cal-intersect(v); }
+                            }
 
-                        LabeledSlider {
-                            label: "x_ty";
-                            minimum: -0.1;
-                            maximum: 0.1;
-                            value <=> root.cal-x-ty;
-                            decimals: 3;
-                            changed(v) => { root.changed-cal-x-ty(v); }
+                            LabeledSlider {
+                                label: "Camera axis offset";
+                                minimum: -0.6;
+                                maximum: 0.6;
+                                value <=> root.cal-camera-axis-offset;
+                                decimals: 3;
+                                changed(v) => { root.changed-cal-camera-axis-offset(v); }
+                            }
+
+                            LabeledSlider {
+                                label: "x_ty";
+                                minimum: -0.1;
+                                maximum: 0.1;
+                                value <=> root.cal-x-ty;
+                                decimals: 3;
+                                changed(v) => { root.changed-cal-x-ty(v); }
+                            }
                         }
 
                         // Saving lives in one place: the "Save Calibration"
