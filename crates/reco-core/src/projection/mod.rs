@@ -377,6 +377,78 @@ mod tests {
         )
     }
 
+    fn relocation_calibration() -> Calibration {
+        let mut cal = test_calibration();
+        // Non-default correction and rig orientation are deliberate: these
+        // goldens capture the production behavior being relocated, including
+        // its current inputs, without claiming renderer/mapping equivalence.
+        cal.lenses[0].correction = 0.37;
+        cal.lenses[1].correction = 0.63;
+        cal.framing.tilt = 0.21;
+        cal.framing.roll = -0.08;
+        let topology = cal.topology.l_shape_mut().unwrap();
+        topology.x_rx = 0.025;
+        topology.z_rz = -0.019;
+        cal
+    }
+
+    fn assert_geometry_close(actual: f32, expected: f32, label: &str) {
+        const EPSILON_RADIANS: f32 = 1e-6;
+        assert!(
+            (actual - expected).abs() <= EPSILON_RADIANS,
+            "{label}: expected {expected}, got {actual}"
+        );
+    }
+
+    #[test]
+    fn camera_mapping_matches_pre_relocation_goldens() {
+        let cal = relocation_calibration();
+
+        for (camera, x, y, expected_yaw, expected_pitch) in [
+            (0, 0.23, 0.41, 1.3070116, 0.10282527),
+            (0, 0.68, 0.77, 0.36100596, -0.30260217),
+            (1, 0.31, 0.28, -0.33768472, 0.2593831),
+            (1, 0.74, 0.62, -1.24458, -0.11580661),
+        ] {
+            let pose = camera_to_panorama(camera, x, y, &cal).unwrap();
+            assert_geometry_close(pose.yaw, expected_yaw, "mapped yaw");
+            assert_geometry_close(pose.pitch, expected_pitch, "mapped pitch");
+            assert_eq!(pose.fov_degrees, 75.0);
+        }
+    }
+
+    #[test]
+    fn l_shape_coverage_matches_pre_relocation_goldens() {
+        let cal = relocation_calibration();
+        let coverage = cal.topology.projection().coverage(&cal);
+
+        let (yaw_min, yaw_max) = coverage.yaw_range();
+        assert_geometry_close(yaw_min, -1.8064561, "global yaw minimum");
+        assert_geometry_close(yaw_max, 1.8043411, "global yaw maximum");
+
+        let (pitch_min, pitch_max) = coverage.pitch_range();
+        assert_geometry_close(pitch_min, -0.55399376, "global pitch minimum");
+        assert_geometry_close(pitch_max, 0.5772345, "global pitch maximum");
+
+        for (pitch, expected_min, expected_max) in [
+            (-0.2, -1.7421114, 1.7409195),
+            (0.0, -1.7302064, 1.7299159),
+            (0.2, -1.7428147, 1.7436572),
+        ] {
+            let (yaw_min, yaw_max) = coverage.yaw_range_at(pitch);
+            assert_geometry_close(yaw_min, expected_min, "slice yaw minimum");
+            assert_geometry_close(yaw_max, expected_max, "slice yaw maximum");
+        }
+
+        let clamped = coverage.safe_clamp(2.0, 0.3, 55.0, 16.0 / 9.0);
+        assert_geometry_close(clamped.yaw, 0.9272614, "clamped yaw");
+        assert_geometry_close(clamped.pitch, 0.0116203725, "clamped pitch");
+
+        // The selected 10th-percentile sample sits on a repeated plateau,
+        // so this is stable against ordering among equal samples.
+        assert!((coverage.max_fov_degrees() - 56.388702).abs() <= 1e-5);
+    }
+
     #[test]
     fn optical_center_maps_to_known_position() {
         let cal = test_calibration();
