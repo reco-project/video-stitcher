@@ -149,6 +149,7 @@ impl Projection for Cylinder {
             yaw_half,
             -pitch_half,
             pitch_half,
+            self.virtual_camera(&calibration.framing),
             calibration.framing.tilt as f32,
             calibration.framing.roll as f32,
         )

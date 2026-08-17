@@ -2,10 +2,6 @@
 
 use std::f32::consts::FRAC_PI_2;
 
-use crate::calibration::Calibration;
-
-use crate::projection::l_shape::{LShape, PlaneScene};
-
 use crate::geometry::VirtualCamera;
 
 // -- Coverage Boundary --
@@ -16,10 +12,9 @@ use crate::geometry::VirtualCamera;
 
 /// Precomputed coverage boundary for the stitched panorama.
 ///
-/// Maps each pitch angle to the valid yaw range where both camera planes
-/// provide pixel data. Built once from calibration (~20k `camera_to_panorama`
-/// calls, <1ms on any modern CPU). Runtime lookups are O(1) via pitch-indexed
-/// linear interpolation.
+/// Maps each pitch angle to the valid yaw range where the active projection
+/// provides pixels. Projections build this analytically or from grouped
+/// angular samples. Runtime lookups are O(1) via pitch-indexed interpolation.
 ///
 /// Use [`safe_clamp`](Self::safe_clamp) to constrain a viewport position
 /// so no black edges appear.
@@ -102,25 +97,16 @@ impl PanoramaExtent {
     }
 }
 
-/// Angular offsets of viewport boundary points from center.
-///
 impl CoverageBoundary {
-    /// Build the coverage boundary from calibration data.
-    ///
-    /// Densely samples both planes' edge loops and a sparse interior grid,
-    /// projecting into (yaw, pitch) space and grouping into pitch slices.
     /// Analytic rectangular coverage: the same yaw range at every
-    /// pitch. The mono cylinder's panorama is rectangular in
-    /// (yaw, pitch) space, so no boundary sampling is needed. The
-    /// camera basis is the mono convention (on the cylinder axis,
-    /// forward `-Z`). Rig tilt/roll feed the same viewport-roll
-    /// margining a tilted L-shape gets (panning a tilted rig rolls
-    /// the viewport against the panorama).
-    pub fn rectangular(
+    /// pitch. Projection implementations supply their virtual-camera
+    /// basis so roll-aware clamping is not coupled to one topology.
+    pub(crate) fn rectangular(
         yaw_min: f32,
         yaw_max: f32,
         pitch_min: f32,
         pitch_max: f32,
+        cam: VirtualCamera,
         rig_tilt: f32,
         rig_roll: f32,
     ) -> Self {
@@ -133,75 +119,37 @@ impl CoverageBoundary {
             min_pitch_range: pitch_max - pitch_min,
             rig_tilt,
             rig_roll,
-            cam: VirtualCamera::mono(),
+            cam,
         }
     }
 
-    pub(crate) fn from_l_shape(calibration: &Calibration, scene: &PlaneScene) -> Self {
-        let n_slices: usize = 400;
-        let margin = 0.02_f32;
-        let rig_tilt = calibration.framing.tilt as f32;
-        let rig_roll = calibration.framing.roll as f32;
-        let cam = VirtualCamera::new(&scene.camera_position);
+    /// Build the representation from source-grouped angular samples.
+    ///
+    /// Source grouping is retained while estimating vertical room at each
+    /// yaw. Flattening disjoint cameras would invent coverage across the gap
+    /// between their individual yaw ranges.
+    pub(crate) fn from_samples(
+        per_camera: &[&[(f32, f32)]],
+        n_slices: usize,
+        cam: VirtualCamera,
+        rig_tilt: f32,
+        rig_roll: f32,
+    ) -> Self {
+        assert!(n_slices > 0, "coverage needs at least one pitch slice");
 
-        let mut left_points: Vec<(f32, f32)> = Vec::new();
-        let mut right_points: Vec<(f32, f32)> = Vec::new();
-
-        for &camera in &[0, 1] {
-            let points = if camera == 0 {
-                &mut left_points
-            } else {
-                &mut right_points
-            };
-
-            // Dense edge sampling: 400 points per edge (4 edges = 1600 per plane)
-            let edge_steps = 400_u32;
-            for i in 0..=edge_steps {
-                let t = margin + (1.0 - 2.0 * margin) * (i as f32 / edge_steps as f32);
-                for &(nx, ny) in &[
-                    (t, margin),
-                    (t, 1.0 - margin),
-                    (margin, t),
-                    (1.0 - margin, t),
-                ] {
-                    if let Some(pos) = LShape::camera_to_panorama_in_scene(
-                        camera,
-                        nx,
-                        ny,
-                        &calibration.lenses,
-                        scene,
-                    ) {
-                        points.push((pos.yaw, pos.pitch));
-                    }
-                }
-            }
-
-            // Sparse interior grid (20x20) for coverage at intermediate pitch levels
-            let grid_steps = 20_u32;
-            for ix in 0..=grid_steps {
-                let nx = margin + (1.0 - 2.0 * margin) * (ix as f32 / grid_steps as f32);
-                for iy in 0..=grid_steps {
-                    let ny = margin + (1.0 - 2.0 * margin) * (iy as f32 / grid_steps as f32);
-                    if let Some(pos) = LShape::camera_to_panorama_in_scene(
-                        camera,
-                        nx,
-                        ny,
-                        &calibration.lenses,
-                        scene,
-                    ) {
-                        points.push((pos.yaw, pos.pitch));
-                    }
-                }
-            }
-        }
-
-        // Find global pitch range
-        let all_points = left_points.iter().chain(right_points.iter());
+        // Find the global pitch range and reject values that would make the
+        // slice lookup or percentile sort partial and non-deterministic.
         let mut global_pitch_min = f32::MAX;
         let mut global_pitch_max = f32::MIN;
-        for &(_, pitch) in all_points {
-            global_pitch_min = global_pitch_min.min(pitch);
-            global_pitch_max = global_pitch_max.max(pitch);
+        for points in per_camera {
+            for &(yaw, pitch) in *points {
+                assert!(
+                    yaw.is_finite() && pitch.is_finite(),
+                    "coverage samples must be finite"
+                );
+                global_pitch_min = global_pitch_min.min(pitch);
+                global_pitch_max = global_pitch_max.max(pitch);
+            }
         }
 
         if global_pitch_min >= global_pitch_max {
@@ -220,29 +168,23 @@ impl CoverageBoundary {
         let pitch_range = global_pitch_max - global_pitch_min;
         let slice_size = pitch_range / n_slices as f32;
 
-        // Bucket points into pitch slices
+        // Bucket points into merged and per-camera pitch slices.
         let mut slices = vec![(f32::MAX, f32::MIN); n_slices];
-        let mut left_slices = vec![(f32::MAX, f32::MIN); n_slices];
-        let mut right_slices = vec![(f32::MAX, f32::MIN); n_slices];
+        let mut camera_slices = vec![vec![(f32::MAX, f32::MIN); n_slices]; per_camera.len()];
 
         let pitch_to_slice = |pitch: f32| -> usize {
             let idx = ((pitch - global_pitch_min) / slice_size) as usize;
             idx.min(n_slices - 1)
         };
 
-        for &(yaw, pitch) in &left_points {
-            let s = pitch_to_slice(pitch);
-            left_slices[s].0 = left_slices[s].0.min(yaw);
-            left_slices[s].1 = left_slices[s].1.max(yaw);
-            slices[s].0 = slices[s].0.min(yaw);
-            slices[s].1 = slices[s].1.max(yaw);
-        }
-        for &(yaw, pitch) in &right_points {
-            let s = pitch_to_slice(pitch);
-            right_slices[s].0 = right_slices[s].0.min(yaw);
-            right_slices[s].1 = right_slices[s].1.max(yaw);
-            slices[s].0 = slices[s].0.min(yaw);
-            slices[s].1 = slices[s].1.max(yaw);
+        for (points, source_slices) in per_camera.iter().zip(&mut camera_slices) {
+            for &(yaw, pitch) in *points {
+                let s = pitch_to_slice(pitch);
+                source_slices[s].0 = source_slices[s].0.min(yaw);
+                source_slices[s].1 = source_slices[s].1.max(yaw);
+                slices[s].0 = slices[s].0.min(yaw);
+                slices[s].1 = slices[s].1.max(yaw);
+            }
         }
 
         // Compute min pitch range (determines max FOV)
@@ -273,13 +215,12 @@ impl CoverageBoundary {
                     let test_yaw = yaw_lo + t * (yaw_hi - yaw_lo);
                     let mut p_lo = f32::MAX;
                     let mut p_hi = f32::MIN;
-                    for (s, (left, right)) in
-                        left_slices.iter().zip(right_slices.iter()).enumerate()
-                    {
-                        let in_left = left.0 <= left.1 && test_yaw >= left.0 && test_yaw <= left.1;
-                        let in_right =
-                            right.0 <= right.1 && test_yaw >= right.0 && test_yaw <= right.1;
-                        if in_left || in_right {
+                    for s in 0..n_slices {
+                        let covered = camera_slices.iter().any(|source| {
+                            let (yaw_min, yaw_max) = source[s];
+                            yaw_min <= yaw_max && test_yaw >= yaw_min && test_yaw <= yaw_max
+                        });
+                        if covered {
                             let p = global_pitch_min + (s as f32 + 0.5) * slice_size;
                             p_lo = p_lo.min(p);
                             p_hi = p_hi.max(p);
@@ -304,15 +245,11 @@ impl CoverageBoundary {
         for i in 1..n_slices {
             if slices[i].0 > slices[i].1 {
                 slices[i] = slices[i - 1];
-                left_slices[i] = left_slices[i - 1];
-                right_slices[i] = right_slices[i - 1];
             }
         }
         for i in (0..n_slices - 1).rev() {
             if slices[i].0 > slices[i].1 {
                 slices[i] = slices[i + 1];
-                left_slices[i] = left_slices[i + 1];
-                right_slices[i] = right_slices[i + 1];
             }
         }
 
@@ -338,11 +275,9 @@ impl CoverageBoundary {
 
     /// Refresh the captured rig orientation without resampling.
     ///
-    /// The sampled slices are tilt/roll-invariant: rig tilt and roll are
-    /// view-time basis rotations and never move the plane geometry the
-    /// boundary samples (the plane scene consumes only `axis_offset`).
-    /// Only the roll-aware clamp margins read these scalars, so a live
-    /// tilt/roll change needs no dense re-projection.
+    /// Coverage geometry is world-fixed; rig tilt and roll only change how
+    /// the viewport traverses it. Only the roll-aware clamp margins read
+    /// these scalars, so a live orientation change needs no resampling.
     #[cfg_attr(not(feature = "gpu"), allow(dead_code))] // live-orientation engine hook
     pub(crate) fn set_rig_orientation(&mut self, rig_tilt: f32, rig_roll: f32) {
         self.rig_tilt = rig_tilt;
@@ -380,8 +315,8 @@ impl CoverageBoundary {
 
     /// Look up the combined yaw coverage range at a given pitch.
     ///
-    /// Returns the interpolated `(yaw_min, yaw_max)` where at least one
-    /// camera plane provides coverage. Used by the director for
+    /// Returns the interpolated `(yaw_min, yaw_max)` where the projection
+    /// provides coverage. Used by the director for
     /// perspective-aware clamping; analytics consumers typically want
     /// [`yaw_range`](Self::yaw_range) for the global extent instead.
     pub fn yaw_range_at(&self, pitch: f32) -> (f32, f32) {
@@ -503,11 +438,79 @@ impl CoverageBoundary {
     ///
     /// This is the widest zoom-out where at least one valid viewport
     /// position exists. Determined by the narrowest pitch range across
-    /// all yaw positions (typically at the seam between planes).
+    /// the projection's useful yaw positions.
     pub fn max_fov_degrees(&self) -> f32 {
         if self.min_pitch_range <= 0.0 {
             return 20.0;
         }
         self.min_pitch_range.to_degrees()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rectangular_coverage_uses_supplied_camera_basis() {
+        let camera = VirtualCamera::new(&[0.2, 0.0, 0.3]);
+        let coverage = CoverageBoundary::rectangular(-1.0, 1.0, -0.5, 0.5, camera, 0.0, 0.0);
+        assert_eq!(coverage.cam.eye, camera.eye);
+        assert_eq!(coverage.cam.base_forward, camera.base_forward);
+        assert_eq!(coverage.cam.base_right, camera.base_right);
+    }
+
+    #[test]
+    fn grouped_samples_do_not_bridge_disjoint_camera_yaw_ranges() {
+        let mut left = Vec::new();
+        for pitch in [0.0, 0.2, 0.4, 0.6] {
+            left.push((-2.0, pitch));
+            left.push((-1.95, pitch));
+        }
+        let mut right = Vec::new();
+        for pitch in [0.4, 0.6, 0.8, 1.0] {
+            right.push((1.95, pitch));
+            right.push((2.0, pitch));
+        }
+
+        let grouped = CoverageBoundary::from_samples(
+            &[left.as_slice(), right.as_slice()],
+            20,
+            VirtualCamera::mono(),
+            0.0,
+            0.0,
+        );
+        let reversed = CoverageBoundary::from_samples(
+            &[right.as_slice(), left.as_slice()],
+            20,
+            VirtualCamera::mono(),
+            0.0,
+            0.0,
+        );
+
+        let mut flattened = left;
+        flattened.extend(right);
+        let ungrouped = CoverageBoundary::from_samples(
+            &[flattened.as_slice()],
+            20,
+            VirtualCamera::mono(),
+            0.0,
+            0.0,
+        );
+
+        assert_eq!(grouped.yaw_range(), reversed.yaw_range());
+        assert_eq!(grouped.pitch_range(), reversed.pitch_range());
+        assert_eq!(grouped.max_fov_degrees(), reversed.max_fov_degrees());
+        assert!(
+            grouped.max_fov_degrees() > ungrouped.max_fov_degrees() + 10.0,
+            "flattening sources must not invent coverage across their yaw gap"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "coverage samples must be finite")]
+    fn sampled_coverage_rejects_non_finite_points() {
+        let samples = [(0.0, f32::NAN)];
+        CoverageBoundary::from_samples(&[&samples], 4, VirtualCamera::mono(), 0.0, 0.0);
     }
 }

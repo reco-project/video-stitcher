@@ -157,13 +157,9 @@ mod tests {
     use super::*;
     use crate::calibration::{Calibration, Framing, Lens};
     use crate::projection::LShape;
-    use crate::projection::l_shape::PlaneScene;
 
-    fn test_scene(cal: &Calibration) -> PlaneScene {
-        cal.topology
-            .l_shape()
-            .unwrap()
-            .scene(&cal.framing, cal.lenses[0].aspect())
+    fn test_coverage(calibration: &Calibration) -> CoverageBoundary {
+        calibration.topology.projection().coverage(calibration)
     }
 
     fn test_calibration() -> Calibration {
@@ -443,8 +439,7 @@ mod tests {
     #[test]
     fn coverage_yaw_and_pitch_ranges_match_internal_state() {
         let cal = test_calibration();
-        let scene = test_scene(&cal);
-        let coverage = CoverageBoundary::from_l_shape(&cal, &scene);
+        let coverage = test_coverage(&cal);
 
         let (yaw_min, yaw_max) = coverage.yaw_range();
         assert!(yaw_min < yaw_max, "yaw range must be non-empty");
@@ -460,8 +455,7 @@ mod tests {
         // yaw_range() must be at least as wide as any yaw_range_at(pitch)
         // sample, since it's the envelope over all pitch slices.
         let cal = test_calibration();
-        let scene = test_scene(&cal);
-        let coverage = CoverageBoundary::from_l_shape(&cal, &scene);
+        let coverage = test_coverage(&cal);
 
         let (y_lo_global, y_hi_global) = coverage.yaw_range();
         let (p_lo, p_hi) = coverage.pitch_range();
@@ -524,8 +518,7 @@ mod tests {
     #[test]
     fn safe_clamp_rejects_nan_yaw() {
         let cal = test_calibration();
-        let scene = test_scene(&cal);
-        let coverage = CoverageBoundary::from_l_shape(&cal, &scene);
+        let coverage = test_coverage(&cal);
         let out = coverage.safe_clamp(f32::NAN, 0.0, 75.0, 16.0 / 9.0);
         assert!(out.yaw.is_finite(), "yaw must be finite, got {}", out.yaw);
         assert!(
@@ -538,8 +531,7 @@ mod tests {
     #[test]
     fn safe_clamp_rejects_nan_pitch() {
         let cal = test_calibration();
-        let scene = test_scene(&cal);
-        let coverage = CoverageBoundary::from_l_shape(&cal, &scene);
+        let coverage = test_coverage(&cal);
         let out = coverage.safe_clamp(0.0, f32::NAN, 75.0, 16.0 / 9.0);
         assert!(out.yaw.is_finite());
         assert!(out.pitch.is_finite());
@@ -548,8 +540,7 @@ mod tests {
     #[test]
     fn safe_clamp_rejects_nan_fov() {
         let cal = test_calibration();
-        let scene = test_scene(&cal);
-        let coverage = CoverageBoundary::from_l_shape(&cal, &scene);
+        let coverage = test_coverage(&cal);
         let out = coverage.safe_clamp(0.0, 0.0, f32::NAN, 16.0 / 9.0);
         assert!(out.yaw.is_finite());
         assert!(out.pitch.is_finite());
@@ -558,8 +549,7 @@ mod tests {
     #[test]
     fn safe_clamp_rejects_infinite_inputs() {
         let cal = test_calibration();
-        let scene = test_scene(&cal);
-        let coverage = CoverageBoundary::from_l_shape(&cal, &scene);
+        let coverage = test_coverage(&cal);
         let out = coverage.safe_clamp(f32::INFINITY, 0.0, 75.0, 16.0 / 9.0);
         assert!(out.yaw.is_finite());
         assert!(out.pitch.is_finite());

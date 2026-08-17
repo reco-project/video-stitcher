@@ -195,11 +195,19 @@ impl PlaneScene {
 const MAX_ITERATIONS: usize = 20;
 /// Convergence threshold for Newton-Raphson.
 const CONVERGENCE_EPS: f64 = 1e-10;
+/// Pitch slices in the sampled L-shape coverage representation.
+const COVERAGE_SLICES: usize = 400;
+/// Inset from source-frame edges to avoid unstable extreme lens corners.
+const COVERAGE_MARGIN: f32 = 0.02;
+/// Sampling intervals along each source-frame edge.
+const COVERAGE_EDGE_STEPS: u32 = 400;
+/// Sampling intervals along each axis of the interior grid.
+const COVERAGE_GRID_STEPS: u32 = 20;
 
 impl LShape {
     /// Map against an already-derived plane scene. Coverage reuses one scene
     /// for thousands of samples instead of rebuilding it per point.
-    pub(super) fn camera_to_panorama_in_scene(
+    fn camera_to_panorama_in_scene(
         camera: CameraIndex,
         norm_x: f32,
         norm_y: f32,
@@ -216,6 +224,48 @@ impl LShape {
         let camera_position = Point3::from(Vector3::from(scene.camera_position));
         let direction = (world_point - camera_position).normalize();
         Some(VirtualCamera::new(&scene.camera_position).direction_to_yaw_pitch(&direction))
+    }
+
+    /// Sample the L-shape's irregular boundary while reusing one plane scene.
+    fn coverage_samples(lenses: &[Lens], scene: &PlaneScene) -> [Vec<(f32, f32)>; 2] {
+        let mut samples = [Vec::new(), Vec::new()];
+
+        for (camera, points) in samples.iter_mut().enumerate() {
+            // Dense edge sampling: 400 intervals on each of four edges.
+            for i in 0..=COVERAGE_EDGE_STEPS {
+                let t = COVERAGE_MARGIN
+                    + (1.0 - 2.0 * COVERAGE_MARGIN) * (i as f32 / COVERAGE_EDGE_STEPS as f32);
+                for &(norm_x, norm_y) in &[
+                    (t, COVERAGE_MARGIN),
+                    (t, 1.0 - COVERAGE_MARGIN),
+                    (COVERAGE_MARGIN, t),
+                    (1.0 - COVERAGE_MARGIN, t),
+                ] {
+                    if let Some(pose) =
+                        Self::camera_to_panorama_in_scene(camera, norm_x, norm_y, lenses, scene)
+                    {
+                        points.push((pose.yaw, pose.pitch));
+                    }
+                }
+            }
+
+            // Sparse interior grid: 20 intervals on each axis.
+            for x in 0..=COVERAGE_GRID_STEPS {
+                let norm_x = COVERAGE_MARGIN
+                    + (1.0 - 2.0 * COVERAGE_MARGIN) * (x as f32 / COVERAGE_GRID_STEPS as f32);
+                for y in 0..=COVERAGE_GRID_STEPS {
+                    let norm_y = COVERAGE_MARGIN
+                        + (1.0 - 2.0 * COVERAGE_MARGIN) * (y as f32 / COVERAGE_GRID_STEPS as f32);
+                    if let Some(pose) =
+                        Self::camera_to_panorama_in_scene(camera, norm_x, norm_y, lenses, scene)
+                    {
+                        points.push((pose.yaw, pose.pitch));
+                    }
+                }
+            }
+        }
+
+        samples
     }
 }
 
@@ -534,7 +584,15 @@ impl Projection for LShape {
     /// not computed analytically.
     fn coverage(&self, calibration: &Calibration) -> CoverageBoundary {
         let scene = self.scene(&calibration.framing, calibration.lenses[0].aspect());
-        CoverageBoundary::from_l_shape(calibration, &scene)
+        let samples = Self::coverage_samples(&calibration.lenses, &scene);
+        let per_camera = [samples[0].as_slice(), samples[1].as_slice()];
+        CoverageBoundary::from_samples(
+            &per_camera,
+            COVERAGE_SLICES,
+            self.virtual_camera(&calibration.framing),
+            calibration.framing.tilt as f32,
+            calibration.framing.roll as f32,
+        )
     }
 
     fn surface_maps(&self, ctx: &ProjectionContext) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {
