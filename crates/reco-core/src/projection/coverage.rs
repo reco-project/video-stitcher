@@ -4,11 +4,9 @@ use std::f32::consts::FRAC_PI_2;
 
 use crate::calibration::Calibration;
 
-use crate::projection::l_shape::PlaneScene;
+use crate::projection::l_shape::{LShape, PlaneScene};
 
 use crate::geometry::VirtualCamera;
-
-use super::camera_to_panorama_in_scene;
 
 // -- Coverage Boundary --
 //
@@ -166,9 +164,13 @@ impl CoverageBoundary {
                     (margin, t),
                     (1.0 - margin, t),
                 ] {
-                    if let Some(pos) =
-                        camera_to_panorama_in_scene(camera, nx, ny, calibration, scene)
-                    {
+                    if let Some(pos) = LShape::camera_to_panorama_in_scene(
+                        camera,
+                        nx,
+                        ny,
+                        &calibration.lenses,
+                        scene,
+                    ) {
                         points.push((pos.yaw, pos.pitch));
                     }
                 }
@@ -180,9 +182,13 @@ impl CoverageBoundary {
                 let nx = margin + (1.0 - 2.0 * margin) * (ix as f32 / grid_steps as f32);
                 for iy in 0..=grid_steps {
                     let ny = margin + (1.0 - 2.0 * margin) * (iy as f32 / grid_steps as f32);
-                    if let Some(pos) =
-                        camera_to_panorama_in_scene(camera, nx, ny, calibration, scene)
-                    {
+                    if let Some(pos) = LShape::camera_to_panorama_in_scene(
+                        camera,
+                        nx,
+                        ny,
+                        &calibration.lenses,
+                        scene,
+                    ) {
                         points.push((pos.yaw, pos.pitch));
                     }
                 }

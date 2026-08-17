@@ -10,7 +10,6 @@ use crate::detect::director::MappedDetection;
 use crate::detect::tracker::WorldState;
 use crate::geometry::CameraIndex;
 use crate::geometry::Pose;
-use crate::projection;
 use crate::render::planes::YuvPlanes;
 
 /// What one [`StitchCore::dispatch_pose`] tick produced - the numbers
@@ -304,8 +303,12 @@ impl super::StitchCore {
         detections
             .into_iter()
             .map(|d| {
-                let position =
-                    projection::camera_to_panorama(d.camera, d.center_x, d.center_y, calibration);
+                let position = calibration.topology.projection().camera_to_panorama(
+                    d.camera,
+                    d.center_x,
+                    d.center_y,
+                    calibration,
+                );
                 MappedDetection {
                     camera: d.camera,
                     class_id: d.class_id,

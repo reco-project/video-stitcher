@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::calibration::{
     Calibration, CalibrationError, Framing, expect_finite, expect_in_range, expect_positive,
 };
-use crate::geometry::{Pose, VirtualCamera};
+use crate::geometry::{CameraIndex, Pose, VirtualCamera};
 use crate::projection::{CoverageBoundary, Projection, ProjectionContext};
 use crate::render::viewport::ViewportSize;
 use crate::stitch::{BlendRule, SurfaceMap, SurfaceUv};
@@ -93,6 +93,18 @@ impl Projection for Cylinder {
         // convention (forward -Z) keeps the pose basis well-defined
         // where the origin would normalize a zero vector into NaNs.
         VirtualCamera::mono()
+    }
+
+    fn camera_to_panorama(
+        &self,
+        _camera: CameraIndex,
+        _norm_x: f32,
+        _norm_y: f32,
+        _calibration: &Calibration,
+    ) -> Option<Pose> {
+        // Detection dispatch is still two-camera-only. Returning None makes
+        // the cylinder's absent inverse map explicit without implying support.
+        None
     }
 
     fn surface_maps(&self, ctx: &ProjectionContext) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {

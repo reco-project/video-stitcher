@@ -1,7 +1,7 @@
-//! Coordinate mapping between camera pixel space and panoramic viewport.
+//! Panoramic projection geometry and coordinate mapping.
 //!
-//! These functions bridge detection coordinates (in individual camera frames)
-//! and virtual camera orientation (yaw/pitch), enabling:
+//! Projection implementations bridge camera frames and virtual-camera
+//! orientation, enabling:
 //! - **Detection mapping**: convert detector output to director yaw/pitch
 //! - **"No-black" panning**: compute valid viewport bounds to avoid black edges
 //!
@@ -27,14 +27,14 @@ pub use l_shape::{DEFAULT_BLEND_WIDTH, LShape};
 // Re-export geometry utility.
 pub use geometry::point_in_polygon;
 
-use crate::calibration::{Calibration, Framing, Lens};
+use crate::calibration::{Calibration, Framing};
 use crate::geometry::CameraIndex;
 use crate::geometry::Pose;
 use crate::geometry::VirtualCamera;
 use crate::stitch::{BlendRule, SurfaceMap};
-use l_shape::PlaneScene;
 
-use nalgebra::{Point3, Vector3};
+#[cfg(test)]
+use nalgebra::Vector3;
 
 // ---------------------------------------------------------------------------
 // The Projection trait: L1 geometry dispatch.
@@ -46,9 +46,7 @@ use nalgebra::{Point3, Vector3};
 // additions without reshaping the core API and without a second object
 // to keep in sync. The trait dispatches the CPU surface maps, the GPU
 // program descriptor, coverage construction and the virtual-camera
-// basis; the detection-side forward maps (`camera_to_panorama`) are
-// the next fold-in - their `CameraIndex`/`Pose` currency already lives in
-// the geometry leaf, so nothing blocks the move.
+// basis and camera-to-panorama mapping.
 
 /// One frame's geometry question, bundled: the document, the output
 /// viewport, and the pose. The pose carries fov alongside yaw/pitch -
@@ -66,10 +64,10 @@ pub struct ProjectionContext<'a> {
 
 /// A panoramic projection geometry.
 ///
-/// Implemented by concrete projections (today's 2-plane L-shape, the
-/// mono cylinder next). Dispatched dynamically by StitchCore so swapping
-/// projections at session construction time does not require
-/// recompilation. The CPU geometry dispatches through
+/// Implemented by concrete projections (the 2-plane L-shape and mono
+/// cylinder today). Dispatched dynamically from the calibration document,
+/// so selecting another topology does not require recompilation. The CPU
+/// geometry dispatches through
 /// [`surface_maps`](Self::surface_maps); the GPU program dispatch lands
 /// with the projection-shader step.
 ///
@@ -91,6 +89,20 @@ pub trait Projection: Send + Sync {
     /// plane-backed or not (the mono cylinder's camera sits at the
     /// `[0, 0, 1]` convention).
     fn virtual_camera(&self, framing: &Framing) -> VirtualCamera;
+
+    /// Map normalized coordinates from one input camera to panorama pose.
+    ///
+    /// Returns `None` when this projection has no detection mapping, the
+    /// camera index is invalid, or the inverse mapping cannot be solved.
+    /// The returned pose carries the default FOV because a mapped point has
+    /// angular position but no zoom.
+    fn camera_to_panorama(
+        &self,
+        camera: CameraIndex,
+        norm_x: f32,
+        norm_y: f32,
+        calibration: &Calibration,
+    ) -> Option<Pose>;
 
     /// The ordered surface list for one frame: each surface's inverse
     /// map paired with how it blends over the surfaces before it.
@@ -120,204 +132,11 @@ pub trait Projection: Send + Sync {
     fn coverage(&self, calibration: &Calibration) -> CoverageBoundary;
 }
 
-/// Maximum Newton-Raphson iterations for KB4 inverse distortion.
-const MAX_ITERATIONS: usize = 20;
-/// Convergence threshold for Newton-Raphson.
-const CONVERGENCE_EPS: f64 = 1e-10;
-
-/// Map a detection in camera pixel space to the yaw/pitch needed to
-/// center the virtual camera on it.
-///
-/// `norm_x` and `norm_y` are in normalized `[0.0, 1.0]` image coordinates
-/// (as returned by [`Detection`](crate::detect::detector::Detection)).
-///
-/// Returns `None` if the inverse distortion fails to converge (rare,
-/// indicates an extreme point far outside the valid lens area).
-///
-/// Returns `None` for plane-less topologies: the forward map inverts
-/// the L-shape's plane rasterization, and mono detection mapping is
-/// its own follow-up.
-///
-/// # Example
-///
-/// ```rust
-/// use reco_core::projection::camera_to_panorama;
-/// use reco_core::geometry::CameraIndex;
-/// use reco_core::calibration::Calibration;
-///
-/// # fn example(cal: &Calibration) {
-/// if let Some(pos) = camera_to_panorama(0, 0.5, 0.5, cal) {
-///     println!("Center of left camera maps to yaw={:.3}, pitch={:.3}", pos.yaw, pos.pitch);
-/// }
-/// # }
-/// ```
-pub fn camera_to_panorama(
-    camera: CameraIndex,
-    norm_x: f32,
-    norm_y: f32,
-    calibration: &Calibration,
-) -> Option<Pose> {
-    let topology = calibration.topology.l_shape()?;
-    let scene = topology.scene(&calibration.framing, calibration.lenses[0].aspect());
-    camera_to_panorama_in_scene(camera, norm_x, norm_y, calibration, &scene)
-}
-
-/// [`camera_to_panorama`] against an already-derived plane scene - the
-/// coverage sampler maps thousands of edge points against one scene.
-pub(crate) fn camera_to_panorama_in_scene(
-    camera: CameraIndex,
-    norm_x: f32,
-    norm_y: f32,
-    calibration: &Calibration,
-    scene: &PlaneScene,
-) -> Option<Pose> {
-    // The index doubles as the lens lookup; out-of-range cameras map
-    // to None like any other unmappable input.
-    let params = calibration.lenses.get(camera)?;
-
-    // Step 1: Inverse fisheye - camera pixel [0,1] -> plane UV (extended space)
-    let plane_uv = inverse_fisheye(norm_x as f64, norm_y as f64, params)?;
-
-    // Step 2: Plane UV -> 3D world point
-    let world_point = plane_uv_to_world(plane_uv, camera, scene);
-
-    // Step 3: World point -> yaw/pitch
-    let dir = (world_point - Point3::from(Vector3::from(scene.camera_position))).normalize();
-    Some(direction_to_yaw_pitch(&dir, &scene.camera_position))
-}
-
-// ---- Internal functions ----
-
-/// Forward KB4 fisheye: undistorted plane UV -> distorted camera pixel [0,1].
-///
-/// Mirror of [`inverse_fisheye`] in the same normalized-intrinsic
-/// convention and the same extended-UV plane space (the shader's
-/// `uv * 2.0 - 0.5` remap output). The polynomial delegates to
-/// `reco_core::lens::kb4`, same canonical source as the
-/// Newton-Raphson step in [`inverse_fisheye`]. Test-only: the
-/// production inverse path (`inverse_fisheye`) is the live direction;
-/// this exists to round-trip-verify it.
-#[cfg(test)]
-fn forward_fisheye(uv_x: f64, uv_y: f64, params: &Lens) -> (f64, f64) {
-    let w = params.width as f64;
-    let h = params.height as f64;
-    let fx = params.fx / w;
-    let fy = params.fy / h;
-    let cx = params.cx / w;
-    let cy = params.cy / h;
-
-    let x = (uv_x - cx) / fx;
-    let y = (uv_y - cy) / fy;
-    let r = (x * x + y * y).sqrt();
-
-    if r < 1e-12 {
-        return (cx, cy);
-    }
-
-    let scale = crate::lens::kb4::kb4_forward_scale(r, &params.distortion);
-    (fx * x * scale + cx, fy * y * scale + cy)
-}
-
-/// Inverse KB4 fisheye: distorted camera pixel [0,1] -> undistorted plane UV.
-///
-/// Inverts the forward KB4 model used in the shader:
-/// ```text
-/// theta_d = theta * (1 + k1*theta^2 + k2*theta^4 + k3*theta^6 + k4*theta^8)
-/// ```
-/// Uses Newton-Raphson to solve for theta given theta_d.
-fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &Lens) -> Option<(f64, f64)> {
-    let w = params.width as f64;
-    let h = params.height as f64;
-    let fx = params.fx / w;
-    let fy = params.fy / h;
-    let cx = params.cx / w;
-    let cy = params.cy / h;
-    let k = params.distortion;
-
-    // Normalized distorted coordinates
-    let dx = (dist_x - cx) / fx;
-    let dy = (dist_y - cy) / fy;
-    let theta_d = (dx * dx + dy * dy).sqrt();
-
-    if theta_d < 1e-12 {
-        // At the optical center - no distortion
-        return Some((cx, cy));
-    }
-
-    // Newton-Raphson: solve f(theta) = theta_d_poly(theta) - theta_d = 0, where
-    // theta_d_poly lives in `reco_core::lens::kb4` (SYNC_WITH WGSL).
-    let mut theta = theta_d; // initial guess
-    for _ in 0..MAX_ITERATIONS {
-        let f = crate::lens::kb4::theta_d(theta, &k) - theta_d;
-        let f_prime = crate::lens::kb4::theta_d_prime(theta, &k);
-
-        if f_prime.abs() < 1e-15 {
-            return None; // degenerate
-        }
-
-        let delta = f / f_prime;
-        theta -= delta;
-
-        if delta.abs() < CONVERGENCE_EPS {
-            break;
-        }
-    }
-
-    // Recover undistorted coordinates
-    let r = theta.tan(); // theta = atan(r) -> r = tan(theta)
-    let scale = if theta.abs() < 1e-12 {
-        1.0
-    } else {
-        theta_d / r
-    };
-
-    // Guard against Inf/NaN from degenerate theta (e.g. theta near pi/2
-    // where tan diverges, or numerical edge cases).
-    if !scale.is_finite() {
-        return None;
-    }
-
-    let x = dx / scale;
-    let y = dy / scale;
-
-    // Plane UV in the extended [-0.5, 1.5] space used by the shader
-    let uv_x = fx * x + cx;
-    let uv_y = fy * y + cy;
-
-    Some((uv_x, uv_y))
-}
-
-/// Convert a plane UV (in extended shader space) to a 3D world point.
-fn plane_uv_to_world(uv: (f64, f64), camera: CameraIndex, scene: &PlaneScene) -> Point3<f32> {
-    // Extended UV -> texture UV [0,1]
-    let tex_u = ((uv.0 + 0.5) / 2.0) as f32;
-    let tex_v = ((uv.1 + 0.5) / 2.0) as f32;
-
-    // Texture UV -> local quad position (matches quad_vertices)
-    let local_x = tex_u - 0.5;
-    let local_y = (0.5 - tex_v) / scene.plane_aspect;
-
-    let local_point = nalgebra::Vector4::new(local_x, local_y, 0.0, 1.0);
-    // Reachable only with a lens-validated index (the caller resolved
-    // `lenses[camera]` first), so on the two-camera L-shape this is a
-    // binary choice.
-    debug_assert!(camera < 2, "the L-shape mapping is two-camera");
-    let model = if camera == 0 {
-        scene.model_matrix_left()
-    } else {
-        scene.model_matrix_right()
-    };
-
-    let world = model * local_point;
-    Point3::new(world.x, world.y, world.z)
-}
-
 /// Decompose a direction vector into yaw/pitch relative to the virtual camera.
 ///
 /// Thin wrapper over [`VirtualCamera::direction_to_yaw_pitch`] kept
-/// for the existing call sites until they carry a `VirtualCamera`
-/// directly. Panners, directors, and the render loop all share the
-/// same basis through this path.
+/// for geometry consistency tests.
+#[cfg(test)]
 pub(crate) fn direction_to_yaw_pitch(dir: &Vector3<f32>, camera_position: &[f32; 3]) -> Pose {
     VirtualCamera::new(camera_position).direction_to_yaw_pitch(dir)
 }
@@ -338,6 +157,7 @@ mod tests {
     use super::*;
     use crate::calibration::{Calibration, Framing, Lens};
     use crate::projection::LShape;
+    use crate::projection::l_shape::PlaneScene;
 
     fn test_scene(cal: &Calibration) -> PlaneScene {
         cal.topology
@@ -400,6 +220,18 @@ mod tests {
         );
     }
 
+    fn map_camera(
+        calibration: &Calibration,
+        camera: CameraIndex,
+        norm_x: f32,
+        norm_y: f32,
+    ) -> Option<Pose> {
+        calibration
+            .topology
+            .projection()
+            .camera_to_panorama(camera, norm_x, norm_y, calibration)
+    }
+
     #[test]
     fn camera_mapping_matches_pre_relocation_goldens() {
         let cal = relocation_calibration();
@@ -410,11 +242,13 @@ mod tests {
             (1, 0.31, 0.28, -0.33768472, 0.2593831),
             (1, 0.74, 0.62, -1.24458, -0.11580661),
         ] {
-            let pose = camera_to_panorama(camera, x, y, &cal).unwrap();
+            let pose = map_camera(&cal, camera, x, y).unwrap();
             assert_geometry_close(pose.yaw, expected_yaw, "mapped yaw");
             assert_geometry_close(pose.pitch, expected_pitch, "mapped pitch");
             assert_eq!(pose.fov_degrees, 75.0);
         }
+
+        assert!(map_camera(&cal, 2, 0.5, 0.5).is_none());
     }
 
     #[test]
@@ -457,7 +291,7 @@ mod tests {
         let cx = cal.lenses[0].cx as f32 / cal.lenses[0].width as f32;
         let cy = cal.lenses[0].cy as f32 / cal.lenses[0].height as f32;
 
-        let pos = camera_to_panorama(0, cx, cy, &cal);
+        let pos = map_camera(&cal, 0, cx, cy);
         assert!(pos.is_some(), "optical center should map successfully");
         let pos = pos.unwrap();
         // The optical center should produce a valid yaw/pitch (no NaN)
@@ -469,8 +303,8 @@ mod tests {
     fn left_camera_left_edge_yaw_differs_from_center() {
         let cal = test_calibration();
 
-        let center = camera_to_panorama(0, 0.5, 0.5, &cal).unwrap();
-        let left_edge = camera_to_panorama(0, 0.1, 0.5, &cal).unwrap();
+        let center = map_camera(&cal, 0, 0.5, 0.5).unwrap();
+        let left_edge = map_camera(&cal, 0, 0.1, 0.5).unwrap();
 
         // The left edge of the left camera image maps to a different
         // part of the panorama than the center; this test just
@@ -490,8 +324,8 @@ mod tests {
     fn right_camera_produces_different_yaw_than_left() {
         let cal = test_calibration();
 
-        let left_center = camera_to_panorama(0, 0.5, 0.5, &cal).unwrap();
-        let right_center = camera_to_panorama(1, 0.5, 0.5, &cal).unwrap();
+        let left_center = map_camera(&cal, 0, 0.5, 0.5).unwrap();
+        let right_center = map_camera(&cal, 1, 0.5, 0.5).unwrap();
 
         // The two cameras face different directions, so their centers
         // should map to different yaw values
@@ -540,90 +374,6 @@ mod tests {
                 }
             }
         }
-    }
-
-    #[test]
-    fn inverse_fisheye_roundtrips_with_forward_fisheye_on_pixel_grid() {
-        // Step 1c: normalized distorted pixel -> extended plane UV ->
-        // back to normalized distorted pixel must be the identity on
-        // a 10x10 grid inside the valid image area. Realistic KB4
-        // coefficients (the GoPro HERO10 4K test calibration) make
-        // this representative of shipping workloads.
-        let params = Lens::fisheye(
-            3840,
-            2160,
-            1796.32,
-            1797.22,
-            1919.37,
-            1063.17,
-            [0.0342, 0.0677, -0.0741, 0.0299],
-        );
-
-        let steps = 10;
-        // Stay inside [0.1, 0.9] to avoid extreme fisheye corners where
-        // Newton-Raphson may refuse to converge (documented in
-        // `inverse_fisheye`'s None return).
-        let lo = 0.1_f64;
-        let hi = 0.9_f64;
-
-        for ix in 0..=steps {
-            for iy in 0..=steps {
-                let nx = lo + (hi - lo) * (ix as f64 / steps as f64);
-                let ny = lo + (hi - lo) * (iy as f64 / steps as f64);
-
-                let plane_uv = inverse_fisheye(nx, ny, &params)
-                    .expect("inverse_fisheye should converge inside valid area");
-                let (back_x, back_y) = forward_fisheye(plane_uv.0, plane_uv.1, &params);
-
-                assert!(
-                    (back_x - nx).abs() < 1e-6,
-                    "x mismatch at ({nx}, {ny}): got {back_x}, plane_uv={plane_uv:?}"
-                );
-                assert!(
-                    (back_y - ny).abs() < 1e-6,
-                    "y mismatch at ({nx}, {ny}): got {back_y}, plane_uv={plane_uv:?}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn inverse_fisheye_roundtrip_at_center() {
-        let params = Lens::fisheye(
-            3840,
-            2160,
-            1796.32,
-            1797.22,
-            1919.37,
-            1063.17,
-            [0.0342, 0.0677, -0.0741, 0.0299],
-        );
-
-        // At the optical center, distortion should be zero
-        let cx = params.cx / params.width as f64;
-        let cy = params.cy / params.height as f64;
-        let result = inverse_fisheye(cx, cy, &params).unwrap();
-        assert!(
-            (result.0 - cx).abs() < 1e-6 && (result.1 - cy).abs() < 1e-6,
-            "optical center should be a fixed point: got ({:.6}, {:.6}), expected ({:.6}, {:.6})",
-            result.0,
-            result.1,
-            cx,
-            cy
-        );
-    }
-
-    #[test]
-    fn zero_distortion_produces_identity_mapping() {
-        let params = Lens::fisheye(1920, 1080, 960.0, 540.0, 960.0, 540.0, [0.0, 0.0, 0.0, 0.0]);
-
-        // With zero distortion and fx=width/2, cx=width/2, the mapping
-        // should be close to identity
-        let result = inverse_fisheye(0.5, 0.5, &params).unwrap();
-        assert!(
-            (result.0 - 0.5).abs() < 1e-6 && (result.1 - 0.5).abs() < 1e-6,
-            "zero-distortion center should map to itself"
-        );
     }
 
     // --- point_in_polygon tests ---
@@ -831,9 +581,8 @@ mod tests {
     #[test]
     fn projection_is_dyn_compatible() {
         // Core invariant: the engine reads `&dyn Projection` straight
-        // out of the document (zero-copy), and injected overrides ride
-        // as `Box<dyn Projection>`. Verify the trait bounds allow both
-        // and that Send+Sync hold.
+        // out of the document without building a second runtime object.
+        // Verify the trait remains object-safe and Send+Sync.
         let cal = test_calibration();
         let p: &dyn Projection = cal.topology.projection();
         fn assert_send_sync<T: Send + Sync + ?Sized>() {}
@@ -888,6 +637,12 @@ mod tests {
     }
 
     #[test]
+    fn cylindrical_projection_has_no_detection_mapping() {
+        let cal = cylinder_cal();
+        assert!(map_camera(&cal, 0, 0.5, 0.5).is_none());
+    }
+
+    #[test]
     fn cylindrical_surface_maps_emit_one_opaque_surface() {
         let cal = cylinder_cal();
         let config = crate::render::viewport::ViewportSize::default();
@@ -938,10 +693,8 @@ mod tests {
     #[test]
     fn projection_dyn_dispatch_round_trip_with_mixed_camera_counts() {
         // Compile-time: the trait is object-safe, so one collection
-        // holds impls with different `camera_count()` results - what
-        // lets an injected `Box<dyn Projection>` override the document.
-        // The assertions pin the per-projection counts and that the
-        // diagnostic names stay distinct.
+        // holds implementations with different camera counts. The
+        // assertions pin those counts and distinct diagnostic names.
         let l = test_calibration().topology.l_shape().unwrap().clone();
         let projections: Vec<Box<dyn Projection>> = vec![
             Box::new(l),

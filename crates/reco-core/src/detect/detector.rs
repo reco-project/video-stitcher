@@ -53,8 +53,9 @@ pub enum ChromaFormat<'a> {
 /// A detected object in a raw camera frame.
 ///
 /// Coordinates are in normalized image space `[0.0, 1.0]` relative to
-/// the frame dimensions. Use [`crate::projection::camera_to_panorama`]
-/// to map these to panoramic yaw/pitch.
+/// the frame dimensions. The active
+/// [`Projection`](crate::projection::Projection) maps these to panoramic
+/// yaw/pitch.
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Detection {
     /// Which camera this detection came from.

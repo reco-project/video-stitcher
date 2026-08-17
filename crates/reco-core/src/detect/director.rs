@@ -23,7 +23,7 @@ use crate::geometry::Pose;
 /// [`PipelineEventSink`](super::pipeline_event::PipelineEventSink).
 /// Wraps a raw camera-space detection with a panorama-space
 /// [`Pose`] computed via
-/// [`camera_to_panorama`](crate::projection::camera_to_panorama).
+/// [`Projection::camera_to_panorama`](crate::projection::Projection::camera_to_panorama).
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct MappedDetection {
     /// Which camera this detection came from.
@@ -42,10 +42,10 @@ pub struct MappedDetection {
     /// Bounding box size in normalized `[0, 1]` camera coordinates.
     ///
     /// Multiply by the camera's pixel dimensions to get pixel size:
-    /// `pixel_w = camera_size.0 * calibration.left.width as f32`.
+    /// `pixel_w = camera_size.0 * calibration.lenses[camera].width as f32`.
     pub camera_size: (f32, f32),
 
     /// Position in panorama space (yaw/pitch).
-    /// `None` if the detection couldn't be mapped (e.g. outside camera FOV).
+    /// `None` if the active projection has no mapping or inversion failed.
     pub position: Option<Pose>,
 }

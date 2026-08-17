@@ -2,17 +2,17 @@
 //!
 //! This module owns everything L-shape: the calibration parameters
 //! (serialized inside the document's `topology` object), their
-//! validation, the plane scene derivation, and the CPU surface maps
-//! ([`PlaneMap`]).
+//! validation, plane scene derivation, detection mapping, and CPU
+//! surface maps ([`PlaneMap`]).
 
-use nalgebra::{Matrix3, Matrix4, Perspective3, Translation3, UnitQuaternion, Vector3};
+use nalgebra::{Matrix3, Matrix4, Perspective3, Point3, Translation3, UnitQuaternion, Vector3};
 use serde::{Deserialize, Serialize};
 
 use crate::calibration::{
     Calibration, CalibrationError, Framing, Lens, expect_finite, expect_in_range, expect_positive,
 };
 use crate::geometry::{
-    FAR_PLANE, NEAR_PLANE, Pose, VirtualCamera, opengl_to_wgpu_matrix, view_matrix,
+    CameraIndex, FAR_PLANE, NEAR_PLANE, Pose, VirtualCamera, opengl_to_wgpu_matrix, view_matrix,
 };
 use crate::lens::kb4;
 use crate::projection::{CoverageBoundary, Projection, ProjectionContext};
@@ -189,6 +189,103 @@ impl PlaneScene {
         );
         t.to_homogeneous() * r.to_homogeneous()
     }
+}
+
+/// Maximum Newton-Raphson iterations for KB4 inverse distortion.
+const MAX_ITERATIONS: usize = 20;
+/// Convergence threshold for Newton-Raphson.
+const CONVERGENCE_EPS: f64 = 1e-10;
+
+impl LShape {
+    /// Map against an already-derived plane scene. Coverage reuses one scene
+    /// for thousands of samples instead of rebuilding it per point.
+    pub(super) fn camera_to_panorama_in_scene(
+        camera: CameraIndex,
+        norm_x: f32,
+        norm_y: f32,
+        lenses: &[Lens],
+        scene: &PlaneScene,
+    ) -> Option<Pose> {
+        // The index doubles as the lens lookup; out-of-range cameras map
+        // to None like any other unmappable input.
+        let params = lenses.get(camera)?;
+
+        // Camera pixel [0,1] -> plane UV in extended shader space.
+        let plane_uv = inverse_fisheye(norm_x as f64, norm_y as f64, params)?;
+        let world_point = plane_uv_to_world(plane_uv, camera, scene);
+        let camera_position = Point3::from(Vector3::from(scene.camera_position));
+        let direction = (world_point - camera_position).normalize();
+        Some(VirtualCamera::new(&scene.camera_position).direction_to_yaw_pitch(&direction))
+    }
+}
+
+/// Inverse KB4 fisheye: distorted camera pixel `[0,1]` to extended plane UV.
+fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &Lens) -> Option<(f64, f64)> {
+    let w = params.width as f64;
+    let h = params.height as f64;
+    let fx = params.fx / w;
+    let fy = params.fy / h;
+    let cx = params.cx / w;
+    let cy = params.cy / h;
+    let k = params.distortion;
+
+    let dx = (dist_x - cx) / fx;
+    let dy = (dist_y - cy) / fy;
+    let theta_d = (dx * dx + dy * dy).sqrt();
+
+    if theta_d < 1e-12 {
+        return Some((cx, cy));
+    }
+
+    // Invert the canonical KB4 polynomial with Newton-Raphson.
+    let mut theta = theta_d;
+    for _ in 0..MAX_ITERATIONS {
+        let f = kb4::theta_d(theta, &k) - theta_d;
+        let f_prime = kb4::theta_d_prime(theta, &k);
+        if f_prime.abs() < 1e-15 {
+            return None;
+        }
+
+        let delta = f / f_prime;
+        theta -= delta;
+        if delta.abs() < CONVERGENCE_EPS {
+            break;
+        }
+    }
+
+    let r = theta.tan();
+    let scale = if theta.abs() < 1e-12 {
+        1.0
+    } else {
+        theta_d / r
+    };
+    if !scale.is_finite() {
+        return None;
+    }
+
+    let x = dx / scale;
+    let y = dy / scale;
+    Some((fx * x + cx, fy * y + cy))
+}
+
+/// Convert extended plane UV to a point on the selected L-shape plane.
+fn plane_uv_to_world(uv: (f64, f64), camera: CameraIndex, scene: &PlaneScene) -> Point3<f32> {
+    let tex_u = ((uv.0 + 0.5) / 2.0) as f32;
+    let tex_v = ((uv.1 + 0.5) / 2.0) as f32;
+    let local_x = tex_u - 0.5;
+    let local_y = (0.5 - tex_v) / scene.plane_aspect;
+    let local_point = nalgebra::Vector4::new(local_x, local_y, 0.0, 1.0);
+
+    // A validated L-shape calibration has exactly two lenses, so resolving
+    // `lenses[camera]` before this makes the index a binary choice.
+    debug_assert!(camera < 2, "the L-shape mapping is two-camera");
+    let model = if camera == 0 {
+        scene.model_matrix_left()
+    } else {
+        scene.model_matrix_right()
+    };
+    let world = model * local_point;
+    Point3::new(world.x, world.y, world.z)
 }
 
 /// Inverse map for one camera plane of the L-shape projection:
@@ -421,6 +518,17 @@ impl Projection for LShape {
         VirtualCamera::new(&[axis, 0.0, axis])
     }
 
+    fn camera_to_panorama(
+        &self,
+        camera: CameraIndex,
+        norm_x: f32,
+        norm_y: f32,
+        calibration: &Calibration,
+    ) -> Option<Pose> {
+        let scene = self.scene(&calibration.framing, calibration.lenses[0].aspect());
+        Self::camera_to_panorama_in_scene(camera, norm_x, norm_y, &calibration.lenses, &scene)
+    }
+
     /// Dense edge sampling of both planes through the virtual camera -
     /// the L-shape's panorama boundary is irregular, so it is measured,
     /// not computed analytically.
@@ -523,6 +631,32 @@ mod tests {
         let aspect_4_3 = 4.0 / 3.0;
         let geom = topo(0.5).scene(&framing(0.25), aspect_4_3);
         assert!((geom.plane_aspect - aspect_4_3).abs() < 1e-5);
+    }
+
+    #[test]
+    fn inverse_fisheye_keeps_optical_center_fixed() {
+        let lens = Lens::fisheye(
+            3840,
+            2160,
+            1796.32,
+            1797.22,
+            1919.37,
+            1063.17,
+            [0.0342, 0.0677, -0.0741, 0.0299],
+        );
+        let cx = lens.cx / lens.width as f64;
+        let cy = lens.cy / lens.height as f64;
+        let actual = inverse_fisheye(cx, cy, &lens).unwrap();
+        assert!((actual.0 - cx).abs() < 1e-6);
+        assert!((actual.1 - cy).abs() < 1e-6);
+    }
+
+    #[test]
+    fn inverse_fisheye_is_identity_at_zero_distortion_center() {
+        let lens = Lens::fisheye(1920, 1080, 960.0, 540.0, 960.0, 540.0, [0.0; 4]);
+        let actual = inverse_fisheye(0.5, 0.5, &lens).unwrap();
+        assert!((actual.0 - 0.5).abs() < 1e-6);
+        assert!((actual.1 - 0.5).abs() < 1e-6);
     }
 
     #[test]

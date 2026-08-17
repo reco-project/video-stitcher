@@ -22,8 +22,8 @@ pub(crate) use kb4::kb4_forward_scale;
 
 /// Canonical Rust implementation of the KB4 polynomial.
 ///
-/// Callers that need the polynomial (inverse_fisheye's Newton-Raphson
-/// iteration, forward_fisheye, `kb4_forward_scale`) all delegate here
+/// Callers that need the polynomial (inverse-fisheye Newton-Raphson
+/// iteration and `kb4_forward_scale`) all delegate here
 /// so the formula lives in exactly one place Rust-side. The WGSL
 /// mirror at `shaders/fisheye.wgsl` lines 184-188 can't cross-
 /// language-link; the `wgsl_kb4_matches_rust_kb4_on_theta_grid`
@@ -45,7 +45,7 @@ pub(crate) mod kb4 {
     }
 
     /// Derivative of [`theta_d`] with respect to `theta`. Used by
-    /// the Newton-Raphson step in `projection::inverse_fisheye`:
+    /// the projection mapping's Newton-Raphson step:
     /// ```text
     /// d/dθ θ_d = 1 + 3 k₁ θ² + 5 k₂ θ⁴ + 7 k₃ θ⁶ + 9 k₄ θ⁸
     /// ```
