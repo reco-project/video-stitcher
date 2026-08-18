@@ -277,6 +277,7 @@ jobs:
               fi
             fi
             cp LICENSE "$staging/"
+            cp -R scoreboards "$staging/scoreboards"
             tar czf "$staging.tar.gz" "$staging"
           fi
 
@@ -309,6 +310,7 @@ jobs:
             New-Item -ItemType Directory -Path $staging | Out-Null
             Copy-Item $guiBin "$staging\"
             Copy-Item LICENSE "$staging\"
+            Copy-Item scoreboards "$staging\scoreboards" -Recurse
             if (Test-Path "$env:FFMPEG_DLL_DIR") {
               Copy-Item "$env:FFMPEG_DLL_DIR\*.dll" "$staging\"
             }
