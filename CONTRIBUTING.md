@@ -45,7 +45,7 @@ Write clear commit messages. Use conventional prefixes:
 
 ## Architecture
 
-The project is a Cargo workspace with nine crates:
+The project is a Cargo workspace with ten crates:
 
 - **reco-core** - GPU stitching engine (library, no I/O deps)
 - **reco-io** - FFmpeg/GStreamer/libcamera/V4L2 backends
@@ -56,8 +56,13 @@ The project is a Cargo workspace with nine crates:
 - **reco-cli** - CLI binary
 - **reco-gui** - Slint desktop GUI
 - **reco-obs** - OBS Studio source plugin
+- **reco-scoreboard** - Generic HTML package discovery and offscreen rendering
 
-`reco-core` must remain a pure library with no I/O dependencies. Detection, encoding, and camera backends live in their respective crates.
+`reco-core` must remain a pure library with no I/O dependencies. Detection, encoding, camera, and HTML-renderer backends live in their respective crates.
+
+## Contributing scoreboards
+
+Contributions for new scoreboard packages are welcome. A new sport normally requires only a package under `scoreboards/<sport>/` and does not require Rust or Slint changes. Keep sport rules inside HTML/JavaScript, follow [the designer guide](scoreboards/DESIGNER_GUIDE.md), and do not hardcode sport names in the GUI.
 
 ## Reporting Issues
 
