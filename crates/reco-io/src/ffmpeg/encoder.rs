@@ -1756,24 +1756,24 @@ fn build_encoder_opts(
             // --quality-value, we cap values at 75 (Apple's "high" tier)
             // and enforce a maxrate ceiling via kVTCompressionPropertyKey_DataRateLimits.
             let (q, maxrate) = match effective_preset {
-                Quality::Fast => ("50", "12000000"),
-                Quality::Balanced => ("60", "18000000"),
-                Quality::High => ("70", "30000000"),
+                Quality::Fast => ("50", mbps(12)),
+                Quality::Balanced => ("60", mbps(18)),
+                Quality::High => ("70", mbps(30)),
             };
             opts.set("global_quality", q);
-            opts.set("maxrate", maxrate);
+            opts.set("maxrate", &maxrate);
             opts.set("profile", "high");
         }
         "hevc_videotoolbox" => {
             // Same VT quality model as H.264; HEVC is ~30% more efficient
             // so we use slightly lower ceilings.
             let (q, maxrate) = match effective_preset {
-                Quality::Fast => ("50", "10000000"),
-                Quality::Balanced => ("60", "14000000"),
-                Quality::High => ("70", "22000000"),
+                Quality::Fast => ("50", mbps(10)),
+                Quality::Balanced => ("60", mbps(14)),
+                Quality::High => ("70", mbps(22)),
             };
             opts.set("global_quality", q);
-            opts.set("maxrate", maxrate);
+            opts.set("maxrate", &maxrate);
             opts.set("profile", "main");
         }
         "h264_vaapi" | "hevc_vaapi" | "av1_vaapi" => {
@@ -1873,18 +1873,25 @@ fn build_encoder_opts(
             // the consumer 0-100 range into VT 40-75 and enforce a maxrate
             // ceiling via DataRateLimits. VT 0.75 is Apple's "high" tier;
             // anything above produces diminishing-returns bitrate inflation.
-            let vt_q = 40.0 + (q as f64 / 100.0) * 35.0;
+            // Above 75, escape the compressed band so high quality-values
+            // reach VT's high-bitrate range (VT 0.75-0.85).
+            let vt_q = if q >= 75 {
+                75.0 + f64::from(q - 75) / 25.0 * 10.0
+            } else {
+                40.0 + (q as f64 / 100.0) * 35.0
+            };
             let val = format!("{:.0}", vt_q);
             opts.set("global_quality", &val);
-            // Tiered maxrate matches NVENC ceilings (in bits/sec).
+            // Tiered maxrate matches NVENC ceilings, scaled by output
+            // pixel count like the preset arms.
             let maxrate = if q >= 75 {
-                "30000000"
+                mbps(30)
             } else if q >= 40 {
-                "18000000"
+                mbps(18)
             } else {
-                "12000000"
+                mbps(12)
             };
-            opts.set("maxrate", maxrate);
+            opts.set("maxrate", &maxrate);
             log::info!(
                 "Encoder quality: {q} -> {name} global_quality={val} (VT {:.2}), maxrate={maxrate}",
                 vt_q / 100.0
@@ -1957,6 +1964,42 @@ mod tests {
         assert_eq!(seconds_to_pts(0.0, Rational(1, 44_100)), 0);
         assert_eq!(seconds_to_pts(-2.0, Rational(1, 44_100)), 0);
         assert_eq!(seconds_to_pts(f64::NAN, Rational(1, 44_100)), 0);
+    }
+
+    /// VideoToolbox maxrate ceilings scale with output resolution like the
+    /// NVENC arms, instead of pinning 4K exports to the 1080p-tuned cap.
+    #[test]
+    fn videotoolbox_maxrate_scales_with_resolution() {
+        let opts = build_encoder_opts("hevc_videotoolbox", Quality::High, None, None, 1920, 1080);
+        assert_eq!(opts.get("maxrate"), Some("22M"));
+        let opts = build_encoder_opts("hevc_videotoolbox", Quality::High, None, None, 3840, 2160);
+        assert_eq!(opts.get("maxrate"), Some("88M"));
+        let opts = build_encoder_opts("h264_videotoolbox", Quality::High, None, None, 3840, 2160);
+        assert_eq!(opts.get("maxrate"), Some("120M"));
+    }
+
+    /// `--quality-value` above 75 maps into VT's high-bitrate band (0.75 to
+    /// 0.85) instead of collapsing to the same output as 75, and the maxrate
+    /// ceiling scales with resolution. Below 75 the mapping is unchanged.
+    #[test]
+    fn videotoolbox_quality_override_has_effect_above_75() {
+        let vt = |q| {
+            build_encoder_opts(
+                "hevc_videotoolbox",
+                Quality::High,
+                Some(q),
+                None,
+                3840,
+                2160,
+            )
+        };
+        assert_eq!(vt(75).get("global_quality"), Some("75"));
+        assert_eq!(vt(85).get("global_quality"), Some("79"));
+        assert_eq!(vt(100).get("global_quality"), Some("85"));
+        assert_eq!(vt(85).get("maxrate"), Some("120M"));
+        // Below 75: original compressed mapping and mid-tier ceiling.
+        assert_eq!(vt(50).get("global_quality"), Some("58"));
+        assert_eq!(vt(50).get("maxrate"), Some("72M"));
     }
 
     /// Bitrate ceilings scale with output resolution vs the 1080p baseline.
