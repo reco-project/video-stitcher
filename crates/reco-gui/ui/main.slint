@@ -561,6 +561,12 @@ export component RecoApp inherits Window {
     in-out property <bool> export-replay-enabled: false;
     in-out property <bool> export-events-enabled: false;
 
+    // Generic manifest-discovered HTML scoreboard overlay.
+    in-out property <bool> scoreboard-enabled: false;
+    in-out property <[string]> available-scoreboards: [];
+    in-out property <int> scoreboard-current-index: 0;
+    in-out property <string> scoreboard-error-text: "";
+
     // Export progress (also used by the main status bar).
     in-out property <bool> export-in-progress: false;
     in-out property <float> export-progress: 0.0; // 0..1
@@ -781,6 +787,7 @@ export component RecoApp inherits Window {
     // preview container to that shape.
     in-out property <string> preview-aspect: "auto";
     callback changed-preview-aspect(string);
+    callback changed-scoreboard();
 
     // File management: per-side segment lists and removal.
     in-out property <[string]> left-segments: [];
@@ -1391,6 +1398,41 @@ export component RecoApp inherits Window {
                     if !root.lens-preview-active: Button {
                         text: "Reset View";
                         clicked => { root.reset-view(); }
+                    }
+
+                    if !root.lens-preview-active: Rectangle { height: 1px; background: root.border-subtle; }
+
+                    if !root.lens-preview-active: HorizontalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: "Scoreboard";
+                            color: #fff;
+                            font-size: 13px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                        CheckBox {
+                            text: root.scoreboard-enabled ? "ON" : "OFF";
+                            checked <=> root.scoreboard-enabled;
+                            toggled => { root.changed-scoreboard(); }
+                        }
+                    }
+
+                    if !root.lens-preview-active && root.scoreboard-enabled: VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Scoreboard:"; color: #ccc; font-size: 12px; }
+                        ComboBox {
+                            model: root.available-scoreboards;
+                            current-index <=> root.scoreboard-current-index;
+                            selected(value) => { root.changed-scoreboard(); }
+                        }
+                        if root.scoreboard-error-text != "": Text {
+                            text: root.scoreboard-error-text;
+                            color: #e06060;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
                     }
 
                     if !root.lens-preview-active: Rectangle { height: 1px; background: root.border-subtle; }
