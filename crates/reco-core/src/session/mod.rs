@@ -86,6 +86,8 @@ pub struct StitchSession {
     pub(crate) encoder: Option<AsyncEncodeThread>,
     /// Additional encoders for multi-output (stream + record).
     pub(crate) extra_encoders: Vec<AsyncEncodeThread>,
+    /// Independently rendered post-camera overlay. Polled without blocking.
+    pub(crate) overlay_source: Option<Box<dyn crate::render::overlay::OverlayFrameSource>>,
     /// Detection backends, interval, callback, and cached detections.
     pub(crate) detection: DetectionPipeline,
     /// Tracker/panner pose resolution. When `panner` is set, it owns
@@ -263,6 +265,7 @@ impl StitchSession {
             lookahead_frames: 0,
             frame_count: 0,
             extra_encoders: Vec::new(),
+            overlay_source: None,
             session_start: None,
             error_policy: ErrorPolicy::default(),
             frames_dropped: 0,
@@ -342,6 +345,23 @@ impl StitchSession {
     /// changes (resize, set_fov).
     pub fn pipeline_mut(&mut self) -> &mut StitchPipeline {
         self.core.pipeline_mut()
+    }
+
+    /// Attach a non-blocking source of post-camera RGBA overlay frames.
+    ///
+    /// The source is polled after the autocam pose has been resolved and
+    /// immediately before rendering. `Ok(None)` reuses the cached GPU texture.
+    pub fn set_overlay_source(
+        &mut self,
+        source: Box<dyn crate::render::overlay::OverlayFrameSource>,
+    ) {
+        self.overlay_source = Some(source);
+    }
+
+    /// Disable the overlay source and release its cached GPU resources.
+    pub fn clear_overlay_source(&mut self) {
+        self.overlay_source = None;
+        self.core.pipeline_mut().clear_overlay();
     }
 
     /// Borrow the underlying [`StitchCore`]. Useful for consumers that

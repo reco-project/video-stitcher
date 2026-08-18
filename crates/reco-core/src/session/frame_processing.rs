@@ -224,6 +224,11 @@ impl StitchSession {
         // ── 2. Pose ────────────────────────────────────────────────
         let pos = self.director_position();
 
+        // The browser/renderer runs independently. This poll never waits;
+        // unchanged pages keep using the current GPU texture. A failed
+        // overlay is disabled without interrupting video processing.
+        self.refresh_overlay();
+
         // ── 3. Render + replay ─────────────────────────────────────
         #[allow(unused_mut)]
         let mut upload_time = std::time::Duration::ZERO;
@@ -300,6 +305,25 @@ impl StitchSession {
         });
 
         Ok(())
+    }
+
+    fn refresh_overlay(&mut self) {
+        let Some(source) = self.overlay_source.as_mut() else {
+            return;
+        };
+        match source.try_frame() {
+            Ok(Some(frame)) => {
+                if let Err(error) = self.core.pipeline_mut().set_overlay_frame(&frame) {
+                    log::error!("disabling overlay after GPU upload failure: {error}");
+                    self.clear_overlay_source();
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                log::error!("disabling overlay after renderer failure: {error}");
+                self.clear_overlay_source();
+            }
+        }
     }
 
     /// Render a single CPU-resident stereo frame and submit it to the encoder.
