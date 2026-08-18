@@ -14,6 +14,7 @@ Stitch two camera feeds into a seamless panoramic sports view with AI-powered au
 - **AI ball + player tracking** - YOLO detection on ONNX (CPU / CUDA / CoreML / NCNN) or native TensorRT `.engine`, with anticipatory lookahead smoothing and density-peak player clustering
 - **Automatic calibration** - AKAZE feature matching with IMU / audio cross-correlation for temporal sync, Gyroflow lens profiles
 - **Live production** - GStreamer camera ingest (Linux / Jetson CSI), push-based `StitchCore::submit_frame_*` for OBS and live streams, replay ring buffer, stacked-video pack/unpack
+- **Extensible HTML scoreboards** - Manifest-discovered HTML/CSS/JavaScript packages rendered after Autocam and shared by preview, recording, and stream output
 - **Cross-platform** - Linux / macOS / Windows desktop, NVIDIA Jetson Orin, cloud workers; mobile (iOS / Android) trait points land in this release, concrete impls follow
 
 ## Quick start
@@ -76,9 +77,17 @@ RECO_FFMPEG_LOG=debug ./target/release/reco stitch left.mp4 right.mp4 -c match.j
 LIBVA_MESSAGING_LEVEL=2 ./target/release/reco stitch left.mp4 right.mp4 -c match.json -o out.mp4
 ```
 
+## HTML scoreboard overlays
+
+In the desktop app, open Controls, switch **Scoreboard** to **ON**, and choose any installed package. Reco discovers packages from `scoreboards/` next to the executable and supported user/override locations; the list is never hardcoded. The bundled Basketball package is only a reference implementation.
+
+Scoreboards are transparent local web pages. Their cached RGBA texture is composed after stitching and Autocam, so camera pan/tilt/zoom never moves the graphic and the same final frame feeds preview, recording, and stream/export. Chrome or Chromium must currently be installed; set `CHROME` when it is in a nonstandard location.
+
+Community packages can add football, handball, volleyball, ice hockey, or another sport without Rust changes. See [Creating a Reco Scoreboard](scoreboards/DESIGNER_GUIDE.md) and the [runtime/security notes](scoreboards/README.md).
+
 ## Architecture
 
-Nine Rust crates. Strict dependency direction keeps the engine reusable as a library.
+Ten Rust crates. Strict dependency direction keeps the engine reusable as a library.
 
 ```
 reco-core        GPU stitching engine (wgpu). No I/O, no domain logic.
@@ -90,9 +99,10 @@ reco-control     Operator intent vocabulary (keyboard today; gopro/mobile/websoc
 reco-cli         Terminal consumer: stitch / calibrate / preview / camera / analyze / info.
 reco-gui         Slint desktop consumer with wgpu preview + export UI.
 reco-obs         OBS Studio source plugin (async-frame ingestion, BGRA, interactive pan/zoom).
+reco-scoreboard  Manifest discovery + sandboxed, asynchronous HTML renderer.
 ```
 
-**Dependency direction:** consumers (`cli` / `gui` / `obs`) depend on the four library crates (`autocam`, `calibrate`, `detect`, `io`); all four depend on `reco-core`. `reco-control` is consumed by `cli` / `gui` / `obs`.
+**Dependency direction:** consumers (`cli` / `gui` / `obs`) depend on the reusable library crates; those ultimately depend on `reco-core`. `reco-scoreboard` is a sport-neutral GUI adapter over the core overlay contract. `reco-control` is consumed by `cli` / `gui` / `obs`.
 
 Push-based is the canonical ingestion path: consumers call `StitchCore::submit_frame_yuv` / `submit_frame_bgra` per frame. Batch file processing (`StitchSession::run`) is a thin pull-adapter on top.
 
