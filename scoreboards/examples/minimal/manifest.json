@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "minimal",
+  "name": "Minimal example",
+  "sport": "example",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "viewport": { "width": 1920, "height": 1080 },
+  "transparent": true,
+  "updateApiVersion": 1
+}

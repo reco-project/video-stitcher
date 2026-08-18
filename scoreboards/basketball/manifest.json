@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "basketball",
+  "name": "Basketball",
+  "sport": "basketball",
+  "version": "1.0.0",
+  "author": "Reco Community",
+  "description": "Reference basketball scoreboard",
+  "entry": "index.html",
+  "viewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "transparent": true,
+  "updateApiVersion": 1
+}
