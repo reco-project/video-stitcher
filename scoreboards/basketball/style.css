@@ -1,0 +1,97 @@
+:root {
+    color-scheme: dark;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+html,
+body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+}
+
+* { box-sizing: border-box; }
+
+.broadcast-safe-area {
+    position: absolute;
+    left: 60px;
+    right: 60px;
+    bottom: 60px;
+    display: flex;
+    justify-content: center;
+}
+
+.scoreboard {
+    --home-color: #0057a8;
+    --home-secondary: #ffffff;
+    --away-color: #cf2027;
+    --away-secondary: #ffffff;
+    display: grid;
+    grid-template-columns: 330px 116px 270px 116px 330px;
+    min-height: 146px;
+    color: #fff;
+    background: linear-gradient(180deg, rgba(17, 22, 31, 0.94), rgba(5, 8, 14, 0.92));
+    border: 1px solid rgba(255, 255, 255, 0.26);
+    border-radius: 18px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), inset 0 1px rgba(255, 255, 255, 0.12);
+    overflow: hidden;
+}
+
+.team {
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    padding: 20px 28px;
+}
+
+.team::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    opacity: 0.76;
+    z-index: -1;
+}
+
+.team-home { color: var(--home-secondary); text-align: left; }
+.team-home::before { background: linear-gradient(100deg, var(--home-color), transparent 92%); }
+.team-away { color: var(--away-secondary); text-align: right; align-items: flex-end; }
+.team-away::before { background: linear-gradient(260deg, var(--away-color), transparent 92%); }
+
+.team-label { font-size: 18px; letter-spacing: 0.16em; opacity: 0.72; }
+.team-name { max-width: 275px; font-size: 38px; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 2px 6px #000; }
+.fouls { font-size: 22px; letter-spacing: 0.06em; opacity: 0.9; }
+.score { display: grid; place-items: center; font-size: 72px; font-variant-numeric: tabular-nums; text-shadow: 0 3px 8px #000; }
+
+.game-center {
+    display: grid;
+    place-content: center;
+    grid-template-columns: 1fr 1fr;
+    text-align: center;
+    background: rgba(0, 0, 0, 0.28);
+}
+
+.clock { grid-column: 1 / -1; font-size: 54px; line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
+.period, .shot-clock { margin-top: 10px; font-size: 22px; letter-spacing: 0.06em; }
+.period { border-right: 1px solid rgba(255,255,255,0.22); }
+.shot-clock strong { color: #ffd45a; }
+
+.debug-controls {
+    position: absolute;
+    top: 30px;
+    left: 30px;
+    width: 360px;
+    padding: 18px;
+    color: #fff;
+    background: rgba(10, 12, 18, 0.94);
+    border: 1px solid #54627a;
+    border-radius: 12px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+}
+
+.debug-controls div { display: flex; gap: 8px; margin-top: 10px; }
+.debug-controls button { min-height: 38px; padding: 6px 12px; color: #fff; background: #29344a; border: 1px solid #56647d; border-radius: 7px; font: inherit; }

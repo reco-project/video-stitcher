@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, initial-scale=1">
+    <title>Reco Basketball Scoreboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main class="broadcast-safe-area" aria-label="Basketball scoreboard">
+        <section class="scoreboard">
+            <div class="team team-home">
+                <span class="team-label">HOME</span>
+                <strong id="home-name" class="team-name">SHARKS</strong>
+                <span class="fouls">FOULS <strong id="home-fouls">3</strong></span>
+            </div>
+            <strong id="home-score" class="score">37</strong>
+
+            <div class="game-center">
+                <strong id="clock" class="clock">07:42</strong>
+                <span id="period" class="period">Q2</span>
+                <span id="shot-clock-wrap" class="shot-clock">SHOT <strong id="shot-clock">18</strong></span>
+            </div>
+
+            <strong id="away-score" class="score">32</strong>
+            <div class="team team-away">
+                <span class="team-label">AWAY</span>
+                <strong id="away-name" class="team-name">LIONS</strong>
+                <span class="fouls">FOULS <strong id="away-fouls">5</strong></span>
+            </div>
+        </section>
+    </main>
+
+    <aside id="debug-controls" class="debug-controls" hidden>
+        <strong>Basketball test controls</strong>
+        <div><button data-score="home" data-points="1">Home +1</button><button data-score="home" data-points="2">+2</button><button data-score="home" data-points="3">+3</button></div>
+        <div><button data-score="away" data-points="1">Away +1</button><button data-score="away" data-points="2">+2</button><button data-score="away" data-points="3">+3</button></div>
+        <div><button id="toggle-clock">Start/Stop Clock</button><button id="next-period">Next Quarter</button></div>
+        <div><button id="home-foul">Home Foul</button><button id="away-foul">Away Foul</button></div>
+    </aside>
+
+    <script src="../sdk/reco-scoreboard.js"></script>
+    <script src="scoreboard.js"></script>
+</body>
+</html>
