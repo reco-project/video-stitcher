@@ -29,6 +29,7 @@
 use reco_core::calibration::{CameraParams, MatchCalibration};
 use reco_core::gpu::GpuContext;
 use reco_core::lens::preview::LensPreviewRenderer;
+use reco_core::render::overlay::OverlayFrame;
 use reco_core::render::pipeline::{PipelineError, YuvPlanes};
 use reco_core::render::stitch_renderer::StitchRenderer;
 use reco_core::render::viewport::ViewportConfig;
@@ -168,6 +169,16 @@ impl PreviewBridge {
     /// Mutable access for resize, FOV, calibration updates.
     pub fn renderer_mut(&mut self) -> &mut StitchRenderer {
         &mut self.renderer
+    }
+
+    /// Upload a newly rendered scoreboard surface to the cached GPU texture.
+    pub fn set_overlay_frame(&mut self, frame: &OverlayFrame) -> Result<(), PipelineError> {
+        self.renderer.pipeline_mut().set_overlay_frame(frame)
+    }
+
+    /// Disable post-camera overlay composition and release its GPU resources.
+    pub fn clear_overlay(&mut self) {
+        self.renderer.pipeline_mut().clear_overlay();
     }
 
     /// Current viewport dimensions.

@@ -34,6 +34,7 @@ automation = []
 
 [dependencies]
 reco-core = { path = "../reco-core" }
+reco-scoreboard = { path = "../reco-scoreboard" }
 reco-control = { path = "../reco-control" }
 reco-io = { path = "../reco-io", features = ["ffmpeg", "config", "stacked-output"] }
 serde = { version = "1", features = ["derive"] }
