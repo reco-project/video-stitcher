@@ -5822,6 +5822,7 @@ name = "reco-scoreboard"
 version = "0.5.4"
 dependencies = [
  "anyhow",
+ "getrandom 0.4.2",
  "headless_chrome",
  "image",
  "log",

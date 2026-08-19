@@ -75,6 +75,7 @@ body {
     background: rgba(0, 0, 0, 0.28);
 }
 
+.competition { grid-column: 1 / -1; margin-bottom: 4px; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 700; letter-spacing: 0.09em; opacity: 0.72; }
 .clock { grid-column: 1 / -1; font-size: 54px; line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
 .period, .shot-clock { margin-top: 10px; font-size: 22px; letter-spacing: 0.06em; }
 .period { border-right: 1px solid rgba(255,255,255,0.22); }
@@ -84,7 +85,9 @@ body {
     position: absolute;
     top: 30px;
     left: 30px;
-    width: 360px;
+    width: 440px;
+    max-height: calc(100% - 60px);
+    overflow-y: auto;
     padding: 18px;
     color: #fff;
     background: rgba(10, 12, 18, 0.94);
@@ -93,5 +96,13 @@ body {
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
 }
 
-.debug-controls div { display: flex; gap: 8px; margin-top: 10px; }
-.debug-controls button { min-height: 38px; padding: 6px 12px; color: #fff; background: #29344a; border: 1px solid #56647d; border-radius: 7px; font: inherit; }
+.debug-controls header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.debug-controls header span { color: #70d897; font-size: 13px; }
+.debug-controls header span.error { color: #ff7979; }
+.debug-controls label { display: grid; gap: 5px; color: #cbd2df; font-size: 13px; }
+.debug-controls > label { margin-bottom: 10px; }
+.debug-controls input { width: 100%; min-height: 36px; padding: 6px 9px; color: #fff; background: #171e2b; border: 1px solid #56647d; border-radius: 6px; font: inherit; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.button-row { display: flex; gap: 8px; margin-top: 10px; }
+.debug-controls button { flex: 1; min-height: 38px; padding: 6px 10px; color: #fff; background: #29344a; border: 1px solid #56647d; border-radius: 7px; font: inherit; cursor: pointer; }
+.debug-controls button:hover { background: #37445c; }

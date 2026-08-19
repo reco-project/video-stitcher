@@ -42,6 +42,8 @@ pub struct ScoreboardManifest {
     pub description: Option<String>,
     /// Relative path to the HTML entry point.
     pub entry: String,
+    /// Optional relative HTML editor entry point, including a query string.
+    pub editor: Option<String>,
     /// Reference HTML viewport.
     pub viewport: ScoreboardViewport,
     /// Whether the package expects a transparent canvas.
@@ -60,6 +62,8 @@ pub struct ScoreboardPackage {
     pub directory: PathBuf,
     /// Absolute, contained HTML entry point.
     pub entry_path: PathBuf,
+    /// Absolute, contained HTML editor entry point when declared.
+    pub editor_path: Option<PathBuf>,
 }
 
 impl ScoreboardPackage {
@@ -90,18 +94,6 @@ impl ScoreboardPackage {
             });
         }
 
-        let entry_relative = Path::new(&manifest.entry);
-        if entry_relative.is_absolute()
-            || entry_relative
-                .components()
-                .any(|component| !matches!(component, Component::Normal(_)))
-        {
-            return Err(ManifestError::UnsafeEntry(manifest.entry));
-        }
-        if entry_relative.extension().and_then(|ext| ext.to_str()) != Some("html") {
-            return Err(ManifestError::UnsafeEntry(manifest.entry));
-        }
-
         let canonical_directory =
             directory
                 .canonicalize()
@@ -109,24 +101,74 @@ impl ScoreboardPackage {
                     path: directory.to_path_buf(),
                     source,
                 })?;
-        let entry_path = directory.join(entry_relative);
-        let canonical_entry =
-            entry_path
-                .canonicalize()
-                .map_err(|source| ManifestError::MissingEntry {
-                    path: entry_path,
-                    source,
-                })?;
-        if !canonical_entry.starts_with(&canonical_directory) || !canonical_entry.is_file() {
-            return Err(ManifestError::EntryOutsidePackage(canonical_entry));
-        }
+        let canonical_entry = validate_html_target(
+            directory,
+            &canonical_directory,
+            &manifest.entry,
+            TargetKind::Entry,
+        )?;
+        let editor_path = manifest
+            .editor
+            .as_deref()
+            .map(|target| {
+                validate_html_target(directory, &canonical_directory, target, TargetKind::Editor)
+            })
+            .transpose()?;
 
         Ok(Self {
             manifest,
             directory: canonical_directory,
             entry_path: canonical_entry,
+            editor_path,
         })
     }
+}
+
+#[derive(Clone, Copy)]
+enum TargetKind {
+    Entry,
+    Editor,
+}
+
+fn validate_html_target(
+    directory: &Path,
+    canonical_directory: &Path,
+    target: &str,
+    kind: TargetKind,
+) -> Result<PathBuf, ManifestError> {
+    let path_text = target.split(['?', '#']).next().unwrap_or_default();
+    let relative = Path::new(path_text);
+    if relative.as_os_str().is_empty()
+        || relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+        || relative.extension().and_then(|ext| ext.to_str()) != Some("html")
+    {
+        return Err(match kind {
+            TargetKind::Entry => ManifestError::UnsafeEntry(target.to_owned()),
+            TargetKind::Editor => ManifestError::UnsafeEditor(target.to_owned()),
+        });
+    }
+
+    let candidate = directory.join(relative);
+    let canonical = candidate.canonicalize().map_err(|source| match kind {
+        TargetKind::Entry => ManifestError::MissingEntry {
+            path: candidate.clone(),
+            source,
+        },
+        TargetKind::Editor => ManifestError::MissingEditor {
+            path: candidate.clone(),
+            source,
+        },
+    })?;
+    if !canonical.starts_with(canonical_directory) || !canonical.is_file() {
+        return Err(match kind {
+            TargetKind::Entry => ManifestError::EntryOutsidePackage(canonical),
+            TargetKind::Editor => ManifestError::EditorOutsidePackage(canonical),
+        });
+    }
+    Ok(canonical)
 }
 
 impl ScoreboardManifest {
@@ -216,6 +258,9 @@ pub enum ManifestError {
     /// Entry path is absolute, traverses parents, or is not HTML.
     #[error("entry {0:?} must be a contained relative .html path")]
     UnsafeEntry(String),
+    /// Editor path is absolute, traverses parents, or is not HTML.
+    #[error("editor {0:?} must be a contained relative .html path")]
+    UnsafeEditor(String),
     /// Entry file is missing.
     #[error("entry HTML is missing at {path}: {source}")]
     MissingEntry {
@@ -223,9 +268,19 @@ pub enum ManifestError {
         #[source]
         source: std::io::Error,
     },
+    /// Editor file is missing.
+    #[error("editor HTML is missing at {path}: {source}")]
+    MissingEditor {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
     /// Symlink or path escaped the package directory.
     #[error("entry HTML resolves outside its package: {0}")]
     EntryOutsidePackage(PathBuf),
+    /// Editor symlink or path escaped the package directory.
+    #[error("editor HTML resolves outside its package: {0}")]
+    EditorOutsidePackage(PathBuf),
 }
 
 #[cfg(test)]

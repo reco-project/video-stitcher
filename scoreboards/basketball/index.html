@@ -17,8 +17,9 @@
             <strong id="home-score" class="score">37</strong>
 
             <div class="game-center">
+                <span id="competition" class="competition">REGIONAL LEAGUE</span>
                 <strong id="clock" class="clock">07:42</strong>
-                <span id="period" class="period">Q2</span>
+                <span id="period" class="period">Q2 / 4</span>
                 <span id="shot-clock-wrap" class="shot-clock">SHOT <strong id="shot-clock">18</strong></span>
             </div>
 
@@ -32,11 +33,24 @@
     </main>
 
     <aside id="debug-controls" class="debug-controls" hidden>
-        <strong>Basketball test controls</strong>
-        <div><button data-score="home" data-points="1">Home +1</button><button data-score="home" data-points="2">+2</button><button data-score="home" data-points="3">+3</button></div>
-        <div><button data-score="away" data-points="1">Away +1</button><button data-score="away" data-points="2">+2</button><button data-score="away" data-points="3">+3</button></div>
-        <div><button id="toggle-clock">Start/Stop Clock</button><button id="next-period">Next Quarter</button></div>
-        <div><button id="home-foul">Home Foul</button><button id="away-foul">Away Foul</button></div>
+        <header>
+            <strong>Edit basketball scoreboard</strong>
+            <span id="editor-status">Live</span>
+        </header>
+        <label>Competition<input id="competition-input" type="text" maxlength="48"></label>
+        <div class="form-grid">
+            <label>Home team<input id="home-name-input" type="text" maxlength="24"></label>
+            <label>Away team<input id="away-name-input" type="text" maxlength="24"></label>
+            <label>Quarters<input id="period-count-input" type="number" min="1" max="12"></label>
+            <label>Quarter length (min)<input id="period-duration-input" type="number" min="1" max="99"></label>
+            <label>Current quarter<input id="period-input" type="number" min="1" max="12"></label>
+            <label>Shot clock<input id="shot-clock-input" type="number" min="0" max="99"></label>
+            <label>Home team fouls<input id="home-fouls-input" type="number" min="0" max="99"></label>
+            <label>Away team fouls<input id="away-fouls-input" type="number" min="0" max="99"></label>
+        </div>
+        <div class="button-row"><button data-score="home" data-points="1">Home +1</button><button data-score="home" data-points="2">+2</button><button data-score="home" data-points="3">+3</button></div>
+        <div class="button-row"><button data-score="away" data-points="1">Away +1</button><button data-score="away" data-points="2">+2</button><button data-score="away" data-points="3">+3</button></div>
+        <div class="button-row"><button id="toggle-clock">Start clock</button><button id="reset-clock">Reset clock</button><button id="next-period">Next quarter</button></div>
     </aside>
 
     <script src="../sdk/reco-scoreboard.js"></script>

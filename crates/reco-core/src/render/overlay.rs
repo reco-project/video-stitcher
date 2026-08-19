@@ -412,4 +412,71 @@ mod tests {
             wgpu::BlendFactor::OneMinusSrcAlpha
         );
     }
+
+    #[test]
+    fn gpu_compositor_writes_visible_overlay_pixels() {
+        let Ok(gpu) = GpuContext::new_blocking() else {
+            eprintln!("GPU unavailable; skipping overlay compositor integration test");
+            return;
+        };
+        let size = 64;
+        let target = gpu.device().create_texture(&wgpu::TextureDescriptor {
+            label: Some("overlay compositor test target"),
+            size: wgpu::Extent3d {
+                width: size,
+                height: size,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let view = target.create_view(&wgpu::TextureViewDescriptor::default());
+        let mut clear_encoder =
+            gpu.device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("overlay compositor test clear"),
+                });
+        {
+            let _pass = clear_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("overlay compositor test clear pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+        }
+        gpu.queue().submit(Some(clear_encoder.finish()));
+
+        let frame = OverlayFrame {
+            width: size,
+            height: size,
+            rgba: [255_u8, 0, 255, 255].repeat((size * size) as usize),
+        };
+        let compositor =
+            RgbaOverlayCompositor::new(&gpu, wgpu::TextureFormat::Rgba8Unorm, (size, size), &frame)
+                .unwrap();
+        let mut readback = crate::gpu::rgba_readback::RgbaReadback::new(&gpu, size, size).unwrap();
+        assert!(
+            readback
+                .readback(&gpu, &target, compositor.encode(&gpu, &view))
+                .unwrap()
+                .is_none()
+        );
+        let pixels = readback.flush_pending(&gpu).unwrap().unwrap();
+        let center = ((size / 2 * size + size / 2) * 4) as usize;
+        assert_eq!(&pixels[center..center + 4], &[255, 0, 255, 255]);
+    }
 }

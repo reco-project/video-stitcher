@@ -11,7 +11,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::local_server::LocalPackageServer;
+use crate::local_server::{EditorState, LocalPackageServer};
 use crate::manifest::ScoreboardPackage;
 
 enum RuntimeCommand {
@@ -24,6 +24,8 @@ enum RuntimeCommand {
 pub struct ScoreboardRuntime {
     command_tx: SyncSender<RuntimeCommand>,
     frame_rx: Receiver<Result<OverlayFrame, String>>,
+    editor_url: Option<String>,
+    _asset_server: LocalPackageServer,
 }
 
 impl ScoreboardRuntime {
@@ -33,16 +35,48 @@ impl ScoreboardRuntime {
     /// Chrome/Chromium executable is resolved synchronously so an unavailable
     /// engine can be shown to the user immediately.
     pub fn start(package: ScoreboardPackage, max_fps: u32) -> Result<Self, RuntimeError> {
+        Self::start_with_state(package, max_fps, None)
+    }
+
+    /// Start a renderer and apply generic state before its first capture.
+    pub fn start_with_state(
+        package: ScoreboardPackage,
+        max_fps: u32,
+        initial_state: Option<Value>,
+    ) -> Result<Self, RuntimeError> {
         let browser_path = default_executable().map_err(RuntimeError::BrowserNotFound)?;
         let max_fps = max_fps.clamp(1, 30);
+        let asset_server = LocalPackageServer::start(package.directory.clone())
+            .map_err(|error| RuntimeError::AssetServer(error.to_string()))?;
+        let page_url = asset_server.url_for(&package.manifest.entry);
+        let editor_url = package
+            .manifest
+            .editor
+            .as_deref()
+            .map(|editor| asset_server.editor_url_for(editor));
+        let editor_state = asset_server.editor_state();
+        let initial_json = initial_state
+            .map(|state| serde_json::to_string(&state))
+            .transpose()
+            .map_err(RuntimeError::SerializeState)?;
+        if let Some(json) = initial_json.as_ref() {
+            editor_state.replace(json.clone());
+        }
         let (command_tx, command_rx) = std::sync::mpsc::sync_channel(32);
         let (frame_tx, frame_rx) = std::sync::mpsc::sync_channel(2);
         std::thread::Builder::new()
             .name(format!("scoreboard-{}", package.manifest.id))
             .spawn(move || {
-                if let Err(error) =
-                    run_worker(package, browser_path, max_fps, &command_rx, &frame_tx)
-                {
+                if let Err(error) = run_worker(
+                    package,
+                    browser_path,
+                    page_url,
+                    editor_state,
+                    initial_json,
+                    max_fps,
+                    &command_rx,
+                    &frame_tx,
+                ) {
                     let _ = frame_tx.try_send(Err(error.to_string()));
                 }
             })
@@ -50,6 +84,8 @@ impl ScoreboardRuntime {
         Ok(Self {
             command_tx,
             frame_rx,
+            editor_url,
+            _asset_server: asset_server,
         })
     }
 
@@ -62,6 +98,19 @@ impl ScoreboardRuntime {
     /// Queue the package's optional `reset()` hook.
     pub fn reset(&self) -> Result<(), RuntimeError> {
         try_send_command(&self.command_tx, RuntimeCommand::Reset)
+    }
+
+    /// Return the authenticated loopback editor URL declared by the package.
+    pub fn editor_url(&self) -> Option<&str> {
+        self.editor_url.as_deref()
+    }
+
+    /// Return the latest state published by the package editor.
+    pub fn current_editor_state(&self) -> Option<Value> {
+        self._asset_server
+            .editor_state()
+            .current()
+            .and_then(|json| serde_json::from_str(&json).ok())
     }
 }
 
@@ -105,6 +154,9 @@ fn try_send_command(
 fn run_worker(
     package: ScoreboardPackage,
     browser_path: std::path::PathBuf,
+    page_url: String,
+    editor_state: EditorState,
+    initial_json: Option<String>,
     max_fps: u32,
     command_rx: &Receiver<RuntimeCommand>,
     frame_tx: &SyncSender<Result<OverlayFrame, String>>,
@@ -129,24 +181,29 @@ fn run_worker(
     install_error_hook(&tab)?;
     tab.set_transparent_background_color()
         .map_err(RuntimeError::Browser)?;
-    let asset_server = LocalPackageServer::start(package.directory.clone())
-        .map_err(|error| RuntimeError::AssetServer(error.to_string()))?;
-    let url = asset_server.url_for(&package.manifest.entry);
-    tab.navigate_to(&url)
+    tab.navigate_to(&page_url)
         .and_then(|tab| tab.wait_until_navigated())
         .map_err(RuntimeError::Browser)?;
 
     install_host_bridge(&tab, &package)?;
+    if let Some(json) = initial_json.as_deref() {
+        evaluate_update(&tab, json)?;
+    }
     let initial_status = render_status(&tab)?;
     if let Some(error) = initial_status.error {
         return Err(RuntimeError::JavaScript(error));
     }
     let _ = capture(&tab, viewport, frame_tx)?;
     let mut last_version = initial_status.version;
+    let mut editor_version = u64::from(initial_json.is_some());
     let interval = Duration::from_secs_f64(1.0 / f64::from(max_fps));
     let mut next_capture_check = Instant::now() + interval;
 
     loop {
+        if let Some((version, json)) = editor_state.newer_than(editor_version) {
+            evaluate_update(&tab, &json)?;
+            editor_version = version;
+        }
         loop {
             match command_rx.try_recv() {
                 Ok(RuntimeCommand::Update(json)) => evaluate_update(&tab, &json)?,
@@ -418,6 +475,12 @@ mod tests {
         tab.navigate_to(&url)
             .and_then(|tab| tab.wait_until_navigated())
             .unwrap();
+        let content = tab.get_content().unwrap();
+        assert!(
+            content.contains("id=\"home-score\""),
+            "scoreboard page did not load at {}: {content}",
+            tab.get_url()
+        );
         install_host_bridge(&tab, &package).unwrap();
         evaluate_update(
             &tab,
@@ -443,7 +506,7 @@ mod tests {
             .unwrap();
         let json = remote.value.unwrap();
         let values: Vec<String> = serde_json::from_str(json.as_str().unwrap()).unwrap();
-        assert_eq!(values, ["42", "39", "01:23", "Q4"]);
+        assert_eq!(values, ["42", "39", "01:23", "Q4 / 4"]);
 
         let png = tab
             .capture_screenshot(Page::CaptureScreenshotFormatOption::Png, None, None, true)
@@ -453,5 +516,45 @@ mod tests {
             .into_rgba8();
         assert_eq!(rgba.dimensions(), viewport);
         assert_eq!(rgba.get_pixel(0, 0).0[3], 0);
+        let visible_pixels = rgba.pixels().filter(|pixel| pixel.0[3] > 0).count();
+        assert!(
+            visible_pixels > 10_000,
+            "scoreboard rendered only {visible_pixels} visible pixels"
+        );
+
+        let editor_target = package.manifest.editor.as_deref().unwrap();
+        let editor_tab = browser.new_tab().unwrap();
+        set_viewport(&editor_tab, viewport).unwrap();
+        editor_tab
+            .navigate_to(&asset_server.editor_url_for(editor_target))
+            .and_then(|tab| tab.wait_until_navigated())
+            .unwrap();
+        editor_tab.wait_for_element("#competition-input").unwrap();
+        editor_tab
+            .evaluate(
+                r##"(() => {
+                    const input = document.querySelector("#competition-input");
+                    input.value = "Regional Final";
+                    input.dispatchEvent(new Event("change", { bubbles: true }));
+                })()"##,
+                false,
+            )
+            .unwrap();
+        let state = asset_server.editor_state();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let editor_json = loop {
+            if let Some((_, json)) = state.newer_than(0) {
+                let value: Value = serde_json::from_str(&json).unwrap();
+                if value["game"]["competition"] == "Regional Final" {
+                    break value;
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "editor did not publish its state"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        assert_eq!(editor_json["sport"]["periodCount"], 4);
     }
 }

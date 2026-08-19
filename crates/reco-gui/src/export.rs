@@ -121,6 +121,7 @@ pub fn run_export(
     end_secs: f32,
     autocam: AutocamUiConfig,
     scoreboard_package: Option<reco_scoreboard::ScoreboardPackage>,
+    scoreboard_state: Option<serde_json::Value>,
     app_weak: slint::Weak<RecoApp>,
     interrupted: &AtomicBool,
     last_progress_at: Arc<Mutex<Option<Instant>>>,
@@ -236,7 +237,7 @@ pub fn run_export(
     });
 
     if let Some(package) = scoreboard_package {
-        match reco_scoreboard::ScoreboardRuntime::start(package, 30) {
+        match reco_scoreboard::ScoreboardRuntime::start_with_state(package, 30, scoreboard_state) {
             Ok(runtime) => {
                 job = job.on_session(move |session, _source| {
                     session.set_overlay_source(Box::new(runtime));

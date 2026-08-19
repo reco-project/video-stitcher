@@ -566,6 +566,7 @@ export component RecoApp inherits Window {
     in-out property <[string]> available-scoreboards: [];
     in-out property <int> scoreboard-current-index: 0;
     in-out property <string> scoreboard-error-text: "";
+    in-out property <bool> scoreboard-editor-available: false;
 
     // Export progress (also used by the main status bar).
     in-out property <bool> export-in-progress: false;
@@ -788,6 +789,7 @@ export component RecoApp inherits Window {
     in-out property <string> preview-aspect: "auto";
     callback changed-preview-aspect(string);
     callback changed-scoreboard();
+    callback edit-scoreboard();
 
     // File management: per-side segment lists and removal.
     in-out property <[string]> left-segments: [];
@@ -1426,6 +1428,10 @@ export component RecoApp inherits Window {
                             model: root.available-scoreboards;
                             current-index <=> root.scoreboard-current-index;
                             selected(value) => { root.changed-scoreboard(); }
+                        }
+                        if root.scoreboard-editor-available: Button {
+                            text: "Edit scoreboard…";
+                            clicked => { root.edit-scoreboard(); }
                         }
                         if root.scoreboard-error-text != "": Text {
                             text: root.scoreboard-error-text;

@@ -2602,6 +2602,35 @@ fn main() -> anyhow::Result<()> {
             app.get_scoreboard_current_index().max(0) as usize,
         );
         app.set_scoreboard_error_text(s.scoreboard_error.clone().into());
+        app.set_scoreboard_editor_available(
+            s.scoreboard_runtime
+                .as_ref()
+                .and_then(reco_scoreboard::ScoreboardRuntime::editor_url)
+                .is_some(),
+        );
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_edit_scoreboard(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let editor_url = state_ref
+            .borrow()
+            .scoreboard_runtime
+            .as_ref()
+            .and_then(reco_scoreboard::ScoreboardRuntime::editor_url)
+            .map(str::to_owned);
+        let Some(editor_url) = editor_url else {
+            app.set_scoreboard_error_text("This scoreboard has no editor".into());
+            return;
+        };
+        if let Err(error) = open::that(&editor_url) {
+            let message = format!("Cannot open scoreboard editor: {error}");
+            state_ref.borrow_mut().scoreboard_error.clone_from(&message);
+            app.set_scoreboard_error_text(message.into());
+        }
     });
 
     // ── Auto-calibration callback ──
@@ -3610,6 +3639,10 @@ fn main() -> anyhow::Result<()> {
         } else {
             None
         };
+        let scoreboard_state = s
+            .scoreboard_runtime
+            .as_ref()
+            .and_then(reco_scoreboard::ScoreboardRuntime::current_editor_state);
 
         // Persist the user's codec / quality / blend choices as the
         // defaults for next session. Model path is saved in the
@@ -3672,6 +3705,7 @@ fn main() -> anyhow::Result<()> {
                 end_secs,
                 autocam,
                 scoreboard_package,
+                scoreboard_state,
                 app_weak_bg,
                 &interrupted,
                 last_progress_at,
@@ -4151,6 +4185,12 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
     }
     if let Some(app) = app_weak.upgrade() {
         app.set_scoreboard_error_text(s.scoreboard_error.clone().into());
+        app.set_scoreboard_editor_available(
+            s.scoreboard_runtime
+                .as_ref()
+                .and_then(reco_scoreboard::ScoreboardRuntime::editor_url)
+                .is_some(),
+        );
     }
 
     // Adaptive preview: resize render target to match the preview
