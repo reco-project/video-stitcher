@@ -2608,6 +2608,15 @@ fn main() -> anyhow::Result<()> {
                 .and_then(reco_scoreboard::ScoreboardRuntime::editor_url)
                 .is_some(),
         );
+        let network_editor_url = s
+            .scoreboard_runtime
+            .as_ref()
+            .and_then(reco_scoreboard::ScoreboardRuntime::network_editor_url);
+        app.set_scoreboard_share_available(network_editor_url.is_some());
+        app.set_scoreboard_share_url(network_editor_url.unwrap_or_default().into());
+        if network_editor_url.is_none() {
+            app.set_scoreboard_share_dialog_open(false);
+        }
     });
 
     let app_weak = app.as_weak();
@@ -2630,6 +2639,24 @@ fn main() -> anyhow::Result<()> {
             let message = format!("Cannot open scoreboard editor: {error}");
             state_ref.borrow_mut().scoreboard_error.clone_from(&message);
             app.set_scoreboard_error_text(message.into());
+        }
+    });
+
+    let app_weak = app.as_weak();
+    app.on_copy_scoreboard_share(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let url = app.get_scoreboard_share_url().to_string();
+        if url.is_empty() {
+            return;
+        }
+        if let Err(error) =
+            arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(url))
+        {
+            app.set_scoreboard_error_text(
+                format!("Cannot copy scoreboard address: {error}").into(),
+            );
         }
     });
 
@@ -4191,6 +4218,15 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
                 .and_then(reco_scoreboard::ScoreboardRuntime::editor_url)
                 .is_some(),
         );
+        let network_editor_url = s
+            .scoreboard_runtime
+            .as_ref()
+            .and_then(reco_scoreboard::ScoreboardRuntime::network_editor_url);
+        app.set_scoreboard_share_available(network_editor_url.is_some());
+        app.set_scoreboard_share_url(network_editor_url.unwrap_or_default().into());
+        if network_editor_url.is_none() {
+            app.set_scoreboard_share_dialog_open(false);
+        }
     }
 
     // Adaptive preview: resize render target to match the preview

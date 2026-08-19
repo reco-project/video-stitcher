@@ -25,6 +25,7 @@ pub struct ScoreboardRuntime {
     command_tx: SyncSender<RuntimeCommand>,
     frame_rx: Receiver<Result<OverlayFrame, String>>,
     editor_url: Option<String>,
+    network_editor_url: Option<String>,
     _asset_server: LocalPackageServer,
 }
 
@@ -54,6 +55,11 @@ impl ScoreboardRuntime {
             .editor
             .as_deref()
             .map(|editor| asset_server.editor_url_for(editor));
+        let network_editor_url = package
+            .manifest
+            .editor
+            .as_deref()
+            .and_then(|editor| asset_server.network_editor_url_for(editor));
         let editor_state = asset_server.editor_state();
         let initial_json = initial_state
             .map(|state| serde_json::to_string(&state))
@@ -85,6 +91,7 @@ impl ScoreboardRuntime {
             command_tx,
             frame_rx,
             editor_url,
+            network_editor_url,
             _asset_server: asset_server,
         })
     }
@@ -100,9 +107,14 @@ impl ScoreboardRuntime {
         try_send_command(&self.command_tx, RuntimeCommand::Reset)
     }
 
-    /// Return the authenticated loopback editor URL declared by the package.
+    /// Return the authenticated local editor URL declared by the package.
     pub fn editor_url(&self) -> Option<&str> {
         self.editor_url.as_deref()
+    }
+
+    /// Return the authenticated editor URL reachable from the local network.
+    pub fn network_editor_url(&self) -> Option<&str> {
+        self.network_editor_url.as_deref()
     }
 
     /// Return the latest state published by the package editor.
@@ -536,6 +548,10 @@ mod tests {
                     const input = document.querySelector("#competition-input");
                     input.value = "Regional Final";
                     input.dispatchEvent(new Event("change", { bubbles: true }));
+                    const limit = document.querySelector("#team-foul-limit-input");
+                    limit.value = "6";
+                    limit.dispatchEvent(new Event("change", { bubbles: true }));
+                    document.querySelector("#home-foul").click();
                 })()"##,
                 false,
             )
@@ -545,7 +561,10 @@ mod tests {
         let editor_json = loop {
             if let Some((_, json)) = state.newer_than(0) {
                 let value: Value = serde_json::from_str(&json).unwrap();
-                if value["game"]["competition"] == "Regional Final" {
+                if value["game"]["competition"] == "Regional Final"
+                    && value["sport"]["teamFoulLimit"] == 6
+                    && value["sport"]["teamFoulsHome"] == 4
+                {
                     break value;
                 }
             }
@@ -556,5 +575,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         };
         assert_eq!(editor_json["sport"]["periodCount"], 4);
+        assert_eq!(editor_json["sport"]["teamFoulLimit"], 6);
+        assert_eq!(editor_json["sport"]["teamFoulsHome"], 4);
     }
 }

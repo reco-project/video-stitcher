@@ -1,7 +1,7 @@
-//! Loopback-only package asset server and authenticated live-editor bridge.
+//! Local package asset server and authenticated live-editor bridge.
 
 use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -54,6 +54,7 @@ impl EditorState {
 
 pub(crate) struct LocalPackageServer {
     address: SocketAddr,
+    network_address: Option<SocketAddr>,
     editor_token: String,
     editor_state: EditorState,
     stop: Arc<AtomicBool>,
@@ -69,9 +70,11 @@ impl LocalPackageServer {
                     path: package_root,
                     source,
                 })?;
-        let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(ServerError::Bind)?;
+        let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0)).map_err(ServerError::Bind)?;
         listener.set_nonblocking(true).map_err(ServerError::Bind)?;
-        let address = listener.local_addr().map_err(ServerError::Bind)?;
+        let port = listener.local_addr().map_err(ServerError::Bind)?.port();
+        let address = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
+        let network_address = local_network_ipv4().map(|address| SocketAddr::from((address, port)));
         let mut token_bytes = [0_u8; 24];
         getrandom::fill(&mut token_bytes)
             .map_err(|error| ServerError::Random(error.to_string()))?;
@@ -98,6 +101,7 @@ impl LocalPackageServer {
             .map_err(ServerError::Spawn)?;
         Ok(Self {
             address,
+            network_address,
             editor_token,
             editor_state,
             stop,
@@ -110,16 +114,37 @@ impl LocalPackageServer {
     }
 
     pub(crate) fn editor_url_for(&self, entry: &str) -> String {
+        self.editor_url_for_address(self.address, entry)
+    }
+
+    pub(crate) fn network_editor_url_for(&self, entry: &str) -> Option<String> {
+        self.network_address
+            .map(|address| self.editor_url_for_address(address, entry))
+    }
+
+    fn editor_url_for_address(&self, address: SocketAddr, entry: &str) -> String {
         let separator = if entry.contains('?') { '&' } else { '?' };
         format!(
-            "{}{separator}recoEditorToken={}",
-            self.url_for(entry),
+            "http://{address}/{}{separator}recoEditorToken={}",
+            entry.replace('\\', "/"),
             self.editor_token
         )
     }
 
     pub(crate) fn editor_state(&self) -> EditorState {
         self.editor_state.clone()
+    }
+}
+
+fn local_network_ipv4() -> Option<Ipv4Addr> {
+    // A connected UDP socket reveals the interface selected by the OS without
+    // sending traffic. The documentation-only destination never needs to be
+    // reachable for route selection to succeed.
+    let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).ok()?;
+    socket.connect((Ipv4Addr::new(192, 0, 2, 1), 9)).ok()?;
+    match socket.local_addr().ok()?.ip() {
+        IpAddr::V4(address) if !address.is_loopback() && !address.is_unspecified() => Some(address),
+        _ => None,
     }
 }
 
@@ -379,7 +404,11 @@ mod tests {
     use super::*;
 
     fn request(server: &LocalPackageServer, target: &str) -> String {
-        let mut stream = TcpStream::connect(server.address).unwrap();
+        request_at(server.address, target)
+    }
+
+    fn request_at(address: SocketAddr, target: &str) -> String {
+        let mut stream = TcpStream::connect(address).unwrap();
         write!(stream, "GET {target} HTTP/1.1\r\nHost: localhost\r\n\r\n").unwrap();
         let mut response = String::new();
         stream.read_to_string(&mut response).unwrap();
@@ -442,5 +471,21 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(&json).unwrap()["score"],
             2
         );
+    }
+
+    #[test]
+    fn editor_is_reachable_at_authenticated_local_network_url() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("index.html"), "scoreboard").unwrap();
+        let server = LocalPackageServer::start(temp.path().to_path_buf()).unwrap();
+        let Some(network_address) = server.network_address else {
+            eprintln!("No local network address available; skipping LAN reachability check");
+            return;
+        };
+
+        let editor_url = server.network_editor_url_for("index.html?debug=1").unwrap();
+        assert!(editor_url.contains(&network_address.to_string()));
+        assert!(editor_url.contains(&server.editor_token));
+        assert!(request_at(network_address, "/index.html").starts_with("HTTP/1.1 200 OK"));
     }
 }
