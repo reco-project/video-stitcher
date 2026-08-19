@@ -30,13 +30,32 @@ Every package needs these fields:
   "author": "Reco Community",
   "description": "Example scoreboard",
   "entry": "index.html",
+  "editor": "index.html?debug=1",
   "viewport": { "width": 1920, "height": 1080 },
   "transparent": true,
   "updateApiVersion": 1
 }
 ```
 
-`schemaVersion`, `id`, `name`, `sport`, `version`, `entry`, both viewport dimensions, and `updateApiVersion` are required. The directory name must equal `id`. IDs start with a lowercase ASCII letter and contain only lowercase letters, digits, `-`, or `_`. `entry` must be a relative `.html` path contained by the package. Unknown optional fields are accepted.
+`schemaVersion`, `id`, `name`, `sport`, `version`, `entry`, both viewport dimensions, and `updateApiVersion` are required. The directory name must equal `id`. IDs start with a lowercase ASCII letter and contain only lowercase letters, digits, `-`, or `_`. `entry` must be a relative `.html` path contained by the package. The optional `editor` target follows the same containment rules and may include a query string. When present, Reco shows a generic **Edit scoreboard…** button.
+
+An editor page receives a short-lived `recoEditorToken` query parameter. It can publish complete version 1 state objects to the active overlay with an authenticated loopback request:
+
+```javascript
+const token = new URLSearchParams(location.search).get("recoEditorToken");
+await fetch("/__reco/editor-state", {
+    method: "PUT",
+    headers: {
+        "Content-Type": "application/json",
+        "X-Reco-Editor-Token": token
+    },
+    body: JSON.stringify(state)
+});
+```
+
+`GET /__reco/editor-state` with the same token returns the most recently published state or `null`. Keep sport rules and sport-specific controls inside the package; the host forwards the JSON without interpreting it.
+
+Reco snapshots the latest published editor state when an export starts and applies it before the export renderer's first capture, so preview, recording, and exported video use the same values.
 
 `updateApiVersion: 1` is a compatibility contract. Do not reinterpret or remove its fields incompatibly. A future incompatible contract will use a new number.
 
@@ -211,6 +230,6 @@ Use relative URLs. Avoid required CDN resources so the scoreboard works offline 
 
 ## Browser and Reco testing
 
-Open `index.html?debug=1` in Chrome for designer controls when your package offers them. Test long and missing names, large scores, light/dark backgrounds, transparent edges, shadows, logos, network reconnects, and 1920 × 1080.
+Open `index.html?debug=1` in Chrome for standalone designer controls when your package offers them. To test live editing, declare `editor` in the manifest, enable the scoreboard in Reco, and use **Edit scoreboard…** so Reco supplies the authenticated editor URL. Test long and missing names, large scores, light/dark backgrounds, transparent edges, shadows, logos, network reconnects, and 1920 × 1080.
 
 Then place the directory under an installed discovery root, start Reco, enable Scoreboard, and choose it. Verify preview, recording, and stream/export. A missing/invalid manifest, duplicate ID, missing entry, unsupported API, browser crash, or JavaScript exception must result in a visible/logged error while video continues.

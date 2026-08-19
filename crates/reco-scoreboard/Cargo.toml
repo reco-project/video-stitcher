@@ -12,6 +12,7 @@ description = "Generic HTML scoreboard package discovery and offscreen runtime"
 reco-core = { path = "../reco-core" }
 anyhow = "1"
 headless_chrome = { version = "1.0.22", default-features = false, features = ["offline"] }
+getrandom = "0.4"
 image = { version = "0.25", default-features = false, features = ["png"] }
 log = "0.4"
 percent-encoding = "2"
