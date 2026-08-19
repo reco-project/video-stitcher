@@ -567,6 +567,9 @@ export component RecoApp inherits Window {
     in-out property <int> scoreboard-current-index: 0;
     in-out property <string> scoreboard-error-text: "";
     in-out property <bool> scoreboard-editor-available: false;
+    in-out property <bool> scoreboard-share-available: false;
+    in-out property <string> scoreboard-share-url: "";
+    in-out property <bool> scoreboard-share-dialog-open: false;
 
     // Export progress (also used by the main status bar).
     in-out property <bool> export-in-progress: false;
@@ -790,6 +793,7 @@ export component RecoApp inherits Window {
     callback changed-preview-aspect(string);
     callback changed-scoreboard();
     callback edit-scoreboard();
+    callback copy-scoreboard-share();
 
     // File management: per-side segment lists and removal.
     in-out property <[string]> left-segments: [];
@@ -1414,6 +1418,10 @@ export component RecoApp inherits Window {
                             vertical-alignment: center;
                             horizontal-stretch: 1;
                         }
+                        if root.scoreboard-enabled && root.scoreboard-share-available: Button {
+                            text: "QR";
+                            clicked => { root.scoreboard-share-dialog-open = true; }
+                        }
                         CheckBox {
                             text: root.scoreboard-enabled ? "ON" : "OFF";
                             checked <=> root.scoreboard-enabled;
@@ -1813,6 +1821,80 @@ export component RecoApp inherits Window {
             }
         }
         }  // close VerticalBox
+
+        // ── Scoreboard network sharing dialog (modal) ──
+        if root.scoreboard-share-dialog-open: Rectangle {
+            background: root.bg-scrim;
+            TouchArea {
+                clicked => { root.scoreboard-share-dialog-open = false; }
+            }
+
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 540px;
+                height: 270px;
+                background: root.bg-surface;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: root.border-mid;
+                TouchArea {}
+
+                VerticalLayout {
+                    padding: 20px;
+                    spacing: 12px;
+
+                    Text {
+                        text: "Scoreboard on local network";
+                        color: root.text-heading;
+                        font-size: 16px;
+                        font-weight: 600;
+                    }
+                    Text {
+                        text: "Open this address to control the active scoreboard:";
+                        color: root.text-body;
+                        font-size: 13px;
+                        wrap: word-wrap;
+                    }
+                    Rectangle {
+                        height: 54px;
+                        background: root.bg-panel;
+                        border-radius: 6px;
+                        border-width: 1px;
+                        border-color: root.border-mid;
+                        Text {
+                            x: 10px;
+                            y: 8px;
+                            width: parent.width - 20px;
+                            height: parent.height - 16px;
+                            text: root.scoreboard-share-url;
+                            color: root.text-heading;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                            vertical-alignment: center;
+                        }
+                    }
+                    Text {
+                        text: "The phone, tablet, or computer must be connected to the same Wi-Fi or LAN as this computer.";
+                        color: root.text-muted;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        alignment: end;
+                        spacing: 8px;
+                        Button {
+                            text: "Copy address";
+                            clicked => { root.copy-scoreboard-share(); }
+                        }
+                        Button {
+                            text: "Close";
+                            clicked => { root.scoreboard-share-dialog-open = false; }
+                        }
+                    }
+                }
+            }
+        }
 
         // ── Recent files dialog (modal) ──
         // Three columns (Left / Right / Calibration). Each entry is a

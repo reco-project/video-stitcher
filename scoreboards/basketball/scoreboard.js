@@ -11,6 +11,8 @@
         period: document.querySelector("#period"),
         homeFouls: document.querySelector("#home-fouls"),
         awayFouls: document.querySelector("#away-fouls"),
+        homeFoulsWrap: document.querySelector("#home-fouls-wrap"),
+        awayFoulsWrap: document.querySelector("#away-fouls-wrap"),
         shotClock: document.querySelector("#shot-clock"),
         shotClockWrap: document.querySelector("#shot-clock-wrap"),
         board: document.querySelector(".scoreboard")
@@ -44,6 +46,7 @@
         sport: {
             periodCount: 4,
             periodDurationMinutes: 10,
+            teamFoulLimit: 5,
             teamFoulsHome: 3,
             teamFoulsAway: 5,
             shotClock: 18
@@ -68,6 +71,9 @@
         state.custom ??= {};
         state.sport.periodCount ??= 4;
         state.sport.periodDurationMinutes ??= 10;
+        state.sport.teamFoulLimit ??= 5;
+        state.sport.teamFoulsHome ??= 0;
+        state.sport.teamFoulsAway ??= 0;
         state.game.period ??= 1;
         return state;
     }
@@ -86,8 +92,7 @@
         setInput("period-duration-input", debugState.sport.periodDurationMinutes);
         setInput("period-input", debugState.game.period);
         setInput("shot-clock-input", debugState.sport.shotClock);
-        setInput("home-fouls-input", debugState.sport.teamFoulsHome);
-        setInput("away-fouls-input", debugState.sport.teamFoulsAway);
+        setInput("team-foul-limit-input", debugState.sport.teamFoulLimit);
         const clockButton = document.querySelector("#toggle-clock");
         if (clockButton) clockButton.textContent = timer ? "Stop clock" : "Start clock";
     }
@@ -104,8 +109,13 @@
         const period = state.game?.period ?? 1;
         const periodCount = state.sport?.periodCount ?? 4;
         text(elements.period, `Q${period} / ${periodCount}`, "Q1 / 4");
-        text(elements.homeFouls, state.sport?.teamFoulsHome, 0);
-        text(elements.awayFouls, state.sport?.teamFoulsAway, 0);
+        const teamFoulLimit = Math.max(1, Number(state.sport?.teamFoulLimit) || 5);
+        const homeTeamFouls = Math.max(0, Number(state.sport?.teamFoulsHome) || 0);
+        const awayTeamFouls = Math.max(0, Number(state.sport?.teamFoulsAway) || 0);
+        text(elements.homeFouls, `${homeTeamFouls} / ${teamFoulLimit}`, `0 / ${teamFoulLimit}`);
+        text(elements.awayFouls, `${awayTeamFouls} / ${teamFoulLimit}`, `0 / ${teamFoulLimit}`);
+        elements.homeFoulsWrap.classList.toggle("is-at-limit", homeTeamFouls >= teamFoulLimit);
+        elements.awayFoulsWrap.classList.toggle("is-at-limit", awayTeamFouls >= teamFoulLimit);
         const shotClock = state.sport?.shotClock;
         elements.shotClockWrap.hidden = shotClock === null || shotClock === undefined;
         text(elements.shotClock, shotClock, "");
@@ -214,12 +224,16 @@
             debugState.sport.shotClock = numberValue("shot-clock-input", 0, 99);
             publish();
         });
-        document.querySelector("#home-fouls-input").addEventListener("change", () => {
-            debugState.sport.teamFoulsHome = numberValue("home-fouls-input", 0, 99);
+        document.querySelector("#team-foul-limit-input").addEventListener("change", () => {
+            debugState.sport.teamFoulLimit = numberValue("team-foul-limit-input", 1, 20);
             publish();
         });
-        document.querySelector("#away-fouls-input").addEventListener("change", () => {
-            debugState.sport.teamFoulsAway = numberValue("away-fouls-input", 0, 99);
+        document.querySelector("#home-foul").addEventListener("click", () => {
+            debugState.sport.teamFoulsHome = Number(debugState.sport.teamFoulsHome || 0) + 1;
+            publish();
+        });
+        document.querySelector("#away-foul").addEventListener("click", () => {
+            debugState.sport.teamFoulsAway = Number(debugState.sport.teamFoulsAway || 0) + 1;
             publish();
         });
         document.querySelector("#toggle-clock").addEventListener("click", () => {
@@ -242,6 +256,8 @@
                 debugState.sport.periodCount,
                 Number(debugState.game.period || 1) + 1
             );
+            debugState.sport.teamFoulsHome = 0;
+            debugState.sport.teamFoulsAway = 0;
             clockFromDuration();
             publish();
         });

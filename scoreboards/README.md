@@ -20,7 +20,7 @@ Chrome/Chromium must currently be installed. `CHROME` can point to a nonstandard
 
 ## Security model
 
-Scoreboard packages are executable content and are trusted to the same extent as locally installed scripts. Reco loads only validated local package entries; it does not accept arbitrary remote page URLs. A loopback server exposes only files contained by that package plus the embedded SDK, rejects traversal, and provides no directory listing. Packages with an optional editor may exchange generic JSON state through a dedicated endpoint protected by a random, runtime-only token. Browser sandboxing stays enabled, and Reco exposes no process/filesystem APIs to JavaScript.
+Scoreboard packages are executable content and are trusted to the same extent as locally installed scripts. Reco loads only validated local package entries; it does not accept arbitrary remote page URLs. While a scoreboard is active, a local-network server exposes only files contained by that package plus the embedded SDK, rejects traversal, and provides no directory listing. Packages with an optional editor may exchange generic JSON state through a dedicated endpoint protected by a random, runtime-only token. The QR button in Reco shows that temporary address so another device on the same Wi-Fi or LAN can control the scoreboard. Browser sandboxing stays enabled, and Reco exposes no process/filesystem APIs to JavaScript.
 
 Normal browser security still applies. Network requests use standard CORS, mixed-content, and certificate rules. WebSocket and EventSource connections are available. Relative package assets work offline. Review community packages before installing them and do not install packages from an untrusted source.
 

@@ -39,7 +39,7 @@ Every package needs these fields:
 
 `schemaVersion`, `id`, `name`, `sport`, `version`, `entry`, both viewport dimensions, and `updateApiVersion` are required. The directory name must equal `id`. IDs start with a lowercase ASCII letter and contain only lowercase letters, digits, `-`, or `_`. `entry` must be a relative `.html` path contained by the package. The optional `editor` target follows the same containment rules and may include a query string. When present, Reco shows a generic **Edit scoreboard…** button.
 
-An editor page receives a short-lived `recoEditorToken` query parameter. It can publish complete version 1 state objects to the active overlay with an authenticated loopback request:
+An editor page receives a short-lived `recoEditorToken` query parameter. It can publish complete version 1 state objects to the active overlay with an authenticated request. Reco's QR button shows the editor URL for devices on the same Wi-Fi or LAN:
 
 ```javascript
 const token = new URLSearchParams(location.search).get("recoEditorToken");

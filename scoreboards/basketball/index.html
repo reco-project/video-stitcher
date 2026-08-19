@@ -12,7 +12,7 @@
             <div class="team team-home">
                 <span class="team-label">HOME</span>
                 <strong id="home-name" class="team-name">SHARKS</strong>
-                <span class="fouls">FOULS <strong id="home-fouls">3</strong></span>
+                <span class="fouls" id="home-fouls-wrap">FOULS <strong id="home-fouls">3 / 5</strong></span>
             </div>
             <strong id="home-score" class="score">37</strong>
 
@@ -27,7 +27,7 @@
             <div class="team team-away">
                 <span class="team-label">AWAY</span>
                 <strong id="away-name" class="team-name">LIONS</strong>
-                <span class="fouls">FOULS <strong id="away-fouls">5</strong></span>
+                <span class="fouls" id="away-fouls-wrap">FOULS <strong id="away-fouls">5 / 5</strong></span>
             </div>
         </section>
     </main>
@@ -45,11 +45,11 @@
             <label>Quarter length (min)<input id="period-duration-input" type="number" min="1" max="99"></label>
             <label>Current quarter<input id="period-input" type="number" min="1" max="12"></label>
             <label>Shot clock<input id="shot-clock-input" type="number" min="0" max="99"></label>
-            <label>Home team fouls<input id="home-fouls-input" type="number" min="0" max="99"></label>
-            <label>Away team fouls<input id="away-fouls-input" type="number" min="0" max="99"></label>
+            <label>Team foul limit<input id="team-foul-limit-input" type="number" min="1" max="20"></label>
         </div>
         <div class="button-row"><button data-score="home" data-points="1">Home +1</button><button data-score="home" data-points="2">+2</button><button data-score="home" data-points="3">+3</button></div>
         <div class="button-row"><button data-score="away" data-points="1">Away +1</button><button data-score="away" data-points="2">+2</button><button data-score="away" data-points="3">+3</button></div>
+        <div class="button-row foul-row"><button id="home-foul">Foul Home</button><button id="away-foul">Foul Away</button></div>
         <div class="button-row"><button id="toggle-clock">Start clock</button><button id="reset-clock">Reset clock</button><button id="next-period">Next quarter</button></div>
     </aside>
 
