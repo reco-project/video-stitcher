@@ -305,6 +305,7 @@ fn spawn_d3d11_decode_thread_shared(
     input: crate::stitch_job::InputPath,
     label: &'static str,
     shared_device: crate::ffmpeg::decoder::SharedHwDevice,
+    start_secs: Option<f64>,
 ) -> std::sync::mpsc::Receiver<crate::ffmpeg::decoder::D3d11Frame> {
     use crate::ffmpeg::decoder::{D3d11Frame, VideoDecoder};
 
@@ -322,6 +323,48 @@ fn spawn_d3d11_decode_thread_shared(
                 }
             };
             log::info!("D3D11VA decode thread {label}: backend={}", dec.backend());
+
+            // Seek to (approximately) `start_secs` instead of decoding and
+            // discarding every frame from the beginning of the file - the
+            // previous approach for a `start_time` far into a long source
+            // wasted real wall-clock time decoding footage nobody wanted.
+            // FFmpeg seeks to the nearest keyframe BEFORE the target, so we
+            // still decode-discard the remainder, but that gap is now
+            // bounded by one GOP instead of the whole pre-roll. Mirrors
+            // `FfmpegFileSource::spawn_single_decoder_at`'s software-decode
+            // seek strategy.
+            if let Some(secs) = start_secs {
+                if let Err(e) = dec.seek_to_secs(secs) {
+                    log::error!("{label} D3D11VA seek to {secs:.1}s failed: {e}");
+                    return;
+                }
+                let target_us = (secs * 1_000_000.0) as i64;
+                let mut skipped = 0u32;
+                loop {
+                    match dec.next_frame_d3d11() {
+                        Ok(Some(f)) if f.timestamp_us < target_us => {
+                            skipped += 1;
+                        }
+                        Ok(Some(f)) => {
+                            log::debug!(
+                                "{label} D3D11VA seek: skipped {skipped} frames to reach target"
+                            );
+                            if tx.send(f).is_err() {
+                                return;
+                            }
+                            break;
+                        }
+                        Ok(None) => {
+                            log::error!("{label}: EOF while seeking to {secs:.1}s");
+                            return;
+                        }
+                        Err(e) => {
+                            log::error!("{label} D3D11VA seek decode error: {e}");
+                            return;
+                        }
+                    }
+                }
+            }
 
             loop {
                 match dec.next_frame_d3d11() {
@@ -351,11 +394,17 @@ fn spawn_d3d11_decode_thread_shared(
 ///
 /// `sync_offset` applies temporal alignment: positive skips right frames,
 /// negative skips left frames.
+///
+/// `start_secs` seeks both decoders to (approximately) this position
+/// before the pairing loop starts, instead of decoding and discarding
+/// every frame up to it - see `spawn_d3d11_decode_thread_shared`'s doc
+/// comment. `None` starts from the beginning as before.
 #[cfg(target_os = "windows")]
 pub fn spawn_d3d11_decode_pair(
     left: &crate::stitch_job::InputPath,
     right: &crate::stitch_job::InputPath,
     sync_offset: i64,
+    start_secs: Option<f64>,
 ) -> std::sync::mpsc::Receiver<(
     crate::ffmpeg::decoder::D3d11Frame,
     crate::ffmpeg::decoder::D3d11Frame,
@@ -365,9 +414,14 @@ pub fn spawn_d3d11_decode_pair(
     let shared_device = crate::ffmpeg::decoder::create_shared_hw_device()
         .expect("D3D11VA hw device creation failed");
 
-    let left_rx = spawn_d3d11_decode_thread_shared(left.clone(), "left", shared_device.new_ref());
-    let right_rx =
-        spawn_d3d11_decode_thread_shared(right.clone(), "right", shared_device.new_ref());
+    let left_rx =
+        spawn_d3d11_decode_thread_shared(left.clone(), "left", shared_device.new_ref(), start_secs);
+    let right_rx = spawn_d3d11_decode_thread_shared(
+        right.clone(),
+        "right",
+        shared_device.new_ref(),
+        start_secs,
+    );
 
     let (pair_tx, pair_rx) = std::sync::mpsc::sync_channel::<(D3d11Frame, D3d11Frame)>(4);
     std::thread::Builder::new()

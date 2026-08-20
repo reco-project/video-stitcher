@@ -60,23 +60,20 @@ enum SourceMode {
 
 #[cfg(target_os = "windows")]
 enum WindowsDecodeState {
-    Pending {
-        left: crate::stitch_job::InputPath,
-        right: crate::stitch_job::InputPath,
-        sync_offset: i64,
-    },
+    Pending,
     Running {
         pair_rx: std::sync::mpsc::Receiver<(
             crate::ffmpeg::decoder::D3d11Frame,
             crate::ffmpeg::decoder::D3d11Frame,
         )>,
-        join_handles: Vec<std::thread::JoinHandle<()>>,
-        shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
     },
 }
 
 #[cfg(target_os = "windows")]
 struct WindowsZeroCopyState {
+    left: crate::stitch_job::InputPath,
+    right: crate::stitch_job::InputPath,
+    sync_offset: i64,
     decode: WindowsDecodeState,
     /// Holds the D3d11Frame pair from the most recent `next_frame()` call.
     ///
@@ -97,22 +94,39 @@ struct WindowsZeroCopyState {
 #[cfg(target_os = "windows")]
 impl WindowsZeroCopyState {
     fn ensure_running(&mut self) {
-        if let WindowsDecodeState::Pending {
-            left,
-            right,
-            sync_offset,
-        } = &self.decode
-        {
-            let left = left.clone();
-            let right = right.clone();
-            let sync_offset = *sync_offset;
-            let pair_rx = crate::zero_copy::spawn_d3d11_decode_pair(&left, &right, sync_offset);
-            self.decode = WindowsDecodeState::Running {
-                pair_rx,
-                join_handles: Vec::new(),
-                shutdown: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            };
+        if matches!(self.decode, WindowsDecodeState::Pending) {
+            let pair_rx = crate::zero_copy::spawn_d3d11_decode_pair(
+                &self.left,
+                &self.right,
+                self.sync_offset,
+                None,
+            );
+            self.decode = WindowsDecodeState::Running { pair_rx };
         }
+    }
+
+    /// Jump the decode threads to a new position, replacing whatever
+    /// pipeline is currently pending or running.
+    ///
+    /// Used to fix a large `start_time`/`skip_frames` jump: instead of
+    /// decoding and discarding every frame between here and the target
+    /// (seconds of wasted decode on a long pre-roll), drop the current
+    /// decode threads and respawn fresh ones that seek to the nearest
+    /// keyframe before the target and decode-discard only the much
+    /// smaller gap to the exact target PTS. Mirrors
+    /// [`FfmpegFileSource::seek`](crate::adapters::FfmpegFileSource::seek)'s
+    /// strategy for the CPU decode path. Dropping the old `pair_rx` (via
+    /// the reassignment below) signals the old decode threads to exit on
+    /// their next `send()` failure, same as `Drop for SmartFileSource`.
+    fn seek_to_secs(&mut self, secs: f64) {
+        let pair_rx = crate::zero_copy::spawn_d3d11_decode_pair(
+            &self.left,
+            &self.right,
+            self.sync_offset,
+            Some(secs),
+        );
+        self.decode = WindowsDecodeState::Running { pair_rx };
+        self.live_frame_guard = None;
     }
 }
 
@@ -495,11 +509,10 @@ impl SmartFileSource {
 
         Ok(Self {
             mode: SourceMode::D3d11ZeroCopy(Box::new(WindowsZeroCopyState {
-                decode: WindowsDecodeState::Pending {
-                    left: left.clone(),
-                    right: right.clone(),
-                    sync_offset,
-                },
+                left: left.clone(),
+                right: right.clone(),
+                sync_offset,
+                decode: WindowsDecodeState::Pending,
                 live_frame_guard: None,
             })),
             info,
@@ -719,12 +732,10 @@ impl FrameSource for SmartFileSource {
                 Ok(count)
             }
             #[cfg(target_os = "windows")]
-            SourceMode::D3d11ZeroCopy(_) => {
-                for i in 0..count {
-                    if self.next_frame()?.is_none() {
-                        return Ok(i);
-                    }
-                }
+            SourceMode::D3d11ZeroCopy(state) => {
+                let secs = count as f64 / self.info.fps;
+                state.seek_to_secs(secs);
+                log::debug!("D3D11VA seek: jumped to {secs:.1}s ({count} frames) for start_time");
                 Ok(count)
             }
         }
@@ -776,7 +787,7 @@ impl Drop for SmartFileSource {
         // Without this, orphaned decode threads keep the process alive.
         #[cfg(target_os = "windows")]
         if let SourceMode::D3d11ZeroCopy(state) = &mut self.mode {
-            if let WindowsDecodeState::Running { pair_rx, .. } = &mut state.decode {
+            if let WindowsDecodeState::Running { pair_rx } = &mut state.decode {
                 drop(std::mem::replace(
                     pair_rx,
                     std::sync::mpsc::sync_channel(0).1,
