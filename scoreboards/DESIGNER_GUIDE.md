@@ -157,7 +157,7 @@ The shared state deliberately has a small generic area and an unconstrained spor
         color: "#0057a8", secondaryColor: "#ffffff", logo: null
     },
     away: {
-        name: "Braunschweig Lions", shortName: "LIONS", score: 32,
+        name: "Springfield Lions", shortName: "LIONS", score: 32,
         color: "#cf2027", secondaryColor: "#ffffff", logo: null
     },
     sport: {
