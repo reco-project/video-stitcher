@@ -38,7 +38,7 @@
             logo: "assets/sharks.svg"
         },
         away: {
-            name: "Braunschweig Lions",
+            name: "Springfield Lions",
             shortName: "LIONS",
             score: 32,
             color: "#cf2027",
