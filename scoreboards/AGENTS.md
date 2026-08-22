@@ -76,3 +76,10 @@ Do not change Rust unless you discovered a genuine generic limitation. If one ex
 2. Extend the API in sport-neutral terms.
 3. Keep basketball and update API version 1 compatible, or introduce a new explicit API version for an incompatible contract.
 4. Test both basketball and football.
+
+
+## Universal Designer v2
+
+The shared operator surface is scoreboards/designer/index.html. It supports Basketball and Soccer without changing Rust or the generic SDK. When adding a sport, extend the designer with its default version 1 state, sport-field controls, and preview interpretation, then add a package contract test. Keep common values in game, home, and away; keep sport rules under sport.
+
+A package-specific editor remains valid and may expose controls that are more specialized than the universal designer. Any editor that publishes to Reco must use the authenticated X-Reco-Editor-Token request described in DESIGNER_GUIDE.md.
