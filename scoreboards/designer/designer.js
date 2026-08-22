@@ -27,7 +27,7 @@
         status: document.querySelector("#preview-status"), competition: document.querySelector("#preview-competition"), homeName: document.querySelector("#preview-home-name"),
         awayName: document.querySelector("#preview-away-name"), homeScore: document.querySelector("#preview-home-score"), awayScore: document.querySelector("#preview-away-score"),
         clock: document.querySelector("#preview-clock"), period: document.querySelector("#preview-period"), detail: document.querySelector("#preview-detail"),
-        card: document.querySelector("#preview-card"), legend: document.querySelector("#sport-legend"), fields: document.querySelector("#sport-fields"),
+        card: document.querySelector("#preview-card"), legend: document.querySelector("#sport-legend"), fields: document.querySelector("#sport-fields"), scoreButtons: document.querySelector("#score-buttons"),
         form: document.querySelector("#state-form"), message: document.querySelector("#editor-message")
     };
     function pathGet(target, path) { return path.split(".").reduce((value, key) => value?.[key], target); }
@@ -43,6 +43,10 @@
             if (document.activeElement === input) continue;
             const value = pathGet(state, input.dataset.bind); if (input.type === "checkbox") input.checked = Boolean(value); else input.value = value ?? "";
         }
+    }
+    function renderScoreButtons() {
+        const amounts = sport === "basketball" ? [1, 2, 3] : [1];
+        elements.scoreButtons.innerHTML = ["home", "away"].flatMap((team) => amounts.map((amount) => "<button type=\"button\" class=\"button\" data-team=\"" + team + "\" data-amount=\"" + amount + "\">" + (team === "home" ? "Home" : "Away") + " +" + amount + "</button>")).join("");
     }
     function render() {
         const specification = specifications[sport]; elements.select.value = sport; elements.title.textContent = specification.title; elements.legend.textContent = specification.rules;
@@ -67,7 +71,7 @@
         const previous = state; sport = nextSport === "soccer" ? "soccer" : "basketball"; state = structuredClone(defaults[sport]);
         state.game.competition = previous.game.competition; state.home.shortName = previous.home.shortName; state.home.name = previous.home.name; state.home.score = previous.home.score; state.home.color = previous.home.color;
         state.away.shortName = previous.away.shortName; state.away.name = previous.away.name; state.away.score = previous.away.score; state.away.color = previous.away.color;
-        renderFields(); render(); publish();
+        renderScoreButtons(); renderFields(); render(); publish();
     }
     function resetState() { state = structuredClone(defaults[sport]); render(); publish(); }
     function handleInput(event) {
@@ -91,8 +95,8 @@
         const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([JSON.stringify(state, null, 2) + "\n"], { type: "application/json" }));
         link.download = sport + "-scoreboard-state.json"; link.click(); URL.revokeObjectURL(link.href);
     });
-    document.querySelector(".score-buttons").addEventListener("click", (event) => {
+    elements.scoreButtons.addEventListener("click", (event) => {
         const button = event.target.closest("button[data-team]"); if (!button) return; state[button.dataset.team].score = Math.max(0, Number(state[button.dataset.team].score) + Number(button.dataset.amount)); render(); publish();
     });
-    renderFields(); render(); void loadPublished(); RecoScoreboard.update(state); Reco.ready();
+    renderScoreButtons(); renderFields(); render(); void loadPublished(); RecoScoreboard.update(state); Reco.ready();
 })();
