@@ -10,7 +10,7 @@
     <main class="broadcast-safe-area" aria-label="Basketball scoreboard">
         <section class="scoreboard">
             <div class="team team-home">
-                <span class="team-label">HOME</span>
+                <span class="team-label">HOME</span><img id="home-logo" class="team-logo" alt="">
                 <strong id="home-name" class="team-name">SHARKS</strong>
                 <span class="fouls" id="home-fouls-wrap">FOULS <strong id="home-fouls">3 / 5</strong></span>
             </div>
@@ -25,11 +25,12 @@
 
             <strong id="away-score" class="score">32</strong>
             <div class="team team-away">
-                <span class="team-label">AWAY</span>
+                <span class="team-label">AWAY</span><img id="away-logo" class="team-logo" alt="">
                 <strong id="away-name" class="team-name">LIONS</strong>
                 <span class="fouls" id="away-fouls-wrap">FOULS <strong id="away-fouls">5 / 5</strong></span>
             </div>
         </section>
+        <div id="custom-text" class="custom-text" hidden></div><img id="custom-logo" class="custom-logo" alt="" hidden>
     </main>
 
     <aside id="debug-controls" class="debug-controls" hidden>

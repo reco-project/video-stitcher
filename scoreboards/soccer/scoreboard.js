@@ -2,20 +2,20 @@
     "use strict";
 
     const elements = {
-        homeName: document.querySelector("#home-name"), homeScore: document.querySelector("#home-score"),
+        homeName: document.querySelector("#home-name"), homeScore: document.querySelector("#home-score"), homeLogo: document.querySelector("#home-logo"), awayLogo: document.querySelector("#away-logo"),
         awayName: document.querySelector("#away-name"), awayScore: document.querySelector("#away-score"),
         competition: document.querySelector("#competition"), status: document.querySelector("#status"),
         clock: document.querySelector("#clock"), period: document.querySelector("#period"),
         addedTime: document.querySelector("#added-time"), homeCards: document.querySelector("#home-cards"),
-        awayCards: document.querySelector("#away-cards"), board: document.querySelector(".scoreboard")
+        awayCards: document.querySelector("#away-cards"), customText: document.querySelector("#custom-text"), customLogo: document.querySelector("#custom-logo"), board: document.querySelector(".scoreboard")
     };
     const fallbackState = {
         version: 1,
         game: { competition: "Regional League", clock: "63:18", period: 2, running: false, status: "live" },
-        home: { name: "Schapen Sharks", shortName: "SHARKS", score: 2, color: "#087f5b", secondaryColor: "#fff", logo: null },
-        away: { name: "Braunschweig Lions", shortName: "LIONS", score: 1, color: "#9b1c31", secondaryColor: "#fff", logo: null },
+        home: { name: "Schapen Sharks", shortName: "SHARKS", score: 2, color: "#087f5b", secondaryColor: "#fff", logo: "assets/sharks.svg" },
+        away: { name: "Braunschweig Lions", shortName: "LIONS", score: 1, color: "#9b1c31", secondaryColor: "#fff", logo: "assets/lions.svg" },
         sport: { periodCount: 2, periodDurationMinutes: 45, addedTime: 3, homeYellowCards: 1, awayYellowCards: 0, homeRedCards: 0, awayRedCards: 1 },
-        custom: {}
+        custom: { scoreboard: { x: 960, y: 60, scale: 1 }, freeText: { text: "created with", x: 1640, y: 1005, scale: 1, color: "#fff", visible: true }, freeLogo: { src: "assets/reco-cam.svg", x: 1800, y: 1005, scale: 0.8, visible: true } }
     };
     const query = new URLSearchParams(location.search);
     const editorMode = query.get("debug") === "1";
@@ -25,6 +25,10 @@
 
     function ensureStateShape(state) {
         state.game ??= {}; state.home ??= {}; state.away ??= {}; state.sport ??= {}; state.custom ??= {};
+        state.home.logo ??= "assets/sharks.svg"; state.away.logo ??= "assets/lions.svg";
+        state.custom.scoreboard ??= { x: 960, y: 60, scale: 1 };
+        state.custom.freeText ??= { text: "created with", x: 1640, y: 1005, scale: 1, color: "#fff", visible: true };
+        state.custom.freeLogo ??= { src: "assets/reco-cam.svg", x: 1800, y: 1005, scale: 0.8, visible: true };
         state.game.period ??= 1; state.sport.periodCount ??= 2; state.sport.periodDurationMinutes ??= 45;
         state.sport.addedTime ??= 0; state.sport.homeYellowCards ??= 0; state.sport.awayYellowCards ??= 0;
         state.sport.homeRedCards ??= 0; state.sport.awayRedCards ??= 0;
@@ -53,10 +57,12 @@
         setInput("home-red-input", debugState.sport.homeRedCards); setInput("away-red-input", debugState.sport.awayRedCards);
         const button = document.querySelector("#toggle-clock"); if (button) button.textContent = timer ? "Stop clock" : "Start clock";
     }
+    function positionOverlay(element, config, defaultX, defaultY, defaultScale) { const x = Number(config?.x) || defaultX; const y = Number(config?.y) || defaultY; const scale = Math.min(3, Math.max(0.5, Number(config?.scale) || defaultScale)); element.style.left = x + "px"; element.style.top = y + "px"; element.style.transform = "translate(-50%, 0) scale(" + scale + ")"; }
+    function renderCustom(state) { positionOverlay(elements.board, state.custom.scoreboard, 960, 60, 1); positionOverlay(elements.customText, state.custom.freeText, 1640, 1005, 1); positionOverlay(elements.customLogo, state.custom.freeLogo, 1800, 1005, 0.8); elements.customText.textContent = state.custom.freeText.text || ""; elements.customText.hidden = state.custom.freeText.visible === false || !state.custom.freeText.text; elements.customText.style.color = state.custom.freeText.color || "#fff"; elements.customLogo.src = state.custom.freeLogo.src || ""; elements.customLogo.hidden = state.custom.freeLogo.visible === false || !state.custom.freeLogo.src; }
     Reco.onUpdate((state) => {
         const safeState = ensureStateShape(structuredClone(state)); debugState = safeState;
         setText(elements.homeName, safeState.home.shortName || safeState.home.name, "HOME"); setText(elements.homeScore, safeState.home.score, 0);
-        setText(elements.awayName, safeState.away.shortName || safeState.away.name, "AWAY"); setText(elements.awayScore, safeState.away.score, 0);
+        setText(elements.awayName, safeState.away.shortName || safeState.away.name, "AWAY"); setText(elements.awayScore, safeState.away.score, 0); elements.homeLogo.src = safeState.home.logo || ""; elements.homeLogo.hidden = !safeState.home.logo; elements.awayLogo.src = safeState.away.logo || ""; elements.awayLogo.hidden = !safeState.away.logo; renderCustom(safeState);
         setText(elements.competition, safeState.game.competition, ""); elements.competition.hidden = !safeState.game.competition;
         setText(elements.clock, safeState.game.clock, "00:00");
         const period = Number(safeState.game.period) || 1; setText(elements.period, period > 1 ? "2ND HALF" : "1ST HALF", "1ST HALF");

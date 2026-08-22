@@ -14,8 +14,8 @@
         }
     };
     const defaults = {
-        basketball: { version: 1, game: { competition: "Regional League", clock: "07:42", period: 2, running: false, status: "live" }, home: { name: "Schapen Sharks", shortName: "SHARKS", score: 37, color: "#0057a8", secondaryColor: "#fff" }, away: { name: "Braunschweig Lions", shortName: "LIONS", score: 32, color: "#cf2027", secondaryColor: "#fff" }, sport: { periodCount: 4, periodDurationMinutes: 10, teamFoulLimit: 5, teamFoulsHome: 3, teamFoulsAway: 5, shotClock: 18 }, custom: {} },
-        soccer: { version: 1, game: { competition: "Regional League", clock: "63:18", period: 2, running: false, status: "live" }, home: { name: "Schapen Sharks", shortName: "SHARKS", score: 2, color: "#087f5b", secondaryColor: "#fff" }, away: { name: "Braunschweig Lions", shortName: "LIONS", score: 1, color: "#9b1c31", secondaryColor: "#fff" }, sport: { periodCount: 2, periodDurationMinutes: 45, addedTime: 3, homeYellowCards: 1, awayYellowCards: 0, homeRedCards: 0, awayRedCards: 1 }, custom: {} }
+        basketball: { version: 1, game: { competition: "Regional League", clock: "07:42", period: 2, running: false, status: "live" }, home: { name: "Schapen Sharks", shortName: "SHARKS", score: 37, color: "#0057a8", secondaryColor: "#fff", logo: "assets/sharks.svg" }, away: { name: "Braunschweig Lions", shortName: "LIONS", score: 32, color: "#cf2027", secondaryColor: "#fff", logo: "assets/lions.svg" }, sport: { periodCount: 4, periodDurationMinutes: 10, teamFoulLimit: 5, teamFoulsHome: 3, teamFoulsAway: 5, shotClock: 18 }, custom: { scoreboard: { x: 960, y: 820, scale: 1 }, freeText: { text: "created with", x: 1640, y: 1005, scale: 1, color: "#fff", visible: true }, freeLogo: { src: "assets/reco-cam.svg", x: 1800, y: 1005, scale: 0.8, visible: true } } },
+        soccer: { version: 1, game: { competition: "Regional League", clock: "63:18", period: 2, running: false, status: "live" }, home: { name: "Schapen Sharks", shortName: "SHARKS", score: 2, color: "#087f5b", secondaryColor: "#fff", logo: "assets/sharks.svg" }, away: { name: "Braunschweig Lions", shortName: "LIONS", score: 1, color: "#9b1c31", secondaryColor: "#fff", logo: "assets/lions.svg" }, sport: { periodCount: 2, periodDurationMinutes: 45, addedTime: 3, homeYellowCards: 1, awayYellowCards: 0, homeRedCards: 0, awayRedCards: 1 }, custom: { scoreboard: { x: 960, y: 820, scale: 1 }, freeText: { text: "created with", x: 1640, y: 1005, scale: 1, color: "#fff", visible: true }, freeLogo: { src: "assets/reco-cam.svg", x: 1800, y: 1005, scale: 0.8, visible: true } } }
     };
     const query = new URLSearchParams(location.search);
     const editorToken = query.get("recoEditorToken");
@@ -27,7 +27,7 @@
         status: document.querySelector("#preview-status"), competition: document.querySelector("#preview-competition"), homeName: document.querySelector("#preview-home-name"),
         awayName: document.querySelector("#preview-away-name"), homeScore: document.querySelector("#preview-home-score"), awayScore: document.querySelector("#preview-away-score"),
         clock: document.querySelector("#preview-clock"), period: document.querySelector("#preview-period"), detail: document.querySelector("#preview-detail"),
-        card: document.querySelector("#preview-card"), legend: document.querySelector("#sport-legend"), fields: document.querySelector("#sport-fields"), scoreButtons: document.querySelector("#score-buttons"),
+        card: document.querySelector("#preview-card"), canvas: document.querySelector("#preview-canvas"), homeLogo: document.querySelector("#preview-home-logo"), awayLogo: document.querySelector("#preview-away-logo"), freeText: document.querySelector("#preview-free-text"), freeLogo: document.querySelector("#preview-free-logo"), legend: document.querySelector("#sport-legend"), fields: document.querySelector("#sport-fields"), scoreButtons: document.querySelector("#score-buttons"),
         form: document.querySelector("#state-form"), message: document.querySelector("#editor-message")
     };
     function pathGet(target, path) { return path.split(".").reduce((value, key) => value?.[key], target); }
@@ -35,6 +35,32 @@
         const keys = path.split("."); const leaf = keys.pop(); const parent = keys.reduce((current, key) => current[key] ??= {}, target); parent[leaf] = value;
     }
     function inputValue(input) { return input.type === "checkbox" ? input.checked : input.type === "number" ? Number(input.value) || 0 : input.value; }
+    function ensureCustomState() {
+        state.custom ??= {};
+        state.custom.scoreboard ??= { x: 960, y: sport === "soccer" ? 60 : 820, scale: 1 };
+        state.custom.freeText ??= { text: "created with", x: 1640, y: 1005, scale: 1, color: "#fff", visible: true };
+        state.custom.freeLogo ??= { src: "assets/reco-cam.svg", x: 1800, y: 1005, scale: 0.8, visible: true };
+    }
+    function previewAsset(asset) { return asset && asset.startsWith("data:") ? asset : asset ? "../" + sport + "/" + asset : ""; }
+    function setPreviewPosition(element, config, defaultX, defaultY, defaultScale) {
+        const x = Number(config?.x) || defaultX; const y = Number(config?.y) || defaultY;
+        const scale = Math.min(3, Math.max(0.5, Number(config?.scale) || defaultScale));
+        element.style.left = x / 1920 * 100 + "%"; element.style.top = y / 1080 * 100 + "%";
+        element.style.transform = "translate(-50%, 0) scale(" + scale + ")";
+    }
+    function renderPlacement() {
+        ensureCustomState();
+        setPreviewPosition(elements.card, state.custom.scoreboard, 960, sport === "soccer" ? 60 : 820, 1);
+        setPreviewPosition(elements.freeText, state.custom.freeText, 1640, 1005, 1);
+        setPreviewPosition(elements.freeLogo, state.custom.freeLogo, 1800, 1005, 0.8);
+        elements.freeText.textContent = state.custom.freeText.text || ""; elements.freeText.hidden = state.custom.freeText.visible === false || !state.custom.freeText.text;
+        elements.freeLogo.src = previewAsset(state.custom.freeLogo.src); elements.freeLogo.hidden = state.custom.freeLogo.visible === false || !state.custom.freeLogo.src;
+    }
+    function renderTeamLogos() {
+        elements.homeLogo.src = previewAsset(state.home.logo); elements.homeLogo.hidden = !state.home.logo;
+        elements.awayLogo.src = previewAsset(state.away.logo); elements.awayLogo.hidden = !state.away.logo;
+    }
+    
     function renderFields() {
         elements.fields.innerHTML = specifications[sport].fields.map(([label, path]) => "<label>" + label + "<input data-bind=\"" + path + "\" type=\"number\" min=\"0\" max=\"999\" value=\"" + pathGet(state, path) + "\"></label>").join("");
     }
@@ -49,10 +75,12 @@
         elements.scoreButtons.innerHTML = ["home", "away"].flatMap((team) => amounts.map((amount) => "<button type=\"button\" class=\"button\" data-team=\"" + team + "\" data-amount=\"" + amount + "\">" + (team === "home" ? "Home" : "Away") + " +" + amount + "</button>")).join("");
     }
     function render() {
+        ensureCustomState();
         const specification = specifications[sport]; elements.select.value = sport; elements.title.textContent = specification.title; elements.legend.textContent = specification.rules;
         elements.competition.textContent = state.game.competition || ""; elements.homeName.textContent = state.home.shortName || "HOME"; elements.awayName.textContent = state.away.shortName || "AWAY";
         elements.homeScore.textContent = Number(state.home.score) || 0; elements.awayScore.textContent = Number(state.away.score) || 0; elements.clock.textContent = state.game.clock || "00:00";
         elements.period.textContent = specification.period(state.game.period || 1, state.sport.periodCount || 1); elements.detail.textContent = specification.detail(state);
+        renderPlacement(); renderTeamLogos();
         elements.status.textContent = String(state.game.status || "live").toUpperCase(); elements.status.classList.toggle("error", state.game.status === "paused");
         elements.card.style.setProperty("--home-color", state.home.color || "#0057a8"); elements.card.style.setProperty("--away-color", state.away.color || "#cf2027");
         renderInputs();
@@ -74,6 +102,14 @@
         renderScoreButtons(); renderFields(); render(); publish();
     }
     function resetState() { state = structuredClone(defaults[sport]); render(); publish(); }
+    function placementConfig(target) { ensureCustomState(); return target === "scoreboard" ? state.custom.scoreboard : target === "freeText" ? state.custom.freeText : state.custom.freeLogo; }
+    function clamp(value, minimum, maximum) { return Math.min(maximum, Math.max(minimum, value)); }
+    let dragState = null;
+    elements.canvas.addEventListener("pointerdown", (event) => { const target = event.target.closest("[data-drag-target]") || (event.target.closest("#preview-card") ? event.target.closest("#preview-card") : null); if (!target) return; event.preventDefault(); dragState = { target: target.dataset.dragTarget || "scoreboard", rect: elements.canvas.getBoundingClientRect() }; });
+    elements.canvas.addEventListener("pointermove", (event) => { if (!dragState) return; const config = placementConfig(dragState.target); config.x = Math.round(clamp((event.clientX - dragState.rect.left) / dragState.rect.width * 1920, 0, 1920)); config.y = Math.round(clamp((event.clientY - dragState.rect.top) / dragState.rect.height * 1080, 0, 1080)); renderPlacement(); renderInputs(); publish(); });
+    elements.canvas.addEventListener("pointerup", () => { dragState = null; }); elements.canvas.addEventListener("pointercancel", () => { dragState = null; });
+    elements.canvas.addEventListener("wheel", (event) => { const target = event.target.closest("[data-drag-target]") || (event.target.closest("#preview-card") ? event.target.closest("#preview-card") : null); if (!target) return; event.preventDefault(); const config = placementConfig(target.dataset.dragTarget || "scoreboard"); config.scale = Math.round(clamp((Number(config.scale) || 1) + (event.deltaY < 0 ? 0.05 : -0.05), 0.5, 3) * 100) / 100; renderPlacement(); renderInputs(); publish(); });
+    
     function handleInput(event) {
         if (!event.target.dataset.bind) return; pathSet(state, event.target.dataset.bind, inputValue(event.target));
         if (event.target.dataset.bind === "home.shortName") state.home.name = event.target.value;
