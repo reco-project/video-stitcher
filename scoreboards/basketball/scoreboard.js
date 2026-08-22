@@ -110,7 +110,7 @@
         text(elements.homeName, state.home?.shortName || state.home?.name, "HOME");
         text(elements.homeScore, state.home?.score, 0);
         text(elements.awayName, state.away?.shortName || state.away?.name, "AWAY");
-        text(elements.awayScore, state.away?.score, 0); elements.homeLogo.src = state.home.logo || ""; elements.homeLogo.hidden = !state.home.logo; elements.awayLogo.src = state.away.logo || ""; elements.awayLogo.hidden = !state.away.logo; renderCustom(state);
+        text(elements.awayScore, state.away?.score, 0); elements.homeLogo.src = debugState.home.logo || ""; elements.homeLogo.hidden = !debugState.home.logo; elements.awayLogo.src = debugState.away.logo || ""; elements.awayLogo.hidden = !debugState.away.logo; renderCustom(debugState);
         text(elements.competition, state.game?.competition, "");
         elements.competition.hidden = !state.game?.competition;
         text(elements.clock, state.game?.clock, "00:00");
