@@ -510,6 +510,10 @@ export component RecoApp inherits Window {
     in-out property <float> rig-tilt: 0.0; // degrees
     in-out property <float> rig-roll: 0.0; // degrees
     in-out property <int> sync-offset: 0;  // frames
+    // True while a standalone sync-offset detection job is running (see
+    // `compute-sync-offset` below) - separate from `calibrating`, which
+    // covers full auto-calibrate.
+    in-out property <bool> detecting-sync: false;
 
     // Live calibration adjustments (PlaneLayout fields on MatchCalibration).
     // Updating these re-runs StitchPipeline::update_layout() so the user
@@ -718,6 +722,18 @@ export component RecoApp inherits Window {
     callback changed-rig-tilt(float);
     callback changed-rig-roll(float);
     callback changed-sync-offset(int);
+    // Detect the sync offset only (IMU telemetry, falling back to audio
+    // cross-correlation) - the same detection Auto-Calibrate uses
+    // internally, without running feature matching/optimization.
+    callback compute-sync-offset();
+    // Shown right after "Select Match Folder" seeds a brand-new
+    // calibration from Default Calibration (not when reusing an existing
+    // per-match file - that one's sync offset was presumably already set
+    // correctly). "Detect & Save" runs the same detection as the manual
+    // button but writes the result straight to this match's calibration
+    // file once it resolves.
+    in-out property <bool> match-folder-sync-prompt-open: false;
+    callback detect-match-folder-sync-offset();
     callback changed-fov(float);
     // Live calibration editing.
     callback changed-cal-intersect(float);
@@ -1173,6 +1189,12 @@ export component RecoApp inherits Window {
                             }
                             Text { text: "frames"; color: #777; font-size: 10px; vertical-alignment: center; }
                             Button { text: "Apply"; clicked => { root.sync-offset = sync-input.text.to-float(); root.changed-sync-offset(sync-input.text.to-float()); } }
+                        }
+
+                        if root.files-loaded: Button {
+                            text: root.detecting-sync ? "Detecting..." : "Detect Sync Offset";
+                            enabled: !root.detecting-sync && !root.calibrating;
+                            clicked => { root.compute-sync-offset(); }
                         }
 
                         if root.files-loaded && (root.cal-dirty || root.lens-dirty): Button {
@@ -2267,6 +2289,52 @@ export component RecoApp inherits Window {
                             clicked => {
                                 root.overwrite-default-cal-warning-open = false;
                                 root.confirm-save-calibration();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Match-folder sync-offset prompt (modal) ──
+        if root.match-folder-sync-prompt-open: Rectangle {
+            background: root.bg-scrim;
+            TouchArea { clicked => { root.match-folder-sync-prompt-open = false; } }
+
+            Rectangle {
+                width: 420px;
+                height: min(parent.height - 60px, 240px);
+                background: root.bg-surface;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: root.border-mid;
+                TouchArea {}
+
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 14px;
+
+                    Text { text: "Detect sync offset for this match?"; color: root.text-heading; font-size: 18px; font-weight: 600; }
+
+                    Text {
+                        text: "This calibration was just seeded from your Default Calibration. Camera start times differ recording to recording, so its sync offset probably doesn't apply here - detect and save the correct one now?";
+                        color: root.text-muted;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+
+                    Rectangle { vertical-stretch: 1; }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+                        Button { text: "Skip"; clicked => { root.match-folder-sync-prompt-open = false; } }
+                        Button {
+                            text: "Detect & Save";
+                            primary: true;
+                            clicked => {
+                                root.match-folder-sync-prompt-open = false;
+                                root.detect-match-folder-sync-offset();
                             }
                         }
                     }

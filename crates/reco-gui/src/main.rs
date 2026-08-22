@@ -20,6 +20,7 @@ mod match_folder;
 mod playback;
 mod preview;
 mod settings;
+mod sync_offset;
 mod telemetry_client;
 mod toast;
 
@@ -212,6 +213,18 @@ struct AppState {
     recording_frames: u64,
     /// Receives calibration results from the background thread.
     cal_rx: Option<std::sync::mpsc::Receiver<CalibrationResult>>,
+    /// Receives the result of a standalone sync-offset detection job (see
+    /// `on_compute_sync_offset`), separate from full auto-calibrate.
+    sync_offset_job:
+        Option<std::sync::mpsc::Receiver<Result<sync_offset::SyncOffsetResult, String>>>,
+    /// Set when the in-flight `sync_offset_job` should write its result
+    /// straight to `calibration_path` once it resolves, instead of
+    /// waiting for an explicit Save (see the "Select Match Folder"
+    /// sync-offset prompt in `on_detect_match_folder_sync_offset`).
+    /// Safe to auto-save here specifically because it only fires for a
+    /// calibration file just created for this match - never the shared
+    /// Default Calibration a normal manual detect+edit could touch.
+    pending_sync_offset_autosave: bool,
     /// wgpu handles captured from Slint's rendering notifier. `None`
     /// until the window has completed its first rendering setup.
     shared_gpu: Option<SharedGpu>,
@@ -469,6 +482,8 @@ impl AppState {
             recording_path: None,
             recording_frames: 0,
             cal_rx: None,
+            sync_offset_job: None,
+            pending_sync_offset_autosave: false,
             shared_gpu: None,
             #[cfg(feature = "automation")]
             autoload: AutoloadSpec::from_env(),
@@ -1885,7 +1900,14 @@ fn main() -> anyhow::Result<()> {
         // opened before, else seed one by copying the user's configured
         // Default Calibration, else leave calibration unset - same as a
         // fresh three-file pick, the user calibrates manually.
+        //
+        // `freshly_created` tracks the copy-from-default case specifically
+        // (not reuse, not "left unset") - only then does the sync-offset
+        // prompt below make sense: a reused per-match file already has its
+        // own, presumably-correct sync offset from when it was first set
+        // up, and there's nothing to detect against with no calibration.
         let cal_path = scan.calibration_path;
+        let mut freshly_created = false;
         if cal_path.exists() {
             log::info!(
                 "Match folder: reusing existing calibration {}",
@@ -1902,6 +1924,7 @@ fn main() -> anyhow::Result<()> {
                     );
                     s.calibration_path = Some(cal_path.clone());
                     s.user_settings.push_calibration(cal_path);
+                    freshly_created = true;
                 }
                 Err(e) => {
                     log::warn!("Failed to copy Default Calibration into match folder: {e}");
@@ -1933,6 +1956,19 @@ fn main() -> anyhow::Result<()> {
 
         drop(s);
         try_init_and_update(&state_ref, &app_weak);
+
+        // Offer to detect+save the sync offset now, while the calibration
+        // is still a fresh copy of the default - the previous camera
+        // start-time gap it inherited almost certainly doesn't apply to
+        // this match's recordings. Gated on files actually loading (not
+        // just the copy succeeding) so the prompt doesn't show up over a
+        // broken/empty preview.
+        if freshly_created
+            && let Some(app) = app_weak.upgrade()
+            && app.get_files_loaded()
+        {
+            app.set_match_folder_sync_prompt_open(true);
+        }
     });
 
     // ── Recent-files dialog callbacks ──
@@ -2975,6 +3011,25 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_compute_sync_offset(move || {
+        start_sync_offset_detection(&state_ref, &app_weak);
+    });
+
+    // "Yes" branch of the Select-Match-Folder sync-offset prompt: same
+    // detection job as the manual button, but flagged to write straight
+    // to the calibration file once it resolves (see
+    // `AppState::pending_sync_offset_autosave`) instead of waiting for an
+    // explicit Save - this calibration was only just created for this
+    // match, so there's no risk of clobbering unrelated unsaved edits.
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_detect_match_folder_sync_offset(move || {
+        state_ref.borrow_mut().pending_sync_offset_autosave = true;
+        start_sync_offset_detection(&state_ref, &app_weak);
+    });
+
     let state_ref = Rc::clone(&state);
     app.on_changed_fov(move |deg| {
         state_ref.borrow_mut().set_fov(deg);
@@ -3931,6 +3986,46 @@ fn main() -> anyhow::Result<()> {
                 return;
             }
 
+            // Poll for standalone sync-offset detection results.
+            if let Some(rx) = &s.sync_offset_job
+                && let Ok(result) = rx.try_recv()
+            {
+                s.sync_offset_job = None;
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_detecting_sync(false);
+                    match result {
+                        Ok(r) => {
+                            s.set_sync_offset(r.frames as i32);
+                            app.set_sync_offset(r.frames as i32);
+                            app.set_cal_dirty(true);
+                            let mut status =
+                                format!("Sync offset detected: {} frames ({})", r.frames, r.method);
+                            if s.pending_sync_offset_autosave {
+                                s.pending_sync_offset_autosave = false;
+                                match s.save_calibration() {
+                                    Ok(()) => {
+                                        app.set_cal_dirty(false);
+                                        status.push_str(" - saved to calibration");
+                                    }
+                                    Err(e) => {
+                                        log::error!(
+                                            "Failed to auto-save detected sync offset: {e}"
+                                        );
+                                        status.push_str(" - failed to save, see log");
+                                    }
+                                }
+                            }
+                            app.set_status_text(status.into());
+                        }
+                        Err(e) => {
+                            s.pending_sync_offset_autosave = false;
+                            app.set_status_text(format!("Sync-offset detection failed: {e}").into());
+                        }
+                    }
+                }
+                return;
+            }
+
             // Poll the export worker for completion.
             if let Some(rx) = &s.export_rx
                 && let Ok(outcome) = rx.try_recv()
@@ -4400,6 +4495,29 @@ fn budget_for_lookahead(free_vram: u64, total_vram: u64) -> usize {
     // Same budget the export pre-flight uses, so the slider's risk zones match
     // what the engine will accept.
     reco_core::session::lookahead_budget_bytes(free_vram, total_vram)
+}
+
+/// Kick off a standalone sync-offset detection job (IMU, falling back to
+/// audio) against the currently loaded left/right videos. Shared by the
+/// manual "Detect Sync Offset" button and the "Select Match Folder"
+/// sync-offset prompt - the two differ only in what happens once the
+/// background job resolves (see `pending_sync_offset_autosave`).
+fn start_sync_offset_detection(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) {
+    let s = state.borrow();
+    let (left, right) = match (&s.left_path, &s.right_path) {
+        (Some(l), Some(r)) => (l.clone(), r.clone()),
+        _ => return,
+    };
+    drop(s);
+
+    let Some(app) = app_weak.upgrade() else {
+        return;
+    };
+    app.set_detecting_sync(true);
+    app.set_status_text("Detecting sync offset (IMU, falling back to audio)...".into());
+
+    let rx = sync_offset::spawn_compute_sync_offset(left, right);
+    state.borrow_mut().sync_offset_job = Some(rx);
 }
 
 fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) {
