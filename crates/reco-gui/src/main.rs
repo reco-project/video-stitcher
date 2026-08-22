@@ -16,9 +16,11 @@
 //! textures with no CPU readback.
 
 mod export;
+mod match_folder;
 mod playback;
 mod preview;
 mod settings;
+mod sync_offset;
 mod telemetry_client;
 mod toast;
 
@@ -194,6 +196,13 @@ struct AppState {
     right_path: Option<PathBuf>,
     left_input: Option<reco_io::stitch_job::InputPath>,
     right_input: Option<reco_io::stitch_job::InputPath>,
+    /// The match folder selected via "Select Match Folder" (see
+    /// `match_folder::scan_match_folder`), if that's how the current
+    /// left/right videos were loaded. Used to suggest an export output
+    /// path inside the match folder, named after it. Cleared by a manual
+    /// left/right pick, since those no longer necessarily correspond to
+    /// this folder's `Left`/`Right` subdirectories.
+    match_folder: Option<PathBuf>,
     calibration_path: Option<PathBuf>,
     calibration: Option<MatchCalibration>,
     playback: Playback,
@@ -204,6 +213,18 @@ struct AppState {
     recording_frames: u64,
     /// Receives calibration results from the background thread.
     cal_rx: Option<std::sync::mpsc::Receiver<CalibrationResult>>,
+    /// Receives the result of a standalone sync-offset detection job (see
+    /// `on_compute_sync_offset`), separate from full auto-calibrate.
+    sync_offset_job:
+        Option<std::sync::mpsc::Receiver<Result<sync_offset::SyncOffsetResult, String>>>,
+    /// Set when the in-flight `sync_offset_job` should write its result
+    /// straight to `calibration_path` once it resolves, instead of
+    /// waiting for an explicit Save (see the "Select Match Folder"
+    /// sync-offset prompt in `on_detect_match_folder_sync_offset`).
+    /// Safe to auto-save here specifically because it only fires for a
+    /// calibration file just created for this match - never the shared
+    /// Default Calibration a normal manual detect+edit could touch.
+    pending_sync_offset_autosave: bool,
     /// wgpu handles captured from Slint's rendering notifier. `None`
     /// until the window has completed its first rendering setup.
     shared_gpu: Option<SharedGpu>,
@@ -451,6 +472,7 @@ impl AppState {
             right_path: None,
             left_input: None,
             right_input: None,
+            match_folder: None,
             calibration_path: None,
             calibration: None,
             playback: Playback::new(),
@@ -460,6 +482,8 @@ impl AppState {
             recording_path: None,
             recording_frames: 0,
             cal_rx: None,
+            sync_offset_job: None,
+            pending_sync_offset_autosave: false,
             shared_gpu: None,
             #[cfg(feature = "automation")]
             autoload: AutoloadSpec::from_env(),
@@ -605,6 +629,21 @@ impl AppState {
         std::fs::write(path, json).map_err(|e| format!("write {}: {e}", path.display()))?;
         log::info!("Saved calibration to {}", path.display());
         Ok(())
+    }
+
+    /// Whether the calibration currently loaded is the one configured in
+    /// preferences as the Default Calibration - i.e. saving now would
+    /// overwrite the fallback future sessions rely on, not just this
+    /// session's own file. `None == None` deliberately doesn't count (no
+    /// default configured means nothing to protect).
+    fn is_default_calibration(&self) -> bool {
+        match (
+            &self.calibration_path,
+            &self.user_settings.default_calibration_path,
+        ) {
+            (Some(current), Some(default)) => current == default,
+            _ => false,
+        }
     }
 
     /// Restore PlaneLayout to the values loaded at init (or after auto-cal).
@@ -1156,6 +1195,62 @@ fn display_name(path: &std::path::Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
+/// Suggest an export output path: inside the match folder, named after
+/// it, when the current selection came from "Select Match Folder" (see
+/// `AppState::match_folder`); otherwise next to the left video file, as
+/// before that feature existed. `None` only when neither is available
+/// (no video loaded yet).
+fn suggested_export_path(
+    match_folder: Option<&std::path::Path>,
+    left_path: Option<&std::path::Path>,
+) -> Option<PathBuf> {
+    if let Some(folder) = match_folder {
+        let name = folder
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "match".into());
+        return Some(folder.join(format!("{name}_stitched.mp4")));
+    }
+    let left_path = left_path?;
+    Some(left_path.with_file_name(format!(
+        "{}_stitched.mp4",
+        left_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "reco".into())
+    )))
+}
+
+/// Build the `InputPath` for a camera slot from freshly picked file(s),
+/// optionally appending to an already-selected chain (multi-segment
+/// recordings, e.g. DJI 4GB splits, get picked a few files at a time).
+/// `label` is only used for the segment-count log message ("Left"/"Right").
+fn input_path_from_picks(
+    paths: Vec<PathBuf>,
+    existing: Option<&reco_io::stitch_job::InputPath>,
+    label: &str,
+) -> reco_io::stitch_job::InputPath {
+    match existing {
+        Some(existing) => {
+            let mut all = existing.all_paths();
+            all.extend(paths);
+            log::info!("{label}: appended to {} total segments", all.len());
+            reco_io::stitch_job::InputPath::Chained(all)
+        }
+        None => {
+            if paths.len() == 1 {
+                reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
+            } else {
+                log::info!(
+                    "{label}: {} segments selected, chaining via concat demuxer",
+                    paths.len()
+                );
+                reco_io::stitch_job::InputPath::Chained(paths)
+            }
+        }
+    }
+}
+
 /// Push the current MRU lists into the Slint properties that back the
 /// Recent-files dialog. Called at startup and after every file pick.
 fn sync_recent_paths(settings: &settings::GuiSettings, app: &RecoApp) {
@@ -1610,28 +1705,7 @@ fn main() -> anyhow::Result<()> {
         paths.sort();
         let input = {
             let s = state_ref.borrow();
-            match &s.left_input {
-                Some(existing) => {
-                    let mut all = match existing {
-                        reco_io::stitch_job::InputPath::Single(p) => vec![p.clone()],
-                        reco_io::stitch_job::InputPath::Chained(ps) => ps.clone(),
-                    };
-                    all.extend(paths);
-                    log::info!("Left: appended to {} total segments", all.len());
-                    reco_io::stitch_job::InputPath::Chained(all)
-                }
-                None => {
-                    if paths.len() == 1 {
-                        reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
-                    } else {
-                        log::info!(
-                            "Left: {} segments selected, chaining via concat demuxer",
-                            paths.len()
-                        );
-                        reco_io::stitch_job::InputPath::Chained(paths)
-                    }
-                }
-            }
+            input_path_from_picks(paths, s.left_input.as_ref(), "Left")
         };
         let first = match &input {
             reco_io::stitch_job::InputPath::Single(p) => p.clone(),
@@ -1662,6 +1736,9 @@ fn main() -> anyhow::Result<()> {
             }
             s.left_input = Some(input);
             s.left_path = Some(first);
+            // A manual pick no longer necessarily matches this match
+            // folder's `Left` subdir - drop the export-suggestion link.
+            s.match_folder = None;
             drop(s);
             try_init_and_update(&state_ref, &app_weak);
         }
@@ -1683,28 +1760,7 @@ fn main() -> anyhow::Result<()> {
         paths.sort();
         let input = {
             let s = state_ref.borrow();
-            match &s.right_input {
-                Some(existing) => {
-                    let mut all = match existing {
-                        reco_io::stitch_job::InputPath::Single(p) => vec![p.clone()],
-                        reco_io::stitch_job::InputPath::Chained(ps) => ps.clone(),
-                    };
-                    all.extend(paths);
-                    log::info!("Right: appended to {} total segments", all.len());
-                    reco_io::stitch_job::InputPath::Chained(all)
-                }
-                None => {
-                    if paths.len() == 1 {
-                        reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
-                    } else {
-                        log::info!(
-                            "Right: {} segments selected, chaining via concat demuxer",
-                            paths.len()
-                        );
-                        reco_io::stitch_job::InputPath::Chained(paths)
-                    }
-                }
-            }
+            input_path_from_picks(paths, s.right_input.as_ref(), "Right")
         };
         let first = match &input {
             reco_io::stitch_job::InputPath::Single(p) => p.clone(),
@@ -1735,6 +1791,8 @@ fn main() -> anyhow::Result<()> {
             }
             s.right_input = Some(input);
             s.right_path = Some(first);
+            // See the matching comment in `on_pick_left_video`.
+            s.match_folder = None;
             drop(s);
             try_init_and_update(&state_ref, &app_weak);
         }
@@ -1766,6 +1824,150 @@ fn main() -> anyhow::Result<()> {
             s.calibration_path = Some(path);
             drop(s);
             try_init_and_update(&state_ref, &app_weak);
+        }
+    });
+
+    // Fills the left/right video and calibration pickers in one shot from
+    // a match folder that follows the `<match>/Left/`, `<match>/Right/`
+    // convention. Unlike the manual "+" pickers (which append to an
+    // existing chain), this replaces the current selection outright - it
+    // represents loading a whole match, not adding a segment to one.
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_pick_match_folder(move || {
+        let dialog = rfd::FileDialog::new().set_title("Select match folder");
+        let Some(folder) = dialog.pick_folder() else {
+            return;
+        };
+        let scan = match match_folder::scan_match_folder(&folder) {
+            Ok(scan) => scan,
+            Err(e) => {
+                log::warn!("Match folder pick failed: {e}");
+                let mut s = state_ref.borrow_mut();
+                if let Some(app) = app_weak.upgrade() {
+                    s.toasts
+                        .push(Severity::Error, "Match folder", e.to_string());
+                    crate::toast::sync_to_ui(&s.toasts, &app);
+                }
+                return;
+            }
+        };
+
+        let mut s = state_ref.borrow_mut();
+        s.match_folder = Some(folder.clone());
+
+        let left_input = input_path_from_picks(scan.left_videos, None, "Left");
+        let right_input = input_path_from_picks(scan.right_videos, None, "Right");
+        let left_first = left_input.first_path().to_path_buf();
+        let right_first = right_input.first_path().to_path_buf();
+
+        let files_changed = s.left_path.as_ref() != Some(&left_first)
+            || s.right_path.as_ref() != Some(&right_first);
+        if files_changed && s.bridge.is_some() {
+            s.unload_pipeline();
+            if let Some(app) = app_weak.upgrade() {
+                app.set_files_loaded(false);
+                app.set_status_text(
+                    "Match folder changed - re-calibrate or load calibration".into(),
+                );
+            }
+        }
+
+        if let Some(app) = app_weak.upgrade() {
+            let left_label = match &left_input {
+                reco_io::stitch_job::InputPath::Single(p) => display_name(p),
+                reco_io::stitch_job::InputPath::Chained(ps) => {
+                    format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                }
+            };
+            let right_label = match &right_input {
+                reco_io::stitch_job::InputPath::Single(p) => display_name(p),
+                reco_io::stitch_job::InputPath::Chained(ps) => {
+                    format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                }
+            };
+            app.set_left_path(left_label.into());
+            app.set_right_path(right_label.into());
+        }
+        s.user_settings.push_left(left_first.clone());
+        s.user_settings.push_right(right_first.clone());
+        s.left_input = Some(left_input);
+        s.right_input = Some(right_input);
+        s.left_path = Some(left_first);
+        s.right_path = Some(right_first);
+
+        // Calibration: reuse an existing per-match file if this match was
+        // opened before, else seed one by copying the user's configured
+        // Default Calibration, else leave calibration unset - same as a
+        // fresh three-file pick, the user calibrates manually.
+        //
+        // `freshly_created` tracks the copy-from-default case specifically
+        // (not reuse, not "left unset") - only then does the sync-offset
+        // prompt below make sense: a reused per-match file already has its
+        // own, presumably-correct sync offset from when it was first set
+        // up, and there's nothing to detect against with no calibration.
+        let cal_path = scan.calibration_path;
+        let mut freshly_created = false;
+        if cal_path.exists() {
+            log::info!(
+                "Match folder: reusing existing calibration {}",
+                cal_path.display()
+            );
+            s.calibration_path = Some(cal_path.clone());
+            s.user_settings.push_calibration(cal_path);
+        } else if let Some(default_cal) = s.user_settings.default_calibration_path.clone() {
+            match std::fs::copy(&default_cal, &cal_path) {
+                Ok(_) => {
+                    log::info!(
+                        "Match folder: seeded calibration from Default Calibration at {}",
+                        cal_path.display()
+                    );
+                    s.calibration_path = Some(cal_path.clone());
+                    s.user_settings.push_calibration(cal_path);
+                    freshly_created = true;
+                }
+                Err(e) => {
+                    log::warn!("Failed to copy Default Calibration into match folder: {e}");
+                    s.calibration_path = None;
+                    if let Some(app) = app_weak.upgrade() {
+                        s.toasts.push(
+                            Severity::Error,
+                            "Default Calibration",
+                            format!("Could not copy into match folder: {e}"),
+                        );
+                        crate::toast::sync_to_ui(&s.toasts, &app);
+                    }
+                }
+            }
+        } else {
+            s.calibration_path = None;
+        }
+
+        if let Some(app) = app_weak.upgrade() {
+            app.set_calibration_path(
+                s.calibration_path
+                    .as_ref()
+                    .map(|p| display_name(p))
+                    .unwrap_or_default()
+                    .into(),
+            );
+            sync_recent_paths(&s.user_settings, &app);
+        }
+
+        drop(s);
+        try_init_and_update(&state_ref, &app_weak);
+
+        // Offer to detect+save the sync offset now, while the calibration
+        // is still a fresh copy of the default - the previous camera
+        // start-time gap it inherited almost certainly doesn't apply to
+        // this match's recordings. Gated on files actually loading (not
+        // just the copy succeeding) so the prompt doesn't show up over a
+        // broken/empty preview.
+        if freshly_created
+            && let Some(app) = app_weak.upgrade()
+            && app.get_files_loaded()
+        {
+            app.set_match_folder_sync_prompt_open(true);
         }
     });
 
@@ -2375,6 +2577,14 @@ fn main() -> anyhow::Result<()> {
                 .unwrap_or_default()
                 .into(),
         );
+        app.set_prefs_default_calibration_path(
+            s.user_settings
+                .default_calibration_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default()
+                .into(),
+        );
         app.set_recording_codec(s.user_settings.recording_codec.clone().into());
         app.set_recording_quality(s.user_settings.recording_quality.clone().into());
         app.set_recording_folder(
@@ -2405,6 +2615,12 @@ fn main() -> anyhow::Result<()> {
             None
         } else {
             Some(PathBuf::from(model_path))
+        };
+        let default_cal_path = app.get_prefs_default_calibration_path().to_string();
+        s.user_settings.default_calibration_path = if default_cal_path.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(default_cal_path))
         };
         s.user_settings.recording_codec = app.get_recording_codec().to_string();
         s.user_settings.recording_quality = app.get_recording_quality().to_string();
@@ -2456,6 +2672,18 @@ fn main() -> anyhow::Result<()> {
             && let Some(app) = app_weak.upgrade()
         {
             app.set_prefs_ai_model_path(path.to_string_lossy().to_string().into());
+        }
+    });
+
+    let app_weak = app.as_weak();
+    app.on_pick_prefs_default_calibration(move || {
+        let dialog = rfd::FileDialog::new()
+            .set_title("Select default calibration")
+            .add_filter("Calibration JSON", &["json"]);
+        if let Some(path) = dialog.pick_file()
+            && let Some(app) = app_weak.upgrade()
+        {
+            app.set_prefs_default_calibration_path(path.to_string_lossy().to_string().into());
         }
     });
 
@@ -2783,6 +3011,25 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_compute_sync_offset(move || {
+        start_sync_offset_detection(&state_ref, &app_weak);
+    });
+
+    // "Yes" branch of the Select-Match-Folder sync-offset prompt: same
+    // detection job as the manual button, but flagged to write straight
+    // to the calibration file once it resolves (see
+    // `AppState::pending_sync_offset_autosave`) instead of waiting for an
+    // explicit Save - this calibration was only just created for this
+    // match, so there's no risk of clobbering unrelated unsaved edits.
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_detect_match_folder_sync_offset(move || {
+        state_ref.borrow_mut().pending_sync_offset_autosave = true;
+        start_sync_offset_detection(&state_ref, &app_weak);
+    });
+
     let state_ref = Rc::clone(&state);
     app.on_changed_fov(move |deg| {
         state_ref.borrow_mut().set_fov(deg);
@@ -2853,9 +3100,10 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
-    let app_weak = app.as_weak();
-    let state_ref = Rc::clone(&state);
-    app.on_save_calibration(move || {
+    // Shared by both `save-calibration` (after the default-calibration
+    // check passes) and `confirm-save-calibration` (user already said
+    // "yes, overwrite the default" in the warning modal).
+    fn do_save_calibration(state_ref: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) {
         let save_result = state_ref.borrow().save_calibration();
         match save_result {
             Err(e) => {
@@ -2881,6 +3129,24 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+    }
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_save_calibration(move || {
+        if state_ref.borrow().is_default_calibration() {
+            if let Some(app) = app_weak.upgrade() {
+                app.set_overwrite_default_cal_warning_open(true);
+            }
+            return;
+        }
+        do_save_calibration(&state_ref, &app_weak);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_confirm_save_calibration(move || {
+        do_save_calibration(&state_ref, &app_weak);
     });
 
     let app_weak = app.as_weak();
@@ -3720,6 +3986,46 @@ fn main() -> anyhow::Result<()> {
                 return;
             }
 
+            // Poll for standalone sync-offset detection results.
+            if let Some(rx) = &s.sync_offset_job
+                && let Ok(result) = rx.try_recv()
+            {
+                s.sync_offset_job = None;
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_detecting_sync(false);
+                    match result {
+                        Ok(r) => {
+                            s.set_sync_offset(r.frames as i32);
+                            app.set_sync_offset(r.frames as i32);
+                            app.set_cal_dirty(true);
+                            let mut status =
+                                format!("Sync offset detected: {} frames ({})", r.frames, r.method);
+                            if s.pending_sync_offset_autosave {
+                                s.pending_sync_offset_autosave = false;
+                                match s.save_calibration() {
+                                    Ok(()) => {
+                                        app.set_cal_dirty(false);
+                                        status.push_str(" - saved to calibration");
+                                    }
+                                    Err(e) => {
+                                        log::error!(
+                                            "Failed to auto-save detected sync offset: {e}"
+                                        );
+                                        status.push_str(" - failed to save, see log");
+                                    }
+                                }
+                            }
+                            app.set_status_text(status.into());
+                        }
+                        Err(e) => {
+                            s.pending_sync_offset_autosave = false;
+                            app.set_status_text(format!("Sync-offset detection failed: {e}").into());
+                        }
+                    }
+                }
+                return;
+            }
+
             // Poll the export worker for completion.
             if let Some(rx) = &s.export_rx
                 && let Ok(outcome) = rx.try_recv()
@@ -4191,10 +4497,47 @@ fn budget_for_lookahead(free_vram: u64, total_vram: u64) -> usize {
     reco_core::session::lookahead_budget_bytes(free_vram, total_vram)
 }
 
+/// Kick off a standalone sync-offset detection job (IMU, falling back to
+/// audio) against the currently loaded left/right videos. Shared by the
+/// manual "Detect Sync Offset" button and the "Select Match Folder"
+/// sync-offset prompt - the two differ only in what happens once the
+/// background job resolves (see `pending_sync_offset_autosave`).
+fn start_sync_offset_detection(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) {
+    let s = state.borrow();
+    let (left, right) = match (&s.left_path, &s.right_path) {
+        (Some(l), Some(r)) => (l.clone(), r.clone()),
+        _ => return,
+    };
+    drop(s);
+
+    let Some(app) = app_weak.upgrade() else {
+        return;
+    };
+    app.set_detecting_sync(true);
+    app.set_status_text("Detecting sync offset (IMU, falling back to audio)...".into());
+
+    let rx = sync_offset::spawn_compute_sync_offset(left, right);
+    state.borrow_mut().sync_offset_job = Some(rx);
+}
+
 fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) {
     let mut s = state.borrow_mut();
     if let Some(app) = app_weak.upgrade() {
         sync_segments(&s, &app);
+    }
+    // No calibration explicitly picked yet: fall back to the user's
+    // configured Default Calibration (preferences), if any and if it
+    // still exists on disk - this is the one place every left/right/
+    // calibration pick path converges before `try_init`, so it covers
+    // "no calibration otherwise available" generically instead of
+    // duplicating the fallback at each pick site.
+    if s.calibration_path.is_none()
+        && let Some(default_cal) = s.user_settings.default_calibration()
+    {
+        if let Some(app) = app_weak.upgrade() {
+            app.set_calibration_path(display_name(&default_cal).into());
+        }
+        s.calibration_path = Some(default_cal);
     }
     // Capture the pre-init clip length so we can distinguish an input
     // change (new load / appended segments) from a calibration-only
@@ -4353,17 +4696,12 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                     set_lens_sliders(&app, l, r);
                     app.set_lens_dirty(false);
                 }
-                // Seed export dialog output filename suggestion to
-                // sit next to the left-video file for convenience.
-                let left_path = s.left_path.clone();
-                if let Some(left_path) = left_path {
-                    let suggested = left_path.with_file_name(format!(
-                        "{}_stitched.mp4",
-                        left_path
-                            .file_stem()
-                            .map(|s| s.to_string_lossy().into_owned())
-                            .unwrap_or_else(|| "reco".into())
-                    ));
+                // Seed export dialog output filename suggestion: inside
+                // the match folder when one is active, else next to the
+                // left video file (see `suggested_export_path`).
+                if let Some(suggested) =
+                    suggested_export_path(s.match_folder.as_deref(), s.left_path.as_deref())
+                {
                     app.set_export_output_path(suggested.to_string_lossy().to_string().into());
                 }
 
@@ -4685,5 +5023,37 @@ fn handle_calibration_result(
                 crate::toast::sync_to_ui(&state.toasts, &app);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod suggested_export_path_tests {
+    use super::suggested_export_path;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn prefers_match_folder_named_after_it() {
+        let folder = Path::new("D:/Matches/TeamA - TeamB 2026-08-22");
+        let left = Path::new("D:/Matches/TeamA - TeamB 2026-08-22/Left/DJI_0001.mp4");
+        assert_eq!(
+            suggested_export_path(Some(folder), Some(left)),
+            Some(PathBuf::from(
+                "D:/Matches/TeamA - TeamB 2026-08-22/TeamA - TeamB 2026-08-22_stitched.mp4"
+            ))
+        );
+    }
+
+    #[test]
+    fn falls_back_to_left_video_without_a_match_folder() {
+        let left = Path::new("D:/Recordings/DJI_0001.mp4");
+        assert_eq!(
+            suggested_export_path(None, Some(left)),
+            Some(PathBuf::from("D:/Recordings/DJI_0001_stitched.mp4"))
+        );
+    }
+
+    #[test]
+    fn none_when_nothing_loaded_yet() {
+        assert_eq!(suggested_export_path(None, None), None);
     }
 }
