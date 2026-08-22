@@ -699,6 +699,7 @@ export component RecoApp inherits Window {
     callback pick-left-video();
     callback pick-right-video();
     callback pick-calibration();
+    callback pick-match-folder();
     callback auto-calibrate();
     callback toggle-playback();
     callback step-forward();
@@ -958,6 +959,16 @@ export component RecoApp inherits Window {
                         padding: 10px;
                         spacing: 8px;
                         alignment: start;
+
+                        // Fills Left, Right and Calibration below in one
+                        // shot from a `<match>/Left/`, `<match>/Right/`
+                        // folder - see `on_pick_match_folder` in main.rs.
+                        FlatButton {
+                            text: "Select Match Folder...";
+                            clicked => { root.pick-match-folder(); }
+                        }
+
+                        Rectangle { height: 1px; background: root.border-subtle; }
 
                         // Left video section
                         HorizontalLayout {

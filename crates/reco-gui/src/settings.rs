@@ -221,8 +221,10 @@ mod tests {
 
     #[test]
     fn default_calibration_none_when_file_no_longer_exists() {
-        let mut s = GuiSettings::default();
-        s.default_calibration_path = Some(PathBuf::from("does-not-exist.json"));
+        let s = GuiSettings {
+            default_calibration_path: Some(PathBuf::from("does-not-exist.json")),
+            ..Default::default()
+        };
         assert!(s.default_calibration().is_none());
     }
 

@@ -16,6 +16,7 @@
 //! textures with no CPU readback.
 
 mod export;
+mod match_folder;
 mod playback;
 mod preview;
 mod settings;
@@ -1171,6 +1172,36 @@ fn display_name(path: &std::path::Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
+/// Build the `InputPath` for a camera slot from freshly picked file(s),
+/// optionally appending to an already-selected chain (multi-segment
+/// recordings, e.g. DJI 4GB splits, get picked a few files at a time).
+/// `label` is only used for the segment-count log message ("Left"/"Right").
+fn input_path_from_picks(
+    paths: Vec<PathBuf>,
+    existing: Option<&reco_io::stitch_job::InputPath>,
+    label: &str,
+) -> reco_io::stitch_job::InputPath {
+    match existing {
+        Some(existing) => {
+            let mut all = existing.all_paths();
+            all.extend(paths);
+            log::info!("{label}: appended to {} total segments", all.len());
+            reco_io::stitch_job::InputPath::Chained(all)
+        }
+        None => {
+            if paths.len() == 1 {
+                reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
+            } else {
+                log::info!(
+                    "{label}: {} segments selected, chaining via concat demuxer",
+                    paths.len()
+                );
+                reco_io::stitch_job::InputPath::Chained(paths)
+            }
+        }
+    }
+}
+
 /// Push the current MRU lists into the Slint properties that back the
 /// Recent-files dialog. Called at startup and after every file pick.
 fn sync_recent_paths(settings: &settings::GuiSettings, app: &RecoApp) {
@@ -1625,28 +1656,7 @@ fn main() -> anyhow::Result<()> {
         paths.sort();
         let input = {
             let s = state_ref.borrow();
-            match &s.left_input {
-                Some(existing) => {
-                    let mut all = match existing {
-                        reco_io::stitch_job::InputPath::Single(p) => vec![p.clone()],
-                        reco_io::stitch_job::InputPath::Chained(ps) => ps.clone(),
-                    };
-                    all.extend(paths);
-                    log::info!("Left: appended to {} total segments", all.len());
-                    reco_io::stitch_job::InputPath::Chained(all)
-                }
-                None => {
-                    if paths.len() == 1 {
-                        reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
-                    } else {
-                        log::info!(
-                            "Left: {} segments selected, chaining via concat demuxer",
-                            paths.len()
-                        );
-                        reco_io::stitch_job::InputPath::Chained(paths)
-                    }
-                }
-            }
+            input_path_from_picks(paths, s.left_input.as_ref(), "Left")
         };
         let first = match &input {
             reco_io::stitch_job::InputPath::Single(p) => p.clone(),
@@ -1698,28 +1708,7 @@ fn main() -> anyhow::Result<()> {
         paths.sort();
         let input = {
             let s = state_ref.borrow();
-            match &s.right_input {
-                Some(existing) => {
-                    let mut all = match existing {
-                        reco_io::stitch_job::InputPath::Single(p) => vec![p.clone()],
-                        reco_io::stitch_job::InputPath::Chained(ps) => ps.clone(),
-                    };
-                    all.extend(paths);
-                    log::info!("Right: appended to {} total segments", all.len());
-                    reco_io::stitch_job::InputPath::Chained(all)
-                }
-                None => {
-                    if paths.len() == 1 {
-                        reco_io::stitch_job::InputPath::Single(paths.into_iter().next().unwrap())
-                    } else {
-                        log::info!(
-                            "Right: {} segments selected, chaining via concat demuxer",
-                            paths.len()
-                        );
-                        reco_io::stitch_job::InputPath::Chained(paths)
-                    }
-                }
-            }
+            input_path_from_picks(paths, s.right_input.as_ref(), "Right")
         };
         let first = match &input {
             reco_io::stitch_job::InputPath::Single(p) => p.clone(),
@@ -1782,6 +1771,130 @@ fn main() -> anyhow::Result<()> {
             drop(s);
             try_init_and_update(&state_ref, &app_weak);
         }
+    });
+
+    // Fills the left/right video and calibration pickers in one shot from
+    // a match folder that follows the `<match>/Left/`, `<match>/Right/`
+    // convention. Unlike the manual "+" pickers (which append to an
+    // existing chain), this replaces the current selection outright - it
+    // represents loading a whole match, not adding a segment to one.
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_pick_match_folder(move || {
+        let dialog = rfd::FileDialog::new().set_title("Select match folder");
+        let Some(folder) = dialog.pick_folder() else {
+            return;
+        };
+        let scan = match match_folder::scan_match_folder(&folder) {
+            Ok(scan) => scan,
+            Err(e) => {
+                log::warn!("Match folder pick failed: {e}");
+                let mut s = state_ref.borrow_mut();
+                if let Some(app) = app_weak.upgrade() {
+                    s.toasts
+                        .push(Severity::Error, "Match folder", e.to_string());
+                    crate::toast::sync_to_ui(&s.toasts, &app);
+                }
+                return;
+            }
+        };
+
+        let mut s = state_ref.borrow_mut();
+
+        let left_input = input_path_from_picks(scan.left_videos, None, "Left");
+        let right_input = input_path_from_picks(scan.right_videos, None, "Right");
+        let left_first = left_input.first_path().to_path_buf();
+        let right_first = right_input.first_path().to_path_buf();
+
+        let files_changed = s.left_path.as_ref() != Some(&left_first)
+            || s.right_path.as_ref() != Some(&right_first);
+        if files_changed && s.bridge.is_some() {
+            s.unload_pipeline();
+            if let Some(app) = app_weak.upgrade() {
+                app.set_files_loaded(false);
+                app.set_status_text(
+                    "Match folder changed - re-calibrate or load calibration".into(),
+                );
+            }
+        }
+
+        if let Some(app) = app_weak.upgrade() {
+            let left_label = match &left_input {
+                reco_io::stitch_job::InputPath::Single(p) => display_name(p),
+                reco_io::stitch_job::InputPath::Chained(ps) => {
+                    format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                }
+            };
+            let right_label = match &right_input {
+                reco_io::stitch_job::InputPath::Single(p) => display_name(p),
+                reco_io::stitch_job::InputPath::Chained(ps) => {
+                    format!("{} ({} segments)", display_name(&ps[0]), ps.len())
+                }
+            };
+            app.set_left_path(left_label.into());
+            app.set_right_path(right_label.into());
+        }
+        s.user_settings.push_left(left_first.clone());
+        s.user_settings.push_right(right_first.clone());
+        s.left_input = Some(left_input);
+        s.right_input = Some(right_input);
+        s.left_path = Some(left_first);
+        s.right_path = Some(right_first);
+        s.persist_left_segments();
+        s.persist_right_segments();
+
+        // Calibration: reuse an existing per-match file if this match was
+        // opened before, else seed one by copying the user's configured
+        // Default Calibration, else leave calibration unset - same as a
+        // fresh three-file pick, the user calibrates manually.
+        let cal_path = scan.calibration_path;
+        if cal_path.exists() {
+            log::info!(
+                "Match folder: reusing existing calibration {}",
+                cal_path.display()
+            );
+            s.calibration_path = Some(cal_path.clone());
+            s.user_settings.push_calibration(cal_path);
+        } else if let Some(default_cal) = s.user_settings.default_calibration_path.clone() {
+            match std::fs::copy(&default_cal, &cal_path) {
+                Ok(_) => {
+                    log::info!(
+                        "Match folder: seeded calibration from Default Calibration at {}",
+                        cal_path.display()
+                    );
+                    s.calibration_path = Some(cal_path.clone());
+                    s.user_settings.push_calibration(cal_path);
+                }
+                Err(e) => {
+                    log::warn!("Failed to copy Default Calibration into match folder: {e}");
+                    s.calibration_path = None;
+                    if let Some(app) = app_weak.upgrade() {
+                        s.toasts.push(
+                            Severity::Error,
+                            "Default Calibration",
+                            format!("Could not copy into match folder: {e}"),
+                        );
+                        crate::toast::sync_to_ui(&s.toasts, &app);
+                    }
+                }
+            }
+        } else {
+            s.calibration_path = None;
+        }
+
+        if let Some(app) = app_weak.upgrade() {
+            app.set_calibration_path(
+                s.calibration_path
+                    .as_ref()
+                    .map(|p| display_name(p))
+                    .unwrap_or_default()
+                    .into(),
+            );
+            sync_recent_paths(&s.user_settings, &app);
+        }
+
+        drop(s);
+        try_init_and_update(&state_ref, &app_weak);
     });
 
     // ── Recent-files dialog callbacks ──
