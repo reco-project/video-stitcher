@@ -22,3 +22,5 @@ fieldset { margin: 0 0 18px; padding: 16px; border: 1px solid #91a5c333; border-
 .actions { display: flex; gap: 9px; } .actions .button { flex: 1; } #editor-message { min-height: 20px; margin: 15px 0 0; color: #8fa4bf; font-size: 13px; }
 @media (max-width: 1050px) { body { padding: 20px; } .header { align-items: flex-start; flex-direction: column; } .grid { grid-template-columns: 1fr; } }
 @media (max-width: 620px) { .form-grid, .score-buttons { grid-template-columns: 1fr 1fr; } .preview-match { grid-template-columns: 1fr 54px 100px 54px 1fr; } .preview-team strong { font-size: 16px; } .preview-score { font-size: 34px; } }
+.team-logo { width: 42px; height: 42px; margin-bottom: 5px; object-fit: contain; }
+.preview-team .team-logo { width: 28px; height: 28px; margin-bottom: 2px; }

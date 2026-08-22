@@ -39,3 +39,9 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .buttons { display: flex; gap: 8px; margin-top: 10px; }
 .debug-controls button { flex: 1; min-height: 38px; color: #fff; background: #29344a; border: 1px solid #56647d; border-radius: 7px; font: inherit; cursor: pointer; }
+.broadcast-safe-area, .safe-area { position: absolute; inset: 0; left: 0; right: 0; top: 0; bottom: 0; display: block; pointer-events: none; }
+.scoreboard { position: absolute; left: var(--scoreboard-x, 960px); top: var(--scoreboard-y, 60px); transform: translate(-50%, 0) scale(var(--scoreboard-scale, 1)); transform-origin: center top; pointer-events: auto; }
+.team-logo { width: 52px; height: 52px; object-fit: contain; }
+.custom-text, .custom-logo { position: absolute; z-index: 5; transform-origin: center; pointer-events: none; }
+.custom-text { padding: 4px 8px; color: #fff; background: rgba(0,0,0,.55); border-radius: 5px; font-size: 22px; font-weight: 700; white-space: nowrap; }
+.custom-logo { width: 110px; height: 46px; object-fit: contain; }

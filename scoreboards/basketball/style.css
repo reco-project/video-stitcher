@@ -109,3 +109,9 @@ body {
 .debug-controls button:hover { background: #37445c; }
 .debug-controls .foul-row button { background: #5a2930; border-color: #a7515e; }
 .debug-controls .foul-row button:hover { background: #71343e; }
+.broadcast-safe-area, .safe-area { position: absolute; inset: 0; left: 0; right: 0; top: 0; bottom: 0; display: block; pointer-events: none; }
+.scoreboard { position: absolute; left: var(--scoreboard-x, 960px); top: var(--scoreboard-y, 820px); transform: translate(-50%, 0) scale(var(--scoreboard-scale, 1)); transform-origin: center top; pointer-events: auto; }
+.team-logo { width: 52px; height: 52px; object-fit: contain; }
+.custom-text, .custom-logo { position: absolute; z-index: 5; transform-origin: center; pointer-events: none; }
+.custom-text { padding: 4px 8px; color: #fff; background: rgba(0,0,0,.55); border-radius: 5px; font-size: 22px; font-weight: 700; white-space: nowrap; }
+.custom-logo { width: 110px; height: 46px; object-fit: contain; }
