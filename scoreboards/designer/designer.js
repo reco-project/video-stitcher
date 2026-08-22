@@ -36,7 +36,7 @@
     }
     function inputValue(input) { return input.type === "checkbox" ? input.checked : input.type === "number" ? Number(input.value) || 0 : input.value; }
     function renderFields() {
-        elements.fields.innerHTML = specifications[sport].fields.map(([label, path]) => "<label>" + label + "<input data-bind="" + path + "" type="number" min="0" max="999" value="" + pathGet(state, path) + ""></label>").join("");
+        elements.fields.innerHTML = specifications[sport].fields.map(([label, path]) => "<label>" + label + "<input data-bind=\"" + path + "\" type=\"number\" min=\"0\" max=\"999\" value=\"" + pathGet(state, path) + "\"></label>").join("");
     }
     function renderInputs() {
         for (const input of elements.form.querySelectorAll("[data-bind]")) {
