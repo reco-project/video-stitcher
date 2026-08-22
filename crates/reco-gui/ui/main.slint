@@ -441,6 +441,13 @@ export component RecoApp inherits Window {
     preferred-height: 820px;
     min-width: 720px;
     min-height: 600px;
+    // Pin the UI font explicitly rather than relying on each renderer's
+    // own generic "sans-serif" fallback resolution - femtovg-wgpu (via
+    // fontdb) and Skia (via DirectWrite on Windows) can resolve that
+    // fallback to fonts with different em-box/line-height metrics, which
+    // read as an overall size change even though every `font-size` value
+    // below is unchanged. Segoe UI is Windows' own system UI font.
+    default-font-family: "Segoe UI";
 
     // ── Theme colors ──
     in-out property <bool> dark-mode: true;
