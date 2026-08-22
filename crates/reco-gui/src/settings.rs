@@ -238,8 +238,10 @@ mod tests {
         let path = dir.join("default.json");
         std::fs::write(&path, b"{}").unwrap();
 
-        let mut s = GuiSettings::default();
-        s.default_calibration_path = Some(path.clone());
+        let s = GuiSettings {
+            default_calibration_path: Some(path.clone()),
+            ..Default::default()
+        };
         assert_eq!(s.default_calibration(), Some(path));
     }
 }
