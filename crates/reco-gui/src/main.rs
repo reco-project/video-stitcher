@@ -195,6 +195,13 @@ struct AppState {
     right_path: Option<PathBuf>,
     left_input: Option<reco_io::stitch_job::InputPath>,
     right_input: Option<reco_io::stitch_job::InputPath>,
+    /// The match folder selected via "Select Match Folder" (see
+    /// `match_folder::scan_match_folder`), if that's how the current
+    /// left/right videos were loaded. Used to suggest an export output
+    /// path inside the match folder, named after it. Cleared by a manual
+    /// left/right pick, since those no longer necessarily correspond to
+    /// this folder's `Left`/`Right` subdirectories.
+    match_folder: Option<PathBuf>,
     calibration_path: Option<PathBuf>,
     calibration: Option<MatchCalibration>,
     playback: Playback,
@@ -452,6 +459,7 @@ impl AppState {
             right_path: None,
             left_input: None,
             right_input: None,
+            match_folder: None,
             calibration_path: None,
             calibration: None,
             playback: Playback::new(),
@@ -1172,6 +1180,32 @@ fn display_name(path: &std::path::Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
+/// Suggest an export output path: inside the match folder, named after
+/// it, when the current selection came from "Select Match Folder" (see
+/// `AppState::match_folder`); otherwise next to the left video file, as
+/// before that feature existed. `None` only when neither is available
+/// (no video loaded yet).
+fn suggested_export_path(
+    match_folder: Option<&std::path::Path>,
+    left_path: Option<&std::path::Path>,
+) -> Option<PathBuf> {
+    if let Some(folder) = match_folder {
+        let name = folder
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "match".into());
+        return Some(folder.join(format!("{name}_stitched.mp4")));
+    }
+    let left_path = left_path?;
+    Some(left_path.with_file_name(format!(
+        "{}_stitched.mp4",
+        left_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "reco".into())
+    )))
+}
+
 /// Build the `InputPath` for a camera slot from freshly picked file(s),
 /// optionally appending to an already-selected chain (multi-segment
 /// recordings, e.g. DJI 4GB splits, get picked a few files at a time).
@@ -1687,6 +1721,9 @@ fn main() -> anyhow::Result<()> {
             }
             s.left_input = Some(input);
             s.left_path = Some(first);
+            // A manual pick no longer necessarily matches this match
+            // folder's `Left` subdir - drop the export-suggestion link.
+            s.match_folder = None;
             drop(s);
             try_init_and_update(&state_ref, &app_weak);
         }
@@ -1739,6 +1776,8 @@ fn main() -> anyhow::Result<()> {
             }
             s.right_input = Some(input);
             s.right_path = Some(first);
+            // See the matching comment in `on_pick_left_video`.
+            s.match_folder = None;
             drop(s);
             try_init_and_update(&state_ref, &app_weak);
         }
@@ -1800,6 +1839,7 @@ fn main() -> anyhow::Result<()> {
         };
 
         let mut s = state_ref.borrow_mut();
+        s.match_folder = Some(folder.clone());
 
         let left_input = input_path_from_picks(scan.left_videos, None, "Left");
         let right_input = input_path_from_picks(scan.right_videos, None, "Right");
@@ -1840,8 +1880,6 @@ fn main() -> anyhow::Result<()> {
         s.right_input = Some(right_input);
         s.left_path = Some(left_first);
         s.right_path = Some(right_first);
-        s.persist_left_segments();
-        s.persist_right_segments();
 
         // Calibration: reuse an existing per-match file if this match was
         // opened before, else seed one by copying the user's configured
@@ -4540,17 +4578,12 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                     set_lens_sliders(&app, l, r);
                     app.set_lens_dirty(false);
                 }
-                // Seed export dialog output filename suggestion to
-                // sit next to the left-video file for convenience.
-                let left_path = s.left_path.clone();
-                if let Some(left_path) = left_path {
-                    let suggested = left_path.with_file_name(format!(
-                        "{}_stitched.mp4",
-                        left_path
-                            .file_stem()
-                            .map(|s| s.to_string_lossy().into_owned())
-                            .unwrap_or_else(|| "reco".into())
-                    ));
+                // Seed export dialog output filename suggestion: inside
+                // the match folder when one is active, else next to the
+                // left video file (see `suggested_export_path`).
+                if let Some(suggested) =
+                    suggested_export_path(s.match_folder.as_deref(), s.left_path.as_deref())
+                {
                     app.set_export_output_path(suggested.to_string_lossy().to_string().into());
                 }
 
@@ -4872,5 +4905,37 @@ fn handle_calibration_result(
                 crate::toast::sync_to_ui(&state.toasts, &app);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod suggested_export_path_tests {
+    use super::suggested_export_path;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn prefers_match_folder_named_after_it() {
+        let folder = Path::new("D:/Matches/TeamA - TeamB 2026-08-22");
+        let left = Path::new("D:/Matches/TeamA - TeamB 2026-08-22/Left/DJI_0001.mp4");
+        assert_eq!(
+            suggested_export_path(Some(folder), Some(left)),
+            Some(PathBuf::from(
+                "D:/Matches/TeamA - TeamB 2026-08-22/TeamA - TeamB 2026-08-22_stitched.mp4"
+            ))
+        );
+    }
+
+    #[test]
+    fn falls_back_to_left_video_without_a_match_folder() {
+        let left = Path::new("D:/Recordings/DJI_0001.mp4");
+        assert_eq!(
+            suggested_export_path(None, Some(left)),
+            Some(PathBuf::from("D:/Recordings/DJI_0001_stitched.mp4"))
+        );
+    }
+
+    #[test]
+    fn none_when_nothing_loaded_yet() {
+        assert_eq!(suggested_export_path(None, None), None);
     }
 }

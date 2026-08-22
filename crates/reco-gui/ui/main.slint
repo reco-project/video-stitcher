@@ -963,7 +963,7 @@ export component RecoApp inherits Window {
                         // Fills Left, Right and Calibration below in one
                         // shot from a `<match>/Left/`, `<match>/Right/`
                         // folder - see `on_pick_match_folder` in main.rs.
-                        FlatButton {
+                        Button {
                             text: "Select Match Folder...";
                             clicked => { root.pick-match-folder(); }
                         }
