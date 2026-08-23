@@ -120,6 +120,8 @@ pub fn run_export(
     start_secs: f32,
     end_secs: f32,
     autocam: AutocamUiConfig,
+    scoreboard_package: Option<reco_scoreboard::ScoreboardPackage>,
+    scoreboard_state: Option<serde_json::Value>,
     app_weak: slint::Weak<RecoApp>,
     interrupted: &AtomicBool,
     last_progress_at: Arc<Mutex<Option<Instant>>>,
@@ -233,6 +235,26 @@ pub fn run_export(
             }
         });
     });
+
+    if let Some(package) = scoreboard_package {
+        match reco_scoreboard::ScoreboardRuntime::start_with_state(package, 30, scoreboard_state) {
+            Ok(runtime) => {
+                job = job.on_session(move |session, _source| {
+                    session.set_overlay_source(Box::new(runtime));
+                });
+            }
+            Err(error) => {
+                log::error!("Scoreboard disabled for export: {error}");
+                let weak = app_weak.clone();
+                let message = error.to_string();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(app) = weak.upgrade() {
+                        app.set_scoreboard_error_text(message.into());
+                    }
+                });
+            }
+        }
+    }
 
     if start_secs > 0.0 {
         let skip_frames = (start_secs as f64 * fps) as u64;

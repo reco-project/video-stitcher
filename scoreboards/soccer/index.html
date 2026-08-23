@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, initial-scale=1">
+    <title>Reco Soccer Scoreboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main class="safe-area" aria-label="Soccer scoreboard">
+        <section class="scoreboard">
+            <div class="competition-row"><span id="competition" class="competition">REGIONAL LEAGUE</span><span id="status" class="status">LIVE</span></div>
+            <div class="match-row">
+                <div class="team home"><span class="label">HOME</span><img id="home-logo" class="team-logo" alt=""><strong id="home-name">FALCONS</strong><span id="home-cards" class="cards"></span></div>
+                <strong id="home-score" class="score">2</strong>
+                <div class="center"><strong id="clock">63:18</strong><span id="period">2ND HALF</span><em id="added-time">+3</em></div>
+                <strong id="away-score" class="score">1</strong>
+                <div class="team away"><span class="label">AWAY</span><img id="away-logo" class="team-logo" alt=""><strong id="away-name">LIONS</strong><span id="away-cards" class="cards"></span></div>
+            </div>
+        </section>
+        <div id="custom-text" class="custom-text" hidden></div><img id="custom-logo" class="custom-logo" alt="" hidden>
+    </main>
+    <aside id="debug-controls" class="debug-controls" hidden>
+        <header><strong>Edit soccer scoreboard</strong><span id="editor-status">Live</span></header>
+        <label>Competition<input id="competition-input" type="text" maxlength="48"></label>
+        <div class="form-grid">
+            <label>Home team<input id="home-name-input" type="text" maxlength="24"></label>
+            <label>Away team<input id="away-name-input" type="text" maxlength="24"></label>
+            <label>Half length<input id="period-duration-input" type="number" min="1" max="99"></label>
+            <label>Current half<input id="period-input" type="number" min="1" max="2"></label>
+            <label>Added time<input id="added-time-input" type="number" min="0" max="30"></label>
+            <label>Home yellow cards<input id="home-yellow-input" type="number" min="0" max="10"></label>
+            <label>Away yellow cards<input id="away-yellow-input" type="number" min="0" max="10"></label>
+            <label>Home red cards<input id="home-red-input" type="number" min="0" max="5"></label>
+            <label>Away red cards<input id="away-red-input" type="number" min="0" max="5"></label>
+        </div>
+        <div class="buttons"><button data-score="home">Home +1</button><button data-score="away">Away +1</button></div>
+        <div class="buttons"><button id="toggle-clock">Start clock</button><button id="reset-clock">Reset half</button><button id="next-period">Next half</button></div>
+    </aside>
+    <script src="../sdk/reco-scoreboard.js"></script>
+    <script src="scoreboard.js"></script>
+</body>
+</html>

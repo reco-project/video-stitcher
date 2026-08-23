@@ -1,0 +1,10 @@
+
+.scoreboard.theme-bauhaus { --home-secondary: #17202b; --away-secondary: #fff; color: #17202b; background: #f1eadc; border: 3px solid #17202b; border-radius: 0; box-shadow: 8px 8px 0 #e64a35; }
+.scoreboard.theme-bauhaus .competition-row, .scoreboard.theme-bauhaus .center { background: #17202b; color: #f1eadc; }
+.scoreboard.theme-bauhaus .home::before { background: #5eb1e8; }
+.scoreboard.theme-bauhaus .away::before { background: #e64a35; }
+.scoreboard.theme-playful { background: linear-gradient(135deg, #432f91, #ec6b9a); border: 2px solid #ffd45a; border-radius: 26px; box-shadow: 0 16px 32px #432f9166; }
+.scoreboard.theme-playful .home::before { background: linear-gradient(100deg, #20b8a5, #432f91); }
+.scoreboard.theme-playful .away::before { background: linear-gradient(260deg, #ec6b9a, #f3a641); }
+.scoreboard.theme-classic { background: #142335; border: 2px solid #c99b43; border-radius: 4px; box-shadow: 0 10px 22px #0008; }
+.scoreboard.theme-classic .competition, .scoreboard.theme-classic #period { font-family: Georgia, serif; color: #e6c477; }
