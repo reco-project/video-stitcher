@@ -15,7 +15,7 @@
         home: { name: "Schapen Sharks", shortName: "SHARKS", score: 2, color: "#087f5b", secondaryColor: "#fff", logo: "assets/sharks.svg" },
         away: { name: "Springfield Lions", shortName: "LIONS", score: 1, color: "#9b1c31", secondaryColor: "#fff", logo: "assets/lions.svg" },
         sport: { periodCount: 2, periodDurationMinutes: 45, addedTime: 3, homeYellowCards: 1, awayYellowCards: 0, homeRedCards: 0, awayRedCards: 1 },
-        custom: { scoreboard: { x: 960, y: 60, scale: 1 }, freeText: { text: "created with", x: 1640, y: 1005, scale: 1, color: "#fff", visible: true }, freeLogo: { src: "assets/reco-cam.svg", x: 1800, y: 1005, scale: 0.8, visible: true } }
+        custom: { scoreboard: { x: 960, y: 60, scale: 1 }, freeText: { text: "created with", x: 1640, y: 1005, scale: 1, color: "#fff", visible: true }, freeLogo: { src: "assets/reco-logo.png", x: 1800, y: 1005, scale: 0.8, visible: true } }
     };
     const query = new URLSearchParams(location.search);
     const editorMode = query.get("debug") === "1";
@@ -28,7 +28,7 @@
         state.home.logo ??= "assets/sharks.svg"; state.away.logo ??= "assets/lions.svg";
         state.custom.scoreboard ??= { x: 960, y: 60, scale: 1 };
         state.custom.freeText ??= { text: "created with", x: 1640, y: 1005, scale: 1, color: "#fff", visible: true };
-        state.custom.freeLogo ??= { src: "assets/reco-cam.svg", x: 1800, y: 1005, scale: 0.8, visible: true };
+        state.custom.freeLogo ??= { src: "assets/reco-logo.png", x: 1800, y: 1005, scale: 0.8, visible: true };
         state.game.period ??= 1; state.sport.periodCount ??= 2; state.sport.periodDurationMinutes ??= 45;
         state.sport.addedTime ??= 0; state.sport.homeYellowCards ??= 0; state.sport.awayYellowCards ??= 0;
         state.sport.homeRedCards ??= 0; state.sport.awayRedCards ??= 0;
