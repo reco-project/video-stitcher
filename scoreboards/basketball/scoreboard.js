@@ -30,12 +30,12 @@
             status: "live"
         },
         home: {
-            name: "Schapen Sharks",
-            shortName: "SHARKS",
+            name: "Springfield Falcons",
+            shortName: "FALCONS",
             score: 37,
             color: "#0057a8",
             secondaryColor: "#ffffff",
-            logo: "assets/sharks.svg"
+            logo: "assets/springfield-falcons.svg"
         },
         away: {
             name: "Springfield Lions",
@@ -43,7 +43,7 @@
             score: 32,
             color: "#cf2027",
             secondaryColor: "#ffffff",
-            logo: "assets/lions.svg"
+            logo: "assets/springfield-lions.svg"
         },
         sport: {
             periodCount: 4,
@@ -71,7 +71,7 @@
         state.away ??= {};
         state.sport ??= {};
         state.custom ??= {};
-        state.home.logo ??= "assets/sharks.svg"; state.away.logo ??= "assets/lions.svg";
+        state.home.logo ??= "assets/springfield-falcons.svg"; state.away.logo ??= "assets/springfield-lions.svg";
         state.custom.scoreboard ??= { x: 430, y: 120, scale: .62 };
         state.custom.freeText ??= { text: "created with", x: 1640, y: 940, scale: 1, color: "#fff", visible: true };
         state.custom.freeLogo ??= { src: "assets/reco-logo.png", x: 1800, y: 1005, scale: 0.8, visible: true };
@@ -105,6 +105,7 @@
 
     function positionOverlay(element, config, defaultX, defaultY, defaultScale) { const x = Number(config?.x) || defaultX; const y = Number(config?.y) || defaultY; const scale = Math.min(3, Math.max(0.5, Number(config?.scale) || defaultScale)); element.style.left = x + "px"; element.style.top = y + "px"; element.style.transform = "translate(-50%, 0) scale(" + scale + ")"; }
     function renderCustom(state) { positionOverlay(elements.board, state.custom.scoreboard, 430, 120, .62); positionOverlay(elements.customText, state.custom.freeText, 1640, 1005, 1); positionOverlay(elements.customLogo, state.custom.freeLogo, 1800, 940, 0.8); elements.customText.textContent = state.custom.freeText.text || ""; elements.customText.hidden = state.custom.freeText.visible === false || !state.custom.freeText.text; elements.customText.style.color = state.custom.freeText.color || "#fff"; elements.customLogo.src = state.custom.freeLogo.src || ""; elements.customLogo.hidden = state.custom.freeLogo.visible === false || !state.custom.freeLogo.src; }
+    function applyTheme(state) { const theme = ["minimal","bauhaus","playful","classic"].includes(state.custom?.theme) ? state.custom.theme : "minimal"; for (const name of ["minimal","bauhaus","playful","classic"]) elements.board.classList.toggle("theme-" + name, name === theme); }
     function applyTypography(state) {
         const typography = state.custom?.typography || {};
         const defaults = {fontFamily:"Inter",fontSize:18,fontWeight:"700",fontStyle:"normal",color:"#fff"};
@@ -122,7 +123,7 @@
         text(elements.homeName, state.home?.shortName || state.home?.name, "HOME");
         text(elements.homeScore, state.home?.score, 0);
         text(elements.awayName, state.away?.shortName || state.away?.name, "AWAY");
-        text(elements.awayScore, state.away?.score, 0); elements.homeLogo.src = debugState.home.logo || ""; elements.homeLogo.hidden = !debugState.home.logo; elements.awayLogo.src = debugState.away.logo || ""; elements.awayLogo.hidden = !debugState.away.logo; renderCustom(debugState); applyTypography(debugState);
+        text(elements.awayScore, state.away?.score, 0); elements.homeLogo.src = debugState.home.logo || ""; elements.homeLogo.hidden = !debugState.home.logo; elements.awayLogo.src = debugState.away.logo || ""; elements.awayLogo.hidden = !debugState.away.logo; renderCustom(debugState); applyTheme(debugState); applyTypography(debugState);
         text(elements.competition, state.game?.competition, "");
         elements.competition.hidden = !state.game?.competition;
         text(elements.clock, state.game?.clock, "00:00");

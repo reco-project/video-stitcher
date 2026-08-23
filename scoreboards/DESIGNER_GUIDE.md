@@ -153,7 +153,7 @@ The shared state deliberately has a small generic area and an unconstrained spor
     version: 1,
     game: { clock: "07:42", period: 2, running: true, status: "live" },
     home: {
-        name: "Schapen Sharks", shortName: "SHARKS", score: 37,
+        name: "Springfield Falcons", shortName: "FALCONS", score: 37,
         color: "#0057a8", secondaryColor: "#ffffff", logo: null
     },
     away: {
