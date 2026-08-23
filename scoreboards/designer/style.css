@@ -66,3 +66,12 @@ fieldset { margin-bottom: 12px; padding: 13px; }
 .form-grid { gap: 9px 11px; }
 .stage { border-radius: 10px; }
 @media (max-width: 1120px) { .mode-tabs { margin-left: 0; } .header { flex-wrap: wrap; } }
+
+body.game-mode #template-assets-fieldset, body.game-mode #typography-fieldset { display: none; }
+body.template-mode #game-assets-fieldset { display: none; }
+body.game-mode #game-assets-fieldset { display: grid; }
+.preview-card { width: 56%; opacity: .94; box-shadow: 0 10px 24px #00000059; }
+.preview-card.is-selected, .preview-free-text.is-selected, .preview-free-logo.is-selected { outline: 2px solid #70d897; outline-offset: 5px; }
+.editing-guides-hidden .preview-card.is-selected, .editing-guides-hidden .preview-free-text.is-selected, .editing-guides-hidden .preview-free-logo.is-selected { outline: none !important; }
+input[type=file] { min-height: 38px; padding: 6px; font-size: 11px; }
+#typography-fieldset .form-grid { align-items: end; }
