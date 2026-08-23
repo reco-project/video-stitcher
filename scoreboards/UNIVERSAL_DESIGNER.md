@@ -29,4 +29,4 @@ The designer always publishes a version 1 state object. Common fields stay in `g
 5. Keep the package offline-capable, transparent, accessible, and designed for its manifest viewport.
 6. Validate the package JavaScript, manifest, SDK hooks, and sport-specific scoring rules before committing.
 
-The universal designer is a reference operator surface. A package may still provide a specialized editor through its manifest `editor` field.
+Typography is stored under `state.custom.typography`; uploaded images are stored as data URLs so the template remains portable and offline-capable. The universal designer is a reference operator surface. A package may still provide a specialized editor through its manifest `editor` field.
