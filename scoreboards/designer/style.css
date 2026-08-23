@@ -41,3 +41,8 @@ fieldset { margin: 0 0 18px; padding: 16px; border: 1px solid #91a5c333; border-
 .foul-button { background: #4d3540; border-color: #8f6270; }
 .drag-hint { margin: 12px 0 0; color: #8fa4bf; font-size: 12px; line-height: 1.4; }
 @media (max-width: 1050px) { .stage { aspect-ratio: 16 / 9; } }
+
+.header #toggle-settings { align-self: center; }
+.settings-hidden .grid { grid-template-columns: 1fr; }
+.settings-hidden #settings-panel { display: none; }
+.preview-canvas { background-image: linear-gradient(#ffffff0a 1px, transparent 1px), linear-gradient(90deg, #ffffff0a 1px, transparent 1px), linear-gradient(135deg, #1a2a40, #0c1422); background-size: 10% 10%, 10% 10%, auto; }

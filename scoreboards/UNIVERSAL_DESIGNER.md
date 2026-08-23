@@ -6,7 +6,7 @@ Open it directly for a local preview:
 
     scoreboards/designer/index.html?sport=american-football
 
-Reco can also open it with `sport` and `recoEditorToken` query parameters. The designer uses a true 1920 × 1080 (16:9) preview canvas. The scoreboard, free text, and free logo can be moved and scaled independently. Editing guides and selection controls can be shown or hidden. The demo uses the provided Reco logo with the “created with” branding. Drag an element in the preview; use the mouse wheel over it to scale it.
+Reco can also open it with `sport` and `recoEditorToken` query parameters. The designer uses a true 1920 × 1080 (16:9) preview canvas. The default demo placement keeps every element inside that canvas so the full workspace remains visible. The scoreboard, free text, and free logo can be moved and scaled independently. The settings panel can be hidden with Hide settings; editing guides and selection controls can also be shown or hidden. The demo uses the provided Reco logo with the “created with” branding. Drag an element in the preview; use the mouse wheel over it to scale it.
 
 The designer always publishes a version 1 state object. Common fields stay in `game`, `home`, and `away`. Sport rules stay under `state.sport`; the host forwards that object without interpreting it. With a token, Publish to active scoreboard sends the complete state to `PUT /__reco/editor-state` using `X-Reco-Editor-Token`. Without a token, Download JSON exports the local state.
 
@@ -14,7 +14,7 @@ The designer always publishes a version 1 state object. Common fields stay in `g
 
 - Basketball: quarters, one shared team-foul limit, and shot clock; scoring buttons `+1`, `+2`, and `+3`, plus separate `Home + foul` and `Away + foul` controls.
 - Soccer: halves, added time, and yellow/red cards; goals are `+1` only.
-- Handball: halves, timeouts, two-minute suspensions, and seven-metre goals; goals are `+1`.
+- Handball: halves, home/away fouls, timeouts, two-minute time penalties, and seven-metre goals; goals are `+1`, with separate foul buttons.
 - Lacrosse: quarters, 60-second shot clock, penalties, man-up goals, and timeouts; goals are `+1`.
 - Field Hockey: quarters, penalty corners, and green/yellow/red cards; goals are `+1`.
 - American Football: quarters, down, yards to go, ball position, play clock, possession, and timeouts; buttons cover PAT `+1`, safety `+2`, field goal `+3`, and touchdown `+6`.
