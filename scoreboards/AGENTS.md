@@ -2,8 +2,9 @@
 
 Implement a new sport only by adding or modifying files inside its scoreboard package unless a genuine generic API limitation exists.
 
-DO NOT add football rules to Rust.
+DO NOT add American football rules to Rust.
 DO NOT add handball rules to Rust.
+DO NOT add lacrosse, field hockey, or rugby rules to Rust.
 DO NOT add volleyball rules to Rust.
 DO NOT hardcode sport names into the GUI.
 
@@ -80,6 +81,6 @@ Do not change Rust unless you discovered a genuine generic limitation. If one ex
 
 ## Universal Designer v2
 
-The shared operator surface is scoreboards/designer/index.html. It supports Basketball and Soccer without changing Rust or the generic SDK. When adding a sport, extend the designer with its default version 1 state, sport-field controls, and preview interpretation, then add a package contract test. Keep common values in game, home, and away; keep sport rules under sport.
+The shared operator surface is scoreboards/designer/index.html. It supports Basketball, Soccer, Handball, Lacrosse, Field Hockey, American Football, and Rugby without changing Rust or the generic SDK. When adding a sport, extend the designer with its default version 1 state, sport-field controls, and preview interpretation, then add a package contract test. Keep common values in game, home, and away; keep sport rules under sport.
 
 A package-specific editor remains valid and may expose controls that are more specialized than the universal designer. Any editor that publishes to Reco must use the authenticated X-Reco-Editor-Token request described in DESIGNER_GUIDE.md.

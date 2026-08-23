@@ -1,0 +1,38 @@
+:root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+* { box-sizing: border-box; }
+.safe-area { position: absolute; inset: 0; pointer-events: none; }
+.scoreboard { --home-color: #0057a8; --away-color: #cf2027; position: absolute; width: min(1160px, 58.5vw); min-width: 760px; color: #fff; background: linear-gradient(180deg, rgba(17,22,31,.96), rgba(5,8,14,.94)); border: 1px solid rgba(255,255,255,.26); border-radius: 18px; box-shadow: 0 12px 36px rgba(0,0,0,.55), inset 0 1px rgba(255,255,255,.12); overflow: hidden; transform-origin: top center; }
+.competition-row { display: flex; align-items: center; justify-content: center; gap: 18px; min-height: 42px; padding: 10px 24px; background: rgba(0,0,0,.3); border-bottom: 1px solid rgba(255,255,255,.13); }
+.competition { max-width: 720px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 18px; font-weight: 700; letter-spacing: .1em; opacity: .8; }
+.status { padding: 4px 9px; color: #08130e; background: #70d897; border-radius: 999px; font-size: 12px; font-weight: 800; letter-spacing: .12em; }
+.status.paused { color: #201b08; background: #ffd45a; }
+.status.final { color: #fff; background: #5f6b7d; }
+.match-row { display: grid; grid-template-columns: minmax(190px,1fr) 120px 250px 120px minmax(190px,1fr); min-height: 170px; }
+.team { position: relative; isolation: isolate; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 22px 30px; }
+.team::before { content: ""; position: absolute; inset: 0; z-index: -1; opacity: .8; }
+.home { color: #fff; text-align: left; }
+.home::before { background: linear-gradient(100deg, var(--home-color), transparent 92%); }
+.away { align-items: flex-end; color: #fff; text-align: right; }
+.away::before { background: linear-gradient(260deg, var(--away-color), transparent 92%); }
+.label { font-size: 12px; font-weight: 800; letter-spacing: .18em; opacity: .72; }
+.team-name { font-size: clamp(20px, 1.8vw, 32px); font-weight: 850; letter-spacing: .02em; }
+.team-logo { width: 58px; height: 58px; object-fit: contain; filter: drop-shadow(0 5px 8px rgba(0,0,0,.35)); }
+.score { align-self: center; font-size: clamp(56px, 5vw, 82px); line-height: 1; font-variant-numeric: tabular-nums; }
+.center { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+#clock { font-size: clamp(30px, 2.9vw, 50px); font-variant-numeric: tabular-nums; }
+#period { font-size: 14px; font-weight: 800; letter-spacing: .12em; opacity: .75; }
+#detail { min-height: 18px; color: #a8d4ff; font-size: 12px; font-style: normal; font-weight: 800; letter-spacing: .08em; text-align: center; }
+.custom-text, .custom-logo { position: absolute; transform-origin: center; pointer-events: none; }
+.custom-text { color: #fff; font-size: 22px; font-weight: 800; text-shadow: 0 2px 8px rgba(0,0,0,.8); }
+.custom-logo { width: 94px; height: 38px; object-fit: contain; filter: drop-shadow(0 2px 5px rgba(0,0,0,.8)); }
+.debug-controls { position: absolute; z-index: 10; right: 24px; bottom: 24px; width: min(390px, calc(100% - 48px)); max-height: calc(100% - 48px); overflow: auto; padding: 16px; color: #f5f7fb; background: rgba(10,15,23,.96); border: 1px solid rgba(255,255,255,.18); border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.42); }
+.debug-controls header { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.debug-controls label { display: grid; gap: 5px; margin: 10px 0; font-size: 12px; font-weight: 700; }
+.debug-controls input, .debug-controls select { min-height: 34px; padding: 6px 8px; color: #fff; background: #182231; border: 1px solid #3c4b61; border-radius: 7px; }
+.debug-controls .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.debug-controls .form-grid label { min-width: 0; }
+.debug-controls button { min-height: 34px; margin: 4px 4px 0 0; padding: 6px 9px; color: #fff; background: #1e5fb4; border: 0; border-radius: 7px; cursor: pointer; }
+.debug-controls button.secondary { background: #364154; }
+.debug-controls fieldset { margin: 12px 0; border: 1px solid rgba(255,255,255,.16); border-radius: 9px; }
+.debug-controls legend { padding: 0 5px; color: #a8d4ff; font-size: 12px; font-weight: 800; }

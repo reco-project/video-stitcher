@@ -2,24 +2,54 @@
     "use strict";
 
     const specifications = {
-        basketball: {
+        "basketball": {
             title: "Basketball", rules: "Basketball rules", period: (value, count) => "Q" + value + " / " + count,
-            detail: (state) => "SHOT " + (state.sport.shotClock ?? "-"),
-            fields: [["Quarters", "sport.periodCount"], ["Quarter length (min)", "sport.periodDurationMinutes"], ["Team foul limit", "sport.teamFoulLimit"], ["Home fouls", "sport.teamFoulsHome"], ["Away fouls", "sport.teamFoulsAway"], ["Shot clock", "sport.shotClock"]]
+            detail: (state) => "SHOT " + (state.sport.shotClock ?? "-"), scoreAmounts: [1,2,3], scoreLabels: {1:"Free throw",2:"2-pointer",3:"3-pointer"},
+            fields: [["Quarters","sport.periodCount","number"],["Quarter length (min)","sport.periodDurationMinutes","number"],["Team foul limit","sport.teamFoulLimit","number"],["Home fouls","sport.teamFoulsHome","number"],["Away fouls","sport.teamFoulsAway","number"],["Shot clock","sport.shotClock","number"]]
         },
-        soccer: {
+        "soccer": {
             title: "Soccer", rules: "Soccer rules", period: (value) => Number(value) > 1 ? "2ND HALF" : "1ST HALF",
-            detail: (state) => state.sport.addedTime ? "+" + state.sport.addedTime : "NO ADDED TIME",
-            fields: [["Halves", "sport.periodCount"], ["Half length (min)", "sport.periodDurationMinutes"], ["Added time", "sport.addedTime"], ["Home yellow cards", "sport.homeYellowCards"], ["Away yellow cards", "sport.awayYellowCards"], ["Home red cards", "sport.homeRedCards"], ["Away red cards", "sport.awayRedCards"]]
+            detail: (state) => state.sport.addedTime ? "+" + state.sport.addedTime : "NO ADDED TIME", scoreAmounts: [1], scoreLabels: {1:"Goal"},
+            fields: [["Halves","sport.periodCount","number"],["Half length (min)","sport.periodDurationMinutes","number"],["Added time","sport.addedTime","number"],["Home yellow cards","sport.homeYellowCards","number"],["Away yellow cards","sport.awayYellowCards","number"],["Home red cards","sport.homeRedCards","number"],["Away red cards","sport.awayRedCards","number"]]
+        },
+        "handball": {
+            title: "Handball", rules: "Handball rules", period: (value) => Number(value) > 1 ? "2ND HALF" : "1ST HALF",
+            detail: (state) => "2-MIN " + (Number(state.sport.suspensionsHome || 0) + Number(state.sport.suspensionsAway || 0)) + " · 7M " + (Number(state.sport.sevenMeterGoalsHome || 0) + Number(state.sport.sevenMeterGoalsAway || 0)), scoreAmounts: [1], scoreLabels: {1:"Goal"},
+            fields: [["Halves","sport.periodCount","number"],["Half length (min)","sport.periodDurationMinutes","number"],["Home timeouts","sport.timeoutsHome","number"],["Away timeouts","sport.timeoutsAway","number"],["Home 2-min suspensions","sport.suspensionsHome","number"],["Away 2-min suspensions","sport.suspensionsAway","number"],["Home 7m goals","sport.sevenMeterGoalsHome","number"],["Away 7m goals","sport.sevenMeterGoalsAway","number"]]
+        },
+        "lacrosse": {
+            title: "Lacrosse", rules: "Lacrosse rules", period: (value, count) => "Q" + value + " / " + count,
+            detail: (state) => "SHOT " + (state.sport.shotClock ?? "-") + " · MAN-UP " + (Number(state.sport.manUpHome || 0) + Number(state.sport.manUpAway || 0)), scoreAmounts: [1], scoreLabels: {1:"Goal"},
+            fields: [["Quarters","sport.periodCount","number"],["Quarter length (min)","sport.periodDurationMinutes","number"],["Shot clock","sport.shotClock","number"],["Home penalties","sport.penaltiesHome","number"],["Away penalties","sport.penaltiesAway","number"],["Home man-up goals","sport.manUpHome","number"],["Away man-up goals","sport.manUpAway","number"],["Home timeouts","sport.timeoutsHome","number"],["Away timeouts","sport.timeoutsAway","number"]]
+        },
+        "field-hockey": {
+            title: "Field Hockey", rules: "Field hockey rules", period: (value, count) => "Q" + value + " / " + count,
+            detail: (state) => "PC " + (Number(state.sport.penaltyCornersHome || 0) + Number(state.sport.penaltyCornersAway || 0)) + " · CARDS " + (Number(state.sport.yellowCardsHome || 0) + Number(state.sport.yellowCardsAway || 0)), scoreAmounts: [1], scoreLabels: {1:"Goal"},
+            fields: [["Quarters","sport.periodCount","number"],["Quarter length (min)","sport.periodDurationMinutes","number"],["Penalty corners home","sport.penaltyCornersHome","number"],["Penalty corners away","sport.penaltyCornersAway","number"],["Green cards home","sport.greenCardsHome","number"],["Green cards away","sport.greenCardsAway","number"],["Yellow cards home","sport.yellowCardsHome","number"],["Yellow cards away","sport.yellowCardsAway","number"],["Red cards home","sport.redCardsHome","number"],["Red cards away","sport.redCardsAway","number"]]
+        },
+        "american-football": {
+            title: "American Football", rules: "American football rules", period: (value, count) => "Q" + value + " / " + count,
+            detail: (state) => "DOWN " + (state.sport.down ?? 1) + " · " + (state.sport.yardsToGo ?? 10) + " TO GO · BALL " + (state.sport.ballOn ?? "-"), scoreAmounts: [1,2,3,6], scoreLabels: {1:"PAT",2:"Safety",3:"Field goal",6:"Touchdown"},
+            fields: [["Quarters","sport.periodCount","number"],["Quarter length (min)","sport.periodDurationMinutes","number"],["Down","sport.down","number"],["Yards to go","sport.yardsToGo","number"],["Ball on","sport.ballOn","number"],["Play clock","sport.playClock","number"],["Possession","sport.possession","text"],["Home timeouts","sport.timeoutsHome","number"],["Away timeouts","sport.timeoutsAway","number"]]
+        },
+        "rugby": {
+            title: "Rugby", rules: "Rugby rules", period: (value) => Number(value) > 1 ? "2ND HALF" : "1ST HALF",
+            detail: (state) => "TRY " + (Number(state.sport.triesHome || 0) + Number(state.sport.triesAway || 0)) + " · YC " + (Number(state.sport.yellowCardsHome || 0) + Number(state.sport.yellowCardsAway || 0)), scoreAmounts: [2,3,5], scoreLabels: {2:"Conversion",3:"Penalty",5:"Try"},
+            fields: [["Halves","sport.periodCount","number"],["Half length (min)","sport.periodDurationMinutes","number"],["Home tries","sport.triesHome","number"],["Away tries","sport.triesAway","number"],["Home conversions","sport.conversionsHome","number"],["Away conversions","sport.conversionsAway","number"],["Home yellow cards","sport.yellowCardsHome","number"],["Away yellow cards","sport.yellowCardsAway","number"],["Home red cards","sport.redCardsHome","number"],["Away red cards","sport.redCardsAway","number"],["Home sin bins","sport.sinBinsHome","number"],["Away sin bins","sport.sinBinsAway","number"]]
         }
     };
     const defaults = {
-        basketball: { version: 1, game: { competition: "Regional League", clock: "07:42", period: 2, running: false, status: "live" }, home: { name: "Schapen Sharks", shortName: "SHARKS", score: 37, color: "#0057a8", secondaryColor: "#fff", logo: "assets/sharks.svg" }, away: { name: "Springfield Lions", shortName: "LIONS", score: 32, color: "#cf2027", secondaryColor: "#fff", logo: "assets/lions.svg" }, sport: { periodCount: 4, periodDurationMinutes: 10, teamFoulLimit: 5, teamFoulsHome: 3, teamFoulsAway: 5, shotClock: 18 }, custom: { scoreboard: { x: 960, y: 820, scale: 1 }, freeText: { text: "created with", x: 1640, y: 1005, scale: 1, color: "#fff", visible: true }, freeLogo: { src: "assets/reco-cam.svg", x: 1800, y: 1005, scale: 0.8, visible: true } } },
-        soccer: { version: 1, game: { competition: "Regional League", clock: "63:18", period: 2, running: false, status: "live" }, home: { name: "Schapen Sharks", shortName: "SHARKS", score: 2, color: "#087f5b", secondaryColor: "#fff", logo: "assets/sharks.svg" }, away: { name: "Springfield Lions", shortName: "LIONS", score: 1, color: "#9b1c31", secondaryColor: "#fff", logo: "assets/lions.svg" }, sport: { periodCount: 2, periodDurationMinutes: 45, addedTime: 3, homeYellowCards: 1, awayYellowCards: 0, homeRedCards: 0, awayRedCards: 1 }, custom: { scoreboard: { x: 960, y: 820, scale: 1 }, freeText: { text: "created with", x: 1640, y: 1005, scale: 1, color: "#fff", visible: true }, freeLogo: { src: "assets/reco-cam.svg", x: 1800, y: 1005, scale: 0.8, visible: true } } }
+        "basketball": {version:1,game:{competition:"Regional League",clock:"07:42",period:2,running:false,status:"live"},home:{name:"Schapen Sharks",shortName:"SHARKS",score:37,color:"#0057a8",secondaryColor:"#fff",logo:"assets/sharks.svg"},away:{name:"Springfield Lions",shortName:"LIONS",score:32,color:"#cf2027",secondaryColor:"#fff",logo:"assets/lions.svg"},sport:{sportId:"basketball",periodCount:4,periodDurationMinutes:10,teamFoulLimit:5,teamFoulsHome:3,teamFoulsAway:5,shotClock:18},custom:{scoreboard:{x:960,y:820,scale:1},freeText:{text:"created with",x:1640,y:1005,scale:1,color:"#fff",visible:true},freeLogo:{src:"assets/reco-cam.svg",x:1800,y:1005,scale:0.8,visible:true}}},
+        "soccer": {version:1,game:{competition:"Regional League",clock:"63:18",period:2,running:false,status:"live"},home:{name:"Schapen Sharks",shortName:"SHARKS",score:2,color:"#087f5b",secondaryColor:"#fff",logo:"assets/sharks.svg"},away:{name:"Springfield Lions",shortName:"LIONS",score:1,color:"#9b1c31",secondaryColor:"#fff",logo:"assets/lions.svg"},sport:{sportId:"soccer",periodCount:2,periodDurationMinutes:45,addedTime:3,homeYellowCards:1,awayYellowCards:0,homeRedCards:0,awayRedCards:1},custom:{scoreboard:{x:960,y:820,scale:1},freeText:{text:"created with",x:1640,y:1005,scale:1,color:"#fff",visible:true},freeLogo:{src:"assets/reco-cam.svg",x:1800,y:1005,scale:0.8,visible:true}}},
+        "handball": {version:1,game:{competition:"Regional Handball League",clock:"18:24",period:1,running:false,status:"live"},home:{name:"Schapen Sharks",shortName:"SHARKS",score:14,color:"#0057a8",secondaryColor:"#fff",logo:"assets/sharks.svg"},away:{name:"Springfield Lions",shortName:"LIONS",score:12,color:"#cf2027",secondaryColor:"#fff",logo:"assets/lions.svg"},sport:{sportId:"handball",periodCount:2,periodDurationMinutes:30,timeoutsHome:1,timeoutsAway:2,suspensionsHome:1,suspensionsAway:0,sevenMeterGoalsHome:2,sevenMeterGoalsAway:1},custom:{scoreboard:{x:960,y:820,scale:1},freeText:{text:"created with",x:1640,y:1005,scale:1,color:"#fff",visible:true},freeLogo:{src:"assets/reco-cam.svg",x:1800,y:1005,scale:0.8,visible:true}}},
+        "lacrosse": {version:1,game:{competition:"Regional Lacrosse League",clock:"08:42",period:3,running:false,status:"live"},home:{name:"Schapen Sharks",shortName:"SHARKS",score:7,color:"#0057a8",secondaryColor:"#fff",logo:"assets/sharks.svg"},away:{name:"Springfield Lions",shortName:"LIONS",score:6,color:"#cf2027",secondaryColor:"#fff",logo:"assets/lions.svg"},sport:{sportId:"lacrosse",periodCount:4,periodDurationMinutes:15,shotClock:60,penaltiesHome:2,penaltiesAway:1,manUpHome:1,manUpAway:0,timeoutsHome:1,timeoutsAway:1},custom:{scoreboard:{x:960,y:820,scale:1},freeText:{text:"created with",x:1640,y:1005,scale:1,color:"#fff",visible:true},freeLogo:{src:"assets/reco-cam.svg",x:1800,y:1005,scale:0.8,visible:true}}},
+        "field-hockey": {version:1,game:{competition:"Regional Field Hockey League",clock:"11:36",period:2,running:false,status:"live"},home:{name:"Schapen Sharks",shortName:"SHARKS",score:3,color:"#0b7285",secondaryColor:"#fff",logo:"assets/sharks.svg"},away:{name:"Springfield Lions",shortName:"LIONS",score:2,color:"#d9480f",secondaryColor:"#fff",logo:"assets/lions.svg"},sport:{sportId:"field-hockey",periodCount:4,periodDurationMinutes:15,penaltyCornersHome:3,penaltyCornersAway:2,greenCardsHome:0,greenCardsAway:1,yellowCardsHome:1,yellowCardsAway:0,redCardsHome:0,redCardsAway:0},custom:{scoreboard:{x:960,y:820,scale:1},freeText:{text:"created with",x:1640,y:1005,scale:1,color:"#fff",visible:true},freeLogo:{src:"assets/reco-cam.svg",x:1800,y:1005,scale:0.8,visible:true}}},
+        "american-football": {version:1,game:{competition:"Regional American Football League",clock:"04:18",period:2,running:false,status:"live"},home:{name:"Schapen Sharks",shortName:"SHARKS",score:21,color:"#0057a8",secondaryColor:"#fff",logo:"assets/sharks.svg"},away:{name:"Springfield Lions",shortName:"LIONS",score:17,color:"#cf2027",secondaryColor:"#fff",logo:"assets/lions.svg"},sport:{sportId:"american-football",periodCount:4,periodDurationMinutes:15,down:2,yardsToGo:7,ballOn:42,playClock:18,possession:"SHARKS",timeoutsHome:2,timeoutsAway:1},custom:{scoreboard:{x:960,y:820,scale:1},freeText:{text:"created with",x:1640,y:1005,scale:1,color:"#fff",visible:true},freeLogo:{src:"assets/reco-cam.svg",x:1800,y:1005,scale:0.8,visible:true}}},
+        "rugby": {version:1,game:{competition:"Regional Rugby League",clock:"31:12",period:1,running:false,status:"live"},home:{name:"Schapen Sharks",shortName:"SHARKS",score:10,color:"#087f5b",secondaryColor:"#fff",logo:"assets/sharks.svg"},away:{name:"Springfield Lions",shortName:"LIONS",score:8,color:"#9b1c31",secondaryColor:"#fff",logo:"assets/lions.svg"},sport:{sportId:"rugby",periodCount:2,periodDurationMinutes:40,triesHome:1,triesAway:1,conversionsHome:1,conversionsAway:0,yellowCardsHome:1,yellowCardsAway:0,redCardsHome:0,redCardsAway:0,sinBinsHome:0,sinBinsAway:1},custom:{scoreboard:{x:960,y:820,scale:1},freeText:{text:"created with",x:1640,y:1005,scale:1,color:"#fff",visible:true},freeLogo:{src:"assets/reco-cam.svg",x:1800,y:1005,scale:0.8,visible:true}}}
     };
     const query = new URLSearchParams(location.search);
     const editorToken = query.get("recoEditorToken");
-    let sport = query.get("sport") === "soccer" ? "soccer" : "basketball";
+    let sport = specifications[query.get("sport")] ? query.get("sport") : "basketball";
     let state = structuredClone(defaults[sport]);
     let publishTimer = null;
     const elements = {
@@ -96,7 +126,7 @@
     }
     function publish() { RecoScoreboard.update(state); window.clearTimeout(publishTimer); publishTimer = window.setTimeout(() => void publishRemote(), 180); }
     function switchSport(nextSport) {
-        const previous = state; sport = nextSport === "soccer" ? "soccer" : "basketball"; state = structuredClone(defaults[sport]);
+        const previous = state; sport = specifications[nextSport] ? nextSport : "basketball"; state = structuredClone(defaults[sport]);
         state.game.competition = previous.game.competition; state.home.shortName = previous.home.shortName; state.home.name = previous.home.name; state.home.score = previous.home.score; state.home.color = previous.home.color;
         state.away.shortName = previous.away.shortName; state.away.name = previous.away.name; state.away.score = previous.away.score; state.away.color = previous.away.color;
         renderScoreButtons(); renderFields(); render(); publish();
@@ -121,7 +151,7 @@
         try {
             const response = await fetch("/__reco/editor-state", { headers: headers() }); if (!response.ok) return;
             const published = await response.json(); if (!published || typeof published !== "object") return;
-            sport = published.sport?.shotClock !== undefined ? "basketball" : "soccer"; state = published; renderFields(); render(); elements.connection.textContent = "Loaded from Reco";
+            sport = specifications[published.sport?.sportId] ? published.sport.sportId : published.sport?.shotClock !== undefined ? "basketball" : "soccer"; state = published; renderFields(); render(); elements.connection.textContent = "Loaded from Reco";
         } catch (_) { elements.message.textContent = "No published state was available; using the reference state."; }
     }
     document.querySelector("#sport-select").addEventListener("change", (event) => switchSport(event.target.value));

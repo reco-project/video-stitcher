@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, initial-scale=1">
+    <title>Reco Field Hockey Scoreboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main class="safe-area" aria-label="Field Hockey scoreboard">
+        <section class="scoreboard"><div class="competition-row"><span id="competition" class="competition"></span><span id="status" class="status">LIVE</span></div><div class="match-row"><div class="team home"><span class="label">HOME</span><img id="home-logo" class="team-logo" alt=""><strong id="home-name" class="team-name">SHARKS</strong></div><strong id="home-score" class="score">0</strong><div class="center"><strong id="clock">00:00</strong><span id="period"></span><em id="detail"></em></div><strong id="away-score" class="score">0</strong><div class="team away"><span class="label">AWAY</span><img id="away-logo" class="team-logo" alt=""><strong id="away-name" class="team-name">LIONS</strong></div></div></section>
+        <div id="custom-text" class="custom-text" hidden></div><img id="custom-logo" class="custom-logo" alt="" hidden>
+    </main>
+    <aside id="debug-controls" class="debug-controls" hidden>
+        <header><strong>Edit Field Hockey scoreboard</strong><span id="editor-status">Live</span></header>
+        <label>Competition<input data-bind="game.competition" type="text" maxlength="48"></label>
+        <div class="form-grid"><label>Home team<input data-bind="home.shortName" type="text" maxlength="24"></label><label>Away team<input data-bind="away.shortName" type="text" maxlength="24"></label><label>Home score<input data-bind="home.score" type="number" min="0" max="999"></label><label>Away score<input data-bind="away.score" type="number" min="0" max="999"></label><label>Clock<input data-bind="game.clock" type="text" inputmode="numeric"></label><label>Period<input data-bind="game.period" type="number" min="1" max="12"></label><label>Home color<input data-bind="home.color" type="color"></label><label>Away color<input data-bind="away.color" type="color"></label><label class="check"><input data-bind="game.running" type="checkbox"> Clock running</label></div>
+        <fieldset><legend>Field Hockey rules</legend><div class="form-grid"><label>Quarters<input data-bind="sport.periodCount" type="number" min="0" max="999"></label><label>Quarter length (min)<input data-bind="sport.periodDurationMinutes" type="number" min="0" max="999"></label><label>Penalty corners home<input data-bind="sport.penaltyCornersHome" type="number" min="0" max="999"></label><label>Penalty corners away<input data-bind="sport.penaltyCornersAway" type="number" min="0" max="999"></label><label>Green cards home<input data-bind="sport.greenCardsHome" type="number" min="0" max="999"></label><label>Green cards away<input data-bind="sport.greenCardsAway" type="number" min="0" max="999"></label><label>Yellow cards home<input data-bind="sport.yellowCardsHome" type="number" min="0" max="999"></label><label>Yellow cards away<input data-bind="sport.yellowCardsAway" type="number" min="0" max="999"></label><label>Red cards home<input data-bind="sport.redCardsHome" type="number" min="0" max="999"></label><label>Red cards away<input data-bind="sport.redCardsAway" type="number" min="0" max="999"></label></div></fieldset>
+        <fieldset><legend>Placement & branding</legend><div class="form-grid"><label>Scoreboard X<input data-bind="custom.scoreboard.x" type="number" min="0" max="1920"></label><label>Scoreboard Y<input data-bind="custom.scoreboard.y" type="number" min="0" max="1080"></label><label>Scoreboard scale<input data-bind="custom.scoreboard.scale" type="number" min="0.5" max="3" step="0.05"></label><label>Free text<input data-bind="custom.freeText.text" type="text" maxlength="48"></label><label>Text X<input data-bind="custom.freeText.x" type="number" min="0" max="1920"></label><label>Text Y<input data-bind="custom.freeText.y" type="number" min="0" max="1080"></label><label>Text scale<input data-bind="custom.freeText.scale" type="number" min="0.5" max="3" step="0.05"></label><label>Logo URL/path<input data-bind="custom.freeLogo.src" type="text" maxlength="160"></label><label>Logo X<input data-bind="custom.freeLogo.x" type="number" min="0" max="1920"></label><label>Logo Y<input data-bind="custom.freeLogo.y" type="number" min="0" max="1080"></label><label>Logo scale<input data-bind="custom.freeLogo.scale" type="number" min="0.5" max="3" step="0.05"></label></div></fieldset>
+        <div class="score-buttons"><button type="button" data-score-team="home" data-score-amount="1">Home +1 Goal</button><button type="button" data-score-team="away" data-score-amount="1">Away +1 Goal</button></div><button id="reset-state" type="button" class="secondary">Reset demo state</button><button id="publish-state" type="button">Publish to active scoreboard</button><span id="message">Local preview ready.</span>
+    </aside>
+    <script src="../sdk/reco-scoreboard.js"></script>
+    <script src="scoreboard.js"></script>
+</body>
+</html>
