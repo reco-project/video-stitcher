@@ -46,3 +46,23 @@ fieldset { margin: 0 0 18px; padding: 16px; border: 1px solid #91a5c333; border-
 .settings-hidden .grid { grid-template-columns: 1fr; }
 .settings-hidden #settings-panel { display: none; }
 .preview-canvas { background-image: linear-gradient(#ffffff0a 1px, transparent 1px), linear-gradient(90deg, #ffffff0a 1px, transparent 1px), linear-gradient(135deg, #1a2a40, #0c1422); background-size: 10% 10%, 10% 10%, auto; }
+
+.mode-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-left: auto; }
+.mode-tab { min-height: 34px; padding: 7px 11px; font-size: 12px; }
+.mode-tab.selected { color: #06150e; background: #70d897; border-color: #70d897; }
+.mode-copy { margin: 0 0 14px; padding: 11px 13px; color: #9fb1c9; background: #172334; border: 1px solid #91a5c333; border-radius: 9px; font-size: 12px; line-height: 1.45; }
+body.template-mode #game-fieldset, body.template-mode #teams-fieldset, body.template-mode #sport-fieldset, body.template-mode #score-buttons { display: none; }
+body.game-mode #placement-fieldset, body.game-mode #template-help { display: none; }
+body.template-mode #template-help { display: block; }
+body.game-mode #game-fieldset, body.game-mode #teams-fieldset, body.game-mode #sport-fieldset, body.game-mode #score-buttons { display: grid; }
+body.game-mode #score-buttons { display: grid; }
+body.game-mode .form-grid { gap: 9px 11px; }
+.editing-guides-hidden .preview-card::after, .editing-guides-hidden .preview-free-text::after, .editing-guides-hidden .preview-free-logo::after { display: none !important; }
+.editing-guides-hidden [data-drag-target] { cursor: default; }
+.preview-canvas.editing-guides-hidden { outline: none; }
+.grid { grid-template-columns: minmax(0, 1.7fr) minmax(340px, .8fr); align-items: start; gap: 18px; }
+.panel { padding: 18px; }
+fieldset { margin-bottom: 12px; padding: 13px; }
+.form-grid { gap: 9px 11px; }
+.stage { border-radius: 10px; }
+@media (max-width: 1120px) { .mode-tabs { margin-left: 0; } .header { flex-wrap: wrap; } }

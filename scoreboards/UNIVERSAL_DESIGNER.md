@@ -6,9 +6,9 @@ Open it directly for a local preview:
 
     scoreboards/designer/index.html?sport=american-football
 
-Reco can also open it with `sport` and `recoEditorToken` query parameters. The designer uses a true 1920 × 1080 (16:9) preview canvas. The default demo placement keeps every element inside that canvas so the full workspace remains visible. The scoreboard, free text, and free logo can be moved and scaled independently. The settings panel can be hidden with Hide settings; editing guides and selection controls can also be shown or hidden. The demo uses the provided Reco logo with the “created with” branding. Drag an element in the preview; use the mouse wheel over it to scale it.
+Reco can also open it with `sport` and `recoEditorToken` query parameters. The designer uses a true 1920 × 1080 (16:9) preview canvas. It has two explicit modes: Designer template for reusable layout/branding, and Game settings for one specific match. The default demo placement keeps every element inside that canvas so the full workspace remains visible. The scoreboard, free text, and free logo can be moved and scaled independently. Template changes live under `state.custom` and are reusable across games. Match changes live under `game`, `home`, `away`, and `sport`. Editing guides and selection controls can be shown or hidden. The demo uses the provided Reco logo with the “created with” branding. Drag an element in the preview; use the mouse wheel over it to scale it.
 
-The designer always publishes a version 1 state object. Common fields stay in `game`, `home`, and `away`. Sport rules stay under `state.sport`; the host forwards that object without interpreting it. With a token, Publish to active scoreboard sends the complete state to `PUT /__reco/editor-state` using `X-Reco-Editor-Token`. Without a token, Download JSON exports the local state.
+The designer always publishes a version 1 state object. Common fields stay in `game`, `home`, and `away`. Sport rules stay under `state.sport`; the host forwards that object without interpreting it. With a token, Publish to active scoreboard sends the complete state to `PUT /__reco/editor-state` using `X-Reco-Editor-Token`. Without a token, Download state JSON exports the local state. Use the template mode for reusable design defaults and game mode for match-specific values.
 
 ## Sport profiles
 
