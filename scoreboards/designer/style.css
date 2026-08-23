@@ -75,3 +75,18 @@ body.game-mode #game-assets-fieldset { display: grid; }
 .editing-guides-hidden .preview-card.is-selected, .editing-guides-hidden .preview-free-text.is-selected, .editing-guides-hidden .preview-free-logo.is-selected { outline: none !important; }
 input[type=file] { min-height: 38px; padding: 6px; font-size: 11px; }
 #typography-fieldset .form-grid { align-items: end; }
+
+body.game-mode #theme-fieldset { display: none; }
+.theme-minimal { border-radius: 10px; }
+.theme-bauhaus { border-radius: 0; background: #f1eadc; color: #19202a; border: 3px solid #19202a; box-shadow: 8px 8px 0 #e64a35; }
+.theme-bauhaus .preview-competition, .theme-bauhaus .preview-center { background: #19202a; color: #f1eadc; }
+.theme-bauhaus .preview-team.home { background: #1e67a8; }
+.theme-bauhaus .preview-team.away { background: #e64a35; }
+.theme-bauhaus .preview-score { color: #19202a; background: #f1eadc; }
+.theme-playful { border-radius: 26px; background: linear-gradient(135deg, #432f91, #ec6b9a); border: 2px solid #ffd45a; box-shadow: 0 14px 28px #432f9166; }
+.theme-playful .preview-team.home { background: linear-gradient(135deg, #20b8a5, #432f91); }
+.theme-playful .preview-team.away { background: linear-gradient(225deg, #ec6b9a, #f3a641); }
+.theme-classic { border-radius: 4px; background: #142335; border: 2px solid #c99b43; box-shadow: 0 10px 20px #0008; }
+.theme-classic .preview-competition { color: #e6c477; font-family: Georgia, serif; }
+.square-stage { aspect-ratio: 1 / 1; }
+.preview-canvas.square-preview { aspect-ratio: 1 / 1; }
