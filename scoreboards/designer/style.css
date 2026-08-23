@@ -24,3 +24,20 @@ fieldset { margin: 0 0 18px; padding: 16px; border: 1px solid #91a5c333; border-
 @media (max-width: 620px) { .form-grid, .score-buttons { grid-template-columns: 1fr 1fr; } .preview-match { grid-template-columns: 1fr 54px 100px 54px 1fr; } .preview-team strong { font-size: 16px; } .preview-score { font-size: 34px; } }
 .team-logo { width: 42px; height: 42px; margin-bottom: 5px; object-fit: contain; }
 .preview-team .team-logo { width: 28px; height: 28px; margin-bottom: 2px; }
+
+.canvas-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.canvas-toolbar .button { min-height: 32px; padding: 6px 10px; font-size: 12px; }
+.canvas-toolbar .button.selected { color: #06150e; background: #70d897; border-color: #70d897; }
+.stage { display: block; width: 100%; min-height: 0; aspect-ratio: 16 / 9; padding: 0; overflow: hidden; background: #172334; }
+.preview-canvas { position: relative; width: 100%; height: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: linear-gradient(135deg, #1a2a40, #0c1422); border: 1px solid #91a5c333; border-radius: 12px; }
+.preview-card { position: absolute; left: 50%; top: 76%; width: 60%; max-width: none; transform-origin: top center; cursor: move; }
+.preview-free-text { position: absolute; z-index: 2; color: #fff; font-size: clamp(10px, 1.1vw, 22px); font-weight: 800; text-shadow: 0 2px 8px #000c; white-space: nowrap; cursor: move; }
+.preview-free-logo { position: absolute; z-index: 2; width: clamp(34px, 5vw, 96px); height: auto; object-fit: contain; filter: drop-shadow(0 2px 5px #000c); cursor: move; }
+.preview-card::after, .preview-free-text::after, .preview-free-logo::after { position: absolute; inset: -6px; display: block; border: 1px dashed transparent; border-radius: 8px; content: ""; pointer-events: none; }
+.preview-card.is-selected::after, .preview-free-text.is-selected::after, .preview-free-logo.is-selected::after { border-color: #70d897; }
+.editing-hidden .preview-card::after, .editing-hidden .preview-free-text::after, .editing-hidden .preview-free-logo::after { display: none; }
+.score-group { display: flex; grid-column: 1 / -1; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.score-group span { width: 100%; color: #8fa4bf; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.foul-button { background: #4d3540; border-color: #8f6270; }
+.drag-hint { margin: 12px 0 0; color: #8fa4bf; font-size: 12px; line-height: 1.4; }
+@media (max-width: 1050px) { .stage { aspect-ratio: 16 / 9; } }

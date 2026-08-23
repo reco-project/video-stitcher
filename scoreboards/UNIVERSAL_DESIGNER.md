@@ -6,13 +6,13 @@ Open it directly for a local preview:
 
     scoreboards/designer/index.html?sport=american-football
 
-Reco can also open it with `sport` and `recoEditorToken` query parameters. The designer supports movable and scalable scoreboard placement, free-positioned text and logos, local demo team logos, and the Reco Cam “created with” branding. Drag an element in the preview; use the mouse wheel over it to scale it.
+Reco can also open it with `sport` and `recoEditorToken` query parameters. The designer uses a true 1920 × 1080 (16:9) preview canvas. The scoreboard, free text, and free logo can be moved and scaled independently. Editing guides and selection controls can be shown or hidden. The demo uses the provided Reco logo with the “created with” branding. Drag an element in the preview; use the mouse wheel over it to scale it.
 
 The designer always publishes a version 1 state object. Common fields stay in `game`, `home`, and `away`. Sport rules stay under `state.sport`; the host forwards that object without interpreting it. With a token, Publish to active scoreboard sends the complete state to `PUT /__reco/editor-state` using `X-Reco-Editor-Token`. Without a token, Download JSON exports the local state.
 
 ## Sport profiles
 
-- Basketball: quarters, team fouls, and shot clock; scoring buttons `+1`, `+2`, and `+3`.
+- Basketball: quarters, one shared team-foul limit, and shot clock; scoring buttons `+1`, `+2`, and `+3`, plus separate `Home + foul` and `Away + foul` controls.
 - Soccer: halves, added time, and yellow/red cards; goals are `+1` only.
 - Handball: halves, timeouts, two-minute suspensions, and seven-metre goals; goals are `+1`.
 - Lacrosse: quarters, 60-second shot clock, penalties, man-up goals, and timeouts; goals are `+1`.
