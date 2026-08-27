@@ -4,8 +4,90 @@
 import { Button, VerticalBox, HorizontalBox, Slider, ProgressIndicator, LineEdit, ComboBox, CheckBox, ScrollView, TabWidget, Palette, StyleMetrics } from "std-widgets.slint";
 
 /// One labeled slider row for the controls panel.
+/// A label followed by a small "?" badge that expands its explanation
+/// under the control on click.
+///
+/// Click, not hover: a hover tooltip has to be discovered by lingering on
+/// something long enough to prove it exists, which is exactly the
+/// discovery problem it was meant to solve. A visible badge announces
+/// that an explanation is there.
+///
+/// Inline, not a popup: a PopupWindow is placed in window coordinates and
+/// can land partly outside the app when it opens from a control near a
+/// panel edge. An inline panel is laid out by the same layout as the
+/// control it explains, so it always fits and always wraps to the width
+/// actually available.
+///
+/// The badge only appears when `tip` is non-empty, so wrapping something
+/// without a tip changes nothing about its layout.
+component Tip inherits VerticalLayout {
+    in property <string> tip;
+    property <bool> open: false;
+
+    padding: 0px;
+    spacing: 4px;
+
+    HorizontalLayout {
+        padding: 0px;
+        spacing: 4px;
+        // Hug the content, so the badge sits next to the text it belongs
+        // to rather than being pushed to the far edge of the row.
+        alignment: start;
+
+        @children
+
+        if root.tip != "": VerticalLayout {
+            alignment: center;
+
+            Rectangle {
+                width: 14px;
+                height: 14px;
+                border-radius: 7px;
+                background: root.open ? #6a9fd8 : badge-touch.has-hover ? #35506e : #303030;
+                border-width: 1px;
+                border-color: root.open ? #6a9fd8 : badge-touch.has-hover ? #6a9fd8 : #4a4a4a;
+
+                Text {
+                    text: "?";
+                    color: root.open ? #10151c : badge-touch.has-hover ? #cfe3ff : #9aa3ab;
+                    font-size: 10px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    width: 100%;
+                    height: 100%;
+                }
+
+                badge-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.open = !root.open; }
+                }
+            }
+        }
+    }
+
+    if root.open && root.tip != "": Rectangle {
+        background: #23272b;
+        border-radius: 5px;
+        border-width: 1px;
+        border-color: #3a4046;
+
+        VerticalLayout {
+            padding: 7px;
+
+            Text {
+                text: root.tip;
+                color: #dfe3e7;
+                font-size: 11px;
+                wrap: word-wrap;
+            }
+        }
+    }
+}
+
 component LabeledSlider inherits VerticalLayout {
     in property <string> label;
+    /// Optional explanation, shown by a "?" badge next to the label.
+    in property <string> tip: "";
     in property <float> minimum;
     in property <float> maximum;
     in-out property <float> value;
@@ -16,12 +98,18 @@ component LabeledSlider inherits VerticalLayout {
     spacing: 2px;
 
     HorizontalLayout {
-        Text {
-            text: root.label;
-            color: #bbb;
-            font-size: 11px;
-            vertical-alignment: center;
+        // Only the label is wrapped: `Tip` expands its explanation
+        // underneath, and wrapping the whole row would put the value
+        // readout above that panel instead of beside the label.
+        Tip {
+            tip: root.tip;
             horizontal-stretch: 1;
+            Text {
+                text: root.label;
+                color: #bbb;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
         }
         Text {
             property <float> scale:
@@ -56,6 +144,8 @@ component LabeledSlider inherits VerticalLayout {
 /// they are unknown the track falls back to a neutral colour.
 component VramRiskSlider inherits VerticalLayout {
     in property <string> label;
+    /// Optional explanation, shown by a "?" badge next to the label.
+    in property <string> tip: "";
     in property <float> minimum: 0;
     in property <float> maximum: 1;
     in-out property <float> value;
@@ -76,12 +166,15 @@ component VramRiskSlider inherits VerticalLayout {
 
     HorizontalLayout {
         spacing: 6px;
-        Text {
-            text: root.label;
-            color: #bbb;
-            font-size: 11px;
-            vertical-alignment: center;
+        Tip {
+            tip: root.tip;
             horizontal-stretch: 1;
+            Text {
+                text: root.label;
+                color: #bbb;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
         }
         Text {
             text: !root.risk-active ? ""
@@ -1039,6 +1132,10 @@ export component RecoApp inherits Window {
 
                                 LabeledSlider {
                                     label: "AKAZE threshold";
+                                    tip: "Detector response threshold. Lower finds more features, higher " +
+                                        "finds fewer but stronger ones. Lower it when calibration " +
+                                        "reports too few matches on low-texture footage such as flat " +
+                                        "grass under an overcast sky; raise it to speed detection up.";
                                     minimum: 0.00005;
                                     maximum: 0.005;
                                     value <=> root.cal-akaze-threshold;
@@ -1048,6 +1145,10 @@ export component RecoApp inherits Window {
 
                                 LabeledSlider {
                                     label: "Detect Y min";
+                                    tip: "Top edge of the band features are looked for in, as a fraction " +
+                                        "of frame height. Excludes the extreme top of the frame, where " +
+                                        "undistortion artefacts live and where there is usually only " +
+                                        "sky - which carries no reliable features anyway.";
                                     minimum: 0;
                                     maximum: 0.5;
                                     value <=> root.cal-detect-y-min;
@@ -1057,6 +1158,10 @@ export component RecoApp inherits Window {
 
                                 LabeledSlider {
                                     label: "Detect Y max";
+                                    tip: "Bottom edge of that band. The ground closest to the camera is " +
+                                        "where a flat two-plane model fits reality worst, so features " +
+                                        "found there pull the whole fit toward a compromise; excluding " +
+                                        "them keeps the mid and far field accurate.";
                                     minimum: 0.5;
                                     maximum: 1.0;
                                     value <=> root.cal-detect-y-max;
@@ -1066,6 +1171,9 @@ export component RecoApp inherits Window {
 
                                 LabeledSlider {
                                     label: "Skip end";
+                                    tip: "Seconds ignored at the end of the video. Recordings usually " +
+                                        "end with the rig being taken down, and those frames would " +
+                                        "otherwise be sampled as if they were match footage.";
                                     minimum: 0;
                                     maximum: 60;
                                     value <=> root.cal-skip-end-secs;
@@ -1110,6 +1218,11 @@ export component RecoApp inherits Window {
 
                         if root.files-loaded: LabeledSlider {
                             label: "Seam blend";
+                            tip: "Width of the feathered crossfade between the two cameras, as a " +
+                                "fraction of the overlap. Wider hides residual misalignment; " +
+                                "too wide can wash out a ball crossing the overlap. Set it to 0 " +
+                                "for a hard cut while judging alignment, then raise it for " +
+                                "delivery.";
                             minimum: 0;
                             maximum: 0.3;
                             value <=> root.blend-width;
@@ -1119,6 +1232,8 @@ export component RecoApp inherits Window {
 
                         if root.files-loaded: LabeledSlider {
                             label: "Rig tilt";
+                            tip: "Forward lean of the whole rig from vertical. Straightens " +
+                                "vertical lines at the panorama edges.";
                             minimum: -30;
                             maximum: 30;
                             value <=> root.rig-tilt;
@@ -1129,6 +1244,8 @@ export component RecoApp inherits Window {
 
                         if root.files-loaded: LabeledSlider {
                             label: "Rig roll";
+                            tip: "Side-to-side rotation of the rig. Use it when the horizon runs " +
+                                "downhill across the panorama.";
                             minimum: -15;
                             maximum: 15;
                             value <=> root.rig-roll;
@@ -1374,6 +1491,10 @@ export component RecoApp inherits Window {
 
                     if !root.lens-preview-active: LabeledSlider {
                         label: "Field of view";
+                        tip: "Vertical field of view of the virtual camera; smaller is more " +
+                            "zoomed in. Worth knowing: zooming in cannot add detail the " +
+                            "lens never resolved, so past a point it magnifies rather than " +
+                            "reveals.";
                         minimum: 20;
                         maximum: 150;
                         value <=> root.fov;
@@ -1510,6 +1631,9 @@ export component RecoApp inherits Window {
 
                         LabeledSlider {
                             label: "Intersect";
+                            tip: "How much the two planes overlap: 0 is none, 1 is complete. " +
+                                "This moves where the seam falls and how much of each camera " +
+                                "ends up in the panorama.";
                             minimum: -1.0;
                             maximum: 1.0;
                             value <=> root.cal-intersect;
@@ -1519,6 +1643,8 @@ export component RecoApp inherits Window {
 
                         LabeledSlider {
                             label: "Camera axis offset";
+                            tip: "Distance of the virtual camera from the origin along both axes " +
+                                "- it sits at (offset, 0, offset). Typical range 0.1 to 0.35.";
                             minimum: -0.6;
                             maximum: 0.6;
                             value <=> root.cal-camera-axis-offset;
@@ -1528,6 +1654,8 @@ export component RecoApp inherits Window {
 
                         LabeledSlider {
                             label: "x_ty";
+                            tip: "Vertical shift of the right plane, correcting up-down " +
+                                "misalignment between the two cameras.";
                             minimum: -0.1;
                             maximum: 0.1;
                             value <=> root.cal-x-ty;
@@ -2606,6 +2734,10 @@ export component RecoApp inherits Window {
                         // GPU memory for the loaded source resolution.
                         VramRiskSlider {
                             label: "Lookahead (smoothness)";
+                            tip: "Seconds of future frames buffered before the panner decides " +
+                                "where to point. With lookahead the camera can lead the play " +
+                                "instead of chasing it, and the motion can be smoothed without " +
+                                "adding lag.";
                             minimum: 0.0;
                             maximum: 2.5;
                             value <=> root.export-lookahead-secs;
@@ -2643,6 +2775,10 @@ export component RecoApp inherits Window {
                                     horizontal-stretch: 1;
                                     LabeledSlider {
                                         label: "Ball weight";
+                                        tip: "How strongly the ball pulls the aim, relative to the centre of " +
+                                            "the players. Higher follows the ball more literally; lower " +
+                                            "keeps the shot on the body of play when the ball is briefly " +
+                                            "out of it.";
                                         minimum: 0.0;
                                         maximum: 1.0;
                                         value <=> root.export-ball-weight;
@@ -2653,6 +2789,10 @@ export component RecoApp inherits Window {
 
                             LabeledSlider {
                                 label: "Cluster bandwidth";
+                                tip: "How far apart players may be and still be treated as one " +
+                                    "group. Too small and the aim jumps between separate knots of " +
+                                    "players; too large and it settles on the middle of an empty " +
+                                    "pitch.";
                                 minimum: 0.1;
                                 maximum: 0.6;
                                 value <=> root.export-cluster-bandwidth;
@@ -2661,6 +2801,9 @@ export component RecoApp inherits Window {
                             }
                             LabeledSlider {
                                 label: "Dead-zone";
+                                tip: "The camera holds still while the target stays within this " +
+                                    "radius, and eases in beyond it rather than snapping. Removes " +
+                                    "micro-wobble during static play.";
                                 minimum: 0.0;
                                 maximum: 0.5;
                                 value <=> root.export-dead-zone;
