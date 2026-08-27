@@ -3,29 +3,43 @@
 
 import { Button, VerticalBox, HorizontalBox, Slider, ProgressIndicator, LineEdit, ComboBox, CheckBox, ScrollView, TabWidget, Palette, StyleMetrics } from "std-widgets.slint";
 
-/// One labeled slider row for the controls panel.
-/// A label followed by a small "?" badge that expands its explanation
-/// under the control on click.
+/// A label followed by a small "?" badge that opens its explanation on
+/// click.
 ///
 /// Click, not hover: a hover tooltip has to be discovered by lingering on
 /// something long enough to prove it exists, which is exactly the
 /// discovery problem it was meant to solve. A visible badge announces
 /// that an explanation is there.
 ///
-/// Inline, not a popup: a PopupWindow is placed in window coordinates and
-/// can land partly outside the app when it opens from a control near a
-/// panel edge. An inline panel is laid out by the same layout as the
-/// control it explains, so it always fits and always wraps to the width
-/// actually available.
-///
 /// The badge only appears when `tip` is non-empty, so wrapping something
 /// without a tip changes nothing about its layout.
-/// Window size, published by the top-level window so `Tip` can place its
-/// popup without falling off the edge of the app. A component cannot ask
-/// for the window it happens to be in, so the window pushes it here.
-global WindowMetrics {
-    in-out property <length> width: 1280px;
-    in-out property <length> height: 720px;
+///
+/// Which tip (if any) is open, and where its anchor badge sits. A single
+/// shared slot rather than per-instance state: opening one tip closes
+/// whichever was open, and - the reason this exists at all - the actual
+/// floating panel is drawn once, at the very root of the app (see
+/// `RecoApp`'s "Tip popup" overlay below), not per-`Tip`-instance.
+///
+/// That indirection is the fix for a real bug: a `PopupWindow` opened
+/// from deep inside a scrollable side panel is positioned in *window*
+/// coordinates by the platform, and nothing in Slint clamps that against
+/// the app's own frame - a badge near an edge rendered its panel with the
+/// first few characters of every line off-canvas. Drawing the panel as an
+/// ordinary overlay at the root instead means its position is computed
+/// against `root.width` / `root.height` of the *same* component - always
+/// the current window size, no separate tracking property to keep in
+/// sync - the identical pattern already used for the export dialog's
+/// scrim just below.
+export global TipState {
+    in-out property <bool> open: false;
+    in-out property <string> text: "";
+    // Anchor badge's position, in window coordinates - identical to
+    // `RecoApp`'s own local coordinate space, since `RecoApp` is the
+    // window, so no further conversion is needed when the root overlay
+    // reads these.
+    in-out property <length> anchor-x: 0px;
+    in-out property <length> anchor-y: 0px;
+    in-out property <length> anchor-h: 0px;
 }
 
 component Tip inherits HorizontalLayout {
@@ -49,55 +63,34 @@ component Tip inherits HorizontalLayout {
             width: 14px;
             height: 14px;
             border-radius: 7px;
-            background: badge-touch.has-hover ? #35506e : #303030;
+            property <bool> mine: TipState.open && TipState.text == root.tip;
+            background: self.mine ? #6a9fd8 : badge-touch.has-hover ? #35506e : #303030;
             border-width: 1px;
-            border-color: badge-touch.has-hover ? #6a9fd8 : #4a4a4a;
+            border-color: self.mine || badge-touch.has-hover ? #6a9fd8 : #4a4a4a;
 
-            // Popup geometry. Everything here exists to keep the panel
-            // inside the app: a PopupWindow is placed in window
-            // coordinates, so opened from a badge near an edge it will
-            // happily render half outside the frame, clipping the first
-            // characters of every line (which is exactly what it did).
-            property <length> panel-w: 216px; // text width + padding
-            property <length> abs-x: self.absolute-position.x;
-            // Prefer the right side; flip to the left only when the right
-            // would overflow.
-            property <bool> flip-left:
-                abs-x + self.width + 6px + panel-w > WindowMetrics.width - 8px;
-
-            badge-touch := TouchArea {
-                mouse-cursor: pointer;
-                clicked => { popup.show(); }
+            Text {
+                text: "?";
+                color: badge.mine ? #10151c : badge-touch.has-hover ? #cfe3ff : #9aa3ab;
+                font-size: 10px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                width: 100%;
+                height: 100%;
             }
 
-            popup := PopupWindow {
-                // Clamped so the left edge never goes past 8px from the
-                // window's own left edge, however narrow the space is.
-                x: badge.flip-left
-                    ? max(8px - badge.abs-x, -(badge.panel-w + 6px))
-                    : badge.width + 6px;
-                // Vertically it just opens alongside the badge: the
-                // panel's height depends on how the text wraps, and a
-                // PopupWindow's contents cannot be measured from out
-                // here, so there is nothing honest to clamp against.
-                y: 0px;
-
-                Rectangle {
-                    background: #2a2e33;
-                    border-radius: 5px;
-                    border-width: 1px;
-                    border-color: #4a5158;
-                    width: badge.panel-w;
-                    height: tip-text.height + 12px;
-
-                    tip-text := Text {
-                        x: 8px;
-                        y: 6px;
-                        text: root.tip;
-                        color: #eee;
-                        font-size: 12px;
-                        wrap: word-wrap;
-                        width: parent.width - 16px;
+            badge-touch := TouchArea {
+                width: 100%;
+                height: 100%;
+                mouse-cursor: pointer;
+                clicked => {
+                    if badge.mine {
+                        TipState.open = false;
+                    } else {
+                        TipState.text = root.tip;
+                        TipState.anchor-x = badge.absolute-position.x;
+                        TipState.anchor-y = badge.absolute-position.y;
+                        TipState.anchor-h = badge.height;
+                        TipState.open = true;
                     }
                 }
             }
@@ -555,15 +548,6 @@ export component RecoApp inherits Window {
     preferred-height: 820px;
     min-width: 720px;
     min-height: 600px;
-
-    // Publish the window size for `Tip`, which needs it to keep its popup
-    // inside the frame and has no way to ask for the window it is in.
-    init => {
-        WindowMetrics.width = self.width;
-        WindowMetrics.height = self.height;
-    }
-    changed width => { WindowMetrics.width = self.width; }
-    changed height => { WindowMetrics.height = self.height; }
 
     // ── Theme colors ──
     in-out property <bool> dark-mode: true;
@@ -3022,5 +3006,59 @@ export component RecoApp inherits Window {
         toasts: root.toasts;
         right-inset: root.controls-open ? root.right-panel-width : 0px;
         dismissed(id) => { root.toast-dismissed(id); }
+    }
+
+    // ── Tip popup ──
+    //
+    // The one place any `Tip` badge's explanation is actually drawn - see
+    // `TipState`'s doc comment for why it lives here rather than in each
+    // `Tip` instance. A direct child of the Window, same as ToastStack
+    // above, so its coordinates are `root`'s own and always current: no
+    // separate "window size" tracking to keep in sync, unlike a
+    // `PopupWindow`, which is positioned by the platform in window
+    // coordinates that nothing here can clamp.
+    if TipState.open: Rectangle {
+        // Full-window catcher: click anywhere outside the panel to
+        // dismiss, the same idea as the export dialog's backdrop above.
+        TouchArea {
+            clicked => { TipState.open = false; }
+        }
+
+        panel := Rectangle {
+            property <length> w: 220px;
+            property <length> pad: 8px;
+            // Prefer opening to the right of the badge; flip to the left
+            // only when the right would run past the window's own edge.
+            property <length> pref-x: TipState.anchor-x + 20px;
+            x: pref-x + self.w > root.width - self.pad
+                ? max(self.pad, TipState.anchor-x - self.w - 6px)
+                : pref-x;
+            // Vertically: level with the badge, clamped so the panel
+            // never extends above the top or below the bottom of the
+            // window, however tall the wrapped text turns out to be.
+            y: max(self.pad, min(TipState.anchor-y, root.height - self.pad - self.height));
+            width: self.w;
+            height: panel-text.height + 12px;
+            background: #2a2e33;
+            border-radius: 5px;
+            border-width: 1px;
+            border-color: #4a5158;
+            drop-shadow-color: #00000080;
+            drop-shadow-blur: 8px;
+
+            // Swallow clicks on the panel itself so they don't bubble to
+            // the backdrop catcher above and close it immediately.
+            TouchArea {}
+
+            panel-text := Text {
+                x: 8px;
+                y: 6px;
+                text: TipState.text;
+                color: #eee;
+                font-size: 12px;
+                wrap: word-wrap;
+                width: parent.width - 16px;
+            }
+        }
     }
 }
