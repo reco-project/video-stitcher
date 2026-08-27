@@ -2774,12 +2774,26 @@ export component RecoApp inherits Window {
                                     border-width: 2px;
                                     border-color: #6a9fd8;
 
-                                    Text {
-                                        x: 4px;
-                                        y: 2px;
-                                        text: "Widest " + round(root.export-fov-wide) + " deg";
-                                        color: #6a9fd8;
-                                        font-size: 10px;
+                                    // On a filled chip, not bare text: a
+                                    // blue label on sky (or an orange one
+                                    // on grass in low light) disappears
+                                    // into the footage it labels.
+                                    Rectangle {
+                                        x: 3px;
+                                        y: 3px;
+                                        width: label-wide.width + 8px;
+                                        height: label-wide.height + 4px;
+                                        background: #6a9fd8;
+                                        border-radius: 3px;
+
+                                        label-wide := Text {
+                                            x: 4px;
+                                            y: 2px;
+                                            text: "Widest " + round(root.export-fov-wide) + " deg";
+                                            color: #101010;
+                                            font-size: 10px;
+                                            font-weight: 600;
+                                        }
                                     }
                                 }
 
@@ -2792,12 +2806,26 @@ export component RecoApp inherits Window {
                                     border-width: 2px;
                                     border-color: #e2a03f;
 
-                                    Text {
-                                        x: 4px;
-                                        y: 2px;
-                                        text: "Tightest " + round(root.export-fov-tight) + " deg";
-                                        color: #e2a03f;
-                                        font-size: 10px;
+                                    // On a filled chip, not bare text: a
+                                    // blue label on sky (or an orange one
+                                    // on grass in low light) disappears
+                                    // into the footage it labels.
+                                    Rectangle {
+                                        x: 3px;
+                                        y: 3px;
+                                        width: label-tight.width + 8px;
+                                        height: label-tight.height + 4px;
+                                        background: #e2a03f;
+                                        border-radius: 3px;
+
+                                        label-tight := Text {
+                                            x: 4px;
+                                            y: 2px;
+                                            text: "Tightest " + round(root.export-fov-tight) + " deg";
+                                            color: #101010;
+                                            font-size: 10px;
+                                            font-weight: 600;
+                                        }
                                     }
                                 }
                             }
