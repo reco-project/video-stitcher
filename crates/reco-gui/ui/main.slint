@@ -3,9 +3,105 @@
 
 import { Button, VerticalBox, HorizontalBox, Slider, ProgressIndicator, LineEdit, ComboBox, CheckBox, ScrollView, TabWidget, Palette, StyleMetrics } from "std-widgets.slint";
 
-/// One labeled slider row for the controls panel.
+/// A label followed by a small "?" badge that opens its explanation on
+/// click.
+///
+/// Click, not hover: a hover tooltip has to be discovered by lingering on
+/// something long enough to prove it exists, which is exactly the
+/// discovery problem it was meant to solve. A visible badge announces
+/// that an explanation is there.
+///
+/// The badge only appears when `tip` is non-empty, so wrapping something
+/// without a tip changes nothing about its layout.
+///
+/// Which tip (if any) is open, and where its anchor badge sits. A single
+/// shared slot rather than per-instance state: opening one tip closes
+/// whichever was open, and - the reason this exists at all - the actual
+/// floating panel is drawn once, at the very root of the app (see
+/// `RecoApp`'s "Tip popup" overlay below), not per-`Tip`-instance.
+///
+/// That indirection is the fix for a real bug: a `PopupWindow` opened
+/// from deep inside a scrollable side panel is positioned in *window*
+/// coordinates by the platform, and nothing in Slint clamps that against
+/// the app's own frame - a badge near an edge rendered its panel with the
+/// first few characters of every line off-canvas. Drawing the panel as an
+/// ordinary overlay at the root instead means its position is computed
+/// against `root.width` / `root.height` of the *same* component - always
+/// the current window size, no separate tracking property to keep in
+/// sync - the identical pattern already used for the export dialog's
+/// scrim just below.
+export global TipState {
+    in-out property <bool> open: false;
+    in-out property <string> text: "";
+    // Anchor badge's position, in window coordinates - identical to
+    // `RecoApp`'s own local coordinate space, since `RecoApp` is the
+    // window, so no further conversion is needed when the root overlay
+    // reads these.
+    in-out property <length> anchor-x: 0px;
+    in-out property <length> anchor-y: 0px;
+    in-out property <length> anchor-h: 0px;
+}
+
+component Tip inherits HorizontalLayout {
+    in property <string> tip;
+
+    padding: 0px;
+    spacing: 4px;
+    // Hug the content: without this the wrapped element would be
+    // stretched across the row and the badge pushed to the far edge,
+    // away from the text it belongs to.
+    alignment: start;
+
+    @children
+
+    if root.tip != "": VerticalLayout {
+        // Centres the badge against a taller neighbour instead of pinning
+        // it to the top of the row.
+        alignment: center;
+
+        badge := Rectangle {
+            width: 14px;
+            height: 14px;
+            border-radius: 7px;
+            property <bool> mine: TipState.open && TipState.text == root.tip;
+            background: self.mine ? #6a9fd8 : badge-touch.has-hover ? #35506e : #303030;
+            border-width: 1px;
+            border-color: self.mine || badge-touch.has-hover ? #6a9fd8 : #4a4a4a;
+
+            Text {
+                text: "?";
+                color: badge.mine ? #10151c : badge-touch.has-hover ? #cfe3ff : #9aa3ab;
+                font-size: 10px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                width: 100%;
+                height: 100%;
+            }
+
+            badge-touch := TouchArea {
+                width: 100%;
+                height: 100%;
+                mouse-cursor: pointer;
+                clicked => {
+                    if badge.mine {
+                        TipState.open = false;
+                    } else {
+                        TipState.text = root.tip;
+                        TipState.anchor-x = badge.absolute-position.x;
+                        TipState.anchor-y = badge.absolute-position.y;
+                        TipState.anchor-h = badge.height;
+                        TipState.open = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
 component LabeledSlider inherits VerticalLayout {
     in property <string> label;
+    /// Optional explanation, shown by a "?" badge next to the label.
+    in property <string> tip: "";
     in property <float> minimum;
     in property <float> maximum;
     in-out property <float> value;
@@ -16,12 +112,18 @@ component LabeledSlider inherits VerticalLayout {
     spacing: 2px;
 
     HorizontalLayout {
-        Text {
-            text: root.label;
-            color: #bbb;
-            font-size: 11px;
-            vertical-alignment: center;
+        // Only the label is wrapped: `Tip` expands its explanation
+        // underneath, and wrapping the whole row would put the value
+        // readout above that panel instead of beside the label.
+        Tip {
+            tip: root.tip;
             horizontal-stretch: 1;
+            Text {
+                text: root.label;
+                color: #bbb;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
         }
         Text {
             property <float> scale:
@@ -56,6 +158,8 @@ component LabeledSlider inherits VerticalLayout {
 /// they are unknown the track falls back to a neutral colour.
 component VramRiskSlider inherits VerticalLayout {
     in property <string> label;
+    /// Optional explanation, shown by a "?" badge next to the label.
+    in property <string> tip: "";
     in property <float> minimum: 0;
     in property <float> maximum: 1;
     in-out property <float> value;
@@ -76,12 +180,15 @@ component VramRiskSlider inherits VerticalLayout {
 
     HorizontalLayout {
         spacing: 6px;
-        Text {
-            text: root.label;
-            color: #bbb;
-            font-size: 11px;
-            vertical-alignment: center;
+        Tip {
+            tip: root.tip;
             horizontal-stretch: 1;
+            Text {
+                text: root.label;
+                color: #bbb;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
         }
         Text {
             text: !root.risk-active ? ""
@@ -1039,6 +1146,10 @@ export component RecoApp inherits Window {
 
                                 LabeledSlider {
                                     label: "AKAZE threshold";
+                                    tip: "Detector response threshold. Lower finds more features, higher " +
+                                        "finds fewer but stronger ones. Lower it when calibration " +
+                                        "reports too few matches on low-texture footage such as flat " +
+                                        "grass under an overcast sky; raise it to speed detection up.";
                                     minimum: 0.00005;
                                     maximum: 0.005;
                                     value <=> root.cal-akaze-threshold;
@@ -1048,6 +1159,10 @@ export component RecoApp inherits Window {
 
                                 LabeledSlider {
                                     label: "Detect Y min";
+                                    tip: "Top edge of the band features are looked for in, as a fraction " +
+                                        "of frame height. Excludes the extreme top of the frame, where " +
+                                        "undistortion artefacts live and where there is usually only " +
+                                        "sky - which carries no reliable features anyway.";
                                     minimum: 0;
                                     maximum: 0.5;
                                     value <=> root.cal-detect-y-min;
@@ -1057,6 +1172,10 @@ export component RecoApp inherits Window {
 
                                 LabeledSlider {
                                     label: "Detect Y max";
+                                    tip: "Bottom edge of that band. The ground closest to the camera is " +
+                                        "where a flat two-plane model fits reality worst, so features " +
+                                        "found there pull the whole fit toward a compromise; excluding " +
+                                        "them keeps the mid and far field accurate.";
                                     minimum: 0.5;
                                     maximum: 1.0;
                                     value <=> root.cal-detect-y-max;
@@ -1066,6 +1185,9 @@ export component RecoApp inherits Window {
 
                                 LabeledSlider {
                                     label: "Skip end";
+                                    tip: "Seconds ignored at the end of the video. Recordings usually " +
+                                        "end with the rig being taken down, and those frames would " +
+                                        "otherwise be sampled as if they were match footage.";
                                     minimum: 0;
                                     maximum: 60;
                                     value <=> root.cal-skip-end-secs;
@@ -1110,6 +1232,11 @@ export component RecoApp inherits Window {
 
                         if root.files-loaded: LabeledSlider {
                             label: "Seam blend";
+                            tip: "Width of the feathered crossfade between the two cameras, as a " +
+                                "fraction of the overlap. Wider hides residual misalignment; " +
+                                "too wide can wash out a ball crossing the overlap. Set it to 0 " +
+                                "for a hard cut while judging alignment, then raise it for " +
+                                "delivery.";
                             minimum: 0;
                             maximum: 0.3;
                             value <=> root.blend-width;
@@ -1119,6 +1246,8 @@ export component RecoApp inherits Window {
 
                         if root.files-loaded: LabeledSlider {
                             label: "Rig tilt";
+                            tip: "Forward lean of the whole rig from vertical. Straightens " +
+                                "vertical lines at the panorama edges.";
                             minimum: -30;
                             maximum: 30;
                             value <=> root.rig-tilt;
@@ -1129,6 +1258,8 @@ export component RecoApp inherits Window {
 
                         if root.files-loaded: LabeledSlider {
                             label: "Rig roll";
+                            tip: "Side-to-side rotation of the rig. Use it when the horizon runs " +
+                                "downhill across the panorama.";
                             minimum: -15;
                             maximum: 15;
                             value <=> root.rig-roll;
@@ -1374,6 +1505,10 @@ export component RecoApp inherits Window {
 
                     if !root.lens-preview-active: LabeledSlider {
                         label: "Field of view";
+                        tip: "Vertical field of view of the virtual camera; smaller is more " +
+                            "zoomed in. Worth knowing: zooming in cannot add detail the " +
+                            "lens never resolved, so past a point it magnifies rather than " +
+                            "reveals.";
                         minimum: 20;
                         maximum: 150;
                         value <=> root.fov;
@@ -1510,6 +1645,9 @@ export component RecoApp inherits Window {
 
                         LabeledSlider {
                             label: "Intersect";
+                            tip: "How much the two planes overlap: 0 is none, 1 is complete. " +
+                                "This moves where the seam falls and how much of each camera " +
+                                "ends up in the panorama.";
                             minimum: -1.0;
                             maximum: 1.0;
                             value <=> root.cal-intersect;
@@ -1519,6 +1657,8 @@ export component RecoApp inherits Window {
 
                         LabeledSlider {
                             label: "Camera axis offset";
+                            tip: "Distance of the virtual camera from the origin along both axes " +
+                                "- it sits at (offset, 0, offset). Typical range 0.1 to 0.35.";
                             minimum: -0.6;
                             maximum: 0.6;
                             value <=> root.cal-camera-axis-offset;
@@ -1528,6 +1668,8 @@ export component RecoApp inherits Window {
 
                         LabeledSlider {
                             label: "x_ty";
+                            tip: "Vertical shift of the right plane, correcting up-down " +
+                                "misalignment between the two cameras.";
                             minimum: -0.1;
                             maximum: 0.1;
                             value <=> root.cal-x-ty;
@@ -2606,6 +2748,10 @@ export component RecoApp inherits Window {
                         // GPU memory for the loaded source resolution.
                         VramRiskSlider {
                             label: "Lookahead (smoothness)";
+                            tip: "Seconds of future frames buffered before the panner decides " +
+                                "where to point. With lookahead the camera can lead the play " +
+                                "instead of chasing it, and the motion can be smoothed without " +
+                                "adding lag.";
                             minimum: 0.0;
                             maximum: 2.5;
                             value <=> root.export-lookahead-secs;
@@ -2643,6 +2789,10 @@ export component RecoApp inherits Window {
                                     horizontal-stretch: 1;
                                     LabeledSlider {
                                         label: "Ball weight";
+                                        tip: "How strongly the ball pulls the aim, relative to the centre of " +
+                                            "the players. Higher follows the ball more literally; lower " +
+                                            "keeps the shot on the body of play when the ball is briefly " +
+                                            "out of it.";
                                         minimum: 0.0;
                                         maximum: 1.0;
                                         value <=> root.export-ball-weight;
@@ -2653,6 +2803,10 @@ export component RecoApp inherits Window {
 
                             LabeledSlider {
                                 label: "Cluster bandwidth";
+                                tip: "How far apart players may be and still be treated as one " +
+                                    "group. Too small and the aim jumps between separate knots of " +
+                                    "players; too large and it settles on the middle of an empty " +
+                                    "pitch.";
                                 minimum: 0.1;
                                 maximum: 0.6;
                                 value <=> root.export-cluster-bandwidth;
@@ -2661,6 +2815,9 @@ export component RecoApp inherits Window {
                             }
                             LabeledSlider {
                                 label: "Dead-zone";
+                                tip: "The camera holds still while the target stays within this " +
+                                    "radius, and eases in beyond it rather than snapping. Removes " +
+                                    "micro-wobble during static play.";
                                 minimum: 0.0;
                                 maximum: 0.5;
                                 value <=> root.export-dead-zone;
@@ -2849,5 +3006,59 @@ export component RecoApp inherits Window {
         toasts: root.toasts;
         right-inset: root.controls-open ? root.right-panel-width : 0px;
         dismissed(id) => { root.toast-dismissed(id); }
+    }
+
+    // ── Tip popup ──
+    //
+    // The one place any `Tip` badge's explanation is actually drawn - see
+    // `TipState`'s doc comment for why it lives here rather than in each
+    // `Tip` instance. A direct child of the Window, same as ToastStack
+    // above, so its coordinates are `root`'s own and always current: no
+    // separate "window size" tracking to keep in sync, unlike a
+    // `PopupWindow`, which is positioned by the platform in window
+    // coordinates that nothing here can clamp.
+    if TipState.open: Rectangle {
+        // Full-window catcher: click anywhere outside the panel to
+        // dismiss, the same idea as the export dialog's backdrop above.
+        TouchArea {
+            clicked => { TipState.open = false; }
+        }
+
+        panel := Rectangle {
+            property <length> w: 220px;
+            property <length> pad: 8px;
+            // Prefer opening to the right of the badge; flip to the left
+            // only when the right would run past the window's own edge.
+            property <length> pref-x: TipState.anchor-x + 20px;
+            x: pref-x + self.w > root.width - self.pad
+                ? max(self.pad, TipState.anchor-x - self.w - 6px)
+                : pref-x;
+            // Vertically: level with the badge, clamped so the panel
+            // never extends above the top or below the bottom of the
+            // window, however tall the wrapped text turns out to be.
+            y: max(self.pad, min(TipState.anchor-y, root.height - self.pad - self.height));
+            width: self.w;
+            height: panel-text.height + 12px;
+            background: #2a2e33;
+            border-radius: 5px;
+            border-width: 1px;
+            border-color: #4a5158;
+            drop-shadow-color: #00000080;
+            drop-shadow-blur: 8px;
+
+            // Swallow clicks on the panel itself so they don't bubble to
+            // the backdrop catcher above and close it immediately.
+            TouchArea {}
+
+            panel-text := Text {
+                x: 8px;
+                y: 6px;
+                text: TipState.text;
+                color: #eee;
+                font-size: 12px;
+                wrap: word-wrap;
+                width: parent.width - 16px;
+            }
+        }
     }
 }
