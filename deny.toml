@@ -30,11 +30,9 @@ targets = [
 
 [advisories]
 yanked = "deny"
-ignore = [
-    # paste 1.0.15 — archived upstream. Transitively pulled by wgpu /
-    # slint. Hard-deny once those upstreams migrate. Revisit at M8.
-    "RUSTSEC-2024-0436",
-]
+# Fail when an unmaintained crate is a direct workspace dependency.
+# Transitive maintenance status remains upstream's responsibility.
+unmaintained = "workspace"
 
 # ---------------------------------------------------------------------------
 # Licenses: compatible with AGPL-3.0-only distribution

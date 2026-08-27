@@ -127,6 +127,12 @@ struct AutoExportSpec {
     output: PathBuf,
     model: Option<PathBuf>,
     lookahead_secs: f32,
+    /// Total number of exports to run back-to-back in one session, from
+    /// `RECO_AUTOEXPORT_REPEAT` (default 1). Used to surface cross-export GPU
+    /// resource leaks: VRAM is logged between runs, so a leak shows up as a
+    /// figure that never returns to baseline. The output path gets a `_N`
+    /// suffix per run so runs don't clobber each other.
+    repeats: u32,
 }
 
 #[cfg(feature = "automation")]
@@ -167,6 +173,11 @@ impl AutoloadSpec {
                     .ok()
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(0.0),
+                repeats: std::env::var("RECO_AUTOEXPORT_REPEAT")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .filter(|&n| n > 0)
+                    .unwrap_or(1),
             });
         Some(Self {
             left,
@@ -199,6 +210,21 @@ struct AppState {
     /// Headless preload/auto-export hook (RECO_AUTOLOAD); `None` in normal use.
     #[cfg(feature = "automation")]
     autoload: Option<AutoloadSpec>,
+    /// Repeat-export driver state (RECO_AUTOEXPORT_REPEAT). When `mode` is set,
+    /// the export-completion handler re-triggers another export until `done`
+    /// reaches `total`, then quits the event loop. Inert otherwise.
+    #[cfg(feature = "automation")]
+    auto_export_mode: bool,
+    /// Total exports to run back-to-back this session.
+    #[cfg(feature = "automation")]
+    auto_export_total: u32,
+    /// Exports completed so far (the next run is `done + 1`).
+    #[cfg(feature = "automation")]
+    auto_export_done: u32,
+    /// Base output path for repeat exports; each run appends `_N` before the
+    /// extension so successive runs do not overwrite each other.
+    #[cfg(feature = "automation")]
+    auto_export_base: Option<PathBuf>,
     /// Unified pose state machine (target + current + smoothing +
     /// coverage clamping). Replaces the earlier hand-rolled
     /// `yaw/pitch/target_*` fields; all input events (drag, wheel,
@@ -391,13 +417,6 @@ fn build_bug_report(state: &AppState, app_weak: &slint::Weak<RecoApp>) -> String
         report.push_str(&format!("\n## Files\n- Calibration: {name}\n"));
     }
 
-    report.push_str(
-        "\n## Description\n\
-         <!-- What happened? What did you expect? -->\n\n\
-         ## Steps to reproduce\n\
-         <!-- 1. ... 2. ... 3. ... -->\n",
-    );
-
     if let Some(log_path) = log_file_path()
         && let Ok(contents) = std::fs::read_to_string(&log_path)
     {
@@ -444,6 +463,14 @@ impl AppState {
             shared_gpu: None,
             #[cfg(feature = "automation")]
             autoload: AutoloadSpec::from_env(),
+            #[cfg(feature = "automation")]
+            auto_export_mode: false,
+            #[cfg(feature = "automation")]
+            auto_export_total: 0,
+            #[cfg(feature = "automation")]
+            auto_export_done: 0,
+            #[cfg(feature = "automation")]
+            auto_export_base: None,
             pose: PoseControl::new(PoseControlConfig {
                 drag_deg_per_pixel: DRAG_DEG_PER_PIXEL,
                 smoothing: POSE_SMOOTHING,
@@ -1349,6 +1376,7 @@ fn main() -> anyhow::Result<()> {
             let mut config = slint::wgpu_28::WGPUConfiguration::default();
             if let slint::wgpu_28::WGPUConfiguration::Automatic(ref mut settings) = config {
                 settings.device_required_limits = reco_core::wgpu::Limits::downlevel_defaults();
+                settings.backends = reco_core::gpu::GpuContext::select_backends();
             }
             config
         })
@@ -1767,6 +1795,10 @@ fn main() -> anyhow::Result<()> {
         if let Some(app) = app_weak.upgrade() {
             sync_recent_paths(&s.user_settings, &app);
         }
+        // try_init and the segment list read left_input, not left_path -
+        // without it a recent pick never loads and the UI keeps saying
+        // "No video selected" (#328).
+        s.left_input = Some(reco_io::stitch_job::InputPath::Single(path.clone()));
         s.left_path = Some(path);
         drop(s);
         try_init_and_update(&state_ref, &app_weak);
@@ -1792,6 +1824,7 @@ fn main() -> anyhow::Result<()> {
         if let Some(app) = app_weak.upgrade() {
             sync_recent_paths(&s.user_settings, &app);
         }
+        s.right_input = Some(reco_io::stitch_job::InputPath::Single(path.clone()));
         s.right_path = Some(path);
         drop(s);
         try_init_and_update(&state_ref, &app_weak);
@@ -2615,7 +2648,9 @@ fn main() -> anyhow::Result<()> {
                 let img = s.render_current();
                 if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
                     app.set_preview_frame(img);
-                    app.set_current_frame(s.playback.frame_index() as i32);
+                    let fps = s.playback.fps();
+                    let total = s.playback.total_frames().unwrap_or(0);
+                    sync_frame_display(&app, s.playback.frame_index(), total, fps);
                 }
             }
             Ok(false) => {}
@@ -2645,7 +2680,9 @@ fn main() -> anyhow::Result<()> {
                 let img = s.render_current();
                 if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
                     app.set_preview_frame(img);
-                    app.set_current_frame(s.playback.frame_index() as i32);
+                    let fps = s.playback.fps();
+                    let total = s.playback.total_frames().unwrap_or(0);
+                    sync_frame_display(&app, s.playback.frame_index(), total, fps);
                 }
             }
             Err(e) => log::error!("Step backward error: {e}"),
@@ -2762,7 +2799,9 @@ fn main() -> anyhow::Result<()> {
         let img = s.render_current();
         if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
             app.set_preview_frame(img);
-            app.set_current_frame(s.playback.frame_index() as i32);
+            let fps = s.playback.fps();
+            let total = s.playback.total_frames().unwrap_or(0);
+            sync_frame_display(&app, s.playback.frame_index(), total, fps);
         }
     });
 
@@ -3723,10 +3762,69 @@ fn main() -> anyhow::Result<()> {
                                 format!("{frames} frames to {}", path.display()),
                             );
                             crate::toast::sync_to_ui(&s.toasts, &app);
+
+                            // Repeat-export driver: measure VRAM now that the
+                            // preview has been rebuilt (the steady state between
+                            // runs), then either trigger the next export or quit.
+                            // A leak shows up as `used` that never returns to the
+                            // baseline logged at startup. Deferred via single_shot
+                            // so the next start_export runs after this borrow of
+                            // `s` is released (start_export borrows it too).
+                            #[cfg(feature = "automation")]
+                            if s.auto_export_mode {
+                                s.auto_export_done += 1;
+                                let done = s.auto_export_done;
+                                let total = s.auto_export_total;
+                                let vram = autoexport_vram();
+                                if done < total {
+                                    log::info!(
+                                        "RECO_AUTOEXPORT: run {done}/{total} complete, {vram}; starting next"
+                                    );
+                                    let base = s.auto_export_base.clone();
+                                    let app_w = app_weak.clone();
+                                    slint::Timer::single_shot(
+                                        std::time::Duration::from_millis(800),
+                                        move || {
+                                            if let Some(app) = app_w.upgrade() {
+                                                if let Some(base) = base {
+                                                    let out = autoexport_run_path(&base, done + 1);
+                                                    app.set_export_output_path(
+                                                        out.display().to_string().into(),
+                                                    );
+                                                }
+                                                app.invoke_start_export();
+                                            }
+                                        },
+                                    );
+                                } else {
+                                    log::info!(
+                                        "RECO_AUTOEXPORT: all {total} runs complete, final {vram}; quitting"
+                                    );
+                                    slint::Timer::single_shot(
+                                        std::time::Duration::from_millis(1500),
+                                        || {
+                                            let _ = slint::quit_event_loop();
+                                        },
+                                    );
+                                }
+                            }
                         }
                         ExportOutcome::Cancelled => {
                             app.set_export_status_text("".into());
                             app.set_status_text("Export cancelled".into());
+                            #[cfg(feature = "automation")]
+                            if s.auto_export_mode {
+                                log::warn!(
+                                    "RECO_AUTOEXPORT: run cancelled, {}; quitting",
+                                    autoexport_vram()
+                                );
+                                slint::Timer::single_shot(
+                                    std::time::Duration::from_millis(1000),
+                                    || {
+                                        let _ = slint::quit_event_loop();
+                                    },
+                                );
+                            }
                         }
                         ExportOutcome::Failed(err) => {
                             app.set_export_status_text("".into());
@@ -3764,6 +3862,19 @@ fn main() -> anyhow::Result<()> {
                             s.toasts.push(Severity::Error, title, body);
                             crate::toast::sync_to_ui(&s.toasts, &app);
                             app.set_status_text(status.into());
+                            #[cfg(feature = "automation")]
+                            if s.auto_export_mode {
+                                log::warn!(
+                                    "RECO_AUTOEXPORT: run failed ({msg}), {}; quitting",
+                                    autoexport_vram()
+                                );
+                                slint::Timer::single_shot(
+                                    std::time::Duration::from_millis(1000),
+                                    || {
+                                        let _ = slint::quit_event_loop();
+                                    },
+                                );
+                            }
                         }
                     }
                 }
@@ -3848,7 +3959,9 @@ fn main() -> anyhow::Result<()> {
                         let img = s.render_current();
                         if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
                             app.set_preview_frame(img);
-                            app.set_current_frame(s.playback.frame_index() as i32);
+                            let fps = s.playback.fps();
+                            let total = s.playback.total_frames().unwrap_or(0);
+                            sync_frame_display(&app, s.playback.frame_index(), total, fps);
                             s.last_render_at = Some(Instant::now());
                         }
                     }
@@ -3960,6 +4073,35 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
     false
 }
 
+/// GPU free/used VRAM (MB) via `nvidia-smi`, for repeat-export leak logging.
+/// Returns a short descriptive string; never fails the run.
+#[cfg(feature = "automation")]
+fn autoexport_vram() -> String {
+    std::process::Command::new("nvidia-smi")
+        .args([
+            "--query-gpu=memory.free,memory.used",
+            "--format=csv,noheader,nounits",
+        ])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| format!("free/used MB = {}", s.trim()))
+        .unwrap_or_else(|| "nvidia-smi unavailable".into())
+}
+
+/// Output path for repeat-export run `n`: `base_n.ext` (1-based), so successive
+/// runs in one session do not overwrite each other.
+#[cfg(feature = "automation")]
+fn autoexport_run_path(base: &std::path::Path, n: u32) -> PathBuf {
+    let stem = base
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("export");
+    let ext = base.extension().and_then(|e| e.to_str()).unwrap_or("mp4");
+    let name = format!("{stem}_{n}.{ext}");
+    base.with_file_name(name)
+}
+
 /// Execute an [`AutoloadSpec`]: set inputs + calibration, build the preview,
 /// and optionally start an export. Dev/test hook (RECO_AUTOLOAD) only.
 #[cfg(feature = "automation")]
@@ -3998,7 +4140,19 @@ fn run_autoload(
     if let Some(exp) = spec.export
         && let Some(app) = app_weak.upgrade()
     {
-        app.set_export_output_path(exp.output.display().to_string().into());
+        // Repeat-export driver: run `exp.repeats` exports back-to-back in this
+        // one session so a cross-export GPU leak shows up as VRAM that never
+        // returns to baseline. The completion handler re-triggers the next run
+        // and quits when done. `remaining` counts runs AFTER this first one.
+        {
+            let mut s = state.borrow_mut();
+            s.auto_export_mode = true;
+            s.auto_export_total = exp.repeats;
+            s.auto_export_done = 0;
+            s.auto_export_base = Some(exp.output.clone());
+        }
+        let first_out = autoexport_run_path(&exp.output, 1);
+        app.set_export_output_path(first_out.display().to_string().into());
         if let Some(model) = &exp.model {
             app.set_export_autocam_enabled(true);
             app.set_export_model_path(model.display().to_string().into());
@@ -4006,8 +4160,10 @@ fn run_autoload(
             app.set_export_lookahead_secs(exp.lookahead_secs);
         }
         log::info!(
-            "RECO_AUTOEXPORT: starting export -> {} (lookahead {}s)",
-            exp.output.display(),
+            "RECO_AUTOEXPORT: baseline {}; starting export 1/{} -> {} (lookahead {}s)",
+            autoexport_vram(),
+            exp.repeats,
+            first_out.display(),
             exp.lookahead_secs
         );
         app.invoke_start_export();
@@ -4016,12 +4172,14 @@ fn run_autoload(
 
 /// VRAM budget (bytes) available to the lookahead pool at export time.
 ///
-/// The preview pipeline is released during export, so we estimate from total
-/// VRAM minus a reserve for decode/stitch/encode/AI rather than the
-/// preview-occupied "free" figure (which is also unreliable on some Windows
-/// GPUs). A test build can override the budget via `RECO_VRAM_BUDGET_GB` to
-/// exercise the risk zones on a large GPU.
-fn budget_for_lookahead(total_vram: u64) -> usize {
+/// Uses the same free-trusting estimate as the export pre-flight. Note the
+/// slider samples `free` while the live preview is still resident, whereas the
+/// export releases the preview first, so this figure is slightly conservative
+/// (it counts the preview against the budget) - a safe direction: the slider
+/// never shows green for a lookahead the export would reject. A test build can
+/// override the budget via `RECO_VRAM_BUDGET_GB` to exercise the risk zones on a
+/// large GPU.
+fn budget_for_lookahead(free_vram: u64, total_vram: u64) -> usize {
     #[cfg(feature = "automation")]
     if let Ok(gb) = std::env::var("RECO_VRAM_BUDGET_GB")
         && let Ok(v) = gb.parse::<f64>()
@@ -4029,8 +4187,8 @@ fn budget_for_lookahead(total_vram: u64) -> usize {
         return (v * 1e9) as usize;
     }
     // Same budget the export pre-flight uses, so the slider's risk zones match
-    // exactly what the engine will accept.
-    reco_core::session::lookahead_budget_bytes(total_vram)
+    // what the engine will accept.
+    reco_core::session::lookahead_budget_bytes(free_vram, total_vram)
 }
 
 fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) {
@@ -4103,8 +4261,8 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                     .as_ref()
                     .and_then(|b| b.renderer().gpu().available_vram())
                 {
-                    Some((_free, total)) if total > 0 && in_w > 0 && in_h > 0 => {
-                        let budget = budget_for_lookahead(total);
+                    Some((free, total)) if total > 0 && in_w > 0 && in_h > 0 => {
+                        let budget = budget_for_lookahead(free, total);
                         let fit = reco_core::session::lookahead_fit(in_w, in_h, 1, budget, fps);
                         app.set_lookahead_green_max(fit.safe_secs as f32);
                         app.set_lookahead_red_min(fit.max_secs as f32);

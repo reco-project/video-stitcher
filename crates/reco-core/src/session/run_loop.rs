@@ -286,12 +286,15 @@ impl StitchSession {
             // VramPool::new plus graceful teardown for any slip-through.
             match self.core.pipeline().gpu().available_vram() {
                 Some((free, total)) => {
-                    // Budget from total VRAM, not the driver's "free" figure:
-                    // the latter is unreliable (can read 0 on a multi-GB card
-                    // mid-session) and would block viable exports. Shared with
-                    // the export-panel risk slider so the two always agree.
-                    // Over-allocation is caught gracefully at pool creation.
-                    let budget = super::vram_pool::lookahead_budget_bytes(total);
+                    // Budget trusts the driver's "free" figure when it is
+                    // believable (it already excludes the compositor and the
+                    // rest of the pipeline) and falls back to a fraction of
+                    // total when free reads bogus (~0 on a multi-GB card).
+                    // Sampled here just before pool creation, after the GUI
+                    // preview is released, so it reflects real export-time room.
+                    // Shared with the export-panel risk slider for consistency;
+                    // over-allocation is caught gracefully at pool creation.
+                    let budget = super::vram_pool::lookahead_budget_bytes(free, total);
                     log::info!(
                         "VRAM budget: {:.2} GB usable of {:.2} GB total ({:.2} GB reported free); \
                          lookahead pool needs {:.2} GB ({pool_size} slots @ {w}x{h})",

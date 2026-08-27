@@ -74,6 +74,17 @@ fn main() {
         .clang_arg(format!("-I{include_dir}"))
         // libobs headers are C, and we want standard types (not ptrdiff).
         .clang_arg("-std=c11")
+        // On Windows, bindgen's clang runs in MSVC-compatibility mode
+        // (`_MSC_VER` defined), which is required for the rest of the
+        // libobs/Windows headers to parse correctly. But it also flips
+        // `util/util_uint64.h`'s `util_mul_div64` into a branch that
+        // calls `_udiv128` - an MSVC 2019+ intrinsic clang's own
+        // `intrin.h` shim doesn't declare, so parsing fails. Rather than
+        // drop MSVC-compat mode (which breaks clang's SSE/SSE2 intrinsic
+        // headers pulled in transitively), shim just this one call away:
+        // bindgen doesn't need the `static inline` body to be correct or
+        // linkable, only for the header to parse.
+        .clang_arg("-D_udiv128(hi,lo,div,rem)=0")
         // Only generate bindings for items we actually use. Bindgen
         // pulls transitive types automatically, so the struct fields
         // are covered even if the field type isn't in the allowlist.
@@ -152,13 +163,24 @@ fn main() {
     // logger through a fixed-arity entry point. libobs is loaded
     // into the process by OBS before any plugin, so the shim's
     // `blog(...)` reference resolves at plugin load time without
-    // us needing to `-lobs` here. `cc` picks up system headers
-    // automatically on Linux/macOS.
+    // us needing to `-lobs` here.
     let shim_path = PathBuf::from("src/blog_shim.c");
     println!("cargo:rerun-if-changed={}", shim_path.display());
-    cc::Build::new()
-        .file(&shim_path)
-        .include(&include_dir)
+    let mut shim_build = cc::Build::new();
+    shim_build.file(&shim_path).include(&include_dir);
+    // The shim includes `<obs/util/base.h>` (the Debian libobs-dev
+    // layout: headers rooted under an `obs/` folder). On Linux/macOS
+    // this resolves for free because `/usr/include` - the usual parent
+    // of `/usr/include/obs` - is already on the compiler's default
+    // system search path. Windows has no such default, so add the
+    // parent of `include_dir` explicitly wherever the layout follows
+    // that `.../obs` convention (harmless no-op add on Linux/macOS).
+    if include_dir.ends_with("obs")
+        && let Some(parent) = PathBuf::from(&include_dir).parent()
+    {
+        shim_build.include(parent);
+    }
+    shim_build
         .flag_if_supported("-std=c11")
         // OBS ships headers that rely on GNU extensions (typeof
         // etc.) on Linux. `-D_GNU_SOURCE` avoids any surprises.

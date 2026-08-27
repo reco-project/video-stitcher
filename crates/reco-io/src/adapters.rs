@@ -159,12 +159,31 @@ impl FfmpegFileSource {
         let left_rotation = probe.rotation();
         drop(probe);
 
-        let right_rotation = ffmpeg::decoder::VideoDecoder::open(right_probe_path)
-            .map(|d| d.rotation())
-            .unwrap_or_else(|e| {
+        // All inputs must share one frame rate: the session clock, trim
+        // math, and encoder run on the left input's rate, so a mismatched
+        // camera would silently drift out of sync over the match (#315).
+        // 0.5 fps tolerance absorbs probe rounding (30000/1001 vs 30/1).
+        let right_rotation = match ffmpeg::decoder::VideoDecoder::open(right_probe_path) {
+            Ok(d) => {
+                let r = d.frame_rate();
+                let right_fps = r.0 as f64 / r.1 as f64;
+                if (right_fps - fps).abs() > 0.5 {
+                    return Err(SourceError::Init {
+                        path: right_probe_path.display().to_string(),
+                        reason: format!(
+                            "frame rate mismatch: right input is {right_fps:.2} fps but the \
+                             left input is {fps:.2} fps; record all cameras at the same \
+                             frame rate (mixed rates are not supported yet)"
+                        ),
+                    });
+                }
+                d.rotation()
+            }
+            Err(e) => {
                 log::warn!("Failed to probe right video for rotation ({e}), assuming 0 degrees");
                 0
-            });
+            }
+        };
 
         let left_owned = left.clone();
         let right_owned = right.clone();

@@ -1,7 +1,7 @@
 [package]
 publish = false
 name = "reco-autocam"
-version = "0.5.3-beta.2"
+version = "0.5.4"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -30,6 +30,7 @@ ort = ["reco-detect/ort"]
 cuda = ["reco-detect/cuda"]
 tensorrt = ["reco-detect/tensorrt"]
 coreml = ["reco-detect/coreml"]
+directml = ["reco-detect/directml"]
 load-dynamic = ["reco-detect/load-dynamic"]
 tensorrt-native = ["reco-detect/tensorrt-native"]
 ncnn = ["reco-detect/ncnn"]

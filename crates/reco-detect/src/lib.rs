@@ -61,10 +61,10 @@ pub use detectors::trt::TrtGpuDetector;
 // Re-export shared utilities.
 pub use detectors::postprocess;
 pub use detectors::read_labels_file;
-#[cfg(feature = "ort")]
-pub use ort_session::create_ort_session;
 #[cfg(any(feature = "tensorrt", feature = "coreml"))]
 pub use ort_session::reco_cache_dir;
+#[cfg(feature = "ort")]
+pub use ort_session::{SessionError, create_ort_session};
 #[cfg(feature = "ort")]
 pub use probe::{AiProbeResult, probe_execution_providers};
 

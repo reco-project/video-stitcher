@@ -275,22 +275,32 @@ impl D3d11StagingPool {
             };
 
             // Import into CUDA for AI detection (NVIDIA only, non-fatal).
-            let nv12_pitch = self.width as usize;
-            let cuda_import = crate::interop::cuda::cuda_import_d3d11_nv12(
-                handle.0,
-                self.width,
-                self.height,
-                nv12_pitch,
-            );
-            match &cuda_import {
-                Ok(m) => log::debug!(
-                    "CUDA imported staging slot {i}: Y=0x{:x} UV=0x{:x}",
-                    m.y_ptr,
-                    m.uv_ptr
-                ),
-                Err(e) => log::debug!("CUDA import for slot {i} skipped: {e}"),
-            }
-            cuda_imports.push(cuda_import.ok());
+            // Only when a CUDA-resident detector will actually read these
+            // pointers. Importing otherwise is pure waste: ~1 ms/slot of setup
+            // and an external-memory object per slot that must be torn down
+            // again on pool drop (the storage below is discarded when
+            // `enable_cuda` is false).
+            let cuda_import = if self.enable_cuda {
+                let nv12_pitch = self.width as usize;
+                let imported = crate::interop::cuda::cuda_import_d3d11_nv12(
+                    handle.0,
+                    self.width,
+                    self.height,
+                    nv12_pitch,
+                );
+                match &imported {
+                    Ok(m) => log::debug!(
+                        "CUDA imported staging slot {i}: Y=0x{:x} UV=0x{:x}",
+                        m.y_ptr,
+                        m.uv_ptr
+                    ),
+                    Err(e) => log::debug!("CUDA import for slot {i} skipped: {e}"),
+                }
+                imported.ok()
+            } else {
+                None
+            };
+            cuda_imports.push(cuda_import);
 
             unsafe {
                 let _ = CloseHandle(handle);
@@ -333,14 +343,16 @@ impl D3d11StagingPool {
             self.pixel_format
         );
 
-        let cuda_nv12 = if self.enable_cuda && cuda_imports.iter().all(|c| c.is_some()) {
+        let cuda_nv12 = if !self.enable_cuda {
+            // No CUDA-resident detector requested it; imports were skipped above.
+            log::info!("CUDA detection not requested; D3D11VA staging stays DX12-only");
+            None
+        } else if cuda_imports.iter().all(|c| c.is_some()) {
             let v: Vec<_> = cuda_imports.into_iter().map(|c| c.unwrap()).collect();
             log::info!("CUDA detection enabled on D3D11VA staging textures");
             Some(v)
         } else {
-            log::info!(
-                "CUDA detection not available on D3D11VA staging (non-NVIDIA or CUDA not found)"
-            );
+            log::info!("CUDA detection requested but import failed (non-NVIDIA or CUDA not found)");
             None
         };
 

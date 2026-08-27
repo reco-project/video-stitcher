@@ -79,6 +79,13 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         args.height,
     );
 
+    #[cfg(feature = "autocam")]
+    if args.tracking_mode != "sweep"
+        && let Some(model_path) = args.model_path
+    {
+        reco_autocam::validate_model_path(Path::new(model_path))?;
+    }
+
     let progress = crate::helpers::ProgressReporter::new(30);
 
     // Load calibration up front so we can extract field_roi for autocam

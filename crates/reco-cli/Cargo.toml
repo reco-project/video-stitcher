@@ -1,7 +1,7 @@
 [package]
 publish = false
 name = "reco-cli"
-version = "0.5.3-beta.2"
+version = "0.5.4"
 edition.workspace = true
 rust-version.workspace = true
 description = "CLI tool for Reco panoramic video stitching"
@@ -11,6 +11,13 @@ repository = "https://github.com/reco-project/video-stitcher"
 [[bin]]
 name = "reco"
 path = "src/main.rs"
+
+# Cross-export VRAM leak repro. Uses reco-autocam to drive the lookahead pool,
+# so it only builds when the `autocam` feature is on (skipped under
+# --no-default-features).
+[[example]]
+name = "vram_leak_repro"
+required-features = ["autocam"]
 
 [features]
 # Default gives autocam + ort (CPU) detection, matching

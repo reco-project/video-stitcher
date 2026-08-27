@@ -185,7 +185,7 @@ Questions about commercial licensing can be directed to the project maintainer; 
 
 ## Community
 
-- [Website](https://www.reco-project.org) - Landing page
+- [Website](https://reco.cam) - Landing page
 - [Forum](https://forum.reco-project.org) - Questions, showcase, feature requests
 - [Issues](https://github.com/reco-project/video-stitcher/issues) - Bug reports + feature tracking
 - [v1 archive](https://github.com/reco-project/video-stitcher-v1) - Legacy Electron / Python version (predecessor to this Rust rewrite)

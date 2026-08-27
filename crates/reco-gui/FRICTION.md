@@ -63,3 +63,13 @@ live but leaves the cached FOV stale, so the view ignores the clamp while
 the slider shows it. The consumer has to remember to push FOV after any
 out-of-tick clamp. FOV should be a `render_yuv` parameter like yaw/pitch
 (or the renderer should own the full pose state).
+
+### N20. fps-probe fallback is indistinguishable from a real 30fps source
+
+**Impact**: Medium. When `VideoDecoder::frame_rate()` exhausts every
+probe (container and codec context) it logs an error and returns
+`Rational(30, 1)` - the same value a genuinely 30fps file produces.
+The GUI cannot tell the difference, so it can't warn the user that
+export timing is a guess (wrong speed, wrong trim). Surfacing it needs
+the probe result to carry provenance (e.g. an
+`fps_is_estimated` flag on `SourceInfo`).

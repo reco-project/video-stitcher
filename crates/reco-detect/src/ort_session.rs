@@ -12,6 +12,131 @@ use ort::session::Session;
 
 use crate::detectors::cpu::parse_onnx_names;
 
+/// Errors from ORT session creation.
+///
+/// `RuntimeUnavailable` deliberately carries a plain `String`: with
+/// load-dynamic and no loadable runtime, constructing any `ort::Error`
+/// calls `CreateStatus` through `api()` and self-deadlocks in ort's init
+/// (#446), so no `ort::Error` may exist for this case.
+#[derive(Debug, thiserror::Error)]
+pub enum SessionError {
+    #[error("{0}")]
+    RuntimeUnavailable(String),
+    #[error(transparent)]
+    Ort(#[from] ort::Error),
+}
+
+/// One-shot verdict on whether the ONNX Runtime library can be loaded.
+///
+/// With load-dynamic, ort's first API call dlopens the runtime; when the
+/// load fails, ort builds the error through `Error::new`, which calls
+/// back into `api()` and re-enters the once-lock whose initializer is
+/// still on this thread's stack - a self-deadlock, not an error (#446).
+/// ort's failing init path must therefore never execute: the dylib is
+/// probed with our own dlopen first, and ort is only entered once the
+/// probe proves the load cannot fail.
+static ORT_RUNTIME: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
+
+/// `Ok` when the ONNX Runtime library loaded; `Err` with the reason otherwise.
+pub fn ort_runtime_available() -> Result<(), String> {
+    ORT_RUNTIME
+        .get_or_init(|| {
+            probe_ort_dylib()?;
+            // The probe proved the dylib loads and is API-compatible, so
+            // ort's init cannot reach the deadlocking error path.
+            // catch_unwind stays as a backstop for exotic init panics.
+            match std::panic::catch_unwind(Session::builder) {
+                Ok(Ok(_)) => Ok(()),
+                Ok(Err(e)) => Err(format!("ONNX Runtime init failed: {e}")),
+                Err(_) => Err("ONNX Runtime initialization panicked".to_string()),
+            }
+        })
+        .clone()
+}
+
+/// Verify the ONNX Runtime dynamic library loads and is API-compatible
+/// without going through ort (see [`ort_runtime_available`]). Mirrors
+/// ort's resolution order: `ORT_DYLIB_PATH`, else the platform soname
+/// next to the executable, else the plain soname via the system search
+/// path.
+#[cfg(feature = "load-dynamic")]
+fn probe_ort_dylib() -> Result<(), String> {
+    use std::ffi::{CStr, c_char, c_void};
+
+    #[cfg(target_os = "windows")]
+    const SONAME: &str = "onnxruntime.dll";
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    const SONAME: &str = "libonnxruntime.so";
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    const SONAME: &str = "libonnxruntime.dylib";
+
+    // Field order mirrors OrtApiBase in onnxruntime_c_api.h.
+    #[repr(C)]
+    struct OrtApiBase {
+        get_api: unsafe extern "system" fn(u32) -> *const c_void,
+        get_version_string: unsafe extern "system" fn() -> *const c_char,
+    }
+
+    let name = match std::env::var("ORT_DYLIB_PATH") {
+        Ok(s) if !s.is_empty() => std::path::PathBuf::from(s),
+        _ => std::path::PathBuf::from(SONAME),
+    };
+    let path = if name.is_absolute() {
+        name
+    } else {
+        match std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().map(|d| d.join(&name)))
+        {
+            Some(p) if p.exists() => p,
+            _ => name,
+        }
+    };
+
+    let lib = unsafe { libloading::Library::new(&path) }.map_err(|e| {
+        format!(
+            "ONNX Runtime library not found (`{}`: {e}). Install onnxruntime or \
+             place the library next to the executable.",
+            path.display()
+        )
+    })?;
+    let version = unsafe {
+        let base_getter: libloading::Symbol<unsafe extern "system" fn() -> *const OrtApiBase> = lib
+            .get(b"OrtGetApiBase")
+            .map_err(|e| format!("`{}` is not an ONNX Runtime library: {e}", path.display()))?;
+        let base = base_getter();
+        if base.is_null() {
+            return Err(format!("`{}`: OrtGetApiBase returned null", path.display()));
+        }
+        CStr::from_ptr(((*base).get_version_string)())
+            .to_string_lossy()
+            .into_owned()
+    };
+    let minor = version
+        .split('.')
+        .nth(1)
+        .and_then(|m| m.parse::<u32>().ok())
+        .unwrap_or(0);
+    if minor < ort::MINOR_VERSION {
+        return Err(format!(
+            "ONNX Runtime at `{}` is version {version}; ort needs >= 1.{}",
+            path.display(),
+            ort::MINOR_VERSION
+        ));
+    }
+    // Keep the mapping alive: ort dlopens the same file next (refcounted),
+    // and the probe's compatibility verdict must keep holding.
+    std::mem::forget(lib);
+    log::info!("ONNX Runtime {version} found at {}", path.display());
+    Ok(())
+}
+
+/// Statically linked ort cannot fail to load.
+#[cfg(not(feature = "load-dynamic"))]
+fn probe_ort_dylib() -> Result<(), String> {
+    Ok(())
+}
+
 /// Return a persistent cache directory for model engine/compilation caches.
 ///
 /// Resolves to `{platform_cache_dir}/reco/{subdir}`:
@@ -61,20 +186,19 @@ pub fn reco_cache_dir(subdir: &str) -> PathBuf {
 pub fn create_ort_session(
     model_path: &Path,
     fallback_labels: Vec<String>,
-) -> Result<(Session, u32, Vec<String>), ort::Error> {
-    // With load-dynamic, Session::builder() panics if the ORT library
-    // isn't installed. Catch the panic and convert to an error.
-    #[allow(unused_mut)]
-    let mut builder = match std::panic::catch_unwind(Session::builder) {
-        Ok(r) => r?,
-        Err(_) => {
-            return Err(ort::Error::wrap(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "ONNX Runtime library not found. Install onnxruntime or place the DLL next to the executable.",
-            )));
-        }
+) -> Result<(Session, u32, Vec<String>), SessionError> {
+    // Session::builder() must not run when the runtime cannot load: ort's
+    // failing init self-deadlocks building its own error (#446), so the
+    // gate's cached verdict is the only safe way to learn availability.
+    // The same applies to constructing ANY ort::Error (its constructor
+    // calls CreateStatus through api()), hence SessionError.
+    if let Err(reason) = ort_runtime_available() {
+        return Err(SessionError::RuntimeUnavailable(reason));
     }
-    .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)?;
+    #[allow(unused_mut)]
+    let mut builder = Session::builder()?
+        .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)
+        .map_err(ort::Error::from)?;
 
     // Try TensorRT EP first (JIT-compiles for any GPU arch including Blackwell),
     // then CUDA EP, then fall back to CPU.
@@ -199,5 +323,15 @@ mod tests {
             result.is_err(),
             "loading a nonexistent model should return an error"
         );
+    }
+
+    #[test]
+    fn ort_gate_returns_same_verdict_on_repeat_calls() {
+        // The second call must return (not deadlock) and agree with the
+        // first - the load-dynamic missing-library case wedges ort's
+        // once-lock if Session::builder is entered twice (#446).
+        let first = ort_runtime_available();
+        let second = ort_runtime_available();
+        assert_eq!(first.is_ok(), second.is_ok());
     }
 }

@@ -162,7 +162,9 @@ pub fn run_libcamera(
 
     // Warm up: discard first frame (camera ISP init)
     if let Some(frame) = source.next_frame()? {
-        session.detect_and_update_director(&frame, start.elapsed());
+        if let Err(e) = session.detect_and_update_director(&frame, start.elapsed()) {
+            log::warn!("detection failed on this frame: {e}");
+        }
         let pos = session.director_position();
         session.process_frame(&frame, pos.yaw, pos.pitch)?;
         println!("Warmup complete, starting capture...");
@@ -179,7 +181,9 @@ pub fn run_libcamera(
             }
         };
 
-        session.detect_and_update_director(&frame, start.elapsed());
+        if let Err(e) = session.detect_and_update_director(&frame, start.elapsed()) {
+            log::warn!("detection failed on this frame: {e}");
+        }
         let pos = session.director_position();
         session.process_frame(&frame, pos.yaw, pos.pitch)?;
         frame_count += 1;

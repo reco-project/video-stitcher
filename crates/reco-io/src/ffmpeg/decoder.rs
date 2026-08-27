@@ -241,6 +241,40 @@ impl Drop for VideoDecoder {
     }
 }
 
+fn container_duration_secs(path: &Path) -> Result<Option<f64>, DecodeError> {
+    let ictx = input(path)?;
+    let duration = ictx.duration();
+    if duration > 0 {
+        Ok(Some(duration as f64 / f64::from(ffmpeg::ffi::AV_TIME_BASE)))
+    } else {
+        Ok(None)
+    }
+}
+
+fn concat_seek_durations(paths: &[std::path::PathBuf]) -> Option<Vec<f64>> {
+    let mut durations = Vec::with_capacity(paths.len());
+    for path in paths {
+        match container_duration_secs(path) {
+            Ok(Some(duration)) => durations.push(duration),
+            Ok(None) => {
+                log::warn!(
+                    "Concat demuxer: duration unknown for {}; cross-segment seek may be unavailable",
+                    path.display()
+                );
+                return None;
+            }
+            Err(e) => {
+                log::warn!(
+                    "Concat demuxer: failed to probe duration for {} ({e}); cross-segment seek may be unavailable",
+                    path.display()
+                );
+                return None;
+            }
+        }
+    }
+    Some(durations)
+}
+
 impl VideoDecoder {
     /// Open a video file for decoding.
     ///
@@ -481,12 +515,17 @@ impl VideoDecoder {
             .suffix(".txt")
             .tempfile()
             .map_err(|e| DecodeError::Ffmpeg(format!("concat manifest: {e}")))?;
+        let durations = concat_seek_durations(paths);
 
         writeln!(manifest, "ffconcat version 1.0")
             .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
-        for p in paths {
+        for (idx, p) in paths.iter().enumerate() {
             writeln!(manifest, "file '{}'", p.display())
                 .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
+            if let Some(durations) = durations.as_ref() {
+                writeln!(manifest, "duration {:.6}", durations[idx])
+                    .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
+            }
         }
         manifest
             .flush()
@@ -562,12 +601,36 @@ impl VideoDecoder {
 
     /// Frame rate as an FFmpeg rational (numerator/denominator).
     ///
-    /// Falls back to 30fps if the decoder cannot determine the frame rate.
+    /// Probes the container stream first (`r_frame_rate`, then
+    /// `avg_frame_rate`): the codec context only knows the rate when the
+    /// bitstream carries VUI timing, which camera-original HEVC often
+    /// omits. Falls back to 30fps with an error log if all three are unset.
     pub fn frame_rate(&self) -> ffmpeg::Rational {
-        self.decoder.frame_rate().unwrap_or_else(|| {
-            log::warn!("Could not determine frame rate, defaulting to 30fps");
-            ffmpeg::Rational(30, 1)
-        })
+        let stream = self.input.stream(self.video_stream_index);
+        let codec_rate = self.decoder.frame_rate();
+        let picked = pick_frame_rate(
+            stream.as_ref().map(|s| s.rate()),
+            stream.as_ref().map(|s| s.avg_frame_rate()),
+            codec_rate,
+        );
+        match picked {
+            Some(rate) => {
+                if !codec_rate.as_ref().is_some_and(is_plausible_rate) {
+                    log::debug!(
+                        "Bitstream carries no timing info (no VUI); using container frame rate {}/{}",
+                        rate.0,
+                        rate.1
+                    );
+                }
+                rate
+            }
+            None => {
+                log::error!(
+                    "Could not determine frame rate, defaulting to 30fps; exported timing may be wrong"
+                );
+                ffmpeg::Rational(30, 1)
+            }
+        }
     }
 
     /// Frame rate as frames per second.
@@ -1247,6 +1310,180 @@ fn extract_plane_into(buf: &mut Vec<u8>, data: &[u8], stride: usize, width: usiz
         for row in 0..height {
             let start = row * stride;
             buf.extend_from_slice(&data[start..start + width]);
+        }
+    }
+}
+
+/// Upper bound for a believable source frame rate. High-speed phone modes
+/// reach 960fps; a 90000/1 rational is a demuxer surfacing its 90kHz time
+/// base as `r_frame_rate`, not a camera.
+const MAX_SANE_FPS: f64 = 1000.0;
+
+/// FFmpeg reports "unset" as 0/0 or 0/1; anything non-positive or above
+/// [`MAX_SANE_FPS`] is a placeholder or time-base artifact, not a rate.
+fn is_plausible_rate(r: &ffmpeg::Rational) -> bool {
+    r.0 > 0 && r.1 > 0 && (r.0 as f64 / r.1 as f64) <= MAX_SANE_FPS
+}
+
+/// Pick the frame rate, nominal first, mirroring FFmpeg's own
+/// `av_guess_frame_rate`: container `r_frame_rate` (for MP4 the demuxer
+/// derives it from packet durations and snaps to the standard-rate table,
+/// so it reads 30000/1001 where a raw measured average would read
+/// 13455000/448949), then `avg_frame_rate`, then the codec context (needs
+/// bitstream VUI timing). The `avg < 70 && r > 210` guard is ported from
+/// av_guess_frame_rate: an r that high with a sane avg is a field or
+/// telecine rate, not a picture rate.
+fn pick_frame_rate(
+    stream_r: Option<ffmpeg::Rational>,
+    stream_avg: Option<ffmpeg::Rational>,
+    codec: Option<ffmpeg::Rational>,
+) -> Option<ffmpeg::Rational> {
+    let as_fps = |r: &ffmpeg::Rational| r.0 as f64 / r.1 as f64;
+    let r = stream_r.filter(is_plausible_rate);
+    let avg = stream_avg.filter(is_plausible_rate);
+    match (r, avg) {
+        (Some(r), Some(avg)) if as_fps(&avg) < 70.0 && as_fps(&r) > 210.0 => Some(avg),
+        (Some(r), _) => Some(r),
+        (None, Some(avg)) => Some(avg),
+        (None, None) => codec.filter(is_plausible_rate),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pick_frame_rate;
+    use ffmpeg_next as ffmpeg;
+
+    const R60: ffmpeg::Rational = ffmpeg::Rational(60, 1);
+    const R30: ffmpeg::Rational = ffmpeg::Rational(30, 1);
+    const NTSC: ffmpeg::Rational = ffmpeg::Rational(30000, 1001);
+    const UNSET: ffmpeg::Rational = ffmpeg::Rational(0, 0);
+
+    #[test]
+    fn prefers_nominal_r_frame_rate() {
+        // r is the demuxer's measured-then-snapped rate (30000/1001), avg
+        // the raw average; nominal wins per av_guess_frame_rate.
+        assert_eq!(
+            pick_frame_rate(Some(NTSC), Some(R60), Some(R30)),
+            Some(NTSC)
+        );
+    }
+
+    #[test]
+    fn falls_back_to_avg_frame_rate_when_r_unset() {
+        assert_eq!(pick_frame_rate(Some(UNSET), Some(R60), None), Some(R60));
+    }
+
+    #[test]
+    fn telecine_guard_prefers_sane_avg_over_field_rate() {
+        // Ported av_guess_frame_rate guard: r=240 with avg=29.97 is a
+        // field/telecine rate, not the picture rate.
+        let field = ffmpeg::Rational(240, 1);
+        assert_eq!(pick_frame_rate(Some(field), Some(NTSC), None), Some(NTSC));
+        // r=120 is under the 210 threshold: a real high-speed rate wins.
+        let r120 = ffmpeg::Rational(120, 1);
+        assert_eq!(pick_frame_rate(Some(r120), Some(R60), None), Some(r120));
+    }
+
+    #[test]
+    fn falls_back_to_codec_context_last() {
+        assert_eq!(
+            pick_frame_rate(Some(UNSET), Some(ffmpeg::Rational(0, 1)), Some(NTSC)),
+            Some(NTSC)
+        );
+    }
+
+    #[test]
+    fn none_when_everything_is_unset() {
+        assert_eq!(pick_frame_rate(Some(UNSET), Some(UNSET), None), None);
+        assert_eq!(pick_frame_rate(None, None, None), None);
+    }
+
+    #[test]
+    fn rejects_negative_rationals() {
+        assert_eq!(
+            pick_frame_rate(Some(ffmpeg::Rational(-1, 1)), Some(R30), None),
+            Some(R30)
+        );
+    }
+
+    /// A timing-less stream surfaces its 90kHz time base as r_frame_rate;
+    /// trusting it would size the encoder at 90000fps, far worse than the
+    /// old wrong-but-sane 30fps default.
+    #[test]
+    fn rejects_time_base_artifact_rates() {
+        let tb = ffmpeg::Rational(90000, 1);
+        assert_eq!(pick_frame_rate(Some(tb), Some(tb), Some(NTSC)), Some(NTSC));
+        assert_eq!(pick_frame_rate(Some(tb), Some(tb), None), None);
+    }
+
+    /// MJPEG carries no timing in its bitstream, so on decode the codec
+    /// context's framerate is unset and only the container knows the rate -
+    /// the same shape as camera-original HEVC without VUI timing, which
+    /// used to hit the silent 30fps default (60fps club footage exported
+    /// at 30fps).
+    #[test]
+    fn probes_container_rate_when_bitstream_has_no_timing() {
+        ffmpeg::init().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mjpeg60.mov");
+        write_mjpeg_60fps(&path);
+
+        let dec = super::VideoDecoder::open(&path).unwrap();
+        assert_eq!(dec.frame_rate(), R60);
+    }
+
+    fn write_mjpeg_60fps(path: &std::path::Path) {
+        use ffmpeg::codec;
+
+        let mut octx = ffmpeg::format::output(path).unwrap();
+        let mjpeg = ffmpeg::encoder::find(codec::Id::MJPEG).unwrap();
+        let mut ost = octx.add_stream(mjpeg).unwrap();
+        let mut enc = codec::context::Context::new_with_codec(mjpeg)
+            .encoder()
+            .video()
+            .unwrap();
+        enc.set_width(64);
+        enc.set_height(64);
+        enc.set_format(ffmpeg::format::Pixel::YUVJ420P);
+        enc.set_frame_rate(Some(R60));
+        let time_base = ffmpeg::Rational(R60.1, R60.0);
+        enc.set_time_base(time_base);
+        ost.set_parameters(&enc);
+        let mut enc = enc.open().unwrap();
+        ost.set_parameters(&enc);
+        octx.write_header().unwrap();
+        let stream_time_base = octx.stream(0).unwrap().time_base();
+
+        let mut frame = ffmpeg::util::frame::Video::new(ffmpeg::format::Pixel::YUVJ420P, 64, 64);
+        for plane in 0..3 {
+            frame.data_mut(plane).fill(128);
+        }
+        for i in 0..6 {
+            frame.set_pts(Some(i));
+            enc.send_frame(&frame).unwrap();
+            drain(&mut enc, &mut octx, time_base, stream_time_base);
+        }
+        enc.send_eof().unwrap();
+        drain(&mut enc, &mut octx, time_base, stream_time_base);
+        octx.write_trailer().unwrap();
+    }
+
+    fn drain(
+        enc: &mut ffmpeg::encoder::video::Encoder,
+        octx: &mut ffmpeg::format::context::Output,
+        encoder_time_base: ffmpeg::Rational,
+        stream_time_base: ffmpeg::Rational,
+    ) {
+        let mut packet = ffmpeg::Packet::empty();
+        while enc.receive_packet(&mut packet).is_ok() {
+            packet.set_stream(0);
+            // Without an explicit duration the mov muxer guesses the last
+            // sample's, skewing the demuxed average rate (6 frames / 5
+            // ticks = 72fps).
+            packet.set_duration(1);
+            packet.rescale_ts(encoder_time_base, stream_time_base);
+            packet.write_interleaved(octx).unwrap();
         }
     }
 }

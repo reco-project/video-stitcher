@@ -12,6 +12,8 @@
 
 use ort::session::Session;
 
+use crate::ort_session::ort_runtime_available;
+
 /// Result of probing available ONNX Runtime execution providers.
 ///
 /// Returned by [`probe_execution_providers`]. The GUI displays this
@@ -58,16 +60,19 @@ pub fn probe_execution_providers() -> AiProbeResult {
     let mut can_run_on_gpu_frames = false;
 
     // Test ORT itself loads. With load-dynamic, the library may not be
-    // installed. The ort crate panics with .expect() if the DLL/so isn't
-    // found, so we catch the panic here.
-    let builder = match std::panic::catch_unwind(Session::builder) {
-        Ok(Ok(b)) => Some(b),
-        Ok(Err(e)) => {
-            errors.push(format!("ORT init: {e}"));
-            None
-        }
-        Err(_) => {
-            errors.push("ONNX Runtime library not found. AI detection is unavailable.".to_string());
+    // installed; entering ort with an unloadable dylib self-deadlocks in
+    // its init (#446), so availability comes only from the gate's cached
+    // out-of-band probe.
+    let builder = match ort_runtime_available() {
+        Ok(()) => match Session::builder() {
+            Ok(b) => Some(b),
+            Err(e) => {
+                errors.push(format!("ORT init: {e}"));
+                None
+            }
+        },
+        Err(reason) => {
+            errors.push(reason);
             None
         }
     };
