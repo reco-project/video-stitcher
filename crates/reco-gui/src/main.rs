@@ -4339,6 +4339,11 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 }
                 if let Some(cal) = s.calibration.as_ref() {
                     app.set_sync_offset(cal.sync_offset as i32);
+                    // Angular resolution of the source, for the zoom-range
+                    // preview's detail readout: a KB4 lens maps
+                    // r = fx * theta, so fx is exactly the pixels per
+                    // radian the sensor resolves at centre.
+                    app.set_lens_px_per_rad(cal.left.fx as f32);
                 }
                 app.set_fov(clamped_fov);
                 // Manual calibration JSON does not embed lens-profile info,

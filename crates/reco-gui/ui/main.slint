@@ -733,6 +733,11 @@ export component RecoApp inherits Window {
     in-out property <bool> lens-preview-active: false;
     in-out property <string> lens-preview-side: "left";
     in-out property <float> lens-correction-amount: 1.0;
+    // Source pixels per radian at the lens centre (a KB4 lens maps
+    // r = fx * theta, so this is exactly `fx`). Set from the loaded
+    // calibration; drives the "detail" readout under the zoom-range
+    // preview. 0 = unknown, readout hidden.
+    in-out property <float> lens-px-per-rad: 0.0;
     callback changed-lens-preview();
     callback changed-lens-correction(float);
 
@@ -2693,6 +2698,125 @@ export component RecoApp inherits Window {
                                     value <=> root.export-fov-wide;
                                     decimals: 0;
                                 }
+                            }
+
+                            // What those three numbers actually frame. A
+                            // field of view in degrees says nothing on its
+                            // own; the two boxes show the widest and
+                            // tightest shot the director can choose, drawn
+                            // on the current preview frame and resizing
+                            // live as the sliders move.
+                            Text {
+                                text: "Zoom range";
+                                color: #ccc;
+                                font-size: 12px;
+                            }
+
+                            zoom-range := Rectangle {
+                                height: 190px;
+                                background: #101010;
+                                border-radius: 6px;
+                                border-width: 1px;
+                                border-color: root.border-mid;
+                                clip: true;
+
+                                // Letterboxed rect of the `contain`-fit
+                                // image. Slint does not expose the rect it
+                                // computes internally, so it is
+                                // reconstructed from the frame's own
+                                // aspect.
+                                property <float> img-aspect:
+                                    root.preview-frame.height > 0
+                                        ? root.preview-frame.width / root.preview-frame.height
+                                        : 16.0 / 9.0;
+                                property <float> box-aspect: self.width / self.height;
+                                property <length> content-w:
+                                    img-aspect > box-aspect ? self.width : self.height * img-aspect;
+                                property <length> content-h:
+                                    img-aspect > box-aspect ? self.width / img-aspect : self.height;
+
+                                // Fraction of the frame an inner field of
+                                // view covers. A rectilinear camera maps
+                                // angle through a tangent, so this is NOT
+                                // fov/preview-fov: at these angles that
+                                // approximation is off by tens of percent,
+                                // which would draw a confidently wrong box.
+                                property <float> frac-wide:
+                                    min(1.0, Math.tan(root.export-fov-wide * 0.5deg)
+                                             / Math.tan(root.fov * 0.5deg));
+                                property <float> frac-tight:
+                                    min(1.0, Math.tan(root.export-fov-tight * 0.5deg)
+                                             / Math.tan(root.fov * 0.5deg));
+
+                                Image {
+                                    source: root.preview-frame;
+                                    image-fit: contain;
+                                    width: 100%;
+                                    height: 100%;
+                                }
+
+                                if root.preview-frame.width == 0: Text {
+                                    text: "Load a match to see the zoom range";
+                                    color: #777;
+                                    font-size: 11px;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                    width: 100%;
+                                    height: 100%;
+                                }
+
+                                Rectangle {
+                                    width: zoom-range.content-w * zoom-range.frac-wide;
+                                    height: zoom-range.content-h * zoom-range.frac-wide;
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    background: transparent;
+                                    border-width: 2px;
+                                    border-color: #6a9fd8;
+
+                                    Text {
+                                        x: 4px;
+                                        y: 2px;
+                                        text: "Widest " + round(root.export-fov-wide) + " deg";
+                                        color: #6a9fd8;
+                                        font-size: 10px;
+                                    }
+                                }
+
+                                Rectangle {
+                                    width: zoom-range.content-w * zoom-range.frac-tight;
+                                    height: zoom-range.content-h * zoom-range.frac-tight;
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    background: transparent;
+                                    border-width: 2px;
+                                    border-color: #e2a03f;
+
+                                    Text {
+                                        x: 4px;
+                                        y: 2px;
+                                        text: "Tightest " + round(root.export-fov-tight) + " deg";
+                                        color: #e2a03f;
+                                        font-size: 10px;
+                                    }
+                                }
+                            }
+
+                            // How far past the lens' own resolving power
+                            // each end of the range pushes the render.
+                            // `fov_degrees` is the VERTICAL field of view
+                            // (nalgebra's Perspective3 convention), so the
+                            // output's pixels per radian is
+                            // `(out_height / 2) / tan(fov / 2)`.
+                            if root.lens-px-per-rad > 0: Text {
+                                text: "Detail: widest "
+                                    + round((root.export-height / 2 / Math.tan(root.export-fov-wide * 0.5deg)) / root.lens-px-per-rad * 10) / 10
+                                    + "x upscale, tightest "
+                                    + round((root.export-height / 2 / Math.tan(root.export-fov-tight * 0.5deg)) / root.lens-px-per-rad * 10) / 10
+                                    + "x at " + root.export-width + "x" + root.export-height;
+                                color: #888;
+                                font-size: 11px;
+                                wrap: word-wrap;
                             }
                         }
                     }
