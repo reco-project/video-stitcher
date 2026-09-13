@@ -74,6 +74,7 @@ pub(crate) fn opengl_to_wgpu_matrix() -> Matrix4<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::geometry::VirtualCamera;
 
     #[test]
     fn opengl_to_wgpu_maps_z() {
@@ -101,13 +102,14 @@ mod tests {
         // RigCorrection and unblocks the full (yaw, pitch, tilt, roll)
         // version of this test.
         let camera_position = [0.24_f32, 0.0, 0.24];
+        let camera = VirtualCamera::new(&camera_position);
         let yaw_steps = [-1.0_f32, -0.5, -0.1, 0.0, 0.1, 0.5, 1.0];
         let pitch_steps = [-0.6_f32, -0.2, 0.0, 0.2, 0.6];
 
         for &yaw in &yaw_steps {
             for &pitch in &pitch_steps {
-                let dir = crate::projection::yaw_pitch_to_direction(yaw, pitch, &camera_position);
-                let pos = crate::projection::direction_to_yaw_pitch(&dir, &camera_position);
+                let dir = camera.yaw_pitch_to_direction(yaw, pitch);
+                let pos = camera.direction_to_yaw_pitch(&dir);
 
                 let view = view_matrix(&camera_position, pos.yaw, pos.pitch, 0.0, 0.0);
 

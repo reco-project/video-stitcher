@@ -278,7 +278,6 @@ impl CoverageBoundary {
     /// Coverage geometry is world-fixed; rig tilt and roll only change how
     /// the viewport traverses it. Only the roll-aware clamp margins read
     /// these scalars, so a live orientation change needs no resampling.
-    #[cfg_attr(not(feature = "gpu"), allow(dead_code))] // live-orientation engine hook
     pub(crate) fn set_rig_orientation(&mut self, rig_tilt: f32, rig_roll: f32) {
         self.rig_tilt = rig_tilt;
         self.rig_roll = rig_roll;

@@ -33,20 +33,11 @@ use crate::geometry::Pose;
 use crate::geometry::VirtualCamera;
 use crate::stitch::{BlendRule, SurfaceMap};
 
-#[cfg(test)]
-use nalgebra::Vector3;
-
 // ---------------------------------------------------------------------------
 // The Projection trait: L1 geometry dispatch.
 // ---------------------------------------------------------------------------
 //
-// The calibration document owns the projection: `Topology::projection()`
-// borrows the topology's parameter struct as `&dyn Projection`, so
-// alt-projections (the mono cylinder today, N-camera later) are drop-in
-// additions without reshaping the core API and without a second object
-// to keep in sync. The trait dispatches the CPU surface maps, the GPU
-// program descriptor, coverage construction and the virtual-camera
-// basis and camera-to-panorama mapping.
+// `Topology::projection()` borrows the document's shape parameters as `&dyn Projection`, without copying them into a separate object.
 
 /// One frame's geometry question, bundled: the document, the output
 /// viewport, and the pose. The pose carries fov alongside yaw/pitch -
@@ -64,17 +55,11 @@ pub struct ProjectionContext<'a> {
 
 /// A panoramic projection geometry.
 ///
-/// Implemented by concrete projections (the 2-plane L-shape and mono
-/// cylinder today). Dispatched dynamically from the calibration document,
-/// so selecting another topology does not require recompilation. The CPU
-/// geometry dispatches through
-/// [`surface_maps`](Self::surface_maps); the GPU program dispatch lands
-/// with the projection-shader step.
+/// Implemented by the shape parameters stored in the calibration document. Provides surface maps, coverage, virtual-camera geometry, and source-point mapping. GPU-enabled builds also expose the rendering program descriptor.
 ///
 /// # Bounds
 ///
-/// `Send + Sync` because StitchCore stores projections behind a
-/// shared reference and the render thread reads them concurrently.
+/// `Send + Sync` allows implementations to be shared across processing threads.
 pub trait Projection: Send + Sync {
     /// Short human-readable name for logs + diagnostic bundles.
     fn name(&self) -> &'static str;
@@ -130,26 +115,6 @@ pub trait Projection: Send + Sync {
     /// edges; the cylinder is analytic). A defaulted implementation
     /// would silently hand a new projection another one's boundary.
     fn coverage(&self, calibration: &Calibration) -> CoverageBoundary;
-}
-
-/// Decompose a direction vector into yaw/pitch relative to the virtual camera.
-///
-/// Thin wrapper over [`VirtualCamera::direction_to_yaw_pitch`] kept
-/// for geometry consistency tests.
-#[cfg(test)]
-pub(crate) fn direction_to_yaw_pitch(dir: &Vector3<f32>, camera_position: &[f32; 3]) -> Pose {
-    VirtualCamera::new(camera_position).direction_to_yaw_pitch(dir)
-}
-
-/// Exact inverse of [`direction_to_yaw_pitch`]. Test-only helper;
-/// production paths call the method on [`VirtualCamera`] directly.
-#[cfg(test)]
-pub(crate) fn yaw_pitch_to_direction(
-    yaw: f32,
-    pitch: f32,
-    camera_position: &[f32; 3],
-) -> Vector3<f32> {
-    VirtualCamera::new(camera_position).yaw_pitch_to_direction(yaw, pitch)
 }
 
 #[cfg(test)]
@@ -335,7 +300,7 @@ mod tests {
 
     #[test]
     fn yaw_pitch_to_direction_roundtrips_with_direction_to_yaw_pitch() {
-        // Step 1a: the two helpers must form an exact bijection on the
+        // The two conversions must form an exact bijection on the
         // (yaw, pitch) grid used by panners and directors. All
         // shipping scenes set `camera_position = [d, 0, d]` (see
         // LShape::virtual_camera), so eye.y = 0 is the real invariant;
@@ -347,16 +312,17 @@ mod tests {
         let pitch_steps = [-0.9_f32, -0.4, -0.1, 0.0, 0.1, 0.4, 0.9];
 
         for cam in &camera_positions {
+            let camera = VirtualCamera::new(cam);
             for &yaw in &yaw_steps {
                 for &pitch in &pitch_steps {
-                    let dir = yaw_pitch_to_direction(yaw, pitch, cam);
+                    let dir = camera.yaw_pitch_to_direction(yaw, pitch);
                     let norm = dir.norm();
                     assert!(
                         (norm - 1.0).abs() < 1e-5,
                         "direction must be unit, got |dir| = {norm} for cam={cam:?} yaw={yaw} pitch={pitch}"
                     );
 
-                    let pos = direction_to_yaw_pitch(&dir, cam);
+                    let pos = camera.direction_to_yaw_pitch(&dir);
                     assert!(
                         (pos.yaw - yaw).abs() < 1e-4,
                         "yaw mismatch for cam={cam:?}: sent {yaw}, got {} (dir={dir:?})",
