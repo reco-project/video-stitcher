@@ -665,8 +665,7 @@ export component RecoApp inherits Window {
     // Per-camera lens intrinsics (populated by Rust after auto-calibrate
     // from `CalibrationResult.left_lens_profile` / `right_lens_profile`).
     // The Lens tab binds sliders to these properties; changes flow back
-    // to Rust via `changed-lens-param`, which calls
-    // `StitchRenderer::update_camera_params` for live preview.
+    // to Rust via `changed-lens-param` for validated live preview updates.
     in-out property <float> lens-left-fx: 0.0;
     in-out property <float> lens-left-fy: 0.0;
     in-out property <float> lens-left-cx: 0.0;
@@ -729,7 +728,7 @@ export component RecoApp inherits Window {
     callback reset-calibration();
     // Live lens parameter editing. Fires on any of the 8 sliders per
     // camera; Rust reads the property values for the currently-selected
-    // camera and calls update_camera_params.
+    // camera and submits an edited calibration.
     callback changed-lens-param();
     callback reset-lens();
 

@@ -71,8 +71,7 @@ pub trait Projection: Send + Sync {
     /// The virtual camera basis - the eye position plus the yaw/pitch
     /// decomposition axes every view matrix and pose conversion is
     /// built from. The one piece of scene state every projection has,
-    /// plane-backed or not (the mono cylinder's camera sits at the
-    /// `[0, 0, 1]` convention).
+    /// plane-backed or not. The cylinder's camera sits at the origin looking down `-Z`.
     fn virtual_camera(&self, framing: &Framing) -> VirtualCamera;
 
     /// Map normalized coordinates from one input camera to panorama pose.
@@ -300,37 +299,38 @@ mod tests {
 
     #[test]
     fn yaw_pitch_to_direction_roundtrips_with_direction_to_yaw_pitch() {
-        // The two conversions must form an exact bijection on the
-        // (yaw, pitch) grid used by panners and directors. All
-        // shipping scenes set `camera_position = [d, 0, d]` (see
-        // LShape::virtual_camera), so eye.y = 0 is the real invariant;
-        // test positions honor that. Pitch stays clear of +-pi/2 where
-        // yaw is undefined.
-        let camera_positions: [[f32; 3]; 3] = [[0.24, 0.0, 0.24], [0.3, 0.0, 0.2], [0.1, 0.0, 0.5]];
+        // Reference forward is horizontal; position does not determine the angular basis. Pitch stays clear of the poles where yaw is undefined.
+        let cameras = [
+            ([0.24, 0.0, 0.24], [-0.24, 0.0, -0.24]),
+            ([0.0, 0.0, 0.0], [0.0, 0.0, -1.0]),
+            ([0.3, 0.0, 0.2], [-0.3, 0.0, -0.2]),
+            ([0.1, 0.0, 0.5], [-0.1, 0.0, -0.5]),
+            ([2.0, 3.0, 4.0], [1.0, 0.0, 0.0]),
+        ];
 
         let yaw_steps = [-1.2_f32, -0.6, -0.2, 0.0, 0.2, 0.6, 1.2];
         let pitch_steps = [-0.9_f32, -0.4, -0.1, 0.0, 0.1, 0.4, 0.9];
 
-        for cam in &camera_positions {
-            let camera = VirtualCamera::new(cam);
+        for (position, forward) in &cameras {
+            let camera = VirtualCamera::new(position, forward);
             for &yaw in &yaw_steps {
                 for &pitch in &pitch_steps {
                     let dir = camera.yaw_pitch_to_direction(yaw, pitch);
                     let norm = dir.norm();
                     assert!(
                         (norm - 1.0).abs() < 1e-5,
-                        "direction must be unit, got |dir| = {norm} for cam={cam:?} yaw={yaw} pitch={pitch}"
+                        "direction must be unit, got |dir| = {norm} for camera={camera:?} yaw={yaw} pitch={pitch}"
                     );
 
                     let pos = camera.direction_to_yaw_pitch(&dir);
                     assert!(
                         (pos.yaw - yaw).abs() < 1e-4,
-                        "yaw mismatch for cam={cam:?}: sent {yaw}, got {} (dir={dir:?})",
+                        "yaw mismatch for camera={camera:?}: sent {yaw}, got {} (dir={dir:?})",
                         pos.yaw
                     );
                     assert!(
                         (pos.pitch - pitch).abs() < 1e-4,
-                        "pitch mismatch for cam={cam:?}: sent {pitch}, got {} (dir={dir:?})",
+                        "pitch mismatch for camera={camera:?}: sent {pitch}, got {} (dir={dir:?})",
                         pos.pitch
                     );
                 }

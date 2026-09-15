@@ -209,11 +209,12 @@ impl StitchSession {
 
     /// Update calibration parameters and recompute coverage boundary.
     ///
-    /// Takes effect on the next render call. For interactive calibration
-    /// tweaking during preview or live operation. Delegates to
-    /// `StitchCore::update_calibration` which re-derives the coverage
-    /// boundary in one call.
-    pub fn update_calibration(&mut self, calibration: crate::calibration::Calibration) {
-        self.core.update_calibration(calibration);
+    /// Delegates to [`StitchCore::update_calibration`](crate::core::StitchCore::update_calibration), including its validation and reconstruction requirements.
+    pub fn update_calibration(
+        &mut self,
+        calibration: crate::calibration::Calibration,
+    ) -> Result<(), SessionError> {
+        self.core.update_calibration(calibration)?;
+        Ok(())
     }
 }

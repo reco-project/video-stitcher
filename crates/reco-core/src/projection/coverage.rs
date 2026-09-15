@@ -273,16 +273,6 @@ impl CoverageBoundary {
         }
     }
 
-    /// Refresh the captured rig orientation without resampling.
-    ///
-    /// Coverage geometry is world-fixed; rig tilt and roll only change how
-    /// the viewport traverses it. Only the roll-aware clamp margins read
-    /// these scalars, so a live orientation change needs no resampling.
-    pub(crate) fn set_rig_orientation(&mut self, rig_tilt: f32, rig_roll: f32) {
-        self.rig_tilt = rig_tilt;
-        self.rig_roll = rig_roll;
-    }
-
     /// Global yaw coverage range across the full panorama (radians).
     ///
     /// Returns `(yaw_min, yaw_max)`, the widest-point extremes of the
@@ -452,7 +442,7 @@ mod tests {
 
     #[test]
     fn rectangular_coverage_uses_supplied_camera_basis() {
-        let camera = VirtualCamera::new(&[0.2, 0.0, 0.3]);
+        let camera = VirtualCamera::new(&[0.2, 0.0, 0.3], &[-0.2, 0.0, -0.3]);
         let coverage = CoverageBoundary::rectangular(-1.0, 1.0, -0.5, 0.5, camera, 0.0, 0.0);
         assert_eq!(coverage.cam.eye, camera.eye);
         assert_eq!(coverage.cam.base_forward, camera.base_forward);
@@ -475,14 +465,14 @@ mod tests {
         let grouped = CoverageBoundary::from_samples(
             &[left.as_slice(), right.as_slice()],
             20,
-            VirtualCamera::mono(),
+            VirtualCamera::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, -1.0]),
             0.0,
             0.0,
         );
         let reversed = CoverageBoundary::from_samples(
             &[right.as_slice(), left.as_slice()],
             20,
-            VirtualCamera::mono(),
+            VirtualCamera::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, -1.0]),
             0.0,
             0.0,
         );
@@ -492,7 +482,7 @@ mod tests {
         let ungrouped = CoverageBoundary::from_samples(
             &[flattened.as_slice()],
             20,
-            VirtualCamera::mono(),
+            VirtualCamera::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, -1.0]),
             0.0,
             0.0,
         );
@@ -510,6 +500,7 @@ mod tests {
     #[should_panic(expected = "coverage samples must be finite")]
     fn sampled_coverage_rejects_non_finite_points() {
         let samples = [(0.0, f32::NAN)];
-        CoverageBoundary::from_samples(&[&samples], 4, VirtualCamera::mono(), 0.0, 0.0);
+        let camera = VirtualCamera::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, -1.0]);
+        CoverageBoundary::from_samples(&[&samples], 4, camera, 0.0, 0.0);
     }
 }

@@ -203,7 +203,7 @@ mod tests {
     use super::*;
 
     fn cam() -> VirtualCamera {
-        VirtualCamera::new(&[1.0, 0.0, 1.0])
+        VirtualCamera::new(&[1.0, 0.0, 1.0], &[-1.0, 0.0, -1.0])
     }
 
     #[test]
@@ -233,36 +233,40 @@ mod tests {
     #[test]
     fn world_to_render_inverts_view_matrix_under_tilt_and_roll() {
         use crate::geometry::matrices::view_matrix;
-        let position = [1.0_f32, 0.0, 1.0];
-        let cam = VirtualCamera::new(&position);
-        for &(tilt, roll) in &[
-            (0.0_f32, 0.0_f32),
-            (0.15, 0.0),
-            (0.33, 0.0),
-            (0.0, 0.12),
-            (0.33, 0.12),
-            (0.26, -0.1),
+        for (position, forward) in [
+            ([1.0_f32, 0.0, 1.0], [-1.0, 0.0, -1.0]),
+            ([0.0, 0.0, 0.0], [0.0, 0.0, -1.0]),
         ] {
-            for yaw_i in -4..=4i32 {
-                let wy = yaw_i as f32 * 0.22;
-                for pitch_i in -3..=3i32 {
-                    let wp = pitch_i as f32 * 0.11;
-                    let (ry, rp) = world_to_render_pose(&cam, wy, wp, tilt, roll);
-                    let view = view_matrix(&position, ry, rp, tilt, roll);
-                    let dir = cam.yaw_pitch_to_direction(wy, wp);
-                    let target = nalgebra::Vector4::new(
-                        position[0] + dir.x,
-                        position[1] + dir.y,
-                        position[2] + dir.z,
-                        1.0,
-                    );
-                    let c = view * target;
-                    // Angular error between camera -Z and the target.
-                    let err = (c.x * c.x + c.y * c.y).sqrt().atan2(-c.z);
-                    assert!(
-                        err.abs() < 5e-4,
-                        "pointing error {err} rad at tilt={tilt} roll={roll} yaw={wy} pitch={wp}"
-                    );
+            let cam = VirtualCamera::new(&position, &forward);
+            for &(tilt, roll) in &[
+                (0.0_f32, 0.0_f32),
+                (0.15, 0.0),
+                (0.33, 0.0),
+                (0.0, 0.12),
+                (0.33, 0.12),
+                (0.26, -0.1),
+            ] {
+                for yaw_i in -4..=4i32 {
+                    let wy = yaw_i as f32 * 0.22;
+                    for pitch_i in -3..=3i32 {
+                        let wp = pitch_i as f32 * 0.11;
+                        let (ry, rp) = world_to_render_pose(&cam, wy, wp, tilt, roll);
+                        let view = view_matrix(&cam, ry, rp, tilt, roll);
+                        let dir = cam.yaw_pitch_to_direction(wy, wp);
+                        let target = nalgebra::Vector4::new(
+                            position[0] + dir.x,
+                            position[1] + dir.y,
+                            position[2] + dir.z,
+                            1.0,
+                        );
+                        let c = view * target;
+                        // Angular error between camera -Z and the target.
+                        let err = (c.x * c.x + c.y * c.y).sqrt().atan2(-c.z);
+                        assert!(
+                            err.abs() < 5e-4,
+                            "pointing error {err} rad at tilt={tilt} roll={roll} yaw={wy} pitch={wp}"
+                        );
+                    }
                 }
             }
         }

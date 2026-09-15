@@ -75,11 +75,6 @@ impl PreviewBridge {
             gpu.backend_name(),
         );
 
-        // Lens-correction strength is consumed per frame, not at
-        // construction; capture it before `calibration` moves into the
-        // engine below.
-        let lens_correction_amount = calibration.lenses[0].correction;
-
         let viewport_size = ViewportSize {
             width: viewport_width,
             height: viewport_height,
@@ -101,10 +96,7 @@ impl PreviewBridge {
                 full_range: false,
             },
         )?;
-        let mut engine = StitchCore::new(Executor::Gpu(Box::new(executor)))?;
-        // Honour a persisted lens-correction strength (e.g. correction
-        // saved off) instead of the full-correction default.
-        engine.set_lens_correction_amount(lens_correction_amount);
+        let engine = StitchCore::new(Executor::Gpu(Box::new(executor)))?;
 
         Ok(Self {
             engine,

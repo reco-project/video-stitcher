@@ -86,6 +86,12 @@ impl LShape {
         // planes are viewed from `[axis_offset, 0, axis_offset]`, and a
         // zero offset would normalize a zero vector in the view basis.
         expect_positive("framing.axis_offset", framing.axis_offset)?;
+        let axis = framing.axis_offset as f32;
+        // The reference basis is normalized in the renderer's f32 precision.
+        expect_finite(
+            "framing.axis_offset camera distance",
+            f64::from(Vector3::new(axis, 0.0, axis).norm()),
+        )?;
 
         Ok(())
     }
@@ -107,8 +113,6 @@ impl LShape {
         // Unit plane width: each plane is a 1.0-wide quad, so the
         // intersect offset is half of what the overlap leaves.
         let half_offset = 0.5 * (1.0 - self.intersect as f32);
-        let axis = framing.axis_offset as f32;
-
         PlaneScene {
             left_position: [0.0, 0.0, half_offset],
             left_rotation: [
@@ -118,7 +122,7 @@ impl LShape {
             ],
             right_position: [half_offset, self.x_ty as f32, 0.0],
             right_rotation: [self.x_rx as f32, 0.0, self.x_rz as f32],
-            camera_position: [axis, 0.0, axis],
+            camera: self.virtual_camera(framing),
             plane_aspect: aspect,
         }
     }
@@ -140,8 +144,8 @@ pub(crate) struct PlaneScene {
     pub(crate) right_position: [f32; 3],
     /// Right plane rotation `[rx, ry, rz]` in radians.
     pub(crate) right_rotation: [f32; 3],
-    /// Virtual camera position `[x, y, z]`.
-    pub(crate) camera_position: [f32; 3],
+    /// Virtual camera position and reference orientation.
+    pub(crate) camera: VirtualCamera,
     /// Plane aspect ratio (width / height).
     pub(crate) plane_aspect: f32,
 }
@@ -221,9 +225,9 @@ impl LShape {
         // Camera pixel [0,1] -> plane UV in extended shader space.
         let plane_uv = inverse_fisheye(norm_x as f64, norm_y as f64, params)?;
         let world_point = plane_uv_to_world(plane_uv, camera, scene);
-        let camera_position = Point3::from(Vector3::from(scene.camera_position));
+        let camera_position = Point3::from(scene.camera.eye);
         let direction = (world_point - camera_position).normalize();
-        Some(VirtualCamera::new(&scene.camera_position).direction_to_yaw_pitch(&direction))
+        Some(scene.camera.direction_to_yaw_pitch(&direction))
     }
 
     /// Sample the L-shape's irregular boundary while reusing one plane scene.
@@ -524,7 +528,7 @@ fn l_shape_plane_maps(
         )
         .to_homogeneous();
     let view = view_matrix(
-        &scene.camera_position,
+        &scene.camera,
         pose.yaw,
         pose.pitch,
         calib.framing.tilt as f32,
@@ -565,7 +569,7 @@ impl Projection for LShape {
 
     fn virtual_camera(&self, framing: &Framing) -> VirtualCamera {
         let axis = framing.axis_offset as f32;
-        VirtualCamera::new(&[axis, 0.0, axis])
+        VirtualCamera::new(&[axis, 0.0, axis], &[-axis, 0.0, -axis])
     }
 
     fn camera_to_panorama(
@@ -658,8 +662,8 @@ mod tests {
         // Half offset = 0.5 * (1 - 0.5) = 0.25
         assert!((geom.left_position[2] - 0.25).abs() < 1e-5);
         assert!((geom.right_position[0] - 0.25).abs() < 1e-5);
-        assert!((geom.camera_position[0] - 0.25).abs() < 1e-5);
-        assert!((geom.camera_position[2] - 0.25).abs() < 1e-5);
+        assert!((geom.camera.eye.x - 0.25).abs() < 1e-5);
+        assert!((geom.camera.eye.z - 0.25).abs() < 1e-5);
         assert!((geom.plane_aspect - 16.0 / 9.0).abs() < 1e-5);
     }
 
@@ -682,6 +686,16 @@ mod tests {
         // Rotations should be applied
         assert!((geom.right_rotation[2] - 0.008).abs() < 1e-5);
         assert!((geom.left_rotation[0] - (-0.004)).abs() < 1e-5);
+    }
+
+    #[test]
+    fn rejects_axis_offsets_that_overflow_the_camera_length() {
+        for offset in [1e20, f64::MAX] {
+            assert!(matches!(
+                topo(0.5).validate(&framing(offset)),
+                Err(CalibrationError::NonFiniteFloat { .. })
+            ));
+        }
     }
 
     #[test]

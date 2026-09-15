@@ -4,9 +4,7 @@ use crate::geometry::Pose;
 
 use nalgebra::Vector3;
 
-/// The virtual camera's orthonormal basis: single source of truth for
-/// `(base_forward, base_right, world_up)` shared by `view_matrix` and
-/// yaw/pitch decomposition.
+/// A virtual camera's position and horizontal reference orientation.
 ///
 /// `base_right = base_forward x world_up` so it semantically points
 /// to the viewer's right (intuitive). That makes the triple
@@ -18,32 +16,19 @@ use nalgebra::Vector3;
 /// yaw sign without any downstream reconciliation. `yaw_pitch_to_direction`
 /// mirrors the same negation for symmetry.
 ///
-/// Pre-Step-2 the two APIs used the literal `atan2(h . base_right,
-/// h . base_forward)` and `cos(yaw)*bf + sin(yaw)*br` forms, so a
-/// `yaw=+theta` on one side meant `yaw=-theta` on the other. The Step 1e
-/// regression test locked that bug in; this type's yaw convention
-/// un-ignores it.
-///
 /// Rig tilt and rig roll are NOT part of this type: `rig_frame` layers
 /// them on top, and `view_matrix` + `world_to_render_pose` both compose
 /// through that one construction.
-/// World-space eye position of the mono (single-camera) rig: on the
-/// projection axis, one unit back along `+Z`. A unit offset rather
-/// than the origin itself: `new` normalizes the eye-to-origin
-/// direction, and a zero eye would produce NaN axes. Consumers reach
-/// it through [`VirtualCamera::mono`].
-const MONO_CAMERA_POSITION: [f32; 3] = [0.0, 0.0, 1.0];
-
 #[derive(Debug, Clone, Copy)]
 pub struct VirtualCamera {
-    /// World-space camera eye position (copy of `camera_position`).
-    pub eye: Vector3<f32>,
-    /// Unit vector from eye toward the scene origin (the L-shape corner).
-    pub base_forward: Vector3<f32>,
+    /// World-space viewpoint position, independent of reference orientation.
+    pub(crate) eye: Vector3<f32>,
+    /// Unit reference forward vector in the horizontal XZ plane.
+    pub(crate) base_forward: Vector3<f32>,
     /// Unit vector to the viewer's right (`base_forward x world_up`,
     /// left-handed triple). The yaw API compensates for the
     /// handedness so there is no sign divergence downstream.
-    pub base_right: Vector3<f32>,
+    pub(crate) base_right: Vector3<f32>,
 }
 
 impl VirtualCamera {
@@ -53,17 +38,12 @@ impl VirtualCamera {
         Vector3::new(0.0, 1.0, 0.0)
     }
 
-    /// The mono (single-camera) basis: the camera sits on the
-    /// projection axis at `[0, 0, 1]` looking at the origin -
-    /// forward `-Z`, right `+X`, up `+Y`.
-    pub fn mono() -> Self {
-        Self::new(&MONO_CAMERA_POSITION)
-    }
-
-    /// Build the basis from a world-space camera position.
-    pub fn new(camera_position: &[f32; 3]) -> Self {
+    /// Build the reference basis derived by a topology from a validated calibration.
+    ///
+    /// Position must be finite; forward must be horizontal with a finite, nonzero length in f32. Rig tilt and roll are applied separately.
+    pub(crate) fn new(camera_position: &[f32; 3], forward: &[f32; 3]) -> Self {
         let eye = Vector3::new(camera_position[0], camera_position[1], camera_position[2]);
-        let base_forward = (-eye).normalize();
+        let base_forward = Vector3::new(forward[0], forward[1], forward[2]).normalize();
         let base_right = base_forward.cross(&Self::world_up()).normalize();
         Self {
             eye,
@@ -115,5 +95,35 @@ impl VirtualCamera {
         let horizontal =
             self.base_forward * (cos_pitch * yaw.cos()) - self.base_right * (cos_pitch * yaw.sin());
         Vector3::new(horizontal.x, pitch.sin(), horizontal.z)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn position_does_not_determine_reference_orientation() {
+        let origin = VirtualCamera::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, -2.0]);
+        let translated = VirtualCamera::new(&[2.0, 3.0, 4.0], &[0.0, 0.0, -2.0]);
+        assert_eq!(origin.eye, Vector3::zeros());
+        assert_eq!(translated.eye, Vector3::new(2.0, 3.0, 4.0));
+        assert_eq!(origin.base_forward, Vector3::new(0.0, 0.0, -1.0));
+        assert_eq!(origin.base_right, Vector3::new(1.0, 0.0, 0.0));
+        assert_eq!(origin.base_forward, translated.base_forward);
+        assert_eq!(origin.base_right, translated.base_right);
+    }
+
+    #[test]
+    fn explicit_l_shape_forward_preserves_origin_facing_basis() {
+        for offset in [0.01, 0.2398, 0.5, 2.0] {
+            let camera = VirtualCamera::new(&[offset, 0.0, offset], &[-offset, 0.0, -offset]);
+            let forward = (-camera.eye).normalize();
+            assert_eq!(camera.base_forward, forward);
+            assert_eq!(
+                camera.base_right,
+                forward.cross(&VirtualCamera::world_up()).normalize()
+            );
+        }
     }
 }

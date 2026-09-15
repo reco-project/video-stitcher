@@ -248,82 +248,11 @@ impl StitchPipeline {
         Some((width, height))
     }
 
-    /// Set the lens distortion correction amount for every lens (per-frame
-    /// uniform; no scene rebuild).
-    pub fn set_lens_correction_amount(&mut self, amount: f32) {
-        let c = amount.clamp(0.0, 1.0);
-        for lens in &mut self.calibration.lenses {
-            lens.correction = c;
-        }
-    }
-
-    /// Set the seam blend width (per-frame uniform; no scene rebuild).
-    pub fn set_blend_width(&mut self, width: f32) {
-        if let Some(t) = self.calibration.topology.l_shape_mut() {
-            t.blend_width = width;
-        } else {
-            log::warn!("set_blend_width({width}) ignored: this topology has no seam");
-        }
-    }
-
-    /// Update calibration parameters. Recomputes the plane scene from the
-    /// new layout. Takes effect on the next render call (uniforms are rebuilt
-    /// each frame from the stored calibration and scene).
-    ///
-    /// No GPU pipeline recreation needed - only the uniform data changes.
-    pub fn update_calibration(&mut self, calibration: Calibration) {
-        self.scene = Self::derive_plane_scene(&calibration);
+    /// Install a validated calibration with unchanged topology kind and image dimensions.
+    pub(crate) fn apply_calibration(&mut self, calibration: Calibration) {
+        let scene = Self::derive_plane_scene(&calibration);
+        self.scene = scene;
         self.calibration = calibration;
-        log::debug!("Pipeline calibration updated");
-    }
-
-    /// Replace the topology (plane placement + seam), rebuilding the scene.
-    pub fn update_topology(&mut self, topology: crate::calibration::Topology) {
-        let mut cal = self.calibration.clone();
-        cal.topology = topology;
-        self.update_calibration(cal);
-    }
-
-    /// Replace the framing (axis offset, tilt, roll), rebuilding the scene.
-    pub fn update_framing(&mut self, framing: crate::calibration::Framing) {
-        let mut cal = self.calibration.clone();
-        cal.framing = framing;
-        self.update_calibration(cal);
-    }
-
-    /// Update per-camera intrinsics (focal, principal point, distortion)
-    /// for one or both cameras without touching the plane layout or rig
-    /// orientation.
-    ///
-    /// Intended for interactive lens tweaking in a GUI: each `Lens`
-    /// change is written into the shader's per-frame uniform buffer, so the
-    /// next render call reflects the new values. No GPU pipeline or scene
-    /// recreation is needed - cheap enough (~microseconds) to call on
-    /// every slider drag.
-    ///
-    /// `left`/`right` are `None` to leave that side untouched. If both are
-    /// `None` this is a no-op. Passing `Some` for a side replaces that
-    /// side's `Lens` on the stored calibration; the next render
-    /// picks it up automatically.
-    ///
-    /// Does not recompute the plane scene because the plane layout is
-    /// unchanged; only the camera intrinsics (which live on the stored
-    /// calibration and are re-read each frame) need updating.
-    pub fn update_camera_params(
-        &mut self,
-        left: Option<crate::calibration::Lens>,
-        right: Option<crate::calibration::Lens>,
-    ) {
-        if left.is_none() && right.is_none() {
-            return;
-        }
-        if let Some(l) = left {
-            self.calibration.lenses[0] = l;
-        }
-        if let Some(r) = right {
-            self.calibration.lenses[1] = r;
-        }
-        log::debug!("Pipeline camera params updated");
     }
 
     /// Set up bind groups for GPU-resident zero-copy input.

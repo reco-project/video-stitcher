@@ -17,7 +17,7 @@
 //! [`CpuExecutor`] is unconditional - it is the render path for
 //! wgpu-free builds.
 
-use crate::calibration::{Calibration, Framing, Lens, Topology};
+use crate::calibration::Calibration;
 use crate::geometry::Pose;
 use crate::projection::{CoverageBoundary, Projection};
 use crate::render::planes::{Nv12Planes, YuvPlanes};
@@ -933,11 +933,7 @@ impl StitchExecutor for GpuExecutor {
 /// imports, readback rings) is reached via [`Executor::gpu`] /
 /// [`Executor::gpu_mut`] - a typed accessor, no downcasting.
 ///
-/// The live-config methods dispatch per arm: the GPU arm forwards to
-/// the pipeline's update machinery (uniforms, scene rebuild), the CPU
-/// arm mutates the executor's own document and rebuilds its cached
-/// scene - the stitch kernel reads the document per call, so there is
-/// no second copy to drift.
+/// Calibration edits are accepted by [`StitchCore`](crate::core::StitchCore). The GPU arm caches derived scene geometry; the CPU stitch kernel reads the accepted document per call.
 pub enum Executor {
     /// Pure-Rust software stitch - the GPU-less path. Boxed (like the
     /// GPU arm) so the enum itself stays pointer-sized inside the
@@ -1032,21 +1028,6 @@ impl Executor {
         }
     }
 
-    /// Set the seam blend width (document field; no geometry rebuild).
-    pub fn set_blend_width(&mut self, width: f32) {
-        match self {
-            Executor::Cpu(c) => {
-                if let Some(t) = c.calib.topology.l_shape_mut() {
-                    t.blend_width = width;
-                } else {
-                    log::warn!("set_blend_width({width}) ignored: this topology has no seam");
-                }
-            }
-            #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.pipeline.set_blend_width(width),
-        }
-    }
-
     /// Whether source YUV uses full-range (0-255) quantization rather
     /// than limited range (16-235).
     pub fn set_full_range(&mut self, full_range: bool) {
@@ -1077,66 +1058,12 @@ impl Executor {
         }
     }
 
-    /// Set the lens-correction strength on every lens, clamped to `[0, 1]`.
-    pub fn set_lens_correction_amount(&mut self, amount: f32) {
+    /// Install a calibration already validated against the active engine's input layout.
+    pub(crate) fn apply_calibration(&mut self, calibration: Calibration) {
         match self {
-            Executor::Cpu(c) => {
-                let amount = amount.clamp(0.0, 1.0);
-                for lens in &mut c.calib.lenses {
-                    lens.correction = amount;
-                }
-            }
+            Executor::Cpu(c) => c.calib = calibration,
             #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.pipeline.set_lens_correction_amount(amount),
-        }
-    }
-
-    /// Replace the whole calibration document, rebuilding derived geometry.
-    pub fn update_calibration(&mut self, calibration: Calibration) {
-        match self {
-            Executor::Cpu(c) => {
-                c.calib = calibration;
-            }
-            #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.pipeline.update_calibration(calibration),
-        }
-    }
-
-    /// Replace the topology (plane placement + seam), rebuilding geometry.
-    pub fn update_topology(&mut self, topology: Topology) {
-        match self {
-            Executor::Cpu(c) => {
-                c.calib.topology = topology;
-            }
-            #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.pipeline.update_topology(topology),
-        }
-    }
-
-    /// Replace the framing (axis offset, tilt, roll), rebuilding geometry.
-    pub fn update_framing(&mut self, framing: Framing) {
-        match self {
-            Executor::Cpu(c) => {
-                c.calib.framing = framing;
-            }
-            #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.pipeline.update_framing(framing),
-        }
-    }
-
-    /// Replace one or both cameras' intrinsics, rebuilding geometry.
-    pub fn update_camera_params(&mut self, left: Option<Lens>, right: Option<Lens>) {
-        match self {
-            Executor::Cpu(c) => {
-                if let Some(l) = left {
-                    c.calib.lenses[0] = l;
-                }
-                if let Some(r) = right {
-                    c.calib.lenses[1] = r;
-                }
-            }
-            #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.pipeline.update_camera_params(left, right),
+            Executor::Gpu(g) => g.pipeline.apply_calibration(calibration),
         }
     }
 }
@@ -1170,6 +1097,8 @@ impl StitchExecutor for Executor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "gpu")]
+    use crate::calibration::{Framing, Lens};
     use crate::stitch::test_support::calib;
     #[cfg(feature = "gpu")]
     use crate::stitch::test_support::{Agreement, AgreementBounds, gpu_or_skip, nv12};

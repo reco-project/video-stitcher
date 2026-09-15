@@ -89,10 +89,7 @@ impl Projection for Cylinder {
     }
 
     fn virtual_camera(&self, _framing: &Framing) -> VirtualCamera {
-        // The mono camera sits on the cylinder axis; mono()'s [0, 0, 1]
-        // convention (forward -Z) keeps the pose basis well-defined
-        // where the origin would normalize a zero vector into NaNs.
-        VirtualCamera::mono()
+        VirtualCamera::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, -1.0])
     }
 
     fn camera_to_panorama(
@@ -231,7 +228,7 @@ impl CylinderMap {
     /// default.
     ///
     /// The mono camera basis looks along `-Z` with `+X` right and
-    /// `+Y` up ([`VirtualCamera::mono`]), and the pose composition
+    /// `+Y` up, and the pose composition
     /// mirrors `view_matrix`: yaw around the rig frame's up axis,
     /// pitch around the yaw-rotated base right.
     fn new(
@@ -241,8 +238,17 @@ impl CylinderMap {
         viewport_size: &ViewportSize,
         pose: Pose,
     ) -> Self {
-        let base_forward = [0.0, 0.0, -1.0];
-        let base_right = [1.0, 0.0, 0.0];
+        let camera = cylinder.virtual_camera(framing);
+        let base_forward = [
+            f64::from(camera.base_forward.x),
+            f64::from(camera.base_forward.y),
+            f64::from(camera.base_forward.z),
+        ];
+        let base_right = [
+            f64::from(camera.base_right.x),
+            f64::from(camera.base_right.y),
+            f64::from(camera.base_right.z),
+        ];
         let world_up = [0.0, 1.0, 0.0];
 
         // Rig frame (SYNC_WITH rig_correction::rig_frame): tilt rotates
@@ -407,6 +413,55 @@ mod tests {
     /// Half-pixel slack: the output center pixel (100, 50) sits half a
     /// pixel off the exact optical axis, which at r=2400 is ~0.013 in v.
     const TOL: f64 = 2e-2;
+
+    #[test]
+    fn declared_camera_matches_the_sampling_origin_and_orientation() {
+        let cylinder = Cylinder {
+            video_height: Some(20_000.0),
+            ..Default::default()
+        };
+        for (tilt, roll) in [(0.0, 0.0), (0.21, -0.08)] {
+            let framing = Framing {
+                axis_offset: 0.7,
+                tilt,
+                roll,
+            };
+            let camera = cylinder.virtual_camera(&framing);
+            assert_eq!(camera.eye, nalgebra::Vector3::zeros());
+            assert_eq!(camera.base_forward, nalgebra::Vector3::new(0.0, 0.0, -1.0));
+            for yaw in [-0.7, 0.0, 0.7] {
+                for pitch in [-0.2, 0.0, 0.2] {
+                    let map = CylinderMap::new(
+                        &cylinder,
+                        &framing,
+                        SRC_H,
+                        &ViewportSize {
+                            width: 1,
+                            height: 1,
+                        },
+                        pose(yaw, pitch),
+                    );
+                    let sample = map.sample_uv(0, 0).expect("center ray covered");
+                    let theta = (sample.u - 0.5) * cylinder.sweep_deg.to_radians();
+                    let hit = nalgebra::Vector4::new(
+                        (cylinder.focal_length * theta.sin()) as f32,
+                        ((0.5 - sample.v) * cylinder.video_height.unwrap()) as f32,
+                        (-cylinder.focal_length * theta.cos()) as f32,
+                        1.0,
+                    );
+                    let view =
+                        crate::geometry::view_matrix(&camera, yaw, pitch, tilt as f32, roll as f32);
+                    let rendered = view * hit;
+                    assert!(rendered.z < 0.0);
+                    let error = rendered.x.hypot(rendered.y).atan2(-rendered.z);
+                    assert!(
+                        error < 1e-6,
+                        "center ray error {error} at yaw={yaw} pitch={pitch} tilt={tilt} roll={roll}"
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn center_pixel_at_zero_pose_samples_the_video_center() {

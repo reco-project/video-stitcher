@@ -822,7 +822,7 @@ impl Renderer {
             )
             .to_homogeneous();
         let view = view_matrix(
-            &scene.camera_position,
+            &scene.camera,
             pose.yaw,
             pose.pitch,
             calibration.framing.tilt as f32,

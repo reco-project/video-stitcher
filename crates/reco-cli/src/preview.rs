@@ -353,14 +353,25 @@ impl App {
         println!("Seeked to frame {frame} ({secs:.1}s)");
     }
 
-    /// Apply a calibration change: update renderer + refresh max_fov from new coverage.
-    fn apply_calibration_change(&mut self) {
-        if let Some(ref mut r) = self.renderer {
-            r.update_calibration(self.cal.clone());
-            self.max_fov = r.max_fov_degrees().unwrap_or(FOV_MAX).min(FOV_MAX);
+    /// Accept an edited document before updating preview controls.
+    fn edit_calibration(&mut self, edit: impl FnOnce(&mut reco_core::calibration::Calibration)) {
+        let mut calibration = self.cal.clone();
+        edit(&mut calibration);
+        let result = if let Some(renderer) = self.renderer.as_mut() {
+            renderer.update_calibration(calibration.clone())
+        } else {
+            calibration
+                .validate()
+                .map_err(reco_core::core::types::StitchCoreError::from)
+        };
+        if let Err(error) = result {
+            eprintln!("Calibration unchanged: {error}");
+            return;
+        }
+        self.cal = calibration;
+        if let Some(renderer) = self.renderer.as_ref() {
+            self.max_fov = renderer.max_fov_degrees().unwrap_or(FOV_MAX).min(FOV_MAX);
             if self.clamp_enabled {
-                // Narrow PoseControl's FOV ceiling so the target FOV
-                // can't exceed what coverage allows.
                 let mut cfg = *self.pose.config();
                 cfg.fov_max_degrees = self.max_fov;
                 self.pose.set_config(cfg);
@@ -645,171 +656,72 @@ impl ApplicationHandler for App {
                                 .apply_intent(ControlIntent::Hotkey(HotkeyIntent::ZoomOut));
                             self.needs_redraw = true;
                         }
-                        // Calibration adjustment keys
-                        PhysicalKey::Code(KeyCode::Digit1) => {
-                            self.cal
-                                .topology
-                                .l_shape_mut()
-                                .expect("guarded at startup")
-                                .intersect = (self
-                                .cal
-                                .topology
-                                .l_shape_mut()
-                                .expect("guarded at startup")
-                                .intersect
-                                + 0.01)
-                                .min(1.0);
-                            self.apply_calibration_change();
+                        PhysicalKey::Code(
+                            key @ (KeyCode::Digit0
+                            | KeyCode::Digit1
+                            | KeyCode::Digit2
+                            | KeyCode::Digit3
+                            | KeyCode::Digit4
+                            | KeyCode::Digit5
+                            | KeyCode::Digit6
+                            | KeyCode::Digit7
+                            | KeyCode::Digit8
+                            | KeyCode::Digit9
+                            | KeyCode::KeyB),
+                        ) => {
+                            self.edit_calibration(|cal| {
+                                let layout =
+                                    cal.topology.l_shape_mut().expect("guarded at startup");
+                                match key {
+                                    KeyCode::Digit1 => {
+                                        layout.intersect = (layout.intersect + 0.01).min(1.0)
+                                    }
+                                    KeyCode::Digit2 => {
+                                        layout.intersect = (layout.intersect - 0.01).max(0.0)
+                                    }
+                                    KeyCode::Digit3 => cal.framing.axis_offset += 0.005,
+                                    KeyCode::Digit4 => cal.framing.axis_offset -= 0.005,
+                                    KeyCode::Digit5 => layout.x_ty += 0.005,
+                                    KeyCode::Digit6 => layout.x_ty -= 0.005,
+                                    KeyCode::KeyB => {
+                                        layout.blend_width = if layout.blend_width >= 0.19 {
+                                            0.0
+                                        } else {
+                                            layout.blend_width + 0.05
+                                        };
+                                    }
+                                    KeyCode::Digit7 | KeyCode::Digit8 => {
+                                        let scale =
+                                            if key == KeyCode::Digit7 { 1.02 } else { 0.98 };
+                                        for lens in &mut cal.lenses {
+                                            lens.fx *= scale;
+                                            lens.fy *= scale;
+                                        }
+                                    }
+                                    KeyCode::Digit9 | KeyCode::Digit0 => {
+                                        let delta = if key == KeyCode::Digit9 {
+                                            0.005
+                                        } else {
+                                            -0.005
+                                        };
+                                        for lens in &mut cal.lenses {
+                                            lens.distortion[0] += delta;
+                                        }
+                                    }
+                                    _ => unreachable!(),
+                                }
+                            });
+                            let layout = self.cal.topology.l_shape().expect("guarded at startup");
                             println!(
-                                "intersect: {:.4}",
-                                self.cal
-                                    .topology
-                                    .l_shape_mut()
-                                    .expect("guarded at startup")
-                                    .intersect
-                            );
-                        }
-                        PhysicalKey::Code(KeyCode::Digit2) => {
-                            self.cal
-                                .topology
-                                .l_shape_mut()
-                                .expect("guarded at startup")
-                                .intersect = (self
-                                .cal
-                                .topology
-                                .l_shape_mut()
-                                .expect("guarded at startup")
-                                .intersect
-                                - 0.01)
-                                .max(0.0);
-                            self.apply_calibration_change();
-                            println!(
-                                "intersect: {:.4}",
-                                self.cal
-                                    .topology
-                                    .l_shape_mut()
-                                    .expect("guarded at startup")
-                                    .intersect
-                            );
-                        }
-                        PhysicalKey::Code(KeyCode::Digit3) => {
-                            self.cal.framing.axis_offset += 0.005;
-                            self.apply_calibration_change();
-                            println!("camera_axis_offset: {:.4}", self.cal.framing.axis_offset);
-                        }
-                        PhysicalKey::Code(KeyCode::Digit4) => {
-                            self.cal.framing.axis_offset -= 0.005;
-                            self.apply_calibration_change();
-                            println!("camera_axis_offset: {:.4}", self.cal.framing.axis_offset);
-                        }
-                        PhysicalKey::Code(KeyCode::Digit5) => {
-                            self.cal
-                                .topology
-                                .l_shape_mut()
-                                .expect("guarded at startup")
-                                .x_ty += 0.005;
-                            self.apply_calibration_change();
-                            println!(
-                                "x_ty: {:.4}",
-                                self.cal
-                                    .topology
-                                    .l_shape_mut()
-                                    .expect("guarded at startup")
-                                    .x_ty
-                            );
-                        }
-                        PhysicalKey::Code(KeyCode::Digit6) => {
-                            self.cal
-                                .topology
-                                .l_shape_mut()
-                                .expect("guarded at startup")
-                                .x_ty -= 0.005;
-                            self.apply_calibration_change();
-                            println!(
-                                "x_ty: {:.4}",
-                                self.cal
-                                    .topology
-                                    .l_shape_mut()
-                                    .expect("guarded at startup")
-                                    .x_ty
-                            );
-                        }
-                        PhysicalKey::Code(KeyCode::KeyB) => {
-                            // Cycle blend width: 0.0 -> 0.05 -> 0.10 -> 0.15 -> 0.20 -> 0.0.
-                            // Mutate the calibration document (single home) so
-                            // other hotkeys' update_calibration cannot revert it.
-                            let b = self
-                                .cal
-                                .topology
-                                .l_shape_mut()
-                                .expect("guarded at startup")
-                                .blend_width;
-                            self.cal
-                                .topology
-                                .l_shape_mut()
-                                .expect("guarded at startup")
-                                .blend_width = if b >= 0.19 { 0.0 } else { b + 0.05 };
-                            if let Some(ref mut r) = self.renderer {
-                                r.set_blend_width(
-                                    self.cal
-                                        .topology
-                                        .l_shape_mut()
-                                        .expect("guarded at startup")
-                                        .blend_width,
-                                );
-                            }
-                            println!(
-                                "blend_width: {:.2}",
-                                self.cal
-                                    .topology
-                                    .l_shape_mut()
-                                    .expect("guarded at startup")
-                                    .blend_width
-                            );
-                            self.needs_redraw = true;
-                        }
-                        PhysicalKey::Code(KeyCode::Digit7) => {
-                            // Increase focal length (both cameras) - zoom in effect
-                            self.cal.lenses[0].fx *= 1.02;
-                            self.cal.lenses[0].fy *= 1.02;
-                            self.cal.lenses[1].fx *= 1.02;
-                            self.cal.lenses[1].fy *= 1.02;
-                            self.apply_calibration_change();
-                            println!(
-                                "focal length: {:.1} / {:.1}",
-                                self.cal.lenses[0].fx, self.cal.lenses[1].fx
-                            );
-                        }
-                        PhysicalKey::Code(KeyCode::Digit8) => {
-                            // Decrease focal length - zoom out / wider
-                            self.cal.lenses[0].fx *= 0.98;
-                            self.cal.lenses[0].fy *= 0.98;
-                            self.cal.lenses[1].fx *= 0.98;
-                            self.cal.lenses[1].fy *= 0.98;
-                            self.apply_calibration_change();
-                            println!(
-                                "focal length: {:.1} / {:.1}",
-                                self.cal.lenses[0].fx, self.cal.lenses[1].fx
-                            );
-                        }
-                        PhysicalKey::Code(KeyCode::Digit9) => {
-                            // Increase k1 distortion - more barrel
-                            self.cal.lenses[0].distortion[0] += 0.005;
-                            self.cal.lenses[1].distortion[0] += 0.005;
-                            self.apply_calibration_change();
-                            println!(
-                                "k1 distortion: {:.4} / {:.4}",
-                                self.cal.lenses[0].distortion[0], self.cal.lenses[1].distortion[0]
-                            );
-                        }
-                        PhysicalKey::Code(KeyCode::Digit0) => {
-                            // Decrease k1 distortion - less barrel / more pincushion
-                            self.cal.lenses[0].distortion[0] -= 0.005;
-                            self.cal.lenses[1].distortion[0] -= 0.005;
-                            self.apply_calibration_change();
-                            println!(
-                                "k1 distortion: {:.4} / {:.4}",
-                                self.cal.lenses[0].distortion[0], self.cal.lenses[1].distortion[0]
+                                "intersect: {:.4}, camera_axis_offset: {:.4}, x_ty: {:.4}, blend_width: {:.2}, focal length: {:.1}/{:.1}, k1: {:.4}/{:.4}",
+                                layout.intersect,
+                                self.cal.framing.axis_offset,
+                                layout.x_ty,
+                                layout.blend_width,
+                                self.cal.lenses[0].fx,
+                                self.cal.lenses[1].fx,
+                                self.cal.lenses[0].distortion[0],
+                                self.cal.lenses[1].distortion[0]
                             );
                         }
                         PhysicalKey::Code(KeyCode::KeyC) => {

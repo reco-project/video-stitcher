@@ -22,6 +22,12 @@ use crate::stitch::StitchError;
 /// error instead of stringifying at the boundary.
 #[derive(Debug, Clone, Error)]
 pub enum StitchCoreError {
+    /// The proposed calibration document is invalid.
+    #[error("invalid calibration: {0}")]
+    Calibration(#[from] crate::calibration::CalibrationError),
+    /// Applying this change requires reconstructing the engine and its dependent state.
+    #[error("calibration change requires rebuilding the engine: {0}")]
+    CalibrationRequiresRebuild(&'static str),
     /// Executor construction or stitch error. The `From` impl lets
     /// consumers `?` a [`GpuExecutor`](crate::stitch::GpuExecutor)
     /// build straight into the engine's error type.

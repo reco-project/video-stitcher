@@ -34,6 +34,7 @@
 //! - `replay_management` - stacked replay recorder wiring (CPU + GPU paths)
 //! - `pose` - pose resolution, detection scheduling, panorama mapping
 
+mod calibration_update;
 mod pose;
 mod render;
 pub mod replay_buffer;
@@ -459,11 +460,6 @@ impl StitchCore {
         accepted
     }
 
-    /// Set the seam blend width (per-frame uniform; coverage unaffected).
-    pub fn set_blend_width(&mut self, width: f32) {
-        self.executor.set_blend_width(width);
-    }
-
     /// Whether source YUV uses full-range (0-255) quantization rather
     /// than limited range (16-235).
     pub fn set_full_range(&mut self, full_range: bool) {
@@ -477,74 +473,10 @@ impl StitchCore {
         self.executor.set_flip_180(left, right);
     }
 
-    /// Set the lens-correction strength on every lens (`0` = pinhole,
-    /// `1` = full KB4).
-    pub fn set_lens_correction_amount(&mut self, amount: f32) {
-        self.executor.set_lens_correction_amount(amount);
-    }
-
-    /// Set rig tilt in radians, keeping the coverage clamp in sync.
-    ///
-    /// The boundary's roll-aware clamp margins read the rig tilt/roll, so
-    /// a live change must refresh them. The sampled boundary itself is
-    /// tilt-invariant (a view-time basis rotation), so this is a scalar
-    /// update, not a dense resample.
-    pub fn set_rig_tilt(&mut self, radians: f32) {
-        let mut framing = self.executor.calibration().framing.clone();
-        framing.tilt = radians as f64;
-        self.executor.update_framing(framing);
-        self.refresh_coverage_orientation();
-    }
-
-    /// Set rig roll in radians, keeping the coverage clamp in sync.
-    /// See [`Self::set_rig_tilt`] for why no dense rebuild is needed.
-    pub fn set_rig_roll(&mut self, radians: f32) {
-        let mut framing = self.executor.calibration().framing.clone();
-        framing.roll = radians as f64;
-        self.executor.update_framing(framing);
-        self.refresh_coverage_orientation();
-    }
-
-    /// Replace the topology (plane placement + seam) and recompute coverage.
-    pub fn update_topology(&mut self, topology: crate::calibration::Topology) {
-        self.executor.update_topology(topology);
-        self.rebuild_coverage();
-    }
-
-    /// Replace the framing (axis offset, tilt, roll) and recompute coverage.
-    pub fn update_framing(&mut self, framing: crate::calibration::Framing) {
-        self.executor.update_framing(framing);
-        self.rebuild_coverage();
-    }
-
-    /// Replace one or both cameras' intrinsics and recompute the coverage
-    /// boundary - it samples the frame edges through the lens model, so
-    /// intrinsics changes move the no-black region.
-    pub fn update_camera_params(
-        &mut self,
-        left: Option<crate::calibration::Lens>,
-        right: Option<crate::calibration::Lens>,
-    ) {
-        self.executor.update_camera_params(left, right);
-        self.rebuild_coverage();
-    }
-
     /// Maximum vertical FOV (degrees) that fits inside the coverage, or
     /// `None` when the calibration produced a degenerate boundary.
     pub fn max_fov_degrees(&self) -> Option<f32> {
         self.coverage.as_ref().map(|c| c.max_fov_degrees())
-    }
-
-    fn rebuild_coverage(&mut self) {
-        self.coverage = Some(self.executor.coverage());
-    }
-
-    fn refresh_coverage_orientation(&mut self) {
-        let framing = &self.executor.calibration().framing;
-        let (tilt, roll) = (framing.tilt as f32, framing.roll as f32);
-        if let Some(coverage) = self.coverage.as_mut() {
-            coverage.set_rig_orientation(tilt, roll);
-        }
     }
 
     // -----------------------------------------------------------------
@@ -615,15 +547,6 @@ impl StitchCore {
     /// mono projection exposes `1`.
     pub fn camera_count(&self) -> usize {
         self.executor.projection().camera_count()
-    }
-
-    /// Hot-swap the calibration. Takes effect on the next submit.
-    ///
-    /// Re-derives the coverage boundary from the new calibration so
-    /// subsequent `safe_clamp` calls respect the new no-black region.
-    pub fn update_calibration(&mut self, calibration: Calibration) {
-        self.executor.update_calibration(calibration);
-        self.rebuild_coverage();
     }
 
     // -----------------------------------------------------------------
@@ -869,12 +792,11 @@ mod tests {
         assert!(core.coverage().is_some(), "coverage builds without a GPU");
         assert!(core.max_fov_degrees().is_some());
 
-        // Live setters dispatch to the CPU arm (document mutation).
-        // fov is deliberately absent here: it rides in every pose, so
-        // there is no retained zoom state to set.
-        core.set_blend_width(0.1);
+        let mut calibration = core.calibration().clone();
+        calibration.topology.l_shape_mut().unwrap().blend_width = 0.1;
+        calibration.framing.tilt = 0.2;
+        core.update_calibration(calibration).unwrap();
         assert!((core.calibration().topology.blend_width() - 0.1).abs() < 1e-6);
-        core.set_rig_tilt(0.2);
         assert!((core.calibration().framing.tilt - 0.2).abs() < 1e-6);
         assert_eq!(core.resize(48, 26), Some((48, 26)));
         assert_eq!(core.output_dims(), (48, 26));
