@@ -29,7 +29,7 @@ fn default_sweep_deg() -> f64 {
 /// painted on the inside of a cylinder and the virtual camera sits on
 /// its axis. Defaults match the established 180-degree
 /// cylindrical-player convention.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Cylinder {
     /// Cylinder radius in world units. Larger values = narrower
     /// cylindrical wrap per pixel, so the panorama feels flatter.
@@ -427,7 +427,7 @@ mod tests {
                 roll,
             };
             let camera = cylinder.virtual_camera(&framing);
-            assert_eq!(camera.eye, nalgebra::Vector3::zeros());
+            assert_eq!(camera.eye, nalgebra::Point3::origin());
             assert_eq!(camera.base_forward, nalgebra::Vector3::new(0.0, 0.0, -1.0));
             for yaw in [-0.7, 0.0, 0.7] {
                 for pitch in [-0.2, 0.0, 0.2] {

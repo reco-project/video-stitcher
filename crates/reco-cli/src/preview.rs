@@ -355,29 +355,21 @@ impl App {
 
     /// Accept an edited document before updating preview controls.
     fn edit_calibration(&mut self, edit: impl FnOnce(&mut reco_core::calibration::Calibration)) {
-        let mut calibration = self.cal.clone();
-        edit(&mut calibration);
-        let result = if let Some(renderer) = self.renderer.as_mut() {
-            renderer.update_calibration(calibration.clone())
-        } else {
-            calibration
-                .validate()
-                .map_err(reco_core::core::types::StitchCoreError::from)
+        let Some(renderer) = self.renderer.as_mut() else {
+            return;
         };
-        if let Err(error) = result {
+        if let Err(error) = renderer.edit_calibration(edit) {
             eprintln!("Calibration unchanged: {error}");
             return;
         }
-        self.cal = calibration;
-        if let Some(renderer) = self.renderer.as_ref() {
-            self.max_fov = renderer.max_fov_degrees().unwrap_or(FOV_MAX).min(FOV_MAX);
-            if self.clamp_enabled {
-                let mut cfg = *self.pose.config();
-                cfg.fov_max_degrees = self.max_fov;
-                self.pose.set_config(cfg);
-                self.pose
-                    .set_target_fov(self.pose.target_pose().fov_degrees.min(self.max_fov));
-            }
+        self.cal = renderer.calibration().clone();
+        self.max_fov = renderer.max_fov_degrees().unwrap_or(FOV_MAX).min(FOV_MAX);
+        if self.clamp_enabled {
+            let mut cfg = *self.pose.config();
+            cfg.fov_max_degrees = self.max_fov;
+            self.pose.set_config(cfg);
+            self.pose
+                .set_target_fov(self.pose.target_pose().fov_degrees.min(self.max_fov));
         }
         self.needs_redraw = true;
     }

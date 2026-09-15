@@ -241,7 +241,7 @@ fn validate_framing(f: &Framing) -> Result<(), CalibrationError> {
 ///
 /// It is the CPU/GPU-independent record both executors derive their runtime
 /// form from. Two cameras of the same model share the same `Lens` content.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Lens {
     /// Calibration frame width in pixels.
     pub width: u32,
@@ -268,6 +268,34 @@ fn default_correction() -> f32 {
 }
 
 impl Lens {
+    /// Rescale intrinsics for a resized image, independently along each axis.
+    ///
+    /// Distortion and correction are unchanged. This describes resizing, not cropping. Zero source dimensions or invalid resulting lens parameters return an error; the source is never modified. The source profile may exceed [`MAX_DIM`], but the resized lens must fit the calibration limits.
+    pub fn rescaled(&self, width: u32, height: u32) -> Result<Self, CalibrationError> {
+        for (field, value) in [("width", self.width), ("height", self.height)] {
+            if value == 0 {
+                return Err(CalibrationError::ZeroDimension {
+                    index: 0,
+                    field,
+                    value,
+                });
+            }
+        }
+        let scale_x = f64::from(width) / f64::from(self.width);
+        let scale_y = f64::from(height) / f64::from(self.height);
+        let lens = Self {
+            width,
+            height,
+            fx: self.fx * scale_x,
+            fy: self.fy * scale_y,
+            cx: self.cx * scale_x,
+            cy: self.cy * scale_y,
+            ..self.clone()
+        };
+        validate_lens(&lens, 0)?;
+        Ok(lens)
+    }
+
     /// A fisheye (KB4) lens at full correction.
     pub fn fisheye(
         width: u32,
@@ -329,7 +357,7 @@ impl Lens {
 /// The matching [`Projection`] dispatches
 /// the actual geometry; this carries its parameters. The virtual-camera
 /// position lives in [`Framing`], not here.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum Topology {
     /// Two fisheye cameras on perpendicular planes (the stereo rig).
@@ -404,7 +432,7 @@ impl From<projection::Cylinder> for Topology {
 /// The virtual camera's calibrated coordinate frame: the axis/orientation that
 /// panning evolves *within*. Pan (yaw/pitch) and output framing (fov/size) are
 /// runtime state and are deliberately NOT stored here.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Framing {
     /// Virtual-camera distance from the origin along X and Z; the camera sits
     /// at `[axis_offset, 0, axis_offset]`.
@@ -421,7 +449,7 @@ pub struct Framing {
 ///
 /// A detection concern (consumed by `reco-autocam`), kept here transitionally;
 /// it will move out of the calibration when detection config is extracted.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct FieldRoi {
     /// Polygon vertices for the left camera, normalized `[0,1]`.
     #[serde(default)]
@@ -435,7 +463,7 @@ pub struct FieldRoi {
 ///
 /// Everything the stitch needs to turn source frames into a panorama. Plain
 /// data - the runtime objects are derived from it (see the module docs).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Calibration {
     /// Document schema version. Counts revisions of this format family
     /// (the retired "match" format predates versioning); `from_file`
@@ -653,6 +681,48 @@ pub enum CalibrationLoadError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lens_rescaling_preserves_optics_and_scales_each_image_axis() {
+        let mut lens = Lens::fisheye(3840, 2160, 1800.0, 1820.0, 1910.0, 1070.0, [0.03; 4]);
+        lens.correction = 0.4;
+        let scaled = lens.rescaled(1920, 540).unwrap();
+        assert_eq!((scaled.width, scaled.height), (1920, 540));
+        assert_eq!((scaled.fx, scaled.fy), (900.0, 455.0));
+        assert_eq!((scaled.cx, scaled.cy), (955.0, 267.5));
+        assert_eq!(scaled.distortion, lens.distortion);
+        assert_eq!(scaled.correction, lens.correction);
+        assert_eq!(scaled.rescaled(3840, 2160).unwrap(), lens);
+        assert_eq!(lens.rescaled(3840, 2160).unwrap(), lens);
+        let large_profile = Lens::flat(MAX_DIM * 2, MAX_DIM);
+        assert_eq!(large_profile.rescaled(64, 32).unwrap(), Lens::flat(64, 32));
+    }
+
+    #[test]
+    fn lens_rescaling_rejects_invalid_source_and_result() {
+        let lens = Lens::flat(64, 36);
+        for (width, height) in [(0, 36), (64, 0), (MAX_DIM + 1, 36), (64, MAX_DIM + 1)] {
+            assert!(lens.rescaled(width, height).is_err());
+        }
+        let mut invalid = lens.clone();
+        invalid.width = 0;
+        assert!(invalid.rescaled(64, 36).is_err());
+        invalid = lens.clone();
+        invalid.fx = f64::NAN;
+        assert!(invalid.rescaled(64, 36).is_err());
+        invalid = lens.clone();
+        invalid.distortion[0] = f64::INFINITY;
+        assert!(invalid.rescaled(64, 36).is_err());
+        invalid = lens.clone();
+        invalid.correction = -1.0;
+        assert!(invalid.rescaled(64, 36).is_err());
+        let mut extreme = lens.clone();
+        extreme.fx = f64::MAX;
+        assert!(extreme.rescaled(128, 36).is_err());
+        extreme.fx = 2.0 * VALIDATION_EPSILON;
+        assert!(extreme.rescaled(1, 36).is_err());
+        assert_eq!(lens, Lens::flat(64, 36));
+    }
 
     fn sample_json() -> &'static str {
         r#"{

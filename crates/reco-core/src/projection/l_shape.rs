@@ -30,7 +30,7 @@ fn default_blend_width() -> f32 {
 }
 
 /// 3D placement of the two L-shape source planes plus the overlap seam.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LShape {
     /// Overlap ratio between the two planes (`0.0` none .. `1.0` full).
     /// Each plane is translated by `(plane_width / 2) × (1 - intersect)`.
@@ -225,7 +225,7 @@ impl LShape {
         // Camera pixel [0,1] -> plane UV in extended shader space.
         let plane_uv = inverse_fisheye(norm_x as f64, norm_y as f64, params)?;
         let world_point = plane_uv_to_world(plane_uv, camera, scene);
-        let camera_position = Point3::from(scene.camera.eye);
+        let camera_position = scene.camera.eye;
         let direction = (world_point - camera_position).normalize();
         Some(scene.camera.direction_to_yaw_pitch(&direction))
     }

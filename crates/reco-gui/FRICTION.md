@@ -5,14 +5,6 @@ reco-core and reco-io.
 
 ## Active
 
-### N20. Calibration draft acceptance is repeated across consumers
-
-The GUI and CLI both clone a calibration, edit the draft, apply it through StitchCore, and publish the accepted document. They also branch around an absent engine. StitchCore validates whole-document replacement but does not provide the edit operation itself. Consider a narrow atomic edit operation without moving UI feedback or decoder lifecycle into core; pre-engine draft ownership still needs an explicit decision.
-
-### N21. No reusable lens-intrinsic rescaling operation
-
-The GUI lens picker scales fx/fy/cx/cy into the existing calibration image dimensions itself. Related scaling also exists in reco-calibrate's lens database and reco-core's lens math, but Lens exposes no reusable rescaling operation. The mathematical conversion belongs with lens geometry; selecting lenses and preserving the user's correction setting are consumer policy. The replacement API is not yet selected.
-
 ### A5-residual. No intra-step heartbeat during very slow steps
 
 **Impact**: Low. Individual calibration steps can run 20-60s silently

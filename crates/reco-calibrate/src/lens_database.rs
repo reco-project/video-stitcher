@@ -275,15 +275,12 @@ impl LensDatabase {
                 p.lens_model,
                 p.source
             );
-            let params = Lens {
-                width,
-                height,
-                fx: p.params.fx * scale,
-                fy: p.params.fy * scale,
-                cx: p.params.cx * scale,
-                cy: p.params.cy * scale,
-                distortion: p.params.distortion, // scale-invariant
-                correction: 1.0,
+            let params = match p.params.rescaled(width, height) {
+                Ok(params) => params,
+                Err(error) => {
+                    log::warn!("lens auto-detect: cannot resize {key} profile: {error}");
+                    return None;
+                }
             };
             let info = LensProfileInfo {
                 camera: format_camera_name(&p.brand, &p.model),
@@ -817,6 +814,30 @@ fn load_dir_recursive(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nearby_aspect_match_scales_intrinsics_on_both_axes() {
+        let params = Lens::fisheye(3840, 2160, 1800.0, 1820.0, 1910.0, 1070.0, [0.03; 4]);
+        let db = LensDatabase {
+            profiles: vec![ProfileEntry {
+                source: "test".into(),
+                brand: "test".into(),
+                model: "camera".into(),
+                lens_model: "wide".into(),
+                camera_setting: String::new(),
+                width: params.width,
+                height: params.height,
+                params: params.clone(),
+            }],
+            by_camera: HashMap::from([("test/camera".into(), vec![0])]),
+        };
+        for height in [1080, 1088] {
+            let (scaled, _) = db.find("test", "camera", 1920, height, None).unwrap();
+            assert_eq!(scaled, params.rescaled(1920, height).unwrap());
+            assert_eq!(scaled.fx, 900.0);
+            assert_eq!(scaled.cy, 1070.0 * f64::from(height) / 2160.0);
+        }
+    }
 
     #[test]
     fn flat_profile_loads_current_and_legacy_key() {

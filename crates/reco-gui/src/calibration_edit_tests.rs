@@ -62,7 +62,7 @@ fn exercise_editor(state: &mut AppState, app: &RecoApp) {
     let untouched_right =
         serde_json::to_value(&state.calibration.as_ref().unwrap().lenses[1]).unwrap();
     let profile = Lens::fisheye(128, 72, 80.0, 82.0, 66.0, 38.0, [-0.01, 0.0, 0.0, 0.0]);
-    assert!(state.edit_calibration(app, |cal| apply_lens_profile(&mut cal.lenses[0], &profile)));
+    assert!(state.apply_lens_profile(app, &profile, "left"));
     state.sync_calibration_controls(app);
     let cal = state.calibration.as_ref().unwrap();
     assert_eq!((cal.lenses[0].width, cal.lenses[0].height), (64, 36));
@@ -80,6 +80,19 @@ fn exercise_editor(state: &mut AppState, app: &RecoApp) {
             serde_json::to_value(cal).unwrap()
         );
     }
+
+    let accepted = state.calibration.clone().unwrap();
+    let mut invalid = profile.clone();
+    invalid.height = 0;
+    assert!(!state.apply_lens_profile(app, &invalid, "both"));
+    assert_eq!(state.calibration.as_ref().unwrap(), &accepted);
+    if let Some(bridge) = &state.bridge {
+        assert_eq!(bridge.engine().calibration(), &accepted);
+    }
+    assert!(state.apply_lens_profile(app, &profile, "both"));
+    let accepted = state.calibration.as_ref().unwrap();
+    assert_eq!(accepted.lenses[0], accepted.lenses[1]);
+    assert_eq!(accepted.lenses[1].correction, 0.0);
 }
 
 #[test]

@@ -320,8 +320,6 @@ struct AppState {
     lens_preview_side: String,
     /// Lens correction amount for the preview (0.0 = raw, 1.0 = full).
     lens_correction_amount: f32,
-    /// Set by the ROI editor thread. Timer tick reloads calibration when true.
-    roi_reload_pending: Option<Arc<AtomicBool>>,
     toasts: ToastManager,
     telemetry: Option<telemetry_client::TelemetryClient>,
 }
@@ -528,7 +526,6 @@ impl AppState {
             lens_preview_active: false,
             lens_preview_side: "left".into(),
             lens_correction_amount: 1.0,
-            roi_reload_pending: None,
             toasts: ToastManager::default(),
             telemetry: None,
         }
@@ -584,29 +581,71 @@ impl AppState {
 
     /// Apply a draft before publishing it to the editor and save path.
     fn edit_calibration(&mut self, app: &RecoApp, edit: impl FnOnce(&mut Calibration)) -> bool {
-        let Some(mut calibration) = self.calibration.clone() else {
-            return false;
-        };
-        edit(&mut calibration);
         let result = if let Some(bridge) = self.bridge.as_mut() {
-            bridge.engine_mut().update_calibration(calibration.clone())
+            bridge
+                .engine_mut()
+                .edit_calibration(edit)
+                .map(|()| bridge.engine().calibration().clone())
         } else {
+            let Some(mut calibration) = self.calibration.clone() else {
+                return false;
+            };
+            edit(&mut calibration);
             calibration
                 .validate()
+                .map(|()| calibration)
                 .map_err(reco_core::core::types::StitchCoreError::from)
         };
-        if let Err(error) = result {
-            self.sync_calibration_controls(app);
-            self.toasts
-                .push(Severity::Error, "Calibration unchanged", error.to_string());
-            crate::toast::sync_to_ui(&self.toasts, app);
-            return false;
-        }
+        let calibration = match result {
+            Ok(calibration) => calibration,
+            Err(error) => {
+                self.report_calibration_error(app, error);
+                return false;
+            }
+        };
         self.lens_correction_amount = calibration.lenses[0].correction;
         self.calibration = Some(calibration);
         self.preview_dirty = true;
         self.clamp_targets();
         true
+    }
+
+    fn report_calibration_error(&mut self, app: &RecoApp, error: impl std::fmt::Display) {
+        self.sync_calibration_controls(app);
+        self.toasts
+            .push(Severity::Error, "Calibration unchanged", error.to_string());
+        crate::toast::sync_to_ui(&self.toasts, app);
+    }
+
+    fn apply_lens_profile(
+        &mut self,
+        app: &RecoApp,
+        profile: &reco_core::calibration::Lens,
+        side: &str,
+    ) -> bool {
+        let Some(cal) = self.calibration.as_ref() else {
+            return false;
+        };
+        let lenses = cal
+            .lenses
+            .iter()
+            .enumerate()
+            .map(|(index, lens)| {
+                if (side == "left" && index != 0) || (side == "right" && index != 1) {
+                    return Ok(lens.clone());
+                }
+                let mut scaled = profile.rescaled(lens.width, lens.height)?;
+                scaled.correction = lens.correction;
+                Ok(scaled)
+            })
+            .collect::<Result<Vec<_>, reco_core::calibration::CalibrationError>>();
+        match lenses {
+            Ok(lenses) => self.edit_calibration(app, |cal| cal.lenses = lenses),
+            Err(error) => {
+                self.report_calibration_error(app, error);
+                false
+            }
+        }
     }
 
     fn sync_calibration_controls(&self, app: &RecoApp) {
@@ -1113,20 +1152,6 @@ fn file_handle_to_path(handle: rfd::FileHandle) -> PathBuf {
 
 fn file_handles_to_paths(handles: Vec<rfd::FileHandle>) -> Vec<PathBuf> {
     handles.into_iter().map(file_handle_to_path).collect()
-}
-
-/// Scale profile intrinsics into the document's image coordinates.
-fn apply_lens_profile(
-    lens: &mut reco_core::calibration::Lens,
-    profile: &reco_core::calibration::Lens,
-) {
-    let scale_x = lens.width as f64 / profile.width as f64;
-    let scale_y = lens.height as f64 / profile.height as f64;
-    lens.fx = profile.fx * scale_x;
-    lens.fy = profile.fy * scale_y;
-    lens.cx = profile.cx * scale_x;
-    lens.cy = profile.cy * scale_y;
-    lens.distortion = profile.distortion;
 }
 
 /// Seed the Slint lens-tune sliders and their display ranges from a
@@ -3256,15 +3281,7 @@ fn main() -> anyhow::Result<()> {
                 let Some(app) = app_ref.as_ref() else {
                     return;
                 };
-                if !s.edit_calibration(app, |cal| {
-                    for (index, lens) in cal.lenses.iter_mut().enumerate() {
-                        if (side_str == "left" && index != 0) || (side_str == "right" && index != 1)
-                        {
-                            continue;
-                        }
-                        apply_lens_profile(lens, &params);
-                    }
-                }) {
+                if !s.apply_lens_profile(app, &params, side_str) {
                     return;
                 }
                 if let Some(app) = app_ref.as_ref() {
@@ -3303,11 +3320,7 @@ fn main() -> anyhow::Result<()> {
                     let Some(app) = app_weak.upgrade() else {
                         return;
                     };
-                    if !s.edit_calibration(&app, |cal| {
-                        for lens in &mut cal.lenses {
-                            apply_lens_profile(lens, &params);
-                        }
-                    }) {
+                    if !s.apply_lens_profile(&app, &params, "both") {
                         return;
                     }
                     if let Some(app) = app_weak.upgrade() {
@@ -4060,36 +4073,6 @@ fn main() -> anyhow::Result<()> {
                 {
                     s.user_settings.save();
                     s.last_window_size_save_at = None;
-                }
-            }
-
-            // Check if ROI editor finished and reload calibration.
-            if let Some(ref flag) = s.roi_reload_pending
-                && flag.load(Ordering::Relaxed)
-            {
-                s.roi_reload_pending = None;
-                if let Some(cal_path) = s.calibration_path.as_ref()
-                    && let Ok(cal) = Calibration::from_file(cal_path)
-                {
-                    let has_roi = cal
-                        .field_roi
-                        .as_ref()
-                        .is_some_and(|r| !r.left.is_empty() || !r.right.is_empty());
-                    s.calibration = Some(cal);
-                    if let Some(app) = app_weak.upgrade() {
-                        app.set_has_roi(has_roi);
-                        sync_roi_points(&s, &app);
-                        s.toasts.push(
-                            Severity::Info,
-                            "Field ROI updated",
-                            if has_roi {
-                                "ROI loaded from calibration"
-                            } else {
-                                "No ROI points saved"
-                            },
-                        );
-                        crate::toast::sync_to_ui(&s.toasts, &app);
-                    }
                 }
             }
 

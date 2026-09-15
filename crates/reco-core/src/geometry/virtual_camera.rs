@@ -2,7 +2,7 @@
 
 use crate::geometry::Pose;
 
-use nalgebra::Vector3;
+use nalgebra::{Point3, Vector3};
 
 /// A virtual camera's position and horizontal reference orientation.
 ///
@@ -22,7 +22,7 @@ use nalgebra::Vector3;
 #[derive(Debug, Clone, Copy)]
 pub struct VirtualCamera {
     /// World-space viewpoint position, independent of reference orientation.
-    pub(crate) eye: Vector3<f32>,
+    pub(crate) eye: Point3<f32>,
     /// Unit reference forward vector in the horizontal XZ plane.
     pub(crate) base_forward: Vector3<f32>,
     /// Unit vector to the viewer's right (`base_forward x world_up`,
@@ -42,7 +42,7 @@ impl VirtualCamera {
     ///
     /// Position must be finite; forward must be horizontal with a finite, nonzero length in f32. Rig tilt and roll are applied separately.
     pub(crate) fn new(camera_position: &[f32; 3], forward: &[f32; 3]) -> Self {
-        let eye = Vector3::new(camera_position[0], camera_position[1], camera_position[2]);
+        let eye = Point3::new(camera_position[0], camera_position[1], camera_position[2]);
         let base_forward = Vector3::new(forward[0], forward[1], forward[2]).normalize();
         let base_right = base_forward.cross(&Self::world_up()).normalize();
         Self {
@@ -106,8 +106,8 @@ mod tests {
     fn position_does_not_determine_reference_orientation() {
         let origin = VirtualCamera::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, -2.0]);
         let translated = VirtualCamera::new(&[2.0, 3.0, 4.0], &[0.0, 0.0, -2.0]);
-        assert_eq!(origin.eye, Vector3::zeros());
-        assert_eq!(translated.eye, Vector3::new(2.0, 3.0, 4.0));
+        assert_eq!(origin.eye, Point3::origin());
+        assert_eq!(translated.eye, Point3::new(2.0, 3.0, 4.0));
         assert_eq!(origin.base_forward, Vector3::new(0.0, 0.0, -1.0));
         assert_eq!(origin.base_right, Vector3::new(1.0, 0.0, 0.0));
         assert_eq!(origin.base_forward, translated.base_forward);
@@ -118,7 +118,7 @@ mod tests {
     fn explicit_l_shape_forward_preserves_origin_facing_basis() {
         for offset in [0.01, 0.2398, 0.5, 2.0] {
             let camera = VirtualCamera::new(&[offset, 0.0, offset], &[-offset, 0.0, -offset]);
-            let forward = (-camera.eye).normalize();
+            let forward = (Point3::origin() - camera.eye).normalize();
             assert_eq!(camera.base_forward, forward);
             assert_eq!(
                 camera.base_right,

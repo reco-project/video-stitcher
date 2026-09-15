@@ -5,7 +5,7 @@
 //! planes - shared verbatim by the GPU pipeline and the CPU inverse maps
 //! so the two executors agree by construction.
 
-use nalgebra::{Matrix4, Point3, UnitQuaternion};
+use nalgebra::{Matrix4, UnitQuaternion};
 
 use super::VirtualCamera;
 
@@ -28,7 +28,7 @@ pub fn view_matrix(
     // comes from the same rig_frame the pose inverse and the viewport-roll
     // margin computation use, so the three can never drift. The
     // world_to_render_pose round-trip test locks the pair together.
-    let eye = Point3::from(cam.eye);
+    let eye = cam.eye;
     let (up_frame, rest_forward) = super::rig_correction::rig_frame(cam, rig_tilt, rig_roll);
 
     // Yaw rotates around the (tilted+rolled) up axis; pitch around the
@@ -39,7 +39,7 @@ pub fn view_matrix(
     let rotation = pitch_q * yaw_q;
     let forward = rotation * rest_forward;
     let up = rotation * up_frame;
-    let target = Point3::from(eye.coords + forward);
+    let target = eye + forward;
     nalgebra::Isometry3::look_at_rh(&eye, &target, &up).to_homogeneous()
 }
 

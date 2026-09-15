@@ -4,12 +4,27 @@ use super::{StitchCore, StitchCoreError};
 use crate::calibration::Calibration;
 
 impl StitchCore {
+    /// Edit a private draft and accept it through [`Self::update_calibration`].
+    ///
+    /// The closure runs once. Rejected edits leave the engine unchanged.
+    pub fn edit_calibration(
+        &mut self,
+        edit: impl FnOnce(&mut Calibration),
+    ) -> Result<(), StitchCoreError> {
+        let mut draft = self.calibration().clone();
+        edit(&mut draft);
+        self.update_calibration(draft)
+    }
+
     /// Apply an edited calibration without changing input layout or topology kind.
     ///
-    /// Invalid documents, changed image dimensions or topology kind, and engines with an attached tracker or panner are rejected without changing the accepted state. Coverage and backend geometry are refreshed together on success; cached detections are cleared.
+    /// Invalid documents and changed image dimensions or topology kind are rejected without changing the accepted state. With a tracker or panner attached, only no-op and L-shape blend-width edits are accepted: neither changes mapping, framing, timing or ROI. These preserve coverage and cached detections; other accepted edits refresh coverage and clear detections. Backend geometry is refreshed on every changed document. See this module's CPU/GPU regression tests.
     pub fn update_calibration(&mut self, calibration: Calibration) -> Result<(), StitchCoreError> {
         calibration.validate()?;
         let current = self.calibration();
+        if current == &calibration {
+            return Ok(());
+        }
         if std::mem::discriminant(&current.topology)
             != std::mem::discriminant(&calibration.topology)
             || current.lenses.len() != calibration.lenses.len()
@@ -23,15 +38,35 @@ impl StitchCore {
                 "topology kind or calibration image dimensions changed",
             ));
         }
-        if self.ball_tracker.is_some() || self.player_tracker.is_some() || self.panner.is_some() {
+        // Compare the complete document except for the one tracking-neutral field.
+        // Newly added fields conservatively require invalidation too.
+        let mut tracking_calibration = calibration.clone();
+        if let (Some(old), Some(new)) = (
+            current.topology.l_shape(),
+            tracking_calibration.topology.l_shape_mut(),
+        ) {
+            new.blend_width = old.blend_width;
+        }
+        let tracking_unchanged = current == &tracking_calibration;
+        if !tracking_unchanged
+            && (self.ball_tracker.is_some()
+                || self.player_tracker.is_some()
+                || self.panner.is_some())
+        {
             return Err(StitchCoreError::CalibrationRequiresRebuild(
                 "camera control retains state from the current calibration",
             ));
         }
-        let coverage = calibration.topology.projection().coverage(&calibration);
+        let coverage = if tracking_unchanged {
+            None
+        } else {
+            Some(calibration.topology.projection().coverage(&calibration))
+        };
         self.executor.apply_calibration(calibration);
-        self.coverage = Some(coverage);
-        self.last_detections.clear();
+        if let Some(coverage) = coverage {
+            self.coverage = Some(coverage);
+            self.last_detections.clear();
+        }
         Ok(())
     }
 }
@@ -174,7 +209,11 @@ mod tests {
             }
             let mut fresh = make(draft.clone());
             core.last_detections.push(detection());
-            core.update_calibration(draft).unwrap();
+            if step % 2 == 0 {
+                core.edit_calibration(|cal| *cal = draft).unwrap();
+            } else {
+                core.update_calibration(draft).unwrap();
+            }
             assert!(core.last_detections.is_empty());
             assert_eq!(
                 serde_json::to_value(core.calibration()).unwrap(),
@@ -205,6 +244,63 @@ mod tests {
     #[test]
     fn cpu_rejected_edits_preserve_document_coverage_detections_and_render() {
         rejection_preserves_state(cpu);
+    }
+
+    #[test]
+    fn rejected_closure_runs_once_without_publishing_its_draft() {
+        let mut core = cpu(calib(WIDTH, HEIGHT));
+        let accepted = core.calibration().clone();
+        let pixels = render(&mut core);
+        core.last_detections.push(detection());
+        let mut calls = 0;
+        assert!(
+            core.edit_calibration(|cal| {
+                calls += 1;
+                cal.lenses[0].fx = 0.0;
+            })
+            .is_err()
+        );
+        assert_eq!(calls, 1);
+        assert_eq!(core.calibration(), &accepted);
+        assert_eq!(render(&mut core), pixels);
+        assert_eq!(core.last_detections.len(), 1);
+    }
+
+    fn blend_edits_preserve_tracking(make: impl Fn(Calibration) -> StitchCore) {
+        for slot in 0..3 {
+            let mut core = make(calib(WIDTH, HEIGHT));
+            match slot {
+                0 => core.set_ball_tracker(Box::new(NoopControl)),
+                1 => core.set_player_tracker(Box::new(NoopControl)),
+                _ => core.set_panner(Box::new(NoopControl)),
+            }
+            core.last_detections.push(detection());
+            let coverage = core.coverage().unwrap().yaw_range();
+            let initial_pixels = render(&mut core);
+            let mut changed_pixels = false;
+            core.edit_calibration(|_| {}).unwrap();
+            for blend_width in [0.0, 0.15, 0.5] {
+                core.edit_calibration(|cal| {
+                    cal.topology.l_shape_mut().unwrap().blend_width = blend_width;
+                })
+                .unwrap();
+                assert_eq!(core.last_detections.len(), 1);
+                assert_eq!(core.coverage().unwrap().yaw_range(), coverage);
+                assert_eq!(core.ball_tracker.is_some(), slot == 0);
+                assert_eq!(core.player_tracker.is_some(), slot == 1);
+                assert_eq!(core.panner.is_some(), slot == 2);
+                let mut fresh = make(core.calibration().clone());
+                let pixels = render(&mut core);
+                changed_pixels |= pixels != initial_pixels;
+                assert_eq!(pixels, render(&mut fresh));
+            }
+            assert!(changed_pixels, "fixture must exercise the blend seam");
+        }
+    }
+
+    #[test]
+    fn cpu_blend_edits_preserve_tracking_and_match_fresh_render() {
+        blend_edits_preserve_tracking(cpu);
     }
 
     #[test]
@@ -247,6 +343,7 @@ mod tests {
         };
         rejection_preserves_state(make);
         accepted_matches_fresh(make, calib(WIDTH, HEIGHT));
+        blend_edits_preserve_tracking(make);
     }
 
     struct NoopControl;
@@ -275,14 +372,54 @@ mod tests {
                 1 => core.set_player_tracker(Box::new(NoopControl)),
                 _ => core.set_panner(Box::new(NoopControl)),
             }
-            let accepted = serde_json::to_value(core.calibration()).unwrap();
-            let mut draft = core.calibration().clone();
-            draft.framing.tilt = 0.2;
-            assert!(matches!(
-                core.update_calibration(draft),
-                Err(StitchCoreError::CalibrationRequiresRebuild(_))
-            ));
-            assert_eq!(serde_json::to_value(core.calibration()).unwrap(), accepted);
+            let accepted = core.calibration().clone();
+            let edits: [fn(&mut Calibration); 6] = [
+                |cal| cal.framing.tilt = 0.2,
+                |cal| cal.lenses[0].fx += 1.0,
+                |cal| cal.lenses[0].correction = 0.5,
+                |cal| cal.topology.l_shape_mut().unwrap().intersect = 0.3,
+                |cal| cal.sync_offset = 1,
+                |cal| {
+                    cal.field_roi = Some(crate::calibration::FieldRoi {
+                        left: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]],
+                        right: vec![],
+                    })
+                },
+            ];
+            for edit in edits {
+                assert!(matches!(
+                    core.edit_calibration(|cal| {
+                        cal.topology.l_shape_mut().unwrap().blend_width = 0.2;
+                        edit(cal);
+                    }),
+                    Err(StitchCoreError::CalibrationRequiresRebuild(_))
+                ));
+                assert_eq!(core.calibration(), &accepted);
+            }
         }
+    }
+
+    #[test]
+    fn cylinder_noop_preserves_tracking_but_geometry_edits_require_reconstruction() {
+        let mut core = cpu(Calibration::new(
+            vec![Lens::flat(WIDTH, HEIGHT)],
+            Cylinder::default(),
+            calib(WIDTH, HEIGHT).framing,
+        ));
+        core.set_panner(Box::new(NoopControl));
+        core.last_detections.push(detection());
+        let accepted = core.calibration().clone();
+        core.update_calibration(accepted.clone()).unwrap();
+        assert_eq!(core.last_detections.len(), 1);
+        assert!(matches!(
+            core.edit_calibration(|cal| {
+                let Topology::Cylinder(cylinder) = &mut cal.topology else {
+                    unreachable!()
+                };
+                cylinder.sweep_deg = 240.0;
+            }),
+            Err(StitchCoreError::CalibrationRequiresRebuild(_))
+        ));
+        assert_eq!(core.calibration(), &accepted);
     }
 }
