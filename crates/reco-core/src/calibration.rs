@@ -257,8 +257,7 @@ pub struct Lens {
     pub cy: f64,
     /// Fisheye KB4 distortion coefficients `[k1, k2, k3, k4]`.
     pub distortion: [f64; 4],
-    /// How much of the distortion model to apply: `1.0` = full KB4,
-    /// `0.0` = pinhole. A rendering choice, persisted per lens.
+    /// How much of the distortion polynomial to apply: `1.0` = full KB4, `0.0` = equidistant (zero polynomial, not pinhole). A rendering choice, persisted per lens.
     #[serde(default = "default_correction")]
     pub correction: f32,
 }

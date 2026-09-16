@@ -121,6 +121,7 @@ mod tests {
     use super::*;
     use crate::calibration::{Calibration, Framing, Lens};
     use crate::projection::LShape;
+    use crate::render::viewport::ViewportSize;
 
     fn test_coverage(calibration: &Calibration) -> CoverageBoundary {
         calibration.topology.projection().coverage(calibration)
@@ -159,11 +160,7 @@ mod tests {
 
     fn relocation_calibration() -> Calibration {
         let mut cal = test_calibration();
-        // Non-default correction and rig orientation are deliberate: these
-        // goldens capture the production behavior being relocated, including
-        // its current inputs, without claiming renderer/mapping equivalence.
-        cal.lenses[0].correction = 0.37;
-        cal.lenses[1].correction = 0.63;
+        // Full-correction baseline with non-default rig and plane orientation.
         cal.framing.tilt = 0.21;
         cal.framing.roll = -0.08;
         let topology = cal.topology.l_shape_mut().unwrap();
@@ -190,6 +187,55 @@ mod tests {
             .topology
             .projection()
             .camera_to_panorama(camera, norm_x, norm_y, calibration)
+    }
+
+    #[test]
+    fn mapped_source_points_round_trip_through_render_surface() {
+        let viewport_size = ViewportSize {
+            width: 1,
+            height: 1,
+        };
+        for mut cal in [test_calibration(), relocation_calibration()] {
+            for correction in [0.0, 0.4, 1.0] {
+                for lens in &mut cal.lenses {
+                    lens.correction = correction;
+                }
+                let projection = cal.topology.projection();
+                let virtual_camera = projection.virtual_camera(&cal.framing);
+                for camera in 0..2 {
+                    for ix in 0..=20 {
+                        for iy in 0..=20 {
+                            let x = 0.02 + 0.96 * ix as f32 / 20.0;
+                            let y = 0.02 + 0.96 * iy as f32 / 20.0;
+                            let mut pose = map_camera(&cal, camera, x, y).unwrap();
+                            // Point mapping returns world angles; rendering consumes rig-relative angles.
+                            (pose.yaw, pose.pitch) = crate::geometry::world_to_render_pose(
+                                &virtual_camera,
+                                pose.yaw,
+                                pose.pitch,
+                                cal.framing.tilt as f32,
+                                cal.framing.roll as f32,
+                            );
+                            let surfaces = projection.surface_maps(&ProjectionContext {
+                                calibration: &cal,
+                                viewport_size: &viewport_size,
+                                pose,
+                            });
+                            let uv = surfaces[camera].0.sample_uv(0, 0).unwrap_or_else(|| {
+                                panic!("missing surface: camera={camera}, correction={correction}, source=({x}, {y})")
+                            });
+                            let lens = &cal.lenses[camera];
+                            let error = ((uv.u - x as f64) * lens.width as f64)
+                                .hypot((uv.v - y as f64) * lens.height as f64);
+                            assert!(
+                                error < 0.01,
+                                "camera={camera}, correction={correction}, source=({x}, {y}), error={error}px"
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]

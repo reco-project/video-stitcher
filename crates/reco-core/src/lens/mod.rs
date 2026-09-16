@@ -44,13 +44,12 @@ pub(crate) mod kb4 {
         theta * (1.0 + d[0] * t2 + d[1] * t4 + d[2] * t6 + d[3] * t8)
     }
 
-    /// Derivative of [`theta_d`] with respect to `theta`. Used by
-    /// the projection mapping's Newton-Raphson step:
+    /// Derivative of [`theta_d`] with respect to `theta`, used by the inverse solver:
     /// ```text
     /// d/dθ θ_d = 1 + 3 k₁ θ² + 5 k₂ θ⁴ + 7 k₃ θ⁶ + 9 k₄ θ⁸
     /// ```
     #[inline]
-    pub fn theta_d_prime(theta: f64, d: &[f64; 4]) -> f64 {
+    fn theta_d_prime(theta: f64, d: &[f64; 4]) -> f64 {
         let t2 = theta * theta;
         let t4 = t2 * t2;
         let t6 = t4 * t2;
@@ -68,18 +67,53 @@ pub(crate) mod kb4 {
         theta_d(r.atan(), d) / r
     }
 
-    /// Forward scale blended between the pinhole projection and full KB4
-    /// by `correction` in `[0, 1]` - the CPU dual of the shader's
-    /// `mix(theta, theta_d, correction)` per-pixel lerp (SYNC_WITH
-    /// `fisheye.wgsl`). `0` = pure pinhole, `1` = full KB4.
+    /// Forward scale blended between equidistant (zero-polynomial) and full KB4 by `correction` in `[0, 1]`. Matches the shader's `mix(theta, theta_d, correction)` in `fisheye.wgsl`; zero correction still applies `atan(r) / r`, not the identity mapping.
     #[inline]
     pub fn kb4_forward_scale_with_correction(r: f64, d: &[f64; 4], correction: f64) -> f64 {
         if r < 1e-10 {
             return 1.0;
         }
-        let pinhole = r.atan() / r;
+        let equidistant = r.atan() / r;
         let full = kb4_forward_scale(r, d);
-        pinhole + (full - pinhole) * correction
+        equidistant + (full - equidistant) * correction
+    }
+
+    /// Solve the correction-adjusted KB4 polynomial for a forward-facing ray angle in `[0, pi/2)`.
+    ///
+    /// Returns `None` if Newton iteration fails to converge to a finite root in the ray domain. Intermediate polynomial evaluations may leave that domain. Arbitrary coefficients need not be monotonic, so this does not guarantee a unique inverse or find every possible root.
+    pub fn inverse_theta_with_correction(
+        radius: f64,
+        d: &[f64; 4],
+        correction: f64,
+    ) -> Option<f64> {
+        const RESIDUAL_EPS: f64 = 1e-10;
+        const MAX_ITERATIONS: usize = 20;
+        let domain = 0.0..std::f64::consts::FRAC_PI_2;
+        if !radius.is_finite() || radius < 0.0 {
+            return None;
+        }
+        // mix(theta, theta_d(theta), correction) scales each non-constant coefficient.
+        let coefficients = d.map(|k| k * correction);
+        let mut theta = radius.min(std::f64::consts::FRAC_PI_2 - f64::EPSILON);
+        for iteration in 0..=MAX_ITERATIONS {
+            if !theta.is_finite() {
+                return None;
+            }
+            let residual = theta_d(theta, &coefficients) - radius;
+            if residual.abs() <= RESIDUAL_EPS {
+                return domain.contains(&theta).then_some(theta);
+            }
+            let derivative = theta_d_prime(theta, &coefficients);
+            if iteration == MAX_ITERATIONS
+                || !residual.is_finite()
+                || !derivative.is_finite()
+                || derivative.abs() < 1e-15
+            {
+                return None;
+            }
+            theta -= residual / derivative;
+        }
+        None
     }
 }
 
@@ -246,6 +280,69 @@ mod tests {
         let d = [0.1, 0.0, 0.0, 0.0];
         let s = kb4_forward_scale(0.5, &d);
         assert!(s < 1.0, "barrel distortion scale should be < 1: got {s}");
+    }
+
+    #[test]
+    fn inverse_theta_recovers_forward_angles() {
+        for coefficients in [
+            [0.0; 4],
+            [0.0342, 0.0677, -0.0741, 0.0299],
+            [0.4, 0.0, 0.0, 0.0],
+            [-0.1, 0.0, 0.0, 0.0],
+        ] {
+            for correction in [0.0, 0.4, 1.0] {
+                for i in 0..=100 {
+                    let theta = i as f64 * 1.5 / 100.0;
+                    let r = theta.tan();
+                    let radius =
+                        r * kb4::kb4_forward_scale_with_correction(r, &coefficients, correction);
+                    let recovered =
+                        kb4::inverse_theta_with_correction(radius, &coefficients, correction)
+                            .unwrap();
+                    assert!(
+                        (recovered - theta).abs() < 1e-9,
+                        "coefficients={coefficients:?}, correction={correction}, theta={theta}, recovered={recovered}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn inverse_theta_allows_intermediate_domain_excursions() {
+        let coefficients = [-0.25, -0.03, 0.074, -0.011];
+        let expected = 1.5;
+        let radius = kb4::theta_d(expected, &coefficients);
+        // The first Newton step exceeds pi/2, but subsequent steps reach this valid root.
+        let actual = kb4::inverse_theta_with_correction(radius, &coefficients, 1.0).unwrap();
+        assert!((actual - expected).abs() < 1e-9);
+    }
+
+    #[test]
+    fn inverse_theta_rejects_converged_roots_outside_the_ray_domain() {
+        // With zero coefficients the polynomial root is exactly the source radius.
+        assert!(kb4::inverse_theta_with_correction(2.0, &[0.0; 4], 1.0).is_none());
+    }
+
+    #[test]
+    fn inverse_theta_checks_residual_for_non_monotonic_lenses() {
+        let mut solved = 0;
+        let mut rejected = 0;
+        for k1 in [-0.3, -0.5, -1.0] {
+            let coefficients = [k1, 0.0, 0.0, 0.0];
+            for i in 0..=100 {
+                let radius = i as f64 * 1.5 / 100.0;
+                match kb4::inverse_theta_with_correction(radius, &coefficients, 1.0) {
+                    Some(theta) => {
+                        assert!((0.0..std::f64::consts::FRAC_PI_2).contains(&theta));
+                        assert!((kb4::theta_d(theta, &coefficients) - radius).abs() <= 1e-10);
+                        solved += 1;
+                    }
+                    None => rejected += 1,
+                }
+            }
+        }
+        assert!(solved > 0 && rejected > 0);
     }
 
     // Step 1f: evaluate the KB4 polynomial on a real GPU via wgpu

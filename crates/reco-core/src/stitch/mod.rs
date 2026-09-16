@@ -689,7 +689,7 @@ mod tests {
         let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
-        let cases: [(&str, Calibration, ViewportSize, Pose, bool); 7] = [
+        let cases: [(&str, Calibration, ViewportSize, Pose, bool); 8] = [
             (
                 "wide-pan",
                 base.clone(),
@@ -717,6 +717,13 @@ mod tests {
                 cfg(192, 108),
                 pose(0.1, -0.05, 75.0),
                 true,
+            ),
+            (
+                "lens-corr-0",
+                calib_corr(0.0),
+                cfg(192, 108),
+                pose(0.1, -0.05, 75.0),
+                false,
             ),
             (
                 "lens-corr-0.5",

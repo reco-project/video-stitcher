@@ -8,7 +8,7 @@
 //!
 //! The correction amount (0.0 to 1.0, the per-lens `Lens.correction`)
 //! lets users visually evaluate how much the lens profile contributes:
-//! 1.0 is full KB4 correction, 0.0 is raw (pinhole projection).
+//! 1.0 is full KB4 correction, 0.0 is equidistant (zero polynomial, not raw).
 
 use crate::calibration::Lens;
 use crate::geometry::opengl_to_wgpu_matrix;
@@ -268,7 +268,7 @@ impl LensPreviewRenderer {
     /// The returned texture has `RENDER_ATTACHMENT | TEXTURE_BINDING` and
     /// can be passed to `slint::Image::try_from(wgpu::Texture)`.
     ///
-    /// `correction_amount`: 0.0 = raw input, 1.0 = full KB4 correction.
+    /// `correction_amount`: 0.0 = equidistant (zero polynomial, not raw), 1.0 = full KB4 correction.
     pub fn render_yuv(
         &self,
         gpu: &GpuContext,

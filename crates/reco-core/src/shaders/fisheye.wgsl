@@ -198,7 +198,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         + u.dist.z * theta2 * theta2 * theta2
         + u.dist.w * theta2 * theta2 * theta2 * theta2);
 
-    // Lens correction amount: 1.0 = full KB4, 0.0 = identity (pinhole).
+    // Lens correction amount: 1.0 = full KB4, 0.0 = equidistant (zero polynomial).
     // Split view: left half uncorrected, right half fully corrected.
     var correction = u.lens_preview.x;
     if u.lens_preview.y > 0.5 {

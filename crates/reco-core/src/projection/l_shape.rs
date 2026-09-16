@@ -195,10 +195,6 @@ impl PlaneScene {
     }
 }
 
-/// Maximum Newton-Raphson iterations for KB4 inverse distortion.
-const MAX_ITERATIONS: usize = 20;
-/// Convergence threshold for Newton-Raphson.
-const CONVERGENCE_EPS: f64 = 1e-10;
 /// Pitch slices in the sampled L-shape coverage representation.
 const COVERAGE_SLICES: usize = 400;
 /// Inset from source-frame edges to avoid unstable extreme lens corners.
@@ -281,45 +277,21 @@ fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &Lens) -> Option<(f64, f64)
     let fy = params.fy / h;
     let cx = params.cx / w;
     let cy = params.cy / h;
-    let k = params.distortion;
 
     let dx = (dist_x - cx) / fx;
     let dy = (dist_y - cy) / fy;
-    let theta_d = (dx * dx + dy * dy).sqrt();
+    let theta_d = dx.hypot(dy);
+    let theta =
+        kb4::inverse_theta_with_correction(theta_d, &params.distortion, params.correction as f64)?;
 
     if theta_d < 1e-12 {
         return Some((cx, cy));
     }
 
-    // Invert the canonical KB4 polynomial with Newton-Raphson.
-    let mut theta = theta_d;
-    for _ in 0..MAX_ITERATIONS {
-        let f = kb4::theta_d(theta, &k) - theta_d;
-        let f_prime = kb4::theta_d_prime(theta, &k);
-        if f_prime.abs() < 1e-15 {
-            return None;
-        }
-
-        let delta = f / f_prime;
-        theta -= delta;
-        if delta.abs() < CONVERGENCE_EPS {
-            break;
-        }
-    }
-
-    let r = theta.tan();
-    let scale = if theta.abs() < 1e-12 {
-        1.0
-    } else {
-        theta_d / r
-    };
-    if !scale.is_finite() {
-        return None;
-    }
-
-    let x = dx / scale;
-    let y = dy / scale;
-    Some((fx * x + cx, fy * y + cy))
+    let scale = theta.tan() / theta_d;
+    let u = fx * dx * scale + cx;
+    let v = fy * dy * scale + cy;
+    (u.is_finite() && v.is_finite()).then_some((u, v))
 }
 
 /// Convert extended plane UV to a point on the selected L-shape plane.
@@ -380,7 +352,7 @@ struct PlaneMap {
     cy_n: f64,
     /// KB4 distortion coefficients `[k1, k2, k3, k4]`.
     d: [f64; 4],
-    /// Lens-correction amount in `[0, 1]` (`1` = full KB4, `0` = pinhole).
+    /// Lens-correction amount in `[0, 1]` (`1` = full KB4, `0` = equidistant).
     correction: f64,
 }
 
@@ -482,7 +454,7 @@ impl SurfaceMap for PlaneMap {
         let xn = (euv_x - self.cx_n) / self.fx_n;
         let yn = (euv_y - self.cy_n) / self.fy_n;
         let r = (xn * xn + yn * yn).sqrt();
-        // The shader's per-pixel correction lerp between pinhole and full
+        // The shader's per-pixel correction lerp between equidistant and full
         // KB4, from the single canonical source in `lens::kb4`.
         let scale = kb4::kb4_forward_scale_with_correction(r, &self.d, self.correction);
         let du = self.fx_n * xn * scale + self.cx_n;
@@ -729,6 +701,67 @@ mod tests {
         let actual = inverse_fisheye(0.5, 0.5, &lens).unwrap();
         assert!((actual.0 - 0.5).abs() < 1e-6);
         assert!((actual.1 - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn inverse_fisheye_round_trips_render_correction() {
+        let mut lens = Lens::fisheye(
+            3840,
+            2160,
+            1796.32,
+            1650.0,
+            1919.37,
+            1063.17,
+            [0.0342, 0.0677, -0.0741, 0.0299],
+        );
+        let fx = lens.fx / lens.width as f64;
+        let fy = lens.fy / lens.height as f64;
+        let cx = lens.cx / lens.width as f64;
+        let cy = lens.cy / lens.height as f64;
+        for correction in [0.0, 0.4, 1.0] {
+            lens.correction = correction;
+            for ix in 0..=20 {
+                for iy in 0..=20 {
+                    let source = (ix as f64 / 20.0, iy as f64 / 20.0);
+                    let (u, v) = inverse_fisheye(source.0, source.1, &lens).unwrap();
+                    let x = (u - cx) / fx;
+                    let y = (v - cy) / fy;
+                    let scale = kb4::kb4_forward_scale_with_correction(
+                        x.hypot(y),
+                        &lens.distortion,
+                        correction as f64,
+                    );
+                    let error = ((fx * x * scale + cx - source.0) * lens.width as f64)
+                        .hypot((fy * y * scale + cy - source.1) * lens.height as f64);
+                    assert!(
+                        error < 1e-6,
+                        "correction={correction}, source={source:?}, error={error}px"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn inverse_fisheye_rejects_unsolved_and_invalid_points() {
+        let mut lens = Lens::fisheye(
+            3840,
+            2160,
+            1796.32,
+            1797.22,
+            1919.37,
+            1063.17,
+            [-0.3, 0.0, 0.0, 0.0],
+        );
+        // This source radius exceeds the polynomial's maximum on [0, pi/2).
+        assert!(inverse_fisheye(0.02, 0.308, &lens).is_none());
+        for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(inverse_fisheye(invalid, 0.5, &lens).is_none());
+            assert!(inverse_fisheye(0.5, invalid, &lens).is_none());
+        }
+        lens.correction = 0.0;
+        // Zero-polynomial inversion still requires an angle below pi/2.
+        assert!(inverse_fisheye(2.0, 0.5, &lens).is_none());
     }
 
     #[test]
