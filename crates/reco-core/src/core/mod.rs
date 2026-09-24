@@ -13,18 +13,15 @@
 //!
 //! `StitchCore` composes the foundation traits:
 //!
-//! - The internal `Projection` trait - camera-geometry contract,
-//!   implemented directly by the calibration topology's parameter
+//! - The internal `ProjectionGeometry` trait - camera-geometry contract,
+//!   implemented directly by the calibration projection's parameter
 //!   structs ([`LShape`](crate::projection::LShape),
 //!   [`Cylinder`](crate::projection::Cylinder)). The executor reads it
 //!   through the document; the engine reads it back for coverage
 //!   construction.
-//! - [`crate::detect::detector::UnifiedDetector`] - collapsed CPU/CUDA/Metal
+//! - [`crate::detect::detector::Detector`] - collapsed CPU/CUDA/Metal
 //!   detector contract with `DetectorError` for remote-inference futures.
-//!   Wired via `StitchCore::set_detector`; detection runs on every
-//!   `submit_frame_*` whose frame count is a multiple of
-//!   `StitchCore::detection_interval`, and raw detections are mapped to
-//!   panorama coordinates before reaching the director.
+//!   Wired via `StitchCore::set_detector`; detection loops use `StitchCore::detection_due` for scheduling and map detections to world-reference angles before tracking. Explicit render-at-pose methods do not run detection.
 //!
 //! ## Sub-modules
 //!
@@ -46,11 +43,13 @@ pub mod types;
 use std::time::{Duration, Instant};
 
 use crate::calibration::Calibration;
-use crate::detect::detector::UnifiedDetector;
-use crate::detect::director::MappedDetection;
+use crate::detect::detector::Detector;
+use crate::detect::mapped_detection::MappedDetection;
 use crate::detect::panner::Panner;
 use crate::detect::tracker::Tracker;
-use crate::geometry::Pose;
+#[cfg(test)]
+use crate::geometry::RenderPose;
+use crate::geometry::WorldPose;
 #[cfg(feature = "gpu")]
 use crate::gpu::rgba_readback::RgbaReadback;
 #[cfg(feature = "gpu")]
@@ -76,13 +75,7 @@ use self::types::{StackedReplayRecorder, StitchCoreError};
 ///   drive the viewport pose, plus a pipeline-stage chain.
 /// - An optional [`ReplayBuffer`].
 ///
-/// Detection is wired through the [`UnifiedDetector`] trait: attach
-/// one via [`StitchCore::set_detector`] and the core will run it on every
-/// CPU-resident frame submitted (CUDA / Metal residency dispatch
-/// lands in a later tranche that adds GPU-frame `submit_*` methods).
-/// Raw detections are mapped to panorama coordinates and fed to the
-/// attached director each submit; directors see a non-empty
-/// `detections` slice on detection frames, empty otherwise.
+/// Detection is wired through [`Detector`]. Frame loops dispatch supported detector inputs, map results to world-reference angles, update trackers and request a world-space pose from the panner. Explicit render-at-pose methods render an already resolved pose without advancing that chain.
 pub struct StitchCore {
     pub(crate) executor: Executor,
     /// Pipelined RGBA delivery ring - GPU executors only (`Some` iff
@@ -116,13 +109,11 @@ pub struct StitchCore {
     pub(crate) player_tracker: Option<Box<dyn Tracker>>,
     /// Camera-motion policy. Consumes the assembled
     /// [`WorldState`](crate::detect::tracker::WorldState) each frame and emits
-    /// a [`Pose`]. When unset, the pose stays at the
+    /// a [`WorldPose`]. When unset, the pose stays at the
     /// pipeline default.
     pub(crate) panner: Option<Box<dyn Panner>>,
-    /// Previous frame's resolved pose, passed to the panner in its
-    /// [`PanContext`](crate::detect::panner::PanContext) so panners can
-    /// compute first-order motion deltas statelessly.
-    pub(crate) previous_panner_pose: Pose,
+    /// Latest world-space request, including lookahead smoothing when active. Used for render-pose resolution and passed as the previous pose on the next panner update.
+    pub(crate) requested_world_pose: WorldPose,
 
     /// Structured observability sink for the detect -> track -> pan
     /// chain (see [`crate::detect::pipeline_event`]). Owned by the
@@ -130,20 +121,19 @@ pub struct StitchCore {
     /// session trace through the same slot.
     pub(crate) event_sink: Option<Box<dyn crate::detect::pipeline_event::PipelineEventSink>>,
 
-    pub(crate) detector: Option<Box<dyn UnifiedDetector>>,
+    pub(crate) detector: Option<Box<dyn Detector>>,
     /// How often detection runs. 1 = every frame (default), higher =
-    /// skip frames. On skipped frames the director still ticks with
+    /// skip frames. On skipped frames the panner still ticks with
     /// the previously tracked detections.
     pub(crate) detection_interval: u64,
-    /// Panorama-mapped detections from the last detection frame.
-    /// Reused on skipped frames so the director retains context.
+    /// World-mapped detections from the last detection frame.
+    /// Reused on skipped frames so the panner retains context.
     pub(crate) last_detections: Vec<MappedDetection>,
 
     pub(crate) replay: Option<ReplayBuffer>,
 
     /// Optional stacked-video replay recorder attached via
-    /// [`Self::set_stacked_recorder`]. Fires on every successful
-    /// YUV submit (not BGRA - see [`StackedReplayRecorder`] docs).
+    /// [`Self::set_stacked_recorder`]. Runs before rendering stereo YUV420P submits (not RGBA - see [`StackedReplayRecorder`] docs).
     /// Decouples reco-core from the actual encoder implementation
     /// (lives in reco-io under `stacked-output`) so mobile / wasm
     /// builds that skip reco-io see no replay-recording code.
@@ -216,7 +206,7 @@ impl StitchCore {
             ball_tracker: None,
             player_tracker: None,
             panner: None,
-            previous_panner_pose: Pose::default(),
+            requested_world_pose: WorldPose::default(),
             event_sink: None,
             detector: None,
             detection_interval: 1,
@@ -277,9 +267,7 @@ impl StitchCore {
 
     /// Attach a panner. Replaces any existing one.
     ///
-    /// Each frame, `resolve_current_pose` runs the registered trackers,
-    /// builds a [`WorldState`], and delegates to [`Panner::decide`].
-    /// Without a panner the pose stays at the pipeline default.
+    /// Pose dispatch runs the registered trackers, builds a [`WorldState`], and delegates to [`Panner::decide`].
     ///
     /// [`WorldState`]: crate::detect::tracker::WorldState
     pub fn set_panner(&mut self, panner: Box<dyn Panner>) {
@@ -287,8 +275,7 @@ impl StitchCore {
         self.panner = Some(panner);
     }
 
-    /// Remove the currently attached panner. Pose reverts to the
-    /// pipeline default until a new panner is set.
+    /// Remove the attached panner without resetting the stored world request. Sessions retain that request; automatic push submission uses the default world pose when no panner is attached. Explicit-pose rendering is unaffected.
     pub fn clear_panner(&mut self) {
         log::info!("StitchCore: panner detached");
         self.panner = None;
@@ -311,18 +298,13 @@ impl StitchCore {
 
     /// Attach a unified-trait detector. Replaces any existing one.
     ///
-    /// The detector runs on every `submit_frame_*` call whose frame
-    /// count matches [`Self::detection_interval`]. Raw detections are
-    /// mapped to panorama coordinates, then handed to each registered
-    /// [`Tracker`] and to the detection sink (if any). Detection errors
-    /// are logged (at `warn!` level) and swallowed so a transient
-    /// inference failure does not abort the render loop.
-    pub fn set_detector(&mut self, detector: Box<dyn UnifiedDetector>) {
+    /// Frame loops schedule detection using [`Self::detection_due`]. Results carry world-reference angular positions for tracking and observation. Unsupported frame kinds are logged at debug level; other inference errors are warned without aborting rendering.
+    pub fn set_detector(&mut self, detector: Box<dyn Detector>) {
         self.detector = Some(detector);
     }
 
     /// Remove the currently attached detector. Cached last detections
-    /// are cleared so the director does not keep seeing stale data.
+    /// are cleared so the panner does not keep seeing stale data.
     pub fn clear_detector(&mut self) {
         self.detector = None;
         self.last_detections.clear();
@@ -333,7 +315,7 @@ impl StitchCore {
     /// `1` (default) = every frame, `3` = every third frame, etc.
     /// Values `< 1` are clamped to `1`. Detection is expensive
     /// (2-20 ms depending on the model and backend); skipping frames
-    /// lets the render loop run faster while the director interpolates
+    /// lets the render loop run faster while the panner interpolates
     /// using the latest detection output.
     pub fn set_detection_interval(&mut self, interval: u64) {
         self.detection_interval = interval.max(1);
@@ -344,62 +326,21 @@ impl StitchCore {
         self.detection_interval
     }
 
-    /// The most recent panorama-mapped detections (cached across
-    /// skipped frames so the director keeps context).
+    /// The most recent world-mapped detections (cached across
+    /// skipped frames so the panner keeps context).
     pub fn last_detections(&self) -> &[MappedDetection] {
         &self.last_detections
     }
 
     #[cfg(test)]
-    pub(crate) fn current_pose(&self) -> Pose {
+    pub(crate) fn current_pose(&self) -> RenderPose {
         self.coverage_motion
             .as_ref()
             .and_then(|c| c.current())
-            .unwrap_or_else(|| self.world_to_render_pose(self.previous_panner_pose))
-    }
-
-    /// Orient a world-space pose into the render-space `(yaw, pitch)` the
-    /// `view_matrix` consumes - the rig tilt/roll basis inversion without
-    /// any coverage clamping;
-    /// the unconstrained render path uses it so disabling the clamp never
-    /// disables horizon leveling.
-    pub fn world_to_render_pose(&self, world: Pose) -> Pose {
-        let framing = &self.executor.calibration().framing;
-        let cam = self.calibration().virtual_camera();
-        let (yaw, pitch) = crate::geometry::world_to_render_pose(
-            &cam,
-            world.yaw,
-            world.pitch,
-            framing.tilt as f32,
-            framing.roll as f32,
-        );
-        Pose {
-            yaw,
-            pitch,
-            fov_degrees: world.fov_degrees,
-        }
-    }
-
-    /// Recover the world-space look direction of a render-space pose under the accepted calibration.
-    ///
-    /// Inverse of [`Self::world_to_render_pose`] away from the yaw singularity at the poles. Preserves FOV and does not run coverage. Use before a framing edit, then orient the result under the accepted new calibration to retain the look direction.
-    pub fn render_to_world_pose(&self, render: Pose) -> Pose {
-        let framing = &self.calibration().framing;
-        let camera = self.calibration().virtual_camera();
-        let view = crate::geometry::view_matrix(
-            &camera,
-            render.yaw,
-            render.pitch,
-            framing.tilt as f32,
-            framing.roll as f32,
-        );
-        let direction = nalgebra::Vector3::new(-view[(2, 0)], -view[(2, 1)], -view[(2, 2)]);
-        let angles = camera.direction_to_yaw_pitch(&direction);
-        Pose {
-            yaw: angles.yaw,
-            pitch: angles.pitch,
-            fov_degrees: render.fov_degrees,
-        }
+            .unwrap_or_else(|| {
+                self.calibration()
+                    .world_to_render_pose(self.requested_world_pose)
+            })
     }
 
     // -----------------------------------------------------------------
@@ -500,7 +441,7 @@ impl StitchCore {
     }
 
     /// Connected coverage FOV cap, or `None` before the map has been prepared.
-    pub fn max_fov_degrees(&self) -> Option<f32> {
+    pub fn coverage_max_fov_degrees(&self) -> Option<f32> {
         self.coverage_motion.as_ref().map(|c| c.cap())
     }
 
@@ -519,7 +460,7 @@ impl StitchCore {
 
     /// Enable or disable constrained-look clamping.
     ///
-    /// Applies to [`Self::advance_pose`], director-driven push submits and session
+    /// Applies to [`Self::advance_pose`], panner-driven push submits and session
     /// presentation. Disabling it bypasses coverage but retains world-to-render
     /// orientation. Changing the flag resets the motion clock, not the map.
     /// Explicit render-at-pose methods consume an already-resolved render pose.
@@ -543,14 +484,14 @@ impl StitchCore {
 
     /// Short name of the active projection (for logs + UI labels).
     pub fn projection_name(&self) -> &'static str {
-        self.executor.projection().name()
+        self.executor.geometry().name()
     }
 
     /// Camera count the active projection consumes (one submitted frame
     /// per camera plane). For today's stereo L-shape this is `2`; a
     /// mono projection exposes `1`.
     pub fn camera_count(&self) -> usize {
-        self.executor.projection().camera_count()
+        self.executor.geometry().camera_count()
     }
 
     // -----------------------------------------------------------------
@@ -591,8 +532,8 @@ impl StitchCore {
     }
 
     /// Source frame dimensions `(width, height)` per camera.
-    pub fn source_info(&self) -> (u32, u32) {
-        self.executor.source_info()
+    pub fn source_dims(&self) -> (u32, u32) {
+        self.executor.source_dims()
     }
 
     /// Number of frames submitted so far.
@@ -616,7 +557,7 @@ impl StitchCore {
 }
 
 impl crate::detect::DetectionTarget for StitchCore {
-    fn set_detector(&mut self, detector: Box<dyn crate::detect::detector::UnifiedDetector>) {
+    fn set_detector(&mut self, detector: Box<dyn crate::detect::detector::Detector>) {
         self.set_detector(detector);
     }
     fn set_detection_interval(&mut self, interval: u64) {
@@ -631,8 +572,8 @@ impl crate::detect::DetectionTarget for StitchCore {
     fn set_panner(&mut self, panner: Box<dyn crate::detect::panner::Panner>) {
         self.set_panner(panner);
     }
-    fn source_info(&self) -> (u32, u32) {
-        self.source_info()
+    fn source_dims(&self) -> (u32, u32) {
+        self.source_dims()
     }
     #[cfg(feature = "gpu")]
     fn gpu(&self) -> Option<&crate::gpu::GpuContext> {
@@ -644,9 +585,52 @@ impl crate::detect::DetectionTarget for StitchCore {
 mod tests {
     use std::time::Duration;
 
+    #[test]
+    fn detector_input_selection_ignores_display_name() {
+        use crate::core::StitchCore;
+        use crate::detect::detector::{Detection, Detector, DetectorError, DetectorFrame};
+        use crate::stitch::{CpuExecutor, Executor, test_support::calib};
+        struct InputPreferenceDetector(&'static str, bool);
+        impl Detector for InputPreferenceDetector {
+            fn name(&self) -> &'static str {
+                self.0
+            }
+            fn prefers_cuda_nv12(&self) -> bool {
+                self.1
+            }
+            fn detect(
+                &mut self,
+                _: usize,
+                _: &DetectorFrame<'_>,
+            ) -> Result<Vec<Detection>, DetectorError> {
+                Ok(Vec::new())
+            }
+        }
+        let executor = CpuExecutor::new(
+            calib(64, 32),
+            crate::render::viewport::ViewportSize {
+                width: 64,
+                height: 32,
+            },
+            64,
+            32,
+            false,
+        )
+        .unwrap();
+        let mut core = StitchCore::new(Executor::Cpu(Box::new(executor))).unwrap();
+        for (name, native) in [
+            ("renamed-backend", true),
+            ("ort-cuda", false),
+            ("tensorrt-native", true),
+        ] {
+            core.set_detector(Box::new(InputPreferenceDetector(name, native)));
+            assert_eq!(core.detector_prefers_cuda_nv12(), native);
+        }
+    }
+
     use crate::core::replay_buffer::ReplayBuffer;
     use crate::core::types::{RenderOutcome, ReplayFrame, StitchCoreError};
-    use crate::geometry::Pose;
+    use crate::geometry::RenderPose;
 
     /// Assert `ReplayBuffer` trims old frames as the newest ages past
     /// `max_duration`. This is the core guarantee OBS A16 relies on:
@@ -658,7 +642,7 @@ mod tests {
             buf.push(ReplayFrame {
                 rgba: vec![i as u8; 4],
                 captured_at: Duration::from_millis(i as u64 * 1000),
-                pose: Pose::default(),
+                pose: RenderPose::default(),
             });
         }
         // Newest is at 4s; anything older than 2s should be evicted.
@@ -677,12 +661,12 @@ mod tests {
         buf.push(ReplayFrame {
             rgba: vec![],
             captured_at: Duration::from_millis(0),
-            pose: Pose::default(),
+            pose: RenderPose::default(),
         });
         buf.push(ReplayFrame {
             rgba: vec![],
             captured_at: Duration::from_millis(100),
-            pose: Pose::default(),
+            pose: RenderPose::default(),
         });
         // Newest - max_duration = 0, so frame at 0ms is exactly on the
         // boundary and retained.
@@ -710,7 +694,7 @@ mod tests {
             buf.push(ReplayFrame {
                 rgba: vec![i; 4],
                 captured_at: Duration::from_millis(i as u64 * 100),
-                pose: Pose::default(),
+                pose: RenderPose::default(),
             });
         }
         // snapshot returns oldest-to-newest, no consumption.
@@ -733,7 +717,7 @@ mod tests {
         buf.push(ReplayFrame {
             rgba: vec![0u8; 4],
             captured_at: Duration::ZERO,
-            pose: Pose::default(),
+            pose: RenderPose::default(),
         });
         assert!(!buf.is_empty());
         buf.clear();
@@ -751,12 +735,12 @@ mod tests {
         buf.push(ReplayFrame {
             rgba: vec![],
             captured_at: Duration::from_millis(100),
-            pose: Pose::default(),
+            pose: RenderPose::default(),
         });
         buf.push(ReplayFrame {
             rgba: vec![],
             captured_at: Duration::from_millis(850),
-            pose: Pose::default(),
+            pose: RenderPose::default(),
         });
         assert_eq!(buf.buffered_duration(), Duration::from_millis(750));
         assert_eq!(
@@ -797,19 +781,19 @@ mod tests {
             core.prepare_coverage().is_ok(),
             "coverage builds without a GPU"
         );
-        assert!(core.max_fov_degrees().is_some());
+        assert!(core.coverage_max_fov_degrees().is_some());
 
         let mut calibration = core.calibration().clone();
-        calibration.topology.l_shape_mut().unwrap().blend_width = 0.1;
+        calibration.projection.l_shape_mut().unwrap().blend_width = 0.1;
         calibration.framing.tilt = 0.2;
         core.update_calibration(calibration).unwrap();
-        assert!((core.calibration().topology.blend_width() - 0.1).abs() < 1e-6);
+        assert!((core.calibration().projection.blend_width() - 0.1).abs() < 1e-6);
         assert!((core.calibration().framing.tilt - 0.2).abs() < 1e-6);
         assert_eq!(core.resize(48, 26), Some((48, 26)));
         assert_eq!(core.output_dims(), (48, 26));
 
         // Coverage clamp works CPU-side (pure geometry).
-        let requested = Pose {
+        let requested = RenderPose {
             yaw: 10.0,
             pitch: 10.0,
             fov_degrees: 50.0,
@@ -817,13 +801,13 @@ mod tests {
         let clamped = core.constrain_render_pose(requested, requested).unwrap();
         assert!(clamped.yaw.is_finite() && clamped.pitch.is_finite());
         assert!(clamped.pitch.abs() < std::f32::consts::FRAC_PI_2);
-        assert!(clamped.fov_degrees <= core.max_fov_degrees().unwrap());
+        assert!(clamped.fov_degrees <= core.coverage_max_fov_degrees().unwrap());
 
         // The YUV submit path works on the CPU arm - synchronously
         // (no warmup), at the resized output dimensions.
         let y = vec![0u8; (w * h) as usize];
         let uv = vec![128u8; (w * h / 4) as usize];
-        let cam = crate::source::YuvData {
+        let cam = crate::source::Yuv420pData {
             y,
             u: uv.clone(),
             v: uv,
@@ -876,7 +860,7 @@ mod tests {
         .expect("cpu executor");
         let mut core = StitchCore::new(Executor::Cpu(Box::new(executor))).expect("cpu engine");
 
-        let cam = crate::source::YuvData {
+        let cam = crate::source::Yuv420pData {
             y: vec![0u8; (w * h) as usize],
             u: vec![128u8; (w * h / 4) as usize],
             v: vec![128u8; (w * h / 4) as usize],
@@ -1051,7 +1035,7 @@ mod tests {
     /// scheduling assertions.
     struct NullDetector;
 
-    impl crate::detect::detector::UnifiedDetector for NullDetector {
+    impl crate::detect::detector::Detector for NullDetector {
         fn name(&self) -> &'static str {
             "null"
         }
@@ -1082,6 +1066,35 @@ mod tests {
         crate::core::StitchCore::new(Executor::Cpu(Box::new(executor))).expect("cpu engine")
     }
 
+    #[test]
+    fn clearing_panner_retains_session_request_but_push_uses_default() {
+        use crate::detect::panner::{PanContext, Panner};
+        use crate::detect::tracker::WorldState;
+        use crate::geometry::WorldPose;
+        struct FixedPanner;
+        impl Panner for FixedPanner {
+            fn decide(&mut self, _: &WorldState, _: &PanContext<'_>) -> WorldPose {
+                WorldPose {
+                    yaw: 0.3,
+                    pitch: -0.2,
+                    fov_degrees: 52.0,
+                }
+            }
+        }
+        let mut core = cpu_engine(64, 36);
+        core.set_panner(Box::new(FixedPanner));
+        let requested = core.request_current_pose();
+        assert_eq!(requested.fov_degrees, 52.0);
+        core.clear_panner();
+        assert_eq!(core.requested_world_pose, requested);
+        assert_eq!(
+            core.decide_pose_with_lookahead(&WorldState::default(), &[], 1, 33.0),
+            requested
+        );
+        assert_eq!(core.request_current_pose(), WorldPose::default());
+        assert_eq!(core.requested_world_pose, requested);
+    }
+
     /// Detection scheduling: no detector means never due; with one,
     /// the interval gates and the setter clamps to >= 1.
     #[test]
@@ -1104,16 +1117,16 @@ mod tests {
     }
 
     /// `run_detection_frames` dispatches once per camera and caches
-    /// the panorama-mapped results for the director.
+    /// the world-mapped results for the panner.
     #[test]
     fn run_detection_frames_dispatches_both_cameras() {
         use crate::detect::detector::{
-            ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame, UnifiedDetector,
+            ChromaPlanes, Detection, Detector, DetectorError, DetectorFrame, YuvView,
         };
         use crate::geometry::CameraIndex;
 
         struct RecordingDetector;
-        impl UnifiedDetector for RecordingDetector {
+        impl Detector for RecordingDetector {
             fn name(&self) -> &'static str {
                 "recording"
             }
@@ -1123,7 +1136,7 @@ mod tests {
                 frame: &DetectorFrame<'_>,
             ) -> Result<Vec<Detection>, DetectorError> {
                 match frame {
-                    DetectorFrame::Cpu(_) => Ok(vec![Detection {
+                    DetectorFrame::Yuv(_) => Ok(vec![Detection {
                         camera,
                         class_id: 0,
                         confidence: 0.9,
@@ -1145,9 +1158,9 @@ mod tests {
         let frame = |cam| {
             (
                 cam,
-                DetectorFrame::Cpu(RawFrame {
+                DetectorFrame::Yuv(YuvView {
                     y: &y,
-                    chroma: ChromaFormat::Yuv420p { u: &uv, v: &uv },
+                    chroma: ChromaPlanes::Yuv420p { u: &uv, v: &uv },
                     width: 4,
                     height: 2,
                 }),

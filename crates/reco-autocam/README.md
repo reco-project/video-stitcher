@@ -1,12 +1,12 @@
 # reco-autocam
 
-AI camera control: detectors are plugged in, directors decide where the virtual camera points.
+AI camera control: trackers interpret detections, and panners request the virtual camera's orientation and FOV.
 
 ## What it owns
 
-- **Directors** — `BallDirector` (single-ball following + plausibility), `FieldDirector` (ball + player DBSCAN clustering, broadcast-style), `SweepDirector` (constrained pan sweep for venues without trackable subjects).
-- **SmoothedDirector** — One Euro filter decorator that smooths any underlying director's yaw/pitch/FOV output.
-- **RoiFilteredDetector** — wraps any `UnifiedDetector` with a polygonal field-ROI mask so detections outside the play area never reach the director.
+- **Trackers**: `BallTracker` follows a ball; `ClassProvider` supplies per-class entities.
+- **Panners**: `FieldPanner` follows ball/player state, `SweepPanner` generates a test pan, and `FilePanner` reads a pose trajectory. Core owns lookahead smoothing and coverage resolution.
+- **RoiFilteredDetector**: wraps any `Detector` with a polygonal field-ROI mask so detections outside the play area never reach tracking.
 - **`setup_autocam`** — orchestrator: accepts `AutocamConfig`, picks the detector backend for the platform + model file, wires tracker/panner, attaches to a `StitchSession`.
 - **`AutocamConfig`** — builder-style configuration. `FieldPannerConfig` exposes all AI tracking tuning parameters with safe defaults.
 

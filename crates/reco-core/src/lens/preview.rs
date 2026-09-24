@@ -13,7 +13,7 @@
 use crate::calibration::Lens;
 use crate::geometry::opengl_to_wgpu_matrix;
 use crate::gpu::GpuContext;
-use crate::render::pipeline::YuvPlanes;
+use crate::render::pipeline::Yuv420pPlanes;
 use crate::render::renderer::{InputFormat, build_gpu_uniforms};
 
 use bytemuck::Pod;
@@ -272,7 +272,7 @@ impl LensPreviewRenderer {
     pub fn render_yuv(
         &self,
         gpu: &GpuContext,
-        planes: &YuvPlanes<'_>,
+        planes: &Yuv420pPlanes<'_>,
         params: &Lens,
         correction_amount: f32,
     ) -> wgpu::Texture {

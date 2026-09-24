@@ -11,12 +11,12 @@ fn periodic_direct_input_has_bounded_travel_for_large_finite_angles() {
     let roof = Roof::from_cells(grid, 1.0, &[80.0; 32]);
     for yaw in [1e6, -1e6, 1e12, -1e12, 1e30, -1e30, f32::MAX, f32::MIN] {
         for reference in [0.0, 3.0, -3.0, 20.0, -20.0, yaw] {
-            let from = Pose {
+            let from = RenderPose {
                 yaw: reference,
                 pitch: 0.0,
                 fov_degrees: 10.0,
             };
-            let request = Pose { yaw, ..from };
+            let request = RenderPose { yaw, ..from };
             let near = grid.near_yaw(request, reference);
             assert!(
                 (f64::from(near.yaw) - f64::from(reference)).abs() <= std::f64::consts::PI + 1e-6
@@ -27,14 +27,14 @@ fn periodic_direct_input_has_bounded_travel_for_large_finite_angles() {
         }
     }
     for sign in [-1.0, 1.0] {
-        let from = Pose {
+        let from = RenderPose {
             yaw: sign * 3.13,
             pitch: 0.0,
             fov_degrees: 10.0,
         };
         let accepted = roof.constrain(
             from,
-            Pose {
+            RenderPose {
                 yaw: -from.yaw,
                 ..from
             },
@@ -57,7 +57,7 @@ fn cylinder() -> Calibration {
     Calibration::new(
         vec![Lens::flat(3840, 1000)],
         Cylinder {
-            focal_length: 1000.0,
+            radius: 1000.0,
             ..Default::default()
         },
         Framing {
@@ -156,22 +156,22 @@ fn segment_cannot_jump_a_valley_between_covered_endpoints() {
     assert!(roof.contains(a) && roof.contains(b));
     assert!(!roof.segment(a, b));
     assert!(roof.segment(
-        Pose {
+        RenderPose {
             fov_degrees: 19.0,
             ..a
         },
-        Pose {
+        RenderPose {
             fov_degrees: 19.0,
             ..b
         }
     ));
-    assert!(!roof.contains(Pose {
+    assert!(!roof.contains(RenderPose {
         fov_degrees: 9.0,
         ..a
     }));
-    assert!(!roof.contains(Pose { yaw: f32::NAN, ..a }));
-    assert!(!roof.contains(Pose { yaw: 1.0, ..a }));
-    assert!(!roof.contains(Pose {
+    assert!(!roof.contains(RenderPose { yaw: f32::NAN, ..a }));
+    assert!(!roof.contains(RenderPose { yaw: 1.0, ..a }));
+    assert!(!roof.contains(RenderPose {
         fov_degrees: f32::NAN,
         ..a
     }));
@@ -183,12 +183,12 @@ fn triangle_crossings_match_dense_segment_checks_in_both_directions() {
     let cells: Vec<_> = (0..64).map(|i| 20.0 + (i * 37 % 70) as f32).collect();
     let roof = Roof::from_cells(grid, 10.0, &cells);
     for i in 0..1000 {
-        let a = Pose {
+        let a = RenderPose {
             yaw: -0.6 + (i * 73 % 1200) as f32 * 0.001,
             pitch: -0.4 + (i * 31 % 800) as f32 * 0.001,
             fov_degrees: 10.0 + (i % 40) as f32,
         };
-        let b = Pose {
+        let b = RenderPose {
             yaw: -0.6 + (i * 59 % 1200) as f32 * 0.001,
             pitch: -0.4 + (i * 67 % 800) as f32 * 0.001,
             fov_degrees: 10.0 + (i * 7 % 40) as f32,
@@ -212,7 +212,7 @@ fn tilted_cylinder_roof_agrees_with_independent_source_samples() {
     let roof = Roof::build(&cal, &size, grid(16), [10.0, 80.0], 0.05).unwrap();
     let mut checked = 0;
     for i in 0..1000 {
-        let p = Pose {
+        let p = RenderPose {
             yaw: -0.6 + (i * 73 % 1200) as f32 * 0.001,
             pitch: -0.4 + (i * 31 % 800) as f32 * 0.001,
             fov_degrees: 10.0,
@@ -222,7 +222,7 @@ fn tilted_cylinder_roof_agrees_with_independent_source_samples() {
             continue;
         }
         for fov in [10.0, (10.0 + ceiling) * 0.5, ceiling] {
-            let p = Pose {
+            let p = RenderPose {
                 fov_degrees: fov,
                 ..p
             };
@@ -276,27 +276,27 @@ fn connected_cap_includes_side_branches_and_every_intermediate_fov() {
     let a = grid.pose(0, 0, cap);
     let b = grid.pose(5, 1, cap);
     assert!(roof.segment(a, b));
-    let middle = Pose {
+    let middle = RenderPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 51.0,
     };
-    assert!(roof.contains(Pose {
+    assert!(roof.contains(RenderPose {
         fov_degrees: 51.0,
         ..a
     }));
-    assert!(roof.contains(Pose {
+    assert!(roof.contains(RenderPose {
         fov_degrees: 51.0,
         ..b
     }));
     assert!(!roof.contains(middle));
     // Checking connectivity only at 70 degrees would miss the split at 51:
     // the smaller room has disappeared from the valid set by then.
-    assert!(roof.contains(Pose {
+    assert!(roof.contains(RenderPose {
         fov_degrees: 70.0,
         ..a
     }));
-    assert!(!roof.contains(Pose {
+    assert!(!roof.contains(RenderPose {
         fov_degrees: 70.0,
         ..b
     }));
@@ -406,7 +406,7 @@ fn cap_resolves_a_point_contact_at_the_supplied_motion_precision() {
     let exact = roof.connected_cap(Some([-0.5, 0.5]), 0.0).unwrap();
     let resolved = roof.connected_cap(Some([-0.5, 0.5]), precision).unwrap();
     assert!(exact > resolved && exact - resolved < 0.051);
-    assert!(!roof.contains(Pose {
+    assert!(!roof.contains(RenderPose {
         yaw: precision,
         pitch: 0.0,
         fov_degrees: exact
@@ -415,7 +415,7 @@ fn cap_resolves_a_point_contact_at_the_supplied_motion_precision() {
         let coordinate = -1.0 + i as f32 / 50.0;
         for j in 0..16 {
             let angle = j as f32 * std::f32::consts::TAU / 16.0;
-            assert!(roof.contains(Pose {
+            assert!(roof.contains(RenderPose {
                 yaw: coordinate + precision * angle.cos(),
                 pitch: coordinate + precision * angle.sin(),
                 fov_degrees: resolved,
@@ -454,7 +454,7 @@ fn probe_roof() {
             .map(|s| serde_json::from_str(s).unwrap())
             .collect();
     let samples: Vec<_> = records.iter().map(|r| {
-        let p: Pose = serde_json::from_value(r["pose"].clone()).unwrap();
+        let p: RenderPose = serde_json::from_value(r["pose"].clone()).unwrap();
         serde_json::json!({"frame": r["frame"], "pose": p, "ceiling": roof.ceiling(p), "contained": roof.contains(p)})
     }).collect();
     // A graph edge connects neighbouring roof vertices, where height is affine.

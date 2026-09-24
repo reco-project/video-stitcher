@@ -80,12 +80,12 @@ def draw_roi(img, roi_points, h, w):
 def load_events(path):
     """Load JSONL events grouped by frame_index."""
     frames = defaultdict(lambda: {
-        "detections_raw": [],
+        "mapped_detections": [],
         "detection_filter": [],
         "world_state": None,
         "pan_decision": None,
         "panner_debug": None,
-        "pose_presented": None,
+        "render_pose_resolved": None,
         "frame_complete": None,
         "timestamp_ms": 0.0,
     })
@@ -103,8 +103,8 @@ def load_events(path):
             max_frame = max(max_frame, idx)
             if kind == "frame_start":
                 frames[idx]["timestamp_ms"] = ev.get("timestamp_ms", 0.0)
-            elif kind == "detections_raw":
-                frames[idx]["detections_raw"] = ev.get("detections", [])
+            elif kind == "mapped_detections":
+                frames[idx]["mapped_detections"] = ev.get("detections", [])
             elif kind == "detection_filter":
                 frames[idx]["detection_filter"].append(ev)
             elif kind == "world_state":
@@ -113,8 +113,8 @@ def load_events(path):
                 frames[idx]["panner_debug"] = ev
             elif kind == "pan_decision":
                 frames[idx]["pan_decision"] = ev
-            elif kind == "pose_presented":
-                frames[idx]["pose_presented"] = ev
+            elif kind == "render_pose_resolved":
+                frames[idx]["render_pose_resolved"] = ev
             elif kind == "frame_complete":
                 frames[idx]["frame_complete"] = ev
     return frames, max_frame
@@ -136,7 +136,7 @@ def det_camera(det):
     return -1
 
 def draw_detections(img, detections, camera_filter, h, w):
-    """Draw bounding boxes from DetectionsRaw. Returns detection count."""
+    """Draw bounding boxes from MappedDetections. Returns detection count."""
     count = 0
     for det in detections:
         if det_camera(det) != camera_filter:
@@ -209,7 +209,7 @@ def draw_shared_overlay(img, frame_idx, frame_data, total_frames, fps):
     cv2.putText(img, text, (10, 28), FONT, 0.7, (0, 0, 0), 1, cv2.LINE_AA)
 
     # Detection count vs track count (top center)
-    n_dets = len(frame_data["detections_raw"])
+    n_dets = len(frame_data["mapped_detections"])
     ws = frame_data.get("world_state")
     n_tracks = len(ws.get("players", [])) if ws else 0
     ball = ws.get("ball") if ws else None
@@ -244,12 +244,12 @@ def draw_shared_overlay(img, frame_idx, frame_data, total_frames, fps):
                     (255, 150, 50), 1, cv2.LINE_AA)
 
     # Pan decision (bottom left)
-    pose = frame_data.get("pose_presented")
+    pose = frame_data.get("render_pose_resolved")
     if pose and "pose" in pose:
         p = pose["pose"]
         yaw_deg = p.get("yaw", 0) * 57.2958
         pitch_deg = p.get("pitch", 0) * 57.2958
-        fov = p.get("fov_deg", 0)
+        fov = p.get("fov_degrees", 0)
         pan_text = f"pan: yaw={yaw_deg:.1f} pitch={pitch_deg:.1f} fov={fov:.0f}"
         cv2.putText(img, pan_text, (10, h - 12),
                     FONT, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
@@ -304,9 +304,9 @@ def annotate_frame(left_img, right_img, frame_idx, frame_data, last_detections,
     """Annotate and combine left+right into a single frame."""
     left = resize_keep_aspect(left_img, panel_w)
     panel_h = left.shape[0]
-    fresh = len(frame_data["detections_raw"]) > 0
+    fresh = len(frame_data["mapped_detections"]) > 0
     if fresh:
-        draw_detections(left, frame_data["detections_raw"], 0, panel_h, panel_w)
+        draw_detections(left, frame_data["mapped_detections"], 0, panel_h, panel_w)
     elif last_detections:
         draw_stale_detections(left, last_detections, 0, panel_h, panel_w)
     draw_filter_removed(left, frame_data["detection_filter"], 0, panel_h, panel_w)
@@ -317,7 +317,7 @@ def annotate_frame(left_img, right_img, frame_idx, frame_data, last_detections,
         right = resize_keep_aspect(right_img, panel_w)
         rh = right.shape[0]
         if fresh:
-            draw_detections(right, frame_data["detections_raw"], 1, rh, panel_w)
+            draw_detections(right, frame_data["mapped_detections"], 1, rh, panel_w)
         elif last_detections:
             draw_stale_detections(right, last_detections, 1, rh, panel_w)
         draw_filter_removed(right, frame_data["detection_filter"], 1, rh, panel_w)
@@ -404,8 +404,8 @@ def export_mode(events_path, left_path, right_path, output_path, max_frames,
                 raw_r = None
 
         fd = frames[frame_idx]
-        if fd["detections_raw"]:
-            last_detections = fd["detections_raw"]
+        if fd["mapped_detections"]:
+            last_detections = fd["mapped_detections"]
 
         combined = annotate_frame(raw_l, raw_r, frame_idx, fd, last_detections,
                                   total, fps, panel_w, roi_left, roi_right, hstack)
@@ -480,8 +480,8 @@ def browse_mode(events_path, left_path, right_path, cal_path, hstack):
                 raw_r = None
 
         fd = frames[idx]
-        if fd["detections_raw"]:
-            last_detections = fd["detections_raw"]
+        if fd["mapped_detections"]:
+            last_detections = fd["mapped_detections"]
         combined = annotate_frame(raw_l, raw_r, idx, fd, last_detections,
                                   total, fps, panel_w, roi_left, roi_right, hstack)
         return combined, idx, last_detections

@@ -5,7 +5,7 @@
 
 use std::time::{Duration, Instant};
 
-use reco_core::source::{FrameSource, SourceError, SourceInfo, YuvData};
+use reco_core::source::{FrameSource, SourceError, SourceInfo, Yuv420pData};
 use reco_io::adapters::FfmpegFileSource;
 use reco_io::stitch_job::InputPath;
 
@@ -24,8 +24,8 @@ pub enum PlayState {
 
 /// Owned stereo YUV frame pair.
 pub struct StereoYuv {
-    pub left: YuvData,
-    pub right: YuvData,
+    pub left: Yuv420pData,
+    pub right: Yuv420pData,
 }
 
 /// Controls video file playback for the GUI.

@@ -33,11 +33,9 @@ silently freezes output. Consumer-side rebuild works but isn't automatic.
 **Impact**: High. Sync sources (Browser Source, screen capture) are
 invisible. Needs a render-to-texture fallback path via OBS graphics API.
 
-### A10. No detector/director hooks on push API
+### A10. OBS tracking integration and inference scheduling
 
-**Impact**: Medium. AI tracking works in StitchSession (pull) but not
-in StitchCore (push, used by OBS). Need set_detector/set_director on
-the push API, plus a worker-thread inference scheduler.
+**Impact**: Medium. StitchCore exposes detector, tracker and panner attachment, but OBS does not wire them. OBS integration still needs an inference scheduling/threading decision that keeps the source render loop responsive. This is not a missing attachment API.
 
 ### A11. Visible upstream sources steal async frames
 

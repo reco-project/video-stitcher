@@ -6,7 +6,7 @@
 //! plumbing lives here.
 
 use reco_core::sink::{OutputFrame, OutputSink, PixelFormat, SinkError, SinkInput};
-use reco_core::source::{FrameSet, SourceError, SourceInfo, YuvData};
+use reco_core::source::{FrameSet, SourceError, SourceInfo, Yuv420pData};
 
 #[cfg(feature = "ffmpeg")]
 use crate::ffmpeg;
@@ -272,8 +272,8 @@ impl FfmpegFileSource {
         label: String,
         seek_secs: Option<f64>,
         software_decode: bool,
-    ) -> std::sync::mpsc::Receiver<YuvData> {
-        let (tx, rx) = std::sync::mpsc::sync_channel::<YuvData>(4);
+    ) -> std::sync::mpsc::Receiver<Yuv420pData> {
+        let (tx, rx) = std::sync::mpsc::sync_channel::<Yuv420pData>(4);
 
         std::thread::Builder::new()
             .name(format!("decode_{label}"))
@@ -316,7 +316,7 @@ impl FfmpegFileSource {
                                 log::debug!(
                                     "{label} seek: skipped {skipped} frames to reach target"
                                 );
-                                let buf = YuvData {
+                                let buf = Yuv420pData {
                                     y: f.y,
                                     u: f.u,
                                     v: f.v,
@@ -333,7 +333,7 @@ impl FfmpegFileSource {
                 loop {
                     match dec.next_frame() {
                         Ok(Some(f)) => {
-                            let buf = YuvData {
+                            let buf = Yuv420pData {
                                 y: f.y,
                                 u: f.u,
                                 v: f.v,

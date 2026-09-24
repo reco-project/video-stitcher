@@ -16,7 +16,7 @@ fn mapped_camera_span_keeps_a_rolled_stereo_view_panable() {
 
     let left = cal.map_source_point(1, [0.5, 0.5]).unwrap();
     let right = cal.map_source_point(0, [0.5, 0.5]).unwrap();
-    let request = |p: crate::geometry::YawPitch| Pose {
+    let request = |p: crate::geometry::YawPitch| WorldPose {
         yaw: p.yaw,
         pitch: p.pitch,
         fov_degrees: 75.0,
@@ -57,7 +57,7 @@ fn steep_lens_and_roll_do_not_collapse_the_certified_cap() {
         [0.124, -0.168, 0.13, -0.045],
     );
     cal.lenses = vec![lens.clone(), lens];
-    let shape = cal.topology.l_shape_mut().unwrap();
+    let shape = cal.projection.l_shape_mut().unwrap();
     shape.intersect = 0.62;
     shape.x_ty = 0.0166;
     shape.x_rz = 0.0193;
@@ -71,7 +71,7 @@ fn steep_lens_and_roll_do_not_collapse_the_certified_cap() {
     };
     let mut controller = Controller::new(&cal, &size, MapConfig::default()).unwrap();
     assert!(controller.cap() > 25.0, "cap={}", controller.cap());
-    let request = Pose {
+    let request = WorldPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 75.0,
@@ -144,7 +144,7 @@ fn rolled_stereo_retains_useful_fov_and_bounded_cross_field_motion() {
             "roll={roll}, cap={}",
             controller.cap()
         );
-        let request = |yaw| Pose {
+        let request = |yaw| WorldPose {
             yaw,
             pitch: 0.0,
             fov_degrees: 75.0,
@@ -188,8 +188,8 @@ fn rolled_stereo_retains_useful_fov_and_bounded_cross_field_motion() {
                         render.name()
                     );
                 }
-                let camera = cal.topology.projection().virtual_camera(&cal.framing);
-                let (expected_yaw, _) = crate::geometry::world_to_render_pose(
+                let camera = cal.projection.geometry().virtual_camera(&cal.framing);
+                let (expected_yaw, _) = crate::geometry::world_to_render_angles(
                     &camera,
                     yaw,
                     0.0,
@@ -228,22 +228,22 @@ fn roll_edits_do_not_accumulate_artificial_zoom() {
     .unwrap();
     let mut core = StitchCore::new(Executor::Cpu(Box::new(render))).unwrap();
     core.prepare_coverage().unwrap();
-    let rest = Pose {
+    let rest = WorldPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 75.0,
     };
-    let mut pose = core.world_to_render_pose(rest);
+    let mut pose = core.calibration().world_to_render_pose(rest);
     pose = core.constrain_render_pose(pose, pose).unwrap();
     for roll in [0.0_f64, -5.0, -10.0, -14.0, -15.0, -20.0, -15.0, 0.0] {
-        let world = core.render_to_world_pose(pose);
+        let world = core.calibration().render_to_world_pose(pose);
         cal.framing.roll = roll.to_radians();
         core.update_calibration(cal.clone()).unwrap();
-        let remapped = core.world_to_render_pose(world);
+        let remapped = core.calibration().world_to_render_pose(world);
         pose = core.constrain_render_pose(remapped, remapped).unwrap();
         assert!(pose.fov_degrees > 35.0, "roll={roll}, pose={pose:?}");
     }
-    let reset = core.world_to_render_pose(rest);
+    let reset = core.calibration().world_to_render_pose(rest);
     let reset = core.constrain_render_pose(reset, reset).unwrap();
     assert!(reset.fov_degrees > 50.0);
 }
@@ -253,7 +253,7 @@ fn source_frame_durations_preserve_motion_time_and_coverage() {
     let cal = Calibration::new(
         vec![Lens::flat(3840, 2000)],
         Cylinder {
-            sweep_deg: 360.0,
+            arc_deg: 360.0,
             ..Default::default()
         },
         Framing {
@@ -277,7 +277,7 @@ fn source_frame_durations_preserve_motion_time_and_coverage() {
             },
         )
         .unwrap();
-        let initial = Pose {
+        let initial = WorldPose {
             yaw: -0.8,
             pitch: -0.1,
             fov_degrees: 20.0,
@@ -290,7 +290,7 @@ fn source_frame_durations_preserve_motion_time_and_coverage() {
                 .advance(
                     &cal,
                     &size,
-                    Pose {
+                    WorldPose {
                         yaw: target,
                         pitch: target * 0.125,
                         fov_degrees: if target > 0.0 { 25.0 } else { 20.0 },
@@ -328,7 +328,7 @@ fn manual_controller_allocates_routing_only_when_automatic_motion_starts() {
     let cal = Calibration::new(
         vec![Lens::flat(3840, 2000)],
         Cylinder {
-            sweep_deg: 360.0,
+            arc_deg: 360.0,
             ..Default::default()
         },
         Framing {
@@ -342,20 +342,31 @@ fn manual_controller_allocates_routing_only_when_automatic_motion_starts() {
         height: 360,
     };
     let mut controller = Controller::new(&cal, &size, MapConfig::default()).unwrap();
-    let pose = Pose {
+    let pose = RenderPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 10.0,
     };
     assert!(controller.route.is_none());
     for yaw in [1e12, -1e12, f32::MAX, f32::MIN] {
-        let accepted = controller.constrain(pose, Pose { yaw, ..pose }).unwrap();
+        let accepted = controller
+            .constrain(pose, RenderPose { yaw, ..pose })
+            .unwrap();
         assert!(accepted.yaw.abs() <= std::f32::consts::PI);
         assert_eq!(boundary::pose(&cal, &size, accepted), Certificate::Covered);
     }
     assert!(controller.route.is_none());
     controller
-        .advance(&cal, &size, pose, 0, 1.0 / 30.0)
+        .advance(
+            &cal,
+            &size,
+            WorldPose {
+                fov_degrees: 10.0,
+                ..WorldPose::default()
+            },
+            0,
+            1.0 / 30.0,
+        )
         .unwrap();
     assert!(controller.route.is_some());
     controller.reset();
@@ -368,7 +379,7 @@ fn default_full_cylinder_has_no_artificial_yaw_wall() {
     let cal = Calibration::new(
         vec![Lens::flat(3840, 2000)],
         Cylinder {
-            sweep_deg: 360.0,
+            arc_deg: 360.0,
             ..Default::default()
         },
         Framing {
@@ -387,7 +398,7 @@ fn default_full_cylinder_has_no_artificial_yaw_wall() {
             .advance(
                 &cal,
                 &size,
-                Pose {
+                WorldPose {
                     yaw: sign * 3.0,
                     pitch: 0.0,
                     fov_degrees: 30.0,
@@ -397,7 +408,7 @@ fn default_full_cylinder_has_no_artificial_yaw_wall() {
             )
             .unwrap();
         for i in 1..=900 {
-            let request = Pose {
+            let request = WorldPose {
                 yaw: sign * (3.0 + i as f32 * 0.007),
                 pitch: 0.0,
                 fov_degrees: 30.0,
@@ -422,7 +433,7 @@ fn unsupported_previous_pose_keeps_periodic_yaw_near_the_request() {
     let cal = Calibration::new(
         vec![Lens::flat(3840, 2000)],
         Cylinder {
-            sweep_deg: 360.0,
+            arc_deg: 360.0,
             ..Default::default()
         },
         Framing {
@@ -437,12 +448,12 @@ fn unsupported_previous_pose_keeps_periodic_yaw_near_the_request() {
     };
     let mut controller = Controller::new(&cal, &size, MapConfig::default()).unwrap();
     for sign in [-1.0_f32, 1.0] {
-        let requested = Pose {
+        let requested = RenderPose {
             yaw: sign * (std::f32::consts::TAU + 0.7),
             pitch: 0.0,
             fov_degrees: 10.0,
         };
-        let previous = Pose {
+        let previous = RenderPose {
             pitch: std::f32::consts::FRAC_PI_2,
             ..requested
         };
@@ -458,7 +469,7 @@ fn manual_full_cylinder_crosses_the_seam_without_release_drift() {
     let mut cal = Calibration::new(
         vec![Lens::flat(3840, 2000)],
         Cylinder {
-            sweep_deg: 360.0,
+            arc_deg: 360.0,
             ..Default::default()
         },
         Framing {
@@ -474,7 +485,7 @@ fn manual_full_cylinder_crosses_the_seam_without_release_drift() {
     for sign in [-1.0, 1.0] {
         cal.framing.roll *= -1.0;
         let mut controller = Controller::new(&cal, &size, MapConfig::default()).unwrap();
-        let start = Pose {
+        let start = RenderPose {
             yaw: sign * 3.0,
             pitch: 0.0,
             fov_degrees: 20.0,
@@ -484,7 +495,7 @@ fn manual_full_cylinder_crosses_the_seam_without_release_drift() {
             let next = controller
                 .constrain(
                     p,
-                    Pose {
+                    RenderPose {
                         yaw: p.yaw + sign * 0.02,
                         ..p
                     },
@@ -509,8 +520,8 @@ fn automatic_chart_retains_pan_travel_for_both_projections() {
                 Calibration::new(
                     vec![Lens::flat(3840, 2000)],
                     Cylinder {
-                        focal_length: 2400.0,
-                        sweep_deg: sweep,
+                        radius: 2400.0,
+                        arc_deg: sweep,
                         ..Default::default()
                     },
                     Framing {
@@ -534,7 +545,7 @@ fn automatic_chart_retains_pan_travel_for_both_projections() {
                 started.elapsed()
             );
             assert!(controller.cap() > 20.0);
-            let requested = Pose {
+            let requested = WorldPose {
                 yaw: -0.7,
                 pitch: 0.0,
                 fov_degrees: 120.0,
@@ -545,7 +556,7 @@ fn automatic_chart_retains_pan_travel_for_both_projections() {
             for i in 1..=900 {
                 let yaw = if i < 450 { 0.7 } else { -0.7 };
                 let q = controller
-                    .advance(&cal, &size, Pose { yaw, ..requested }, i, 1.0 / 30.0)
+                    .advance(&cal, &size, WorldPose { yaw, ..requested }, i, 1.0 / 30.0)
                     .unwrap();
                 assert!(controller.roof.segment(p, q));
                 assert!((q.yaw - p.yaw).hypot(q.pitch - p.pitch) <= 0.9 / 30.0 + 1e-6);
@@ -582,7 +593,7 @@ fn manual_stereo_drag_and_zoom_are_supported_and_stationary_on_release() {
         },
     )
     .unwrap();
-    let initial = Pose {
+    let initial = RenderPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: controller.cap(),
@@ -590,7 +601,7 @@ fn manual_stereo_drag_and_zoom_are_supported_and_stationary_on_release() {
     let mut p = controller.constrain(initial, initial).unwrap();
     for i in 0..900 {
         let angle = i as f32 * 0.023;
-        let requested = Pose {
+        let requested = RenderPose {
             yaw: p.yaw + angle.cos() * 0.04,
             pitch: p.pitch + angle.sin() * 0.02,
             fov_degrees: if i % 180 < 90 { controller.cap() } else { 25.0 },

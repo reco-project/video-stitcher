@@ -2,7 +2,7 @@
 //!
 //! Panners consume a [`WorldState`](reco_core::detect::tracker::WorldState)
 //! each frame and emit a
-//! [`Pose`](reco_core::geometry::Pose).
+//! [`WorldPose`](reco_core::geometry::WorldPose).
 //!
 //! - [`field`] - [`FieldPanner`], trimmed-robust player cluster with ball blend and dynamic FOV.
 //! - [`file_panner`] - [`FilePanner`], replays precomputed trajectory from CSV.

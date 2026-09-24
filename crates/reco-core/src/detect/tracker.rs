@@ -1,7 +1,7 @@
 //! Tracker trait and world-state primitives for AI camera control.
 //!
 //! A `Tracker` turns a per-frame stream of noisy `MappedDetection`s
-//! (from [`super::director`]) into a clean list of `TrackedEntity`s
+//! (from [`super::mapped_detection`]) into a clean list of `TrackedEntity`s
 //! with stable identities and a tri-valued lifecycle (`TrackState`).
 //! Trackers are single-responsibility:
 //! one class (ball, player, …) per tracker. Multiple trackers run
@@ -21,7 +21,7 @@
 //!                                         ↓
 //!                                       Panner
 //!                                         ↓
-//!                                   Pose
+//!                                   WorldPose
 //! ```
 //!
 //! # Non-goals of this module
@@ -32,7 +32,7 @@
 //! - No implementations here. `BallTracker`, `ClassProvider`, and
 //!   future tracker variants ship in `reco-autocam::trackers`.
 
-use super::director::MappedDetection;
+use super::mapped_detection::MappedDetection;
 use crate::geometry::CameraIndex;
 
 /// A tri-valued lifecycle flag attached to every [`TrackedEntity`].
@@ -57,7 +57,7 @@ pub enum TrackState {
 
 /// A single entity (ball, player, referee, …) tracked across frames.
 ///
-/// Positions are in panorama space (yaw/pitch radians) so consumers
+/// Positions are world-reference yaw/pitch in radians, so consumers
 /// never need to know which raw camera observed the entity. The
 /// [`origin`](Self::origin) field records the last-reporting camera
 /// for diagnostics and quality-assurance overlays only — panner
@@ -67,11 +67,6 @@ pub enum TrackState {
 /// `id = 0` every frame; multi-entity classes (players) assign stable
 /// per-entity IDs for the tracklet's lifetime.
 ///
-/// A previous `velocity: Option<(f32, f32)>` field was removed in
-/// Step 10: no tracker populated it and no consumer read it. When a
-/// future tracker needs angular velocity the field comes back here
-/// (single source of truth); decorators that want smoothing
-/// derivatives compute them locally for now.
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct TrackedEntity {
     /// Persistent ID across frames for this tracklet. Singleton
@@ -81,10 +76,9 @@ pub struct TrackedEntity {
     /// Detection-model class this entity belongs to (e.g. 0 for a
     /// ball-only model, or COCO's 32 for `sports ball`).
     pub class_id: u16,
-    /// Horizontal pan angle in radians, panorama frame.
-    /// `0.0` = centered on the seam between cameras.
+    /// World-reference yaw in radians; zero follows the virtual camera's reference forward direction.
     pub yaw: f32,
-    /// Vertical tilt angle in radians, panorama frame.
+    /// World-reference pitch in radians.
     /// `0.0` = level; positive = looking up.
     pub pitch: f32,
     /// Last-measurement confidence in `[0.0, 1.0]`. Meaning depends

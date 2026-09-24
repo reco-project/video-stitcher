@@ -400,13 +400,13 @@ impl From<crate::output::Quality> for Quality {
     }
 }
 
-impl From<crate::output::Format> for Container {
-    fn from(f: crate::output::Format) -> Self {
+impl From<crate::output::Container> for Container {
+    fn from(f: crate::output::Container) -> Self {
         match f {
-            crate::output::Format::Mp4 | crate::output::Format::Mov => Self::Mp4,
-            crate::output::Format::Mp4Fragmented => Self::Mp4Fragmented,
-            crate::output::Format::Mkv => Self::Matroska,
-            crate::output::Format::Flv => Self::Flv,
+            crate::output::Container::Mp4 | crate::output::Container::Mov => Self::Mp4,
+            crate::output::Container::Mp4Fragmented => Self::Mp4Fragmented,
+            crate::output::Container::Mkv => Self::Matroska,
+            crate::output::Container::Flv => Self::Flv,
         }
     }
 }

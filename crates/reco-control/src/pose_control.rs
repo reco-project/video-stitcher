@@ -4,7 +4,7 @@
 
 use crate::ControlIntent;
 use reco_core::core::{StitchCore, types::StitchCoreError};
-use reco_core::geometry::Pose;
+use reco_core::geometry::RenderPose;
 
 /// Invalid zoom bounds, sensitivity or resting pose.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,7 +21,7 @@ impl std::error::Error for InvalidControlConfig {}
 #[derive(Debug, Clone, Copy)]
 pub struct PoseControlConfig {
     /// Nonnegative FOV degrees per wheel tick. Positive ticks zoom in; fractional ticks are supported.
-    pub wheel_fov_per_tick: f32,
+    pub wheel_fov_step_degrees: f32,
     /// Minimum requested vertical FOV in degrees, within `[1, 179]`.
     pub fov_min_degrees: f32,
     /// Maximum requested vertical FOV in degrees, within `[fov_min_degrees, 179]`. Coverage may impose a lower limit without changing this setting.
@@ -31,21 +31,21 @@ pub struct PoseControlConfig {
     /// Reverse vertical drag direction. False makes positive pixel deltas increase pitch.
     pub invert_drag_y: bool,
     /// Nonnegative vertical FOV degrees per keyboard zoom command.
-    pub hotkey_fov_step_deg: f32,
+    pub hotkey_fov_step_degrees: f32,
     /// Finite render-space resting pose whose FOV is within the configured zoom limits. Recreate controls when the calibrated rest direction changes.
-    pub rest_pose: Pose,
+    pub rest_pose: RenderPose,
 }
 
 impl Default for PoseControlConfig {
     fn default() -> Self {
         Self {
-            wheel_fov_per_tick: 3.0,
+            wheel_fov_step_degrees: 3.0,
             fov_min_degrees: 1.0,
             fov_max_degrees: 150.0,
             invert_drag_x: false,
             invert_drag_y: false,
-            hotkey_fov_step_deg: 5.0,
-            rest_pose: Pose::default(),
+            hotkey_fov_step_degrees: 5.0,
+            rest_pose: RenderPose::default(),
         }
     }
 }
@@ -55,8 +55,8 @@ impl Default for PoseControlConfig {
 /// Input methods ignore non-finite values and overflowing results without partial mutation. Successful coverage acceptance replaces both poses; failure preserves both for inspection or replacement.
 #[derive(Debug, Clone)]
 pub struct PoseControl {
-    target: Pose,
-    current: Pose,
+    target: RenderPose,
+    current: RenderPose,
     config: PoseControlConfig,
 }
 
@@ -78,9 +78,12 @@ impl PoseControl {
                 "zoom bounds must satisfy 1 <= min <= max <= 179",
             ));
         }
-        if [config.wheel_fov_per_tick, config.hotkey_fov_step_deg]
-            .iter()
-            .any(|v| !v.is_finite() || *v < 0.0)
+        if [
+            config.wheel_fov_step_degrees,
+            config.hotkey_fov_step_degrees,
+        ]
+        .iter()
+        .any(|v| !v.is_finite() || *v < 0.0)
         {
             return Err(InvalidControlConfig(
                 "zoom sensitivities must be finite and nonnegative",
@@ -121,7 +124,7 @@ impl PoseControl {
         } else {
             dy_pixels
         };
-        self.set_target(Pose {
+        self.set_target(RenderPose {
             yaw: self.target.yaw + dx * scale,
             pitch: self.target.pitch + dy * scale,
             ..self.target
@@ -130,17 +133,17 @@ impl PoseControl {
 
     /// Apply wheel ticks; positive values narrow FOV.
     pub fn apply_wheel(&mut self, ticks: f32) {
-        self.set_target_fov(self.target.fov_degrees - ticks * self.config.wheel_fov_per_tick);
+        self.set_target_fov(self.target.fov_degrees - ticks * self.config.wheel_fov_step_degrees);
     }
 
     /// Apply a command to pending input, without advancing motion or rendering.
     pub fn apply_intent(&mut self, intent: ControlIntent) {
         match intent {
-            ControlIntent::DeltaYawRad(delta) => self.set_target(Pose {
+            ControlIntent::DeltaYawRad(delta) => self.set_target(RenderPose {
                 yaw: self.target.yaw + delta,
                 ..self.target
             }),
-            ControlIntent::DeltaPitchRad(delta) => self.set_target(Pose {
+            ControlIntent::DeltaPitchRad(delta) => self.set_target(RenderPose {
                 pitch: self.target.pitch + delta,
                 ..self.target
             }),
@@ -149,17 +152,17 @@ impl PoseControl {
                 self.set_target_fov(self.target.fov_degrees + delta)
             }
             ControlIntent::ZoomIn => {
-                self.set_target_fov(self.target.fov_degrees - self.config.hotkey_fov_step_deg)
+                self.set_target_fov(self.target.fov_degrees - self.config.hotkey_fov_step_degrees)
             }
             ControlIntent::ZoomOut => {
-                self.set_target_fov(self.target.fov_degrees + self.config.hotkey_fov_step_deg)
+                self.set_target_fov(self.target.fov_degrees + self.config.hotkey_fov_step_degrees)
             }
             ControlIntent::Reset => self.target = self.config.rest_pose,
         }
     }
 
     /// Replace pending input, clamping finite FOV to configured limits. Non-finite components reject the entire update.
-    pub fn set_target(&mut self, mut pose: Pose) {
+    pub fn set_target(&mut self, mut pose: RenderPose) {
         if finite_pose(pose) {
             pose.fov_degrees = pose
                 .fov_degrees
@@ -170,7 +173,7 @@ impl PoseControl {
 
     /// Set a finite requested FOV in degrees, bounded by configured zoom limits.
     pub fn set_target_fov(&mut self, fov: f32) {
-        self.set_target(Pose {
+        self.set_target(RenderPose {
             fov_degrees: fov,
             ..self.target
         });
@@ -191,7 +194,7 @@ impl PoseControl {
     }
 
     /// Replace current and target after a coordinate-frame change. Accepts finite poses with FOV in `[1, 179]`, including coverage results below the requested zoom minimum. Does not validate coverage or change the reset pose; constrain before rendering.
-    pub fn set_pose(&mut self, accepted: Pose) {
+    pub fn set_pose(&mut self, accepted: RenderPose) {
         if finite_pose(accepted) && (1.0..=179.0).contains(&accepted.fov_degrees) {
             self.target = accepted;
             self.current = accepted;
@@ -199,11 +202,11 @@ impl PoseControl {
     }
 
     /// Pending render-space input, not yet accepted through coverage.
-    pub fn target_pose(&self) -> Pose {
+    pub fn target_pose(&self) -> RenderPose {
         self.target
     }
     /// Accepted render-space pose for rendering.
-    pub fn current_pose(&self) -> Pose {
+    pub fn current_pose(&self) -> RenderPose {
         self.current
     }
     /// Accepted vertical FOV in degrees.
@@ -212,6 +215,6 @@ impl PoseControl {
     }
 }
 
-fn finite_pose(pose: Pose) -> bool {
+fn finite_pose(pose: RenderPose) -> bool {
     pose.yaw.is_finite() && pose.pitch.is_finite() && pose.fov_degrees.is_finite()
 }

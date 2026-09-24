@@ -1,24 +1,53 @@
-//! The pose and source-identity currency every layer shares.
-//!
-//! `Pose` travels from human input and AI directors through
-//! the clamp and orient stages into the render; `CameraIndex` names which
-//! source a detection or sample came from. Both live in the geometry
-//! leaf so no layer has to import another layer's domain to talk about
-//! a pose.
+//! World-reference and render-space view poses, angular directions and source identity.
 
-/// Specifies the yaw, pitch, and field of view of the virtual camera.
-/// The FOV allows directors to express zoom: narrow FOV = zoomed in on
-/// action, wide FOV = zoomed out for context.
+/// A requested view in the virtual camera's world-reference frame, before rig tilt/roll correction.
+///
+/// Panners produce this type. Convert through the calibrated world-to-render operation before rendering; copying the angles into a [`RenderPose`] does not perform that conversion.
+///
+/// A rendered result cannot be submitted as another world-space request:
+/// ```compile_fail
+/// use reco_core::{core::StitchCore, geometry::RenderPose};
+/// fn advance(core: &mut StitchCore) {
+///     core.advance_pose(RenderPose::default(), 0, 1.0 / 30.0);
+/// }
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct Pose {
-    /// Horizontal pan angle in radians.
-    ///
-    /// `0.0` = centered on the seam between cameras.
+pub struct WorldPose {
+    /// Horizontal angle in radians relative to the virtual camera's reference forward direction.
+    pub yaw: f32,
+    /// Elevation in radians above the world-reference horizontal plane.
+    pub pitch: f32,
+    /// Vertical field of view in degrees.
+    pub fov_degrees: f32,
+}
+
+impl Default for WorldPose {
+    fn default() -> Self {
+        Self {
+            yaw: 0.0,
+            pitch: 0.0,
+            fov_degrees: 75.0,
+        }
+    }
+}
+
+/// A view expressed in the renderer's rig-adjusted yaw/pitch coordinates.
+///
+/// Direct viewport controls and render-at-pose methods use this type. It identifies a coordinate frame, not coverage validity: callers must constrain the view separately when source support is required.
+///
+/// World-reference requests cannot be passed directly to render-space APIs:
+/// ```compile_fail
+/// use reco_core::{core::StitchCore, geometry::WorldPose};
+/// fn constrain(core: &mut StitchCore) {
+///     core.constrain_render_pose(WorldPose::default(), WorldPose::default());
+/// }
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RenderPose {
+    /// Yaw in radians around the rig-adjusted yaw axis.
     pub yaw: f32,
 
-    /// Vertical tilt angle in radians.
-    ///
-    /// `0.0` = level. Positive = looking up.
+    /// Pitch in radians around the renderer's pitch axis after yaw.
     pub pitch: f32,
 
     /// Vertical field of view in degrees (nalgebra `Perspective3`
@@ -41,7 +70,7 @@ pub struct YawPitch {
     pub pitch: f32,
 }
 
-impl Pose {
+impl RenderPose {
     /// The fov this pose renders with: clamped to `[1, 179]` degrees.
     ///
     /// The single home for the render-boundary guard - 0 or 180 would
@@ -53,7 +82,7 @@ impl Pose {
     }
 }
 
-impl Default for Pose {
+impl Default for RenderPose {
     fn default() -> Self {
         Self {
             yaw: 0.0,
@@ -71,3 +100,17 @@ impl Default for Pose {
 /// authority on how many cameras exist, and serialized forms (the
 /// events JSONL) carry the same integer.
 pub type CameraIndex = usize;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pose_coordinate_types_preserve_serialized_fields() {
+        let value = serde_json::json!({"yaw": 0.25, "pitch": -0.5, "fov_degrees": 60.0});
+        let world: WorldPose = serde_json::from_value(value.clone()).unwrap();
+        let render: RenderPose = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(world).unwrap(), value);
+        assert_eq!(serde_json::to_value(render).unwrap(), value);
+    }
+}

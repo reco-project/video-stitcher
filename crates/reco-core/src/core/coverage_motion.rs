@@ -1,7 +1,7 @@
 //! Shared coverage for world-space tracking and direct render-space interaction.
 
 use super::{StitchCore, StitchCoreError};
-use crate::geometry::Pose;
+use crate::geometry::{RenderPose, WorldPose};
 use crate::projection::coverage::controller::{Controller, MapConfig};
 
 impl StitchCore {
@@ -10,9 +10,9 @@ impl StitchCore {
     /// While coverage is being prepared, returns validated input unchanged, permitting black edges. Once ready, fits the current pose through coverage. Does not change the user's constrained-look setting or advance the tracking clock. Interactive recording follows this behavior; offline export and automatic tracking use strict pose resolution instead.
     pub fn constrain_preview_pose(
         &mut self,
-        previous: Pose,
-        requested: Pose,
-    ) -> Result<Pose, StitchCoreError> {
+        previous: RenderPose,
+        requested: RenderPose,
+    ) -> Result<RenderPose, StitchCoreError> {
         validate_interactive_poses(previous, requested)?;
         if !self.constrained_look || self.prepare_coverage_preview()?.is_none() {
             return Ok(requested);
@@ -25,9 +25,9 @@ impl StitchCore {
     /// Both arguments and the result are render-space poses, directly usable by render-at-pose methods. Feed the accepted result back into the input control so blocked movement does not accumulate. Yaw requests use the nearest periodic equivalent to the previous pose. Movement follows a supported segment and slides at contact; zoom may move the view inward to fit. A previous pose invalidated by geometry changes or re-enabling constraints is fitted anew. Disabled constraints return the request unchanged. The derived coverage map is built on first use.
     pub fn constrain_render_pose(
         &mut self,
-        previous: Pose,
-        requested: Pose,
-    ) -> Result<Pose, StitchCoreError> {
+        previous: RenderPose,
+        requested: RenderPose,
+    ) -> Result<RenderPose, StitchCoreError> {
         validate_interactive_poses(previous, requested)?;
         if !self.constrained_look {
             return Ok(requested);
@@ -75,10 +75,10 @@ impl StitchCore {
     /// Disabling constrained look bypasses coverage but still applies the world-to-render orientation. Explicit render-at-pose methods accept the result directly and do not advance this controller a second time.
     pub fn advance_pose(
         &mut self,
-        requested: Pose,
+        requested: WorldPose,
         index: u64,
         frame_seconds: f32,
-    ) -> Result<Pose, StitchCoreError> {
+    ) -> Result<RenderPose, StitchCoreError> {
         if !frame_seconds.is_finite()
             || frame_seconds <= 0.0
             || !requested.yaw.is_finite()
@@ -91,7 +91,7 @@ impl StitchCore {
             ));
         }
         let pose = if !self.constrained_look {
-            self.world_to_render_pose(requested)
+            self.calibration().world_to_render_pose(requested)
         } else {
             self.prepare_coverage()?;
             self.coverage_motion
@@ -108,7 +108,7 @@ impl StitchCore {
         };
         if let Some(sink) = self.event_sink.as_deref_mut() {
             sink.emit(
-                crate::detect::pipeline_event::PipelineEvent::PosePresented {
+                crate::detect::pipeline_event::PipelineEvent::RenderPoseResolved {
                     frame_index: index,
                     pose,
                 },
@@ -118,7 +118,10 @@ impl StitchCore {
     }
 }
 
-fn validate_interactive_poses(previous: Pose, requested: Pose) -> Result<(), StitchCoreError> {
+fn validate_interactive_poses(
+    previous: RenderPose,
+    requested: RenderPose,
+) -> Result<(), StitchCoreError> {
     if [previous, requested].iter().any(|p| {
         !p.yaw.is_finite()
             || !p.pitch.is_finite()

@@ -12,7 +12,7 @@ fn target_projection_and_frustum_use_the_render_camera() {
     };
     for yaw in [-1.2, 0.0, 1.2] {
         for pitch in [-0.4, 0.0, 0.4] {
-            let p = Pose {
+            let p = RenderPose {
                 yaw,
                 pitch,
                 fov_degrees: 45.0,
@@ -22,7 +22,7 @@ fn target_projection_and_frustum_use_the_render_camera() {
             assert!(xy.iter().all(|v| v.abs() < 1e-5));
             assert!(distance(aim(&cal, &d, 45.0), p) < 1e-5);
             for [yaw, pitch] in footprint(&cal, &size, p) {
-                let d = direction(&cal, Pose { yaw, pitch, ..p });
+                let d = direction(&cal, RenderPose { yaw, pitch, ..p });
                 let xy = screen(&cal, &size, p, &d).unwrap();
                 assert!((xy[0].abs().max(xy[1].abs()) - 1.0).abs() < 1e-4);
             }
@@ -37,7 +37,7 @@ fn motion_window_respects_both_disks_and_predicts_braking() {
         for i in 0..64 {
             let angle = i as f32 * 0.37;
             let speed = RATE * (i % 9) as f32 / 8.0;
-            let previous = Pose {
+            let previous = RenderPose {
                 yaw: 0.3,
                 pitch: -0.2,
                 fov_degrees: 45.0,
@@ -48,7 +48,7 @@ fn motion_window_respects_both_disks_and_predicts_braking() {
                 dt,
             };
             for j in 0..16 {
-                let target = Pose {
+                let target = RenderPose {
                     yaw: (j as f32 * 0.8).cos(),
                     pitch: (j as f32 * 0.8).sin(),
                     ..previous
@@ -89,12 +89,12 @@ fn behind_camera_target_has_a_descent_direction() {
         width: 640,
         height: 360,
     };
-    let p = Pose {
+    let p = RenderPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 40.0,
     };
-    let target = direction(&cal, Pose { yaw: 2.0, ..p });
+    let target = direction(&cal, RenderPose { yaw: 2.0, ..p });
     assert!(screen(&cal, &size, p, &target).is_none());
     let roof = roof::Roof::build(
         &cal,

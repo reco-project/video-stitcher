@@ -20,7 +20,7 @@ struct Uniforms {
     color_offset_blend: vec4<f32>,
     // flags.x: is_right (0 or 1)
     // flags.y: input_format (0 = YUV420P: separate U,V textures; 1 = NV12: interleaved UV
-    //          in t_u; 2 = BGRA/RGBA: t_y holds packed 4-channel RGB, skip YUV conversion)
+    //          in t_u; 2 = RGBA: t_y holds packed 4-channel RGB, skip YUV conversion)
     // flags.z: flip_180 (0 or 1) - flip UV coordinates for 180-degree rotation
     //          Used by the GPU zero-copy path where buffer reversal is not possible.
     // flags.w: is_full_range (0 = limited 16-235, 1 = full 0-255)
@@ -94,7 +94,7 @@ fn apply_color_transfer(rgb: vec3<f32>, scale: vec3<f32>, offset: vec3<f32>) -> 
 /// Supports three input layouts (selected by `u.flags.y`):
 ///   0 = YUV420P: separate R8 textures for Y, U, V (software decode).
 ///   1 = NV12: R8 Y texture + Rg8 UV texture with interleaved U,V (NVDEC).
-///   2 = BGRA/RGBA: t_y is an `Rgba8Unorm` texture holding packed RGB
+///   2 = RGBA: t_y is an `Rgba8Unorm` texture holding packed RGB
 ///       (source already sRGB-domain, skip YUV conversion).
 ///
 /// H.264 uses limited range (Y: 16-235, Cb/Cr: 16-240). After the
@@ -108,7 +108,7 @@ fn sample_yuv(uv: vec2<f32>) -> vec4<f32> {
         sample_uv = vec2<f32>(1.0 - uv.x, 1.0 - uv.y);
     }
 
-    // BGRA / RGBA packed path: sample the full RGB triple in one fetch
+    // RGBA packed path: sample the full RGB triple in one fetch
     // and return without YUV conversion. The upload side is responsible
     // for delivering the triple in (R, G, B) order - swizzling BGRA is
     // handled at upload time so the shader only sees R-in-red.

@@ -167,7 +167,7 @@ mod tests {
         core.prepare_coverage_preview().unwrap();
         let cancelled = Arc::clone(&core.pending_coverage.as_ref().unwrap().cancelled);
         let mut cal = core.calibration().clone();
-        cal.topology.l_shape_mut().unwrap().blend_width *= 0.5;
+        cal.projection.l_shape_mut().unwrap().blend_width *= 0.5;
         core.update_calibration_preview(cal).unwrap();
         core.prepare_coverage_preview().unwrap();
         assert!(Arc::ptr_eq(
@@ -178,7 +178,7 @@ mod tests {
 
         core.pending_coverage.as_mut().unwrap().error = Some("unavailable".into());
         let mut cal = core.calibration().clone();
-        cal.topology.l_shape_mut().unwrap().blend_width *= 0.5;
+        cal.projection.l_shape_mut().unwrap().blend_width *= 0.5;
         core.update_calibration_preview(cal).unwrap();
         assert!(core.prepare_coverage_preview().is_err());
         assert!(Arc::ptr_eq(
@@ -216,7 +216,7 @@ mod tests {
         let cancelled = Arc::clone(&core.pending_coverage.as_ref().unwrap().cancelled);
         core.resize_preview(64, 64).unwrap();
         assert!(cancelled.load(Ordering::Relaxed));
-        assert!(core.max_fov_degrees().is_none());
+        assert!(core.coverage_max_fov_degrees().is_none());
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         loop {
             core.prepare_coverage_preview().unwrap();

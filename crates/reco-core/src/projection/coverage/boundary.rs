@@ -11,7 +11,7 @@ const SIDES: [([f64; 2], [f64; 2]); 4] = [
 ];
 
 #[cfg(test)]
-pub(super) fn pose(cal: &Calibration, size: &ViewportSize, pose: Pose) -> Certificate {
+pub(super) fn pose(cal: &Calibration, size: &ViewportSize, pose: RenderPose) -> Certificate {
     if !valid_query(cal, size, pose) {
         return Certificate::Unknown;
     }
@@ -51,8 +51,8 @@ fn strips(
 pub(super) fn enclosure(
     cal: &Calibration,
     size: &ViewportSize,
-    lo: Pose,
-    hi: Pose,
+    lo: RenderPose,
+    hi: RenderPose,
     budget: usize,
 ) -> Certificate {
     enclosure_impl(cal, size, lo, hi, budget, false)
@@ -63,8 +63,8 @@ pub(super) fn enclosure(
 pub(super) fn exterior_enclosure(
     cal: &Calibration,
     size: &ViewportSize,
-    lo: Pose,
-    hi: Pose,
+    lo: RenderPose,
+    hi: RenderPose,
     budget: usize,
 ) -> Certificate {
     enclosure_impl(cal, size, lo, hi, budget, true)
@@ -82,8 +82,8 @@ fn outline(lo: [f64; 2], hi: [f64; 2]) -> [([f64; 2], [f64; 2]); 4] {
 fn enclosure_impl(
     cal: &Calibration,
     size: &ViewportSize,
-    lo: Pose,
-    hi: Pose,
+    lo: RenderPose,
+    hi: RenderPose,
     budget: usize,
     exterior_only: bool,
 ) -> Certificate {
@@ -100,7 +100,7 @@ fn enclosure_impl(
     };
     let maps = cal.surface_maps(
         size,
-        Pose {
+        RenderPose {
             fov_degrees: max_fov,
             ..interpolate(lo, hi, 0.5)
         },
@@ -225,7 +225,7 @@ mod tests {
         let cylinder = Calibration::new(
             vec![Lens::flat(3840, 2000)],
             Cylinder {
-                focal_length: 1000.0,
+                radius: 1000.0,
                 ..Default::default()
             },
             Framing {
@@ -242,12 +242,12 @@ mod tests {
                 for (width, height) in [(160, 90), (90, 160), (160, 40)] {
                     let size = ViewportSize { width, height };
                     for i in 0..40 {
-                        let from = Pose {
+                        let from = RenderPose {
                             yaw: -0.9 + (i * 23 % 40) as f32 * 0.045,
                             pitch: -0.4 + (i * 13 % 40) as f32 * 0.02,
                             fov_degrees: 20.0,
                         };
-                        let to = Pose {
+                        let to = RenderPose {
                             yaw: from.yaw + 0.01,
                             pitch: from.pitch + 0.01,
                             fov_degrees: 45.0,
@@ -258,7 +258,7 @@ mod tests {
                         for (dx, dy) in [(0.0, 0.0), (0.0, 1.0), (1.0, 0.0), (1.0, 1.0), (0.5, 0.5)]
                         {
                             for fov in [20.0, 32.5, 45.0] {
-                                let pose = Pose {
+                                let pose = RenderPose {
                                     yaw: from.yaw + dx * 0.01,
                                     pitch: from.pitch + dy * 0.01,
                                     fov_degrees: fov,
@@ -284,17 +284,17 @@ mod tests {
                 let mut cal = stereo();
                 cal.framing.tilt = tilt;
                 cal.framing.roll = roll;
-                let camera = cal.topology.projection().virtual_camera(&cal.framing);
-                let view = |p: Pose| {
+                let camera = cal.projection.geometry().virtual_camera(&cal.framing);
+                let view = |p: RenderPose| {
                     crate::geometry::view_matrix(&camera, p.yaw, p.pitch, tilt as f32, roll as f32)
                 };
                 for (fov_a, fov_b) in [(25.0, 60.0), (60.0, 25.0), (60.0, 60.0)] {
-                    let from = Pose {
+                    let from = RenderPose {
                         yaw: -0.6,
                         pitch: 0.25,
                         fov_degrees: fov_a,
                     };
-                    let to = Pose {
+                    let to = RenderPose {
                         yaw: -0.52,
                         pitch: 0.21,
                         fov_degrees: fov_b,

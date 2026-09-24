@@ -2,7 +2,7 @@
 
 use reco_control::ControlIntent;
 use reco_control::pose_control::{PoseControl, PoseControlConfig};
-use reco_core::geometry::Pose;
+use reco_core::geometry::RenderPose;
 
 #[test]
 fn pending_inputs_accumulate_without_changing_the_presented_pose() {
@@ -43,13 +43,13 @@ fn malformed_events_do_not_poison_either_pose() {
         assert_eq!(control.target_pose(), before);
         control.set_target_fov(bad);
         assert_eq!(control.target_pose(), before);
-        control.set_target(Pose { yaw: bad, ..before });
+        control.set_target(RenderPose { yaw: bad, ..before });
         assert_eq!(control.target_pose(), before);
-        control.set_target(Pose {
+        control.set_target(RenderPose {
             pitch: bad,
             ..before
         });
-        control.set_pose(Pose {
+        control.set_pose(RenderPose {
             fov_degrees: bad,
             ..before
         });
@@ -84,7 +84,7 @@ fn overflowing_finite_events_are_rejected_atomically() {
     assert_eq!(control.target_pose(), initial);
     control.apply_drag(1.0, f32::MAX, f32::MIN_POSITIVE);
     assert_eq!(control.target_pose(), initial);
-    let extreme = Pose {
+    let extreme = RenderPose {
         yaw: f32::MAX,
         pitch: f32::MAX,
         ..initial
@@ -106,11 +106,11 @@ fn invalid_configuration_is_rejected_without_panics() {
     for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -1.0] {
         for config in [
             PoseControlConfig {
-                wheel_fov_per_tick: bad,
+                wheel_fov_step_degrees: bad,
                 ..default
             },
             PoseControlConfig {
-                hotkey_fov_step_deg: bad,
+                hotkey_fov_step_degrees: bad,
                 ..default
             },
             PoseControlConfig {
@@ -122,7 +122,7 @@ fn invalid_configuration_is_rejected_without_panics() {
                 ..default
             },
             PoseControlConfig {
-                rest_pose: Pose {
+                rest_pose: RenderPose {
                     fov_degrees: bad,
                     ..default.rest_pose
                 },
@@ -144,11 +144,11 @@ fn invalid_configuration_is_rejected_without_panics() {
     }
     for bad in [f32::NAN, f32::INFINITY] {
         for rest in [
-            Pose {
+            RenderPose {
                 yaw: bad,
                 ..default.rest_pose
             },
-            Pose {
+            RenderPose {
                 pitch: bad,
                 ..default.rest_pose
             },
@@ -167,12 +167,12 @@ fn invalid_configuration_is_rejected_without_panics() {
             PoseControl::new(PoseControlConfig {
                 fov_min_degrees: fov,
                 fov_max_degrees: fov,
-                rest_pose: Pose {
+                rest_pose: RenderPose {
                     fov_degrees: fov,
                     ..default.rest_pose
                 },
-                wheel_fov_per_tick: 0.0,
-                hotkey_fov_step_deg: 0.0,
+                wheel_fov_step_degrees: 0.0,
+                hotkey_fov_step_degrees: 0.0,
                 ..default
             })
             .is_ok()
@@ -225,15 +225,15 @@ fn accepted_coverage_can_be_below_requested_zoom_minimum() {
         ..Default::default()
     })
     .unwrap();
-    let fitted = Pose {
+    let fitted = RenderPose {
         fov_degrees: 12.0,
-        ..Pose::default()
+        ..RenderPose::default()
     };
     control.set_pose(fitted);
     assert_eq!(control.current_pose(), fitted);
     assert_eq!(control.target_pose(), fitted);
     for invalid in [0.0, 180.0] {
-        control.set_pose(Pose {
+        control.set_pose(RenderPose {
             fov_degrees: invalid,
             ..fitted
         });
@@ -242,7 +242,7 @@ fn accepted_coverage_can_be_below_requested_zoom_minimum() {
     }
 }
 
-fn cpu_core(sweep_deg: f64) -> reco_core::core::StitchCore {
+fn cpu_core(arc_deg: f64) -> reco_core::core::StitchCore {
     use reco_core::{
         calibration::{Calibration, Framing, Lens},
         projection::Cylinder,
@@ -252,9 +252,9 @@ fn cpu_core(sweep_deg: f64) -> reco_core::core::StitchCore {
     let cal = Calibration::new(
         vec![Lens::flat(64, 32)],
         Cylinder {
-            focal_length: 20.0,
-            sweep_deg,
-            video_height: None,
+            radius: 20.0,
+            arc_deg,
+            surface_height: None,
         },
         Framing {
             axis_offset: 0.0,
@@ -287,7 +287,7 @@ fn direct_acceptance_preserves_large_reversals_without_inertia() {
     control.constrain(&mut core).unwrap();
     assert_eq!(control.current_fov_deg(), 1.0);
     for yaw in [2.9, -0.0000001, -2.9, 0.0000001] {
-        let pose = Pose {
+        let pose = RenderPose {
             yaw,
             pitch: -yaw * 0.1,
             fov_degrees: 37.12345,
@@ -303,7 +303,7 @@ fn direct_acceptance_preserves_large_reversals_without_inertia() {
 fn coverage_acceptance_discards_blocked_input() {
     let mut core = cpu_core(180.0);
     let mut control = PoseControl::default();
-    control.set_target(Pose {
+    control.set_target(RenderPose {
         yaw: 2.0,
         pitch: 0.0,
         fov_degrees: 40.0,

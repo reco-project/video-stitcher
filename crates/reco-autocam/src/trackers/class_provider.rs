@@ -27,7 +27,7 @@
 //!
 //! [`FieldPanner`]: crate::panners::FieldPanner
 
-use reco_core::detect::director::MappedDetection;
+use reco_core::detect::mapped_detection::MappedDetection;
 use reco_core::detect::tracker::{TrackState, TrackedEntity, Tracker, WorldState};
 
 /// Emits this frame's detections of a single class as live tracked

@@ -16,7 +16,7 @@
 /// - `u`: `(width/2) * (height/2)` bytes
 /// - `v`: `(width/2) * (height/2)` bytes
 #[derive(Clone, Copy)]
-pub struct YuvPlanes<'a> {
+pub struct Yuv420pPlanes<'a> {
     /// Y (luma) plane, full resolution.
     pub y: &'a [u8],
     /// U (Cb) plane, half resolution.
@@ -29,8 +29,8 @@ pub struct YuvPlanes<'a> {
 ///
 /// External frameworks (OBS, V4L2, GStreamer) typically expose planes as
 /// a pointer plus a row stride that may exceed the plane width (padding).
-/// [`StridedYuvPlanes::copy_into`] repacks padded data into tight
-/// [`YuvPlanes`] without per-frame allocation.
+/// [`StridedYuv420pPlanes::copy_into`] repacks padded data into tight
+/// [`Yuv420pPlanes`] without per-frame allocation.
 pub struct FramePlaneView<'a> {
     /// Plane pixel bytes. Must have length at least `stride * height`.
     pub data: &'a [u8],
@@ -44,9 +44,9 @@ pub struct FramePlaneView<'a> {
 
 /// Stride-aware YUV420P planes for hardware-decoded or framework-callback frames.
 ///
-/// Use [`Self::copy_into`] to produce a tightly packed [`YuvPlanes`]
+/// Use [`Self::copy_into`] to produce a tightly packed [`Yuv420pPlanes`]
 /// view ready for the stitch pipeline.
-pub struct StridedYuvPlanes<'a> {
+pub struct StridedYuv420pPlanes<'a> {
     /// Y (luma) plane, full resolution.
     pub y: FramePlaneView<'a>,
     /// U (Cb) plane, half resolution per dimension.
@@ -55,13 +55,13 @@ pub struct StridedYuvPlanes<'a> {
     pub v: FramePlaneView<'a>,
 }
 
-impl StridedYuvPlanes<'_> {
+impl StridedYuv420pPlanes<'_> {
     /// Repack the strided planes into a caller-owned tight buffer and
-    /// return a [`YuvPlanes`] view into it.
+    /// return a [`Yuv420pPlanes`] view into it.
     ///
     /// The `buffer` is resized to `y_len + u_len + v_len` bytes. Cache
     /// the buffer across frames to avoid per-frame allocation.
-    pub fn copy_into<'b>(&self, buffer: &'b mut Vec<u8>) -> YuvPlanes<'b> {
+    pub fn copy_into<'b>(&self, buffer: &'b mut Vec<u8>) -> Yuv420pPlanes<'b> {
         let y_len = (self.y.width as usize) * (self.y.height as usize);
         let u_len = (self.u.width as usize) * (self.u.height as usize);
         let v_len = (self.v.width as usize) * (self.v.height as usize);
@@ -75,7 +75,7 @@ impl StridedYuvPlanes<'_> {
         }
         let (y, rest) = buffer.split_at(y_len);
         let (u, v) = rest.split_at(u_len);
-        YuvPlanes { y, u, v }
+        Yuv420pPlanes { y, u, v }
     }
 }
 
@@ -126,7 +126,7 @@ pub(crate) fn copy_plane_tight(src: &FramePlaneView<'_>, dst: &mut [u8]) {
 
 /// Borrowed NV12 plane references for pipeline input.
 ///
-/// `Copy` for the same reason as [`YuvPlanes`]: slice references only,
+/// `Copy` for the same reason as [`Yuv420pPlanes`]: slice references only,
 /// so per-camera arrays at the stitch seam copy pointers, not pixels.
 ///
 /// Tightly packed (no stride padding):
@@ -143,21 +143,21 @@ pub struct Nv12Planes<'a> {
 /// Borrowed packed RGBA plane for pipeline input.
 ///
 /// Tightly packed, 4 bytes per pixel in (R, G, B, A) byte order.
-/// Callers with BGRA data use [`BgraPlanes::from_bgra_swizzle_into`]
+/// Callers with BGRA data use [`RgbaPlanes::from_bgra_swizzle_into`]
 /// to reorder before upload.
-pub struct BgraPlanes<'a> {
+pub struct RgbaPlanes<'a> {
     /// Packed RGBA bytes, length `width * height * 4`.
     pub rgba: &'a [u8],
 }
 
-impl<'a> BgraPlanes<'a> {
+impl<'a> RgbaPlanes<'a> {
     /// Wrap an already-RGBA byte slice without copying.
     pub fn from_rgba(rgba: &'a [u8]) -> Self {
         Self { rgba }
     }
 
     /// Swizzle a BGRA-ordered source into a caller-owned `Vec<u8>` and
-    /// return a [`BgraPlanes`] borrowing from it.
+    /// return a [`RgbaPlanes`] borrowing from it.
     ///
     /// Cache the buffer across frames to avoid per-frame allocation.
     pub fn from_bgra_swizzle_into(bgra: &[u8], buffer: &'a mut Vec<u8>) -> Self {
@@ -169,5 +169,21 @@ impl<'a> BgraPlanes<'a> {
             dst[3] = src[3]; // A
         }
         Self { rgba: buffer }
+    }
+}
+
+#[cfg(test)]
+mod rgba_tests {
+    use super::RgbaPlanes;
+
+    #[test]
+    fn rgba_is_borrowed_and_bgra_conversion_preserves_alpha() {
+        let rgba = [255, 0, 0, 17, 0, 0, 255, 231];
+        let view = RgbaPlanes::from_rgba(&rgba);
+        assert_eq!(view.rgba.as_ptr(), rgba.as_ptr());
+        let mut buffer = Vec::new();
+        let converted =
+            RgbaPlanes::from_bgra_swizzle_into(&[0, 0, 255, 17, 255, 0, 0, 231], &mut buffer);
+        assert_eq!(converted.rgba, rgba);
     }
 }

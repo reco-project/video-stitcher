@@ -184,12 +184,12 @@ impl Roof {
         *budget -= 1;
         // Enclose each affine patch in yaw, pitch and FOV. Subdivision tightens
         // the enclosure, never samples away a gap. Round the f64 bounds outward.
-        let lo = Pose {
+        let lo = RenderPose {
             yaw: (vertices.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min) as f32).next_down(),
             pitch: (vertices.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min) as f32).next_down(),
             fov_degrees: self.minimum_fov,
         };
-        let hi = Pose {
+        let hi = RenderPose {
             yaw: (vertices
                 .iter()
                 .map(|p| p[0])
@@ -224,7 +224,7 @@ mod tests {
         Calibration::new(
             vec![Lens::flat(3840, 2000)],
             Cylinder {
-                focal_length: 1000.0,
+                radius: 1000.0,
                 ..Default::default()
             },
             Framing {
@@ -352,8 +352,8 @@ mod tests {
     #[test]
     fn refinement_preserves_periodic_seams_and_source_support() {
         let mut cal = cylinder();
-        if let crate::calibration::Topology::Cylinder(cylinder) = &mut cal.topology {
-            cylinder.sweep_deg = 360.0;
+        if let crate::calibration::Projection::Cylinder(cylinder) = &mut cal.projection {
+            cylinder.arc_deg = 360.0;
         }
         let size = ViewportSize {
             width: 160,
@@ -375,12 +375,12 @@ mod tests {
                 assert_eq!(roof.heights[y * 65], roof.heights[y * 65 + 64]);
             }
             for i in 0..100 {
-                let p = Pose {
+                let p = RenderPose {
                     yaw: -std::f32::consts::PI + std::f32::consts::TAU * i as f32 / 100.0,
                     pitch: 0.0,
                     fov_degrees: 10.0,
                 };
-                let p = Pose {
+                let p = RenderPose {
                     fov_degrees: roof.ceiling(p).unwrap() as f32 - 0.001,
                     ..p
                 };

@@ -39,7 +39,7 @@ impl Grid {
         }
     }
 
-    fn near_yaw(self, mut pose: Pose, reference: f32) -> Pose {
+    fn near_yaw(self, mut pose: RenderPose, reference: f32) -> RenderPose {
         if self.wraps_yaw() {
             let period = f64::from(self.yaw[1]) - f64::from(self.yaw[0]);
             let reference = f64::from(reference);
@@ -56,8 +56,8 @@ impl Grid {
         }
         pose
     }
-    fn pose(self, x: usize, y: usize, fov_degrees: f32) -> Pose {
-        Pose {
+    fn pose(self, x: usize, y: usize, fov_degrees: f32) -> RenderPose {
+        RenderPose {
             yaw: self.yaw[0] + (self.yaw[1] - self.yaw[0]) * x as f32 / self.columns as f32,
             pitch: self.pitch[0] + (self.pitch[1] - self.pitch[0]) * y as f32 / self.rows as f32,
             fov_degrees,
@@ -84,11 +84,11 @@ pub(super) struct Roof {
 }
 
 impl Roof {
-    pub(super) fn near_yaw(&self, pose: Pose, reference: f32) -> Pose {
+    pub(super) fn near_yaw(&self, pose: RenderPose, reference: f32) -> RenderPose {
         self.grid.near_yaw(pose, reference)
     }
 
-    pub(super) fn vertices(&self) -> impl Iterator<Item = Pose> + '_ {
+    pub(super) fn vertices(&self) -> impl Iterator<Item = RenderPose> + '_ {
         let stride = self.grid.columns + 1;
         (0..self.heights.len())
             .map(move |i| self.grid.pose(i % stride, i / stride, self.minimum_fov))
@@ -209,12 +209,12 @@ impl Roof {
                 + (f64::from(grid.pitch[1]) - f64::from(grid.pitch[0])) * y as f64
                     / grid.rows as f64
         };
-        let lo = Pose {
+        let lo = RenderPose {
             yaw: (yaw(x) as f32).next_down(),
             pitch: (pitch(y) as f32).next_down(),
             fov_degrees: fov[0],
         };
-        let hi = Pose {
+        let hi = RenderPose {
             yaw: (yaw(x + 1) as f32).next_up(),
             pitch: (pitch(y + 1) as f32).next_up(),
             fov_degrees: fov[0],
@@ -224,7 +224,7 @@ impl Roof {
                 cal,
                 size,
                 lo,
-                Pose {
+                RenderPose {
                     fov_degrees: maximum,
                     ..hi
                 },
@@ -364,7 +364,7 @@ impl Roof {
             }
         }
         let column = |yaw| {
-            self.coordinates(Pose {
+            self.coordinates(RenderPose {
                 yaw,
                 pitch: self.grid.pitch[0],
                 fov_degrees: self.minimum_fov,
@@ -458,7 +458,7 @@ impl Roof {
         (capacity, parents)
     }
 
-    fn coordinates(&self, p: Pose) -> Option<[f64; 2]> {
+    fn coordinates(&self, p: RenderPose) -> Option<[f64; 2]> {
         if !p.yaw.is_finite()
             || !p.pitch.is_finite()
             || (!self.grid.wraps_yaw() && (p.yaw < self.grid.yaw[0] || p.yaw > self.grid.yaw[1]))
@@ -501,11 +501,11 @@ impl Roof {
         }
     }
 
-    fn ceiling(&self, p: Pose) -> Option<f64> {
+    fn ceiling(&self, p: RenderPose) -> Option<f64> {
         self.coordinates(p).map(|xy| self.height_at(xy))
     }
 
-    pub(super) fn contains(&self, p: Pose) -> bool {
+    pub(super) fn contains(&self, p: RenderPose) -> bool {
         p.fov_degrees.is_finite()
             && p.fov_degrees >= self.minimum_fov
             && self
@@ -516,7 +516,7 @@ impl Roof {
     pub(super) fn supported_vertices(
         &self,
         fov_degrees: f32,
-    ) -> impl Iterator<Item = (usize, Pose)> + '_ {
+    ) -> impl Iterator<Item = (usize, RenderPose)> + '_ {
         self.heights.iter().enumerate().filter_map(move |(i, _)| {
             let p = self.grid.pose(
                 i % (self.grid.columns + 1),
@@ -527,14 +527,14 @@ impl Roof {
         })
     }
 
-    pub(super) fn segment(&self, from: Pose, to: Pose) -> bool {
+    pub(super) fn segment(&self, from: RenderPose, to: RenderPose) -> bool {
         let Some(a) = self.coordinates(from) else {
             return false;
         };
         let Some(b) = self.coordinates(to) else {
             return false;
         };
-        let supported = |p: Pose, xy| {
+        let supported = |p: RenderPose, xy| {
             p.fov_degrees.is_finite()
                 && p.fov_degrees >= self.minimum_fov
                 && f64::from(p.fov_degrees) + FOV_EPSILON <= self.height_at(xy)
@@ -552,7 +552,7 @@ impl Roof {
     }
 
     // Constant-FOV paths share one exact ceiling across all zoom trials.
-    pub(super) fn segment_ceiling(&self, from: Pose, to: Pose) -> Option<f64> {
+    pub(super) fn segment_ceiling(&self, from: RenderPose, to: RenderPose) -> Option<f64> {
         let a = self.coordinates(from)?;
         let b = self.coordinates(to)?;
         let mut ceiling = self.height_at(a).min(self.height_at(b));

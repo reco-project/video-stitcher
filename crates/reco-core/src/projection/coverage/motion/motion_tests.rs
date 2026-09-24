@@ -6,8 +6,8 @@ fn cylinder(sweep: f64, height: u32) -> Calibration {
     Calibration::new(
         vec![Lens::flat(3840, height)],
         Cylinder {
-            focal_length: 1000.0,
-            sweep_deg: sweep,
+            radius: 1000.0,
+            arc_deg: sweep,
             ..Default::default()
         },
         Framing {
@@ -21,7 +21,7 @@ fn cylinder(sweep: f64, height: u32) -> Calibration {
 fn check_step(
     cal: &Calibration,
     size: &ViewportSize,
-    previous: Pose,
+    previous: RenderPose,
     velocity: [f32; 2],
     next: &Advance,
     fov: f32,
@@ -61,7 +61,7 @@ fn roof_contact_keeps_tilted_cylinder_motion_bounded_and_covered() {
         0.05,
     )
     .unwrap();
-    let mut pose = Pose {
+    let mut pose = RenderPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 20.0,
@@ -78,7 +78,7 @@ fn roof_contact_keeps_tilted_cylinder_motion_bounded_and_covered() {
         };
         let target = direction(
             &cal,
-            Pose {
+            RenderPose {
                 yaw: if frame < 900 {
                     1.5 * (t * 0.4).sin()
                 } else {
@@ -136,12 +136,12 @@ fn map_motion_crosses_a_safe_corridor_without_requiring_extra_fov() {
         10.0,
         &[25.1, 25.1, 25.1, 25.1, 25.1, 25.1, 25.1, 25.4],
     );
-    let mut pose = Pose {
+    let mut pose = RenderPose {
         yaw: 0.5,
         pitch: 0.0,
         fov_degrees: 25.0,
     };
-    let target_pose = Pose { yaw: -0.4, ..pose };
+    let target_pose = RenderPose { yaw: -0.4, ..pose };
     let target = direction(&cal, target_pose);
     let mut velocity = [0.0; 2];
     let mut route = Route::new(&cal, &roof);
@@ -178,7 +178,7 @@ fn zoom_pushes_inward_at_contact_without_anticipating() {
             height: 55,
         };
         let roof = test_roof(&cal, &size);
-        let mut pose = Pose {
+        let mut pose = RenderPose {
             yaw: 0.0,
             pitch: 0.2,
             fov_degrees: 60.0,
@@ -230,7 +230,7 @@ fn oversized_zoom_caps_then_reverses_without_reset() {
         height: 55,
     };
     let roof = test_roof(&cal, &size);
-    let mut pose = Pose {
+    let mut pose = RenderPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 60.0,
@@ -280,7 +280,7 @@ fn full_cylinder_crosses_the_yaw_seam_in_both_directions_with_zoom() {
                 .map(|i| 30.0 + 5.0 * (i as f32 * 0.03).sin())
                 .collect();
             let roof = test_roof(&cal, &size);
-            let mut pose = Pose {
+            let mut pose = RenderPose {
                 yaw: sign * 3.0,
                 pitch: 0.0,
                 fov_degrees: fovs[0],
@@ -290,7 +290,7 @@ fn full_cylinder_crosses_the_yaw_seam_in_both_directions_with_zoom() {
             for (frame, &fov) in fovs.iter().take(180).enumerate() {
                 let target = direction(
                     &cal,
-                    Pose {
+                    RenderPose {
                         yaw: sign * (3.0 + frame as f32 * 0.007),
                         ..pose
                     },
@@ -329,18 +329,18 @@ fn motion_path_checks_intermediate_extrema() {
         width: 97,
         height: 55,
     };
-    let pose = Pose {
+    let pose = RenderPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 25.0,
     };
     for interior in [
-        Pose {
+        RenderPose {
             fov_degrees: 160.0,
             ..pose
         },
-        Pose { yaw: 3.0, ..pose },
-        Pose { pitch: 1.4, ..pose },
+        RenderPose { yaw: 3.0, ..pose },
+        RenderPose { pitch: 1.4, ..pose },
     ] {
         assert_eq!(
             sweep::certify_path(&cal, &size, &[pose, interior, pose], 2048, 2048),
@@ -358,7 +358,7 @@ fn malformed_motion_requests_fail_closed() {
     };
     let roof = test_roof(&cal, &size);
     let mut route = Route::new(&cal, &roof);
-    let pose = Pose {
+    let pose = RenderPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 25.0,
@@ -407,7 +407,7 @@ fn malformed_motion_requests_fail_closed() {
                 velocity: [0.5, 0.0],
                 dt: 1e-30
             },
-            Pose { yaw: 1.0, ..pose }
+            RenderPose { yaw: 1.0, ..pose }
         )
         .is_none()
     );
@@ -444,7 +444,7 @@ fn initialization_uses_the_map_without_an_extra_reserve() {
     };
     let roof = roof::Roof::from_cells(grid, 10.0, &[25.001; 8]);
     let route = Route::new(&cal, &roof);
-    let inside = Pose {
+    let inside = RenderPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 25.0,
@@ -453,7 +453,7 @@ fn initialization_uses_the_map_without_an_extra_reserve() {
         initial(&cal, &size, &direction(&cal, inside), 25.0, &roof, &route),
         Some(inside)
     );
-    let target = direction(&cal, Pose { yaw: 1.0, ..inside });
+    let target = direction(&cal, RenderPose { yaw: 1.0, ..inside });
     let seed = initial(&cal, &size, &target, 25.0, &roof, &route).unwrap();
     assert!(roof.contains(seed));
     assert_eq!(seed.fov_degrees, 25.0);

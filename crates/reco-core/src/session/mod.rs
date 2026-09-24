@@ -10,7 +10,7 @@
 //!
 //! ## Two-level API
 //!
-//! - [`StitchSession::process_frame`] - render one frame and deliver
+//! - [`StitchSession::render_frame`] - render one frame and deliver
 //!   it to the sinks. Use this for interactive/GUI applications or
 //!   when the caller controls the frame loop (e.g. zero-copy GPU
 //!   decode).
@@ -24,11 +24,11 @@ pub mod sinks;
 /// Session type definitions, error types, and builder.
 pub mod types;
 
-/// Detection dispatch entry points (detect_and_update_director_* variants).
+/// Detection dispatch entry points (detect_and_update_world_pose_* variants).
 mod detection_dispatch;
 /// Lookahead frame buffer for temporal-aware processing.
 pub(crate) mod frame_buffer;
-/// Per-frame render and encode methods (step, process_frame, submit_render_output).
+/// Per-frame render and encode methods (step, render_frame, submit_render_output).
 mod frame_processing;
 /// Batch processing entry points (run, run_immediate, setup_gpu_source).
 mod run_loop;
@@ -332,7 +332,7 @@ impl StitchSession {
 }
 
 impl crate::detect::DetectionTarget for StitchSession {
-    fn set_detector(&mut self, detector: Box<dyn crate::detect::detector::UnifiedDetector>) {
+    fn set_detector(&mut self, detector: Box<dyn crate::detect::detector::Detector>) {
         self.set_detector(detector);
     }
     fn set_detection_interval(&mut self, interval: u64) {
@@ -347,8 +347,8 @@ impl crate::detect::DetectionTarget for StitchSession {
     fn set_panner(&mut self, panner: Box<dyn crate::detect::panner::Panner>) {
         self.set_panner(panner);
     }
-    fn source_info(&self) -> (u32, u32) {
-        self.core.source_info()
+    fn source_dims(&self) -> (u32, u32) {
+        self.core.source_dims()
     }
     fn gpu(&self) -> Option<&crate::gpu::GpuContext> {
         self.core.executor.gpu().map(|g| g.pipeline.gpu())

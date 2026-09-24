@@ -182,7 +182,7 @@ pub fn run_export(
         .filter(|u| !u.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| output.clone());
-    let format = reco_io::output::Format::for_output(&effective_output.to_string_lossy());
+    let format = reco_io::output::Container::for_output(&effective_output.to_string_lossy());
     if format.is_streaming() {
         log::info!("Streaming to {}", effective_output.display());
     }
@@ -194,7 +194,7 @@ pub fn run_export(
     )
     .codec(codec)
     .quality(quality)
-    .format(format)
+    .container(format)
     .resolution(width, height)
     .blend_width(blend)
     .on_progress(move |p: &reco_core::session::types::FrameProgress| {

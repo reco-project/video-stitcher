@@ -20,7 +20,7 @@ use std::os::raw::c_char;
 use std::path::Path;
 
 use reco_core::detect::detector::{
-    ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame, UnifiedDetector,
+    ChromaPlanes, Detection, Detector, DetectorError, DetectorFrame, YuvView,
 };
 use reco_core::geometry::CameraIndex;
 
@@ -190,7 +190,7 @@ impl NcnnYoloDetector {
     /// would need a custom kernel). The resize and normalize use NCNN's
     /// `from_pixels_resize` and `substract_mean_normalize` which leverage
     /// ARM NEON for ~3x speedup over our manual scalar path.
-    fn preprocess(&self, frame: &RawFrame<'_>) -> *mut c_void {
+    fn preprocess(&self, frame: &YuvView<'_>) -> *mut c_void {
         let fw = frame.width as usize;
         let fh = frame.height as usize;
 
@@ -200,13 +200,13 @@ impl NcnnYoloDetector {
             for x in 0..fw {
                 let y_val = frame.y[y * fw + x] as f32;
                 let (u_val, v_val) = match &frame.chroma {
-                    ChromaFormat::Yuv420p { u, v } => {
+                    ChromaPlanes::Yuv420p { u, v } => {
                         let cx = x / 2;
                         let cy = y / 2;
                         let cw = fw / 2;
                         (u[cy * cw + cx] as f32, v[cy * cw + cx] as f32)
                     }
-                    ChromaFormat::Nv12 { uv } => {
+                    ChromaPlanes::Nv12 { uv } => {
                         let cx = x / 2;
                         let cy = y / 2;
                         (uv[cy * fw + cx * 2] as f32, uv[cy * fw + cx * 2 + 1] as f32)
@@ -353,7 +353,7 @@ impl NcnnYoloDetector {
 
 impl NcnnYoloDetector {
     /// Core inference path shared by the legacy [`Detector`] impl and
-    /// the new [`UnifiedDetector`] impl. Returns a typed
+    /// the new [`Detector`] impl. Returns a typed
     /// [`DetectorError`] so unified-trait consumers can react to NCNN
     /// failures (non-zero input / extract return codes); the legacy
     /// impl collapses the error to a log + empty vector for backward
@@ -361,7 +361,7 @@ impl NcnnYoloDetector {
     fn detect_raw(
         &mut self,
         camera: CameraIndex,
-        frame: &RawFrame<'_>,
+        frame: &YuvView<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
         reco_core::profile_scope!("ncnn_yolo_detect");
 
@@ -408,7 +408,7 @@ impl NcnnYoloDetector {
     }
 }
 
-impl UnifiedDetector for NcnnYoloDetector {
+impl Detector for NcnnYoloDetector {
     fn name(&self) -> &'static str {
         "ncnn"
     }
@@ -424,7 +424,7 @@ impl UnifiedDetector for NcnnYoloDetector {
         // can pick a GPU backend. A single wildcard arm keeps this
         // stable against upstream enum additions.
         match frame {
-            DetectorFrame::Cpu(raw) => self.detect_raw(camera, raw),
+            DetectorFrame::Yuv(raw) => self.detect_raw(camera, raw),
             _ => Err(DetectorError::UnsupportedFrameKind),
         }
     }

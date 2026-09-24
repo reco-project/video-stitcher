@@ -25,7 +25,7 @@
 
 use crate::calibration::{Calibration, Lens};
 use crate::geometry::{
-    FAR_PLANE, NEAR_PLANE, Pose, matrix4_to_columns, opengl_to_wgpu_matrix, view_matrix,
+    FAR_PLANE, NEAR_PLANE, RenderPose, matrix4_to_columns, opengl_to_wgpu_matrix, view_matrix,
 };
 use crate::gpu::GpuContext;
 use crate::projection::l_shape::PlaneScene;
@@ -145,13 +145,13 @@ pub enum InputFormat {
     /// NV12: Y as R8 (full-res) + interleaved UV as Rg8 (half-res).
     /// NVDEC native output format. V texture is a 1x1 dummy.
     Nv12,
-    /// Packed BGRA / RGBA: a single `Rgba8Unorm` texture at full resolution
+    /// Packed RGBA: a single `Rgba8Unorm` texture at full resolution
     /// holding pre-composited sRGB-domain RGB. Used by OBS Browser Source,
     /// screen capture, WebRTC ingest, and other non-camera sources whose
     /// native format is already RGB. The shader samples the single plane
     /// and writes the RGB triple straight out (no YUV conversion).
     /// `u_texture` / `v_texture` are 1x1 dummies in this mode.
-    Bgra,
+    Rgba,
 }
 
 /// GPU-side pixel format for NV12-family zero-copy decode output.
@@ -448,13 +448,13 @@ impl Renderer {
         };
 
         // Y plane format + u/v plane selection depend on input format.
-        // For Bgra the "Y" slot actually holds a full-res Rgba8Unorm texture;
+        // For Rgba the "Y" slot actually holds a full-res Rgba8Unorm texture;
         // u/v are 1x1 dummies that the shader never samples.
         let y_texture = match input_format {
             InputFormat::Yuv420p | InputFormat::Nv12 => {
                 create_texture("y", width, height, wgpu::TextureFormat::R8Unorm)
             }
-            InputFormat::Bgra => {
+            InputFormat::Rgba => {
                 create_texture("rgba", width, height, wgpu::TextureFormat::Rgba8Unorm)
             }
         };
@@ -473,8 +473,8 @@ impl Renderer {
                 let v_dummy = create_texture("v_dummy", 1, 1, wgpu::TextureFormat::R8Unorm);
                 (uv, v_dummy)
             }
-            InputFormat::Bgra => {
-                // Shader skips u/v sampling on the Bgra path; 1x1 dummies
+            InputFormat::Rgba => {
+                // Shader skips u/v sampling on the Rgba path; 1x1 dummies
                 // satisfy the bind group layout without wasting memory.
                 let u_dummy = create_texture("u_dummy", 1, 1, wgpu::TextureFormat::R8Unorm);
                 let v_dummy = create_texture("v_dummy", 1, 1, wgpu::TextureFormat::R8Unorm);
@@ -600,41 +600,41 @@ impl Renderer {
         upload_nv12(gpu, &self.right, y, uv)
     }
 
-    /// Upload a packed BGRA/RGBA plane to the left camera texture.
+    /// Upload a packed RGBA plane to the left camera texture.
     ///
     /// Data must be `width * height * 4` bytes in (R, G, B, A) byte order.
     /// Upload-side swizzling translates BGRA sources before calling this -
-    /// see [`pipeline::BgraPlanes`](crate::render::pipeline::BgraPlanes).
-    pub fn upload_left_bgra(&self, gpu: &GpuContext, rgba: &[u8]) -> Result<(), RenderError> {
+    /// see [`pipeline::RgbaPlanes`](crate::render::pipeline::RgbaPlanes).
+    pub fn upload_left_rgba(&self, gpu: &GpuContext, rgba: &[u8]) -> Result<(), RenderError> {
         debug_assert_eq!(
             self.input_format,
-            InputFormat::Bgra,
-            "upload_left_bgra requires InputFormat::Bgra"
+            InputFormat::Rgba,
+            "upload_left_rgba requires InputFormat::Rgba"
         );
-        upload_bgra(gpu, &self.left, rgba)
+        upload_rgba(gpu, &self.left, rgba)
     }
 
-    /// Upload a packed BGRA/RGBA plane to the right camera texture.
-    /// See [`Self::upload_left_bgra`].
-    pub fn upload_right_bgra(&self, gpu: &GpuContext, rgba: &[u8]) -> Result<(), RenderError> {
+    /// Upload a packed RGBA plane to the right camera texture.
+    /// See [`Self::upload_left_rgba`].
+    pub fn upload_right_rgba(&self, gpu: &GpuContext, rgba: &[u8]) -> Result<(), RenderError> {
         debug_assert_eq!(
             self.input_format,
-            InputFormat::Bgra,
-            "upload_right_bgra requires InputFormat::Bgra"
+            InputFormat::Rgba,
+            "upload_right_rgba requires InputFormat::Rgba"
         );
-        upload_bgra(gpu, &self.right, rgba)
+        upload_rgba(gpu, &self.right, rgba)
     }
 
-    /// Copy a GPU texture into the left input plane (BGRA mode).
+    /// Copy a GPU texture into the left input plane (RGBA mode).
     ///
-    /// Zero-copy alternative to [`upload_left_bgra`]: the source texture
+    /// Zero-copy alternative to [`upload_left_rgba`]: the source texture
     /// must be `Rgba8Unorm` with matching dimensions. The copy is
     /// appended to `encoder` as a GPU-side blit with no CPU involvement.
     pub fn copy_texture_to_left(&self, encoder: &mut wgpu::CommandEncoder, source: &wgpu::Texture) {
         copy_texture_to_plane(encoder, source, &self.left);
     }
 
-    /// Copy a GPU texture into the right input plane (BGRA mode).
+    /// Copy a GPU texture into the right input plane (RGBA mode).
     pub fn copy_texture_to_right(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -807,7 +807,7 @@ impl Renderer {
         gpu: &GpuContext,
         scene: &PlaneScene,
         calibration: &Calibration,
-        pose: Pose,
+        pose: RenderPose,
         blend_width: f32,
         target_view: &wgpu::TextureView,
         aspect: f32,
@@ -918,7 +918,7 @@ impl Renderer {
         gpu: &GpuContext,
         scene: &PlaneScene,
         calibration: &Calibration,
-        pose: Pose,
+        pose: RenderPose,
         blend_width: f32,
     ) -> wgpu::CommandBuffer {
         let aspect = self.output_width as f32 / self.output_height as f32;
@@ -952,7 +952,7 @@ impl Renderer {
         gpu: &GpuContext,
         scene: &PlaneScene,
         calibration: &Calibration,
-        pose: Pose,
+        pose: RenderPose,
         aspect: f32,
         blend_width: f32,
         target_view: &wgpu::TextureView,
@@ -978,7 +978,7 @@ impl Renderer {
 /// Expects `width * height * 4` bytes in (R, G, B, A) order.
 /// Callers with BGRA source data need to swizzle to RGBA before
 /// this call - the shader samples `rgba.rgb` directly.
-fn upload_bgra(gpu: &GpuContext, plane: &PlaneResources, rgba: &[u8]) -> Result<(), RenderError> {
+fn upload_rgba(gpu: &GpuContext, plane: &PlaneResources, rgba: &[u8]) -> Result<(), RenderError> {
     let w = plane.width;
     let h = plane.height;
     let expected = (w * h * 4) as usize;
@@ -1188,7 +1188,7 @@ pub(crate) fn build_gpu_uniforms(
             match input_format {
                 InputFormat::Yuv420p => 0,
                 InputFormat::Nv12 => 1,
-                InputFormat::Bgra => 2,
+                InputFormat::Rgba => 2,
             },
             flip_180 as u32,
             is_full_range as u32,

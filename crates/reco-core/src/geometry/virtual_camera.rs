@@ -17,7 +17,7 @@ use nalgebra::{Point3, Vector3};
 /// mirrors the same negation for symmetry.
 ///
 /// Rig tilt and rig roll are NOT part of this type: `rig_frame` layers
-/// them on top, and `view_matrix` + `world_to_render_pose` both compose
+/// them on top, and `view_matrix` + `world_to_render_angles` both compose
 /// through that one construction.
 #[derive(Debug, Clone, Copy)]
 pub struct VirtualCamera {
@@ -38,7 +38,7 @@ impl VirtualCamera {
         Vector3::new(0.0, 1.0, 0.0)
     }
 
-    /// Build the reference basis derived by a topology from a validated calibration.
+    /// Build the reference basis derived by a projection from a validated calibration.
     ///
     /// Position must be finite; forward must be horizontal with a finite, nonzero length in f32. Rig tilt and roll are applied separately.
     pub(crate) fn new(camera_position: &[f32; 3], forward: &[f32; 3]) -> Self {

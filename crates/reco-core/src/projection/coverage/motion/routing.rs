@@ -5,7 +5,7 @@ use super::*;
 /// Bound to one immutable coverage map by its owning controller.
 pub(in super::super) struct Route {
     key: Option<(Vector3<f32>, f32)>,
-    path: Vec<Pose>,
+    path: Vec<RenderPose>,
     views: Vec<(Matrix4<f32>, Vector3<f64>)>,
 }
 
@@ -30,14 +30,14 @@ impl Route {
         &mut self,
         cal: &Calibration,
         size: &ViewportSize,
-        current: Pose,
+        current: RenderPose,
         target: &Vector3<f32>,
         roof: &roof::Roof,
-    ) -> Option<Pose> {
+    ) -> Option<RenderPose> {
         let key = (*target, current.fov_degrees);
         let scale = screen_scale(size, current.fov_degrees);
         if self.key != Some(key) {
-            let at_fov = |p: Pose| Pose {
+            let at_fov = |p: RenderPose| RenderPose {
                 fov_degrees: current.fov_degrees,
                 ..p
             };
@@ -77,7 +77,7 @@ impl Route {
             self.path.push(goal);
             return Some(goal);
         }
-        let attachment = |path: &[Pose]| {
+        let attachment = |path: &[RenderPose]| {
             path.iter()
                 .enumerate()
                 .rev()
@@ -150,7 +150,7 @@ mod tests {
                 ] {
                     for fov in [10.0, 51.98, 90.0] {
                         for (i, p) in roof.vertices().enumerate() {
-                            let p = Pose {
+                            let p = RenderPose {
                                 fov_degrees: fov,
                                 ..p
                             };
@@ -198,7 +198,7 @@ mod tests {
         for i in 0..90 {
             let target = direction(
                 &cal,
-                Pose {
+                RenderPose {
                     yaw: (i as f32 * 0.29).sin() * 3.0,
                     pitch: (i as f32 * 0.61).cos(),
                     fov_degrees: 30.0,
@@ -248,18 +248,18 @@ mod tests {
             10.0,
             &cells,
         );
-        let start = Pose {
+        let start = RenderPose {
             yaw: -0.8,
             pitch: -0.3,
             fov_degrees: 30.0,
         };
-        let goal = Pose { yaw: 0.8, ..start };
+        let goal = RenderPose { yaw: 0.8, ..start };
         let target = direction(&cal, goal);
         let mut route = Route::new(&cal, &roof);
         let narrow = route.guide(&cal, &size, start, &target, &roof).unwrap();
         assert!(distance(narrow, goal) < 1e-6);
         assert_eq!(route.path.len(), 1);
-        let start = Pose {
+        let start = RenderPose {
             fov_degrees: 60.0,
             ..start
         };
@@ -268,7 +268,7 @@ mod tests {
         assert!(roof.segment(start, guide));
         assert!(!roof.segment(
             start,
-            Pose {
+            RenderPose {
                 fov_degrees: 60.0,
                 ..goal
             }
@@ -304,7 +304,7 @@ mod tests {
         for fps in [30, 60] {
             let dt = 1.0 / fps as f32;
             let mut route = Route::new(&cal, &roof);
-            let mut pose = Pose {
+            let mut pose = RenderPose {
                 yaw: -0.8,
                 pitch: -0.3,
                 fov_degrees: 30.0,
@@ -313,7 +313,7 @@ mod tests {
             for yaw in [0.8, -0.8] {
                 let target = direction(
                     &cal,
-                    Pose {
+                    RenderPose {
                         yaw,
                         pitch: -0.3,
                         ..pose

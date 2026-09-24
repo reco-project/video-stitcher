@@ -10,7 +10,7 @@
 //! # When to use this vs the CPU pack
 //!
 //! The packer only helps when the source tiles are already on the
-//! GPU. For FFmpeg software decode → CPU `YuvPlanes<'_>` inputs,
+//! GPU. For FFmpeg software decode → CPU `Yuv420pPlanes<'_>` inputs,
 //! copying them to the GPU just to pack would lose to the existing
 //! CPU pack. `StitchPipeline` chooses the path explicitly and
 //! logs the decision once per session (see the integration site).

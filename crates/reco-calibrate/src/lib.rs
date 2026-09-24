@@ -20,7 +20,7 @@
 //!
 //! ```text
 //! Frame pairs -> GPU Undistort -> AKAZE Detect -> Descriptor Match
-//!   -> Spatial + RANSAC Filter -> Nelder-Mead Optimizer -> Topology
+//!   -> Spatial + RANSAC Filter -> Nelder-Mead Optimizer -> Projection
 //! ```
 //!
 //! Each stage also has a trait interface ([`traits`]) with default
@@ -91,7 +91,7 @@ pub use traits::{CostFunction, FeatureDetector, FeatureMatcher, PointFilter};
 pub use types::{
     AkazeConfig, CalibrationConfig, CalibrationProgress, CalibrationQuality, CalibrationResult,
     CalibrationStep, GrayFrame, LensProfileInfo, LensProfileSummary, MatchConfig, OptimizerConfig,
-    ProfileSource, YuvFrame,
+    ProfileSource, Yuv420pFrame,
 };
 
 use reco_core::calibration::{Calibration, Lens};
@@ -277,7 +277,7 @@ fn process_undistorted_pair(
 /// optimization iterations fail.
 pub fn calibrate(
     gpu: &GpuContext,
-    frames: &[(YuvFrame, YuvFrame)],
+    frames: &[(Yuv420pFrame, Yuv420pFrame)],
     left_params: &Lens,
     right_params: &Lens,
     config: &CalibrationConfig,
@@ -319,7 +319,7 @@ pub fn calibrate(
 #[allow(clippy::too_many_arguments)]
 pub fn calibrate_with(
     gpu: &GpuContext,
-    frames: &[(YuvFrame, YuvFrame)],
+    frames: &[(Yuv420pFrame, Yuv420pFrame)],
     left_params: &Lens,
     right_params: &Lens,
     config: &CalibrationConfig,

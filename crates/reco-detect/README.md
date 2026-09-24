@@ -1,14 +1,14 @@
 # reco-detect
 
-Detection backends behind `reco-core::UnifiedDetector`.
+Detection backends behind `reco_core::detect::detector::Detector`.
 
 ## What it owns
 
 - **CpuYoloDetector** — ORT CPU execution provider, ONNX models with built-in NMS.
-- **OrtGpuDetector** — ORT with CUDA / TensorRT EP, GPU-resident NV12 input via the NDVEC zero-copy path. Preprocess (NPP color convert, NPP resize+pad, CUDA normalize+transpose) is GPU-side.
+- **OrtGpuDetector**: ORT with CUDA / TensorRT EP, CUDA-resident NV12/P010 input via the NVDEC zero-copy path. Preprocessing (NPP color conversion, NPP resize/padding, CUDA normalization) runs on the GPU.
 - **MetalYoloDetector** — ORT with CoreML EP, `CVPixelBuffer` zero-copy import, Metal compute preprocess.
 - **NcnnYoloDetector** — NCNN backend for mobile / embedded.
-- **TrtGpuDetector** — native TensorRT `.engine` runtime. Accepts NVDEC zero-copy frames or CSI-camera CPU-upload (lazy H2D memcpy, ~1-2 ms / 1080p frame on Orin Nano).
+- **TrtGpuDetector**: native TensorRT `.engine` runtime. Accepts supported CUDA-resident frames or CPU frames uploaded to the GPU.
 
 ## Features
 

@@ -28,9 +28,9 @@ use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_core::calibration::Calibration;
 use reco_core::core::StitchCore;
 use reco_core::core::types::RenderOutcome;
-use reco_core::geometry::Pose;
+use reco_core::geometry::RenderPose;
 use reco_core::gpu::GpuContext;
-use reco_core::render::pipeline::{BgraPlanes, FramePlaneView, StridedYuvPlanes};
+use reco_core::render::pipeline::{FramePlaneView, RgbaPlanes, StridedYuv420pPlanes};
 use reco_core::render::renderer::InputFormat;
 use reco_core::render::viewport::ViewportSize;
 use reco_core::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
@@ -118,7 +118,7 @@ struct RecoSource {
     left_source_name: String,
     /// Source name the user picked for the right camera.
     right_source_name: String,
-    /// Reusable tight-pack buffers for `StridedYuvPlanes::copy_into`. One
+    /// Reusable tight-pack buffers for `StridedYuv420pPlanes::copy_into`. One
     /// per side so the render loop never reallocates per frame.
     left_repack: Vec<u8>,
     right_repack: Vec<u8>,
@@ -629,7 +629,7 @@ impl RecoSource {
                     l.format == ffi::video_format::VIDEO_FORMAT_I420
                         && r.format == ffi::video_format::VIDEO_FORMAT_I420
                 }
-                InputFormat::Bgra => {
+                InputFormat::Rgba => {
                     matches!(
                         l.format,
                         ffi::video_format::VIDEO_FORMAT_BGRA
@@ -716,7 +716,7 @@ impl RecoSource {
                     let current = self.pose.current_pose();
                     match self.input_format {
                         InputFormat::Yuv420p => {
-                            // Wrap OBS planes as StridedYuvPlanes and repack
+                            // Wrap OBS planes as StridedYuv420pPlanes and repack
                             // into the cached tight buffers. `copy_into` takes
                             // a single memcpy fast path when stride == width.
                             let left_strided = strided_from_obs(l);
@@ -724,19 +724,19 @@ impl RecoSource {
                             let left_tight = left_strided.copy_into(&mut self.left_repack);
                             let right_tight = right_strided.copy_into(&mut self.right_repack);
                             let session = self.core.as_mut().expect("checked above");
-                            session.submit_frame_yuv_at_pose(&left_tight, &right_tight, current)
+                            session.submit_frame_yuv420p_at_pose(&left_tight, &right_tight, current)
                         }
-                        InputFormat::Bgra => {
+                        InputFormat::Rgba => {
                             // BGRA sources: swizzle bytes into cached RGBA
                             // buffers once per frame. Shader expects RGB in
                             // .rgb of a single sample. RGBA sources pass
                             // through without swizzle (we go through the same
                             // path because the caller would typically hand us
                             // the right order already).
-                            let left_bgra = build_bgra_planes(l, &mut self.left_repack);
-                            let right_bgra = build_bgra_planes(r, &mut self.right_repack);
+                            let left_rgba = build_rgba_planes(l, &mut self.left_repack);
+                            let right_rgba = build_rgba_planes(r, &mut self.right_repack);
                             let session = self.core.as_mut().expect("checked above");
-                            session.submit_frame_bgra_at_pose(&left_bgra, &right_bgra, current)
+                            session.submit_frame_rgba_at_pose(&left_rgba, &right_rgba, current)
                         }
                         InputFormat::Nv12 => {
                             // Not yet supported in reco-obs; guarded above.
@@ -1332,14 +1332,14 @@ unsafe extern "C" fn source_mouse_wheel(
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Build a [`BgraPlanes`] view over the source frame's RGBA data,
+/// Build a [`RgbaPlanes`] view over the source frame's RGBA data,
 /// swizzling from BGRA into the cached buffer when needed.
 ///
 /// OBS packed RGB formats (BGRA, BGRX, RGBA) all store 4 bytes per
 /// pixel with `linesize[0]` bytes per row (may include padding). We
 /// strip the stride padding into the cached buffer and reorder to
 /// RGBA so the shader can sample `.rgb` directly.
-fn build_bgra_planes<'a>(frame: &ffi::obs_source_frame, buffer: &'a mut Vec<u8>) -> BgraPlanes<'a> {
+fn build_rgba_planes<'a>(frame: &ffi::obs_source_frame, buffer: &'a mut Vec<u8>) -> RgbaPlanes<'a> {
     let w = frame.width as usize;
     let h = frame.height as usize;
     let stride = frame.linesize[0] as usize;
@@ -1367,15 +1367,15 @@ fn build_bgra_planes<'a>(frame: &ffi::obs_source_frame, buffer: &'a mut Vec<u8>)
             dst_row.copy_from_slice(src_row);
         }
     }
-    BgraPlanes::from_rgba(buffer)
+    RgbaPlanes::from_rgba(buffer)
 }
 
-/// Wrap an `obs_source_frame` (I420 only) as a [`StridedYuvPlanes`] view.
+/// Wrap an `obs_source_frame` (I420 only) as a [`StridedYuv420pPlanes`] view.
 ///
 /// Assumes the caller has already verified `format == VIDEO_FORMAT_I420`.
 /// OBS delivers I420 with plane[0]=Y (full-res), plane[1]=U, plane[2]=V
 /// (each half-res per dimension).
-fn strided_from_obs<'a>(frame: &'a ffi::obs_source_frame) -> StridedYuvPlanes<'a> {
+fn strided_from_obs<'a>(frame: &'a ffi::obs_source_frame) -> StridedYuv420pPlanes<'a> {
     let half_w = frame.width / 2;
     let half_h = frame.height / 2;
     // SAFETY: OBS guarantees data[i] points to linesize[i] * plane_height
@@ -1399,7 +1399,7 @@ fn strided_from_obs<'a>(frame: &'a ffi::obs_source_frame) -> StridedYuvPlanes<'a
             (frame.linesize[2] as usize) * (half_h as usize),
         )
     };
-    StridedYuvPlanes {
+    StridedYuv420pPlanes {
         y: FramePlaneView {
             data: y_slice,
             stride: frame.linesize[0],
@@ -1488,7 +1488,7 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
             InputFormat::Yuv420p
         } else {
             match CStr::from_ptr(format_ptr).to_str() {
-                Ok("bgra") => InputFormat::Bgra,
+                Ok("bgra") => InputFormat::Rgba,
                 Ok("i420") | Ok("") => InputFormat::Yuv420p,
                 Ok(other) => {
                     log::warn!("reco-obs: unknown input_format '{other}', defaulting to I420");
@@ -1544,7 +1544,7 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
         let target_yaw_deg = ffi::obs_data_get_double(settings, PROP_YAW.as_ptr()) as f32;
         let target_pitch_deg = ffi::obs_data_get_double(settings, PROP_PITCH.as_ptr()) as f32;
         src.constrained_look = ffi::obs_data_get_bool(settings, PROP_CONSTRAINED.as_ptr());
-        src.pose.set_target(Pose {
+        src.pose.set_target(RenderPose {
             yaw: target_yaw_deg.to_radians(),
             pitch: target_pitch_deg.to_radians(),
             // The sliders drive pan only; zoom keeps its current target

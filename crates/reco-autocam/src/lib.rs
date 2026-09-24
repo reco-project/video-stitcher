@@ -3,7 +3,7 @@
 //! The intelligence layer. [`trackers`] turn noisy per-frame detections
 //! into a clean [`WorldState`](reco_core::detect::tracker::WorldState) with
 //! stable identities and lifecycle flags; [`panners`] turn that world
-//! state into a virtual-camera [`Pose`](reco_core::geometry::Pose).
+//! state into a virtual-camera [`WorldPose`](reco_core::geometry::WorldPose).
 //! Detector backends live in [`reco_detect`] and are re-exported at
 //! crate root for convenience but are not owned here.
 //!
@@ -16,7 +16,7 @@
 //!   [`panners::FilePanner`] - camera-motion policies implementing
 //!   [`Panner`](reco_core::detect::panner::Panner).
 //! - [`RoiFilteredDetector`] - polygonal-ROI mask wrapper over any
-//!   `UnifiedDetector`, pre-filtering detections before they reach a
+//!   `Detector`, pre-filtering detections before they reach a
 //!   tracker.
 //! - [`TrackingMode`] + [`AutocamConfig`] + [`setup_autocam`] -
 //!   orchestration glue a consumer calls once per session.
@@ -69,7 +69,7 @@ pub mod wgpu_detector;
 pub use wgpu_detector::WgpuPreprocessingDetector;
 // `RoiFilteredGpuDetector` and `RoiFilteredMetalDetector` were
 // deleted: the unified `RoiFilteredDetector` covers every residency
-// because it wraps `Box<dyn UnifiedDetector>`.
+// because it wraps `Box<dyn Detector>`.
 pub use tracking_mode::TrackingMode;
 
 // Path is only used in the ort-backed class-name lookup
@@ -87,7 +87,7 @@ use std::path::Path;
 ///
 /// When `field_roi` is provided, the detector is wrapped in an ROI filter
 /// that discards detections outside the playing field polygon before they
-/// reach the director.
+/// reach the trackers.
 ///
 /// Configuration for the autocam pipeline.
 ///
@@ -195,7 +195,7 @@ pub fn setup_autocam(
         return Ok(false);
     }
 
-    let (input_width, input_height) = target.source_info();
+    let (input_width, input_height) = target.source_dims();
     let use_zero_copy = source_is_gpu_resident;
     let model_path = config.model_path.to_str().unwrap_or("");
     let detection_interval = config.detection_interval;
@@ -205,11 +205,10 @@ pub fn setup_autocam(
 
     let mut detection_active = false;
 
-    // Load class names from the model to resolve label -> class_id for directors.
+    // Load class names from the model to resolve labels to tracker class IDs.
     // Skip ORT session creation for non-ONNX models (.engine files,
     // NCNN model directories). ORT can only parse .onnx files.
-    // When ort is disabled entirely, fall through to empty names —
-    // directors use defaults or a sidecar labels file.
+    // Without ORT, use defaults or a sidecar labels file.
     let is_onnx = model_path.ends_with(".onnx");
     #[cfg(feature = "ort")]
     let class_names = if is_onnx {
@@ -255,9 +254,9 @@ pub fn setup_autocam(
 
     // Tiny helper so each backend's "wrap the detector in
     // RoiFilteredDetector if ROI is present" site stays one line.
-    let wrap_with_roi = |inner: Box<dyn reco_core::detect::detector::UnifiedDetector>,
+    let wrap_with_roi = |inner: Box<dyn reco_core::detect::detector::Detector>,
                          roi: reco_core::calibration::FieldRoi|
-     -> Box<dyn reco_core::detect::detector::UnifiedDetector> {
+     -> Box<dyn reco_core::detect::detector::Detector> {
         Box::new(
             RoiFilteredDetector::new(inner, roi)
                 .with_class_anchor(person_id_for_roi, RoiAnchor::Bottom),
@@ -292,7 +291,7 @@ pub fn setup_autocam(
             is_10bit,
         ) {
             Ok(Some(trt_det)) => {
-                let detector: Box<dyn reco_core::detect::detector::UnifiedDetector> =
+                let detector: Box<dyn reco_core::detect::detector::Detector> =
                     if let Some(roi) = effective_roi.clone() {
                         wrap_with_roi(Box::new(trt_det), roi)
                     } else {
@@ -312,7 +311,7 @@ pub fn setup_autocam(
     }
 
     // ORT-based GPU detection (fallback for .onnx models or when tensorrt-native is not enabled).
-    // Linux only: OrtGpuDetector accepts DetectorFrame::Cuda (CUDA NV12 pointers from V4L2/VAAPI).
+    // Linux only: OrtGpuDetector accepts DetectorFrame::CudaNv12 (CUDA NV12 pointers from V4L2/VAAPI).
     // On Windows, D3D11VA zero-copy produces WgpuNv12 frames instead — use the wgpu preprocessing
     // path below which wraps CpuYoloDetector (still gets TensorRT EP for inference).
     #[cfg(all(feature = "ort", target_os = "linux"))]
@@ -326,7 +325,7 @@ pub fn setup_autocam(
             is_10bit,
         ) {
             Ok(Some(gpu_det)) => {
-                let detector: Box<dyn reco_core::detect::detector::UnifiedDetector> =
+                let detector: Box<dyn reco_core::detect::detector::Detector> =
                     if let Some(roi) = effective_roi.clone() {
                         wrap_with_roi(Box::new(gpu_det), roi)
                     } else {
@@ -356,7 +355,7 @@ pub fn setup_autocam(
             Vec::new(),
         ) {
             Ok(metal_det) => {
-                let detector: Box<dyn reco_core::detect::detector::UnifiedDetector> =
+                let detector: Box<dyn reco_core::detect::detector::Detector> =
                     if let Some(roi) = effective_roi.clone() {
                         wrap_with_roi(Box::new(metal_det), roi)
                     } else {
@@ -385,7 +384,7 @@ pub fn setup_autocam(
             Vec::new(), // labels loaded from sidecar if needed
         ) {
             Ok(ncnn_det) => {
-                let detector: Box<dyn reco_core::detect::detector::UnifiedDetector> =
+                let detector: Box<dyn reco_core::detect::detector::Detector> =
                     if let Some(roi) = effective_roi.clone() {
                         wrap_with_roi(Box::new(ncnn_det), roi)
                     } else {
@@ -424,7 +423,7 @@ pub fn setup_autocam(
             input_width,
             input_height,
         );
-        let detector: Box<dyn reco_core::detect::detector::UnifiedDetector> =
+        let detector: Box<dyn reco_core::detect::detector::Detector> =
             if let Some(roi) = effective_roi.clone() {
                 wrap_with_roi(Box::new(wrapper), roi)
             } else {
@@ -440,7 +439,7 @@ pub fn setup_autocam(
     if !detection_active && !use_zero_copy {
         let conf = config.confidence_threshold.unwrap_or(0.10);
         let yolo = CpuYoloDetector::with_config(model_path, conf, Vec::new())?;
-        let detector: Box<dyn reco_core::detect::detector::UnifiedDetector> =
+        let detector: Box<dyn reco_core::detect::detector::Detector> =
             if let Some(roi) = effective_roi {
                 wrap_with_roi(Box::new(yolo), roi)
             } else {

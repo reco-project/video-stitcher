@@ -25,7 +25,7 @@ use reco_control::ControlIntent;
 use reco_core::core::StitchCore;
 use reco_core::render::viewport::ViewportSize;
 use reco_core::sink::{OutputFrame, OutputSink, PixelFormat};
-use reco_core::source::{FrameSource, YuvData};
+use reco_core::source::{FrameSource, Yuv420pData};
 use reco_core::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -52,11 +52,11 @@ const FRAME_SKIP_COUNT: usize = 30;
 /// Number of seconds to seek on `[`/`]` key press.
 const SEEK_STEP_SECS: f64 = 5.0;
 
-/// Extract a [`YuvData`] pair from a [`FrameSet`](reco_core::source::FrameSet).
+/// Extract a [`Yuv420pData`] pair from a [`FrameSet`](reco_core::source::FrameSet).
 ///
 /// Panics if the set is not two-camera `Yuv420p` (preview always uses
 /// CPU decode of a stereo pair; its GPU render path is two-camera).
-fn unwrap_yuv_pair(frame: reco_core::source::FrameSet) -> (YuvData, YuvData) {
+fn unwrap_yuv_pair(frame: reco_core::source::FrameSet) -> (Yuv420pData, Yuv420pData) {
     let Some([left, right]) = frame.into_yuv_pair() else {
         panic!("preview expects two-camera Yuv420p sets");
     };
@@ -96,9 +96,9 @@ pub fn run_preview(
     // Blend lives on the calibration document; --blend is an explicit
     // override, otherwise the saved value is used (and hotkey edits
     // mutate the document directly - no shadow copy).
-    let Some(l_shape) = cal.topology.l_shape() else {
+    let Some(l_shape) = cal.projection.l_shape() else {
         anyhow::bail!(
-            "reco preview tunes the L-shape stereo rig; this calibration's topology has \
+            "reco preview tunes the L-shape stereo rig; this calibration's projection has \
              no seam parameters to tune"
         );
     };
@@ -107,7 +107,7 @@ pub fn run_preview(
             "Seam blend: --blend {b} overrides the calibration's {}",
             l_shape.blend_width
         );
-        cal.topology.l_shape_mut().unwrap().blend_width = b;
+        cal.projection.l_shape_mut().unwrap().blend_width = b;
     }
 
     // Use calibration's sync offset unless the user explicitly overrode it
@@ -169,15 +169,15 @@ pub fn run_preview(
 
         pose: {
             use reco_control::pose_control::{PoseControl, PoseControlConfig};
-            use reco_core::geometry::Pose;
+            use reco_core::geometry::RenderPose;
             PoseControl::new(PoseControlConfig {
-                wheel_fov_per_tick: FOV_SCROLL_STEP,
+                wheel_fov_step_degrees: FOV_SCROLL_STEP,
                 fov_min_degrees: FOV_MIN,
                 fov_max_degrees: FOV_MAX,
                 invert_drag_x: true,
                 invert_drag_y: false,
-                hotkey_fov_step_deg: FOV_KEY_STEP,
-                rest_pose: Pose {
+                hotkey_fov_step_degrees: FOV_KEY_STEP,
+                rest_pose: RenderPose {
                     yaw: 0.0,
                     pitch: 0.0,
                     fov_degrees: initial_fov,
@@ -228,8 +228,8 @@ struct App {
     input_height: u32,
     width: u32,
     height: u32,
-    current_left: YuvData,
-    current_right: YuvData,
+    current_left: Yuv420pData,
+    current_right: Yuv420pData,
     /// Requested and accepted render-space pose, with no temporal smoothing.
     pose: reco_control::pose_control::PoseControl,
     frame_count: u64,
@@ -392,7 +392,10 @@ impl App {
                 self.needs_redraw = true;
             }
             Ok(None) => {
-                // Decode thread hasn't caught up yet, or end of stream
+                if source.is_exhausted() {
+                    self.playing = false;
+                    println!("End of video");
+                }
             }
             Err(e) => {
                 log::error!("Decode error: {e}");
@@ -510,8 +513,12 @@ impl ApplicationHandler for App {
         )
         .expect("create executor");
         let renderer = StitchCore::new(Executor::Gpu(Box::new(executor))).expect("create engine");
+        let initial_world = reco_core::geometry::WorldPose {
+            fov_degrees: self.pose.target_pose().fov_degrees,
+            ..Default::default()
+        };
         self.pose
-            .set_target(renderer.world_to_render_pose(self.pose.target_pose()));
+            .set_target(renderer.calibration().world_to_render_pose(initial_world));
 
         println!(
             "Preview ready: GPU = {}, format = {:?}",
@@ -624,7 +631,7 @@ impl ApplicationHandler for App {
                             ) => {
                                 self.edit_calibration(|cal| {
                                     let layout =
-                                        cal.topology.l_shape_mut().expect("guarded at startup");
+                                        cal.projection.l_shape_mut().expect("guarded at startup");
                                     match key {
                                         KeyCode::Digit1 => {
                                             layout.intersect = (layout.intersect + 0.01).min(1.0)
@@ -665,7 +672,7 @@ impl ApplicationHandler for App {
                                     }
                                 });
                                 let layout =
-                                    self.cal.topology.l_shape().expect("guarded at startup");
+                                    self.cal.projection.l_shape().expect("guarded at startup");
                                 println!(
                                     "intersect: {:.4}, camera_axis_offset: {:.4}, x_ty: {:.4}, blend_width: {:.2}, focal length: {:.1}/{:.1}, k1: {:.4}/{:.4}",
                                     layout.intersect,
@@ -859,7 +866,7 @@ impl ApplicationHandler for App {
             let before = renderer.output_dims();
             match renderer.resize_preview(self.width, self.height) {
                 Ok(()) => {
-                    resizing = self.clamp_enabled && renderer.max_fov_degrees().is_none();
+                    resizing = self.clamp_enabled && renderer.coverage_max_fov_degrees().is_none();
                     if renderer.output_dims() != before {
                         self.needs_redraw = true;
                     }
@@ -952,7 +959,7 @@ mod tests {
             (KeyCode::NumpadSubtract, 0.0, 0.0, 80.0),
         ] {
             let mut control = PoseControl::new(PoseControlConfig {
-                hotkey_fov_step_deg: FOV_KEY_STEP,
+                hotkey_fov_step_degrees: FOV_KEY_STEP,
                 ..Default::default()
             })
             .unwrap();

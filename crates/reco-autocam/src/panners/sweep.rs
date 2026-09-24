@@ -8,7 +8,7 @@
 
 use reco_core::detect::panner::{PanContext, Panner};
 use reco_core::detect::tracker::WorldState;
-use reco_core::geometry::Pose;
+use reco_core::geometry::WorldPose;
 
 /// A debugging panner that sweeps the virtual camera left-right.
 ///
@@ -24,8 +24,7 @@ pub struct SweepPanner {
     fov_max: f32,
     zoom_cycle_secs: f32,
     /// Source frame rate used to turn the session's monotonically
-    /// increasing `frame_index` into a seconds-valued phase. Matches
-    /// the director's hard-coded 30 fps for behavior parity.
+    /// increasing `frame_index` into a seconds-valued phase.
     fps: f32,
 }
 
@@ -70,7 +69,7 @@ impl SweepPanner {
 }
 
 impl Panner for SweepPanner {
-    fn decide(&mut self, _world: &WorldState, ctx: &PanContext<'_>) -> Pose {
+    fn decide(&mut self, _world: &WorldState, ctx: &PanContext<'_>) -> WorldPose {
         let t = ctx.frame_index as f32 / self.fps;
         let yaw_phase = (t * std::f32::consts::TAU / self.cycle_secs).sin();
 
@@ -83,7 +82,7 @@ impl Panner for SweepPanner {
             self.fov_degrees
         };
 
-        Pose {
+        WorldPose {
             yaw: yaw_phase * self.yaw_range,
             pitch: 0.0,
             fov_degrees: fov,
@@ -122,7 +121,7 @@ mod tests {
         PanContext {
             frame_index,
             timestamp_ms: frame_index as f64 * (1000.0 / 30.0),
-            previous_position: Pose::default(),
+            previous_pose: WorldPose::default(),
             calibration: cal,
         }
     }

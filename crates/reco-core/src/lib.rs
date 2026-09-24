@@ -15,7 +15,7 @@
 //!   → GPU texture upload
 //!   → Fisheye undistortion (per-camera)
 //!   → Composite two planes with blending
-//!   → Viewport crop (director-controlled pan)
+//!   → Viewport crop (panner-controlled pan)
 //!   → Output frame for encoding
 //! ```
 //!
@@ -31,7 +31,7 @@
 //!
 //! The crate defines traits for pluggable components:
 //! - [`source::FrameSource`] — delivers per-camera frame sets (files, cameras, streams)
-//! - [`detect::detector::UnifiedDetector`] — detects objects in raw frames (e.g. ball tracking)
+//! - [`detect::detector::Detector`] — detects objects in raw frames (e.g. ball tracking)
 //! - [`detect::tracker::Tracker`] — turns detections into stable tracked entities
 //! - [`detect::panner::Panner`] — turns the tracked world state into a viewport pose
 //! - [`sink::OutputSink`] — consumes stitched frames (encoding, snapshots, streams)

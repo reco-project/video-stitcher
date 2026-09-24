@@ -41,7 +41,7 @@ use reco_core::gpu::GpuContext;
 
 use crate::error::CalibrateError;
 use crate::telemetry::TelemetryData;
-use crate::types::{CalibrationConfig, CalibrationResult, LensProfileInfo, YuvFrame};
+use crate::types::{CalibrationConfig, CalibrationResult, LensProfileInfo, Yuv420pFrame};
 use crate::{audio_sync, lens_database, sampling, telemetry};
 
 /// Video metadata that the app provides from its decoder.
@@ -457,7 +457,7 @@ impl CalibrationPipeline {
     pub fn calibrate(
         &self,
         gpu: &GpuContext,
-        frames: &[(YuvFrame, YuvFrame)],
+        frames: &[(Yuv420pFrame, Yuv420pFrame)],
     ) -> Result<CalibrationResult, CalibrateError> {
         let left_params = self.left_params.as_ref().ok_or_else(|| {
             CalibrateError::InvalidConfig(

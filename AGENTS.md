@@ -20,7 +20,7 @@ consumer-side workaround.
 - `crates/reco-cli/` — CLI binary (`reco stitch`, `reco info`, `reco calibrate`, `reco preview`)
 - `crates/reco-io/` — Pluggable I/O backends (FFmpeg decode/encode, GStreamer, libcamera)
 - `crates/reco-detect/` — AI detection backends (ORT CPU/GPU, TensorRT, NCNN, CoreML/Metal)
-- `crates/reco-autocam/` — AI camera control (directors, trajectory smoothing, ROI filtering)
+- `crates/reco-autocam/` — AI camera control (trackers, panners, ROI filtering)
 - `crates/reco-calibrate/` — Stereo camera calibration (AKAZE features, optimization)
 - `crates/reco-control/` — Typed control intents (pose, hotkeys) shared by interactive consumers
 - `crates/reco-gui/` — Slint GUI consumer (wgpu zero-copy preview)
@@ -37,7 +37,7 @@ cargo fmt --all               # Auto-format
 cargo doc --no-deps --open    # Generate and open docs
 cargo run -p reco-cli -- info # Show GPU info
 cargo run -p reco-cli -- stitch left.mp4 right.mp4 -c match.json -o out.mp4
-cargo run -p reco-cli -- stitch panorama.mp4 -c cylinder.json -o out.mp4   # mono (cylinder topology)
+cargo run -p reco-cli -- stitch panorama.mp4 -c cylinder.json -o out.mp4   # mono (cylinder projection)
 cargo run -p reco-cli -- preview left.mp4 right.mp4 -c match.json
 cargo run --release -p reco-cli --features profiling -- stitch left.mp4 right.mp4 -c match.json -o out.mp4 --max-frames 300  # Profile 300 frames → reco-trace.json (open in ui.perfetto.dev)
 ```
@@ -79,6 +79,7 @@ cargo run --release -p reco-cli --features profiling -- stitch left.mp4 right.mp
 - Performance matters: this processes video frames in real time
 - Modular: reco-core must be usable as a standalone Rust crate
 - Explicit over implicit: no hidden defaults, no magic
+- Pre-1.0: prefer clean API and file-format changes over backward compatibility. Do not retain deprecated APIs, compatibility aliases, shims, or legacy serialized names solely to support older versions. Update affected consumers, tests, and documentation together; do not introduce unrelated breaking changes.
 - The calibration document is the engine: runtime objects derive from it,
   never the reverse, and there is no second copy to keep in sync
 - Docs that claim something is enforced, gated, or covered must point at

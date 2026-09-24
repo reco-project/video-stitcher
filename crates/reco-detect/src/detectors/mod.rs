@@ -56,7 +56,7 @@ pub fn postprocess(
         let base = i * 6;
         let conf = data[base + 4];
         // NaN-safe filter: `NaN < x` is always false, so a naive comparison
-        // would let NaN confidences through and poison the director's EMA
+        // would let NaN confidences through and poison downstream tracking
         // (`f32::clamp` preserves NaN). Reject non-finite confidence first.
         if !conf.is_finite() || conf < confidence_threshold {
             continue;
@@ -215,7 +215,7 @@ fn greedy_nms(mut dets: Vec<Detection>, iou_thresh: f32) -> Vec<Detection> {
 /// Read class labels from a sidecar `.labels` file (one name per line).
 ///
 /// If the file doesn't exist, returns an empty vec. Labels are used
-/// for log messages and class ID resolution in directors.
+/// for log messages and tracker class ID resolution.
 pub fn read_labels_file(path: impl AsRef<Path>) -> Vec<String> {
     match std::fs::read_to_string(path.as_ref()) {
         Ok(contents) => contents
@@ -465,7 +465,7 @@ mod tests {
     fn postprocess_rejects_nan_confidence() {
         // B-28 regression: NaN confidence must not pass the threshold check.
         // `NaN < threshold` is false, so without an explicit is_finite guard
-        // the row would be kept and NaN would propagate into the director EMA.
+        // the row would be kept and NaN would propagate into tracking.
         let data = make_tensor(&[[300.0, 300.0, 340.0, 340.0, f32::NAN, 0.0]]);
         let dets = postprocess(
             &data,

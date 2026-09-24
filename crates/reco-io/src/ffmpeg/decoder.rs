@@ -154,7 +154,7 @@ impl Drop for D3d11Frame {
 unsafe impl Send for D3d11Frame {}
 
 /// Re-export the canonical YUV frame type from reco-core.
-pub use reco_core::source::YuvFrame;
+pub use reco_core::source::Yuv420pFrame;
 
 /// Which decode backend is active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -697,7 +697,7 @@ impl VideoDecoder {
         feature = "profiling",
         tracing::instrument(skip_all, name = "decode_frame")
     )]
-    pub fn next_frame(&mut self) -> Result<Option<YuvFrame>, DecodeError> {
+    pub fn next_frame(&mut self) -> Result<Option<Yuv420pFrame>, DecodeError> {
         // After EOF we still may have buffered frames in the decoder
         // (multi-slice encoders like libx264 with `slices=7` or
         // multi-reference H.264 with long GOPs hold several frames in
@@ -1006,7 +1006,7 @@ impl VideoDecoder {
     /// For hardware-decoded frames, transfers from GPU to CPU first.
     /// If the frame format isn't YUV420P (e.g. NV12 from NVDEC),
     /// swscale converts it (very cheap for NV12→YUV420P: just deinterleave UV).
-    fn extract_yuv(&mut self) -> Result<YuvFrame, DecodeError> {
+    fn extract_yuv(&mut self) -> Result<Yuv420pFrame, DecodeError> {
         // If hardware-decoded, transfer GPU frame to CPU
         let cpu_frame = if is_hw_frame(&self.decoded_frame) {
             profile_scope!("hw_transfer");
@@ -1110,7 +1110,7 @@ impl VideoDecoder {
             self.v_buf.reverse();
         }
 
-        Ok(YuvFrame {
+        Ok(Yuv420pFrame {
             y: self.y_buf.clone(),
             u: self.u_buf.clone(),
             v: self.v_buf.clone(),

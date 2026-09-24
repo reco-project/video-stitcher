@@ -19,7 +19,7 @@ use std::path::Path;
 use ort::session::Session;
 use ort::value::TensorRef;
 use reco_core::detect::detector::{
-    ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame, UnifiedDetector,
+    ChromaPlanes, Detection, Detector, DetectorError, DetectorFrame, YuvView,
 };
 use reco_core::geometry::CameraIndex;
 
@@ -108,7 +108,7 @@ impl CpuYoloDetector {
     ///
     /// Returns `(scale, pad_x, pad_y)` for mapping detection coordinates
     /// back to the original frame.
-    fn preprocess(&mut self, frame: &RawFrame<'_>) -> (f32, f32, f32) {
+    fn preprocess(&mut self, frame: &YuvView<'_>) -> (f32, f32, f32) {
         let (fw, fh) = (frame.width as f32, frame.height as f32);
         let is = self.input_size as f32;
 
@@ -189,17 +189,17 @@ impl CpuYoloDetector {
 }
 
 /// Sample chroma (U, V) values at a given pixel position.
-fn chroma_sample(frame: &RawFrame<'_>, x: u32, y: u32) -> (f32, f32) {
+fn chroma_sample(frame: &YuvView<'_>, x: u32, y: u32) -> (f32, f32) {
     let cx = (x / 2) as usize;
     let cy = (y / 2) as usize;
     let cw = (frame.width / 2) as usize;
 
     match &frame.chroma {
-        ChromaFormat::Yuv420p { u, v } => {
+        ChromaPlanes::Yuv420p { u, v } => {
             let idx = cy * cw + cx;
             (u[idx] as f32, v[idx] as f32)
         }
-        ChromaFormat::Nv12 { uv } => {
+        ChromaPlanes::Nv12 { uv } => {
             // Interleaved: U at even indices, V at odd indices.
             let idx = cy * (frame.width as usize) + cx * 2;
             (uv[idx] as f32, uv[idx + 1] as f32)
@@ -208,15 +208,11 @@ fn chroma_sample(frame: &RawFrame<'_>, x: u32, y: u32) -> (f32, f32) {
 }
 
 impl CpuYoloDetector {
-    /// Core inference path shared by the legacy [`Detector`] impl and
-    /// the [`UnifiedDetector`] impl. Returns a typed
-    /// [`DetectorError`] so the unified-trait consumer can react to
-    /// failure; the legacy impl collapses the error to a log + empty
-    /// vec for backwards compatibility.
+    /// CPU YUV preprocessing and inference, preserving inference errors for the caller.
     fn detect_raw(
         &mut self,
         camera: CameraIndex,
-        frame: &RawFrame<'_>,
+        frame: &YuvView<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
         reco_core::profile_scope!("yolo_detect");
 
@@ -360,7 +356,7 @@ impl CpuYoloDetector {
     }
 }
 
-impl UnifiedDetector for CpuYoloDetector {
+impl Detector for CpuYoloDetector {
     fn name(&self) -> &'static str {
         "ort-cpu"
     }
@@ -378,7 +374,7 @@ impl UnifiedDetector for CpuYoloDetector {
         // dispatch layer routes the frame to a GPU backend instead of
         // silently producing zero detections.
         match frame {
-            DetectorFrame::Cpu(raw) => self.detect_raw(camera, raw),
+            DetectorFrame::Yuv(raw) => self.detect_raw(camera, raw),
             DetectorFrame::PreprocessedChw {
                 data,
                 input_size,
@@ -535,14 +531,14 @@ mod tests {
         assert!(parse_names_dict_string("random garbage").is_none());
     }
 
-    /// Compile-time: `CpuYoloDetector` must satisfy the `UnifiedDetector`
+    /// Compile-time: `CpuYoloDetector` must satisfy the `Detector`
     /// bounds so a future `StitchCore::set_detector` signature taking
-    /// `Box<dyn UnifiedDetector>` accepts it. This catches a regression
+    /// `Box<dyn Detector>` accepts it. This catches a regression
     /// where a field accidentally becomes non-`Send` (shared mutable
     /// state, raw pointer, etc.).
     #[test]
     fn cpu_yolo_detector_is_unified_detector_send() {
-        fn assert_unified_send<T: UnifiedDetector + Send + 'static>() {}
+        fn assert_unified_send<T: Detector + Send + 'static>() {}
         assert_unified_send::<CpuYoloDetector>();
     }
 }

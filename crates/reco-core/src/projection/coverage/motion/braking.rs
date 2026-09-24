@@ -5,7 +5,7 @@ use super::*;
 // Covers a full-rate stop at 1000 fps, including f32 rounding in each step.
 const MAX_STEPS: usize = 2048;
 
-pub(super) fn path(window: &MotionWindow, next: Pose) -> Option<Vec<Pose>> {
+pub(super) fn path(window: &MotionWindow, next: RenderPose) -> Option<Vec<RenderPose>> {
     let mut poses = vec![next];
     let mut pose = next;
     let mut velocity = window.velocity_at(next);
@@ -47,7 +47,7 @@ mod tests {
                 for i in 0..32 {
                     let angle = i as f32 * std::f32::consts::TAU / 32.0;
                     let window = MotionWindow {
-                        previous: Pose {
+                        previous: RenderPose {
                             yaw,
                             pitch: 0.4,
                             fov_degrees: 30.0,

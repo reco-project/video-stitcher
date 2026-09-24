@@ -1,5 +1,6 @@
 //! Fixed-timestep presentation control over a calibration-derived coverage map.
 use super::*;
+use crate::geometry::WorldPose;
 
 /// Internal construction precision and angular chart. Coverage certifies the viewport exterior, not enclosed source holes or blending.
 #[derive(Debug, Clone, PartialEq)]
@@ -39,7 +40,7 @@ pub(crate) struct Controller {
     size: ViewportSize,
     roof: roof::Roof,
     cap: f32,
-    state: Option<(Pose, [f32; 2], u64)>,
+    state: Option<(RenderPose, [f32; 2], u64)>,
     route: Option<motion::Route>,
 }
 
@@ -110,7 +111,7 @@ impl Controller {
     }
 
     #[cfg(test)]
-    pub(crate) fn current(&self) -> Option<Pose> {
+    pub(crate) fn current(&self) -> Option<RenderPose> {
         self.state.map(|s| s.0)
     }
 
@@ -120,9 +121,9 @@ impl Controller {
 
     pub(crate) fn constrain(
         &mut self,
-        previous: Pose,
-        mut requested: Pose,
-    ) -> Result<Pose, String> {
+        previous: RenderPose,
+        mut requested: RenderPose,
+    ) -> Result<RenderPose, String> {
         requested.fov_degrees = requested.fov_degrees.clamp(self.config.fov[0], self.cap);
         let previous = if self.roof.contains(previous) {
             previous
@@ -131,7 +132,7 @@ impl Controller {
                 .supported_vertices(requested.fov_degrees)
                 .map(|(_, p)| self.roof.near_yaw(p, requested.yaw))
                 .min_by(|a, b| {
-                    let cost = |p: &Pose| {
+                    let cost = |p: &RenderPose| {
                         (f64::from(p.yaw) - f64::from(requested.yaw))
                             .hypot(f64::from(p.pitch) - f64::from(requested.pitch))
                     };
@@ -146,10 +147,10 @@ impl Controller {
         &mut self,
         calibration: &Calibration,
         size: &ViewportSize,
-        requested: Pose,
+        requested: WorldPose,
         index: u64,
         frame_seconds: f32,
-    ) -> Result<Pose, String> {
+    ) -> Result<RenderPose, String> {
         if !frame_seconds.is_finite()
             || frame_seconds <= 0.0
             || !requested.yaw.is_finite()
@@ -209,7 +210,7 @@ impl Controller {
 }
 
 fn mapped_camera_span(calibration: &Calibration) -> Option<[f32; 2]> {
-    let projection = calibration.topology.projection();
+    let projection = calibration.projection.geometry();
     if projection.camera_count() < 2 {
         return None;
     }
@@ -217,7 +218,7 @@ fn mapped_camera_span(calibration: &Calibration) -> Option<[f32; 2]> {
     let mut span = [f32::INFINITY, f32::NEG_INFINITY];
     for index in 0..projection.camera_count() {
         let mapped = calibration.map_source_point(index, [0.5, 0.5]).ok()?;
-        let (yaw, _) = crate::geometry::world_to_render_pose(
+        let (yaw, _) = crate::geometry::world_to_render_angles(
             &camera,
             mapped.yaw,
             mapped.pitch,

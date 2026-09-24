@@ -2,13 +2,13 @@
 //!
 //! Projection implementations bridge camera frames and virtual-camera
 //! orientation, enabling:
-//! - **Detection mapping**: convert detector output to director yaw/pitch
+//! - **Detection mapping**: convert source-image points to world-reference yaw/pitch
 //! - **"No-black" panning**: compute valid viewport bounds to avoid black edges
 //!
 //! ## Coordinate Spaces
 //!
 //! ```text
-//! Camera pixel [0,1]  ──undistort──►  Plane UV  ──model matrix──►  World 3D
+//! Normalized image point [0,1]  ──undistort──►  Plane UV  ──model matrix──►  World 3D
 //!                                                                       │
 //! Virtual camera yaw/pitch  ◄──decompose──  Direction from camera  ◄────┘
 //! ```
@@ -27,7 +27,7 @@ pub use geometry::point_in_polygon;
 
 use crate::calibration::{Calibration, Framing, Lens};
 use crate::geometry::VirtualCamera;
-use crate::geometry::{CameraIndex, Pose, YawPitch};
+use crate::geometry::{CameraIndex, RenderPose, WorldPose, YawPitch};
 use crate::stitch::{BlendRule, SurfaceMap};
 use thiserror::Error;
 
@@ -50,10 +50,10 @@ pub enum SourceMapError {
 }
 
 // ---------------------------------------------------------------------------
-// The Projection trait: L1 geometry dispatch.
+// The ProjectionGeometry trait: L1 geometry dispatch.
 // ---------------------------------------------------------------------------
 //
-// `Topology::projection()` borrows the document's shape parameters as `&dyn Projection`, without copying them into a separate object.
+// `Projection::geometry()` borrows the document's shape parameters as `&dyn ProjectionGeometry`, without copying them into a separate object.
 
 /// One frame's shape-geometry question, bundled: optical/framing inputs, the output
 /// viewport, and the pose. The pose carries fov alongside yaw/pitch -
@@ -68,10 +68,49 @@ pub(crate) struct ProjectionContext<'a> {
     /// Output viewport geometry (dimensions).
     pub viewport_size: &'a crate::render::viewport::ViewportSize,
     /// The render pose: yaw/pitch pan plus fov zoom, one bundle.
-    pub pose: Pose,
+    pub pose: RenderPose,
 }
 
 impl Calibration {
+    /// Convert a world-reference request into a [`RenderPose`] using this calibration's virtual camera and rig tilt/roll. Preserves FOV and does not constrain coverage.
+    pub fn world_to_render_pose(&self, world: WorldPose) -> RenderPose {
+        let framing = &self.framing;
+        let cam = self.virtual_camera();
+        let (yaw, pitch) = crate::geometry::world_to_render_angles(
+            &cam,
+            world.yaw,
+            world.pitch,
+            framing.tilt as f32,
+            framing.roll as f32,
+        );
+        RenderPose {
+            yaw,
+            pitch,
+            fov_degrees: world.fov_degrees,
+        }
+    }
+
+    /// Recover the world-reference pose corresponding to a render-space pose under this calibration.
+    ///
+    /// Inverse of [`Self::world_to_render_pose`] away from the yaw singularity at the poles. Preserves FOV and does not run coverage. Use before a framing edit, then orient the result under the accepted new calibration to retain the look direction.
+    pub fn render_to_world_pose(&self, render: RenderPose) -> WorldPose {
+        let framing = &self.framing;
+        let camera = self.virtual_camera();
+        let view = crate::geometry::view_matrix(
+            &camera,
+            render.yaw,
+            render.pitch,
+            framing.tilt as f32,
+            framing.roll as f32,
+        );
+        let direction = nalgebra::Vector3::new(-view[(2, 0)], -view[(2, 1)], -view[(2, 2)]);
+        let angles = camera.direction_to_yaw_pitch(&direction);
+        WorldPose {
+            yaw: angles.yaw,
+            pitch: angles.pitch,
+            fov_degrees: render.fov_degrees,
+        }
+    }
     /// Map a normalized source-image point to world-reference yaw/pitch.
     /// A mapped direction alone does not guarantee rendered source support.
     /// The calibration must be validated before use, as for engine construction.
@@ -80,7 +119,7 @@ impl Calibration {
         camera: CameraIndex,
         point: [f32; 2],
     ) -> Result<YawPitch, SourceMapError> {
-        if camera >= self.lenses.len() || camera >= self.topology.camera_count() {
+        if camera >= self.lenses.len() || camera >= self.projection.camera_count() {
             return Err(SourceMapError::InvalidCamera);
         }
         if point
@@ -89,14 +128,14 @@ impl Calibration {
         {
             return Err(SourceMapError::InvalidPoint);
         }
-        self.topology
-            .projection()
+        self.projection
+            .geometry()
             .map_source_point(camera, point, &self.lenses, &self.framing)
     }
 
     /// The virtual-camera basis derived from this complete calibration.
     pub fn virtual_camera(&self) -> VirtualCamera {
-        self.topology.projection().virtual_camera(&self.framing)
+        self.projection.geometry().virtual_camera(&self.framing)
     }
 
     /// Build ordered output-to-source maps for a render-space pose and viewport, without a GPU.
@@ -105,9 +144,9 @@ impl Calibration {
     pub fn surface_maps(
         &self,
         viewport_size: &crate::render::viewport::ViewportSize,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {
-        self.topology.projection().surface_maps(&ProjectionContext {
+        self.projection.geometry().surface_maps(&ProjectionContext {
             lenses: &self.lenses,
             framing: &self.framing,
             viewport_size,
@@ -124,7 +163,7 @@ impl Calibration {
 /// # Bounds
 ///
 /// `Send + Sync` allows implementations to be shared across processing threads.
-pub(crate) trait Projection: Send + Sync {
+pub(crate) trait ProjectionGeometry: Send + Sync {
     /// Short human-readable name for logs + diagnostic bundles.
     fn name(&self) -> &'static str;
 
@@ -211,9 +250,9 @@ mod tests {
         // Full-correction baseline with non-default rig and plane orientation.
         cal.framing.tilt = 0.21;
         cal.framing.roll = -0.08;
-        let topology = cal.topology.l_shape_mut().unwrap();
-        topology.x_rx = 0.025;
-        topology.z_rz = -0.019;
+        let projection = cal.projection.l_shape_mut().unwrap();
+        projection.x_rx = 0.025;
+        projection.z_rz = -0.019;
         cal
     }
 
@@ -236,7 +275,7 @@ mod tests {
                 for lens in &mut cal.lenses {
                     lens.correction = correction;
                 }
-                let projection = cal.topology.projection();
+                let projection = cal.projection.geometry();
                 let virtual_camera = projection.virtual_camera(&cal.framing);
                 for camera in 0..2 {
                     for ix in 0..=20 {
@@ -245,17 +284,17 @@ mod tests {
                             let y = 0.02 + 0.96 * iy as f32 / 20.0;
                             let mut angles = cal.map_source_point(camera, [x, y]).unwrap();
                             // Point mapping returns world angles; rendering consumes rig-relative angles.
-                            (angles.yaw, angles.pitch) = crate::geometry::world_to_render_pose(
+                            (angles.yaw, angles.pitch) = crate::geometry::world_to_render_angles(
                                 &virtual_camera,
                                 angles.yaw,
                                 angles.pitch,
                                 cal.framing.tilt as f32,
                                 cal.framing.roll as f32,
                             );
-                            let pose = Pose {
+                            let pose = RenderPose {
                                 yaw: angles.yaw,
                                 pitch: angles.pitch,
-                                ..Pose::default()
+                                ..RenderPose::default()
                             };
                             let surfaces = cal.surface_maps(&viewport_size, pose);
                             let uv = surfaces[camera].0.sample_uv([0.0, 0.0]).unwrap_or_else(|| {
@@ -455,25 +494,25 @@ mod tests {
         assert!(point_in_polygon([0.999, 0.5], &unit_square()));
     }
 
-    // -- Projection trait tests --
+    // -- ProjectionGeometry trait tests --
 
     #[test]
     fn l_shape_projection_identifies_itself() {
         let cal = test_calibration();
-        let p = cal.topology.projection();
+        let p = cal.projection.geometry();
         assert_eq!(p.name(), "l-shape-stereo-2camera");
         assert_eq!(p.camera_count(), 2);
     }
 
     #[test]
     fn projection_is_dyn_compatible() {
-        // Core invariant: the engine reads `&dyn Projection` straight
+        // Core invariant: the engine reads `&dyn ProjectionGeometry` straight
         // out of the document without building a second runtime object.
         // Verify the trait remains object-safe and Send+Sync.
         let cal = test_calibration();
-        let p: &dyn Projection = cal.topology.projection();
+        let p: &dyn ProjectionGeometry = cal.projection.geometry();
         fn assert_send_sync<T: Send + Sync + ?Sized>() {}
-        assert_send_sync::<dyn Projection>();
+        assert_send_sync::<dyn ProjectionGeometry>();
         assert_eq!(p.camera_count(), 2);
     }
 
@@ -483,10 +522,10 @@ mod tests {
         // then the right fading in with the calibration's seam width.
         let cal = test_calibration();
         let config = crate::render::viewport::ViewportSize::default();
-        let surfaces = cal.surface_maps(&config, Pose::default());
+        let surfaces = cal.surface_maps(&config, RenderPose::default());
         assert_eq!(surfaces.len(), 2);
         assert_eq!(surfaces[0].1, crate::stitch::BlendRule::Opaque);
-        let seam = cal.topology.l_shape().unwrap().blend_width;
+        let seam = cal.projection.l_shape().unwrap().blend_width;
         assert_eq!(
             surfaces[1].1,
             crate::stitch::BlendRule::Smoothstep(seam as f64)
@@ -510,7 +549,7 @@ mod tests {
     #[test]
     fn cylindrical_projection_reports_mono() {
         let cal = cylinder_cal();
-        let p = cal.topology.projection();
+        let p = cal.projection.geometry();
         assert_eq!(p.name(), "cylindrical-mono-1camera");
         assert_eq!(
             p.camera_count(),
@@ -547,7 +586,7 @@ mod tests {
     fn cylindrical_surface_maps_emit_one_opaque_surface() {
         let cal = cylinder_cal();
         let config = crate::render::viewport::ViewportSize::default();
-        let surfaces = cal.surface_maps(&config, Pose::default());
+        let surfaces = cal.surface_maps(&config, RenderPose::default());
         assert_eq!(surfaces.len(), 1);
         assert_eq!(surfaces[0].1, crate::stitch::BlendRule::Opaque);
         assert!(
@@ -560,11 +599,11 @@ mod tests {
     }
 
     #[test]
-    fn topology_projection_resolves_the_matching_variant() {
+    fn projection_geometry_resolves_the_matching_variant() {
         let l = test_calibration();
-        assert_eq!(l.topology.projection().camera_count(), 2);
+        assert_eq!(l.projection.geometry().camera_count(), 2);
         let c = cylinder_cal();
-        assert_eq!(c.topology.projection().camera_count(), 1);
+        assert_eq!(c.projection.geometry().camera_count(), 1);
     }
 
     #[test]
@@ -572,8 +611,8 @@ mod tests {
         // Compile-time: the trait is object-safe, so one collection
         // holds implementations with different camera counts. The
         // assertions pin those counts and distinct diagnostic names.
-        let l = test_calibration().topology.l_shape().unwrap().clone();
-        let projections: Vec<Box<dyn Projection>> = vec![
+        let l = test_calibration().projection.l_shape().unwrap().clone();
+        let projections: Vec<Box<dyn ProjectionGeometry>> = vec![
             Box::new(l),
             Box::new(crate::projection::Cylinder::default()),
         ];

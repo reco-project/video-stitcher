@@ -8,7 +8,7 @@
 
 use std::collections::VecDeque;
 
-use crate::detect::director::MappedDetection;
+use crate::detect::mapped_detection::MappedDetection;
 use crate::detect::tracker::WorldState;
 use crate::source::FrameSet;
 

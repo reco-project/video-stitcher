@@ -38,7 +38,7 @@
 //!
 //! impl<'a> LiveFramePairSource for ObsCalibSource<'a> {
 //!     fn next_pair(&mut self, timeout: Duration)
-//!         -> Option<(YuvFrame, YuvFrame)>
+//!         -> Option<(Yuv420pFrame, Yuv420pFrame)>
 //!     {
 //!         let deadline = Instant::now() + timeout;
 //!         loop {
@@ -55,7 +55,7 @@
 //! ```
 //!
 //! Adapter lives in the consumer because the handle type `H` and
-//! the conversion-to-YuvFrame depend on the consumer's framework.
+//! the conversion-to-Yuv420pFrame depend on the consumer's framework.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -65,7 +65,7 @@ use reco_core::gpu::GpuContext;
 
 use crate::error::CalibrateError;
 use crate::types::{
-    CalibrationConfig, CalibrationProgress, CalibrationResult, CalibrationStep, YuvFrame,
+    CalibrationConfig, CalibrationProgress, CalibrationResult, CalibrationStep, Yuv420pFrame,
 };
 
 /// A source of synchronized YUV420P frame pairs for live calibration.
@@ -82,7 +82,7 @@ pub trait LiveFramePairSource: Send {
     /// soon as a pair is available. Returning `None` terminates the
     /// capture loop with
     /// [`CalibrateFromLiveError::Timeout`].
-    fn next_pair(&mut self, timeout: Duration) -> Option<(YuvFrame, YuvFrame)>;
+    fn next_pair(&mut self, timeout: Duration) -> Option<(Yuv420pFrame, Yuv420pFrame)>;
 }
 
 /// Options for [`calibrate_from_live`].
@@ -187,7 +187,7 @@ pub fn calibrate_from_live(
     }
 
     let start = Instant::now();
-    let mut pairs: Vec<(YuvFrame, YuvFrame)> = Vec::with_capacity(options.num_pairs);
+    let mut pairs: Vec<(Yuv420pFrame, Yuv420pFrame)> = Vec::with_capacity(options.num_pairs);
 
     emit_progress(
         on_progress,
@@ -261,7 +261,7 @@ mod tests {
     /// A fake live source that hands out N pre-built YUV frame pairs,
     /// then returns `None` to simulate a stalled upstream.
     struct FakeSource {
-        pairs: Vec<(YuvFrame, YuvFrame)>,
+        pairs: Vec<(Yuv420pFrame, Yuv420pFrame)>,
         next_idx: usize,
         // Count how many times `next_pair` was called (success or None)
         // so tests can verify the timeout path.
@@ -280,7 +280,7 @@ mod tests {
     }
 
     impl LiveFramePairSource for FakeSource {
-        fn next_pair(&mut self, _timeout: Duration) -> Option<(YuvFrame, YuvFrame)> {
+        fn next_pair(&mut self, _timeout: Duration) -> Option<(Yuv420pFrame, Yuv420pFrame)> {
             self.calls.fetch_add(1, Ordering::Relaxed);
             if self.next_idx < self.pairs.len() {
                 let p = self.pairs[self.next_idx].clone();
@@ -295,10 +295,10 @@ mod tests {
     /// 64x64 grey YUV420P frame — enough to exercise the shape but
     /// small enough that tests don't spend time on GPU work we can't
     /// run here anyway (calibrate requires a real GpuContext).
-    fn dummy_yuv() -> YuvFrame {
+    fn dummy_yuv() -> Yuv420pFrame {
         let w = 64u32;
         let h = 64u32;
-        YuvFrame {
+        Yuv420pFrame {
             y: vec![128u8; (w * h) as usize],
             u: vec![128u8; ((w * h) / 4) as usize],
             v: vec![128u8; ((w * h) / 4) as usize],

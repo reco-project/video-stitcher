@@ -8,7 +8,7 @@ use std::path::Path;
 
 use reco_calibrate::CalibrationConfig;
 use reco_calibrate::pipeline::{CalibrationPipeline, VideoInfo};
-use reco_calibrate::types::YuvFrame;
+use reco_calibrate::types::Yuv420pFrame;
 use reco_core::gpu::GpuContext;
 use reco_io::ffmpeg::calibration_io;
 
@@ -156,7 +156,7 @@ pub fn run_calibrate(
         )?;
     }
 
-    let frame_pairs: Vec<(YuvFrame, YuvFrame)> =
+    let frame_pairs: Vec<(Yuv420pFrame, Yuv420pFrame)> =
         left_frames.into_iter().zip(right_frames).collect();
 
     // Step 5: Calibrate
@@ -224,8 +224,8 @@ fn extract_and_sync_audio(
 
 fn save_debug_frames(
     gpu: &GpuContext,
-    left_frames: &[YuvFrame],
-    right_frames: &[YuvFrame],
+    left_frames: &[Yuv420pFrame],
+    right_frames: &[Yuv420pFrame],
     left_params: &reco_core::calibration::Lens,
     right_params: &reco_core::calibration::Lens,
     dir: &str,
@@ -246,7 +246,7 @@ fn save_debug_frames(
 
 fn save_match_visualizations(
     result: &reco_calibrate::CalibrationResult,
-    frame_pairs: &[(YuvFrame, YuvFrame)],
+    frame_pairs: &[(Yuv420pFrame, Yuv420pFrame)],
     dir: &str,
 ) -> anyhow::Result<()> {
     let (w, h) = (frame_pairs[0].0.width, frame_pairs[0].0.height);
@@ -286,9 +286,9 @@ fn print_results(result: &reco_calibrate::CalibrationResult, output: &str, total
     eprintln!("\nPlacement parameters:");
     let l = result
         .calibration
-        .topology
+        .projection
         .l_shape()
-        .expect("stereo calibration always produces the L-shape topology");
+        .expect("stereo calibration always produces the L-shape projection");
     eprintln!(
         "  cameraAxisOffset: {:.4}",
         result.calibration.framing.axis_offset

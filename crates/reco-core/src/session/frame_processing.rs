@@ -4,17 +4,17 @@
 //! convert to NV12, and fan out to attached sinks.
 
 use super::StitchSession;
-use crate::geometry::Pose;
+use crate::geometry::RenderPose;
 use crate::session::types::{FrameLoopContext, SessionError};
 use crate::source::FrameSet;
 
 impl StitchSession {
     /// Resolve the latest world-space camera decision for the next submitted frame.
     ///
-    /// Manual source loops call this after detection and director updates, before an explicit render-at-pose method. `frame_seconds` is the output frame duration, independent of processing time. The batch loop calls this automatically after lookahead smoothing, for every frame residency.
-    pub fn advance_presented_pose(&mut self, frame_seconds: f32) -> Result<Pose, SessionError> {
+    /// Manual source loops call this after detection and panner updates, before an explicit render-at-pose method. `frame_seconds` is the output frame duration, independent of processing time. The batch loop calls this automatically after lookahead smoothing, for every frame residency.
+    pub fn advance_render_pose(&mut self, frame_seconds: f32) -> Result<RenderPose, SessionError> {
         Ok(self.core.advance_pose(
-            self.core.previous_panner_pose,
+            self.core.requested_world_pose,
             self.frame_count,
             frame_seconds,
         )?)
@@ -51,12 +51,12 @@ impl StitchSession {
             let ran_detection = match frame {
                 #[cfg(target_os = "linux")]
                 FrameSet::GpuResident { slots } => {
-                    if self.core.detector_needs_cuda_frames() {
+                    if self.core.detector_prefers_cuda_nv12() {
                         if self.frame_count == 0 {
                             log::info!("GpuResident detection: CUDA path (TensorRT/ORT-CUDA)");
                         }
                         if let Some((left_buf, right_buf)) = &ctx.gpu_buf_info {
-                            self.detect_and_update_director_gpu(
+                            self.detect_and_update_world_pose_cuda_nv12(
                                 left_buf, right_buf, slots[0], slots[1], elapsed,
                             )?;
                             due
@@ -64,10 +64,10 @@ impl StitchSession {
                             if self.frame_count == 0 {
                                 log::warn!(
                                     "GpuResident frame but no gpu_buf_info - detection disabled, \
-                                 director advancing without detections"
+                                 panner advancing without detections"
                                 );
                             }
-                            self.update_director(elapsed)?;
+                            self.update_world_pose(elapsed)?;
                             false
                         }
                     } else if let Some(views) = self.shared_views() {
@@ -80,7 +80,7 @@ impl StitchSession {
                         let rs = slots[1] as usize;
                         if due {
                             crate::profile_scope!("detect_wgpu_nv12");
-                            let (w, h) = self.core.source_info();
+                            let (w, h) = self.core.source_dims();
                             let frames = super::detection_dispatch::wgpu_nv12_frames(
                                 &views[ls * 2],
                                 &views[ls * 2 + 1],
@@ -93,7 +93,7 @@ impl StitchSession {
                             );
                             self.core.run_detection_frames(&frames);
                         }
-                        self.fire_sink_and_update_director(elapsed, due)?;
+                        self.update_world_pose(elapsed)?;
                         due
                     } else {
                         if self.frame_count == 0 {
@@ -101,7 +101,7 @@ impl StitchSession {
                                 "GpuResident frame but no shared views - detection disabled"
                             );
                         }
-                        self.update_director(elapsed)?;
+                        self.update_world_pose(elapsed)?;
                         false
                     }
                 }
@@ -116,12 +116,12 @@ impl StitchSession {
                             self.core.run_detection_frames(&frames);
                         }
                     }
-                    self.fire_sink_and_update_director(elapsed, due)?;
+                    self.update_world_pose(elapsed)?;
                     due
                 }
                 #[cfg(any(target_os = "macos", target_os = "ios"))]
                 FrameSet::MetalResident([left, right]) => {
-                    self.detect_and_update_director_metal(
+                    self.detect_and_update_world_pose_metal(
                         left.as_ptr(),
                         right.as_ptr(),
                         left.width(),
@@ -137,7 +137,7 @@ impl StitchSession {
                     if let Some(views) = self.gpu_exec_ref().d3d11_views(left_slot, right_slot) {
                         if due {
                             crate::profile_scope!("detect_wgpu_nv12");
-                            let (w, h) = self.core.source_info();
+                            let (w, h) = self.core.source_dims();
                             let frames = super::detection_dispatch::wgpu_nv12_frames(
                                 &views[0],
                                 &views[1],
@@ -150,15 +150,15 @@ impl StitchSession {
                             );
                             self.core.run_detection_frames(&frames);
                         }
-                        self.fire_sink_and_update_director(elapsed, due)?;
+                        self.update_world_pose(elapsed)?;
                         due
                     } else {
-                        self.update_director(elapsed)?;
+                        self.update_world_pose(elapsed)?;
                         false
                     }
                 }
                 _ => {
-                    self.detect_and_update_director(frame, elapsed)?;
+                    self.detect_and_update_world_pose(frame, elapsed)?;
                     due
                 }
             };
@@ -166,8 +166,8 @@ impl StitchSession {
             (ran_detection, detect_time)
         };
 
-        // ── 2. Pose ────────────────────────────────────────────────
-        let pos = self.advance_presented_pose(ctx.frame_seconds)?;
+        // Resolve the presented render-space pose.
+        let pos = self.advance_render_pose(ctx.frame_seconds)?;
 
         // ── 3. Render + replay ─────────────────────────────────────
         #[allow(unused_mut)]
@@ -218,7 +218,7 @@ impl StitchSession {
                 }
             }
             _ => {
-                self.process_frame(frame, pos)?;
+                self.render_frame(frame, pos)?;
             }
         }
         let render_time = render_t0.elapsed();
@@ -246,16 +246,14 @@ impl StitchSession {
         Ok(())
     }
 
-    /// Render a single CPU-resident frame set and deliver it to the sinks.
+    /// Render a frame set at the supplied pose, deliver output to sinks and record replay when enabled.
     ///
-    /// Handles YUV420P and NV12 input formats. For GPU-resident frames
-    /// (zero-copy path), use [`submit_render_output`](Self::submit_render_output)
-    /// instead.
+    /// Handles CPU YUV420P/NV12 and, on Apple platforms, Metal-resident input. Other GPU inputs use the residency-specific render methods. Does not run detection, update trackers or resolve coverage.
     #[cfg_attr(
         feature = "profiling",
-        tracing::instrument(skip_all, name = "session_process_frame")
+        tracing::instrument(skip_all, name = "session_render_frame")
     )]
-    pub fn process_frame(&mut self, frame: &FrameSet, pose: Pose) -> Result<(), SessionError> {
+    pub fn render_frame(&mut self, frame: &FrameSet, pose: RenderPose) -> Result<(), SessionError> {
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         if let FrameSet::MetalResident([left, right]) = frame {
             return self.process_metal_frame(left, right, pose);
@@ -278,14 +276,14 @@ impl StitchSession {
     ///
     /// Copies the RGBA textures into the stitch pipeline's input planes,
     /// renders the stitch, converts to NV12, and delivers to the sinks.
-    /// This is the Bayer/GPU-RGBA equivalent of `process_frame` for
+    /// This is the Bayer/GPU-RGBA equivalent of `render_frame` for
     /// YUV/NV12 paths - session features (sink fan-out, replay recording,
     /// frame counting) work automatically.
-    pub fn process_frame_gpu_rgba(
+    pub fn render_frame_gpu_rgba(
         &mut self,
         left_rgba: &wgpu::Texture,
         right_rgba: &wgpu::Texture,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<(), SessionError> {
         let render_buf = self
             .core
@@ -301,13 +299,13 @@ impl StitchSession {
     /// renders the stitch, converts to NV12, and delivers to the sinks.
     /// Uses the imported textures directly for replay packing (not the
     /// renderer's internal planes, which aren't written by this path).
-    pub fn process_frame_imported_nv12(
+    pub fn render_frame_imported_nv12(
         &mut self,
         left_y: &wgpu::Texture,
         left_uv: &wgpu::Texture,
         right_y: &wgpu::Texture,
         right_uv: &wgpu::Texture,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<(), SessionError> {
         let render_buf = self
             .core
@@ -333,7 +331,7 @@ impl StitchSession {
         &mut self,
         left: &crate::interop::metal::RetainedCVPixelBuffer,
         right: &crate::interop::metal::RetainedCVPixelBuffer,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<(), SessionError> {
         // SAFETY: RetainedCVPixelBuffer guarantees the pointers are valid.
         let [ly, lu, ry, ru] =
@@ -341,7 +339,7 @@ impl StitchSession {
                 .map_err(SessionError::ZeroCopy)?;
         // The imported planes must outlive the render + readback below
         // (each keeps its CVMetalTextureRef alive).
-        self.process_frame_imported_nv12(&ly.texture, &lu.texture, &ry.texture, &ru.texture, pose)
+        self.render_frame_imported_nv12(&ly.texture, &lu.texture, &ry.texture, &ru.texture, pose)
     }
 
     /// Render a GpuResident frame: shared CUDA/Vulkan textures.
@@ -354,7 +352,7 @@ impl StitchSession {
         &mut self,
         left_slot: u8,
         right_slot: u8,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<(), SessionError> {
         // VRAM pool path: render from the staged pool slot.
         // Decode slots were already freed during produce.
@@ -411,7 +409,7 @@ impl StitchSession {
     /// (immediate / non-lookahead path).
     ///
     /// Imports both cameras' DMA-bufs into Vulkan textures (cached by fd)
-    /// and renders via [`process_frame_imported_nv12`](Self::process_frame_imported_nv12).
+    /// and renders via [`render_frame_imported_nv12`](Self::render_frame_imported_nv12).
     /// The buffered (lookahead) path uses the VRAM pool instead; this is the
     /// fallback when no pool exists (`lookahead == 0`).
     #[cfg(target_os = "linux")]
@@ -419,13 +417,13 @@ impl StitchSession {
         &mut self,
         left: &crate::source::NvmmPlaneInfo,
         right: &crate::source::NvmmPlaneInfo,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<(), SessionError> {
         let [ly, lu, ry, ru] = self
             .gpu_exec()
             .import_nvmm(left, right)
             .map_err(SessionError::ZeroCopy)?;
-        self.process_frame_imported_nv12(&ly, &lu, &ry, &ru, pose)
+        self.render_frame_imported_nv12(&ly, &lu, &ry, &ru, pose)
     }
 
     /// Stage D3D11VA decoded frames into the executor's staging pool
@@ -441,7 +439,8 @@ impl StitchSession {
         right_texture: *mut std::ffi::c_void,
         right_slice: usize,
     ) -> Result<bool, SessionError> {
-        let needs_cuda = self.core.detector_needs_cuda_frames();
+        // D3D11 detection consumes wgpu views, not CUDA imports.
+        let needs_cuda = false;
         let lookahead_frames = self.lookahead_frames;
         let pixel_format = self.gpu_pixel_format;
         let first_frame = self
@@ -469,7 +468,7 @@ impl StitchSession {
         &mut self,
         left_slot: usize,
         right_slot: usize,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<(), SessionError> {
         let render_buf = self
             .gpu_exec()
@@ -480,7 +479,7 @@ impl StitchSession {
 
     /// Render from already-staged D3D11VA views (immediate path).
     #[cfg(target_os = "windows")]
-    fn render_d3d11_staged(&mut self, pose: Pose) -> Result<(), SessionError> {
+    fn render_d3d11_staged(&mut self, pose: RenderPose) -> Result<(), SessionError> {
         let left_pool_slot = self.frame_count as usize % 2;
         let right_pool_slot = left_pool_slot + 2;
         self.render_d3d11_from_slot(left_pool_slot, right_pool_slot, pose)?;
@@ -650,7 +649,7 @@ impl StitchSession {
         produce_index: u64,
     ) -> Result<Option<usize>, SessionError> {
         if let FrameSet::D3d11Resident([left, right]) = frame {
-            let needs_cuda = self.core.detector_needs_cuda_frames();
+            let needs_cuda = false;
             let lookahead_frames = self.lookahead_frames;
             let pixel_format = self.gpu_pixel_format;
             self.gpu_exec()

@@ -1,6 +1,6 @@
 //! Detection entry points for [`StitchSession`].
 //!
-//! Each `detect_and_update_director_*` variant wraps its residency's
+//! Each `detect_and_update_world_pose_*` variant wraps its residency's
 //! handles into per-camera [`DetectorFrame`]s and hands them to the
 //! engine ([`StitchCore::run_detection_frames`]), which owns the
 //! detector, the schedule, panorama mapping, and the tracker/panner
@@ -23,15 +23,15 @@ fn cpu_frames<'a>(
     width: u32,
     height: u32,
 ) -> Option<[(CameraIndex, DetectorFrame<'a>); 2]> {
-    use crate::detect::detector::{ChromaFormat, RawFrame};
+    use crate::detect::detector::{ChromaPlanes, YuvView};
     match frame {
         FrameSet::Yuv420p(cams) => match cams.as_slice() {
             [left, right] => Some([
                 (
                     0,
-                    DetectorFrame::Cpu(RawFrame {
+                    DetectorFrame::Yuv(YuvView {
                         y: &left.y,
-                        chroma: ChromaFormat::Yuv420p {
+                        chroma: ChromaPlanes::Yuv420p {
                             u: &left.u,
                             v: &left.v,
                         },
@@ -41,9 +41,9 @@ fn cpu_frames<'a>(
                 ),
                 (
                     1,
-                    DetectorFrame::Cpu(RawFrame {
+                    DetectorFrame::Yuv(YuvView {
                         y: &right.y,
-                        chroma: ChromaFormat::Yuv420p {
+                        chroma: ChromaPlanes::Yuv420p {
                             u: &right.u,
                             v: &right.v,
                         },
@@ -58,18 +58,18 @@ fn cpu_frames<'a>(
             [left, right] => Some([
                 (
                     0,
-                    DetectorFrame::Cpu(RawFrame {
+                    DetectorFrame::Yuv(YuvView {
                         y: &left.y,
-                        chroma: ChromaFormat::Nv12 { uv: &left.uv },
+                        chroma: ChromaPlanes::Nv12 { uv: &left.uv },
                         width,
                         height,
                     }),
                 ),
                 (
                     1,
-                    DetectorFrame::Cpu(RawFrame {
+                    DetectorFrame::Yuv(YuvView {
                         y: &right.y,
-                        chroma: ChromaFormat::Nv12 { uv: &right.uv },
+                        chroma: ChromaPlanes::Nv12 { uv: &right.uv },
                         width,
                         height,
                     }),
@@ -91,14 +91,14 @@ pub(super) fn cuda_nv12_frames(
     left_rotation: i32,
     right_rotation: i32,
 ) -> [(CameraIndex, DetectorFrame<'static>); 2] {
-    use crate::detect::detector::GpuNv12Frame;
+    use crate::detect::detector::CudaNv12Frame;
     let ls = left_slot as usize;
     let rs = right_slot as usize;
     let is_10bit = left_buf.pixel_format == crate::render::renderer::GpuPixelFormat::P010;
     [
         (
             0,
-            DetectorFrame::Cuda(GpuNv12Frame {
+            DetectorFrame::CudaNv12(CudaNv12Frame {
                 y_ptr: left_buf.y_ptr[ls],
                 uv_ptr: left_buf.uv_ptr[ls],
                 y_pitch: left_buf.y_pitch[ls],
@@ -111,7 +111,7 @@ pub(super) fn cuda_nv12_frames(
         ),
         (
             1,
-            DetectorFrame::Cuda(GpuNv12Frame {
+            DetectorFrame::CudaNv12(CudaNv12Frame {
                 y_ptr: right_buf.y_ptr[rs],
                 uv_ptr: right_buf.uv_ptr[rs],
                 y_pitch: right_buf.y_pitch[rs],
@@ -196,10 +196,10 @@ impl StitchSession {
     /// the closure feed the engine's detector, then drive the
     /// tracker/panner chain.
     ///
-    /// Every `detect_and_update_director_*` variant is a one-liner
+    /// Every `detect_and_update_world_pose_*` variant is a one-liner
     /// wrapper that passes a closure here. Adding a new detection
     /// backend means writing one closure, not copying 15 lines.
-    fn detect_and_update_director_with(
+    fn detect_and_update_world_pose_with(
         &mut self,
         elapsed: std::time::Duration,
         detect_fn: impl FnOnce(&mut StitchCore),
@@ -208,7 +208,7 @@ impl StitchSession {
         if due {
             detect_fn(&mut self.core);
         }
-        self.fire_sink_and_update_director(elapsed, due)
+        self.update_world_pose(elapsed)
     }
 
     /// Run detection + trackers only (no panner). For the lookahead
@@ -224,7 +224,7 @@ impl StitchSession {
             match frame {
                 #[cfg(target_os = "linux")]
                 FrameSet::GpuResident { slots } => {
-                    if self.core.detector_needs_cuda_frames() {
+                    if self.core.detector_prefers_cuda_nv12() {
                         let bufs = self.core.executor.gpu().and_then(|g| g.cuda_buf_info());
                         if let Some((left_buf, right_buf)) = bufs {
                             crate::profile_scope!("gpu_detect_total");
@@ -242,7 +242,7 @@ impl StitchSession {
                         crate::profile_scope!("detect_wgpu_nv12");
                         let ls = slots[0] as usize;
                         let rs = slots[1] as usize;
-                        let (w, h) = self.core.source_info();
+                        let (w, h) = self.core.source_dims();
                         let frames = wgpu_nv12_frames(
                             &views[ls * 2],
                             &views[ls * 2 + 1],
@@ -264,7 +264,7 @@ impl StitchSession {
                         .and_then(|(ls, rs)| self.gpu_exec_ref().d3d11_views(ls, rs));
                     if let Some(views) = views {
                         crate::profile_scope!("detect_wgpu_nv12");
-                        let (w, h) = self.core.source_info();
+                        let (w, h) = self.core.source_dims();
                         let frames = wgpu_nv12_frames(
                             &views[0],
                             &views[1],
@@ -292,7 +292,7 @@ impl StitchSession {
                     }
                 }
                 _ => {
-                    let (w, h) = self.core.source_info();
+                    let (w, h) = self.core.source_dims();
                     if let Some(frames) = cpu_frames(frame, w, h) {
                         self.core.run_detection_frames(&frames);
                     }
@@ -302,7 +302,7 @@ impl StitchSession {
 
         Ok(self
             .core
-            .track_only(produce_index, elapsed.as_secs_f64() * 1000.0))
+            .update_trackers(produce_index, elapsed.as_secs_f64() * 1000.0))
     }
 
     /// Allocate the NVMM detection surfaces for the Jetson zero-copy path.
@@ -313,7 +313,7 @@ impl StitchSession {
     /// path). `model_size` is the detector's square input dimension (e.g.
     /// 1280); `src_width`/`src_height` are the capture resolution, used to
     /// compute the letterbox geometry. Without this the NVMM detection arm
-    /// no-ops (the director still advances, just without detections).
+    /// no-ops (the panner still advances, just without detections).
     #[cfg(target_os = "linux")]
     pub fn setup_nvmm_detection(
         &mut self,
@@ -327,13 +327,13 @@ impl StitchSession {
     }
 
     /// Run detection on a CPU-resident frame set (YUV420P / NV12).
-    pub fn detect_and_update_director(
+    pub fn detect_and_update_world_pose(
         &mut self,
         frame: &FrameSet,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
-        let (w, h) = self.core.source_info();
-        self.detect_and_update_director_with(elapsed, |core| {
+        let (w, h) = self.core.source_dims();
+        self.detect_and_update_world_pose_with(elapsed, |core| {
             if let Some(frames) = cpu_frames(frame, w, h) {
                 core.run_detection_frames(&frames);
             }
@@ -341,12 +341,12 @@ impl StitchSession {
     }
 
     /// Whether detection should run on the current frame.
-    pub fn detection_should_run(&self) -> bool {
+    pub fn detection_due(&self) -> bool {
         self.core.detection_due(self.frame_count)
     }
 
     /// Run detection on CPU-resident RGBA frames.
-    pub fn detect_and_update_director_rgba(
+    pub fn detect_and_update_world_pose_rgba(
         &mut self,
         left_rgba: &[u8],
         right_rgba: &[u8],
@@ -354,7 +354,7 @@ impl StitchSession {
         height: u32,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
-        self.detect_and_update_director_with(elapsed, |core| {
+        self.detect_and_update_world_pose_with(elapsed, |core| {
             core.run_detection_frames(&[
                 (
                     0,
@@ -379,7 +379,7 @@ impl StitchSession {
     /// Run detection on CUDA-resident RGBA frames (Bayer zero-copy).
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     #[allow(clippy::too_many_arguments)]
-    pub fn detect_and_update_director_cuda_rgba(
+    pub fn detect_and_update_world_pose_cuda_rgba(
         &mut self,
         left_ptr: crate::interop::cuda::CUdeviceptr,
         left_pitch: usize,
@@ -389,7 +389,7 @@ impl StitchSession {
         height: u32,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
-        self.detect_and_update_director_with(elapsed, |core| {
+        self.detect_and_update_world_pose_with(elapsed, |core| {
             core.run_detection_frames(&[
                 (
                     0,
@@ -415,7 +415,7 @@ impl StitchSession {
 
     /// Detect on pre-letterboxed CUDA RGBA (NvBufSurfTransform output).
     #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub fn detect_and_update_director_preletterboxed(
+    pub fn detect_and_update_world_pose_cuda_rgba_letterboxed(
         &mut self,
         left_ptr: crate::interop::cuda::CUdeviceptr,
         right_ptr: crate::interop::cuda::CUdeviceptr,
@@ -423,7 +423,7 @@ impl StitchSession {
         src_height: u32,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
-        self.detect_and_update_director_with(elapsed, |core| {
+        self.detect_and_update_world_pose_with(elapsed, |core| {
             crate::profile_scope!("detect_preletterboxed_total");
             core.run_detection_frames(&[
                 (
@@ -446,18 +446,9 @@ impl StitchSession {
         })
     }
 
-    /// Update the director without detection.
-    ///
-    /// Advances the panner/tracker state without running object
-    /// detection. Used when the frame residency has no detection
-    /// backend (e.g. D3D11VA without CUDA).
-    pub fn update_director(&mut self, elapsed: std::time::Duration) -> Result<(), SessionError> {
-        self.fire_sink_and_update_director(elapsed, false)
-    }
-
     /// Run GPU-resident detection from CUDA NV12 shared textures.
     #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub(crate) fn detect_and_update_director_gpu(
+    pub(crate) fn detect_and_update_world_pose_cuda_nv12(
         &mut self,
         left_buf: &crate::interop::zero_copy::GpuBufInfo,
         right_buf: &crate::interop::zero_copy::GpuBufInfo,
@@ -467,7 +458,7 @@ impl StitchSession {
     ) -> Result<(), SessionError> {
         let lr = self.left_rotation;
         let rr = self.right_rotation;
-        self.detect_and_update_director_with(elapsed, |core| {
+        self.detect_and_update_world_pose_with(elapsed, |core| {
             crate::profile_scope!("gpu_detect_total");
             let frames = cuda_nv12_frames(left_buf, right_buf, left_slot, right_slot, lr, rr);
             core.run_detection_frames(&frames);
@@ -476,7 +467,7 @@ impl StitchSession {
 
     /// Run Metal-resident detection from CVPixelBuffers.
     #[cfg(any(target_os = "macos", target_os = "ios"))]
-    pub(crate) fn detect_and_update_director_metal(
+    pub(crate) fn detect_and_update_world_pose_metal(
         &mut self,
         left_cvpb: crate::interop::metal::CVPixelBufferRef,
         right_cvpb: crate::interop::metal::CVPixelBufferRef,
@@ -484,23 +475,16 @@ impl StitchSession {
         height: u32,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
-        self.detect_and_update_director_with(elapsed, |core| {
+        self.detect_and_update_world_pose_with(elapsed, |core| {
             let frames = metal_frames(left_cvpb, right_cvpb, width, height);
             core.run_detection_frames(&frames);
         })
     }
 
-    /// Drive the tracker/panner chain after detection.
+    /// Update the requested world pose from cached detections and record tracking telemetry.
     ///
-    /// Shared tail for all detection paths (CPU, GPU, Metal,
-    /// no-detection). Delegates to the engine's dispatch - one AI
-    /// stack, which emits the trace events through the engine's sink -
-    /// and records the outcome into the session's telemetry.
-    pub(crate) fn fire_sink_and_update_director(
-        &mut self,
-        elapsed: std::time::Duration,
-        _fresh_detection: bool,
-    ) -> Result<(), SessionError> {
+    /// With a panner attached, runs trackers and asks it for a pose. Without one, neither tracking nor the stored request advances. Does not run inference, resolve coverage or render a frame.
+    pub fn update_world_pose(&mut self, elapsed: std::time::Duration) -> Result<(), SessionError> {
         let stats = self.core.dispatch_pose(
             self.frame_count,
             elapsed.as_secs_f64() * 1000.0,

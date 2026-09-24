@@ -10,17 +10,19 @@ fn replay_motion_schedule() {
         &std::fs::read(std::env::var_os("RECO_COVERAGE_CALIBRATION").unwrap()).unwrap(),
     )
     .unwrap();
-    let requests: Vec<Pose> = if let Some(path) = std::env::var_os("RECO_COVERAGE_TRAJECTORY") {
+    let requests: Vec<RenderPose> = if let Some(path) = std::env::var_os("RECO_COVERAGE_TRAJECTORY")
+    {
         serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
     } else {
-        let camera = cal.topology.projection().virtual_camera(&cal.framing);
+        let camera = cal.projection.geometry().virtual_camera(&cal.framing);
         std::fs::read_to_string(std::env::var_os("RECO_COVERAGE_EVENTS").unwrap())
             .unwrap()
             .lines()
             .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
             .filter(|event| event["kind"] == "pan_decision")
             .map(|event| {
-                let pose: Pose = serde_json::from_value(event["pose"].clone()).unwrap();
+                let pose: crate::geometry::WorldPose =
+                    serde_json::from_value(event["pose"].clone()).unwrap();
                 aim(
                     &cal,
                     &camera.yaw_pitch_to_direction(pose.yaw, pose.pitch),

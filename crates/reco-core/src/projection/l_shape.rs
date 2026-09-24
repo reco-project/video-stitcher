@@ -1,7 +1,7 @@
 //! The L-shape projection: two fisheye cameras on perpendicular planes.
 //!
 //! This module owns everything L-shape: the calibration parameters
-//! (serialized inside the document's `topology` object), their
+//! (serialized inside the document's `projection` object), their
 //! validation, plane scene derivation, detection mapping, and CPU
 //! surface maps ([`PlaneMap`]).
 
@@ -12,10 +12,11 @@ use crate::calibration::{
     CalibrationError, Framing, Lens, expect_finite, expect_in_range, expect_positive,
 };
 use crate::geometry::{
-    CameraIndex, FAR_PLANE, NEAR_PLANE, Pose, VirtualCamera, opengl_to_wgpu_matrix, view_matrix,
+    CameraIndex, FAR_PLANE, NEAR_PLANE, RenderPose, VirtualCamera, opengl_to_wgpu_matrix,
+    view_matrix,
 };
 use crate::lens::kb4;
-use crate::projection::{Projection, ProjectionContext, SourceMapError};
+use crate::projection::{ProjectionContext, ProjectionGeometry, SourceMapError};
 use crate::render::viewport::ViewportSize;
 use crate::stitch::{BlendRule, SurfaceMap, SurfaceUv};
 
@@ -32,8 +33,7 @@ fn default_blend_width() -> f32 {
 /// 3D placement of the two L-shape source planes plus the overlap seam.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LShape {
-    /// Overlap ratio between the two planes (`0.0` none .. `1.0` full).
-    /// Each plane is translated by `(plane_width / 2) × (1 - intersect)`.
+    /// Plane placement parameter in `[0, 1]`. Each plane is translated by `(plane_width / 2) × (1 - intersect)` along its placement axis. This is not a measured fraction of rendered overlap.
     pub intersect: f64,
     /// Y-axis translation of the right plane (vertical misalignment).
     #[serde(default)]
@@ -41,13 +41,13 @@ pub struct LShape {
     /// Z-axis rotation of the right plane, radians (roll).
     #[serde(default)]
     pub x_rz: f64,
-    /// X-axis rotation of the left plane, radians (tilt).
+    /// X-axis post-rotation of the left plane, in radians. Composed after its base Y/Z rotation.
     #[serde(default)]
     pub z_rx: f64,
     /// X-axis rotation of the right plane, radians (pitch).
     #[serde(default)]
     pub x_rx: f64,
-    /// Z-axis rotation of the left plane, radians (pitch).
+    /// Z-axis rotation within the left plane's base Y/Z rotation, in radians.
     #[serde(default)]
     pub z_rz: f64,
     /// Seam blend width as a fraction of the plane overlap. `0.0` = hard seam.
@@ -59,24 +59,24 @@ impl LShape {
     /// Validate the L-shape's own parameters and its requirements on
     /// the framing it renders through.
     pub(crate) fn validate(&self, framing: &Framing) -> Result<(), CalibrationError> {
-        expect_finite("topology.intersect", self.intersect)?;
-        expect_in_range("topology.intersect", self.intersect, 0.0, 1.0)?;
+        expect_finite("projection.intersect", self.intersect)?;
+        expect_in_range("projection.intersect", self.intersect, 0.0, 1.0)?;
 
         for (name, val) in [
-            ("topology.x_ty", self.x_ty),
-            ("topology.x_rz", self.x_rz),
-            ("topology.x_rx", self.x_rx),
-            ("topology.z_rx", self.z_rx),
-            ("topology.z_rz", self.z_rz),
+            ("projection.x_ty", self.x_ty),
+            ("projection.x_rz", self.x_rz),
+            ("projection.x_rx", self.x_rx),
+            ("projection.z_rx", self.z_rx),
+            ("projection.z_rz", self.z_rz),
         ] {
             expect_finite(name, val)?;
         }
 
-        expect_finite("topology.blend_width", f64::from(self.blend_width))?;
+        expect_finite("projection.blend_width", f64::from(self.blend_width))?;
         // The seam smoothstep needs ordered edges; outside [0, 1] the blend
         // is meaningless (the old ViewportSize::validate enforced this).
         expect_in_range(
-            "topology.blend_width",
+            "projection.blend_width",
             f64::from(self.blend_width),
             0.0,
             1.0,
@@ -100,15 +100,13 @@ impl LShape {
 impl LShape {
     /// Derive the 3D plane placement from these parameters + framing.
     ///
-    /// `aspect` is the source frame `width / height`. Mirrors the v1
-    /// plane positioning:
+    /// `aspect` is the source frame `width / height`. Plane placement:
     /// - Left plane: `position = [0, 0, (w/2)(1 - intersect)]`, `rotation = [z_rx, π/2, z_rz]`
     /// - Right plane: `position = [(w/2)(1 - intersect), x_ty, 0]`, `rotation = [x_rx, 0, x_rz]`
     /// - Virtual camera at `[axis_offset, 0, axis_offset]`.
     ///
     /// Known limitation: both planes are sized with one aspect (the
-    /// callers pass lens 0's). Mixed-aspect rigs are valid
-    /// calibrations; per-plane aspects are the planned generalization.
+    /// callers pass lens 0's), even for mixed-aspect calibrations.
     pub(crate) fn scene(&self, framing: &Framing, aspect: f32) -> PlaneScene {
         // Unit plane width: each plane is a 1.0-wide quad, so the
         // intersect offset is half of what the overlap leaves.
@@ -468,17 +466,17 @@ impl SurfaceMap for PlaneMap {
 /// the GPU stitch pass, so the CPU and GPU sample the identical source UV for
 /// every output pixel (up to f32/f64 precision).
 fn l_shape_plane_maps(
-    topology: &LShape,
+    projection: &LShape,
     lenses: &[Lens],
     framing: &Framing,
     viewport_size: &ViewportSize,
-    pose: Pose,
+    pose: RenderPose,
 ) -> (PlaneMap, PlaneMap) {
     // Known limitation: both planes are sized with lens 0's aspect.
     // Mixed-aspect rigs are valid calibrations; per-plane aspects are
     // the planned generalization.
-    let plane_aspect = lenses[0].aspect();
-    let scene = topology.scene(framing, plane_aspect);
+    let plane_aspect = lenses[0].aspect_ratio();
+    let scene = projection.scene(framing, plane_aspect);
 
     let out_aspect = viewport_size.aspect_ratio();
     let projection = opengl_to_wgpu_matrix()
@@ -516,7 +514,7 @@ fn l_shape_plane_maps(
     (left, right)
 }
 
-impl Projection for LShape {
+impl ProjectionGeometry for LShape {
     fn name(&self) -> &'static str {
         "l-shape-stereo-2camera"
     }
@@ -538,7 +536,7 @@ impl Projection for LShape {
         framing: &Framing,
     ) -> Result<crate::geometry::YawPitch, SourceMapError> {
         let first = lenses.first().ok_or(SourceMapError::InvalidCamera)?;
-        let scene = self.scene(framing, first.aspect());
+        let scene = self.scene(framing, first.aspect_ratio());
         let lens = lenses.get(camera).ok_or(SourceMapError::InvalidCamera)?;
         let plane_uv = inverse_fisheye(f64::from(point[0]), f64::from(point[1]), lens)
             .ok_or(SourceMapError::NoDirection)?;
@@ -621,7 +619,7 @@ mod tests {
 
     #[test]
     fn geometry_with_corrections() {
-        let topology = LShape {
+        let projection = LShape {
             intersect: 0.55,
             x_ty: 0.005,
             x_rz: 0.008,
@@ -631,7 +629,7 @@ mod tests {
             blend_width: 0.05,
         };
 
-        let geom = topology.scene(&framing(0.24), 16.0 / 9.0);
+        let geom = projection.scene(&framing(0.24), 16.0 / 9.0);
 
         // Right plane should have the x_ty correction
         assert!((geom.right_position[1] - 0.005).abs() < 1e-5);
@@ -748,9 +746,14 @@ mod tests {
     fn covered_pixels_return_uv_in_range() {
         let cfg = ViewportSize::default();
         let cal = crate::stitch::test_support::calib(1920, 1080);
-        let topology = cal.topology.l_shape().unwrap();
-        let (left, right) =
-            l_shape_plane_maps(topology, &cal.lenses, &cal.framing, &cfg, Pose::default());
+        let projection = cal.projection.l_shape().unwrap();
+        let (left, right) = l_shape_plane_maps(
+            projection,
+            &cal.lenses,
+            &cal.framing,
+            &cfg,
+            RenderPose::default(),
+        );
         // Across the output, every covered pixel must report a UV inside [0,1],
         // and at least one plane must cover a healthy fraction of the frame.
         let mut covered = 0usize;

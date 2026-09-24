@@ -13,7 +13,7 @@
 //! 2. **Rendering path for GPU-less targets** (edge SoCs, cloud CPU workers)
 //!    where wgpu is unavailable or uneconomical.
 //!
-//! ## Projection seam
+//! ## Projection geometry
 //!
 //! `SurfaceMap` is the only projection-specific piece: it maps an output
 //! pixel to a source-camera UV. The two-plane L-shape provides one
@@ -267,7 +267,7 @@ mod tests {
     use super::test_support::{calib, nv12};
     #[cfg(feature = "gpu")]
     use crate::calibration::Calibration;
-    use crate::geometry::Pose;
+    use crate::geometry::RenderPose;
     use crate::render::planes::Nv12Planes;
     use crate::render::viewport::ViewportSize;
 
@@ -284,8 +284,15 @@ mod tests {
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
 
-        let out =
-            stitch_rgba(&[left, right], (w, h), &calib, &cfg, Pose::default(), false).unwrap();
+        let out = stitch_rgba(
+            &[left, right],
+            (w, h),
+            &calib,
+            &cfg,
+            RenderPose::default(),
+            false,
+        )
+        .unwrap();
         assert_eq!(out.len(), (w * h * 4) as usize);
         // Alpha channel is fully opaque.
         assert!(out.iter().skip(3).step_by(4).all(|&a| a == 255));
@@ -304,8 +311,24 @@ mod tests {
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
 
-        let a = stitch_rgba(&[left, right], (w, h), &calib, &cfg, Pose::default(), false).unwrap();
-        let b = stitch_rgba(&[left, right], (w, h), &calib, &cfg, Pose::default(), false).unwrap();
+        let a = stitch_rgba(
+            &[left, right],
+            (w, h),
+            &calib,
+            &cfg,
+            RenderPose::default(),
+            false,
+        )
+        .unwrap();
+        let b = stitch_rgba(
+            &[left, right],
+            (w, h),
+            &calib,
+            &cfg,
+            RenderPose::default(),
+            false,
+        )
+        .unwrap();
         assert_eq!(a, b, "stitch must be deterministic");
 
         // Some pixels are covered (non-black) - the planes are in view.
@@ -343,7 +366,7 @@ mod tests {
         let (ry, ruv) = nv12(cam_w, cam_h, 30);
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
-        let pose = Pose {
+        let pose = RenderPose {
             yaw: 0.10,
             pitch: -0.05,
             ..Default::default()
@@ -354,8 +377,8 @@ mod tests {
         let pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
             gpu,
             &calib
-                .topology
-                .projection()
+                .projection
+                .geometry()
                 .gpu_program()
                 .expect("L-shape supplies a GPU program"),
             calib.clone(),
@@ -419,7 +442,7 @@ mod tests {
     #[test]
     #[cfg(feature = "gpu")]
     fn cpu_yuv420p_matches_gpu_within_tolerance() {
-        use crate::render::planes::YuvPlanes;
+        use crate::render::planes::Yuv420pPlanes;
         use crate::render::renderer::InputFormat;
 
         let Some(gpu) = gpu_or_skip() else {
@@ -435,17 +458,17 @@ mod tests {
         };
         let (ly, lu, lv) = yuv420(cam_w, cam_h, 0);
         let (ry, ru, rv) = yuv420(cam_w, cam_h, 30);
-        let left = YuvPlanes {
+        let left = Yuv420pPlanes {
             y: &ly,
             u: &lu,
             v: &lv,
         };
-        let right = YuvPlanes {
+        let right = Yuv420pPlanes {
             y: &ry,
             u: &ru,
             v: &rv,
         };
-        let pose = Pose {
+        let pose = RenderPose {
             yaw: 0.10,
             pitch: -0.05,
             ..Default::default()
@@ -454,8 +477,8 @@ mod tests {
         let pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
             gpu,
             &calib
-                .topology
-                .projection()
+                .projection
+                .geometry()
                 .gpu_program()
                 .expect("L-shape supplies a GPU program"),
             calib.clone(),
@@ -552,7 +575,7 @@ mod tests {
         cam: (u32, u32),
         left: &Nv12Planes,
         right: &Nv12Planes,
-        pose: Pose,
+        pose: RenderPose,
         full_range: bool,
     ) -> Option<(Vec<u8>, Vec<u8>)> {
         use crate::render::renderer::InputFormat;
@@ -561,8 +584,8 @@ mod tests {
         let mut pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
             gpu,
             &calib
-                .topology
-                .projection()
+                .projection
+                .geometry()
                 .gpu_program()
                 .expect("L-shape supplies a GPU program"),
             calib.clone(),
@@ -619,7 +642,7 @@ mod tests {
             width: w,
             height: h,
         };
-        let pose = |yaw: f32, pitch: f32, fov: f32| Pose {
+        let pose = |yaw: f32, pitch: f32, fov: f32| RenderPose {
             yaw,
             pitch,
             fov_degrees: fov,
@@ -652,7 +675,7 @@ mod tests {
         let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
-        let cases: [(&str, Calibration, ViewportSize, Pose, bool); 8] = [
+        let cases: [(&str, Calibration, ViewportSize, RenderPose, bool); 8] = [
             (
                 "wide-pan",
                 base.clone(),
@@ -755,7 +778,7 @@ mod tests {
                     width: 192,
                     height: 108,
                 },
-                Pose {
+                RenderPose {
                     fov_degrees: fov,
                     ..Default::default()
                 },
@@ -763,7 +786,7 @@ mod tests {
         };
         // Each case puts a plane within NEAR_PLANE of the virtual camera before
         // the fix: axis offset below ~0.012, or FOV near the projection limit.
-        let cases: [(&str, Calibration, (ViewportSize, Pose)); 3] = [
+        let cases: [(&str, Calibration, (ViewportSize, RenderPose)); 3] = [
             ("axis-offset 0.005", axis(0.005), cfg(75.0)),
             ("axis-offset 0.012", axis(0.012), cfg(75.0)),
             ("fov 178", calib(cam_w, cam_h), cfg(178.0)),
@@ -811,7 +834,7 @@ mod tests {
             (cam_w, cam_h),
             &left,
             &right,
-            Pose {
+            RenderPose {
                 yaw: 0.05,
                 pitch: -0.03,
                 ..Default::default()
@@ -838,7 +861,7 @@ mod tests {
             width: 192,
             height: 108,
         };
-        let pose = Pose {
+        let pose = RenderPose {
             fov_degrees: 140.0,
             ..Default::default()
         };
@@ -897,7 +920,7 @@ mod tests {
         let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
-        let pose = Pose {
+        let pose = RenderPose {
             yaw: 0.10,
             pitch: -0.05,
             ..Default::default()
@@ -924,7 +947,7 @@ mod tests {
             (cam_w, cam_h),
             &cal,
             &viewport_size,
-            Pose {
+            RenderPose {
                 yaw: pose.yaw + 0.01,
                 ..pose
             },

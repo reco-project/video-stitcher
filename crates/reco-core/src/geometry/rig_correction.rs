@@ -56,7 +56,7 @@ pub(crate) fn rig_frame(
 /// Exact for any tilt+roll (the round-trip test against `view_matrix`
 /// is the guard); the previous quaternion-conjugation inverse was exact
 /// for tilt but drifted up to ~4 deg under combined tilt+roll.
-pub fn world_to_render_pose(
+pub fn world_to_render_angles(
     cam: &VirtualCamera,
     world_yaw: f32,
     world_pitch: f32,
@@ -126,7 +126,7 @@ mod tests {
             let yaw = yaw_i as f32 * 0.1;
             for pitch_i in -4..=4 {
                 let pitch = pitch_i as f32 * 0.05;
-                let (ry, rp) = world_to_render_pose(&cam, yaw, pitch, 0.0, 0.0);
+                let (ry, rp) = world_to_render_angles(&cam, yaw, pitch, 0.0, 0.0);
                 assert!(
                     (ry - yaw).abs() < 1e-6 && (rp - pitch).abs() < 1e-6,
                     "identity failed at ({yaw}, {pitch}): got ({ry}, {rp})"
@@ -163,7 +163,7 @@ mod tests {
                     let wy = yaw_i as f32 * 0.22;
                     for pitch_i in -3..=3i32 {
                         let wp = pitch_i as f32 * 0.11;
-                        let (ry, rp) = world_to_render_pose(&cam, wy, wp, tilt, roll);
+                        let (ry, rp) = world_to_render_angles(&cam, wy, wp, tilt, roll);
                         let view = view_matrix(&cam, ry, rp, tilt, roll);
                         let dir = cam.yaw_pitch_to_direction(wy, wp);
                         let target = nalgebra::Vector4::new(
@@ -194,8 +194,8 @@ mod tests {
         // wrong for roll and off-axis yaw).
         let cam = cam();
         let (tilt, roll) = (0.2618_f32, 0.1222_f32); // ~15deg tilt, ~7deg roll
-        let (ry0, rp0) = world_to_render_pose(&cam, 0.0, 0.0, tilt, roll);
-        let (ry1, rp1) = world_to_render_pose(&cam, 0.6, 0.0, tilt, roll);
+        let (ry0, rp0) = world_to_render_angles(&cam, 0.0, 0.0, tilt, roll);
+        let (ry1, rp1) = world_to_render_angles(&cam, 0.6, 0.0, tilt, roll);
         assert!(
             rp0.abs() > 1e-3,
             "rest render pitch should be nonzero, got {rp0}"
@@ -213,7 +213,7 @@ mod tests {
         // view_matrix then tilts the frame back up by T to level it.
         let cam = cam();
         let tilt = 0.2_f32;
-        let (ry, rp) = world_to_render_pose(&cam, 0.0, 0.0, tilt, 0.0);
+        let (ry, rp) = world_to_render_angles(&cam, 0.0, 0.0, tilt, 0.0);
         assert!(ry.abs() < 1e-5, "yaw should stay 0 at yaw=0, got {ry}");
         assert!(
             (rp + tilt).abs() < 1e-4,

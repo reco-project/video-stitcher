@@ -15,7 +15,7 @@ src/
   projection/  - Coordinate math, coverage boundary, virtual camera
   lens/        - KB4 fisheye model, undistortion, rig correction
   stitch/      - Projection-agnostic CPU/GPU stitch backends + agreement oracle
-  calibration.rs - Calibration (lenses, topology, framing)
+  calibration.rs - Calibration (lenses, projection, framing)
   source.rs      - FrameSource trait, FrameSet enum
   encoder.rs     - Encoder trait
   telemetry.rs   - Per-frame timing collection

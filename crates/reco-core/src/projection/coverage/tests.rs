@@ -75,7 +75,7 @@ fn narrow_cylinder_fit_matches_perspective_limit_and_keeps_orientation() {
     let cal = Calibration::new(
         vec![Lens::flat(3840, 2160)],
         Cylinder {
-            sweep_deg: 30.0,
+            arc_deg: 30.0,
             ..Default::default()
         },
         Framing {
@@ -86,7 +86,7 @@ fn narrow_cylinder_fit_matches_perspective_limit_and_keeps_orientation() {
     );
     for (width, height) in [(65, 37), (37, 65), (400, 20)] {
         let size = ViewportSize { width, height };
-        let request = Pose {
+        let request = RenderPose {
             yaw: 0.0,
             pitch: 0.0,
             fov_degrees: 100.0,
@@ -104,7 +104,7 @@ fn narrow_cylinder_fit_matches_perspective_limit_and_keeps_orientation() {
         let missing = fit_fov(
             &cal,
             &size,
-            Pose {
+            RenderPose {
                 yaw: 2.0,
                 ..request
             },
@@ -125,9 +125,9 @@ fn overflowing_cylinder_bounds_are_not_a_certificate() {
     let cal = Calibration::new(
         vec![Lens::flat(3840, 2160)],
         Cylinder {
-            focal_length: 1e308,
-            video_height: Some(1e308),
-            sweep_deg: 360.0,
+            radius: 1e308,
+            surface_height: Some(1e308),
+            arc_deg: 360.0,
         },
         Framing {
             axis_offset: 0.0,
@@ -137,7 +137,7 @@ fn overflowing_cylinder_bounds_are_not_a_certificate() {
     );
     let maps = cal.surface_maps(
         &size,
-        Pose {
+        RenderPose {
             yaw: 0.0,
             pitch: 0.0,
             fov_degrees: 170.0,
@@ -170,11 +170,11 @@ fn continuous_certificates_never_accept_missing_pixels() {
         }
         cal.framing.tilt = (random() - 0.5) * 0.8;
         cal.framing.roll = (random() - 0.5) * 0.8;
-        let topo = cal.topology.l_shape_mut().unwrap();
+        let topo = cal.projection.l_shape_mut().unwrap();
         topo.x_rx = (random() - 0.5) * 0.2;
         topo.z_rz = (random() - 0.5) * 0.2;
         topo.x_ty = (random() - 0.5) * 0.08;
-        let pose = Pose {
+        let pose = RenderPose {
             yaw: ((random() - 0.5) * 3.0) as f32,
             pitch: ((random() - 0.5) * 0.8) as f32,
             fov_degrees: (10.0 + 60.0 * random()) as f32,
@@ -224,7 +224,7 @@ fn extreme_lenses_and_placements_cannot_invent_support() {
             ];
             lens.correction = [0.0, 0.4, 1.0][i % 3];
         }
-        let topo = cal.topology.l_shape_mut().unwrap();
+        let topo = cal.projection.l_shape_mut().unwrap();
         topo.intersect = random();
         topo.x_rx = (random() - 0.5) * 2.0;
         topo.x_rz = (random() - 0.5) * 2.0;
@@ -232,7 +232,7 @@ fn extreme_lenses_and_placements_cannot_invent_support() {
         topo.z_rz = (random() - 0.5) * 2.0;
         topo.x_ty = (random() - 0.5) * 0.6;
         cal.validate().unwrap();
-        let pose = Pose {
+        let pose = RenderPose {
             yaw: ((random() - 0.5) * 6.0) as f32,
             pitch: ((random() - 0.5) * 2.0) as f32,
             fov_degrees: (1.0 + random() * 150.0) as f32,
@@ -299,11 +299,11 @@ fn interior_holes_and_more_than_two_surfaces_are_not_sampling_special_cases() {
 #[test]
 fn swept_certificates_contain_intermediate_rendered_views() {
     let mut cases = vec![stereo()];
-    for sweep_deg in [30.0, 180.0, 270.0, 360.0] {
+    for arc_deg in [30.0, 180.0, 270.0, 360.0] {
         cases.push(Calibration::new(
             vec![Lens::flat(3840, 2160)],
             Cylinder {
-                sweep_deg,
+                arc_deg,
                 ..Default::default()
             },
             Framing {
@@ -327,12 +327,12 @@ fn swept_certificates_contain_intermediate_rendered_views() {
         for _ in 0..300 {
             cal.framing.tilt = (random() - 0.5) * 0.8;
             cal.framing.roll = (random() - 0.5) * 0.8;
-            let a = Pose {
+            let a = RenderPose {
                 yaw: ((random() - 0.5) * 6.0) as f32,
                 pitch: ((random() - 0.5) * 0.8) as f32,
                 fov_degrees: (5.0 + 45.0 * random()) as f32,
             };
-            let b = Pose {
+            let b = RenderPose {
                 yaw: a.yaw + ((random() - 0.5) * 0.25) as f32,
                 pitch: a.pitch + ((random() - 0.5) * 0.15) as f32,
                 fov_degrees: (a.fov_degrees + ((random() - 0.5) * 12.0) as f32).max(1.0),
@@ -361,7 +361,7 @@ fn four_corners_and_center_do_not_prove_cylinder_support() {
     let cal = Calibration::new(
         vec![Lens::flat(3840, 2160)],
         Cylinder {
-            sweep_deg: 360.0,
+            arc_deg: 360.0,
             ..Default::default()
         },
         Framing {
@@ -376,7 +376,7 @@ fn four_corners_and_center_do_not_prove_cylinder_support() {
     };
     let maps = cal.surface_maps(
         &size,
-        Pose {
+        RenderPose {
             yaw: 0.0,
             pitch: 0.0,
             fov_degrees: 90.0,
@@ -392,11 +392,11 @@ fn four_corners_and_center_do_not_prove_cylinder_support() {
 #[test]
 fn certified_rectangles_match_all_pixel_oracle() {
     let mut cases = vec![stereo()];
-    for sweep_deg in [30.0, 180.0, 270.0, 360.0] {
+    for arc_deg in [30.0, 180.0, 270.0, 360.0] {
         cases.push(Calibration::new(
             vec![Lens::flat(3840, 2160)],
             Cylinder {
-                sweep_deg,
+                arc_deg,
                 ..Default::default()
             },
             Framing {
@@ -416,7 +416,7 @@ fn certified_rectangles_match_all_pixel_oracle() {
                 for yaw in [-2.8, -1.6, -1.0, 0.0, 1.0, 1.6, 2.8] {
                     for pitch in [-0.4, 0.0, 0.4] {
                         for fov_degrees in [10.0, 30.0, 60.0, 100.0] {
-                            let pose = Pose {
+                            let pose = RenderPose {
                                 yaw,
                                 pitch,
                                 fov_degrees,
@@ -428,7 +428,7 @@ fn certified_rectangles_match_all_pixel_oracle() {
                                 result,
                                 missing == 0,
                                 "{} tilt={tilt} roll={roll} {size:?} {pose:?} missing={missing}, work={work}",
-                                cal.topology.projection().name()
+                                cal.projection.geometry().name()
                             );
                             checked += 1;
                         }
@@ -446,7 +446,7 @@ fn coverage_check_work_at_output_resolution() {
     for (width, height) in [(65, 37), (1920, 1080), (3840, 2160)] {
         let size = ViewportSize { width, height };
         for yaw in [-1.0, 0.0, 1.0] {
-            let pose = Pose {
+            let pose = RenderPose {
                 yaw,
                 pitch: 0.0,
                 fov_degrees: 30.0,

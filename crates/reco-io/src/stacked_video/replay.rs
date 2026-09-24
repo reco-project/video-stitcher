@@ -26,8 +26,8 @@ use super::{GridLayout, StackError};
 use reco_core::core::types::StackedReplayGpuRecorder as CoreStackedGpuRecorder;
 use reco_core::core::types::StackedReplayRecorder as CoreStackedReplayRecorder;
 use reco_core::gpu::yuv_stack_packer::StackedAtlas;
-use reco_core::render::pipeline::YuvPlanes;
-use reco_core::source::{FrameSet, FrameSource, SourceError, SourceInfo, YuvFrame};
+use reco_core::render::pipeline::Yuv420pPlanes;
+use reco_core::source::{FrameSet, FrameSource, SourceError, SourceInfo, Yuv420pFrame};
 use std::path::Path;
 
 /// Decorator FrameSource that also writes source frames to a
@@ -105,7 +105,7 @@ impl ReplayRecordingSource {
         match frame {
             FrameSet::Yuv420p(cams) if cams.len() == 2 => {
                 let info = self.inner.info();
-                let left = YuvFrame {
+                let left = Yuv420pFrame {
                     y: cams[0].y.clone(),
                     u: cams[0].u.clone(),
                     v: cams[0].v.clone(),
@@ -113,7 +113,7 @@ impl ReplayRecordingSource {
                     height: info.height,
                     timestamp_us: 0,
                 };
-                let right = YuvFrame {
+                let right = Yuv420pFrame {
                     y: cams[1].y.clone(),
                     u: cams[1].u.clone(),
                     v: cams[1].v.clone(),
@@ -178,6 +178,14 @@ impl FrameSource for ReplayRecordingSource {
         self.inner.is_gpu_resident()
     }
 
+    fn is_exhausted(&self) -> bool {
+        self.inner.is_exhausted()
+    }
+
+    fn is_full_range(&self) -> bool {
+        self.inner.is_full_range()
+    }
+
     fn gpu_pixel_format(&self) -> reco_core::render::renderer::GpuPixelFormat {
         self.inner.gpu_pixel_format()
     }
@@ -228,9 +236,9 @@ pub struct SessionStackedRecorder {
     frames_recorded: u64,
     frames_failed: u64,
     /// Reusable buffers so `push_planes` avoids allocating a
-    /// new YuvFrame per call. Sized on first use then fixed.
-    left_buf: Option<reco_core::source::YuvFrame>,
-    right_buf: Option<reco_core::source::YuvFrame>,
+    /// new Yuv420pFrame per call. Sized on first use then fixed.
+    left_buf: Option<reco_core::source::Yuv420pFrame>,
+    right_buf: Option<reco_core::source::Yuv420pFrame>,
 }
 
 impl SessionStackedRecorder {
@@ -272,13 +280,13 @@ impl SessionStackedRecorder {
         }))
     }
 
-    fn ensure_buf(buf: &mut Option<reco_core::source::YuvFrame>, width: u32, height: u32) {
+    fn ensure_buf(buf: &mut Option<reco_core::source::Yuv420pFrame>, width: u32, height: u32) {
         let needed_y = (width as usize) * (height as usize);
         let needed_uv = needed_y / 4;
         match buf {
             Some(f) if f.y.len() == needed_y && f.u.len() == needed_uv => {}
             _ => {
-                *buf = Some(reco_core::source::YuvFrame {
+                *buf = Some(reco_core::source::Yuv420pFrame {
                     y: vec![0u8; needed_y],
                     u: vec![0u8; needed_uv],
                     v: vec![0u8; needed_uv],
@@ -290,8 +298,8 @@ impl SessionStackedRecorder {
         }
     }
 
-    fn fill_from_planes(frame: &mut reco_core::source::YuvFrame, planes: &YuvPlanes<'_>) {
-        // YuvPlanes is tight (no stride padding) by contract,
+    fn fill_from_planes(frame: &mut reco_core::source::Yuv420pFrame, planes: &Yuv420pPlanes<'_>) {
+        // Yuv420pPlanes is tight (no stride padding) by contract,
         // so a straight copy_from_slice works. If the slices
         // are shorter than expected (malformed caller input)
         // we skip recording for this frame - the encoder would
@@ -308,7 +316,13 @@ impl SessionStackedRecorder {
 }
 
 impl CoreStackedReplayRecorder for SessionStackedRecorder {
-    fn record_yuv(&mut self, left: &YuvPlanes<'_>, right: &YuvPlanes<'_>, width: u32, height: u32) {
+    fn record_yuv(
+        &mut self,
+        left: &Yuv420pPlanes<'_>,
+        right: &Yuv420pPlanes<'_>,
+        width: u32,
+        height: u32,
+    ) {
         // Reject dimension drift: the recorder was opened for
         // a fixed layout. If the session starts feeding
         // differently-sized frames (e.g. resolution change
@@ -551,4 +565,66 @@ pub fn session_gpu_recorder(
     atlas_height: u32,
 ) -> Result<Box<dyn CoreStackedGpuRecorder>, StackedEncodeError> {
     GpuAtlasRecorder::open(path, config, atlas_width, atlas_height)
+}
+
+#[cfg(test)]
+mod source_contract_tests {
+    use super::*;
+
+    struct PollingSource {
+        polls: usize,
+        full_range: bool,
+    }
+
+    impl FrameSource for PollingSource {
+        fn info(&self) -> SourceInfo {
+            SourceInfo {
+                width: 2,
+                height: 2,
+                fps: 30.0,
+                fps_rational: Some((30, 1)),
+                total_frames: None,
+            }
+        }
+
+        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+            self.try_next_frame()
+        }
+
+        fn try_next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+            self.polls += 1;
+            Ok(None)
+        }
+
+        fn is_exhausted(&self) -> bool {
+            self.polls >= 2
+        }
+
+        fn is_full_range(&self) -> bool {
+            self.full_range
+        }
+    }
+
+    #[test]
+    fn replay_wrapper_preserves_pending_eof_and_color_range() {
+        for full_range in [false, true] {
+            let mut source = ReplayRecordingSource {
+                inner: Box::new(PollingSource {
+                    polls: 0,
+                    full_range,
+                }),
+                encoder: None,
+                warned_non_yuv420p: false,
+                frames_recorded: 0,
+                flush_interval: 1,
+            };
+            assert_eq!(source.is_full_range(), full_range);
+            assert!(!source.is_exhausted());
+            assert!(source.try_next_frame().unwrap().is_none());
+            assert!(!source.is_exhausted(), "pending is not EOF");
+            assert!(source.try_next_frame().unwrap().is_none());
+            assert!(source.is_exhausted());
+            assert_eq!(source.is_full_range(), full_range);
+        }
+    }
 }

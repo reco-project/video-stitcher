@@ -1,7 +1,7 @@
 //! Object detection trait for raw camera frames.
 //!
 //! Detectors run on raw (pre-stitch) camera frames to find objects of interest
-//! (e.g. a ball). Detections are mapped to panorama-space coordinates and fed
+//! (e.g. a ball). Detections are mapped to world-reference angular coordinates and fed
 //! to a [`super::tracker::Tracker`] which stabilizes identities, after which a
 //! [`super::panner::Panner`] turns the tracked world state into a viewport pose.
 //!
@@ -14,28 +14,28 @@
 
 use crate::geometry::CameraIndex;
 
-/// Raw camera frame data for detection.
+/// Borrowed CPU YUV image planes and dimensions for detection.
 ///
 /// Provides access to all YUV planes so detectors can use luma-only
 /// (fast, sufficient for ball tracking) or full color (needed for
 /// jersey classification, field segmentation, etc.).
-pub struct RawFrame<'a> {
+pub struct YuvView<'a> {
     /// Y (luma) plane, full resolution (`width x height` bytes).
     pub y: &'a [u8],
     /// Chroma plane data (format depends on the decode pipeline).
-    pub chroma: ChromaFormat<'a>,
+    pub chroma: ChromaPlanes<'a>,
     /// Frame width in pixels.
     pub width: u32,
     /// Frame height in pixels.
     pub height: u32,
 }
 
-/// Chroma plane layout.
+/// Borrowed chroma planes in the source image's layout.
 ///
 /// The format matches whatever the decode pipeline produces:
 /// - Software decode (FFmpeg): YUV420P with separate U and V planes
 /// - Hardware decode (NVDEC, V4L2): NV12 with interleaved UV
-pub enum ChromaFormat<'a> {
+pub enum ChromaPlanes<'a> {
     /// YUV420P: separate half-resolution U and V planes.
     Yuv420p {
         /// U (Cb) plane, `(width/2) x (height/2)` bytes.
@@ -85,7 +85,7 @@ pub struct Detection {
 // Unified detector error + frame variants.
 // ---------------------------------------------------------------------------
 //
-// `RawFrame`, `ChromaFormat`, and `GpuNv12Frame` are the parameter
+// `YuvView`, `ChromaPlanes`, and `CudaNv12Frame` are the parameter
 // types for [`DetectorFrame`] variants and the unified trait's inputs.
 //
 // The trait returns `Result<Vec<Detection>, DetectorError>` rather
@@ -145,21 +145,17 @@ impl std::fmt::Display for DetectorError {
 
 impl std::error::Error for DetectorError {}
 
-/// Unified frame input for the [`UnifiedDetector`] trait.
+/// Unified frame input for the [`Detector`] trait.
 ///
-/// Each variant describes a different memory residency. The CPU
-/// variant is the only one shippable over the network (for future
-/// remote backends); CUDA / Metal / wgpu variants are local-only.
+/// Variants distinguish pixel layout and memory residency. Device-backed inputs require their native graphics or compute context.
 #[non_exhaustive]
 pub enum DetectorFrame<'a> {
-    /// CPU-resident YUV420P frame. The only variant that can cross
-    /// process boundaries - compression and ROI-cropping are the
-    /// remote backend's responsibility.
-    Cpu(RawFrame<'a>),
+    /// CPU-resident YUV420P or NV12 image planes.
+    Yuv(YuvView<'a>),
 
-    /// CUDA device-pointer NV12 frame. Local only; see [`GpuNv12Frame`].
+    /// CUDA device-pointer NV12 frame. Local only; see [`CudaNv12Frame`].
     #[cfg(any(target_os = "linux", target_os = "windows"))]
-    Cuda(GpuNv12Frame),
+    CudaNv12(CudaNv12Frame),
 
     /// Pre-processed float32 CHW tensor at model input resolution.
     ///
@@ -252,10 +248,10 @@ impl DetectorFrame<'_> {
     /// A short label for logs and error messages.
     pub fn variant_name(&self) -> &'static str {
         match self {
-            Self::Cpu(_) => "Cpu",
+            Self::Yuv(_) => "Yuv",
             Self::Rgba { .. } => "Rgba",
             #[cfg(any(target_os = "linux", target_os = "windows"))]
-            Self::Cuda(_) => "Cuda",
+            Self::CudaNv12(_) => "CudaNv12",
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "gpu"))]
             Self::CudaRgba { .. } => "CudaRgba",
@@ -271,44 +267,25 @@ impl DetectorFrame<'_> {
     }
 }
 
-/// Unified detector trait that collapses the former per-platform
-/// `Detector` / `GpuDetector` / `MetalDetector` into a single contract.
+/// Object detection over source-image frames.
 ///
 /// Consumers call one method and pass whatever residency the current
 /// frame has via [`DetectorFrame`]. The backend either accepts the
 /// variant or returns [`DetectorError::UnsupportedFrameKind`]. This
 /// is the trait `StitchCore` plugs into the session.
 ///
-/// # Rationale
-///
-/// A split into per-platform traits would force consumers (reco-cli,
-/// reco-gui, reco-obs) to know which backend they have and wire it
-/// into a per-platform `set_*_detector` method. The unified trait
-/// moves platform dispatch behind the backend constructor, where it
-/// belongs.
-///
-/// # Async-ready via `Result`
-///
-/// The `Result<_, DetectorError>` return type is non-negotiable for
-/// three reasons, all from the plan doc:
-///
-/// 1. Timeout-able inference (§2.7).
-/// 2. Remote backends (§8 "Distributed AI inference"): a future
-///    `reco-detect-remote` crate ships frames to a gRPC / HTTP worker
-///    and needs to surface network faults.
-/// 3. Cancellation: when the session shuts down or a newer frame
-///    arrives, an in-flight detection should report `Canceled` rather
-///    than returning stale data.
-///
 /// # Threading
 ///
-/// `Send` only. A detector is typically held by the session's
-/// worker-thread scheduler (§2.8 mobile-friendly bound policy). If a
-/// concrete backend needs `Sync`, it adds the bound itself.
-pub trait UnifiedDetector: Send {
+/// A detector can move between threads. Detection takes an exclusive borrow; shared concurrent access is not required.
+pub trait Detector: Send {
     /// Short human-readable name for logs + diagnostic bundles
     /// (e.g. `"ort-cuda"`, `"coreml"`, `"ncnn"`, `"remote-grpc"`).
     fn name(&self) -> &'static str;
+
+    /// Prefer CUDA NV12 pointers over wgpu textures when the source path offers both. The Linux NVDEC session path honors this preference; it does not add CUDA support to other paths. Wrappers preserving the input contract must forward it; wgpu preprocessing wrappers keep it false.
+    fn prefers_cuda_nv12(&self) -> bool {
+        false
+    }
 
     /// Attempt to run detection on the supplied frame.
     ///
@@ -345,7 +322,7 @@ pub trait UnifiedDetector: Send {
 /// to detection backends instead of many loose arguments.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 #[derive(Debug, Clone, Copy)]
-pub struct GpuNv12Frame {
+pub struct CudaNv12Frame {
     /// CUDA device pointer to the Y (luma) plane.
     pub y_ptr: u64,
     /// CUDA device pointer to the UV (chroma) plane.
@@ -375,10 +352,6 @@ pub struct GpuNv12Frame {
     pub is_10bit: bool,
 }
 
-// `trait GpuDetector` + `trait MetalDetector` deleted: replaced by
-// `UnifiedDetector` + `DetectorFrame::{Cuda, Metal}` variants. See
-// the comment above the old `trait Detector` removal for context.
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -390,7 +363,7 @@ mod tests {
         labels: Vec<String>,
     }
 
-    impl UnifiedDetector for FakeDetector {
+    impl Detector for FakeDetector {
         fn name(&self) -> &'static str {
             "fake-cpu-only"
         }
@@ -401,7 +374,7 @@ mod tests {
             frame: &DetectorFrame<'_>,
         ) -> Result<Vec<Detection>, DetectorError> {
             match frame {
-                DetectorFrame::Cpu(_) => Ok(vec![Detection {
+                DetectorFrame::Yuv(_) => Ok(vec![Detection {
                     camera,
                     class_id: 0,
                     confidence: 0.9,
@@ -424,16 +397,16 @@ mod tests {
         let y = vec![0u8; 8];
         let u = vec![128u8; 2];
         let v = vec![128u8; 2];
-        let raw = RawFrame {
+        let raw = YuvView {
             y: &y,
-            chroma: ChromaFormat::Yuv420p { u: &u, v: &v },
+            chroma: ChromaPlanes::Yuv420p { u: &u, v: &v },
             width: 4,
             height: 2,
         };
-        let mut det: Box<dyn UnifiedDetector> = Box::new(FakeDetector {
+        let mut det: Box<dyn Detector> = Box::new(FakeDetector {
             labels: vec!["ball".into()],
         });
-        let out = det.detect(0, &DetectorFrame::Cpu(raw)).unwrap();
+        let out = det.detect(0, &DetectorFrame::Yuv(raw)).unwrap();
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].camera, 0);
     }
@@ -444,18 +417,18 @@ mod tests {
         // targets Metal variant doesn't exist in the enum, so this
         // test body is cfg-gated; on macOS it exercises the error
         // path by constructing the variant.
-        let mut det: Box<dyn UnifiedDetector> = Box::new(FakeDetector { labels: vec![] });
+        let mut det: Box<dyn Detector> = Box::new(FakeDetector { labels: vec![] });
         // Construct a CPU frame to prove Ok path works...
         let y = vec![0u8; 4];
         let u = vec![128u8; 1];
         let v = vec![128u8; 1];
-        let raw = RawFrame {
+        let raw = YuvView {
             y: &y,
-            chroma: ChromaFormat::Yuv420p { u: &u, v: &v },
+            chroma: ChromaPlanes::Yuv420p { u: &u, v: &v },
             width: 2,
             height: 2,
         };
-        assert!(det.detect(0, &DetectorFrame::Cpu(raw)).is_ok());
+        assert!(det.detect(0, &DetectorFrame::Yuv(raw)).is_ok());
     }
 
     #[test]
@@ -472,12 +445,12 @@ mod tests {
         let y = vec![0u8; 4];
         let u = vec![128u8; 1];
         let v = vec![128u8; 1];
-        let raw = RawFrame {
+        let raw = YuvView {
             y: &y,
-            chroma: ChromaFormat::Yuv420p { u: &u, v: &v },
+            chroma: ChromaPlanes::Yuv420p { u: &u, v: &v },
             width: 2,
             height: 2,
         };
-        assert_eq!(DetectorFrame::Cpu(raw).variant_name(), "Cpu");
+        assert_eq!(DetectorFrame::Yuv(raw).variant_name(), "Yuv");
     }
 }

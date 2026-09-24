@@ -5,7 +5,11 @@ use nalgebra::Vector2;
 
 impl Roof {
     /// Fit direct movement to supported segments, without velocity, routing or input debt.
-    pub(in super::super) fn constrain(&self, from: Pose, requested: Pose) -> Pose {
+    pub(in super::super) fn constrain(
+        &self,
+        from: RenderPose,
+        requested: RenderPose,
+    ) -> RenderPose {
         let requested = self.grid.near_yaw(requested, from.yaw);
         if self.segment(from, requested) {
             return requested;
@@ -23,11 +27,11 @@ impl Roof {
                 hi = t;
             }
         }
-        let point = |p: Pose| Vector2::new(f64::from(p.yaw), f64::from(p.pitch));
+        let point = |p: RenderPose| Vector2::new(f64::from(p.yaw), f64::from(p.pitch));
         let wanted = point(requested);
         let origin = point(from);
         let radius2 = (wanted - origin).norm_squared();
-        let cost = |p: Pose| {
+        let cost = |p: RenderPose| {
             [
                 f64::from((p.fov_degrees - requested.fov_degrees).abs()),
                 (point(p) - wanted).norm_squared(),
@@ -134,7 +138,7 @@ impl Roof {
                         let mut q = a + edge * t;
                         // Keep the f32 pose on the supported side after rounding.
                         q += (center - q) * 1e-4;
-                        let p = Pose {
+                        let p = RenderPose {
                             yaw: q.x as f32,
                             pitch: q.y as f32,
                             fov_degrees: requested.fov_degrees,
@@ -188,8 +192,8 @@ mod tests {
         )
     }
 
-    fn pose(yaw: f32, pitch: f32, fov_degrees: f32) -> Pose {
-        Pose {
+    fn pose(yaw: f32, pitch: f32, fov_degrees: f32) -> RenderPose {
+        RenderPose {
             yaw,
             pitch,
             fov_degrees,

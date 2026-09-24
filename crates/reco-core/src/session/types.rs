@@ -209,7 +209,7 @@ pub struct StitchSessionBuilder {
     pub(super) input_format: InputFormat,
     pub(super) gpu: Option<GpuContext>,
     pub(super) sinks: Vec<(Box<dyn OutputSink>, SinkOptions)>,
-    pub(super) detector: Option<Box<dyn crate::detect::detector::UnifiedDetector>>,
+    pub(super) detector: Option<Box<dyn crate::detect::detector::Detector>>,
     pub(super) detection_interval: u64,
 }
 
@@ -264,8 +264,8 @@ impl StitchSessionBuilder {
         self
     }
 
-    /// Attach a [`UnifiedDetector`](crate::detect::detector::UnifiedDetector).
-    pub fn detector(mut self, detector: Box<dyn crate::detect::detector::UnifiedDetector>) -> Self {
+    /// Attach a [`Detector`](crate::detect::detector::Detector).
+    pub fn detector(mut self, detector: Box<dyn crate::detect::detector::Detector>) -> Self {
         self.detector = Some(detector);
         self
     }
@@ -274,7 +274,7 @@ impl StitchSessionBuilder {
     ///
     /// `1` = every frame (default), `3` = every 3rd frame, etc.
     /// Detection is expensive (YOLO at 2-20ms/frame), so skipping
-    /// frames lets the render loop run faster while the director
+    /// frames lets the render loop run faster while the panner
     /// interpolates using the latest detections.
     pub fn detection_interval(mut self, interval: u64) -> Self {
         self.detection_interval = interval.max(1);

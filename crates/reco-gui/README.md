@@ -7,7 +7,7 @@ Slint 1.15 desktop consumer with wgpu 28 zero-copy preview.
 - Interactive panorama preview with pan/zoom via mouse + keyboard, driven by `reco-control::PoseControl` and core's shared render-space coverage constraints.
 - Calibration wizard with live progress (AKAZE matches, reprojection error, confidence).
 - Export job orchestration: source selection, output codec / quality / container, optional AI tracking, replay recording, progress bar, cancelable.
-- Session persistence: recent files, last-used calibration JSON, FOV / director / detection interval settings.
+- Session persistence: recent files, last-used calibration JSON, FOV / panner / detection interval settings.
 
 ## Render bridge
 

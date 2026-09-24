@@ -60,30 +60,33 @@ fn calibrate_videos_matches_known_good() {
         exp.framing.axis_offset,
     );
     assert!(
-        (got.topology.l_shape().unwrap().intersect - exp.topology.l_shape().unwrap().intersect)
+        (got.projection.l_shape().unwrap().intersect - exp.projection.l_shape().unwrap().intersect)
             .abs()
             < tol,
         "intersect: got {}, expected {} (tol {tol})",
-        got.topology.l_shape().unwrap().intersect,
-        exp.topology.l_shape().unwrap().intersect,
+        got.projection.l_shape().unwrap().intersect,
+        exp.projection.l_shape().unwrap().intersect,
     );
     assert!(
-        (got.topology.l_shape().unwrap().x_ty - exp.topology.l_shape().unwrap().x_ty).abs() < tol,
+        (got.projection.l_shape().unwrap().x_ty - exp.projection.l_shape().unwrap().x_ty).abs()
+            < tol,
         "x_ty: got {}, expected {} (tol {tol})",
-        got.topology.l_shape().unwrap().x_ty,
-        exp.topology.l_shape().unwrap().x_ty,
+        got.projection.l_shape().unwrap().x_ty,
+        exp.projection.l_shape().unwrap().x_ty,
     );
     assert!(
-        (got.topology.l_shape().unwrap().x_rz - exp.topology.l_shape().unwrap().x_rz).abs() < tol,
+        (got.projection.l_shape().unwrap().x_rz - exp.projection.l_shape().unwrap().x_rz).abs()
+            < tol,
         "x_rz: got {}, expected {} (tol {tol})",
-        got.topology.l_shape().unwrap().x_rz,
-        exp.topology.l_shape().unwrap().x_rz,
+        got.projection.l_shape().unwrap().x_rz,
+        exp.projection.l_shape().unwrap().x_rz,
     );
     assert!(
-        (got.topology.l_shape().unwrap().z_rx - exp.topology.l_shape().unwrap().z_rx).abs() < tol,
+        (got.projection.l_shape().unwrap().z_rx - exp.projection.l_shape().unwrap().z_rx).abs()
+            < tol,
         "z_rx: got {}, expected {} (tol {tol})",
-        got.topology.l_shape().unwrap().z_rx,
-        exp.topology.l_shape().unwrap().z_rx,
+        got.projection.l_shape().unwrap().z_rx,
+        exp.projection.l_shape().unwrap().z_rx,
     );
 
     // Quality metrics
@@ -107,6 +110,6 @@ fn calibrate_videos_matches_known_good() {
     println!("  cam_d: {:.4}", got.framing.axis_offset);
     println!(
         "  intersect: {:.4}",
-        got.topology.l_shape().unwrap().intersect
+        got.projection.l_shape().unwrap().intersect
     );
 }

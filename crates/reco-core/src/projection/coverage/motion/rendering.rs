@@ -13,7 +13,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-fn synthetic_target(frame: usize, fov: f32) -> Pose {
+fn synthetic_target(frame: usize, fov: f32) -> RenderPose {
     let keys = [
         (0.0, [0.0, -0.3]),
         (2.0, [-0.8, -0.15]),
@@ -37,7 +37,7 @@ fn synthetic_target(frame: usize, fov: f32) -> Pose {
     let pair = keys.windows(2).find(|k| t <= k[1].0).unwrap();
     let u = ((t - pair[0].0) / (pair[1].0 - pair[0].0)).clamp(0.0, 1.0);
     let u = u * u * (3.0 - 2.0 * u);
-    Pose {
+    RenderPose {
         yaw: pair[0].1[0] * (1.0 - u) + pair[1].1[0] * u,
         pitch: pair[0].1[1] * (1.0 - u) + pair[1].1[1] * u,
         fov_degrees: fov,
@@ -105,7 +105,7 @@ fn probe_high_resolution_motion() {
         &std::fs::read(std::env::var_os("RECO_COVERAGE_CALIBRATION").unwrap()).unwrap(),
     )
     .unwrap();
-    if let Some(shape) = cal.topology.l_shape_mut() {
+    if let Some(shape) = cal.projection.l_shape_mut() {
         shape.blend_width = 0.0;
     }
     let rows: Vec<serde_json::Value> = std::fs::read_to_string(dir.join("motion.jsonl"))
@@ -144,7 +144,7 @@ fn probe_high_resolution_motion() {
     let mut holes = 0;
     let mut border_holes = 0;
     for index in indices {
-        let pose: Pose = serde_json::from_value(rows[index]["pose"].clone()).unwrap();
+        let pose: RenderPose = serde_json::from_value(rows[index]["pose"].clone()).unwrap();
         let image = renderer.stitch(&sources, pose).unwrap();
         let count = missing(&image);
         let border_count = missing_border(&image, 1920);
@@ -165,14 +165,14 @@ fn render_fixed_fov_calibrated_motion() {
     let calibration = std::env::var_os("RECO_COVERAGE_CALIBRATION").unwrap();
     let mut cal: Calibration =
         serde_json::from_slice(&std::fs::read(calibration).unwrap()).unwrap();
-    if let Some(shape) = cal.topology.l_shape_mut() {
+    if let Some(shape) = cal.projection.l_shape_mut() {
         shape.blend_width = 0.0;
     }
     cal.validate().unwrap();
     let mut reference_cal: Calibration = std::env::var_os("RECO_REFERENCE_CALIBRATION")
         .map(|path| serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap())
         .unwrap_or_else(|| cal.clone());
-    if let Some(shape) = reference_cal.topology.l_shape_mut() {
+    if let Some(shape) = reference_cal.projection.l_shape_mut() {
         shape.blend_width = 0.0;
     }
     reference_cal.validate().unwrap();
@@ -181,15 +181,16 @@ fn render_fixed_fov_calibrated_motion() {
         .parse::<f32>()
         .unwrap();
     let tracked_fov = std::env::var("RECO_TRACKED_FOV").is_ok_and(|v| v == "1");
-    let trajectory: Option<Vec<Pose>> = std::env::var_os("RECO_COVERAGE_TRAJECTORY")
+    let trajectory: Option<Vec<RenderPose>> = std::env::var_os("RECO_COVERAGE_TRAJECTORY")
         .map(|path| serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap());
     let events = std::env::var_os("RECO_COVERAGE_EVENTS").map(|path| {
         let mut targets = std::collections::BTreeMap::new();
         for line in std::fs::read_to_string(path).unwrap().lines() {
             let event: serde_json::Value = serde_json::from_str(line).unwrap();
             if event["kind"] == "pan_decision" {
-                let p: Pose = serde_json::from_value(event["pose"].clone()).unwrap();
-                let camera = cal.topology.projection().virtual_camera(&cal.framing);
+                let p: crate::geometry::WorldPose =
+                    serde_json::from_value(event["pose"].clone()).unwrap();
+                let camera = cal.projection.geometry().virtual_camera(&cal.framing);
                 targets.insert(
                     event["frame_index"].as_u64().unwrap() as usize,
                     (camera.yaw_pitch_to_direction(p.yaw, p.pitch), p.fov_degrees),
@@ -227,7 +228,7 @@ fn render_fixed_fov_calibrated_motion() {
         poses.len() >= frame_count && poses.iter().all(|p| valid_query(&cal, &size, *p))
     }));
     let references = std::env::var_os("RECO_FIXED_REFERENCE").map(|path| {
-        let poses: Vec<Pose> = std::fs::read_to_string(path)
+        let poses: Vec<RenderPose> = std::fs::read_to_string(path)
             .unwrap()
             .lines()
             .map(|line| {
@@ -339,7 +340,7 @@ fn render_fixed_fov_calibrated_motion() {
         .fold([f32::INFINITY, f32::NEG_INFINITY], |r, f| {
             [r[0].min(f), r[1].max(f)]
         });
-    let mut current: Pose = serde_json::from_value(solved[0]["pose"].clone()).unwrap();
+    let mut current: RenderPose = serde_json::from_value(solved[0]["pose"].clone()).unwrap();
     let mut velocity = [0.0; 2];
     let mode = if events.is_some() {
         "recorded-ai"
@@ -350,7 +351,7 @@ fn render_fixed_fov_calibrated_motion() {
     let mut scene = Vec::new();
     for y in 0..121 {
         for x in 0..241 {
-            let p = Pose {
+            let p = RenderPose {
                 yaw: -2.0 + x as f32 / 240.0 * 4.0,
                 pitch: 1.0 - y as f32 / 120.0 * 2.0,
                 fov_degrees: fov,
@@ -486,7 +487,7 @@ fn render_fixed_fov_calibrated_motion() {
             for point in &mut reference_footprint {
                 let ray = direction(
                     &reference_cal,
-                    Pose {
+                    RenderPose {
                         yaw: point[0],
                         pitch: point[1],
                         ..reference

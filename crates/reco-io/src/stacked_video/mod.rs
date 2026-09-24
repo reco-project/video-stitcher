@@ -24,7 +24,7 @@
 //!
 //! ```rust,ignore
 //! use reco_io::stacked_video::{GridLayout, pack_yuv420p, unpack_yuv420p};
-//! use reco_core::source::YuvFrame;
+//! use reco_core::source::Yuv420pFrame;
 //!
 //! let layout = GridLayout::vstack(1920, 1080, 2);   // N=2 vertical
 //! let packed = pack_yuv420p(&layout, &[&left, &right])?;
@@ -77,7 +77,7 @@ pub mod replay;
 #[cfg(feature = "stacked-output")]
 pub mod source;
 
-use reco_core::source::YuvFrame;
+use reco_core::source::Yuv420pFrame;
 use thiserror::Error;
 
 /// Grid layout for stacked-video packing.
@@ -222,9 +222,9 @@ pub enum StackError {
     },
 }
 
-/// Pack N YUV420P tiles into a single grid-layout YuvFrame.
+/// Pack N YUV420P tiles into a single grid-layout Yuv420pFrame.
 ///
-/// `tiles[i]` is either `Some(&YuvFrame)` or `None` (empty tile -
+/// `tiles[i]` is either `Some(&Yuv420pFrame)` or `None` (empty tile -
 /// gets zero-filled Y plane with mid-grey chroma so the encoder
 /// produces a neutral grey area). Tile order is row-major:
 /// `tiles[0]` is top-left, `tiles[cols]` is the leftmost of the
@@ -241,8 +241,8 @@ pub enum StackError {
 /// anyway.
 pub fn pack_yuv420p(
     layout: &GridLayout,
-    tiles: &[Option<&YuvFrame>],
-) -> Result<YuvFrame, StackError> {
+    tiles: &[Option<&Yuv420pFrame>],
+) -> Result<Yuv420pFrame, StackError> {
     if tiles.len() > layout.capacity() as usize {
         return Err(StackError::TooManyTiles {
             capacity: layout.capacity(),
@@ -324,7 +324,7 @@ pub fn pack_yuv420p(
         .next()
         .unwrap_or(0);
 
-    Ok(YuvFrame {
+    Ok(Yuv420pFrame {
         y,
         u,
         v,
@@ -334,15 +334,18 @@ pub fn pack_yuv420p(
     })
 }
 
-/// Unpack N tiles from a grid-layout YuvFrame.
+/// Unpack N tiles from a grid-layout Yuv420pFrame.
 ///
-/// Returns a vector of `YuvFrame` in row-major order, length
+/// Returns a vector of `Yuv420pFrame` in row-major order, length
 /// `layout.capacity()`. All tiles have the layout's
 /// `tile_width x tile_height` dimensions; empty tiles in the source
 /// become neutral-grey frames.
 ///
 /// The timestamp on every returned tile matches the source frame.
-pub fn unpack_yuv420p(layout: &GridLayout, packed: &YuvFrame) -> Result<Vec<YuvFrame>, StackError> {
+pub fn unpack_yuv420p(
+    layout: &GridLayout,
+    packed: &Yuv420pFrame,
+) -> Result<Vec<Yuv420pFrame>, StackError> {
     if packed.width != layout.packed_width() || packed.height != layout.packed_height() {
         return Err(StackError::PackedDimensionMismatch {
             got_w: packed.width,
@@ -397,7 +400,7 @@ pub fn unpack_yuv420p(layout: &GridLayout, packed: &YuvFrame) -> Result<Vec<YuvF
         read_tile_plane(&packed.y, pw, tw, th, col, row, &mut y);
         read_tile_plane(&packed.u, pw / 2, tw / 2, th / 2, col, row, &mut u);
         read_tile_plane(&packed.v, pw / 2, tw / 2, th / 2, col, row, &mut v);
-        out.push(YuvFrame {
+        out.push(Yuv420pFrame {
             y,
             u,
             v,
@@ -461,8 +464,8 @@ const _: fn() = || {
 mod tests {
     use super::*;
 
-    fn fill(w: u32, h: u32, fill_y: u8, fill_u: u8, fill_v: u8) -> YuvFrame {
-        YuvFrame {
+    fn fill(w: u32, h: u32, fill_y: u8, fill_u: u8, fill_v: u8) -> Yuv420pFrame {
+        Yuv420pFrame {
             y: vec![fill_y; (w * h) as usize],
             u: vec![fill_u; ((w / 2) * (h / 2)) as usize],
             v: vec![fill_v; ((w / 2) * (h / 2)) as usize],
@@ -580,10 +583,10 @@ mod tests {
         // contract. Each tile gets a distinct fill; round-trip
         // must recover each one from the right (row, col) slot.
         let layout = GridLayout::grid(32, 32, 3, 3).unwrap();
-        let tiles: Vec<YuvFrame> = (0..9)
+        let tiles: Vec<Yuv420pFrame> = (0..9)
             .map(|i| fill(32, 32, i as u8 * 20, 128, 128))
             .collect();
-        let slots: Vec<Option<&YuvFrame>> = tiles.iter().map(Some).collect();
+        let slots: Vec<Option<&Yuv420pFrame>> = tiles.iter().map(Some).collect();
         let packed = pack_yuv420p(&layout, &slots).unwrap();
         assert_eq!(packed.width, 96);
         assert_eq!(packed.height, 96);

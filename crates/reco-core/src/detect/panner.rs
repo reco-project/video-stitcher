@@ -2,7 +2,7 @@
 //!
 //! A `Panner` consumes a clean `WorldState` (produced by one or
 //! more `Tracker` instances from [`super::tracker`]) and returns a
-//! `Pose` (from [`super::director`]) for the virtual
+//! [`WorldPose`] for the virtual
 //! camera. It knows nothing
 //! about raw detections, plausibility gates, or identity management —
 //! those are tracker concerns. Its sole job is "given where things
@@ -18,30 +18,26 @@
 //!   left-right within coverage bounds.
 //! - `FilePanner` - replays a precomputed pose trajectory from CSV.
 
-use super::director::MappedDetection;
+use super::mapped_detection::MappedDetection;
 use super::pipeline_event::{PipelineEvent, PipelineEventSink};
 use super::tracker::{Tracker, WorldState};
 use crate::calibration::Calibration;
-use crate::geometry::Pose;
+use crate::geometry::WorldPose;
 
 /// Per-frame context a [`Panner`] receives alongside the world state.
 ///
 /// The context carries timing plus a borrow of the current
-/// calibration, so panners can project between camera and panorama
-/// coordinates if needed (e.g. for coverage-aware edge handling).
-/// It does NOT include raw detections — those never reach a panner.
+/// calibration for calibrated source mapping and coverage queries.
+/// It does not include raw detections; panners consume tracked world state.
 #[derive(Debug)]
 pub struct PanContext<'a> {
     /// Current frame index (0-based), monotonically increasing.
     pub frame_index: u64,
     /// Elapsed milliseconds since the start of processing.
     pub timestamp_ms: f64,
-    /// The viewport position the session reported on the *previous*
-    /// frame (after clamping and smoothing), or the session default
-    /// if this is the first call. Panners use this to compute
-    /// first-order motion deltas without needing their own state.
-    pub previous_position: Pose,
-    /// Shared calibration for optional camera↔panorama projection.
+    /// Stored world-space request, initially the default pose. In lookahead mode this can be the smoothed request for an earlier rendered frame, not the immediately preceding panner decision. It is never the coverage-constrained render pose.
+    pub previous_pose: WorldPose,
+    /// Shared calibration for source-to-world mapping and coverage queries.
     /// Borrowed for the duration of the [`decide`](Panner::decide)
     /// call; panners must not retain it.
     pub calibration: &'a Calibration,
@@ -59,13 +55,13 @@ pub struct PanContext<'a> {
 /// # Invariants
 ///
 /// - [`decide`](Self::decide) is called once per frame, in order.
-/// - The returned [`Pose`]
+/// - The returned [`WorldPose`]
 ///   is NOT yet clamped to the coverage boundary; the session applies
 ///   clamping after the panner returns. Panners should produce their
 ///   geometric preference and let the coverage math enforce reachability.
 pub trait Panner: Send {
     /// Decide where the virtual camera should look this frame.
-    fn decide(&mut self, world: &WorldState, ctx: &PanContext<'_>) -> Pose;
+    fn decide(&mut self, world: &WorldState, ctx: &PanContext<'_>) -> WorldPose;
 
     /// Decide with access to future WorldStates from the lookahead buffer.
     ///
@@ -77,7 +73,7 @@ pub trait Panner: Send {
         world: &WorldState,
         future: &[WorldState],
         ctx: &PanContext<'_>,
-    ) -> Pose {
+    ) -> WorldPose {
         let _ = future;
         self.decide(world, ctx)
     }
@@ -107,37 +103,15 @@ pub(crate) struct DispatchContext<'a> {
     pub caller: &'static str,
 }
 
-/// Run the shared tracker → panner dispatch one frame's worth.
-///
-/// Both `StitchCore::resolve_current_pose` and
-/// `StitchSession::fire_sink_and_update_director` used to inline this
-/// ~50-line algorithm. They still differ on what they do around the
-/// dispatch (clamp, fire sinks, return vs. store), but the dispatch
-/// itself is identical:
-///
-/// 1. Build an empty [`WorldState`].
-/// 2. Run the player tracker, store into `world.players`.
-/// 3. Let the ball tracker `observe_world` (so it sees this frame's
-///    players for anchor gating), then `update`; take the first
-///    entity (warn if more than one) into `world.ball`.
-/// 4. Build a [`PanContext`] carrying the caller's previous pose.
-/// 5. Ask the panner to `decide`; update `previous_panner_pose` in
-///    place; return the decided pose.
-///
-/// Returns `None` when no panner is attached.
-///
-/// When a [`PipelineEventSink`] is supplied via `event_sink`, emits a
-/// [`PipelineEvent::WorldState`] right before `panner.decide` and a
-/// [`PipelineEvent::PanDecision`] right after. Both sites are part
-/// of the Step 6 trace vocabulary.
+/// Requested world pose and tracking statistics from one tracker/panner update.
 pub(crate) struct DispatchResult {
-    pub pose: Pose,
+    pub pose: WorldPose,
     pub active_tracks: u32,
     pub ball_present: bool,
 }
 
 /// Run trackers only (no panner). Returns the WorldState for buffering.
-pub(crate) fn dispatch_detect_only(
+pub(crate) fn run_trackers(
     player_tracker: Option<&mut Box<dyn Tracker>>,
     ball_tracker: Option<&mut Box<dyn Tracker>>,
     ctx: DispatchContext<'_>,
@@ -167,18 +141,19 @@ pub(crate) fn dispatch_detect_only(
     world
 }
 
+/// Update trackers and the world pose request when a panner is attached. Without a panner, returns `None` without running trackers. Emits tracked state before the decision and the requested pose afterward.
 pub(crate) fn dispatch(
     panner: Option<&mut Box<dyn Panner>>,
     player_tracker: Option<&mut Box<dyn Tracker>>,
     ball_tracker: Option<&mut Box<dyn Tracker>>,
-    previous_panner_pose: &mut Pose,
+    requested_world_pose: &mut WorldPose,
     mut event_sink: Option<&mut (dyn PipelineEventSink + '_)>,
     ctx: DispatchContext<'_>,
 ) -> Option<DispatchResult> {
     let panner = panner?;
     // Build the WorldState via the shared tracker-run path (same as the
     // lookahead produce phase) so the two can never silently diverge.
-    let world = dispatch_detect_only(player_tracker, ball_tracker, ctx);
+    let world = run_trackers(player_tracker, ball_tracker, ctx);
 
     // Trace: WorldState (only pays for the clone when a sink exists).
     if let Some(sink) = event_sink.as_mut() {
@@ -193,7 +168,7 @@ pub(crate) fn dispatch(
     let pan_ctx = PanContext {
         frame_index: ctx.frame_index,
         timestamp_ms: ctx.timestamp_ms,
-        previous_position: *previous_panner_pose,
+        previous_pose: *requested_world_pose,
         calibration: ctx.calibration,
     };
     let active_tracks = world.players.len() as u32;
@@ -207,7 +182,7 @@ pub(crate) fn dispatch(
     // with the real future window. This immediate-mode dispatch has
     // no future frames by construction.
     let pose = panner.decide_with_lookahead(&world, &[], &pan_ctx);
-    *previous_panner_pose = pose;
+    *requested_world_pose = pose;
 
     if let Some(sink) = event_sink.as_mut() {
         sink.emit(PipelineEvent::PanDecision {
@@ -260,14 +235,14 @@ mod tests {
     /// Minimal panner that echoes the ball's yaw/pitch when present.
     struct EchoPanner;
     impl Panner for EchoPanner {
-        fn decide(&mut self, world: &WorldState, _ctx: &PanContext<'_>) -> Pose {
+        fn decide(&mut self, world: &WorldState, _ctx: &PanContext<'_>) -> WorldPose {
             match world.ball {
-                Some(b) => Pose {
+                Some(b) => WorldPose {
                     yaw: b.yaw,
                     pitch: b.pitch,
                     ..Default::default()
                 },
-                None => Pose::default(),
+                None => WorldPose::default(),
             }
         }
     }
@@ -292,7 +267,7 @@ mod tests {
         let ctx = PanContext {
             frame_index: 0,
             timestamp_ms: 0.0,
-            previous_position: Pose::default(),
+            previous_pose: WorldPose::default(),
             calibration: &cal,
         };
         let out = p.decide(&world, &ctx);
@@ -308,7 +283,7 @@ mod tests {
         let ctx = PanContext {
             frame_index: 0,
             timestamp_ms: 0.0,
-            previous_position: Pose::default(),
+            previous_pose: WorldPose::default(),
             calibration: &cal,
         };
         let out = p.decide(&world, &ctx);

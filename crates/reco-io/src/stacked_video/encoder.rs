@@ -13,7 +13,7 @@ use super::{GridLayout, StackError, pack_yuv420p};
 use crate::ffmpeg::encoder::{
     Container, EncodeError, EncoderConfig, Quality, VideoCodec, VideoEncoder,
 };
-use reco_core::source::YuvFrame;
+use reco_core::source::Yuv420pFrame;
 use std::path::Path;
 use thiserror::Error;
 
@@ -149,12 +149,12 @@ impl StackedEncoder {
     }
 
     /// Push one row-major tuple of tiles. `tiles[i]` is either
-    /// `Some(&YuvFrame)` or `None` for an empty tile (zero-filled
+    /// `Some(&Yuv420pFrame)` or `None` for an empty tile (zero-filled
     /// neutral grey). Callers driving the stacked encoder with
     /// pre-synced input typically pass all `Some`; a partially
     /// filled grid is supported for N-up layouts with fewer
     /// cameras than capacity.
-    pub fn push(&mut self, tiles: &[Option<&YuvFrame>]) -> Result<(), StackedEncodeError> {
+    pub fn push(&mut self, tiles: &[Option<&Yuv420pFrame>]) -> Result<(), StackedEncodeError> {
         let packed = pack_yuv420p(&self.layout, tiles)?;
         self.encoder
             .write_yuv420p_planes(&packed.y, &packed.u, &packed.v)?;
@@ -164,8 +164,8 @@ impl StackedEncoder {
     /// Convenience: push a slice of owned frames (all
     /// populated). Equivalent to building an `Option` slice with
     /// `Some` on every entry.
-    pub fn push_all(&mut self, tiles: &[&YuvFrame]) -> Result<(), StackedEncodeError> {
-        let opts: Vec<Option<&YuvFrame>> = tiles.iter().copied().map(Some).collect();
+    pub fn push_all(&mut self, tiles: &[&Yuv420pFrame]) -> Result<(), StackedEncodeError> {
+        let opts: Vec<Option<&Yuv420pFrame>> = tiles.iter().copied().map(Some).collect();
         self.push(&opts)
     }
 

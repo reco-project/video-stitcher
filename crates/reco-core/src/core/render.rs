@@ -1,13 +1,13 @@
 //! Render and submit methods for [`StitchCore`](super::StitchCore).
 //!
 //! Contains the `submit_frame_*` push methods (which run detection,
-//! tick the director, and read back RGBA) and the low-level
+//! tick the panner, and read back RGBA) and the low-level
 //! `render_*_at_pose` methods (GPU-only, no readback).
 
-use crate::geometry::Pose;
+use crate::geometry::RenderPose;
 #[cfg(feature = "gpu")]
-use crate::render::planes::BgraPlanes;
-use crate::render::planes::YuvPlanes;
+use crate::render::planes::RgbaPlanes;
+use crate::render::planes::Yuv420pPlanes;
 use crate::stitch::Executor;
 
 use super::types::{RenderOutcome, ReplayFrame, StitchCoreError};
@@ -19,8 +19,8 @@ impl super::StitchCore {
 
     /// Submit a CPU-resident frame set and render the current pose.
     ///
-    /// The director-driven push entry for every CPU-resident format:
-    /// runs detection on schedule, ticks the director and coverage
+    /// The panner-driven push entry for every CPU-resident format:
+    /// runs detection on schedule, ticks the panner and coverage
     /// clamping to pick the viewport, renders, and reads back RGBA.
     /// On the GPU executor the first two calls produce
     /// [`RenderOutcome::Warmup`] while the triple-buffered staging ring
@@ -55,15 +55,15 @@ impl super::StitchCore {
                 if let [left, right] = cams.as_slice()
                     && let Some(ref mut recorder) = self.stacked_recorder
                 {
-                    let (src_w, src_h) = self.executor.source_info();
+                    let (src_w, src_h) = self.executor.source_dims();
                     recorder.record_yuv(&left.as_planes(), &right.as_planes(), src_w, src_h);
                 }
-                let ran_detection = self.detect_yuv_set(cams);
-                let requested = self.request_current_pose(ran_detection);
+                self.detect_yuv_set(cams);
+                let requested = self.request_current_pose();
                 let pose = self.advance_pose(requested, self.frame_count, frame_seconds)?;
                 match &self.executor {
                     Executor::Cpu(_) => {
-                        let planes: Vec<YuvPlanes<'_>> =
+                        let planes: Vec<Yuv420pPlanes<'_>> =
                             cams.iter().map(|c| c.as_planes()).collect();
                         self.submit_cpu_yuv(&planes, pose)
                     }
@@ -80,8 +80,8 @@ impl super::StitchCore {
                 self.anchor_session_start();
                 // The stacked replay recorder is YUV420P-native and
                 // does not tap NV12 submits today.
-                let ran_detection = self.detect_nv12_set(cams);
-                let requested = self.request_current_pose(ran_detection);
+                self.detect_nv12_set(cams);
+                let requested = self.request_current_pose();
                 let pose = self.advance_pose(requested, self.frame_count, frame_seconds)?;
                 match &self.executor {
                     Executor::Cpu(_) => {
@@ -108,39 +108,33 @@ impl super::StitchCore {
 
     /// Run scheduled detection on a YUV420P set. Detection mapping is
     /// two-camera only today; other set lengths warn once and idle.
-    /// Returns whether detection ran (feeds the director's
-    /// fresh-detection flag in `resolve_current_pose`).
-    fn detect_yuv_set(&mut self, cams: &[crate::source::YuvData]) -> bool {
+    fn detect_yuv_set(&mut self, cams: &[crate::source::Yuv420pData]) {
         if !self.detection_due(self.frame_count) {
-            return false;
+            return;
         }
         match cams {
             [left, right] => {
-                let (src_w, src_h) = self.executor.source_info();
+                let (src_w, src_h) = self.executor.source_dims();
                 self.run_yuv_detection(&left.as_planes(), &right.as_planes(), src_w, src_h);
-                true
             }
             _ => {
                 self.warn_detection_unmapped();
-                false
             }
         }
     }
 
     /// NV12 counterpart of [`Self::detect_yuv_set`].
-    fn detect_nv12_set(&mut self, cams: &[crate::source::Nv12Data]) -> bool {
+    fn detect_nv12_set(&mut self, cams: &[crate::source::Nv12Data]) {
         if !self.detection_due(self.frame_count) {
-            return false;
+            return;
         }
         match cams {
             [left, right] => {
-                let (src_w, src_h) = self.executor.source_info();
+                let (src_w, src_h) = self.executor.source_dims();
                 self.run_nv12_detection(&left.as_planes(), &right.as_planes(), src_w, src_h);
-                true
             }
             _ => {
                 self.warn_detection_unmapped();
-                false
             }
         }
     }
@@ -169,8 +163,8 @@ impl super::StitchCore {
     /// immediately, no staging ring, no warmup.
     fn submit_cpu_yuv(
         &mut self,
-        planes: &[YuvPlanes<'_>],
-        pose: Pose,
+        planes: &[Yuv420pPlanes<'_>],
+        pose: RenderPose,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         // Infallible on wgpu-free builds (single-variant enum); the gpu
         // build adds the second arm.
@@ -188,7 +182,7 @@ impl super::StitchCore {
     fn submit_cpu_nv12(
         &mut self,
         planes: &[crate::render::planes::Nv12Planes<'_>],
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         // See submit_cpu_yuv for the wgpu-free lint note.
         #[allow(clippy::infallible_destructuring_match)]
@@ -206,9 +200,9 @@ impl super::StitchCore {
     #[cfg(feature = "gpu")]
     fn submit_gpu_yuv(
         &mut self,
-        left: &YuvPlanes<'_>,
-        right: &YuvPlanes<'_>,
-        pose: Pose,
+        left: &Yuv420pPlanes<'_>,
+        right: &Yuv420pPlanes<'_>,
+        pose: RenderPose,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         let Executor::Gpu(gpu) = &self.executor else {
             unreachable!("routed from the GPU arm");
@@ -257,17 +251,17 @@ impl super::StitchCore {
     /// session-start clock, runs detection when
     /// `frame_count % detection_interval == 0`, renders, reads back
     /// RGBA, pushes into the replay buffer, increments frame_count -
-    /// but bypasses the director and uses the caller-supplied pose
+    /// but bypasses the panner and uses the caller-supplied pose
     /// directly - fov included, like every render path.
     ///
     /// This is the canonical submit path for interactive UIs (OBS
     /// pan/zoom sliders, mouse-drag preview) where pose comes from
-    /// user input rather than a director.
-    pub fn submit_frame_yuv_at_pose(
+    /// user input rather than a panner.
+    pub fn submit_frame_yuv420p_at_pose(
         &mut self,
-        left: &YuvPlanes<'_>,
-        right: &YuvPlanes<'_>,
-        pose: Pose,
+        left: &Yuv420pPlanes<'_>,
+        right: &Yuv420pPlanes<'_>,
+        pose: RenderPose,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         self.anchor_session_start();
 
@@ -275,15 +269,15 @@ impl super::StitchCore {
         // rationale (record-before-render so the file exactly
         // matches what the pipeline consumed).
         if let Some(ref mut recorder) = self.stacked_recorder {
-            let (src_w, src_h) = self.executor.source_info();
+            let (src_w, src_h) = self.executor.source_dims();
             recorder.record_yuv(left, right, src_w, src_h);
         }
 
-        // `submit_frame_yuv_at_pose` bypasses resolve_current_pose (caller
+        // `submit_frame_yuv420p_at_pose` bypasses the panner request (caller
         // provides the pose directly), but detection still runs on the
-        // schedule so directors stay populated for a later regular submit.
+        // schedule so panners stay populated for a later regular submit.
         if self.detection_due(self.frame_count) {
-            let (src_w, src_h) = self.executor.source_info();
+            let (src_w, src_h) = self.executor.source_dims();
             self.run_yuv_detection(left, right, src_w, src_h);
         }
         match &self.executor {
@@ -293,29 +287,22 @@ impl super::StitchCore {
         }
     }
 
-    /// Submit a stereo BGRA frame pair at an explicit pose. See
-    /// [`Self::submit_frame_yuv_at_pose`] for semantics.
+    /// Submit a stereo RGBA frame pair at an explicit render-space pose. See
+    /// [`Self::submit_frame_yuv420p_at_pose`] for semantics.
     ///
-    /// Does not run detection: YOLO backends today consume YUV or
-    /// NV12 `RawFrame` variants, and wrapping BGRA bytes as a YUV
-    /// frame would need a color-space conversion we are not paying
-    /// for. Consumers that want detection on BGRA sources (OBS
-    /// Browser Source, screen capture) attach a detector that
-    /// understands BGRA once such a backend exists; until then BGRA
-    /// submits tick the director with the last detections from any
-    /// earlier YUV submits.
+    /// Renders the supplied pose without running detection or advancing camera motion. Convert BGRA source bytes to RGBA before submission.
     #[cfg(feature = "gpu")]
-    pub fn submit_frame_bgra_at_pose(
+    pub fn submit_frame_rgba_at_pose(
         &mut self,
-        left: &BgraPlanes<'_>,
-        right: &BgraPlanes<'_>,
-        pose: Pose,
+        left: &RgbaPlanes<'_>,
+        right: &RgbaPlanes<'_>,
+        pose: RenderPose,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         self.anchor_session_start();
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
-        let cmd = gpu.pipeline.render_to_target_bgra(left, right, pose)?;
+        let cmd = gpu.pipeline.render_to_target_rgba(left, right, pose)?;
         let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
@@ -345,7 +332,7 @@ impl super::StitchCore {
         &mut self,
         left: &crate::render::planes::Nv12Planes<'_>,
         right: &crate::render::planes::Nv12Planes<'_>,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         let Executor::Gpu(gpu) = &self.executor else {
             unreachable!("routed from the GPU arm");
@@ -378,7 +365,7 @@ impl super::StitchCore {
     /// Store a CPU-stitched frame and hand out the borrowed outcome -
     /// the synchronous dual of the GPU readback tail (replay push +
     /// frame accounting).
-    fn deliver_cpu_frame(&mut self, rgba: Vec<u8>, pose: Pose) -> RenderOutcome<'_> {
+    fn deliver_cpu_frame(&mut self, rgba: Vec<u8>, pose: RenderPose) -> RenderOutcome<'_> {
         let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
         self.frame_count += 1;
         if let Some(replay) = self.replay.as_mut() {
@@ -413,7 +400,7 @@ impl super::StitchCore {
     // -----------------------------------------------------------------
 
     /// Render a stereo YUV420P frame directly to a surface view - the
-    /// interactive preview path (GUI/CLI). No detection, no director, no
+    /// interactive preview path (GUI/CLI). No detection, no panner, no
     /// readback; the caller supplies the (already oriented) pose.
     ///
     /// The full pose is the render parameter - fov included, so there
@@ -421,9 +408,9 @@ impl super::StitchCore {
     #[cfg(feature = "gpu")]
     pub fn render_to_view(
         &mut self,
-        left: &YuvPlanes<'_>,
-        right: &YuvPlanes<'_>,
-        pose: Pose,
+        left: &Yuv420pPlanes<'_>,
+        right: &Yuv420pPlanes<'_>,
+        pose: RenderPose,
         view: &wgpu::TextureView,
     ) -> Result<(), StitchCoreError> {
         let Executor::Gpu(gpu) = &self.executor else {
@@ -440,9 +427,9 @@ impl super::StitchCore {
     #[cfg(feature = "gpu")]
     pub fn render_and_readback_nv12(
         &mut self,
-        left: &YuvPlanes<'_>,
-        right: &YuvPlanes<'_>,
-        pose: Pose,
+        left: &Yuv420pPlanes<'_>,
+        right: &Yuv420pPlanes<'_>,
+        pose: RenderPose,
     ) -> Result<Option<&[u8]>, StitchCoreError> {
         let Executor::Gpu(gpu) = &mut self.executor else {
             return Err(StitchCoreError::RequiresGpu);
@@ -467,7 +454,7 @@ impl super::StitchCore {
     // Low-level render-at-pose methods
     //
     // These produce a `wgpu::CommandBuffer` at a **caller-supplied pose**
-    // without running detection, without ticking the director, and
+    // without running detection, without ticking the panner, and
     // without performing RGBA readback. They exist so consumers that
     // need the rendered GPU texture as input to further GPU work
     // (NV12 conversion for encoding, compositor texture import) can
@@ -489,7 +476,7 @@ impl super::StitchCore {
         &self,
         left_rgba: &wgpu::Texture,
         right_rgba: &wgpu::Texture,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
         Ok(self
             .executor
@@ -512,7 +499,7 @@ impl super::StitchCore {
     pub fn render_frame_set_at_pose(
         &self,
         frames: &crate::source::FrameSet,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
@@ -533,7 +520,7 @@ impl super::StitchCore {
         left_uv: &wgpu::Texture,
         right_y: &wgpu::Texture,
         right_uv: &wgpu::Texture,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
         Ok(self
             .executor

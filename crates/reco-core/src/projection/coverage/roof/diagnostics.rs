@@ -78,7 +78,7 @@ fn measure_roof_construction() {
         .flat_map(|x| {
             let roof = &roof;
             (0..=40).map(move |y| {
-                let pose = Pose {
+                let pose = RenderPose {
                     yaw: -1.2 + x as f32 * 0.03,
                     pitch: -0.6 + y as f32 * 0.025,
                     fov_degrees: 20.0,
@@ -155,7 +155,7 @@ fn validate_saved_outline_map() {
     let mut checked = 0;
     let mut continuous_unknown = 0;
     for i in 0..4000 {
-        let p = Pose {
+        let p = RenderPose {
             yaw: domain[0] + (domain[1] - domain[0]) * ((i * 73 % 4001) as f32 / 4001.0),
             pitch: domain[2] + (domain[3] - domain[2]) * ((i * 167 % 4003) as f32 / 4003.0),
             fov_degrees: 20.0,
@@ -165,7 +165,7 @@ fn validate_saved_outline_map() {
             continue;
         }
         for fov in [20.0, (20.0 + ceiling) * 0.5, ceiling] {
-            let p = Pose {
+            let p = RenderPose {
                 fov_degrees: fov,
                 ..p
             };

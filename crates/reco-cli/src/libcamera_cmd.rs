@@ -67,7 +67,7 @@ pub fn run_libcamera(
 
     let mut cal = reco_core::calibration::Calibration::from_file(Path::new(calibration))?;
     if let Some(b) = blend {
-        match cal.topology.l_shape_mut() {
+        match cal.projection.l_shape_mut() {
             Some(t) => {
                 eprintln!(
                     "Seam blend: --blend {b} overrides the calibration's {}",
@@ -75,7 +75,7 @@ pub fn run_libcamera(
                 );
                 t.blend_width = b;
             }
-            None => eprintln!("Seam blend: --blend {b} ignored (topology has no seam)"),
+            None => eprintln!("Seam blend: --blend {b} ignored (projection has no seam)"),
         }
     }
 
@@ -171,11 +171,11 @@ pub fn run_libcamera(
 
     // Warm up: discard first frame (camera ISP init)
     if let Some(frame) = source.next_frame()? {
-        if let Err(e) = session.detect_and_update_director(&frame, start.elapsed()) {
+        if let Err(e) = session.detect_and_update_world_pose(&frame, start.elapsed()) {
             log::warn!("detection failed on this frame: {e}");
         }
-        let pos = session.advance_presented_pose(1.0 / capture_fps as f32)?;
-        session.process_frame(&frame, pos)?;
+        let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
+        session.render_frame(&frame, pos)?;
         println!("Warmup complete, starting capture...");
     }
 
@@ -190,11 +190,11 @@ pub fn run_libcamera(
             }
         };
 
-        if let Err(e) = session.detect_and_update_director(&frame, start.elapsed()) {
+        if let Err(e) = session.detect_and_update_world_pose(&frame, start.elapsed()) {
             log::warn!("detection failed on this frame: {e}");
         }
-        let pos = session.advance_presented_pose(1.0 / capture_fps as f32)?;
-        session.process_frame(&frame, pos)?;
+        let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
+        session.render_frame(&frame, pos)?;
         frame_count += 1;
         progress.report(frame_count);
     }

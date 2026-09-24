@@ -1,16 +1,11 @@
-//! Pose resolution and detection internals for
-//! [`StitchCore`](super::StitchCore).
-//!
-//! Contains the internal panner request logic (`request_current_pose`),
-//! the detection schedule (`should_run_detection`), YUV detection
-//! dispatch, panorama-coordinate mapping, and session-start anchoring.
+//! Detection scheduling, source-to-world mapping and world-pose requests for [`StitchCore`](super::StitchCore).
 
-use crate::detect::detector::{ChromaFormat, Detection, DetectorError, DetectorFrame, RawFrame};
-use crate::detect::director::MappedDetection;
+use crate::detect::detector::{ChromaPlanes, Detection, DetectorError, DetectorFrame, YuvView};
+use crate::detect::mapped_detection::MappedDetection;
 use crate::detect::tracker::WorldState;
 use crate::geometry::CameraIndex;
-use crate::geometry::Pose;
-use crate::render::planes::YuvPlanes;
+use crate::geometry::WorldPose;
+use crate::render::planes::Yuv420pPlanes;
 
 /// What one [`StitchCore::dispatch_pose`] tick produced - the numbers
 /// the session's telemetry records plus the panner's raw decision.
@@ -18,8 +13,8 @@ use crate::render::planes::YuvPlanes;
 pub(crate) struct DispatchStats {
     /// The panner's decided pose (world-space, pre-clamp). `None` when
     /// no panner is attached.
-    pub pose: Option<Pose>,
-    /// Panorama-mapped detections the dispatch consumed.
+    pub pose: Option<WorldPose>,
+    /// Mapped detections the dispatch consumed.
     pub detections: u32,
     /// Player tracks active this frame.
     pub active_tracks: u32,
@@ -34,21 +29,12 @@ impl super::StitchCore {
         }
     }
 
-    pub(super) fn request_current_pose(&mut self, fresh_detection: bool) -> Pose {
-        // Pull a world-space request; the presentation boundary owns its
-        // conversion to render space and any coverage constraint.
-        //
-        // `fresh_detection` is the ACTUAL run decision for this frame,
-        // not the schedule-would-fire predicate. The BGRA submit path
-        // deliberately skips detection (no BGRA-aware backend exists
-        // today) so it must pass `false` even when the interval would
-        // have fired - otherwise directors over-count hysteresis on
-        // stale cached detections.
+    pub(super) fn request_current_pose(&mut self) -> WorldPose {
+        // Pose resolution applies rig orientation and coverage after the panner request.
         let timestamp_ms = self
             .session_start
             .map(|s| s.elapsed().as_secs_f64() * 1000.0)
             .unwrap_or(0.0);
-        let _ = fresh_detection; // reserved for future freshness-aware panners
         self.dispatch_pose(self.frame_count, timestamp_ms, "StitchCore")
             .pose
             .unwrap_or_default()
@@ -70,10 +56,10 @@ impl super::StitchCore {
     }
 
     /// One frame of the tracker -> panner chain at an explicit index
-    /// and timestamp: emits `DetectionsRaw`, runs the shared
+    /// and timestamp: emits `MappedDetections`, runs the shared
     /// [`panner::dispatch`](crate::detect::panner) (which emits
     /// `WorldState`/`PanDecision` through the engine's sink), advances
-    /// `previous_panner_pose`, and reports the dispatch stats.
+    /// `requested_world_pose`, and reports the dispatch stats.
     pub(crate) fn dispatch_pose(
         &mut self,
         index: u64,
@@ -82,7 +68,7 @@ impl super::StitchCore {
     ) -> DispatchStats {
         if let Some(sink) = self.event_sink.as_deref_mut() {
             sink.emit(
-                crate::detect::pipeline_event::PipelineEvent::DetectionsRaw {
+                crate::detect::pipeline_event::PipelineEvent::MappedDetections {
                     frame_index: index,
                     detections: self.last_detections.clone(),
                 },
@@ -92,7 +78,7 @@ impl super::StitchCore {
             self.panner.as_mut(),
             self.player_tracker.as_mut(),
             self.ball_tracker.as_mut(),
-            &mut self.previous_panner_pose,
+            &mut self.requested_world_pose,
             self.event_sink.as_deref_mut(),
             crate::detect::panner::DispatchContext {
                 detections: &self.last_detections,
@@ -113,8 +99,8 @@ impl super::StitchCore {
     /// Run trackers only (no panner advance) - the lookahead produce
     /// phase. Consumes the cached detections; returns the assembled
     /// [`WorldState`] for buffering.
-    pub fn track_only(&mut self, index: u64, timestamp_ms: f64) -> WorldState {
-        crate::detect::panner::dispatch_detect_only(
+    pub fn update_trackers(&mut self, index: u64, timestamp_ms: f64) -> WorldState {
+        crate::detect::panner::run_trackers(
             self.player_tracker.as_mut(),
             self.ball_tracker.as_mut(),
             crate::detect::panner::DispatchContext {
@@ -128,9 +114,9 @@ impl super::StitchCore {
     }
 
     /// The buffered (lookahead) panner step: decide the pose for
-    /// `world` while seeing `futures`, advancing `previous_panner_pose`.
+    /// `world` while seeing `futures`, advancing `requested_world_pose`.
     /// Without a panner the pose stays wherever the loop last seeded it
-    /// (see [`Self::set_previous_panner_pose`]).
+    /// (see [`Self::set_requested_world_pose`]).
     #[cfg_attr(not(feature = "gpu"), allow(dead_code))] // session (gpu-gated) drives this
     pub(crate) fn decide_pose_with_lookahead(
         &mut self,
@@ -138,18 +124,18 @@ impl super::StitchCore {
         futures: &[WorldState],
         index: u64,
         timestamp_ms: f64,
-    ) -> Pose {
+    ) -> WorldPose {
         let Some(panner) = self.panner.as_mut() else {
-            return self.previous_panner_pose;
+            return self.requested_world_pose;
         };
         let ctx = crate::detect::panner::PanContext {
             frame_index: index,
             timestamp_ms,
-            previous_position: self.previous_panner_pose,
+            previous_pose: self.requested_world_pose,
             calibration: self.executor.calibration(),
         };
         let pose = panner.decide_with_lookahead(world, futures, &ctx);
-        self.previous_panner_pose = pose;
+        self.requested_world_pose = pose;
         pose
     }
 
@@ -157,23 +143,20 @@ impl super::StitchCore {
     /// The buffered loop writes its post-smoothed pose back through
     /// this before rendering.
     #[cfg_attr(not(feature = "gpu"), allow(dead_code))] // session (gpu-gated) drives this
-    pub(crate) fn set_previous_panner_pose(&mut self, pose: Pose) {
-        self.previous_panner_pose = pose;
+    pub(crate) fn set_requested_world_pose(&mut self, pose: WorldPose) {
+        self.requested_world_pose = pose;
     }
 
-    /// Whether the attached detector consumes CUDA device pointers
-    /// (the ORT CUDA backend). When false, CUDA texture imports are
-    /// skipped so wgpu compute preprocessing keeps ownership of the
-    /// D3D11 textures.
-    pub fn detector_needs_cuda_frames(&self) -> bool {
+    /// Whether the attached detector prefers native CUDA NV12 input. The Linux NVDEC session path uses this to select CUDA pointers or wgpu preprocessing; other source paths select their own frame residency.
+    pub fn detector_prefers_cuda_nv12(&self) -> bool {
         self.detector
             .as_ref()
-            .is_some_and(|d| d.name().contains("ort-cuda"))
+            .is_some_and(|d| d.prefers_cuda_nv12())
     }
 
     /// Run the attached detector over prebuilt per-camera frames (any
-    /// residency), map the raw detections to panorama coordinates, and
-    /// cache them for the director. No-op without a detector.
+    /// residency), map the raw detections to world-reference angles, and
+    /// cache them for tracking. No-op without a detector.
     ///
     /// Errors are warned-and-dropped: a flaky inference call must not
     /// crash the render loop. `UnsupportedFrameKind` logs at debug -
@@ -193,25 +176,25 @@ impl super::StitchCore {
                 Err(e) => log::warn!("StitchCore detector '{}' {camera:?}: {e}", detector.name()),
             }
         }
-        self.last_detections = self.map_detections_to_panorama(out);
+        self.last_detections = self.map_detections(out);
     }
 
     /// Run detection on a stereo YUV420P frame pair - wraps each
-    /// camera's planes as [`RawFrame`] + [`DetectorFrame::Cpu`] and
+    /// camera's planes as [`YuvView`] + [`DetectorFrame::Yuv`] and
     /// feeds [`Self::run_detection_frames`].
     pub(super) fn run_yuv_detection(
         &mut self,
-        left: &YuvPlanes<'_>,
-        right: &YuvPlanes<'_>,
+        left: &Yuv420pPlanes<'_>,
+        right: &Yuv420pPlanes<'_>,
         source_width: u32,
         source_height: u32,
     ) {
         self.run_detection_frames(&[
             (
                 0,
-                DetectorFrame::Cpu(RawFrame {
+                DetectorFrame::Yuv(YuvView {
                     y: left.y,
-                    chroma: ChromaFormat::Yuv420p {
+                    chroma: ChromaPlanes::Yuv420p {
                         u: left.u,
                         v: left.v,
                     },
@@ -221,9 +204,9 @@ impl super::StitchCore {
             ),
             (
                 1,
-                DetectorFrame::Cpu(RawFrame {
+                DetectorFrame::Yuv(YuvView {
                     y: right.y,
-                    chroma: ChromaFormat::Yuv420p {
+                    chroma: ChromaPlanes::Yuv420p {
                         u: right.u,
                         v: right.v,
                     },
@@ -246,18 +229,18 @@ impl super::StitchCore {
         self.run_detection_frames(&[
             (
                 0,
-                DetectorFrame::Cpu(RawFrame {
+                DetectorFrame::Yuv(YuvView {
                     y: left.y,
-                    chroma: ChromaFormat::Nv12 { uv: left.uv },
+                    chroma: ChromaPlanes::Nv12 { uv: left.uv },
                     width: source_width,
                     height: source_height,
                 }),
             ),
             (
                 1,
-                DetectorFrame::Cpu(RawFrame {
+                DetectorFrame::Yuv(YuvView {
                     y: right.y,
-                    chroma: ChromaFormat::Nv12 { uv: right.uv },
+                    chroma: ChromaPlanes::Nv12 { uv: right.uv },
                     width: source_width,
                     height: source_height,
                 }),
@@ -265,12 +248,8 @@ impl super::StitchCore {
         ]);
     }
 
-    /// Map raw camera-space detections to panorama-space
-    /// [`MappedDetection`]s the director can consume.
-    pub(super) fn map_detections_to_panorama(
-        &self,
-        detections: Vec<Detection>,
-    ) -> Vec<MappedDetection> {
+    /// Enrich raw source-image detections with world-reference angular positions for tracking.
+    pub(super) fn map_detections(&self, detections: Vec<Detection>) -> Vec<MappedDetection> {
         let calibration = self.executor.calibration();
         detections
             .into_iter()

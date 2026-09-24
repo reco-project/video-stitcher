@@ -12,7 +12,7 @@
 
 use std::path::Path;
 
-use reco_core::source::YuvFrame;
+use reco_core::source::Yuv420pFrame;
 use thiserror::Error;
 
 use super::decoder::{DecodeError, VideoDecoder};
@@ -83,7 +83,7 @@ pub fn probe_video(path: &Path) -> Result<VideoProbe, CalibrationIoError> {
 pub fn extract_frames(
     video_path: &Path,
     frame_indices: &[u64],
-) -> Result<Vec<YuvFrame>, CalibrationIoError> {
+) -> Result<Vec<Yuv420pFrame>, CalibrationIoError> {
     let mut decoder = VideoDecoder::open(video_path)?;
     let fps = decoder.fps();
     let mut frames = Vec::with_capacity(frame_indices.len());

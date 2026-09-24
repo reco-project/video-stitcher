@@ -1,27 +1,16 @@
-//! Value types shared by every pose-resolution path.
+//! Source-image detections with optional calibrated world-reference directions.
 //!
-//! [`Pose`](crate::geometry::Pose) is the camera's yaw / pitch / FOV triple, the
-//! output of any [`Panner`](super::panner::Panner) and the input the
-//! renderer crops the panorama with. [`MappedDetection`] is a raw
-//! detection enriched with panorama-space coordinates; trackers
-//! consume it and emit [`TrackedEntity`](super::tracker::TrackedEntity)
-//! values. External consumers can observe detections via
-//! [`PipelineEventSink`](super::pipeline_event::PipelineEventSink).
-//!
-//! The module is named `director` for historical reasons — the old
-//! `Director` trait lived here before the tracker/panner split. The
-//! trait is gone; only these value types remain. Rename deferred to
-//! avoid a repo-wide import churn.
+//! Trackers consume [`MappedDetection`] values and emit [`TrackedEntity`](super::tracker::TrackedEntity) values. External consumers can observe mapped detections through [`PipelineEventSink`](super::pipeline_event::PipelineEventSink).
 
 use crate::geometry::CameraIndex;
 use crate::geometry::YawPitch;
 
-/// A detection mapped to panorama coordinates.
+/// A source-image detection with an optional world-reference angular position.
 ///
 /// Consumed by every [`Tracker`](super::tracker::Tracker) each frame.
 /// External consumers (coaching, VAR, stats) observe detections via
 /// [`PipelineEventSink`](super::pipeline_event::PipelineEventSink).
-/// Wraps a raw camera-space detection with a panorama-space
+/// Wraps a raw source-image detection with a world-reference
 /// [`YawPitch`] computed via [`Calibration::map_source_point`](crate::calibration::Calibration::map_source_point).
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct MappedDetection {
@@ -35,10 +24,10 @@ pub struct MappedDetection {
     /// Confidence score in `[0.0, 1.0]`.
     pub confidence: f32,
 
-    /// Bounding box center in normalized camera coordinates `[0.0, 1.0]`.
+    /// Bounding box center `(x, y)` as fractions of the source image. The origin is top-left, with X right and Y down.
     pub camera_center: (f32, f32),
 
-    /// Bounding box size in normalized `[0, 1]` camera coordinates.
+    /// Bounding box `(width, height)` as fractions of the source image dimensions.
     ///
     /// Multiply by the camera's pixel dimensions to get pixel size:
     /// `pixel_w = camera_size.0 * calibration.lenses[camera].width as f32`.

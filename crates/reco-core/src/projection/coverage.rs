@@ -13,7 +13,7 @@ use super::{Cylinder, LShape};
 use crate::calibration::{Framing, Lens};
 use crate::{
     calibration::Calibration,
-    geometry::Pose,
+    geometry::RenderPose,
     render::viewport::ViewportSize,
     stitch::{BlendRule, SurfaceMap},
 };
@@ -154,7 +154,7 @@ fn certify_regions(
 }
 
 #[cfg(test)]
-fn certify_pose(cal: &Calibration, size: &ViewportSize, pose: Pose) -> Certificate {
+fn certify_pose(cal: &Calibration, size: &ViewportSize, pose: RenderPose) -> Certificate {
     if !valid_query(cal, size, pose) {
         return Certificate::Unknown;
     }
@@ -162,7 +162,7 @@ fn certify_pose(cal: &Calibration, size: &ViewportSize, pose: Pose) -> Certifica
     certify(&maps, 0.0)
 }
 
-fn valid_query(cal: &Calibration, size: &ViewportSize, pose: Pose) -> bool {
+fn valid_query(cal: &Calibration, size: &ViewportSize, pose: RenderPose) -> bool {
     cal.validate().is_ok()
         && size.validate().is_ok()
         && pose.yaw.is_finite()
@@ -170,8 +170,8 @@ fn valid_query(cal: &Calibration, size: &ViewportSize, pose: Pose) -> bool {
         && (1.0..=179.0).contains(&pose.fov_degrees)
 }
 
-fn interpolate(a: Pose, b: Pose, t: f32) -> Pose {
-    Pose {
+fn interpolate(a: RenderPose, b: RenderPose, t: f32) -> RenderPose {
+    RenderPose {
         yaw: a.yaw + (b.yaw - a.yaw) * t,
         pitch: a.pitch + (b.pitch - a.pitch) * t,
         fov_degrees: a.fov_degrees + (b.fov_degrees - a.fov_degrees) * t,
@@ -182,12 +182,12 @@ fn interpolate(a: Pose, b: Pose, t: f32) -> Pose {
 fn certify_sweep_enclosure(
     cal: &Calibration,
     size: &ViewportSize,
-    a: Pose,
-    b: Pose,
+    a: RenderPose,
+    b: RenderPose,
     rectangles: usize,
 ) -> Certificate {
     let rotation = f64::from((b.yaw - a.yaw).abs() + (b.pitch - a.pitch).abs()) * 0.5;
-    let mid = Pose {
+    let mid = RenderPose {
         fov_degrees: a.fov_degrees.max(b.fov_degrees),
         ..interpolate(a, b, 0.5)
     };
@@ -198,7 +198,7 @@ fn certify_sweep_enclosure(
 fn certify_orientation_enclosure(
     cal: &Calibration,
     size: &ViewportSize,
-    mid: Pose,
+    mid: RenderPose,
     rotation: f64,
     rectangles: usize,
 ) -> Certificate {
@@ -219,14 +219,14 @@ fn certify_orientation_enclosure(
 }
 
 #[cfg(test)]
-fn fit_fov(cal: &Calibration, size: &ViewportSize, requested: Pose) -> Option<Pose> {
+fn fit_fov(cal: &Calibration, size: &ViewportSize, requested: RenderPose) -> Option<RenderPose> {
     if !valid_query(cal, size, requested) {
         return None;
     }
     if certify_pose(cal, size, requested) == Certificate::Covered {
         return Some(requested);
     }
-    let mut fitted = Pose {
+    let mut fitted = RenderPose {
         fov_degrees: 1.0,
         ..requested
     };
@@ -235,7 +235,7 @@ fn fit_fov(cal: &Calibration, size: &ViewportSize, requested: Pose) -> Option<Po
     }
     let mut high = requested.fov_degrees;
     for _ in 0..16 {
-        let candidate = Pose {
+        let candidate = RenderPose {
             fov_degrees: (fitted.fov_degrees + high) * 0.5,
             ..requested
         };

@@ -31,7 +31,7 @@ use reco_core::core::StitchCore;
 use reco_core::core::types::StitchCoreError;
 use reco_core::gpu::GpuContext;
 use reco_core::lens::preview::LensPreviewRenderer;
-use reco_core::render::pipeline::{PipelineError, YuvPlanes};
+use reco_core::render::pipeline::{PipelineError, Yuv420pPlanes};
 use reco_core::render::viewport::ViewportSize;
 use reco_core::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 use reco_core::wgpu;
@@ -113,9 +113,9 @@ impl PreviewBridge {
     /// GPU texture on the shared device.
     pub fn render_frame(
         &mut self,
-        left: &YuvPlanes<'_>,
-        right: &YuvPlanes<'_>,
-        pose: reco_core::geometry::Pose,
+        left: &Yuv420pPlanes<'_>,
+        right: &Yuv420pPlanes<'_>,
+        pose: reco_core::geometry::RenderPose,
     ) -> Result<slint::Image, StitchCoreError> {
         let device = self.engine.gpu().device();
 
@@ -179,7 +179,7 @@ impl PreviewBridge {
     /// `correction_amount`: 0.0 = raw input, 1.0 = full KB4 correction.
     pub fn render_lens_preview(
         &mut self,
-        planes: &YuvPlanes<'_>,
+        planes: &Yuv420pPlanes<'_>,
         params: &Lens,
         correction_amount: f32,
     ) -> Result<slint::Image, PipelineError> {

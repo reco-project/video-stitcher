@@ -22,14 +22,14 @@
 //! One variant per natural pipeline stage:
 //!
 //! 1. [`FrameStart`](crate::detect::pipeline_event::PipelineEvent::FrameStart) - the frame loop picked up a new frame.
-//! 2. [`DetectionsRaw`](crate::detect::pipeline_event::PipelineEvent::DetectionsRaw) - detector produced mapped detections.
+//! 2. [`MappedDetections`](crate::detect::pipeline_event::PipelineEvent::MappedDetections) - mapped detections used for this frame's tracking.
 //! 3. [`WorldState`](crate::detect::pipeline_event::PipelineEvent::WorldState) - trackers produced the per-frame world.
-//! 4. [`PanDecision`](crate::detect::pipeline_event::PipelineEvent::PanDecision) - panner produced the raw viewport pose.
-//! 5. [`PosePresented`](crate::detect::pipeline_event::PipelineEvent::PosePresented) - post-clamp pose the renderer saw.
+//! 4. [`PanDecision`](crate::detect::pipeline_event::PipelineEvent::PanDecision) - world-space pose request, including lookahead smoothing when enabled.
+//! 5. [`RenderPoseResolved`](crate::detect::pipeline_event::PipelineEvent::RenderPoseResolved) - render-space pose resolved before rendering.
 
-use super::director::MappedDetection;
+use super::mapped_detection::MappedDetection;
 use super::tracker::TrackedEntity;
-use crate::geometry::Pose;
+use crate::geometry::{RenderPose, WorldPose};
 
 /// A single observable event from the stitch pipeline.
 ///
@@ -48,13 +48,11 @@ pub enum PipelineEvent {
         timestamp_ms: f64,
     },
 
-    /// Detector produced mapped detections for this frame, before
-    /// the trackers consume them.
-    DetectionsRaw {
+    /// Mapped detections used for this frame's tracking. May repeat cached results when inference is skipped; this event does not establish freshness.
+    MappedDetections {
         /// Monotonic frame counter.
         frame_index: u64,
-        /// Detections the detector emitted (one per class per camera,
-        /// projected into panorama space).
+        /// Source-image detections enriched with optional world-reference angular positions.
         detections: Vec<MappedDetection>,
     },
 
@@ -70,12 +68,12 @@ pub enum PipelineEvent {
         ball: Option<TrackedEntity>,
     },
 
-    /// Panner produced a raw viewport pose (pre-clamp).
+    /// World-space request before rig correction and coverage constraints. Includes lookahead smoothing in the buffered path.
     PanDecision {
         /// Monotonic frame counter.
         frame_index: u64,
-        /// The pose the panner decided on, before any coverage clamp.
-        pose: Pose,
+        /// The world-space pose the panner requested.
+        pose: WorldPose,
     },
 
     /// Panner internal state for debugging camera movement decisions.
@@ -93,8 +91,8 @@ pub enum PipelineEvent {
         fov_target: f32,
     },
 
-    /// Final pose the renderer received this frame (post-clamp).
-    PosePresented { frame_index: u64, pose: Pose },
+    /// Resolved render-space pose before rendering. Does not establish that a frame was rendered, delivered or displayed.
+    RenderPoseResolved { frame_index: u64, pose: RenderPose },
 
     /// End-of-frame summary with per-stage timing.
     FrameComplete {
@@ -140,11 +138,11 @@ impl PipelineEvent {
     pub fn frame_index(&self) -> u64 {
         match self {
             PipelineEvent::FrameStart { frame_index, .. }
-            | PipelineEvent::DetectionsRaw { frame_index, .. }
+            | PipelineEvent::MappedDetections { frame_index, .. }
             | PipelineEvent::WorldState { frame_index, .. }
             | PipelineEvent::PanDecision { frame_index, .. }
             | PipelineEvent::PannerDebug { frame_index, .. }
-            | PipelineEvent::PosePresented { frame_index, .. }
+            | PipelineEvent::RenderPoseResolved { frame_index, .. }
             | PipelineEvent::FrameComplete { frame_index, .. } => *frame_index,
         }
     }
@@ -282,6 +280,28 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
 
+    #[test]
+    fn event_names_identify_mapping_and_pose_resolution() {
+        let mapped = serde_json::to_value(PipelineEvent::MappedDetections {
+            frame_index: 7,
+            detections: Vec::new(),
+        })
+        .unwrap();
+        assert_eq!(mapped["kind"], "mapped_detections");
+        let pose = RenderPose {
+            yaw: 0.2,
+            pitch: -0.1,
+            fov_degrees: 53.0,
+        };
+        let resolved = serde_json::to_value(PipelineEvent::RenderPoseResolved {
+            frame_index: 7,
+            pose,
+        })
+        .unwrap();
+        assert_eq!(resolved["kind"], "render_pose_resolved");
+        assert_eq!(resolved["pose"], serde_json::to_value(pose).unwrap());
+    }
+
     /// Captures events into a Vec for assertions in later tests.
     #[derive(Default)]
     struct VecSink(Vec<PipelineEvent>);
@@ -316,7 +336,7 @@ mod tests {
                 frame_index: 1,
                 timestamp_ms: 0.0,
             },
-            PipelineEvent::DetectionsRaw {
+            PipelineEvent::MappedDetections {
                 frame_index: 2,
                 detections: Vec::new(),
             },
@@ -328,11 +348,11 @@ mod tests {
             },
             PipelineEvent::PanDecision {
                 frame_index: 4,
-                pose: Pose::default(),
+                pose: WorldPose::default(),
             },
-            PipelineEvent::PosePresented {
+            PipelineEvent::RenderPoseResolved {
                 frame_index: 5,
-                pose: Pose::default(),
+                pose: RenderPose::default(),
             },
             PipelineEvent::FrameComplete {
                 frame_index: 6,

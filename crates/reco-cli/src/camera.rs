@@ -2,7 +2,7 @@
 //!
 //! Captures stereo camera feeds, stitches them on the GPU, and encodes
 //! the panoramic output to a video file in real time. Supports optional
-//! YOLO ball detection and auto-tracking via the director pipeline.
+//! YOLO ball detection and auto-tracking via the panner pipeline.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -22,7 +22,7 @@ use crate::snapshot::SnapshotWriter;
 /// NV12 native capture on Jetson (Tegra) and I420 elsewhere.
 ///
 /// When `model_path` is provided, sets up YOLO ball detection with
-/// EKF tracking and a ball-following director for automatic panning.
+/// EKF tracking and a ball-following panner for automatic panning.
 /// Configuration for live camera stitching.
 pub struct CameraRunConfig<'a> {
     pub cam_config: CameraConfig,
@@ -55,10 +55,10 @@ pub struct CameraRunConfig<'a> {
     /// Output container (`mp4` / `fmp4` / `mkv`). None -> `mp4`.
     /// `mkv` recommended for live recording (crash-safe, streamable).
     pub container: Option<&'a str>,
-    /// Tracking director: `ball`, `field`, `sweep`. Sweep mode
+    /// Tracking panner: `ball`, `field`, `sweep`. Sweep mode
     /// bypasses detection entirely (no --model needed).
     pub tracking: &'a str,
-    /// Disable coverage-boundary clamp on the director output.
+    /// Disable coverage-boundary clamp on the panner output.
     /// Useful in sweep mode to cover the full panorama width.
     pub unconstrained: bool,
     /// Optional path for stacked-replay recording. Same feature
@@ -125,16 +125,16 @@ pub fn run_camera(
     );
 
     let mut cal = reco_core::calibration::Calibration::from_file(Path::new(calibration))?;
-    match (blend, cal.topology.l_shape_mut()) {
-        (Some(b), Some(topology)) => {
+    match (blend, cal.projection.l_shape_mut()) {
+        (Some(b), Some(projection)) => {
             eprintln!(
                 "Seam blend: --blend {b} overrides the calibration's {}",
-                topology.blend_width
+                projection.blend_width
             );
-            topology.blend_width = b;
+            projection.blend_width = b;
         }
         (Some(b), None) => {
-            eprintln!("Seam blend: --blend {b} ignored - this topology has no seam");
+            eprintln!("Seam blend: --blend {b} ignored - this projection has no seam");
         }
         (None, _) => {}
     }
@@ -146,7 +146,7 @@ pub fn run_camera(
 
     let (use_nv12_capture, input_format) = if v4l2_direct {
         // V4L2 direct: raw Bayer -> GPU demosaic -> RGBA -> stitch via BGRA path.
-        (true, reco_core::render::renderer::InputFormat::Bgra)
+        (true, reco_core::render::renderer::InputFormat::Rgba)
     } else if use_nvmm || helpers::is_tegra() {
         (true, reco_core::render::renderer::InputFormat::Nv12)
     } else {
@@ -186,8 +186,8 @@ pub fn run_camera(
         _ => reco_autocam::TrackingMode::Field,
     };
 
-    // Set up autocam (detector + director). Model path is optional in
-    // sweep mode — SweepDirector needs no detector.
+    // Set up autocam (detector + panner). Model path is optional in
+    // sweep mode — SweepPanner needs no detector.
     #[cfg(feature = "autocam")]
     {
         let effective_model = if tracking_mode == reco_autocam::TrackingMode::Sweep {
@@ -211,7 +211,7 @@ pub fn run_camera(
                 capture_fps as f32,
                 use_nvmm,
             ) {
-                Ok(true) => println!("Autocam: {tracking_mode:?} director attached"),
+                Ok(true) => println!("Autocam: {tracking_mode:?} panner attached"),
                 Ok(false) => {
                     eprintln!("Warning: tracking unavailable in current capture mode")
                 }
@@ -266,8 +266,8 @@ pub fn run_camera(
     );
 
     // Replay recording on live cams. Live capture
-    // runs through `session.process_frame` → CPU-upload render
-    // path; the GPU pack tap in `process_frame` reads from the
+    // runs through `session.render_frame` → CPU-upload render
+    // path; the GPU pack tap in `render_frame` reads from the
     // renderer's internal plane textures (populated by
     // `queue.write_texture` on each frame), so replay works
     // regardless of whether the source is NV12 or I420.
@@ -361,11 +361,11 @@ pub fn run_camera(
         log::warn!("Unknown codec '{codec}', defaulting to H.264");
         reco_io::output::Codec::H264
     });
-    let out_format: reco_io::output::Format = if let Some(c) = container {
+    let out_format: reco_io::output::Container = if let Some(c) = container {
         c.parse()
             .map_err(|e: String| anyhow::anyhow!("{e} (expected mp4, fmp4, mkv, mov, or flv)"))?
     } else {
-        reco_io::output::Format::default()
+        reco_io::output::Container::default()
     };
     let enc_config = reco_io::ffmpeg::encoder::EncoderConfig {
         encoder_name,
@@ -495,7 +495,7 @@ pub fn run_camera(
                 }
 
                 // Detection: zero-copy CUDA path when available, CPU readback fallback.
-                if session.detection_should_run() {
+                if session.detection_due() {
                     #[cfg(target_os = "linux")]
                     {
                         reco_core::profile_scope!("detection_zerocopy");
@@ -510,7 +510,7 @@ pub fn run_camera(
                         let (r_ptr, r_pitch, _, _) =
                             demosaic_right.copy_to_detection_shared(gpu, &mut det_encoder)?;
                         gpu.queue().submit(std::iter::once(det_encoder.finish()));
-                        session.detect_and_update_director_cuda_rgba(
+                        session.detect_and_update_world_pose_cuda_rgba(
                             l_ptr,
                             l_pitch,
                             r_ptr,
@@ -525,7 +525,7 @@ pub fn run_camera(
                         reco_core::profile_scope!("detection_readback");
                         let left_rgba = demosaic_left.readback_rgba(session.gpu())?;
                         let right_rgba = demosaic_right.readback_rgba(session.gpu())?;
-                        session.detect_and_update_director_rgba(
+                        session.detect_and_update_world_pose_rgba(
                             &left_rgba,
                             &right_rgba,
                             capture_width,
@@ -534,10 +534,10 @@ pub fn run_camera(
                         )?;
                     }
                 } else {
-                    session.update_director(start.elapsed())?;
+                    session.update_world_pose(start.elapsed())?;
                 }
-                let pos = session.advance_presented_pose(1.0 / capture_fps as f32)?;
-                session.process_frame_gpu_rgba(
+                let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
+                session.render_frame_gpu_rgba(
                     demosaic_left.output_texture(),
                     demosaic_right.output_texture(),
                     pos,
@@ -615,9 +615,9 @@ pub fn run_camera(
         // Warm up: render the first frame outside the progress loop so
         // camera ISP + GPU pipeline init don't skew the reported rate.
         if let Some(frames) = source.next_frame()? {
-            session.detect_and_update_director(&frames, start.elapsed())?;
-            let pos = session.advance_presented_pose(1.0 / capture_fps as f32)?;
-            session.process_frame(&frames, pos)?;
+            session.detect_and_update_world_pose(&frames, start.elapsed())?;
+            let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
+            session.render_frame(&frames, pos)?;
             println!("Warmup complete, starting capture...");
         }
 
@@ -632,9 +632,9 @@ pub fn run_camera(
                 }
             };
 
-            session.detect_and_update_director(&frames, start.elapsed())?;
-            let pos = session.advance_presented_pose(1.0 / capture_fps as f32)?;
-            session.process_frame(&frames, pos)?;
+            session.detect_and_update_world_pose(&frames, start.elapsed())?;
+            let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
+            session.render_frame(&frames, pos)?;
             frame_count += 1;
             progress.report(frame_count);
         }
@@ -665,9 +665,9 @@ pub fn run_camera(
                 }
             };
 
-            session.detect_and_update_director(&frame, start.elapsed())?;
-            let pos = session.advance_presented_pose(1.0 / capture_fps as f32)?;
-            session.process_frame(&frame, pos)?;
+            session.detect_and_update_world_pose(&frame, start.elapsed())?;
+            let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
+            session.render_frame(&frame, pos)?;
             frame_count += 1;
             progress.report(frame_count);
         }
@@ -686,14 +686,14 @@ fn nv12_to_yuv(
     nv12: &reco_core::source::Nv12Data,
     width: u32,
     height: u32,
-) -> reco_calibrate::types::YuvFrame {
+) -> reco_calibrate::types::Yuv420pFrame {
     let mut u = Vec::with_capacity((width as usize / 2) * (height as usize / 2));
     let mut v = Vec::with_capacity(u.capacity());
     for pair in nv12.uv.chunks_exact(2) {
         u.push(pair[0]);
         v.push(pair[1]);
     }
-    reco_calibrate::types::YuvFrame {
+    reco_calibrate::types::Yuv420pFrame {
         y: nv12.y.clone(),
         u,
         v,
@@ -716,8 +716,8 @@ impl reco_calibrate::live::LiveFramePairSource for Nv12CameraCalibSource {
         &mut self,
         timeout: std::time::Duration,
     ) -> Option<(
-        reco_calibrate::types::YuvFrame,
-        reco_calibrate::types::YuvFrame,
+        reco_calibrate::types::Yuv420pFrame,
+        reco_calibrate::types::Yuv420pFrame,
     )> {
         let deadline = std::time::Instant::now() + timeout;
         loop {

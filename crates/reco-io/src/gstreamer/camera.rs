@@ -12,7 +12,7 @@
 use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
-use reco_core::source::{FrameSet, Nv12Data, SourceError, SourceInfo, YuvData};
+use reco_core::source::{FrameSet, Nv12Data, SourceError, SourceInfo, Yuv420pData};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -154,7 +154,7 @@ fn is_tegra() -> bool {
 }
 
 /// Extract I420 planes from a GStreamer buffer.
-fn extract_i420(data: &[u8], width: u32, height: u32) -> Result<YuvData, SourceError> {
+fn extract_i420(data: &[u8], width: u32, height: u32) -> Result<Yuv420pData, SourceError> {
     let y_size = (width * height) as usize;
     let uv_size = ((width / 2) * (height / 2)) as usize;
 
@@ -168,7 +168,7 @@ fn extract_i420(data: &[u8], width: u32, height: u32) -> Result<YuvData, SourceE
         });
     }
 
-    Ok(YuvData {
+    Ok(Yuv420pData {
         y: data[..y_size].to_vec(),
         u: data[y_size..y_size + uv_size].to_vec(),
         v: data[y_size + uv_size..y_size + 2 * uv_size].to_vec(),
@@ -242,8 +242,8 @@ fn spawn_capture_thread(
     width: u32,
     height: u32,
     fps: u32,
-) -> mpsc::Receiver<YuvData> {
-    let (tx, rx) = mpsc::sync_channel::<YuvData>(2);
+) -> mpsc::Receiver<Yuv420pData> {
+    let (tx, rx) = mpsc::sync_channel::<Yuv420pData>(2);
 
     std::thread::Builder::new()
         .name(format!("capture_{label}"))

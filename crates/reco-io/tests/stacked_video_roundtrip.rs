@@ -11,7 +11,7 @@
 
 #![cfg(feature = "stacked-output")]
 
-use reco_core::source::YuvFrame;
+use reco_core::source::Yuv420pFrame;
 use reco_io::ffmpeg::encoder::{Container, Quality};
 use reco_io::stacked_video::encoder::{StackedEncoder, StackedEncoderConfig};
 use reco_io::stacked_video::source::StackedSource;
@@ -24,7 +24,7 @@ const N_FRAMES: usize = 60;
 /// Synthetic tile: fills planes with per-frame/per-tile constant
 /// values so we can recover the written index after decode even
 /// after H.264 lossy compression rounds off.
-fn synthetic_tile(frame_idx: usize, tile_idx: usize) -> YuvFrame {
+fn synthetic_tile(frame_idx: usize, tile_idx: usize) -> Yuv420pFrame {
     let y_val = 64u8.wrapping_add((frame_idx as u8) % 128);
     let u_val = if tile_idx == 0 { 96u8 } else { 160u8 };
     let v_val = if tile_idx == 0 { 160u8 } else { 96u8 };
@@ -32,7 +32,7 @@ fn synthetic_tile(frame_idx: usize, tile_idx: usize) -> YuvFrame {
     let yh = TILE_H as usize;
     let uvw = yw / 2;
     let uvh = yh / 2;
-    YuvFrame {
+    Yuv420pFrame {
         y: vec![y_val; yw * yh],
         u: vec![u_val; uvw * uvh],
         v: vec![v_val; uvw * uvh],
@@ -226,7 +226,7 @@ fn matroska_reader_sees_partial_writes() {
 }
 
 /// Push-API recorder: verifies
-/// `SessionStackedRecorder` accepts `YuvPlanes<'_>` feeds and
+/// `SessionStackedRecorder` accepts `Yuv420pPlanes<'_>` feeds and
 /// produces a replayable stacked-video file.
 ///
 /// This is the key correctness test for the push-side recorder:
@@ -235,7 +235,7 @@ fn matroska_reader_sees_partial_writes() {
 /// pushed frames recoverable.
 #[test]
 fn session_recorder_records_planes() {
-    use reco_core::render::pipeline::YuvPlanes;
+    use reco_core::render::pipeline::Yuv420pPlanes;
 
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("session_replay.mkv");
@@ -252,12 +252,12 @@ fn session_recorder_records_planes() {
     for i in 0..N_FRAMES {
         let l = synthetic_tile(i, 0);
         let r = synthetic_tile(i, 1);
-        let left = YuvPlanes {
+        let left = Yuv420pPlanes {
             y: &l.y,
             u: &l.u,
             v: &l.v,
         };
-        let right = YuvPlanes {
+        let right = Yuv420pPlanes {
             y: &r.y,
             u: &r.u,
             v: &r.v,

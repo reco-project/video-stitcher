@@ -276,7 +276,7 @@ struct AppState {
     export_thread: Option<std::thread::JoinHandle<()>>,
     /// Receives export completion notifications from the worker.
     export_rx: Option<std::sync::mpsc::Receiver<ExportOutcome>>,
-    /// Original Topology values — what auto-calibrate produced. Live
+    /// Original Projection values — what auto-calibrate produced. Live
     /// calibration sliders edit relative to this so Reset restores.
     cal_baseline: Option<reco_core::calibration::Calibration>,
     /// Persisted user preferences (recent files, default export
@@ -464,7 +464,9 @@ fn preview_pose_control(engine: Option<&reco_core::core::StitchCore>) -> PoseCon
         ..PoseControlConfig::default()
     };
     if let Some(engine) = engine {
-        config.rest_pose = engine.world_to_render_pose(config.rest_pose);
+        config.rest_pose = engine
+            .calibration()
+            .world_to_render_pose(reco_core::geometry::WorldPose::default());
     }
     PoseControl::new(config).expect("valid calibrated preview controls")
 }
@@ -601,6 +603,7 @@ impl AppState {
                 .then(|| {
                     bridge
                         .engine()
+                        .calibration()
                         .render_to_world_pose(self.pose.current_pose())
                 });
             bridge
@@ -608,7 +611,7 @@ impl AppState {
                 .update_calibration_preview(calibration.clone())?;
             if let Some(world) = world {
                 self.pose
-                    .set_pose(bridge.engine().world_to_render_pose(world));
+                    .set_pose(bridge.engine().calibration().world_to_render_pose(world));
             }
         } else {
             calibration.validate()?;
@@ -668,14 +671,14 @@ impl AppState {
         let Some(cal) = self.editor_calibration() else {
             return;
         };
-        if let Some(layout) = cal.topology.l_shape() {
+        if let Some(layout) = cal.projection.l_shape() {
             app.set_cal_intersect(layout.intersect as f32);
             app.set_cal_x_ty(layout.x_ty as f32);
         }
         app.set_cal_camera_axis_offset(cal.framing.axis_offset as f32);
         app.set_rig_tilt((cal.framing.tilt as f32).to_degrees());
         app.set_rig_roll((cal.framing.roll as f32).to_degrees());
-        app.set_blend_width(cal.topology.blend_width());
+        app.set_blend_width(cal.projection.blend_width());
         app.set_lens_correction_amount(cal.lenses[0].correction);
         app.set_sync_offset(cal.sync_offset as i32);
         if let [left, right] = cal.lenses.as_slice() {
@@ -1048,8 +1051,9 @@ impl AppState {
         let renderer = bridge.engine_mut();
         renderer.set_constrained_look(self.use_constrained_look);
         let result = self.pose.constrain_preview(renderer);
-        self.coverage_pending =
-            result.is_ok() && self.use_constrained_look && renderer.max_fov_degrees().is_none();
+        self.coverage_pending = result.is_ok()
+            && self.use_constrained_look
+            && renderer.coverage_max_fov_degrees().is_none();
         if let Err(error) = result {
             if !self.coverage_error_reported {
                 log::error!("Cannot fit preview: {error}");
@@ -2936,7 +2940,7 @@ fn main() -> anyhow::Result<()> {
             return;
         };
         if state_ref.borrow_mut().edit_calibration(&app, |cal| {
-            if let Some(layout) = cal.topology.l_shape_mut() {
+            if let Some(layout) = cal.projection.l_shape_mut() {
                 layout.blend_width = v;
             }
         }) {
@@ -3005,7 +3009,7 @@ fn main() -> anyhow::Result<()> {
 
     // ── Live calibration editing callbacks ──
     //
-    // Each slider writes the corresponding field on the Topology,
+    // Each slider writes the corresponding field on the Projection,
     // pushes the edited layout into the renderer, and flips cal-dirty
     // so the Save button becomes enabled.
 
@@ -3016,7 +3020,7 @@ fn main() -> anyhow::Result<()> {
             return;
         };
         if state_ref.borrow_mut().edit_calibration(&app, |cal| {
-            if let Some(layout) = cal.topology.l_shape_mut() {
+            if let Some(layout) = cal.projection.l_shape_mut() {
                 layout.intersect = v as f64;
             }
         }) {
@@ -3044,7 +3048,7 @@ fn main() -> anyhow::Result<()> {
             return;
         };
         if state_ref.borrow_mut().edit_calibration(&app, |cal| {
-            if let Some(layout) = cal.topology.l_shape_mut() {
+            if let Some(layout) = cal.projection.l_shape_mut() {
                 layout.x_ty = v as f64;
             }
         }) {
@@ -3093,7 +3097,7 @@ fn main() -> anyhow::Result<()> {
             return;
         };
         if s.edit_calibration(&app, |cal| {
-            cal.topology = base.topology;
+            cal.projection = base.projection;
             cal.framing = base.framing;
         }) {
             s.sync_calibration_controls(&app);
@@ -4386,7 +4390,7 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
             let blend_width = s
                 .bridge
                 .as_ref()
-                .map(|b| b.engine().calibration().topology.blend_width());
+                .map(|b| b.engine().calibration().projection.blend_width());
             // Lens-correction strength came in via the loaded calibration and
             // the renderer was seeded with it at bridge creation; mirror it
             // into AppState so a later save re-persists the right value.
@@ -4468,7 +4472,7 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                     app.set_preview_frame(img);
                 }
                 if let Some(layout) = layout {
-                    if let Some(t) = layout.topology.l_shape() {
+                    if let Some(t) = layout.projection.l_shape() {
                         app.set_cal_intersect(t.intersect as f32);
                         app.set_cal_x_ty(t.x_ty as f32);
                     }
@@ -4671,7 +4675,7 @@ fn handle_calibration_result(
                     let blend_width = state
                         .bridge
                         .as_ref()
-                        .map(|b| b.engine().calibration().topology.blend_width());
+                        .map(|b| b.engine().calibration().projection.blend_width());
                     let lens_correction =
                         state.calibration.as_ref().map(|c| c.lenses[0].correction);
                     if let Some(lc) = lens_correction {
@@ -4734,7 +4738,7 @@ fn handle_calibration_result(
                             app.set_preview_frame(img);
                         }
                         if let Some(layout) = layout_baseline.as_ref() {
-                            if let Some(t) = layout.topology.l_shape() {
+                            if let Some(t) = layout.projection.l_shape() {
                                 app.set_cal_intersect(t.intersect as f32);
                                 app.set_cal_x_ty(t.x_ty as f32);
                             }

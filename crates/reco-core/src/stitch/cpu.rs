@@ -9,8 +9,8 @@
 //! implementation-defined unorm rounding), so it doubles as the agreement oracle.
 
 use crate::calibration::Calibration;
-use crate::geometry::Pose;
-use crate::render::planes::{Nv12Planes, YuvPlanes};
+use crate::geometry::RenderPose;
+use crate::render::planes::{Nv12Planes, Yuv420pPlanes};
 use crate::render::viewport::ViewportSize;
 
 use super::executor::StitchError;
@@ -61,7 +61,7 @@ pub(crate) fn stitch_rgba(
     cam: (u32, u32),
     calib: &Calibration,
     viewport_size: &ViewportSize,
-    pose: Pose,
+    pose: RenderPose,
     full_range: bool,
 ) -> Result<Vec<u8>, StitchError> {
     let (cw, ch) = cam;
@@ -86,11 +86,11 @@ pub(crate) fn stitch_rgba(
 /// desktop/cloud where FFmpeg software decode yields YUV420p.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn stitch_rgba_yuv420p(
-    planes: &[YuvPlanes<'_>],
+    planes: &[Yuv420pPlanes<'_>],
     cam: (u32, u32),
     calib: &Calibration,
     viewport_size: &ViewportSize,
-    pose: Pose,
+    pose: RenderPose,
     full_range: bool,
 ) -> Result<Vec<u8>, StitchError> {
     let (cw, ch) = cam;
@@ -113,7 +113,7 @@ pub(crate) fn stitch_rgba_yuv420p(
 /// The supplied frame count must match the camera count the
 /// projection consumes; a mismatch would silently sample the wrong camera.
 fn check_camera_count(calib: &Calibration, planes: usize) -> Result<(), StitchError> {
-    let projection = calib.topology.projection();
+    let projection = calib.projection.geometry();
     if planes != projection.camera_count() {
         return Err(StitchError::InvalidConfig(format!(
             "projection '{}' consumes {} camera(s) but {planes} frame(s) were supplied",
@@ -133,7 +133,7 @@ fn check_camera_count(calib: &Calibration, planes: usize) -> Result<(), StitchEr
 fn stitch_with(
     calib: &Calibration,
     viewport_size: &ViewportSize,
-    pose: Pose,
+    pose: RenderPose,
     samplers: &[impl Fn(f64, f64) -> [f64; 3]],
 ) -> Vec<u8> {
     let surfaces = calib.surface_maps(viewport_size, pose);
@@ -229,7 +229,7 @@ fn sample_nv12(
 /// Sample a YUV420p frame at normalised UV (bilinear Y + separate U, V planes).
 #[inline]
 fn sample_yuv420p(
-    planes: &YuvPlanes,
+    planes: &Yuv420pPlanes,
     cam_w: u32,
     cam_h: u32,
     u: f64,
@@ -352,7 +352,7 @@ mod tests {
             y: &y,
             uv: &nv12_uv,
         };
-        let yuv = YuvPlanes {
+        let yuv = Yuv420pPlanes {
             y: &y,
             u: &u,
             v: &v,

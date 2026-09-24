@@ -139,7 +139,7 @@ pub fn validate_input_path(path: &std::path::Path) -> Result<(), SourceError> {
 /// - U: `(width/2) × (height/2)` bytes
 /// - V: `(width/2) × (height/2)` bytes
 #[derive(Debug, Clone)]
-pub struct YuvFrame {
+pub struct Yuv420pFrame {
     /// Y (luma) plane, full resolution.
     pub y: Vec<u8>,
     /// U (Cb) plane, half resolution.
@@ -154,7 +154,7 @@ pub struct YuvFrame {
     pub timestamp_us: i64,
 }
 
-impl YuvFrame {
+impl Yuv420pFrame {
     /// Validate that plane sizes match the declared dimensions.
     ///
     /// Y plane must be `width * height` bytes, U and V planes must each
@@ -200,7 +200,7 @@ impl YuvFrame {
 /// Used when dimensions are tracked separately - all cameras in a
 /// [`FrameSet`] share the dimensions carried by [`SourceInfo`].
 #[derive(Debug, Clone)]
-pub struct YuvData {
+pub struct Yuv420pData {
     /// Y (luma) plane, full resolution.
     pub y: Vec<u8>,
     /// U (Cb) plane, half resolution.
@@ -209,10 +209,10 @@ pub struct YuvData {
     pub v: Vec<u8>,
 }
 
-impl YuvData {
+impl Yuv420pData {
     /// Borrow as pipeline-ready plane references.
-    pub fn as_planes(&self) -> crate::render::planes::YuvPlanes<'_> {
-        crate::render::planes::YuvPlanes {
+    pub fn as_planes(&self) -> crate::render::planes::Yuv420pPlanes<'_> {
+        crate::render::planes::Yuv420pPlanes {
             y: &self.y,
             u: &self.u,
             v: &self.v,
@@ -319,7 +319,7 @@ unsafe impl Send for NvmmPlaneInfo {}
 #[non_exhaustive]
 pub enum FrameSet {
     /// CPU-resident YUV420P planes (3 planes per camera).
-    Yuv420p(Vec<YuvData>),
+    Yuv420p(Vec<Yuv420pData>),
     /// CPU-resident NV12 planes (2 planes per camera).
     Nv12(Vec<Nv12Data>),
     /// GPU-resident: data already written to shared textures by the
@@ -355,9 +355,9 @@ impl FrameSet {
     /// (CLI preview, GUI playback) that retain decoded frames are
     /// two-camera CPU paths by construction and use this instead of
     /// re-deriving the downcast.
-    pub fn into_yuv_pair(self) -> Option<[YuvData; 2]> {
+    pub fn into_yuv_pair(self) -> Option<[Yuv420pData; 2]> {
         match self {
-            Self::Yuv420p(cams) => <[YuvData; 2]>::try_from(cams).ok(),
+            Self::Yuv420p(cams) => <[Yuv420pData; 2]>::try_from(cams).ok(),
             _ => None,
         }
     }
@@ -415,9 +415,11 @@ pub trait FrameSource: Send {
     /// just not ready). Used by interactive consumers (preview window)
     /// that need to poll without blocking the UI thread.
     ///
-    /// Default implementation delegates to [`Self::next_frame`] (blocking).
+    /// Sources implementing this must also report final exhaustion through [`Self::is_exhausted`]. The default returns an error without reading a frame, so an unsupported source cannot block an interactive caller.
     fn try_next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
-        self.next_frame()
+        Err(SourceError::Read {
+            reason: "this source does not support non-blocking frame polling".into(),
+        })
     }
 
     /// Whether this source delivers GPU-resident frames.
@@ -529,6 +531,20 @@ mod tests {
     use super::*;
     use std::io::Write;
     use tempfile::tempdir;
+
+    #[test]
+    fn unsupported_polling_never_calls_blocking_read() {
+        struct BlockingSource;
+        impl FrameSource for BlockingSource {
+            fn info(&self) -> SourceInfo {
+                panic!("polling must not query metadata")
+            }
+            fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+                panic!("polling must not invoke a blocking read")
+            }
+        }
+        assert!(BlockingSource.try_next_frame().is_err());
+    }
 
     #[test]
     fn validate_path_accepts_real_file() {

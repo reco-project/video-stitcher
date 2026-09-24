@@ -5,15 +5,20 @@ use super::*;
 // Count geometry queries, rather than limiting every branch to the same depth.
 const QUERY_BUDGET: usize = 2048;
 
-pub(super) fn swept(cal: &Calibration, size: &ViewportSize, from: Pose, to: Pose) -> bool {
+pub(super) fn swept(
+    cal: &Calibration,
+    size: &ViewportSize,
+    from: RenderPose,
+    to: RenderPose,
+) -> bool {
     certify_motion(cal, size, from, to, QUERY_BUDGET) == Certificate::Covered
 }
 
 pub(super) fn certify_motion(
     cal: &Calibration,
     size: &ViewportSize,
-    from: Pose,
-    to: Pose,
+    from: RenderPose,
+    to: RenderPose,
     queries: usize,
 ) -> Certificate {
     certify_path(cal, size, &[from, to], queries, 2048)
@@ -23,7 +28,7 @@ pub(super) fn certify_motion(
 pub(super) fn certify_path(
     cal: &Calibration,
     size: &ViewportSize,
-    path: &[Pose],
+    path: &[RenderPose],
     mut queries: usize,
     rectangles: usize,
 ) -> Certificate {
@@ -31,8 +36,8 @@ pub(super) fn certify_path(
         return Certificate::Unknown;
     }
     enum Work<'a> {
-        Frames(&'a [Pose]),
-        Motion(Pose, Pose),
+        Frames(&'a [RenderPose]),
+        Motion(RenderPose, RenderPose),
     }
     let mut pending = vec![Work::Frames(path)];
     while let Some(work) = pending.pop() {
@@ -96,7 +101,7 @@ fn budget_exhaustion_is_not_coverage() {
         width: 97,
         height: 55,
     };
-    let pose = Pose {
+    let pose = RenderPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 35.0,
@@ -109,13 +114,13 @@ fn budget_exhaustion_is_not_coverage() {
         certify_motion(&cal, &size, pose, pose, 1),
         Certificate::Covered
     );
-    let outside = Pose { yaw: 3.0, ..pose };
+    let outside = RenderPose { yaw: 3.0, ..pose };
     assert_eq!(
         certify_motion(&cal, &size, outside, outside, QUERY_BUDGET),
         Certificate::Uncovered
     );
     assert!(!swept(&cal, &size, pose, outside));
-    let invalid = Pose {
+    let invalid = RenderPose {
         fov_degrees: f32::NAN,
         ..pose
     };
@@ -132,13 +137,13 @@ fn covered_endpoints_do_not_imply_covered_motion() {
         width: 97,
         height: 55,
     };
-    let from = Pose {
+    let from = RenderPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 35.0,
     };
     // Interpolation follows the full turn, not the shortest angular path.
-    let to = Pose {
+    let to = RenderPose {
         yaw: std::f32::consts::TAU,
         ..from
     };

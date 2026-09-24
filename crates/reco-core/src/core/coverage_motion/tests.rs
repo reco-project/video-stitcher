@@ -21,12 +21,14 @@ fn render_pose_round_trip_preserves_world_direction_and_fov() {
         .unwrap();
         for yaw in [-1.0, 0.0, 0.7] {
             for pitch in [-0.4, 0.0, 0.5] {
-                let world = Pose {
+                let world = WorldPose {
                     yaw,
                     pitch,
                     fov_degrees: 37.0,
                 };
-                let result = core.render_to_world_pose(core.world_to_render_pose(world));
+                let result = core
+                    .calibration()
+                    .render_to_world_pose(core.calibration().world_to_render_pose(world));
                 assert!((result.yaw - yaw).abs() < 1e-5);
                 assert!((result.pitch - pitch).abs() < 1e-5);
                 assert_eq!(result.fov_degrees, world.fov_degrees);
@@ -39,8 +41,8 @@ fn core() -> StitchCore {
     let cal = Calibration::new(
         vec![Lens::flat(3840, 2000)],
         Cylinder {
-            focal_length: 1000.0,
-            sweep_deg: 180.0,
+            radius: 1000.0,
+            arc_deg: 180.0,
             ..Default::default()
         },
         Framing {
@@ -63,7 +65,7 @@ fn core() -> StitchCore {
     StitchCore::new(Executor::Cpu(Box::new(executor))).unwrap()
 }
 
-fn assert_border_supported(core: &StitchCore, render: Pose) {
+fn assert_border_supported(core: &StitchCore, render: RenderPose) {
     let size = core.executor.viewport_size();
     let maps = core.calibration().surface_maps(size, render);
     for i in 0..=128 {
@@ -81,21 +83,22 @@ fn assert_border_supported(core: &StitchCore, render: Pose) {
 fn manual_input_is_immediate_and_does_not_advance_tracking() {
     let mut core = core();
     core.prepare_coverage().unwrap();
-    let start = Pose {
+    let start = RenderPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 30.0,
     };
-    let tracking = core.advance_pose(start, 17, 1.0 / 30.0).unwrap();
-    let requested = Pose { yaw: 0.3, ..start };
+    let world_start = core.calibration().render_to_world_pose(start);
+    let tracking = core.advance_pose(world_start, 17, 1.0 / 30.0).unwrap();
+    let requested = RenderPose { yaw: 0.3, ..start };
     assert_eq!(
         core.constrain_render_pose(start, requested).unwrap(),
         requested
     );
     assert_eq!(core.current_pose(), tracking);
-    assert!(core.advance_pose(start, 18, 1.0 / 30.0).is_ok());
+    assert!(core.advance_pose(world_start, 18, 1.0 / 30.0).is_ok());
     core.set_constrained_look(false);
-    let outside = Pose { yaw: 2.0, ..start };
+    let outside = RenderPose { yaw: 2.0, ..start };
     assert_eq!(
         core.constrain_render_pose(requested, outside).unwrap(),
         outside
@@ -103,7 +106,7 @@ fn manual_input_is_immediate_and_does_not_advance_tracking() {
     assert!(
         core.constrain_render_pose(
             outside,
-            Pose {
+            RenderPose {
                 yaw: f32::NAN,
                 ..start
             }
@@ -121,7 +124,7 @@ fn manual_drag_release_zoom_and_resize_keep_render_space_and_support() {
     })
     .unwrap();
     let cap = core.prepare_coverage().unwrap();
-    let start = Pose {
+    let start = RenderPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: cap,
@@ -132,7 +135,7 @@ fn manual_drag_release_zoom_and_resize_keep_render_space_and_support() {
             assert_eq!(core.resize(90, 160), Some((90, 160)));
         }
         let angle = i as f32 * 0.019;
-        let request = Pose {
+        let request = RenderPose {
             yaw: p.yaw + 0.025 * angle.cos(),
             pitch: p.pitch + 0.012 * angle.sin(),
             fov_degrees: if i % 60 < 30 {
@@ -152,15 +155,15 @@ fn manual_drag_release_zoom_and_resize_keep_render_space_and_support() {
 fn fixed_rate_presentation_is_idempotent_and_keeps_requests_separate() {
     let mut core = core();
     let cap = core.prepare_coverage().unwrap();
-    let requested = Pose {
+    let requested = WorldPose {
         yaw: -0.7,
         pitch: 0.0,
         fov_degrees: 100.0,
     };
-    core.previous_panner_pose = requested;
+    core.requested_world_pose = requested;
     let mut previous = core.advance_pose(requested, 0, 1.0 / 30.0).unwrap();
     for index in 1..=900 {
-        let target = Pose {
+        let target = WorldPose {
             yaw: if index < 450 { 0.7 } else { -0.7 },
             ..requested
         };
@@ -169,7 +172,7 @@ fn fixed_rate_presentation_is_idempotent_and_keeps_requests_separate() {
         assert!((pose.yaw - previous.yaw).hypot(pose.pitch - previous.pitch) <= 0.9 / 30.0 + 1e-6);
         assert_eq!(core.advance_pose(target, index, 1.0 / 30.0).unwrap(), pose);
         assert_eq!(core.current_pose(), pose);
-        assert_eq!(core.previous_panner_pose, requested);
+        assert_eq!(core.requested_world_pose, requested);
         previous = pose;
     }
     assert!(previous.yaw < -0.35, "{previous:?}");
@@ -178,7 +181,7 @@ fn fixed_rate_presentation_is_idempotent_and_keeps_requests_separate() {
     assert_eq!(core.current_pose(), previous);
     assert!(
         core.advance_pose(
-            Pose {
+            WorldPose {
                 yaw: f32::NAN,
                 ..requested
             },
@@ -194,7 +197,7 @@ fn fixed_rate_presentation_is_idempotent_and_keeps_requests_separate() {
 fn reconfiguration_and_geometry_edits_are_transactional() {
     let mut core = core();
     core.prepare_coverage().unwrap();
-    let request = Pose {
+    let request = WorldPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 50.0,
@@ -207,7 +210,7 @@ fn reconfiguration_and_geometry_edits_are_transactional() {
     assert_eq!(core.current_pose(), first);
     assert_eq!(core.resize(90, 160), Some((90, 160)));
     let resized = core.advance_pose(request, 10, 1.0 / 30.0).unwrap();
-    assert!(resized.fov_degrees <= core.max_fov_degrees().unwrap());
+    assert!(resized.fov_degrees <= core.coverage_max_fov_degrees().unwrap());
     core.edit_calibration(|cal| cal.framing.tilt = 0.03)
         .unwrap();
     assert!(core.advance_pose(request, 20, 1.0 / 30.0).is_ok());
@@ -225,7 +228,7 @@ fn reconfiguration_and_geometry_edits_are_transactional() {
 fn toggling_constraints_resets_the_clock_without_losing_configuration() {
     let mut core = core();
     let cap = core.prepare_coverage().unwrap();
-    let request = Pose {
+    let request = WorldPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 110.0,
@@ -234,7 +237,7 @@ fn toggling_constraints_resets_the_clock_without_losing_configuration() {
     core.set_constrained_look(false);
     assert_eq!(
         core.advance_pose(request, 50, 1.0 / 30.0).unwrap(),
-        core.world_to_render_pose(request)
+        core.calibration().world_to_render_pose(request)
     );
     assert!(core.toggle_constrained_look());
     assert_eq!(
@@ -248,7 +251,7 @@ fn toggling_constraints_resets_the_clock_without_losing_configuration() {
 #[test]
 fn plain_presentation_prepares_coverage_without_configuration() {
     let mut core = core();
-    let request = Pose {
+    let request = WorldPose {
         yaw: 1.0,
         pitch: 0.3,
         fov_degrees: 100.0,
@@ -260,7 +263,7 @@ fn plain_presentation_prepares_coverage_without_configuration() {
 
 #[test]
 fn push_submissions_share_the_presentation_boundary() {
-    use crate::source::{FrameSet, Nv12Data, YuvData};
+    use crate::source::{FrameSet, Nv12Data, Yuv420pData};
     for nv12 in [false, true] {
         let mut core = core();
         let cap = core.prepare_coverage().unwrap();
@@ -270,7 +273,7 @@ fn push_submissions_share_the_presentation_boundary() {
                 uv: vec![128; 64 * 16],
             }])
         } else {
-            FrameSet::Yuv420p(vec![YuvData {
+            FrameSet::Yuv420p(vec![Yuv420pData {
                 y: vec![128; 64 * 32],
                 u: vec![128; 32 * 16],
                 v: vec![128; 32 * 16],
@@ -289,7 +292,7 @@ fn push_submissions_share_the_presentation_boundary() {
 fn executor_resize_cannot_reuse_a_stale_motion_map() {
     let mut core = core();
     core.prepare_coverage().unwrap();
-    let request = Pose {
+    let request = WorldPose {
         yaw: 0.4,
         pitch: 0.0,
         fov_degrees: 100.0,
@@ -319,20 +322,20 @@ fn executor_resize_cannot_reuse_a_stale_motion_map() {
 #[test]
 fn same_aspect_resize_preserves_the_map_and_motion() {
     let mut core = core();
-    let request = Pose {
+    let request = WorldPose {
         yaw: -0.5,
         pitch: 0.0,
         fov_degrees: 50.0,
     };
     let initial = core.advance_pose(request, 7, 1.0 / 30.0).unwrap();
-    let cap = core.max_fov_degrees();
+    let cap = core.coverage_max_fov_degrees();
     core.resize_preview(320, 180).unwrap();
     assert_eq!(core.current_pose(), initial);
-    assert_eq!(core.max_fov_degrees(), cap);
+    assert_eq!(core.coverage_max_fov_degrees(), cap);
     assert!(core.pending_coverage.is_none());
     let next = core
         .advance_pose(
-            Pose {
+            WorldPose {
                 yaw: 0.5,
                 ..request
             },
@@ -367,7 +370,7 @@ fn preview_resize_rejects_superseded_dimensions_and_calibration() {
         .unwrap();
     expected.resize(200, 200).unwrap();
     assert_eq!(
-        core.max_fov_degrees().unwrap(),
+        core.coverage_max_fov_degrees().unwrap(),
         expected.prepare_coverage().unwrap()
     );
     assert!(core.resize_preview(0, 100).is_err());
@@ -377,7 +380,7 @@ fn preview_resize_rejects_superseded_dimensions_and_calibration() {
 #[test]
 fn invalid_pose_or_timing_never_changes_presentation() {
     let mut core = core();
-    let request = Pose {
+    let request = WorldPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 40.0,
@@ -385,20 +388,25 @@ fn invalid_pose_or_timing_never_changes_presentation() {
     let previous = core.advance_pose(request, 0, 1.0 / 30.0).unwrap();
     for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         for bad in [
-            Pose {
+            WorldPose {
                 yaw: value,
                 ..request
             },
-            Pose {
+            WorldPose {
                 pitch: value,
                 ..request
             },
-            Pose {
+            WorldPose {
                 fov_degrees: value,
                 ..request
             },
         ] {
-            assert!(core.constrain_render_pose(previous, bad).is_err());
+            let bad_render = RenderPose {
+                yaw: bad.yaw,
+                pitch: bad.pitch,
+                fov_degrees: bad.fov_degrees,
+            };
+            assert!(core.constrain_render_pose(previous, bad_render).is_err());
             assert!(core.advance_pose(bad, 1, 1.0 / 30.0).is_err());
             assert_eq!(core.current_pose(), previous);
         }
@@ -413,14 +421,17 @@ fn invalid_requests_are_rejected_before_building_even_without_constraints() {
         let mut core = core();
         core.set_constrained_look(constrained);
         for duration in [0.0, -1.0, f32::INFINITY, f32::NAN] {
-            assert!(core.advance_pose(Pose::default(), 0, duration).is_err());
+            assert!(
+                core.advance_pose(WorldPose::default(), 0, duration)
+                    .is_err()
+            );
         }
         for fov_degrees in [0.0, 180.0, f32::INFINITY] {
             assert!(
                 core.advance_pose(
-                    Pose {
+                    WorldPose {
                         fov_degrees,
-                        ..Pose::default()
+                        ..WorldPose::default()
                     },
                     0,
                     1.0 / 30.0
@@ -439,9 +450,9 @@ fn renderable_fov_endpoints_are_accepted() {
     for (index, fov_degrees) in [1.0, 179.0].into_iter().enumerate() {
         let result = core
             .advance_pose(
-                Pose {
+                WorldPose {
                     fov_degrees,
-                    ..Pose::default()
+                    ..WorldPose::default()
                 },
                 index as u64,
                 1.0 / 30.0,
@@ -499,7 +510,7 @@ fn failed_preview_resize_is_cached_and_a_valid_request_can_follow() {
 fn combined_preview_edits_accept_input_until_current_coverage_is_ready() {
     let mut core = core();
     core.prepare_coverage().unwrap();
-    let outside = Pose {
+    let outside = RenderPose {
         yaw: 2.5,
         pitch: 0.7,
         fov_degrees: 120.0,
@@ -515,12 +526,12 @@ fn combined_preview_edits_accept_input_until_current_coverage_is_ready() {
             core.constrain_preview_pose(outside, outside).unwrap(),
             outside
         );
-        assert_eq!(core.max_fov_degrees(), None);
+        assert_eq!(core.coverage_max_fov_degrees(), None);
     }
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
     let fitted = loop {
         let pose = core.constrain_preview_pose(outside, outside).unwrap();
-        if core.max_fov_degrees().is_some() {
+        if core.coverage_max_fov_degrees().is_some() {
             break pose;
         }
         assert_eq!(pose, outside);
@@ -536,7 +547,7 @@ fn combined_preview_edits_accept_input_until_current_coverage_is_ready() {
     let (width, height) = core.output_dims();
     expected.resize(width, height).unwrap();
     assert_eq!(
-        core.max_fov_degrees(),
+        core.coverage_max_fov_degrees(),
         Some(expected.prepare_coverage().unwrap())
     );
     assert_eq!(core.constrain_preview_pose(fitted, fitted).unwrap(), fitted);
@@ -546,7 +557,7 @@ fn combined_preview_edits_accept_input_until_current_coverage_is_ready() {
 fn strict_resolution_after_preview_edit_never_returns_uncovered_input() {
     let mut core = core();
     core.resize_preview(200, 200).unwrap();
-    let outside = Pose {
+    let outside = RenderPose {
         yaw: 2.0,
         pitch: 0.6,
         fov_degrees: 100.0,
@@ -561,7 +572,12 @@ fn strict_resolution_after_preview_edit_never_returns_uncovered_input() {
     let mut cal = core.calibration().clone();
     cal.framing.roll = 0.1;
     core.update_calibration_preview(cal).unwrap();
-    assert!(core.max_fov_degrees().is_none());
-    let tracked = core.advance_pose(outside, 0, 1.0 / 30.0).unwrap();
+    assert!(core.coverage_max_fov_degrees().is_none());
+    let request = WorldPose {
+        yaw: 2.0,
+        pitch: 0.6,
+        fov_degrees: 100.0,
+    };
+    let tracked = core.advance_pose(request, 0, 1.0 / 30.0).unwrap();
     assert_border_supported(&core, tracked);
 }

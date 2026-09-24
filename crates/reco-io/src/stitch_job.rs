@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
-use crate::output::{AudioMode, Bitrate, Codec, Format, Quality};
+use crate::output::{AudioMode, Bitrate, Codec, Container, Quality};
 use reco_core::render::viewport::ViewportSize;
 use reco_core::session::StitchSession;
 use reco_core::session::types::FrameProgress;
@@ -37,7 +37,7 @@ use reco_core::source::FrameSource;
 pub struct StitchJob {
     /// One input per camera, in projection order (index i pairs with
     /// `calibration.lenses[i]`). Arity is validated against the
-    /// calibration's topology in [`run`](Self::run) before any decoder
+    /// calibration's projection in [`run`](Self::run) before any decoder
     /// spins up.
     inputs: Vec<InputPath>,
     calibration: CalibrationSource,
@@ -46,7 +46,7 @@ pub struct StitchJob {
     // Output settings
     codec: Codec,
     bitrate: Bitrate,
-    format: Format,
+    container: Container,
     audio: AudioMode,
     resolution: Option<(u32, u32)>,
     encoder_name: Option<String>,
@@ -269,7 +269,7 @@ impl StitchJob {
     /// Create a job from file paths (loads calibration from JSON).
     ///
     /// `inputs` is one video per camera in projection order; the
-    /// calibration's topology decides how many are required (the
+    /// calibration's projection decides how many are required (the
     /// L-shape consumes two, the cylinder one).
     pub fn new(
         inputs: impl IntoIterator<Item = impl Into<InputPath>>,
@@ -282,7 +282,7 @@ impl StitchJob {
             output: output.as_ref().to_path_buf(),
             codec: Codec::default(),
             bitrate: Bitrate::default(),
-            format: Format::default(),
+            container: Container::default(),
             audio: AudioMode::default(),
             resolution: None,
             encoder_name: None,
@@ -337,8 +337,8 @@ impl StitchJob {
     }
 
     /// Set the output container format.
-    pub fn format(mut self, format: Format) -> Self {
-        self.format = format;
+    pub fn container(mut self, container: Container) -> Self {
+        self.container = container;
         self
     }
 
@@ -612,13 +612,13 @@ impl StitchJob {
             log::info!("Sync offset: {} frames (from calibration)", effective_sync);
         }
 
-        // Input arity must match the calibration's topology before any
-        // decoder spins up. The topology decides the camera count -
+        // Input arity must match the calibration's projection before any
+        // decoder spins up. The projection decides the camera count -
         // never the number of inputs handed in.
-        let camera_count = cal.topology.camera_count();
+        let camera_count = cal.projection.camera_count();
         if self.inputs.len() != camera_count {
             return Err(StitchError::Other(format!(
-                "this calibration's topology consumes {camera_count} camera input(s), \
+                "this calibration's projection consumes {camera_count} camera input(s), \
                  but {} were given",
                 self.inputs.len()
             )));
@@ -637,7 +637,7 @@ impl StitchJob {
         );
         let (gpu, mut source) = if mono {
             if !self.cpu_stitch {
-                log::info!("mono topology: software render (the mono GPU pass is not wired yet)");
+                log::info!("mono projection: software render (the mono GPU pass is not wired yet)");
             }
             // effective_sync passes through so the decode layer logs
             // the single-input ignore instead of silently zeroing it.
@@ -680,21 +680,21 @@ impl StitchJob {
         // Build session. Blend lives on the calibration; an explicit job
         // override replaces it, otherwise the saved value renders as-is.
         // Seamless topologies (the mono cylinder) have no blend to set.
-        match (self.blend_width, cal.topology.l_shape_mut()) {
-            (Some(blend), Some(topology)) => {
+        match (self.blend_width, cal.projection.l_shape_mut()) {
+            (Some(blend), Some(projection)) => {
                 log::info!(
                     "seam blend: overriding calibration value {} with {blend}",
-                    topology.blend_width
+                    projection.blend_width
                 );
-                topology.blend_width = blend;
+                projection.blend_width = blend;
             }
             (Some(blend), None) => {
-                log::warn!("seam blend override {blend} ignored: this topology has no seam");
+                log::warn!("seam blend override {blend} ignored: this projection has no seam");
             }
             (None, _) => {
                 log::info!(
                     "seam blend: using calibration value {}",
-                    cal.topology.blend_width()
+                    cal.projection.blend_width()
                 );
             }
         }
@@ -859,7 +859,7 @@ impl StitchJob {
             preset: self.preset.clone(),
             audio_source,
             audio_start_time: start_secs,
-            container: self.format.into(),
+            container: self.container.into(),
             gop_size: None,
             stream_url: None,
         };
@@ -1170,7 +1170,7 @@ impl StitchJob {
 mod tests {
     use super::*;
 
-    /// The arity check runs against the topology BEFORE any decoder or
+    /// The arity check runs against the projection BEFORE any decoder or
     /// GPU spins up: with nonexistent input paths, a wrong input count
     /// must surface as the typed arity error, never as a file-open
     /// error (which would prove a decoder was touched first).

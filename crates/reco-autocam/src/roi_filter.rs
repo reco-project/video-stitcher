@@ -1,6 +1,6 @@
 //! ROI-filtered detector decorator.
 //!
-//! Wraps any [`UnifiedDetector`] to drop detections whose camera-space
+//! Wraps any [`Detector`] to drop detections whose camera-space
 //! position falls outside a playing-field polygon. This moves
 //! sports-domain filtering out of `reco-core` (which stays domain-
 //! agnostic) into `reco-autocam`.
@@ -18,13 +18,13 @@
 //! - [`RoiAnchor::Top`] is the upside-down mirror of `Bottom`.
 //!
 //! One decorator covers every residency (CPU / CUDA / Metal) because
-//! [`UnifiedDetector`] dispatches internally on the
+//! [`Detector`] dispatches internally on the
 //! [`DetectorFrame`] variant the backend accepts.
 
 use std::collections::HashMap;
 
 use reco_core::calibration::FieldRoi;
-use reco_core::detect::detector::{Detection, DetectorError, DetectorFrame, UnifiedDetector};
+use reco_core::detect::detector::{Detection, Detector, DetectorError, DetectorFrame};
 use reco_core::geometry::CameraIndex;
 use reco_core::projection::point_in_polygon;
 
@@ -99,7 +99,7 @@ fn filter_by_roi(
         .collect()
 }
 
-/// An [`UnifiedDetector`] decorator that filters output detections by
+/// An [`Detector`] decorator that filters output detections by
 /// field ROI polygon using a per-class anchor policy.
 ///
 /// Wraps an inner detector and drops detections outside the playing
@@ -121,7 +121,7 @@ fn filter_by_roi(
 /// still identifies the underlying backend; the ROI wrap is invisible
 /// to log consumers.
 pub struct RoiFilteredDetector {
-    inner: Box<dyn UnifiedDetector>,
+    inner: Box<dyn Detector>,
     roi: FieldRoi,
     class_anchors: HashMap<u16, RoiAnchor>,
     default_anchor: RoiAnchor,
@@ -131,7 +131,7 @@ impl RoiFilteredDetector {
     /// Create a new ROI-filtered detector wrapping `inner`. All
     /// classes default to [`RoiAnchor::Center`] until
     /// [`with_class_anchor`](Self::with_class_anchor) overrides them.
-    pub fn new(inner: Box<dyn UnifiedDetector>, roi: FieldRoi) -> Self {
+    pub fn new(inner: Box<dyn Detector>, roi: FieldRoi) -> Self {
         Self {
             inner,
             roi,
@@ -154,9 +154,13 @@ impl RoiFilteredDetector {
     }
 }
 
-impl UnifiedDetector for RoiFilteredDetector {
+impl Detector for RoiFilteredDetector {
     fn name(&self) -> &'static str {
         self.inner.name()
+    }
+
+    fn prefers_cuda_nv12(&self) -> bool {
+        self.inner.prefers_cuda_nv12()
     }
 
     fn detect(
@@ -219,6 +223,30 @@ mod tests {
         FieldRoi {
             left: vec![[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]],
             right: vec![[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]],
+        }
+    }
+
+    #[test]
+    fn roi_preserves_native_input_selection_independently_of_name() {
+        struct NativeInput(bool);
+        impl Detector for NativeInput {
+            fn name(&self) -> &'static str {
+                "arbitrary-display-name"
+            }
+            fn prefers_cuda_nv12(&self) -> bool {
+                self.0
+            }
+            fn detect(
+                &mut self,
+                _: CameraIndex,
+                _: &DetectorFrame<'_>,
+            ) -> Result<Vec<Detection>, DetectorError> {
+                Ok(Vec::new())
+            }
+        }
+        for native in [false, true] {
+            let filtered = RoiFilteredDetector::new(Box::new(NativeInput(native)), full_roi());
+            assert_eq!(filtered.prefers_cuda_nv12(), native);
         }
     }
 

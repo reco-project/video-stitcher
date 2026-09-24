@@ -8,14 +8,14 @@
 //!
 //! It decomposes into three concerns, one per stitch stage:
 //! - [`Lens`] (per source) - undistortion: intrinsics + distortion model.
-//! - [`Topology`] - 3D placement of the source planes plus the overlap seam.
+//! - [`Projection`] - 3D placement of the source planes plus the overlap seam.
 //! - [`Framing`] - the virtual camera's calibrated coordinate frame; panning
 //!   (yaw/pitch) and output framing (fov/size) are runtime, NOT stored here.
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::projection::{self, Projection};
+use crate::projection::{self, ProjectionGeometry};
 
 /// Maximum allowed dimension (width or height) in pixels.
 ///
@@ -24,7 +24,7 @@ use crate::projection::{self, Projection};
 pub const MAX_DIM: u32 = 8192;
 
 /// Current calibration document schema version.
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
 
 fn default_schema_version() -> u32 {
     SCHEMA_VERSION
@@ -94,15 +94,15 @@ pub enum CalibrationError {
     #[error("calibration must have at least one lens")]
     NoLenses,
 
-    /// The lens count does not match what the topology consumes.
+    /// The lens count does not match what the projection consumes.
     ///
-    /// Topologies index their lenses at render time; any other count
+    /// Projections index their lenses at render time; any other count
     /// would panic out-of-bounds downstream.
-    #[error("{topology} calibration needs exactly {expected} lens(es), got {found}")]
+    #[error("{projection} calibration needs exactly {expected} lens(es), got {found}")]
     LensCountMismatch {
-        /// Topology name for the message.
-        topology: &'static str,
-        /// Lens count the topology consumes.
+        /// Projection name for the message.
+        projection: &'static str,
+        /// Lens count the projection consumes.
         expected: usize,
         /// Number of lenses actually present.
         found: usize,
@@ -224,9 +224,9 @@ fn validate_lens(lens: &Lens, index: usize) -> Result<(), CalibrationError> {
     Ok(())
 }
 
-/// Validate the topology-independent framing parameters. Rules a
-/// topology imposes on the framing (the L-shape's minimum axis offset)
-/// live in that topology's own validate.
+/// Validate the projection-independent framing parameters. Rules a
+/// projection imposes on the framing (the L-shape's minimum axis offset)
+/// live in that projection's own validate.
 fn validate_framing(f: &Framing) -> Result<(), CalibrationError> {
     expect_finite("framing.axis_offset", f.axis_offset)?;
     expect_finite("framing.tilt", f.tilt)?;
@@ -342,7 +342,7 @@ impl Lens {
     ///
     /// Returns 1.0 if height is zero (degenerate, rejected by
     /// validation) - mirrors `ViewportSize::aspect_ratio`.
-    pub fn aspect(&self) -> f32 {
+    pub fn aspect_ratio(&self) -> f32 {
         if self.height == 0 {
             return 1.0;
         }
@@ -353,78 +353,73 @@ impl Lens {
 /// Scene geometry parameters: which shape the sources are painted on.
 ///
 /// Serialized with a mandatory `type` tag (`"l-shape"` / `"cylinder"`).
-/// The matching projection implementation dispatches
-/// the actual geometry; this carries its parameters. The virtual-camera
-/// position lives in [`Framing`], not here.
+/// Each variant stores the shape-specific parameters and supplies its geometry implementation. The virtual camera is derived from this projection and [`Framing`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
-pub enum Topology {
+pub enum Projection {
     /// Two fisheye cameras on perpendicular planes (the stereo rig).
     LShape(projection::LShape),
     /// One pre-stitched panorama painted on the inside of a cylinder.
     Cylinder(projection::Cylinder),
 }
 
-impl Topology {
-    /// L-shape parameters, when this is the L-shape topology.
+impl Projection {
+    /// L-shape parameters, when this is the L-shape projection.
     pub fn l_shape(&self) -> Option<&projection::LShape> {
         match self {
-            Topology::LShape(t) => Some(t),
-            Topology::Cylinder(_) => None,
+            Projection::LShape(t) => Some(t),
+            Projection::Cylinder(_) => None,
         }
     }
 
     /// Mutable [`Self::l_shape`].
     pub fn l_shape_mut(&mut self) -> Option<&mut projection::LShape> {
         match self {
-            Topology::LShape(t) => Some(t),
-            Topology::Cylinder(_) => None,
+            Projection::LShape(t) => Some(t),
+            Projection::Cylinder(_) => None,
         }
     }
 
-    /// Cylinder parameters, when this is the cylinder topology.
+    /// Cylinder parameters, when this is the cylinder projection.
     pub fn cylinder(&self) -> Option<&projection::Cylinder> {
         match self {
-            Topology::LShape(_) => None,
-            Topology::Cylinder(t) => Some(t),
+            Projection::LShape(_) => None,
+            Projection::Cylinder(t) => Some(t),
         }
     }
 
-    /// The projection these parameters describe. A borrow, not a
-    /// build: every topology variant IS a [`Projection`], so the
-    /// document is the engine and there is no second object to keep
-    /// in sync.
-    pub(crate) fn projection(&self) -> &dyn Projection {
+    /// Borrow the selected shape's geometry implementation without copying its parameters.
+    pub(crate) fn geometry(&self) -> &dyn ProjectionGeometry {
         match self {
-            Topology::LShape(t) => t,
-            Topology::Cylinder(t) => t,
+            Projection::LShape(t) => t,
+            Projection::Cylinder(t) => t,
         }
     }
 
-    /// Number of source cameras this topology consumes.
+    /// Number of source cameras this projection consumes.
     pub fn camera_count(&self) -> usize {
-        self.projection().camera_count()
+        self.geometry().camera_count()
     }
 
     /// Seam blend width. The cylinder has a single surface and no seam,
     /// so it reports `0.0`.
     pub fn blend_width(&self) -> f32 {
         match self {
-            Topology::LShape(t) => t.blend_width,
-            Topology::Cylinder(_) => 0.0,
+            Projection::LShape(t) => t.blend_width,
+            Projection::Cylinder(_) => 0.0,
         }
     }
 }
 
-impl From<projection::LShape> for Topology {
+impl From<projection::LShape> for Projection {
     fn from(t: projection::LShape) -> Self {
-        Topology::LShape(t)
+        Projection::LShape(t)
     }
 }
 
-impl From<projection::Cylinder> for Topology {
+impl From<projection::Cylinder> for Projection {
     fn from(t: projection::Cylinder) -> Self {
-        Topology::Cylinder(t)
+        Projection::Cylinder(t)
     }
 }
 
@@ -463,6 +458,7 @@ pub struct FieldRoi {
 /// Everything the stitch needs to turn source frames into a panorama. Plain
 /// data - the runtime objects are derived from it (see the module docs).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Calibration {
     /// Document schema version. Counts revisions of this format family
     /// (the retired "match" format predates versioning); `from_file`
@@ -472,8 +468,8 @@ pub struct Calibration {
     /// Per-source optical models, one per camera (index 0 = left, 1 = right for
     /// the L-shape). `Vec` so N-camera rigs need no shape change.
     pub lenses: Vec<Lens>,
-    /// 3D placement of the source planes + the seam.
-    pub topology: Topology,
+    /// Source projection model and its shape-specific parameters.
+    pub projection: Projection,
     /// The virtual camera's calibrated coordinate frame.
     pub framing: Framing,
     /// Temporal sync offset in frames (positive = right video ahead). Consumed
@@ -491,11 +487,11 @@ const MAX_CALIBRATION_FILE_SIZE: u64 = 1_048_576;
 impl Calibration {
     /// Assemble a calibration from its parts (current schema version, no sync
     /// offset, no ROI).
-    pub fn new(lenses: Vec<Lens>, topology: impl Into<Topology>, framing: Framing) -> Self {
+    pub fn new(lenses: Vec<Lens>, projection: impl Into<Projection>, framing: Framing) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
             lenses,
-            topology: topology.into(),
+            projection: projection.into(),
             framing,
             sync_offset: 0,
             field_roi: None,
@@ -539,11 +535,11 @@ impl Calibration {
             // otherwise parse cleanly with the real fields silently
             // defaulted to zero (serde ignores unknown keys) - the seam
             // alignment would vanish with no diagnostics. Fail loud.
-            const LEGACY_TOPOLOGY_KEYS: [&str; 5] = ["xTy", "xRz", "zRx", "xRx", "zRz"];
-            let topology_keys = obj.get("topology").and_then(|t| t.as_object());
-            let stray = LEGACY_TOPOLOGY_KEYS
+            const LEGACY_PROJECTION_KEYS: [&str; 5] = ["xTy", "xRz", "zRx", "xRx", "zRz"];
+            let projection_keys = obj.get("projection").and_then(|t| t.as_object());
+            let stray = LEGACY_PROJECTION_KEYS
                 .iter()
-                .find(|k| topology_keys.is_some_and(|t| t.contains_key(**k)))
+                .find(|k| projection_keys.is_some_and(|t| t.contains_key(**k)))
                 .or_else(|| {
                     ["rig_tilt", "rig_roll", "cameraAxisOffset"]
                         .iter()
@@ -557,8 +553,7 @@ impl Calibration {
             }
         }
         let cal: Self = serde_json::from_value(value)?;
-        // Fail loud on files from a newer reco rather than silently
-        // misreading fields a future schema revision may have reshaped.
+        // Reject other schema versions rather than interpreting them using this format's defaults.
         if cal.schema_version != SCHEMA_VERSION {
             return Err(CalibrationLoadError::UnsupportedSchemaVersion {
                 found: cal.schema_version,
@@ -586,13 +581,13 @@ impl Calibration {
         if self.lenses.is_empty() {
             return Err(CalibrationError::NoLenses);
         }
-        // Topologies hard-index their lenses at render time; reject a
+        // Projections hard-index their lenses at render time; reject a
         // mismatched count here with a typed error rather than
         // panicking out-of-bounds downstream.
-        if self.lenses.len() != self.topology.camera_count() {
+        if self.lenses.len() != self.projection.camera_count() {
             return Err(CalibrationError::LensCountMismatch {
-                topology: self.topology.projection().name(),
-                expected: self.topology.camera_count(),
+                projection: self.projection.geometry().name(),
+                expected: self.projection.camera_count(),
                 found: self.lenses.len(),
             });
         }
@@ -601,9 +596,9 @@ impl Calibration {
         }
         // Each projection validates its own parameters (and its
         // requirements on the shared framing).
-        match &self.topology {
-            Topology::LShape(t) => t.validate(&self.framing)?,
-            Topology::Cylinder(t) => t.validate()?,
+        match &self.projection {
+            Projection::LShape(t) => t.validate(&self.framing)?,
+            Projection::Cylinder(t) => t.validate()?,
         }
         validate_framing(&self.framing)?;
         if self.sync_offset < -MAX_SYNC_OFFSET_FRAMES || self.sync_offset > MAX_SYNC_OFFSET_FRAMES {
@@ -665,8 +660,8 @@ pub enum CalibrationLoadError {
     },
     /// The file declares a schema version this build does not understand.
     #[error(
-        "calibration schema version {found} is newer than this reco \
-         supports ({SCHEMA_VERSION}); upgrade reco or re-run `reco calibrate`"
+        "unsupported calibration schema version {found}; this reco requires \
+         version {SCHEMA_VERSION}; re-run `reco calibrate` with this version of reco"
     )]
     UnsupportedSchemaVersion {
         /// The `schema_version` the file declared.
@@ -680,6 +675,66 @@ pub enum CalibrationLoadError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn projection_document_round_trips() {
+        let calibration: Calibration = serde_json::from_str(sample_json()).unwrap();
+        let value = serde_json::to_value(&calibration).unwrap();
+        assert_eq!(value["projection"]["type"], "l-shape");
+        let decoded: Calibration = serde_json::from_value(value).unwrap();
+        assert_eq!(decoded, calibration);
+    }
+
+    #[test]
+    fn cylinder_document_round_trips_nondefault_parameters() {
+        let value = serde_json::json!({"type": "cylinder", "radius": 1357.0, "arc_deg": 245.0, "surface_height": 997.0});
+        let projection: Projection = serde_json::from_value(value.clone()).unwrap();
+        let cylinder = projection.cylinder().unwrap();
+        assert_eq!(cylinder.radius, 1357.0);
+        assert_eq!(cylinder.arc_deg, 245.0);
+        assert_eq!(cylinder.surface_height, Some(997.0));
+        assert_eq!(serde_json::to_value(projection).unwrap(), value);
+    }
+
+    #[test]
+    fn cylinder_rejects_unknown_keys_instead_of_defaulting() {
+        for key in ["focal_length", "sweep_deg", "video_height", "raduis"] {
+            let mut value = serde_json::json!({"type": "cylinder"});
+            value[key] = serde_json::json!(997.0);
+            let err = serde_json::from_value::<Projection>(value).unwrap_err();
+            assert!(err.to_string().contains(key), "{err}");
+        }
+        let default: Projection =
+            serde_json::from_value(serde_json::json!({"type": "cylinder"})).unwrap();
+        assert_eq!(
+            default.cylinder().unwrap(),
+            &projection::Cylinder::default()
+        );
+    }
+
+    #[test]
+    fn calibration_rejects_obsolete_topology_even_with_projection_present() {
+        let mut value = serde_json::to_value(valid_cal()).unwrap();
+        value["topology"] = value["projection"].clone();
+        let err = serde_json::from_value::<Calibration>(value).unwrap_err();
+        assert!(err.to_string().contains("topology"), "{err}");
+    }
+
+    #[test]
+    fn older_schema_version_is_rejected() {
+        let mut cal = valid_cal();
+        cal.schema_version = 1;
+        let path =
+            std::env::temp_dir().join(format!("reco-old-schema-{}.json", std::process::id()));
+        std::fs::write(&path, cal.to_json_pretty()).unwrap();
+        let err = Calibration::from_file(&path).unwrap_err();
+        std::fs::remove_file(path).unwrap();
+        assert!(matches!(
+            err,
+            CalibrationLoadError::UnsupportedSchemaVersion { found: 1 }
+        ));
+        assert!(!err.to_string().contains("newer"));
+    }
 
     #[test]
     fn lens_rescaling_preserves_optics_and_scales_each_image_axis() {
@@ -725,7 +780,7 @@ mod tests {
 
     fn sample_json() -> &'static str {
         r#"{
-            "schema_version": 1,
+            "schema_version": 2,
             "lenses": [
                 { "id": "test-cam", "width": 3840, "height": 2160,
                   "fx": 1796.32, "fy": 1797.22, "cx": 1919.37, "cy": 1063.17,
@@ -734,7 +789,7 @@ mod tests {
                   "fx": 1796.32, "fy": 1797.22, "cx": 1919.37, "cy": 1063.17,
                   "distortion": [0.0342, 0.0677, -0.0741, 0.0299], "correction": 1.0 }
             ],
-            "topology": { "type": "l-shape",
+            "projection": { "type": "l-shape",
                           "intersect": 0.5446, "x_ty": 0.00476, "x_rz": 0.00753,
                           "z_rx": -0.00431, "blend_width": 0.05 },
             "framing": { "axis_offset": 0.2398, "tilt": 0.0, "roll": 0.0 }
@@ -748,7 +803,7 @@ mod tests {
         assert_eq!(cal.lenses[0].width, 3840);
         assert_eq!(cal.lenses[0].distortion.len(), 4);
         assert!((cal.framing.axis_offset - 0.2398).abs() < 1e-4);
-        assert!((cal.topology.l_shape().unwrap().intersect - 0.5446).abs() < 1e-4);
+        assert!((cal.projection.l_shape().unwrap().intersect - 0.5446).abs() < 1e-4);
         assert!(cal.field_roi.is_none());
         cal.validate().unwrap();
     }
@@ -760,7 +815,7 @@ mod tests {
         // default-valued field survives even if serialization drops it).
         let mut cal = valid_cal();
         cal.lenses[0].correction = 0.0;
-        cal.topology.l_shape_mut().unwrap().blend_width = 0.123;
+        cal.projection.l_shape_mut().unwrap().blend_width = 0.123;
         cal.framing.tilt = 0.3;
         cal.framing.roll = -0.12;
         cal.sync_offset = 67;
@@ -769,10 +824,10 @@ mod tests {
         let back: Calibration = serde_json::from_str(&json).unwrap();
         assert_eq!(back.lenses.len(), cal.lenses.len());
         assert!((back.lenses[0].correction - 0.0).abs() < 1e-6);
-        assert!((back.topology.l_shape().unwrap().blend_width - 0.123).abs() < 1e-6);
+        assert!((back.projection.l_shape().unwrap().blend_width - 0.123).abs() < 1e-6);
         assert!(
-            (back.topology.l_shape().unwrap().intersect
-                - cal.topology.l_shape().unwrap().intersect)
+            (back.projection.l_shape().unwrap().intersect
+                - cal.projection.l_shape().unwrap().intersect)
                 .abs()
                 < 1e-9
         );
@@ -810,7 +865,7 @@ mod tests {
         Calibration {
             schema_version: SCHEMA_VERSION,
             lenses: vec![lens(), lens()],
-            topology: Topology::LShape(projection::LShape {
+            projection: Projection::LShape(projection::LShape {
                 intersect: 0.5,
                 x_ty: 0.0,
                 x_rz: 0.0,
@@ -835,11 +890,11 @@ mod tests {
     }
 
     #[test]
-    fn untagged_topology_document_is_rejected() {
-        // The `type` tag is mandatory: a topology object without it
+    fn untagged_projection_document_is_rejected() {
+        // The `type` tag is mandatory: a projection object without it
         // must fail to parse rather than silently default to L-shape.
         let mut v: serde_json::Value = serde_json::from_str(&valid_cal().to_json_pretty()).unwrap();
-        let topo = v["topology"].as_object_mut().unwrap();
+        let topo = v["projection"].as_object_mut().unwrap();
         assert_eq!(topo.remove("type").unwrap(), "l-shape");
         assert!(serde_json::from_value::<Calibration>(v).is_err());
     }
@@ -862,16 +917,16 @@ mod tests {
             "tagged serialization: {json}"
         );
         let back: Calibration = serde_json::from_str(&json).unwrap();
-        let t = back.topology.cylinder().expect("cylinder round-trip");
-        assert!((t.focal_length - 2400.0).abs() < 1e-9);
-        assert!((t.sweep_deg - 180.0).abs() < 1e-9);
+        let t = back.projection.cylinder().expect("cylinder round-trip");
+        assert!((t.radius - 2400.0).abs() < 1e-9);
+        assert!((t.arc_deg - 180.0).abs() < 1e-9);
         back.validate().unwrap();
     }
 
     #[test]
     fn cylinder_lens_count_is_enforced() {
         let mut cal = valid_cal();
-        cal.topology = Topology::Cylinder(projection::Cylinder::default());
+        cal.projection = Projection::Cylinder(projection::Cylinder::default());
         assert!(
             matches!(
                 cal.validate(),
@@ -881,7 +936,7 @@ mod tests {
                     ..
                 })
             ),
-            "two lenses on a mono topology must be rejected"
+            "two lenses on a mono projection must be rejected"
         );
     }
 
@@ -901,15 +956,15 @@ mod tests {
             );
             cal.validate()
         };
-        assert!(bad(|t| t.focal_length = 0.0).is_err());
-        assert!(bad(|t| t.video_height = Some(f64::NAN)).is_err());
+        assert!(bad(|t| t.radius = 0.0).is_err());
+        assert!(bad(|t| t.surface_height = Some(f64::NAN)).is_err());
 
         // The messages must state the documented (0, 360] sweep bounds
         // and the validation epsilon, not float internals like
         // MIN_POSITIVE.
-        let msg = bad(|t| t.sweep_deg = 361.0).unwrap_err().to_string();
+        let msg = bad(|t| t.arc_deg = 361.0).unwrap_err().to_string();
         assert!(msg.contains("[0, 360]"), "{msg}");
-        let msg = bad(|t| t.sweep_deg = 0.0).unwrap_err().to_string();
+        let msg = bad(|t| t.arc_deg = 0.0).unwrap_err().to_string();
         assert!(msg.contains("> 0.000001,"), "{msg}");
     }
 
@@ -966,10 +1021,10 @@ mod tests {
     #[test]
     fn rejects_intersect_out_of_range() {
         let mut c = valid_cal();
-        c.topology.l_shape_mut().unwrap().intersect = 1.5;
+        c.projection.l_shape_mut().unwrap().intersect = 1.5;
         assert!(matches!(
             c.validate(),
-            Err(CalibrationError::OutOfRange { ref field, .. }) if field == "topology.intersect"
+            Err(CalibrationError::OutOfRange { ref field, .. }) if field == "projection.intersect"
         ));
     }
 
@@ -1018,9 +1073,9 @@ mod tests {
         // A hand-migrated file keeping old camelCase keys must not load
         // with the seam alignment silently zeroed.
         let mut cal = valid_cal();
-        cal.topology.l_shape_mut().unwrap().x_ty = 0.0048;
+        cal.projection.l_shape_mut().unwrap().x_ty = 0.0048;
         let mut v: serde_json::Value = serde_json::from_str(&cal.to_json_pretty()).unwrap();
-        let topo = v["topology"].as_object_mut().unwrap();
+        let topo = v["projection"].as_object_mut().unwrap();
         topo.remove("x_ty");
         topo.insert("xTy".into(), serde_json::json!(0.0048));
         let path = std::env::temp_dir().join(format!("reco_stray_{}.json", std::process::id()));

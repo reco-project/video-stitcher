@@ -23,8 +23,8 @@ pub struct GrayFrame {
 ///
 /// This is the standard YUV420P frame used across all reco crates.
 /// Previously reco-calibrate defined its own copy; now it uses the
-/// shared definition from [`reco_core::source::YuvFrame`].
-pub use reco_core::source::YuvFrame;
+/// shared definition from [`reco_core::source::Yuv420pFrame`].
+pub use reco_core::source::Yuv420pFrame;
 
 /// A matched feature point pair in normalized plane coordinates.
 ///

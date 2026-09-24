@@ -8,7 +8,7 @@
 //! [`GpuExecutor`], reached through [`crate::core::StitchCore`], which owns
 //! one executor as its render substrate.
 //!
-//! - [`CpuExecutor`] reads the document's [`Projection`] and drives the pure-Rust gather.
+//! - [`CpuExecutor`] reads the document's [`ProjectionGeometry`] and drives the pure-Rust gather.
 //! - [`GpuExecutor`] owns the wgpu `StitchPipeline` (there is no other
 //!   owner) plus a private blocking-readback ring for the synchronous
 //!   contract.
@@ -18,24 +18,18 @@
 //! wgpu-free builds.
 
 use crate::calibration::Calibration;
-use crate::geometry::Pose;
-use crate::projection::Projection;
-use crate::render::planes::{Nv12Planes, YuvPlanes};
+use crate::geometry::RenderPose;
+use crate::projection::ProjectionGeometry;
+use crate::render::planes::Nv12Planes;
 use crate::render::viewport::ViewportSize;
-
-use super::cpu::stitch_rgba;
 
 // The GPU arm's imports, gated as one block with the code they serve.
 #[cfg(feature = "gpu")]
-use crate::gpu::{
-    GpuContext,
-    rgba_readback::{RgbaReadback, RgbaReadbackError},
-};
+use crate::gpu::rgba_readback::RgbaReadbackError;
 #[cfg(feature = "gpu")]
-use crate::render::{
-    pipeline::{PipelineError, StitchPipeline},
-    renderer::InputFormat,
-};
+use crate::render::pipeline::PipelineError;
+#[cfg(all(test, feature = "gpu"))]
+use crate::render::renderer::InputFormat;
 
 /// Errors a stitch executor can return.
 ///
@@ -80,7 +74,11 @@ pub enum StitchError {
 pub trait StitchExecutor {
     /// Stitch one frame set (one NV12 plane pair per camera, in
     /// projection order) to RGBA at the configured output size.
-    fn stitch(&mut self, planes: &[Nv12Planes<'_>], pose: Pose) -> Result<Vec<u8>, StitchError>;
+    fn stitch(
+        &mut self,
+        planes: &[Nv12Planes<'_>],
+        pose: RenderPose,
+    ) -> Result<Vec<u8>, StitchError>;
 
     /// Output dimensions `(width, height)` in pixels.
     fn output_dims(&self) -> (u32, u32);
@@ -89,838 +87,13 @@ pub trait StitchExecutor {
     fn name(&self) -> &'static str;
 }
 
-/// CPU software backend - pure Rust, no GPU. The portable / GPU-less path.
-pub struct CpuExecutor {
-    pub(crate) calib: Calibration,
-    pub(crate) viewport_size: ViewportSize,
-    pub(crate) cam: (u32, u32),
-    pub(crate) full_range: bool,
-}
-
-impl CpuExecutor {
-    /// Configure a CPU executor for a fixed source size and output
-    /// viewport. The projection is the calibration document's topology
-    /// (zero-copy: the document is the engine), so a document edit
-    /// switches the projection automatically.
-    pub fn new(
-        calib: Calibration,
-        viewport_size: ViewportSize,
-        cam_w: u32,
-        cam_h: u32,
-        full_range: bool,
-    ) -> Result<Self, StitchError> {
-        calib
-            .validate()
-            .map_err(|e| StitchError::InvalidConfig(e.to_string()))?;
-        viewport_size
-            .validate()
-            .map_err(StitchError::InvalidConfig)?;
-        if cam_w < 2 || cam_h < 2 {
-            return Err(StitchError::InvalidConfig(format!(
-                "source dimensions must be >= 2, got {cam_w}x{cam_h}"
-            )));
-        }
-        log::debug!(
-            "CpuExecutor: projection '{}' from the calibration topology",
-            calib.topology.projection().name()
-        );
-
-        Ok(Self {
-            calib,
-            viewport_size,
-            cam: (cam_w, cam_h),
-            full_range,
-        })
-    }
-
-    /// The projection in effect: a borrow of the document's topology.
-    pub(crate) fn projection(&self) -> &dyn Projection {
-        self.calib.topology.projection()
-    }
-
-    /// Stitch one NV12 frame set to RGBA at the configured output
-    /// size. `&self` on purpose: the CPU stitch is stateless per call
-    /// (the [`StitchExecutor`] trait's `&mut self` accommodates the
-    /// GPU arm's readback ring).
-    pub fn stitch_nv12(
-        &self,
-        planes: &[Nv12Planes<'_>],
-        pose: Pose,
-    ) -> Result<Vec<u8>, StitchError> {
-        stitch_rgba(
-            planes,
-            self.cam,
-            &self.calib,
-            &self.viewport_size,
-            pose,
-            self.full_range,
-        )
-    }
-
-    /// Stitch one YUV420P frame set to RGBA at the configured output
-    /// size. The CPU kernel is format-flexible per call (unlike the
-    /// GPU pipeline, which fixes its input format at construction);
-    /// the [`StitchExecutor`] trait covers the NV12 contract, this
-    /// inherent entry covers planar YUV sources (file decode).
-    pub fn stitch_yuv(&self, planes: &[YuvPlanes<'_>], pose: Pose) -> Result<Vec<u8>, StitchError> {
-        super::cpu::stitch_rgba_yuv420p(
-            planes,
-            self.cam,
-            &self.calib,
-            &self.viewport_size,
-            pose,
-            self.full_range,
-        )
-    }
-}
-
-impl StitchExecutor for CpuExecutor {
-    fn stitch(&mut self, planes: &[Nv12Planes<'_>], pose: Pose) -> Result<Vec<u8>, StitchError> {
-        // Plane-size + camera-count validation lives in stitch_rgba, which
-        // returns a typed error instead of panicking on a short/truncated frame.
-        self.stitch_nv12(planes, pose)
-    }
-
-    fn output_dims(&self) -> (u32, u32) {
-        (self.viewport_size.width, self.viewport_size.height)
-    }
-
-    fn name(&self) -> &'static str {
-        "cpu"
-    }
-}
-
-/// Configuration for building a [`GpuExecutor`].
-///
-/// Owns everything the GPU pipeline needs to know about the frames it
-/// will stitch: the calibration document, the output viewport, and the
-/// source dimensions and pixel formats. The projection is the
-/// document's topology (zero-copy). Engine-level concerns (detection,
-/// trackers, replay) deliberately live on
-/// [`StitchCore`](crate::core::StitchCore), not here.
+mod cpu;
 #[cfg(feature = "gpu")]
-pub struct GpuExecutorConfig {
-    /// Camera calibration document.
-    pub calibration: Calibration,
-    /// Output viewport dimensions.
-    pub viewport_size: ViewportSize,
-    /// Input frame width in pixels (per camera).
-    pub input_width: u32,
-    /// Input frame height in pixels (per camera).
-    pub input_height: u32,
-    /// Input pixel format.
-    pub input_format: InputFormat,
-    /// GPU render-target format. `Rgba8Unorm` suits every compositor
-    /// consumer; `Bgra8Unorm` matches native Windows DirectX surfaces
-    /// for consumers that prefer to swizzle on upload instead of on
-    /// readback.
-    pub output_format: wgpu::TextureFormat,
-    /// Whether source YUV uses full-range (JPEG) quantization.
-    pub full_range: bool,
-}
+mod gpu;
 
+pub use cpu::CpuExecutor;
 #[cfg(feature = "gpu")]
-impl GpuExecutorConfig {
-    /// New config with required fields only; defaults everywhere else
-    /// (1080p viewport, `Rgba8Unorm` output, limited-range YUV).
-    pub fn new(
-        calibration: Calibration,
-        input_width: u32,
-        input_height: u32,
-        input_format: InputFormat,
-    ) -> Self {
-        Self {
-            calibration,
-            viewport_size: ViewportSize {
-                width: 1920,
-                height: 1080,
-            },
-            input_width,
-            input_height,
-            input_format,
-            output_format: wgpu::TextureFormat::Rgba8Unorm,
-            full_range: false,
-        }
-    }
-}
-
-/// GPU executor - the sole owner of the wgpu `StitchPipeline` and of
-/// the projection geometry bound to it.
-///
-/// [`StitchCore`](crate::core::StitchCore) holds one of these as its
-/// render substrate and drives the streaming paths (pipelined readback,
-/// zero-copy imports, preview-to-view) through it. The synchronous
-/// `stitch()` path (crate-internal until the executor trait goes
-/// public) renders one frame and blocks on a private readback ring,
-/// for callers that want "planes in, RGBA out" with no pipelining.
-#[cfg(feature = "gpu")]
-pub struct GpuExecutor {
-    pub(crate) pipeline: StitchPipeline,
-    /// Resident-frame machinery: shared decode textures, the VRAM
-    /// lookahead pool, decode backpressure. Populated lazily by the
-    /// configure/stage methods; empty for pure CPU-frame consumers.
-    pub(crate) residency: super::residency::Residency,
-    /// Readback ring for the synchronous [`StitchExecutor::stitch`]
-    /// path, created on first use so engine-embedded executors (which
-    /// read back through the engine's own pipelined ring) never
-    /// allocate it. Keyed by the output dims it was built for so a
-    /// resize recreates it.
-    sync_readback: Option<(RgbaReadback, (u32, u32))>,
-    /// NV12 delivery: triple-buffered render-target -> NV12 readback
-    /// for encoders and preview taps. Created on first use and keyed
-    /// by the dims it was built for so a resize recreates it.
-    nv12: Option<(crate::gpu::nv12_converter::Nv12Converter, (u32, u32))>,
-}
-
-#[cfg(feature = "gpu")]
-impl GpuExecutor {
-    /// Build a GPU executor. `gpu` is injected so reco-core does not
-    /// pull an async runtime into non-test code; callers create it via
-    /// [`GpuContext::new`].
-    pub fn new(gpu: GpuContext, config: GpuExecutorConfig) -> Result<Self, StitchError> {
-        let projection = config.calibration.topology.projection();
-        // Fail fast on CPU-only projections: binding a placeholder
-        // program would render garbage frames instead of an error.
-        let Some(program) = projection.gpu_program() else {
-            log::warn!(
-                "GpuExecutor: projection '{}' has no GPU program yet; refusing construction (the CPU executor covers it)",
-                projection.name()
-            );
-            return Err(StitchError::NoGpuProgram {
-                projection: projection.name(),
-            });
-        };
-        log::info!(
-            "GpuExecutor: projection '{}' from the calibration topology supplies the GPU program and coverage",
-            projection.name()
-        );
-        // Calibration validation happens once, inside with_gpu.
-        let mut pipeline = StitchPipeline::with_gpu(
-            gpu,
-            &program,
-            config.calibration,
-            config.viewport_size,
-            config.input_width,
-            config.input_height,
-            config.output_format,
-            config.input_format,
-        )?;
-        pipeline.set_full_range(config.full_range);
-        Ok(Self {
-            pipeline,
-            residency: super::residency::Residency::default(),
-            sync_readback: None,
-            nv12: None,
-        })
-    }
-
-    // -----------------------------------------------------------------
-    // Resident-frame surface (zero-copy sources, lookahead pool)
-    // -----------------------------------------------------------------
-
-    /// Wire the shared zero-copy decode textures into the pipeline:
-    /// bind groups for rendering, views for detection and replay
-    /// packing, texture clones for pool staging, CUDA pointers for
-    /// GPU detection, and the decode backpressure channels.
-    #[cfg(target_os = "linux")]
-    pub(crate) fn configure_shared_textures(&mut self, shared: &crate::interop::SharedTextureSet) {
-        let t = &shared.textures;
-        let bind_groups = self.pipeline.configure_gpu_source(
-            [(&t[0], &t[1]), (&t[2], &t[3])],
-            [(&t[4], &t[5]), (&t[6], &t[7])],
-        );
-        let desc = wgpu::TextureViewDescriptor::default();
-        self.residency.bind_groups = Some(bind_groups);
-        self.residency.slot_free_tx = Some((
-            shared.left_slot_free_tx.clone(),
-            shared.right_slot_free_tx.clone(),
-        ));
-        self.residency.cuda_buf_info = Some((shared.left_buf.clone(), shared.right_buf.clone()));
-        self.residency.shared_views = Some([
-            t[0].texture.create_view(&desc),
-            t[1].texture.create_view(&desc),
-            t[2].texture.create_view(&desc),
-            t[3].texture.create_view(&desc),
-            t[4].texture.create_view(&desc),
-            t[5].texture.create_view(&desc),
-            t[6].texture.create_view(&desc),
-            t[7].texture.create_view(&desc),
-        ]);
-        self.residency.shared_textures = Some([
-            t[0].texture.clone(),
-            t[1].texture.clone(),
-            t[2].texture.clone(),
-            t[3].texture.clone(),
-            t[4].texture.clone(),
-            t[5].texture.clone(),
-            t[6].texture.clone(),
-            t[7].texture.clone(),
-        ]);
-        log::info!("GpuExecutor: shared zero-copy decode textures configured");
-    }
-
-    /// CUDA buffer info for GPU detection on the shared decode
-    /// textures, cloned so callers can hold it across `&mut` engine
-    /// calls. `None` until a zero-copy source is configured.
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub(crate) fn cuda_buf_info(
-        &self,
-    ) -> Option<(
-        crate::interop::zero_copy::GpuBufInfo,
-        crate::interop::zero_copy::GpuBufInfo,
-    )> {
-        self.residency.cuda_buf_info.clone()
-    }
-
-    /// Render from the shared decode textures at the given slots
-    /// (immediate zero-copy path).
-    #[cfg(target_os = "linux")]
-    pub(crate) fn render_shared_slots(
-        &mut self,
-        left_slot: u8,
-        right_slot: u8,
-        pose: Pose,
-    ) -> Result<wgpu::CommandBuffer, StitchError> {
-        let bind_groups = self.residency.bind_groups.as_ref().ok_or_else(|| {
-            StitchError::InvalidConfig(
-                "GPU bind groups not configured - call setup_gpu_source() before run()".into(),
-            )
-        })?;
-        Ok(self
-            .pipeline
-            .render_gpu_frame(bind_groups, left_slot, right_slot, pose)?)
-    }
-
-    /// Render from a VRAM lookahead pool slot (buffered path).
-    pub(crate) fn render_pool_slot(
-        &mut self,
-        slot: usize,
-        pose: Pose,
-    ) -> Result<wgpu::CommandBuffer, StitchError> {
-        let pool = self
-            .residency
-            .pool
-            .as_ref()
-            .expect("render_pool_slot requires the lookahead pool");
-        Ok(self.pipeline.render_with_bind_groups(
-            pool.left_bind_group(slot),
-            pool.right_bind_group(slot),
-            pose,
-        )?)
-    }
-
-    /// Copy the shared decode slots into a pool slot so the decode
-    /// surfaces can recycle while the frame waits in the lookahead
-    /// buffer. The copy is awaited before returning. The decode slot
-    /// is NOT released here - detection still reads it; the caller
-    /// frees it via [`Self::release_decode_slots`] afterwards.
-    #[cfg(target_os = "linux")]
-    pub(crate) fn stage_shared_to_pool(
-        &mut self,
-        left_slot: usize,
-        right_slot: usize,
-    ) -> Result<Option<usize>, StitchError> {
-        let residency = &mut self.residency;
-        let (Some(pool), Some(shared_tex)) =
-            (residency.pool.as_mut(), residency.shared_textures.as_ref())
-        else {
-            return Ok(None);
-        };
-        let slot = pool.acquire().ok_or_else(|| {
-            StitchError::InvalidConfig(format!(
-                "VRAM pool exhausted ({} slots, {} available)",
-                pool.capacity(),
-                pool.available()
-            ))
-        })?;
-        let gpu = self.pipeline.gpu();
-        pool.copy_from_textures(
-            gpu,
-            slot,
-            &shared_tex[left_slot * 2],
-            &shared_tex[left_slot * 2 + 1],
-            &shared_tex[4 + right_slot * 2],
-            &shared_tex[4 + right_slot * 2 + 1],
-        );
-        let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
-        Ok(Some(slot))
-    }
-
-    /// Copy four imported NV12 plane textures into a pool slot
-    /// (DMA-buf / CVPixelBuffer sources whose import caches live
-    /// outside the shared-texture set). The copy is awaited so the
-    /// source may recycle its buffer immediately after.
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "ios"))]
-    pub(crate) fn stage_textures_to_pool(
-        &mut self,
-        left_y: &wgpu::Texture,
-        left_uv: &wgpu::Texture,
-        right_y: &wgpu::Texture,
-        right_uv: &wgpu::Texture,
-    ) -> Result<Option<usize>, StitchError> {
-        let Some(pool) = self.residency.pool.as_mut() else {
-            return Ok(None);
-        };
-        let slot = pool.acquire().ok_or_else(|| {
-            StitchError::InvalidConfig(format!(
-                "VRAM pool exhausted ({} slots, {} available)",
-                pool.capacity(),
-                pool.available()
-            ))
-        })?;
-        let gpu = self.pipeline.gpu();
-        pool.copy_from_textures(gpu, slot, left_y, left_uv, right_y, right_uv);
-        let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
-        Ok(Some(slot))
-    }
-
-    /// Allocate the NVMM detection letterbox surfaces (Jetson).
-    ///
-    /// `model_size` is the detector's square input dimension (e.g.
-    /// 1280); the source dimensions size the letterbox geometry.
-    /// Without this the NVMM detection arm no-ops (the director still
-    /// advances, just without detections).
-    #[cfg(target_os = "linux")]
-    pub(crate) fn setup_nvmm_detection(
-        &mut self,
-        model_size: u32,
-        src_width: u32,
-        src_height: u32,
-    ) -> Result<(), String> {
-        let left =
-            crate::nvbuf_transform::NvBufDetectionSurface::new(model_size, src_width, src_height)
-                .map_err(|e| format!("NVMM left detection surface: {e}"))?;
-        let right =
-            crate::nvbuf_transform::NvBufDetectionSurface::new(model_size, src_width, src_height)
-                .map_err(|e| format!("NVMM right detection surface: {e}"))?;
-        self.residency.nvmm_det = Some((left, right));
-        log::info!(
-            "GpuExecutor: NVMM detection surfaces ready: {model_size}x{model_size} \
-             (src {src_width}x{src_height})"
-        );
-        Ok(())
-    }
-
-    /// Letterbox a stereo NVMM frame into the detection surfaces and
-    /// wrap the results as per-camera detector frames. Returns `None`
-    /// (logged) when the surfaces are not set up or a transform fails.
-    #[cfg(target_os = "linux")]
-    pub(crate) fn nvmm_detector_frames(
-        &mut self,
-        left: &crate::source::NvmmPlaneInfo,
-        right: &crate::source::NvmmPlaneInfo,
-    ) -> Option<
-        [(
-            crate::geometry::CameraIndex,
-            crate::detect::detector::DetectorFrame<'static>,
-        ); 2],
-    > {
-        use crate::detect::detector::DetectorFrame;
-
-        let (det_left, det_right) = self.residency.nvmm_det.as_mut()?;
-        unsafe {
-            if let Err(e) = det_left.transform_from_nvmm(left.surface_ptr) {
-                log::warn!("NVMM left detection transform failed: {e}");
-                return None;
-            }
-            if let Err(e) = det_right.transform_from_nvmm(right.surface_ptr) {
-                log::warn!("NVMM right detection transform failed: {e}");
-                return None;
-            }
-        }
-        Some([
-            (
-                0,
-                DetectorFrame::CudaRgbaLetterboxed {
-                    ptr: det_left.data_ptr,
-                    src_width: left.width,
-                    src_height: left.height,
-                },
-            ),
-            (
-                1,
-                DetectorFrame::CudaRgbaLetterboxed {
-                    ptr: det_right.data_ptr,
-                    src_width: right.width,
-                    src_height: right.height,
-                },
-            ),
-        ])
-    }
-
-    /// Import a stereo NVMM frame's DMA-bufs as Vulkan textures
-    /// (cached by fd) and hand back Arc-backed clones of the four
-    /// Y/UV plane textures `[left_y, left_uv, right_y, right_uv]`.
-    #[cfg(target_os = "linux")]
-    pub(crate) fn import_nvmm(
-        &mut self,
-        left: &crate::source::NvmmPlaneInfo,
-        right: &crate::source::NvmmPlaneInfo,
-    ) -> Result<[wgpu::Texture; 4], String> {
-        if self.residency.nvmm_cache.is_none() {
-            self.residency.nvmm_cache = Some(crate::interop::dmabuf::DmaBufTextureCache::new());
-        }
-        let gpu = self.pipeline.gpu();
-        let cache = self.residency.nvmm_cache.as_mut().expect("created above");
-        cache
-            .ensure_imported(
-                gpu,
-                left.dmabuf_fd,
-                left.width,
-                left.height,
-                left.y_offset,
-                left.uv_offset,
-                left.total_size,
-            )
-            .map_err(|e| format!("left NVMM DMA-buf import: {e}"))?;
-        cache
-            .ensure_imported(
-                gpu,
-                right.dmabuf_fd,
-                right.width,
-                right.height,
-                right.y_offset,
-                right.uv_offset,
-                right.total_size,
-            )
-            .map_err(|e| format!("right NVMM DMA-buf import: {e}"))?;
-        let l = cache.get(left.dmabuf_fd);
-        let r = cache.get(right.dmabuf_fd);
-        Ok([
-            l.y_texture.clone(),
-            l.uv_texture.clone(),
-            r.y_texture.clone(),
-            r.uv_texture.clone(),
-        ])
-    }
-
-    /// Import a stereo NVMM frame and stage it into a pool slot for
-    /// buffered rendering. The blit is awaited so the source may
-    /// recycle the DMA-buf immediately after.
-    #[cfg(target_os = "linux")]
-    pub(crate) fn stage_nvmm_to_pool(
-        &mut self,
-        left: &crate::source::NvmmPlaneInfo,
-        right: &crate::source::NvmmPlaneInfo,
-    ) -> Result<Option<usize>, String> {
-        if self.residency.pool.is_none() {
-            return Ok(None);
-        }
-        let [ly, lu, ry, ru] = self.import_nvmm(left, right)?;
-        self.stage_textures_to_pool(&ly, &lu, &ry, &ru)
-            .map_err(|e| e.to_string())
-    }
-
-    /// Import a stereo CVPixelBuffer pair as Y/UV plane textures
-    /// (`[left_y, left_uv, right_y, right_uv]`). The Metal texture
-    /// cache is created on first use. Each returned plane keeps its
-    /// `CVMetalTextureRef` alive - hold it until the GPU has read the
-    /// frame.
-    ///
-    /// # Safety
-    ///
-    /// `left` and `right` must be valid, non-null `CVPixelBufferRef`s.
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    pub(crate) unsafe fn import_metal(
-        &mut self,
-        left: crate::interop::metal::CVPixelBufferRef,
-        right: crate::interop::metal::CVPixelBufferRef,
-    ) -> Result<[crate::interop::metal::ImportedPlaneTexture; 4], String> {
-        if self.residency.metal_cache.is_none() {
-            let cache = crate::interop::metal::MetalTextureCache::new(self.pipeline.gpu())
-                .map_err(|e| e.to_string())?;
-            log::info!("Metal zero-copy: texture cache initialized");
-            self.residency.metal_cache = Some(cache);
-        }
-        let gpu = self.pipeline.gpu();
-        let cache = self.residency.metal_cache.as_mut().expect("created above");
-        let (ly, lu) = unsafe { cache.import_nv12(left, gpu) }.map_err(|e| e.to_string())?;
-        let (ry, ru) = unsafe { cache.import_nv12(right, gpu) }.map_err(|e| e.to_string())?;
-        Ok([ly, lu, ry, ru])
-    }
-
-    /// Hand decode slots back to the decode threads. Call only after
-    /// detection has read the slot - releasing earlier lets the decode
-    /// thread overwrite the shared memory mid-read.
-    #[cfg(target_os = "linux")]
-    pub(crate) fn release_decode_slots(&self, left_slot: u8, right_slot: u8) {
-        if let Some((ref left_tx, ref right_tx)) = self.residency.slot_free_tx {
-            if left_tx.send(left_slot).is_err() {
-                log::error!(
-                    "failed to release left GPU decode slot {left_slot} - decode thread may have died"
-                );
-            }
-            if right_tx.send(right_slot).is_err() {
-                log::error!(
-                    "failed to release right GPU decode slot {right_slot} - decode thread may have died"
-                );
-            }
-        }
-    }
-
-    /// Drop the decode backpressure senders so decode threads see a
-    /// closed channel and exit instead of blocking on `recv()`.
-    #[cfg(target_os = "linux")]
-    pub(crate) fn drop_decode_channels(&mut self) {
-        self.residency.slot_free_tx = None;
-    }
-
-    /// Lazily create the D3D11VA staging pool, sized for
-    /// `lookahead_frames` of buffering (0 = double-buffered stereo).
-    ///
-    /// Returns `true` if the pool was created by this call: the first
-    /// staged frame performs cross-API warmup (device extraction,
-    /// shared-handle imports), so callers skip rendering it.
-    #[cfg(target_os = "windows")]
-    pub(crate) fn ensure_d3d11_staging(
-        &mut self,
-        lookahead_frames: usize,
-        needs_cuda: bool,
-        pixel_format: crate::render::renderer::GpuPixelFormat,
-    ) -> Result<bool, String> {
-        if self.residency.d3d11_staging.is_some() {
-            return Ok(false);
-        }
-        // For lookahead, size slots to the max frames simultaneously
-        // in flight (decoded but not yet rendered), x2 for left+right.
-        // Peak occupancy is n + post_smooth_half + 1 (the buffer hits
-        // n+1 right after a produce while the pose queue holds
-        // post_smooth_half). Slots are assigned by produce_index modulo
-        // n_slots with no occupancy check, so the pool must exceed peak
-        // occupancy or a producer would overwrite a frame still queued
-        // for render. +4 keeps a few frames of slack above the exact
-        // fit (the VramPool uses ref-counted acquire/release; this
-        // path relies on the sizing margin instead). Without lookahead,
-        // 4 slots (double-buffered stereo) suffice.
-        let n_slots = if lookahead_frames > 0 {
-            let post_smooth_half = (lookahead_frames / 2).max(1);
-            (lookahead_frames + post_smooth_half + 4) * 2
-        } else {
-            4
-        };
-        let (w, h) = self.pipeline.source_info();
-        let pool = crate::interop::d3d11::D3d11StagingPool::new(
-            self.pipeline.gpu(),
-            w,
-            h,
-            n_slots,
-            needs_cuda,
-            pixel_format,
-        )
-        .map_err(|e| format!("D3D11 staging pool: {e}"))?;
-        log::info!("D3D11VA staging pool created: {w}x{h}, {n_slots} {pixel_format:?} slots");
-        self.residency.d3d11_staging = Some(pool);
-        Ok(true)
-    }
-
-    /// Stage a decoded D3D11VA stereo frame into the given pool slots.
-    /// The first call extracts FFmpeg's device from the source texture
-    /// and builds the staging textures on it.
-    #[cfg(target_os = "windows")]
-    pub(crate) fn stage_d3d11_frames(
-        &mut self,
-        left_texture: *mut std::ffi::c_void,
-        left_slice: usize,
-        right_texture: *mut std::ffi::c_void,
-        right_slice: usize,
-        left_slot: usize,
-        right_slot: usize,
-    ) -> Result<(), String> {
-        let pool = self
-            .residency
-            .d3d11_staging
-            .as_mut()
-            .ok_or_else(|| "D3D11 staging pool not created".to_string())?;
-        pool.stage_frame(left_texture, left_slice, left_slot)
-            .map_err(|e| e.to_string())?;
-        pool.stage_frame(right_texture, right_slice, right_slot)
-            .map_err(|e| e.to_string())
-    }
-
-    /// Staging slots for a buffered frame, assigned round-robin by
-    /// produce index (left in even slots, right in odd). `None` until
-    /// the pool exists.
-    #[cfg(target_os = "windows")]
-    pub(crate) fn d3d11_slots(&self, produce_index: u64) -> Option<(usize, usize)> {
-        let pool = self.residency.d3d11_staging.as_ref()?;
-        let n = pool.n_slots();
-        let i = produce_index as usize * 2;
-        Some((i % n, (i + 1) % n))
-    }
-
-    /// Render from staged D3D11 pool slots.
-    #[cfg(target_os = "windows")]
-    pub(crate) fn render_d3d11_slots(
-        &mut self,
-        left_slot: usize,
-        right_slot: usize,
-        pose: Pose,
-    ) -> Result<wgpu::CommandBuffer, StitchError> {
-        let pool =
-            self.residency.d3d11_staging.as_ref().ok_or_else(|| {
-                StitchError::InvalidConfig("D3D11 staging pool not created".into())
-            })?;
-        Ok(self.pipeline.render_imported_views(
-            pool.y_view(left_slot),
-            pool.uv_view(left_slot),
-            pool.y_view(right_slot),
-            pool.uv_view(right_slot),
-            pose,
-        )?)
-    }
-
-    /// Y/UV detection views over two staged slots, Arc-cloned so
-    /// callers can hold them across `&mut` engine calls. Layout
-    /// `[left_y, left_uv, right_y, right_uv]`. `None` until the pool
-    /// exists.
-    #[cfg(target_os = "windows")]
-    pub(crate) fn d3d11_views(
-        &self,
-        left_slot: usize,
-        right_slot: usize,
-    ) -> Option<[wgpu::TextureView; 4]> {
-        let pool = self.residency.d3d11_staging.as_ref()?;
-        Some([
-            pool.y_view(left_slot).clone(),
-            pool.uv_view(left_slot).clone(),
-            pool.y_view(right_slot).clone(),
-            pool.uv_view(right_slot).clone(),
-        ])
-    }
-
-    /// Allocate the VRAM lookahead pool.
-    pub(crate) fn create_lookahead_pool(
-        &mut self,
-        width: u32,
-        height: u32,
-        slots: usize,
-        pixel_format: crate::render::renderer::GpuPixelFormat,
-    ) -> Result<(), String> {
-        let pool = crate::gpu::vram_pool::VramPool::new(
-            self.pipeline.gpu(),
-            &self.pipeline,
-            width,
-            height,
-            slots,
-            pixel_format,
-        )?;
-        self.residency.pool = Some(pool);
-        Ok(())
-    }
-
-    /// Release a lookahead pool slot after its frame rendered.
-    pub(crate) fn release_pool_slot(&mut self, slot: usize) {
-        if let Some(pool) = self.residency.pool.as_mut() {
-            pool.release(slot);
-        }
-    }
-
-    // -----------------------------------------------------------------
-    // NV12 delivery (encoders, preview taps)
-    // -----------------------------------------------------------------
-
-    /// NV12 output dimensions: the viewport rounded down to NV12-safe
-    /// values (shared rounding rule with the CPU delivery path).
-    pub(crate) fn nv12_dims(&self) -> (u32, u32) {
-        let vp = self.pipeline.viewport_size();
-        crate::render::nv12_cpu::nv12_dims(vp.width, vp.height)
-    }
-
-    /// Submit `render_commands` and convert the render target to NV12.
-    ///
-    /// Triple-buffered: returns `None` on the first two calls, then
-    /// bytes from two frames ago. Drain the tail with
-    /// [`Self::flush_nv12`] after the loop. The converter is created
-    /// on first use at [`Self::nv12_dims`] and recreated on resize.
-    pub(crate) fn convert_nv12(
-        &mut self,
-        render_commands: wgpu::CommandBuffer,
-    ) -> Result<Option<&[u8]>, crate::gpu::nv12_converter::Nv12Error> {
-        let dims = self.nv12_dims();
-        if self.nv12.as_ref().is_none_or(|(_, built)| *built != dims) {
-            let (w, h) = dims;
-            let vp = self.pipeline.viewport_size();
-            if (vp.width, vp.height) != dims {
-                log::info!(
-                    "GpuExecutor: NV12 delivery rounds {}x{} viewport to {w}x{h}",
-                    vp.width,
-                    vp.height
-                );
-            }
-            let converter =
-                crate::gpu::nv12_converter::Nv12Converter::new(self.pipeline.gpu(), w, h)?;
-            log::info!("GpuExecutor: NV12 delivery initialized ({w}x{h})");
-            self.nv12 = Some((converter, dims));
-        }
-        let (converter, _) = self.nv12.as_mut().expect("created above");
-        converter.convert_and_readback(
-            self.pipeline.gpu(),
-            self.pipeline.render_target(),
-            render_commands,
-        )
-    }
-
-    /// Drain one pending NV12 frame from the triple buffer. `None`
-    /// when nothing remains (or NV12 delivery was never used).
-    pub(crate) fn flush_nv12(
-        &mut self,
-    ) -> Result<Option<&[u8]>, crate::gpu::nv12_converter::Nv12Error> {
-        match self.nv12.as_mut() {
-            Some((converter, _)) => converter.flush_pending(self.pipeline.gpu()),
-            None => Ok(None),
-        }
-    }
-}
-
-#[cfg(feature = "gpu")]
-impl StitchExecutor for GpuExecutor {
-    fn stitch(&mut self, planes: &[Nv12Planes<'_>], pose: Pose) -> Result<Vec<u8>, StitchError> {
-        // The GPU upload path is stereo-shaped today; mono programs
-        // land with their own bind layout at the cylinder GPU step.
-        let [left, right] = planes else {
-            return Err(StitchError::InvalidConfig(format!(
-                "the GPU executor's synchronous stitch consumes exactly 2                  camera frames, got {}",
-                planes.len()
-            )));
-        };
-        // The synchronous contract is NV12-specific; the underlying
-        // upload only debug-asserts the format, so guard it here with
-        // a typed error instead of corrupting textures in release.
-        if self.pipeline.input_format() != InputFormat::Nv12 {
-            return Err(StitchError::InvalidConfig(format!(
-                "stitch() consumes NV12 planes but the executor was built \
-                 for {:?} input",
-                self.pipeline.input_format()
-            )));
-        }
-        // (Re)create the private ring on first use or after a resize.
-        let dims = self.output_dims();
-        if !matches!(&self.sync_readback, Some((_, d)) if *d == dims) {
-            let ring = RgbaReadback::new(self.pipeline.gpu(), dims.0, dims.1)?;
-            self.sync_readback = Some((ring, dims));
-        }
-        // Record the frame, submit it via the readback, then drain it
-        // synchronously: one render in, this frame's RGBA out.
-        let cmd = self.pipeline.render_to_target_nv12(left, right, pose)?;
-        let tex = self.pipeline.render_target();
-        let (ring, _) = self.sync_readback.as_mut().expect("created above");
-        ring.readback(self.pipeline.gpu(), tex, cmd)?;
-        // A frame was just submitted, so flush_pending always drains it.
-        let frame = ring
-            .flush_pending(self.pipeline.gpu())?
-            .expect("flush_pending yields the just-submitted frame");
-        Ok(frame.to_vec())
-    }
-
-    fn output_dims(&self) -> (u32, u32) {
-        let v = self.pipeline.viewport_size();
-        (v.width, v.height)
-    }
-
-    fn name(&self) -> &'static str {
-        "gpu"
-    }
-}
+pub use gpu::{GpuExecutor, GpuExecutorConfig};
 
 /// The closed executor set the engine dispatches over (L2): one CPU
 /// software path, one GPU pipeline owner.
@@ -983,21 +156,21 @@ impl Executor {
     }
 
     /// The projection in effect: a borrow of the calibration
-    /// document's topology on either arm.
-    pub(crate) fn projection(&self) -> &dyn Projection {
+    /// document's projection on either arm.
+    pub(crate) fn geometry(&self) -> &dyn ProjectionGeometry {
         match self {
-            Executor::Cpu(c) => c.projection(),
+            Executor::Cpu(c) => c.geometry(),
             #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.pipeline.projection(),
+            Executor::Gpu(g) => g.pipeline.geometry(),
         }
     }
 
     /// Source frame dimensions `(width, height)` per camera.
-    pub fn source_info(&self) -> (u32, u32) {
+    pub fn source_dims(&self) -> (u32, u32) {
         match self {
             Executor::Cpu(c) => c.cam,
             #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.pipeline.source_info(),
+            Executor::Gpu(g) => g.pipeline.source_dims(),
         }
     }
 
@@ -1060,7 +233,11 @@ impl Executor {
 }
 
 impl StitchExecutor for Executor {
-    fn stitch(&mut self, planes: &[Nv12Planes<'_>], pose: Pose) -> Result<Vec<u8>, StitchError> {
+    fn stitch(
+        &mut self,
+        planes: &[Nv12Planes<'_>],
+        pose: RenderPose,
+    ) -> Result<Vec<u8>, StitchError> {
         match self {
             Executor::Cpu(c) => c.stitch(planes, pose),
             #[cfg(feature = "gpu")]
@@ -1151,11 +328,13 @@ mod tests {
                 (-3.0, 0.0),
                 (3.0, 0.0),
             ] {
-                let requested = core.world_to_render_pose(Pose {
-                    yaw: wy,
-                    pitch: wp,
-                    fov_degrees: fov,
-                });
+                let requested =
+                    core.calibration()
+                        .world_to_render_pose(crate::geometry::WorldPose {
+                            yaw: wy,
+                            pitch: wp,
+                            fov_degrees: fov,
+                        });
                 let pose = core.constrain_render_pose(requested, requested).unwrap();
                 let frac = black_frac(&backend.stitch(&[planes, planes], pose).unwrap());
                 assert!(
@@ -1205,7 +384,7 @@ mod tests {
         };
         // Must return a typed error, not panic (matches the GPU backend).
         let err = backend
-            .stitch(&[planes, planes], Pose::default())
+            .stitch(&[planes, planes], RenderPose::default())
             .unwrap_err();
         assert!(matches!(err, StitchError::FrameSizeMismatch { .. }));
     }
@@ -1228,7 +407,7 @@ mod tests {
         let (ry, ruv) = nv12(cam_w, cam_h, 30);
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
-        let pose = Pose {
+        let pose = RenderPose {
             yaw: 0.08,
             pitch: -0.04,
             ..Default::default()

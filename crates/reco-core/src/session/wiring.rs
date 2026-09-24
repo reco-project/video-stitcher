@@ -18,7 +18,7 @@ impl StitchSession {
     /// aborts the session or just detaches the sink.
     ///
     /// Must be called before [`Self::submit_render_output`],
-    /// [`Self::process_frame`], or [`Self::run`].
+    /// [`Self::render_frame`], or [`Self::run`].
     ///
     /// # Errors
     ///
@@ -36,7 +36,7 @@ impl StitchSession {
         Ok(())
     }
 
-    /// Attach a [`UnifiedDetector`](crate::detect::detector::UnifiedDetector)
+    /// Attach a [`Detector`](crate::detect::detector::Detector)
     /// for object detection on raw camera frames.
     ///
     /// The backend declares which [`DetectorFrame`](crate::detect::detector::DetectorFrame)
@@ -44,14 +44,14 @@ impl StitchSession {
     /// NV12) and CUDA frames (shared textures) through the same
     /// detector; backends return `UnsupportedFrameKind` for residencies
     /// they cannot handle and session logs+drops those at the boundary.
-    pub fn set_detector(&mut self, detector: Box<dyn crate::detect::detector::UnifiedDetector>) {
+    pub fn set_detector(&mut self, detector: Box<dyn crate::detect::detector::Detector>) {
         self.core.set_detector(detector);
     }
 
     /// Set the detection interval (run detection every N frames).
     ///
     /// Default is 1 (every frame). Higher values reduce detection CPU load
-    /// at the cost of tracking responsiveness. The director still receives
+    /// at the cost of tracking responsiveness. The panner still receives
     /// the last known tracked objects on skipped frames.
     pub fn set_detection_interval(&mut self, interval: u64) {
         self.core.set_detection_interval(interval);

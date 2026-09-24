@@ -10,7 +10,7 @@
 /// ORT's `MemoryInfo` holds `*mut OrtMemoryInfo` and is therefore not
 /// `Send` by default. But a `MemoryInfo` is immutable descriptor state
 /// (device / allocator type / memtype) — ORT's C layer treats it as
-/// read-only config. UnifiedDetector requires `Send`, so wrap with an
+/// read-only config. Detector requires `Send`, so wrap with an
 /// opt-in unsafe impl for the "we only read it" use case.
 struct SendMemoryInfo(ort::memory::MemoryInfo);
 // SAFETY: MemoryInfo is read-only descriptor state; no interior mutation
@@ -24,7 +24,7 @@ use ort::memory::{AllocationDevice, AllocatorType, MemoryInfo, MemoryType};
 use ort::session::Session;
 use ort::value::{Shape, TensorRefMut};
 use reco_core::detect::detector::{
-    Detection, DetectorError, DetectorFrame, GpuNv12Frame, UnifiedDetector,
+    CudaNv12Frame, Detection, Detector, DetectorError, DetectorFrame,
 };
 use reco_core::geometry::CameraIndex;
 use reco_core::interop::cuda::{
@@ -217,23 +217,13 @@ impl OrtGpuDetector {
 }
 
 impl OrtGpuDetector {
-    /// Core inference path shared by the legacy [`GpuDetector`] impl
-    /// and the new [`UnifiedDetector`] impl. Returns a typed
-    /// [`DetectorError`] so unified-trait consumers can distinguish
-    /// "no CUDA context" from "inference failed"; the legacy impl
-    /// collapses the error to a log + empty vector for backward
-    /// compatibility.
-    ///
-    /// Each CUDA / NPP / ORT step that previously logged and returned
-    /// an empty vec now returns
-    /// `Err(DetectorError::InferenceFailed(msg))` preserving the
-    /// original error text verbatim.
+    /// CUDA NV12/P010 preprocessing and inference. Errors retain their CUDA, NPP or ORT stage context.
     fn detect_gpu_raw(
         &mut self,
         camera: CameraIndex,
-        frame: &GpuNv12Frame,
+        frame: &CudaNv12Frame,
     ) -> Result<Vec<Detection>, DetectorError> {
-        let GpuNv12Frame {
+        let CudaNv12Frame {
             y_ptr,
             uv_ptr,
             y_pitch,
@@ -388,9 +378,13 @@ impl OrtGpuDetector {
     }
 }
 
-impl UnifiedDetector for OrtGpuDetector {
+impl Detector for OrtGpuDetector {
     fn name(&self) -> &'static str {
         "ort-cuda"
+    }
+
+    fn prefers_cuda_nv12(&self) -> bool {
+        true
     }
 
     fn detect(
@@ -398,14 +392,14 @@ impl UnifiedDetector for OrtGpuDetector {
         camera: CameraIndex,
         frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
-        // CUDA-residency backend: accept `Cuda(GpuNv12Frame)` and
+        // CUDA-residency backend: accept `Cuda(CudaNv12Frame)` and
         // route everything else to `UnsupportedFrameKind` so the
         // dispatcher can fall back to a CPU backend for `Cpu(_)`.
         // The wildcard arm keeps this stable against future
         // `#[non_exhaustive]` additions to `DetectorFrame`.
         match frame {
             #[cfg(any(target_os = "linux", target_os = "windows"))]
-            DetectorFrame::Cuda(gpu_frame) => self.detect_gpu_raw(camera, gpu_frame),
+            DetectorFrame::CudaNv12(gpu_frame) => self.detect_gpu_raw(camera, gpu_frame),
             _ => Err(DetectorError::UnsupportedFrameKind),
         }
     }

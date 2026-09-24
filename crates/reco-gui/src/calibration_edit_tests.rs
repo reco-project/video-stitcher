@@ -28,7 +28,9 @@ fn preview_rest_and_reset_keep_the_world_direction_on_tilted_rigs() {
         .unwrap();
         let mut core = StitchCore::new(Executor::Cpu(Box::new(executor))).unwrap();
         core.set_constrained_look(false);
-        let expected = core.world_to_render_pose(PoseControlConfig::default().rest_pose);
+        let expected = core
+            .calibration()
+            .world_to_render_pose(reco_core::geometry::WorldPose::default());
         let mut pose = preview_pose_control(Some(&core));
         assert_eq!(pose.current_pose(), expected);
         pose.apply_drag(100.0, -30.0, 360.0);
@@ -167,7 +169,12 @@ fn exercise_pending_framing(state: &mut AppState, app: &RecoApp) {
     assert!(state.edit_calibration(app, |cal| cal.framing.tilt = 0.12));
     assert_eq!(state.calibration.as_ref().unwrap().framing.tilt, 0.12);
     assert_eq!(
-        state.bridge.as_ref().unwrap().engine().max_fov_degrees(),
+        state
+            .bridge
+            .as_ref()
+            .unwrap()
+            .engine()
+            .coverage_max_fov_degrees(),
         None
     );
     state.use_constrained_look = true;
@@ -183,7 +190,7 @@ fn exercise_pending_framing(state: &mut AppState, app: &RecoApp) {
             .as_ref()
             .unwrap()
             .engine()
-            .max_fov_degrees()
+            .coverage_max_fov_degrees()
             .is_none()
     );
     state.use_constrained_look = false;
@@ -197,6 +204,7 @@ fn exercise_pending_framing(state: &mut AppState, app: &RecoApp) {
         .as_ref()
         .unwrap()
         .engine()
+        .calibration()
         .render_to_world_pose(state.pose.current_pose());
     let cal = state.calibration.as_ref().unwrap();
     assert_eq!(cal.framing.tilt, 0.12);
@@ -207,6 +215,7 @@ fn exercise_pending_framing(state: &mut AppState, app: &RecoApp) {
         .as_ref()
         .unwrap()
         .engine()
+        .calibration()
         .render_to_world_pose(state.pose.current_pose());
     assert!((world.yaw - accepted.yaw).abs() < 1e-5);
     assert!((world.pitch - accepted.pitch).abs() < 1e-5);
@@ -217,6 +226,7 @@ fn exercise_pending_framing(state: &mut AppState, app: &RecoApp) {
         .as_ref()
         .unwrap()
         .engine()
+        .calibration()
         .render_to_world_pose(state.pose.current_pose());
     assert!(reset.yaw.abs() < 1e-5 && reset.pitch.abs() < 1e-5);
 

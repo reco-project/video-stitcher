@@ -18,8 +18,8 @@ mod virtual_camera;
 // internals (clip-space correction, column packing) stay crate-private
 // until a consumer demonstrates the need.
 pub use matrices::{FAR_PLANE, NEAR_PLANE, view_matrix};
-pub use rig_correction::world_to_render_pose;
-pub use types::{CameraIndex, Pose, YawPitch};
+pub use rig_correction::world_to_render_angles;
+pub use types::{CameraIndex, RenderPose, WorldPose, YawPitch};
 pub use virtual_camera::VirtualCamera;
 
 #[cfg(feature = "gpu")]

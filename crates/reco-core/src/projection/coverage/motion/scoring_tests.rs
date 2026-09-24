@@ -23,7 +23,7 @@ fn map(cal: &Calibration, size: &ViewportSize) -> (roof::Roof, f32) {
 }
 
 fn lens_target(cal: &Calibration, camera: usize, x: f32) -> Vector3<f32> {
-    let projection = cal.topology.projection();
+    let projection = cal.projection.geometry();
     let pose = cal.map_source_point(camera, [x, 0.4]).unwrap();
     projection
         .virtual_camera(&cal.framing)
@@ -37,7 +37,7 @@ fn behind_camera_ranking_resolves_sub_microradian_progress() {
         width: 640,
         height: 360,
     };
-    let previous = Pose {
+    let previous = RenderPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 40.0,
@@ -45,13 +45,13 @@ fn behind_camera_ranking_resolves_sub_microradian_progress() {
     for sign in [-1.0, 1.0] {
         let target = direction(
             &cal,
-            Pose {
+            RenderPose {
                 yaw: sign * 2.0,
                 ..previous
             },
         );
         for step in [1e-7, 1e-6, 1e-5] {
-            let closer = Pose {
+            let closer = RenderPose {
                 yaw: sign * step,
                 ..previous
             };
@@ -74,18 +74,18 @@ fn forward_class_wins_without_a_numeric_sentinel() {
         width: 640,
         height: 360,
     };
-    let pose = Pose {
+    let pose = RenderPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 40.0,
     };
     let target = direction(&cal, pose);
     for sign in [-1.0, 1.0] {
-        let behind = Pose {
+        let behind = RenderPose {
             yaw: sign * (std::f32::consts::FRAC_PI_2 + 1e-5),
             ..pose
         };
-        let forward = Pose {
+        let forward = RenderPose {
             yaw: sign * (std::f32::consts::FRAC_PI_2 - 2e-6),
             ..pose
         };
@@ -105,7 +105,7 @@ fn behind_camera_ranking_resolves_progress_from_the_antipode() {
         width: 640,
         height: 360,
     };
-    let previous = Pose {
+    let previous = RenderPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 40.0,
@@ -113,7 +113,7 @@ fn behind_camera_ranking_resolves_progress_from_the_antipode() {
     let target = -direction(&cal, previous);
     for sign in [-1.0, 1.0] {
         for step in [1e-7, 1e-6, 1e-5] {
-            let closer = Pose {
+            let closer = RenderPose {
                 yaw: sign * step,
                 ..previous
             };
@@ -135,13 +135,13 @@ fn forward_scores_preserve_visibility_then_centering() {
         width: 640,
         height: 360,
     };
-    let pose = Pose {
+    let pose = RenderPose {
         yaw: 0.0,
         pitch: 0.0,
         fov_degrees: 40.0,
     };
     for yaw in [-1.2, -0.7, -0.1, 0.0, 0.1, 0.7, 1.2] {
-        let target = direction(&cal, Pose { yaw, ..pose });
+        let target = direction(&cal, RenderPose { yaw, ..pose });
         let [x, y] = screen(&cal, &size, pose, &target).unwrap();
         let outside = (x.abs() - 0.96).max(0.0).powi(2) + (y.abs() - 0.96).max(0.0).powi(2);
         assert_eq!(
@@ -159,7 +159,7 @@ fn follow(
     cal: &Calibration,
     size: &ViewportSize,
     roof: &roof::Roof,
-    state: &mut (Pose, [f32; 2]),
+    state: &mut (RenderPose, [f32; 2]),
     target: &Vector3<f32>,
 ) {
     let fov = state.0.fov_degrees;
@@ -232,7 +232,7 @@ fn cap_level_targets_converge_from_both_lenses_with_tiny_pose_changes() {
         )
         .unwrap();
         for (dyaw, dpitch) in perturbations {
-            let seed = Pose {
+            let seed = RenderPose {
                 yaw: seed.yaw + dyaw,
                 pitch: seed.pitch + dpitch,
                 ..seed
@@ -295,8 +295,8 @@ fn cylinder_targets_cross_both_directions_at_cap() {
     let cal = Calibration::new(
         vec![Lens::flat(3840, 2000)],
         Cylinder {
-            focal_length: 1000.0,
-            sweep_deg: 180.0,
+            radius: 1000.0,
+            arc_deg: 180.0,
             ..Default::default()
         },
         Framing {
@@ -328,7 +328,7 @@ fn cylinder_targets_cross_both_directions_at_cap() {
     let target = |yaw| {
         direction(
             &cal,
-            Pose {
+            RenderPose {
                 yaw,
                 pitch: 0.0,
                 fov_degrees: cap,

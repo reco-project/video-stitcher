@@ -3,7 +3,7 @@
 //! The `run` / `run_immediate` frame loop, source configuration, and
 //! GPU zero-copy frame stepping live here.
 
-use crate::geometry::Pose;
+use crate::geometry::WorldPose;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::StitchSession;
@@ -35,10 +35,10 @@ fn frame_seconds(fps: f64) -> Result<f32, SessionError> {
 /// boundary regime. This is acceptable (no future data exists past EOF);
 /// it is documented so the boundary behavior is not mistaken for a bug.
 fn centered_smooth(
-    raw_pose: Pose,
-    ahead: impl Iterator<Item = Pose>,
-    past: impl Iterator<Item = Pose>,
-) -> Pose {
+    raw_pose: WorldPose,
+    ahead: impl Iterator<Item = WorldPose>,
+    past: impl Iterator<Item = WorldPose>,
+) -> WorldPose {
     let mut sum_yaw = raw_pose.yaw;
     let mut sum_pitch = raw_pose.pitch;
     let mut sum_fov = raw_pose.fov_degrees;
@@ -49,7 +49,7 @@ fn centered_smooth(
         sum_fov += p.fov_degrees;
         n += 1;
     }
-    Pose {
+    WorldPose {
         yaw: sum_yaw / n as f32,
         pitch: sum_pitch / n as f32,
         fov_degrees: sum_fov / n as f32,
@@ -164,7 +164,7 @@ impl StitchSession {
     fn render_buffered_frame(
         &mut self,
         oldest: super::frame_buffer::BufferedFrame,
-        smoothed_pose: crate::geometry::Pose,
+        smoothed_pose: crate::geometry::WorldPose,
         start: std::time::Instant,
         ctx: &crate::session::types::FrameLoopContext,
         on_progress: &mut Option<ProgressCallback>,
@@ -175,7 +175,7 @@ impl StitchSession {
                 timestamp_ms: start.elapsed().as_secs_f64() * 1000.0,
             });
             sink.emit(
-                crate::detect::pipeline_event::PipelineEvent::DetectionsRaw {
+                crate::detect::pipeline_event::PipelineEvent::MappedDetections {
                     frame_index: self.frame_count,
                     detections: oldest.detections.clone(),
                 },
@@ -192,7 +192,7 @@ impl StitchSession {
             });
         }
 
-        self.core.set_previous_panner_pose(smoothed_pose);
+        self.core.set_requested_world_pose(smoothed_pose);
         self.skip_detection = true;
         self.current_vram_slot = oldest.vram_slot;
 
@@ -250,7 +250,7 @@ impl StitchSession {
             // Keep in sync with the D3D11 staging pool sizing in the
             // executor's ensure_d3d11_staging (peak occupancy + slack).
             let pool_size = n + post_smooth_half + 4;
-            let (w, h) = self.core.source_info();
+            let (w, h) = self.core.source_dims();
             let per_slot = crate::gpu::vram_pool::estimate_vram(
                 w,
                 h,
@@ -391,9 +391,11 @@ impl StitchSession {
         // Queue of (frame, raw_pose) pairs. The panner fills this
         // ahead of rendering. Rendering consumes from the front,
         // using the centered average of past + current + future poses.
-        let mut pose_queue: std::collections::VecDeque<(BufferedFrame, crate::geometry::Pose)> =
-            std::collections::VecDeque::new();
-        let mut past_poses: std::collections::VecDeque<crate::geometry::Pose> =
+        let mut pose_queue: std::collections::VecDeque<(
+            BufferedFrame,
+            crate::geometry::WorldPose,
+        )> = std::collections::VecDeque::new();
+        let mut past_poses: std::collections::VecDeque<crate::geometry::WorldPose> =
             std::collections::VecDeque::new();
         let mut panner_frame_idx: u64 = 0;
 
@@ -404,7 +406,7 @@ impl StitchSession {
                                buffer: &mut FrameBuffer,
                                pose_queue: &mut std::collections::VecDeque<(
             BufferedFrame,
-            crate::geometry::Pose,
+            crate::geometry::WorldPose,
         )>,
                                panner_frame_idx: &mut u64| {
             if let Some(frame) = buffer.pop() {

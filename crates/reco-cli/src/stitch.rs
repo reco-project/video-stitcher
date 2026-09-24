@@ -91,7 +91,7 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     let field_roi = cal.field_roi.clone();
 
     // Arity is not decided here: StitchJob::run validates the input
-    // count against the calibration's topology with a typed error.
+    // count against the calibration's projection with a typed error.
     // Each input accepts `a.mp4;b.mp4` segment chaining.
     let inputs: Vec<reco_io::stitch_job::InputPath> = args
         .inputs
@@ -165,10 +165,10 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         job = job.preset(preset);
     }
     if let Some(container) = args.container {
-        let fmt: reco_io::output::Format = container
+        let fmt: reco_io::output::Container = container
             .parse()
             .map_err(|e: String| anyhow::anyhow!("{e} (expected mp4, fmp4, mkv, mov, or flv)"))?;
-        job = job.format(fmt);
+        job = job.container(fmt);
     }
 
     // Opt-in replay recording. The builder call is all the

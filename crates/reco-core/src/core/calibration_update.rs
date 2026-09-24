@@ -11,7 +11,10 @@ pub(super) fn same_geometry(current: &Calibration, updated: &Calibration) -> boo
     }
     // Newly added fields conservatively require invalidation too.
     let mut geometry = updated.clone();
-    if let (Some(old), Some(new)) = (current.topology.l_shape(), geometry.topology.l_shape_mut()) {
+    if let (Some(old), Some(new)) = (
+        current.projection.l_shape(),
+        geometry.projection.l_shape_mut(),
+    ) {
         new.blend_width = old.blend_width;
     }
     current == &geometry
@@ -30,9 +33,9 @@ impl StitchCore {
         self.update_calibration(draft)
     }
 
-    /// Apply an edited calibration without changing input layout or topology kind.
+    /// Apply an edited calibration without changing input layout or projection kind.
     ///
-    /// Invalid documents and changed image dimensions or topology kind are rejected without changing the accepted state. With a tracker or panner attached, only no-op and L-shape blend-width edits are accepted: neither changes mapping, framing, timing or ROI. These preserve coverage and cached detections; other accepted edits refresh coverage and clear detections. Backend geometry is refreshed on every changed document. See this module's CPU/GPU regression tests.
+    /// Invalid documents and changed image dimensions or projection kind are rejected without changing the accepted state. With a tracker or panner attached, only no-op and L-shape blend-width edits are accepted: neither changes mapping, framing, timing or ROI. These preserve coverage and cached detections; other accepted edits refresh coverage and clear detections. Backend geometry is refreshed on every changed document. See this module's CPU/GPU regression tests.
     pub fn update_calibration(&mut self, calibration: Calibration) -> Result<(), StitchCoreError> {
         let tracking_unchanged = self.validate_calibration_update(&calibration)?;
         if self.calibration() == &calibration {
@@ -78,8 +81,8 @@ impl StitchCore {
         if current == calibration {
             return Ok(true);
         }
-        if std::mem::discriminant(&current.topology)
-            != std::mem::discriminant(&calibration.topology)
+        if std::mem::discriminant(&current.projection)
+            != std::mem::discriminant(&calibration.projection)
             || current.lenses.len() != calibration.lenses.len()
             || current
                 .lenses
@@ -88,7 +91,7 @@ impl StitchCore {
                 .any(|(old, new)| (old.width, old.height) != (new.width, new.height))
         {
             return Err(StitchCoreError::CalibrationRequiresRebuild(
-                "topology kind or calibration image dimensions changed",
+                "projection kind or calibration image dimensions changed",
             ));
         }
         let tracking_unchanged = same_geometry(current, calibration);
@@ -123,11 +126,11 @@ impl StitchCore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::calibration::{Lens, Topology};
-    use crate::detect::director::MappedDetection;
+    use crate::calibration::{Lens, Projection};
+    use crate::detect::mapped_detection::MappedDetection;
     use crate::detect::panner::{PanContext, Panner};
     use crate::detect::tracker::{TrackedEntity, Tracker, WorldState};
-    use crate::geometry::Pose;
+    use crate::geometry::RenderPose;
     use crate::projection::Cylinder;
     use crate::render::planes::Nv12Planes;
     use crate::render::viewport::ViewportSize;
@@ -147,7 +150,7 @@ mod tests {
         first.framing.tilt += 0.03;
         core.update_calibration_preview(first.clone()).unwrap();
         assert_eq!(core.calibration(), &first);
-        assert_eq!(core.max_fov_degrees(), None);
+        assert_eq!(core.coverage_max_fov_degrees(), None);
         assert_ne!(render(&mut core), original_pixels);
         assert!(core.prepare_coverage_preview().unwrap().is_none());
 
@@ -159,13 +162,13 @@ mod tests {
         while core.prepare_coverage_preview().unwrap().is_none() {
             assert!(std::time::Instant::now() < deadline);
             assert_eq!(core.calibration(), &latest);
-            assert_eq!(core.max_fov_degrees(), None);
+            assert_eq!(core.coverage_max_fov_degrees(), None);
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
         assert_eq!(core.calibration(), &latest);
         let mut fresh = cpu(latest.clone());
         assert_eq!(
-            core.max_fov_degrees(),
+            core.coverage_max_fov_degrees(),
             Some(fresh.prepare_coverage().unwrap())
         );
         assert_eq!(render(&mut core), render(&mut fresh));
@@ -209,7 +212,7 @@ mod tests {
         core.executor
             .stitch(
                 &planes,
-                Pose {
+                RenderPose {
                     yaw: 0.1,
                     pitch: -0.03,
                     fov_degrees: 70.0,
@@ -284,7 +287,7 @@ mod tests {
 
     fn accepted_matches_fresh(make: impl Fn(Calibration) -> StitchCore, calibration: Calibration) {
         let mut core = make(calibration);
-        // Exercise repeated edits, including correction and topology-specific geometry.
+        // Exercise repeated edits, including correction and projection-specific geometry.
         for step in 0..4 {
             let mut draft = core.calibration().clone();
             match step {
@@ -301,13 +304,13 @@ mod tests {
                         lens.correction = 0.4;
                     }
                 }
-                _ => match &mut draft.topology {
-                    Topology::LShape(layout) => {
+                _ => match &mut draft.projection {
+                    Projection::LShape(layout) => {
                         layout.intersect = 0.45;
                         layout.blend_width = 0.1;
                         draft.framing.axis_offset = 0.3;
                     }
-                    Topology::Cylinder(cylinder) => cylinder.sweep_deg = 240.0,
+                    Projection::Cylinder(cylinder) => cylinder.arc_deg = 240.0,
                 },
             }
             let mut fresh = make(draft.clone());
@@ -327,12 +330,12 @@ mod tests {
                 fresh.prepare_coverage().unwrap()
             );
             for yaw in [-3.0, 0.0, 3.0] {
-                let pose = Pose {
+                let pose = crate::geometry::WorldPose {
                     yaw,
                     pitch: 1.0,
                     fov_degrees: 60.0,
                 };
-                let requested = core.world_to_render_pose(pose);
+                let requested = core.calibration().world_to_render_pose(pose);
                 let actual = core.constrain_render_pose(requested, requested).unwrap();
                 let expected = fresh.constrain_render_pose(requested, requested).unwrap();
                 assert_eq!((actual.yaw, actual.pitch), (expected.yaw, expected.pitch));
@@ -381,7 +384,7 @@ mod tests {
             core.edit_calibration(|_| {}).unwrap();
             for blend_width in [0.0, 0.15, 0.5] {
                 core.edit_calibration(|cal| {
-                    cal.topology.l_shape_mut().unwrap().blend_width = blend_width;
+                    cal.projection.l_shape_mut().unwrap().blend_width = blend_width;
                 })
                 .unwrap();
                 assert_eq!(core.last_detections.len(), 1);
@@ -411,7 +414,7 @@ mod tests {
             Calibration::new(
                 vec![Lens::flat(WIDTH, HEIGHT)],
                 Cylinder {
-                    focal_length: 32.0,
+                    radius: 32.0,
                     ..Default::default()
                 },
                 calib(WIDTH, HEIGHT).framing,
@@ -458,8 +461,8 @@ mod tests {
     }
 
     impl Panner for NoopControl {
-        fn decide(&mut self, _: &WorldState, _: &PanContext<'_>) -> Pose {
-            Pose::default()
+        fn decide(&mut self, _: &WorldState, _: &PanContext<'_>) -> crate::geometry::WorldPose {
+            crate::geometry::WorldPose::default()
         }
     }
 
@@ -477,7 +480,7 @@ mod tests {
                 |cal| cal.framing.tilt = 0.2,
                 |cal| cal.lenses[0].fx += 1.0,
                 |cal| cal.lenses[0].correction = 0.5,
-                |cal| cal.topology.l_shape_mut().unwrap().intersect = 0.3,
+                |cal| cal.projection.l_shape_mut().unwrap().intersect = 0.3,
                 |cal| cal.sync_offset = 1,
                 |cal| {
                     cal.field_roi = Some(crate::calibration::FieldRoi {
@@ -489,7 +492,7 @@ mod tests {
             for edit in edits {
                 assert!(matches!(
                     core.edit_calibration(|cal| {
-                        cal.topology.l_shape_mut().unwrap().blend_width = 0.2;
+                        cal.projection.l_shape_mut().unwrap().blend_width = 0.2;
                         edit(cal);
                     }),
                     Err(StitchCoreError::CalibrationRequiresRebuild(_))
@@ -513,10 +516,10 @@ mod tests {
         assert_eq!(core.last_detections.len(), 1);
         assert!(matches!(
             core.edit_calibration(|cal| {
-                let Topology::Cylinder(cylinder) = &mut cal.topology else {
+                let Projection::Cylinder(cylinder) = &mut cal.projection else {
                     unreachable!()
                 };
-                cylinder.sweep_deg = 240.0;
+                cylinder.arc_deg = 240.0;
             }),
             Err(StitchCoreError::CalibrationRequiresRebuild(_))
         ));

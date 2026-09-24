@@ -16,7 +16,7 @@ use std::path::Path;
 
 use crate::coreml_inference::CoreMlModel;
 use crate::metal_compute::MetalPreprocessPipeline;
-use reco_core::detect::detector::{Detection, DetectorError, DetectorFrame, UnifiedDetector};
+use reco_core::detect::detector::{Detection, Detector, DetectorError, DetectorFrame};
 use reco_core::geometry::CameraIndex;
 use reco_core::gpu::GpuContext;
 use reco_core::interop::metal::CVPixelBufferRef;
@@ -47,7 +47,7 @@ pub struct MetalYoloDetector {
     /// Owned clone of the session's `GpuContext`. Needed by the Metal
     /// preprocess pipeline on every `detect()` call; before the M3
     /// trait collapse the session passed a `&GpuContext` parameter
-    /// but `UnifiedDetector::detect` has no such parameter, so the
+    /// but `Detector::detect` has no such parameter, so the
     /// detector now owns its own handle. Cloning is cheap (wgpu
     /// types are reference-counted).
     gpu: GpuContext,
@@ -211,7 +211,7 @@ impl MetalYoloDetector {
     }
 }
 
-impl UnifiedDetector for MetalYoloDetector {
+impl Detector for MetalYoloDetector {
     fn name(&self) -> &'static str {
         "metal-coreml"
     }

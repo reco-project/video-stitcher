@@ -30,7 +30,7 @@
 
 use reco_core::detect::panner::{PanContext, Panner};
 use reco_core::detect::tracker::{TrackState, TrackedEntity, WorldState};
-use reco_core::geometry::Pose;
+use reco_core::geometry::WorldPose;
 use serde::{Deserialize, Serialize};
 
 const LOG_INTERVAL: u64 = 30;
@@ -784,7 +784,7 @@ impl Default for FieldPanner {
 }
 
 impl Panner for FieldPanner {
-    fn decide(&mut self, world: &WorldState, ctx: &PanContext<'_>) -> Pose {
+    fn decide(&mut self, world: &WorldState, ctx: &PanContext<'_>) -> WorldPose {
         // No buffer: empty future, so the reactive (non-lookahead)
         // damping profile and no lead.
         self.decide_with_lookahead(world, &[], ctx)
@@ -795,7 +795,7 @@ impl Panner for FieldPanner {
         world: &WorldState,
         future: &[WorldState],
         _ctx: &PanContext<'_>,
-    ) -> Pose {
+    ) -> WorldPose {
         reco_core::profile_scope!("field_panner_decide");
 
         // Once a non-empty lookahead buffer is seen, stay in the
@@ -1020,7 +1020,7 @@ impl Panner for FieldPanner {
             );
         }
 
-        Pose {
+        WorldPose {
             yaw: self.yaw,
             pitch: self.pitch,
             fov_degrees: self.current_fov,
@@ -1164,7 +1164,7 @@ mod tests {
         PanContext {
             frame_index,
             timestamp_ms: frame_index as f64 * (1000.0 / 30.0),
-            previous_position: Pose::default(),
+            previous_pose: WorldPose::default(),
             calibration: cal,
         }
     }

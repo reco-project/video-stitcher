@@ -37,9 +37,9 @@
 //! (per-frame transitions). Rejection reasons for individual
 //! detections log at `trace!` to keep the normal path quiet.
 //!
-//! [`MappedDetection::position`]: reco_core::detect::director::MappedDetection::position
+//! [`MappedDetection::position`]: reco_core::detect::mapped_detection::MappedDetection::position
 
-use reco_core::detect::director::MappedDetection;
+use reco_core::detect::mapped_detection::MappedDetection;
 use reco_core::detect::tracker::{TrackState, TrackedEntity, Tracker};
 use reco_core::geometry::CameraIndex;
 

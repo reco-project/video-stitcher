@@ -27,7 +27,7 @@ pub fn view_matrix(
     // One basis for the whole crate: the tilted+rolled reference frame
     // comes from the same rig_frame the pose inverse and the viewport-roll
     // margin computation use, so the three can never drift. The
-    // world_to_render_pose round-trip test locks the pair together.
+    // world_to_render_angles round-trip test locks the pair together.
     let eye = cam.eye;
     let (up_frame, rest_forward) = super::rig_correction::rig_frame(cam, rig_tilt, rig_roll);
 

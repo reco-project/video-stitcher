@@ -6,7 +6,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Automatic camera control for reco: YOLO ball detector, EMA smoothing, ball-tracking director"
+description = "Automatic camera control for reco: object detection, trackers, panners and ROI filtering"
 
 [dependencies]
 reco-core = { path = "../reco-core" }

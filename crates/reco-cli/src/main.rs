@@ -184,7 +184,7 @@ enum Commands {
         model: Option<String>,
 
         /// Run detection every N frames (default: 1 = every frame).
-        /// Higher values reduce detection overhead. The director uses
+        /// Higher values reduce detection overhead. The panner uses
         /// the last known detections on skipped frames.
         #[arg(long, default_value_t = 1)]
         detection_interval: u64,

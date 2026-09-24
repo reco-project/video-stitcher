@@ -7,14 +7,14 @@ use std::time::Duration;
 
 use thiserror::Error;
 
-use crate::geometry::Pose;
+use crate::geometry::RenderPose;
 #[cfg(feature = "gpu")]
 use crate::gpu::rgba_readback::RgbaReadbackError;
 #[cfg(feature = "gpu")]
 use crate::gpu::yuv_stack_packer::{PackerError, StackedAtlas};
 #[cfg(feature = "gpu")]
 use crate::render::pipeline::PipelineError;
-use crate::render::planes::YuvPlanes;
+use crate::render::planes::Yuv420pPlanes;
 use crate::stitch::StitchError;
 
 /// Errors from [`super::StitchCore`]. `Clone + Send + Sync` so consumers
@@ -88,7 +88,7 @@ pub struct ReplayFrame {
     pub captured_at: Duration,
     /// Viewport pose the frame was rendered with. Useful for replay
     /// overlays that want to annotate where the camera pointed.
-    pub pose: Pose,
+    pub pose: RenderPose,
 }
 
 /// Recorder hook for the push-API replay backend.
@@ -104,15 +104,11 @@ pub struct ReplayFrame {
 ///
 /// # Semantics
 ///
-/// - `record_yuv` fires after every successful YUV submit via
+/// - `record_yuv` fires before rendering a stereo YUV420P submit via
 ///   [`super::StitchCore::submit_frame`] and
-///   [`super::StitchCore::submit_frame_yuv_at_pose`]. It sees the tight
-///   (no-stride) YUV420P planes the render consumed, so the
-///   recorded replay exactly matches what the stitch pipeline saw.
-/// - BGRA submit paths are not recorded today: the stacked
-///   encoder is YUV-native, so recording BGRA frames would force
-///   a BGRA-to-YUV420P conversion on the hot path. Skipped with a
-///   one-shot `warn!`.
+///   [`super::StitchCore::submit_frame_yuv420p_at_pose`]. It sees the tight
+///   (no-stride) YUV420P planes submitted to rendering, including submissions whose rendering subsequently fails.
+/// - RGBA submit paths are not recorded: the recorder accepts YUV420P planes, and these paths perform no recording conversion.
 /// - `flush` and `finish` are best-effort; errors are logged by
 ///   the implementation and never propagated back to the submit
 ///   path so a failing recorder cannot break the stitch output.
@@ -124,7 +120,13 @@ pub struct ReplayFrame {
 pub trait StackedReplayRecorder: Send {
     /// Record a stereo YUV420P tile pair. `width` / `height` are
     /// the tile dimensions for both cameras (identical).
-    fn record_yuv(&mut self, left: &YuvPlanes<'_>, right: &YuvPlanes<'_>, width: u32, height: u32);
+    fn record_yuv(
+        &mut self,
+        left: &Yuv420pPlanes<'_>,
+        right: &Yuv420pPlanes<'_>,
+        width: u32,
+        height: u32,
+    );
     /// Best-effort push buffered bytes to disk. Called on demand
     /// by the session (e.g. once per second) so a concurrent
     /// reader sees recent frames.

@@ -13,7 +13,9 @@
 //!   were two independent cameras.
 use super::{GridLayout, StackError, unpack_yuv420p};
 use crate::ffmpeg::decoder::{DecodeError, VideoDecoder};
-use reco_core::source::{FrameSet, FrameSource, SourceError, SourceInfo, YuvData, YuvFrame};
+use reco_core::source::{
+    FrameSet, FrameSource, SourceError, SourceInfo, Yuv420pData, Yuv420pFrame,
+};
 use std::path::Path;
 use thiserror::Error;
 
@@ -89,7 +91,7 @@ impl StackedSource {
 
     /// Decode the next packed frame and split it into N tiles,
     /// or `None` at end of stream.
-    pub fn next_tuple(&mut self) -> Result<Option<Vec<YuvFrame>>, StackedDecodeError> {
+    pub fn next_tuple(&mut self) -> Result<Option<Vec<Yuv420pFrame>>, StackedDecodeError> {
         match self.decoder.next_frame()? {
             Some(packed) => {
                 let tiles = unpack_yuv420p(&self.layout, &packed)?;
@@ -138,20 +140,20 @@ impl FrameSource for StackedSource {
         };
         // Row-major: `tiles[0] = left`, `tiles[1] = right` matches
         // the writer convention established in `pack_yuv420p`.
-        let tiles: [YuvFrame; 2] =
+        let tiles: [Yuv420pFrame; 2] =
             tiles
                 .try_into()
-                .map_err(|v: Vec<YuvFrame>| SourceError::Read {
+                .map_err(|v: Vec<Yuv420pFrame>| SourceError::Read {
                     reason: format!("expected 2 tiles, got {}", v.len()),
                 })?;
         let [left, right] = tiles;
         Ok(Some(FrameSet::Yuv420p(vec![
-            YuvData {
+            Yuv420pData {
                 y: left.y,
                 u: left.u,
                 v: left.v,
             },
-            YuvData {
+            Yuv420pData {
                 y: right.y,
                 u: right.u,
                 v: right.v,

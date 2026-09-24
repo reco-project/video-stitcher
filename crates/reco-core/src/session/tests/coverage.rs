@@ -59,8 +59,8 @@ fn source_rates_are_accepted_in_immediate_and_buffered_sessions() {
     }
 }
 impl Panner for Steps {
-    fn decide(&mut self, _world: &WorldState, ctx: &PanContext<'_>) -> Pose {
-        Pose {
+    fn decide(&mut self, _world: &WorldState, ctx: &PanContext<'_>) -> WorldPose {
+        WorldPose {
             yaw: if ctx.frame_index < 60 { -0.5 } else { 0.5 },
             pitch: 0.05,
             fov_degrees: 100.0,
@@ -132,7 +132,9 @@ fn coverage_runs_once_after_immediate_or_lookahead_decisions() {
         let presented: Vec<_> = events
             .iter()
             .filter_map(|event| match event {
-                PipelineEvent::PosePresented { frame_index, pose } => Some((*frame_index, *pose)),
+                PipelineEvent::RenderPoseResolved { frame_index, pose } => {
+                    Some((*frame_index, *pose))
+                }
                 _ => None,
             })
             .collect();
@@ -156,7 +158,7 @@ fn coverage_runs_once_after_immediate_or_lookahead_decisions() {
         assert_eq!(session.core_mut().current_pose(), last);
         assert_eq!(session.core_mut().current_pose(), last);
         assert_eq!(
-            session.core.previous_panner_pose,
+            session.core.requested_world_pose,
             requested.last().unwrap().1
         );
     }

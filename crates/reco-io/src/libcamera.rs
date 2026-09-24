@@ -18,7 +18,7 @@
 //!                                                     FrameSource::next_frame()
 //! ```
 
-use reco_core::source::{FrameSet, SourceError, SourceInfo, YuvData};
+use reco_core::source::{FrameSet, SourceError, SourceInfo, Yuv420pData};
 use std::io::Read;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
@@ -70,7 +70,7 @@ fn spawn_rpicam_vid(
     width: u32,
     height: u32,
     fps: u32,
-) -> Result<(Child, mpsc::Receiver<YuvData>), SourceError> {
+) -> Result<(Child, mpsc::Receiver<Yuv420pData>), SourceError> {
     let mut child = Command::new("rpicam-vid")
         .args([
             "--camera",
@@ -102,7 +102,7 @@ fn spawn_rpicam_vid(
         reason: "Failed to capture stdout".into(),
     })?;
 
-    let (tx, rx) = mpsc::sync_channel::<YuvData>(2);
+    let (tx, rx) = mpsc::sync_channel::<Yuv420pData>(2);
 
     let frame_size = (width * height * 3 / 2) as usize;
     let y_size = (width * height) as usize;
@@ -122,7 +122,7 @@ fn spawn_rpicam_vid(
                     break;
                 }
 
-                let yuv = YuvData {
+                let yuv = Yuv420pData {
                     y: buf[..y_size].to_vec(),
                     u: buf[y_size..y_size + uv_size].to_vec(),
                     v: buf[y_size + uv_size..].to_vec(),

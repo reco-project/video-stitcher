@@ -1,11 +1,29 @@
 //! External-renderer contract: use calibrated maps without duplicating projection or blend math.
 
 use reco_core::calibration::{Calibration, Framing, Lens};
-use reco_core::geometry::Pose;
+use reco_core::geometry::{RenderPose, WorldPose};
 use reco_core::projection::{Cylinder, LShape};
 use reco_core::render::planes::Nv12Planes;
 use reco_core::render::viewport::ViewportSize;
 use reco_core::stitch::{BlendRule, CpuExecutor};
+
+#[test]
+fn calibrated_pose_conversion_needs_no_engine() {
+    for calibration in calibrations() {
+        for yaw in [-0.7, 0.0, 0.8] {
+            let world = WorldPose {
+                yaw,
+                pitch: 0.2,
+                fov_degrees: 53.0,
+            };
+            let render = calibration.world_to_render_pose(world);
+            let recovered = calibration.render_to_world_pose(render);
+            assert!((recovered.yaw - world.yaw).abs() < 1e-5);
+            assert!((recovered.pitch - world.pitch).abs() < 1e-5);
+            assert_eq!(recovered.fov_degrees, world.fov_degrees);
+        }
+    }
+}
 
 fn calibrations() -> [Calibration; 2] {
     let lens = Lens::flat(64, 32);
@@ -31,9 +49,9 @@ fn calibrations() -> [Calibration; 2] {
         Calibration::new(
             vec![lens],
             Cylinder {
-                focal_length: 20.0,
-                sweep_deg: 180.0,
-                video_height: None,
+                radius: 20.0,
+                arc_deg: 180.0,
+                surface_height: None,
             },
             Framing {
                 axis_offset: 0.0,
@@ -52,14 +70,14 @@ fn external_compositor_matches_cpu_for_both_projections() {
     };
     for cal in calibrations() {
         cal.validate().unwrap();
-        let count = cal.topology.camera_count();
+        let count = cal.projection.camera_count();
         let executor = CpuExecutor::new(cal.clone(), size.clone(), 64, 32, false).unwrap();
         let mut seen = vec![false; count];
         let mut saw_blend = false;
         let mut saw_uncovered = false;
         for yaw in [-1.0, 0.0, 1.0] {
             for fov_degrees in [35.0, 110.0] {
-                let pose = Pose {
+                let pose = RenderPose {
                     yaw,
                     pitch: 0.1,
                     fov_degrees,

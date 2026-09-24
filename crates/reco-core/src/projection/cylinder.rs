@@ -2,7 +2,7 @@
 //! the inside of a cylinder, viewed from its axis.
 //!
 //! This module owns everything cylinder: the calibration parameters
-//! (serialized inside the document's `topology` object), their
+//! (serialized inside the document's `projection` object), their
 //! validation, and the CPU inverse map ([`CylinderMap`]).
 
 use serde::{Deserialize, Serialize};
@@ -10,18 +10,18 @@ use serde::{Deserialize, Serialize};
 use crate::calibration::{
     CalibrationError, Framing, Lens, expect_finite, expect_in_range, expect_positive,
 };
-use crate::geometry::{CameraIndex, Pose, VirtualCamera};
-use crate::projection::{Projection, ProjectionContext, SourceMapError};
+use crate::geometry::{CameraIndex, RenderPose, VirtualCamera};
+use crate::projection::{ProjectionContext, ProjectionGeometry, SourceMapError};
 use crate::render::viewport::ViewportSize;
 use crate::stitch::{BlendRule, SurfaceMap, SurfaceUv};
 
 // Functions, not constants: serde's `default = "..."` attribute takes
 // a function path, never a value expression.
-fn default_focal_length() -> f64 {
+fn default_radius() -> f64 {
     2400.0
 }
 
-fn default_sweep_deg() -> f64 {
+fn default_arc_deg() -> f64 {
     180.0
 }
 
@@ -30,56 +30,55 @@ fn default_sweep_deg() -> f64 {
 /// its axis. Defaults match the established 180-degree
 /// cylindrical-player convention.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Cylinder {
-    /// Cylinder radius in world units. Larger values = narrower
-    /// cylindrical wrap per pixel, so the panorama feels flatter.
-    /// Conventional range is 1000-5000.
-    #[serde(default = "default_focal_length")]
-    pub focal_length: f64,
-    /// Full horizontal angular sweep in degrees. 180 is the canonical
+    /// Cylinder radius in the same units as the painted height. Their ratio sets the vertical angular scale; horizontal mapping depends only on `arc_deg`.
+    #[serde(default = "default_radius")]
+    pub radius: f64,
+    /// Full horizontal arc in degrees. 180 is the canonical
     /// pre-stitched action-camera case; 360 is a full cylinder.
-    #[serde(default = "default_sweep_deg")]
-    pub sweep_deg: f64,
-    /// Painted height in the same units as `focal_length` (source
+    #[serde(default = "default_arc_deg")]
+    pub arc_deg: f64,
+    /// Painted height in the same units as `radius` (source
     /// pixels). Omitted = the source video's pixel height, which is
     /// the convention's default.
     #[serde(default)]
-    pub video_height: Option<f64>,
+    pub surface_height: Option<f64>,
 }
 
 impl Default for Cylinder {
     fn default() -> Self {
         Self {
-            focal_length: default_focal_length(),
-            sweep_deg: default_sweep_deg(),
-            video_height: None,
+            radius: default_radius(),
+            arc_deg: default_arc_deg(),
+            surface_height: None,
         }
     }
 }
 
 impl Cylinder {
     /// Validate the cylinder's parameters: positive finite
-    /// radius/height, sweep in `(0, 360]` degrees.
+    /// radius/height, arc in `(0, 360]` degrees.
     pub(crate) fn validate(&self) -> Result<(), CalibrationError> {
-        expect_finite("topology.focal_length", self.focal_length)?;
+        expect_finite("projection.radius", self.radius)?;
         // Same guard as lens focal lengths: the coverage math divides
         // by the radius.
-        expect_positive("topology.focal_length", self.focal_length)?;
+        expect_positive("projection.radius", self.radius)?;
 
-        expect_finite("topology.sweep_deg", self.sweep_deg)?;
-        expect_positive("topology.sweep_deg", self.sweep_deg)?;
-        expect_in_range("topology.sweep_deg", self.sweep_deg, 0.0, 360.0)?;
+        expect_finite("projection.arc_deg", self.arc_deg)?;
+        expect_positive("projection.arc_deg", self.arc_deg)?;
+        expect_in_range("projection.arc_deg", self.arc_deg, 0.0, 360.0)?;
 
         // Omitted = the source pixel height, always valid.
-        if let Some(height) = self.video_height {
-            expect_finite("topology.video_height", height)?;
-            expect_positive("topology.video_height", height)?;
+        if let Some(height) = self.surface_height {
+            expect_finite("projection.surface_height", height)?;
+            expect_positive("projection.surface_height", height)?;
         }
         Ok(())
     }
 }
 
-impl Projection for Cylinder {
+impl ProjectionGeometry for Cylinder {
     fn name(&self) -> &'static str {
         "cylindrical-mono-1camera"
     }
@@ -146,7 +145,7 @@ fn rotate(v: [f64; 3], k: [f64; 3], angle: f64) -> [f64; 3] {
 /// Per-frame inverse map: output pixel -> pre-stitched panorama UV.
 ///
 /// The panorama is painted on the inside of a cylinder of radius
-/// `focal_length`; the virtual camera sits on the cylinder axis at the
+/// `radius`; the virtual camera sits on the cylinder axis at the
 /// origin. Each output pixel casts a ray through the virtual camera
 /// and intersects the cylinder; the hit's angle and height give the
 /// video UV.
@@ -156,16 +155,9 @@ fn rotate(v: [f64; 3], k: [f64; 3], angle: f64) -> [f64; 3] {
 /// around the tilted+rolled up axis, so panning a tilted rig rolls
 /// the rendered viewport progressively toward the edges.
 /// SYNC_WITH: geometry/rig_correction.rs `rig_frame` - the frame
-/// construction must match or the two topologies disagree on what a
+/// construction must match or the two projections disagree on what a
 /// calibrated tilt means.
-/// SYNC_WITH: shaders/cylindrical_mono.wgsl - ray construction, the
-/// theta sign, and the bounds discard must match when the mono GPU
-/// pass lands. TODO: no cylinder CPU/GPU oracle exists yet; the mono
-/// GPU pass must bring the agreement test with it.
-///
-/// All quantities are precomputed f64 (the CPU side's precision
-/// convention; the GPU pass, when it lands, runs the same math in f32
-/// and its agreement test absorbs the difference).
+/// Cylinder rendering is CPU-only. Ray-basis quantities are precomputed in f64.
 struct CylinderMap {
     /// Rotated camera basis for ray construction: the ray for NDC
     /// `(x, y)` is `forward + right * x * tan_h + up * y * tan_v`.
@@ -177,12 +169,12 @@ struct CylinderMap {
     /// ray basis above.
     tan_half_h: f64,
     tan_half_v: f64,
-    /// Cylinder radius (world units) = `Cylinder::focal_length`:
+    /// Cylinder radius (world units) = `Cylinder::radius`:
     /// how far the painted surface sits from the axis camera.
     radius: f64,
-    /// Full angular sweep in radians: a hit's azimuth inside
-    /// `[-sweep/2, +sweep/2]` maps linearly to source U.
-    sweep: f64,
+    /// Full angular arc in radians: a hit's azimuth inside
+    /// `[-arc_rad/2, +arc_rad/2]` maps linearly to source U.
+    arc_rad: f64,
     /// Half the painted height (world units): bounds the ray-cylinder
     /// hit vertically and maps linearly to source V.
     half_height: f64,
@@ -194,7 +186,7 @@ impl CylinderMap {
     /// The parameters split by lifetime: `cylinder` and `framing` are
     /// the calibrated document (static), `pose` is the per-frame
     /// render pose (pan + fov zoom), and the output dimensions ride
-    /// in `viewport_size`. `source_height_px` backs `Cylinder::video_height`'s
+    /// in `viewport_size`. `source_height_px` backs `Cylinder::surface_height`'s
     /// default.
     ///
     /// The mono camera basis looks along `-Z` with `+X` right and
@@ -206,7 +198,7 @@ impl CylinderMap {
         framing: &Framing,
         source_height_px: f64,
         viewport_size: &ViewportSize,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Self {
         let camera = cylinder.virtual_camera(framing);
         let base_forward = [
@@ -236,7 +228,7 @@ impl CylinderMap {
             u = rotate(u, f0, -framing.roll);
         }
 
-        // Pose (SYNC_WITH geometry::view_matrix): yaw around the rig
+        // RenderPose (SYNC_WITH geometry::view_matrix): yaw around the rig
         // up, pitch around the yaw-rotated base right; the SCREEN axes
         // come from the rotated forward + up pair, exactly like the
         // look-at construction - deriving right from the pitch axis
@@ -262,9 +254,9 @@ impl CylinderMap {
             up,
             tan_half_h: tan_half_v * aspect,
             tan_half_v,
-            radius: cylinder.focal_length,
-            sweep: cylinder.sweep_deg.to_radians(),
-            half_height: cylinder.video_height.unwrap_or(source_height_px) * 0.5,
+            radius: cylinder.radius,
+            arc_rad: cylinder.arc_deg.to_radians(),
+            half_height: cylinder.surface_height.unwrap_or(source_height_px) * 0.5,
         }
     }
 }
@@ -294,13 +286,13 @@ impl SurfaceMap for CylinderMap {
         {
             return false;
         }
-        if self.sweep >= std::f64::consts::TAU {
+        if self.arc_rad >= std::f64::consts::TAU {
             return true;
         }
-        let (s, c) = (self.sweep * 0.5).sin_cos();
+        let (s, c) = (self.arc_rad * 0.5).sin_cos();
         let a = I::point(-s) * rz + I::point(c) * rx;
         let b = I::point(-s) * rz - I::point(c) * rx;
-        if self.sweep <= std::f64::consts::PI {
+        if self.arc_rad <= std::f64::consts::PI {
             a.lo > 1e-7 && b.lo > 1e-7
         } else {
             a.lo > 1e-7 || b.lo > 1e-7
@@ -335,7 +327,7 @@ impl SurfaceMap for CylinderMap {
         // same basis), but a mismatch here mirrors the image.
         let theta = ray[0].atan2(-ray[2]);
 
-        let u = 0.5 + theta / self.sweep;
+        let u = 0.5 + theta / self.arc_rad;
         let v = 0.5 - hit_y / (self.half_height * 2.0);
         if !(0.0..=1.0).contains(&u) || !(0.0..=1.0).contains(&v) {
             return None;
@@ -354,7 +346,7 @@ impl SurfaceMap for CylinderMap {
 mod tests {
     use super::*;
 
-    /// 1080px source; the defaults (r=2400px, 180-deg sweep) give a
+    /// 1080px source; the defaults (r=2400px, 180-degree arc) give a
     /// vertical band of atan(540/2400) = +-0.221 rad of pitch.
     const SRC_H: f64 = 1080.0;
 
@@ -366,8 +358,8 @@ mod tests {
     }
 
     /// The 60-degree test frustum, riding in the pose like production.
-    fn pose(yaw: f32, pitch: f32) -> Pose {
-        Pose {
+    fn pose(yaw: f32, pitch: f32) -> RenderPose {
+        RenderPose {
             yaw,
             pitch,
             fov_degrees: 60.0,
@@ -397,7 +389,7 @@ mod tests {
     fn map_rig(tilt: f64, roll: f64, yaw: f32) -> CylinderMap {
         CylinderMap::new(
             &Cylinder {
-                video_height: Some(20_000.0),
+                surface_height: Some(20_000.0),
                 ..Default::default()
             },
             &Framing {
@@ -418,7 +410,7 @@ mod tests {
     #[test]
     fn declared_camera_matches_the_sampling_origin_and_orientation() {
         let cylinder = Cylinder {
-            video_height: Some(20_000.0),
+            surface_height: Some(20_000.0),
             ..Default::default()
         };
         for (tilt, roll) in [(0.0, 0.0), (0.21, -0.08)] {
@@ -443,11 +435,11 @@ mod tests {
                         pose(yaw, pitch),
                     );
                     let sample = map.sample_uv([0.0, 0.0]).expect("center ray covered");
-                    let theta = (sample.u - 0.5) * cylinder.sweep_deg.to_radians();
+                    let theta = (sample.u - 0.5) * cylinder.arc_deg.to_radians();
                     let hit = nalgebra::Vector4::new(
-                        (cylinder.focal_length * theta.sin()) as f32,
-                        ((0.5 - sample.v) * cylinder.video_height.unwrap()) as f32,
-                        (-cylinder.focal_length * theta.cos()) as f32,
+                        (cylinder.radius * theta.sin()) as f32,
+                        ((0.5 - sample.v) * cylinder.surface_height.unwrap()) as f32,
+                        (-cylinder.radius * theta.cos()) as f32,
                         1.0,
                     );
                     let view =
@@ -491,7 +483,7 @@ mod tests {
     #[test]
     fn yaw_follows_the_virtual_camera_sense() {
         // VirtualCamera's positive yaw turns toward -X = the video's
-        // left half; the magnitude is exact (0.4 rad over a PI sweep).
+        // left half; the magnitude is exact (0.4 rad over a PI arc).
         let ahead = map(0.0, 0.0).sample_uv(cfg().pixel_ndc(100, 50)).unwrap();
         let panned = map(0.4, 0.0).sample_uv(cfg().pixel_ndc(100, 50)).unwrap();
         assert!(
@@ -509,7 +501,7 @@ mod tests {
         let up = map(0.0, 0.2).sample_uv(cfg().pixel_ndc(100, 50)).unwrap();
         // Center ray at pitch p hits at y = r*tan(p): v = 0.5 - r*tan(p)/h.
         let t = Cylinder::default();
-        let expected = 0.5 - t.focal_length * (0.2f64).tan() / SRC_H;
+        let expected = 0.5 - t.radius * (0.2f64).tan() / SRC_H;
         assert!(
             up.v < 0.5 && (up.v - expected).abs() < TOL,
             "v = {} vs {expected}",
@@ -522,7 +514,7 @@ mod tests {
         // A tall painted band so both extreme rows land inside it.
         let tall = CylinderMap::new(
             &Cylinder {
-                video_height: Some(100_000.0),
+                surface_height: Some(100_000.0),
                 ..Default::default()
             },
             &level(),
@@ -542,7 +534,7 @@ mod tests {
 
     #[test]
     fn rays_beyond_the_sweep_are_discarded() {
-        // 180-degree sweep: looking straight backward has no coverage.
+        // 180-degree arc: looking straight backward has no coverage.
         let s = map(std::f32::consts::PI, 0.0).sample_uv(cfg().pixel_ndc(100, 50));
         assert!(s.is_none(), "the back of the cylinder is unpainted");
     }
@@ -562,7 +554,7 @@ mod tests {
         let tilted = map_rig(0.15, 0.0, 0.0);
         let s = tilted.sample_uv(cfg().pixel_ndc(100, 50)).unwrap();
         let t = Cylinder::default();
-        let expected = 0.5 - t.focal_length * (0.15f64).tan() / 20_000.0;
+        let expected = 0.5 - t.radius * (0.15f64).tan() / 20_000.0;
         assert!((s.v - expected).abs() < TOL, "v = {} vs {expected}", s.v);
     }
 
@@ -572,7 +564,7 @@ mod tests {
         // horizon rolls. Level rig at yaw 0.9: two pixels on the same
         // output row sample the same video height (symmetry). Tilted
         // rig: they diverge. Pixels sit at +-23 deg of horizontal FOV
-        // so yaw + offset stays inside the 180-degree sweep.
+        // so yaw + offset stays inside the 180-degree arc.
         let level_v = {
             let m = map_rig(0.0, 0.0, 0.9);
             let l = m.sample_uv(cfg().pixel_ndc(60, 50)).unwrap();

@@ -4,7 +4,7 @@
 
 #![deny(unsafe_code)]
 
-/// Pose input state, sensitivity configuration and coverage acceptance.
+/// Render-space pose input state, sensitivity configuration and coverage acceptance.
 pub mod pose_control;
 
 /// A viewport command. Pan deltas are render-space radians; FOV values are degrees.

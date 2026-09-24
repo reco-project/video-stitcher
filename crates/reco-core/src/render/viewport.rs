@@ -1,13 +1,8 @@
-//! Viewport cropping from the panoramic render.
-//!
-//! The viewport defines the 16:9 (or user-chosen) rectangle that is
-//! extracted from the full panoramic view. The
-//! [`crate::detect::panner::Panner`] emits the per-frame yaw/pitch that
-//! positions this rectangle.
+//! Output viewport dimensions. Pose and FOV select the view rendered into this rectangle; no intermediate panorama image is required.
 
 /// Output viewport geometry: the rectangle the panorama is rendered
 /// into. Zoom travels with yaw/pitch in every
-/// [`Pose`](crate::geometry::Pose), never here.
+/// [`RenderPose`](crate::geometry::RenderPose), never here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewportSize {
     /// Output width in pixels.

@@ -49,7 +49,7 @@ fn normalized_coordinates_preserve_the_recorded_pixel_output() {
         let image = render
             .stitch_nv12(
                 &frames,
-                Pose {
+                RenderPose {
                     yaw: values[3].parse().unwrap(),
                     pitch: values[4].parse().unwrap(),
                     fov_degrees: 30.0,
@@ -106,7 +106,7 @@ fn fitted_random_lenses_and_placements_render_without_gpu_holes() {
                 (random() - 0.5) * 0.03,
             ];
         }
-        if let crate::calibration::Topology::LShape(layout) = &mut cal.topology {
+        if let crate::calibration::Projection::LShape(layout) = &mut cal.projection {
             layout.x_rx = (random() - 0.5) * 0.2;
             layout.z_rz = (random() - 0.5) * 0.2;
         }
@@ -130,14 +130,11 @@ fn fitted_random_lenses_and_placements_render_without_gpu_holes() {
         )
         .unwrap();
         for yaw in [-1.5, -0.6, 0.0, 0.6, 1.5] {
-            let request = render_pose(
-                &cal,
-                Pose {
-                    yaw,
-                    pitch: (random() as f32 - 0.5) * 0.4,
-                    fov_degrees: 120.0,
-                },
-            );
+            let request = cal.world_to_render_pose(crate::geometry::WorldPose {
+                yaw,
+                pitch: (random() as f32 - 0.5) * 0.4,
+                fov_degrees: 120.0,
+            });
             let Some(p) = fit_fov(&cal, &size, request) else {
                 continue;
             };
@@ -198,10 +195,10 @@ fn fitted_viewports_render_white_across_lens_correction_and_aspects() {
                     },
                 )
                 .unwrap();
-                let cam = cal.topology.projection().virtual_camera(&cal.framing);
+                let cam = cal.projection.geometry().virtual_camera(&cal.framing);
                 for yaw in [-1.5, -0.8, 0.0, 0.8, 1.5] {
                     for pitch in [-0.15, 0.0, 0.15] {
-                        let (yaw, pitch) = crate::geometry::world_to_render_pose(
+                        let (yaw, pitch) = crate::geometry::world_to_render_angles(
                             &cam,
                             yaw,
                             pitch,
@@ -211,7 +208,7 @@ fn fitted_viewports_render_white_across_lens_correction_and_aspects() {
                         let Some(pose) = fit_fov(
                             &cal,
                             &size,
-                            Pose {
+                            RenderPose {
                                 yaw,
                                 pitch,
                                 fov_degrees: 70.0,
@@ -236,16 +233,4 @@ fn fitted_viewports_render_white_across_lens_correction_and_aspects() {
     }
     eprintln!("white GPU fitted viewports={checked}");
     assert!(checked >= 100);
-}
-#[cfg(feature = "gpu")]
-fn render_pose(cal: &Calibration, p: Pose) -> Pose {
-    let cam = cal.topology.projection().virtual_camera(&cal.framing);
-    let (yaw, pitch) = crate::geometry::world_to_render_pose(
-        &cam,
-        p.yaw,
-        p.pitch,
-        cal.framing.tilt as f32,
-        cal.framing.roll as f32,
-    );
-    Pose { yaw, pitch, ..p }
 }

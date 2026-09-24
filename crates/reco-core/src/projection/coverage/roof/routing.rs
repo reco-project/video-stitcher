@@ -7,9 +7,9 @@ use std::collections::BinaryHeap;
 impl Roof {
     pub(in super::super) fn route(
         &self,
-        start: Pose,
-        score: impl Fn(usize, Pose) -> [f64; 3],
-    ) -> Vec<Pose> {
+        start: RenderPose,
+        score: impl Fn(usize, RenderPose) -> [f64; 3],
+    ) -> Vec<RenderPose> {
         if !self.contains(start) {
             return Vec::new();
         }
@@ -165,7 +165,7 @@ mod tests {
             let roof = Roof::from_cells(grid, 10.0, &cells);
             let start = grid.pose(1, 1, 30.0);
             let target = grid.pose(case % 9, case / 9 % 9, 30.0);
-            let score = |_: usize, p: Pose| {
+            let score = |_: usize, p: RenderPose| {
                 [
                     0.0,
                     0.0,
@@ -228,7 +228,7 @@ mod tests {
             (seed >> 40) as f32 / ((1_u32 << 24) - 1) as f32
         };
         for i in 0..2000 {
-            let a = Pose {
+            let a = RenderPose {
                 yaw: random() * 2.0 - 1.0,
                 pitch: random() - 0.5,
                 fov_degrees: 30.0,
@@ -236,7 +236,7 @@ mod tests {
             let b = if i % 10 == 0 {
                 a
             } else {
-                Pose {
+                RenderPose {
                     yaw: random() * 2.0 - 1.0,
                     pitch: random() - 0.5,
                     ..a
@@ -245,11 +245,11 @@ mod tests {
             let ceiling = roof.segment_ceiling(a, b).unwrap();
             let contact = (ceiling - FOV_EPSILON) as f32;
             for fov in [10.0, contact - 1e-4, contact, contact + 1e-4, 100.0] {
-                let a = Pose {
+                let a = RenderPose {
                     fov_degrees: fov,
                     ..a
                 };
-                let b = Pose {
+                let b = RenderPose {
                     fov_degrees: fov,
                     ..b
                 };
@@ -277,12 +277,12 @@ mod tests {
             })
             .collect();
         let roof = Roof::from_cells(grid, 10.0, &cells);
-        let from = Pose {
+        let from = RenderPose {
             yaw: -0.8,
             pitch: -0.3,
             fov_degrees: 30.0,
         };
-        let to = Pose { yaw: 0.8, ..from };
+        let to = RenderPose { yaw: 0.8, ..from };
         assert!(!roof.segment(from, to));
         let route = roof.route(from, |_, p| {
             [
@@ -315,7 +315,7 @@ mod tests {
             })
             .collect();
         let roof = Roof::from_cells(grid, 10.0, &cells);
-        let from = Pose {
+        let from = RenderPose {
             yaw: -0.8,
             pitch: 0.0,
             fov_degrees: 30.0,

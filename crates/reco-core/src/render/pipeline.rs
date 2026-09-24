@@ -6,19 +6,21 @@
 //! consumers reach rendering through the engine or a
 //! [`StitchSession`](crate::session::StitchSession). This module also
 //! re-exports the public frame-plane value types
-//! ([`YuvPlanes`], [`Nv12Planes`], [`BgraPlanes`], ...) and
+//! ([`Yuv420pPlanes`], [`Nv12Planes`], [`RgbaPlanes`], ...) and
 //! [`PipelineError`], the pipeline half of the engine's error type.
 
 use super::renderer::{InputFormat, RenderError, Renderer};
 use super::viewport::ViewportSize;
 use crate::calibration::Calibration;
-use crate::geometry::Pose;
+use crate::geometry::RenderPose;
 use crate::gpu::{GpuContext, GpuError};
 use crate::projection::l_shape::PlaneScene;
 
 use thiserror::Error;
 
-pub use super::planes::{BgraPlanes, FramePlaneView, Nv12Planes, StridedYuvPlanes, YuvPlanes};
+pub use super::planes::{
+    FramePlaneView, Nv12Planes, RgbaPlanes, StridedYuv420pPlanes, Yuv420pPlanes,
+};
 
 /// Errors from the stitch pipeline. `Clone + Send + Sync` so consumers
 /// posting results to worker threads can carry the typed error.
@@ -36,9 +38,9 @@ pub enum PipelineError {
     #[error("render error: {0}")]
     Render(#[from] RenderError),
 
-    /// The active topology has no GPU plane pass (the mono cylinder,
+    /// The active projection has no GPU plane pass (the mono cylinder,
     /// until its projection-owned fullscreen pass lands).
-    #[error("this topology has no GPU plane scene; the mono GPU pass is not wired yet")]
+    #[error("this projection has no GPU plane scene; the mono GPU pass is not wired yet")]
     NoPlaneScene,
 
     /// Wrong FrameSet variant for this render method.
@@ -90,13 +92,13 @@ pub(crate) struct GpuSourceBindGroups {
 
 impl StitchPipeline {
     /// The L-shape's plane placement for the GPU uniforms, when the
-    /// topology has planes. Both planes share lens 0's aspect (the
+    /// projection has planes. Both planes share lens 0's aspect (the
     /// documented limitation, kept identical to the CPU maps).
     fn derive_plane_scene(calibration: &Calibration) -> Option<PlaneScene> {
         calibration
-            .topology
+            .projection
             .l_shape()
-            .map(|t| t.scene(&calibration.framing, calibration.lenses[0].aspect()))
+            .map(|t| t.scene(&calibration.framing, calibration.lenses[0].aspect_ratio()))
     }
 
     /// Create a pipeline with an existing GPU context and custom output format.
@@ -149,8 +151,8 @@ impl StitchPipeline {
             output_format,
             input_format,
             // Quad geometry: the source aspect, independent of whether
-            // the topology has planes (harmless placeholder otherwise).
-            calibration.lenses[0].aspect(),
+            // the projection has planes (harmless placeholder otherwise).
+            calibration.lenses[0].aspect_ratio(),
         );
 
         log::info!(
@@ -184,9 +186,9 @@ impl StitchPipeline {
         &self.calibration
     }
 
-    /// The projection in effect: a borrow of the document's topology.
-    pub(crate) fn projection(&self) -> &dyn crate::projection::Projection {
-        self.calibration.topology.projection()
+    /// The projection in effect: a borrow of the document's projection.
+    pub(crate) fn geometry(&self) -> &dyn crate::projection::ProjectionGeometry {
+        self.calibration.projection.geometry()
     }
 
     /// The current output viewport configuration.
@@ -195,7 +197,7 @@ impl StitchPipeline {
     }
 
     /// Input frame dimensions as `(width, height)`.
-    pub fn source_info(&self) -> (u32, u32) {
+    pub fn source_dims(&self) -> (u32, u32) {
         (self.input_width, self.input_height)
     }
 
@@ -248,7 +250,7 @@ impl StitchPipeline {
         Some((width, height))
     }
 
-    /// Install a validated calibration with unchanged topology kind and image dimensions.
+    /// Install a validated calibration with unchanged projection kind and image dimensions.
     pub(crate) fn apply_calibration(&mut self, calibration: Calibration) {
         let scene = Self::derive_plane_scene(&calibration);
         self.scene = scene;
@@ -307,7 +309,7 @@ impl StitchPipeline {
         bind_groups: &GpuSourceBindGroups,
         left_slot: u8,
         right_slot: u8,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
         self.renderer
             .set_left_bind_group(bind_groups.left[left_slot as usize].clone());
@@ -332,7 +334,7 @@ impl StitchPipeline {
         &mut self,
         left_bg: &wgpu::BindGroup,
         right_bg: &wgpu::BindGroup,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
         self.renderer.set_left_bind_group(left_bg.clone());
         self.renderer.set_right_bind_group(right_bg.clone());
@@ -351,7 +353,7 @@ impl StitchPipeline {
         left_uv: &wgpu::Texture,
         right_y: &wgpu::Texture,
         right_uv: &wgpu::Texture,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
         let left_bg = self
             .renderer
@@ -375,7 +377,7 @@ impl StitchPipeline {
         left_uv: &wgpu::TextureView,
         right_y: &wgpu::TextureView,
         right_uv: &wgpu::TextureView,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
         let left_bg = self
             .renderer
@@ -398,7 +400,7 @@ impl StitchPipeline {
     pub fn render_frame_set(
         &self,
         frames: &crate::source::FrameSet,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
         use crate::source::FrameSet;
         match frames {
@@ -435,9 +437,9 @@ impl StitchPipeline {
     /// stays on the GPU and is presented to the surface.
     pub fn render_to_view(
         &self,
-        left: &YuvPlanes<'_>,
-        right: &YuvPlanes<'_>,
-        pose: Pose,
+        left: &Yuv420pPlanes<'_>,
+        right: &Yuv420pPlanes<'_>,
+        pose: RenderPose,
         target_view: &wgpu::TextureView,
     ) -> Result<(), PipelineError> {
         let Some(scene) = &self.scene else {
@@ -454,7 +456,7 @@ impl StitchPipeline {
             &self.calibration,
             pose,
             self.viewport_size.aspect_ratio(),
-            self.calibration.topology.blend_width(),
+            self.calibration.projection.blend_width(),
             target_view,
         );
         Ok(())
@@ -471,9 +473,9 @@ impl StitchPipeline {
     )]
     pub fn render_to_target(
         &self,
-        left: &YuvPlanes<'_>,
-        right: &YuvPlanes<'_>,
-        pose: Pose,
+        left: &Yuv420pPlanes<'_>,
+        right: &Yuv420pPlanes<'_>,
+        pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
         let Some(scene) = &self.scene else {
             return Err(PipelineError::NoPlaneScene);
@@ -488,7 +490,7 @@ impl StitchPipeline {
             scene,
             &self.calibration,
             pose,
-            self.calibration.topology.blend_width(),
+            self.calibration.projection.blend_width(),
         ))
     }
 
@@ -505,7 +507,7 @@ impl StitchPipeline {
         &self,
         left: &Nv12Planes<'_>,
         right: &Nv12Planes<'_>,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
         let Some(scene) = &self.scene else {
             return Err(PipelineError::NoPlaneScene);
@@ -519,38 +521,38 @@ impl StitchPipeline {
             scene,
             &self.calibration,
             pose,
-            self.calibration.topology.blend_width(),
+            self.calibration.projection.blend_width(),
         ))
     }
 
-    /// Upload packed BGRA/RGBA frames and render to the internal target.
+    /// Upload packed RGBA frames and render to the internal target.
     ///
     /// Expects each plane as `width * height * 4` bytes in (R, G, B, A) byte
-    /// order. Use [`BgraPlanes::from_bgra_swizzle_into`] when the source
+    /// order. Use [`RgbaPlanes::from_bgra_swizzle_into`] when the source
     /// is BGRA. Requires the pipeline to be initialized with
-    /// [`InputFormat::Bgra`](crate::render::renderer::InputFormat#variant.Bgra).
+    /// [`InputFormat::Rgba`](crate::render::renderer::InputFormat#variant.Rgba).
     #[cfg_attr(
         feature = "profiling",
-        tracing::instrument(skip_all, name = "render_to_target_bgra")
+        tracing::instrument(skip_all, name = "render_to_target_rgba")
     )]
-    pub fn render_to_target_bgra(
+    pub fn render_to_target_rgba(
         &self,
-        left: &BgraPlanes<'_>,
-        right: &BgraPlanes<'_>,
-        pose: Pose,
+        left: &RgbaPlanes<'_>,
+        right: &RgbaPlanes<'_>,
+        pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
         let Some(scene) = &self.scene else {
             return Err(PipelineError::NoPlaneScene);
         };
-        self.renderer.upload_left_bgra(&self.gpu, left.rgba)?;
-        self.renderer.upload_right_bgra(&self.gpu, right.rgba)?;
+        self.renderer.upload_left_rgba(&self.gpu, left.rgba)?;
+        self.renderer.upload_right_rgba(&self.gpu, right.rgba)?;
 
         Ok(self.renderer.render_to_target(
             &self.gpu,
             scene,
             &self.calibration,
             pose,
-            self.calibration.topology.blend_width(),
+            self.calibration.projection.blend_width(),
         ))
     }
 
@@ -559,12 +561,12 @@ impl StitchPipeline {
     /// Copies source textures into the input planes, then renders the
     /// stitch to the internal target. Returns the complete command buffer.
     /// The caller submits the demosaic encoder first, then this one.
-    /// Requires `InputFormat::Bgra`.
+    /// Requires `InputFormat::Rgba`.
     pub fn render_from_gpu_rgba(
         &self,
         left_rgba: &wgpu::Texture,
         right_rgba: &wgpu::Texture,
-        pose: Pose,
+        pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
         // Copy demosaiced textures into stitch pipeline input planes
         let mut copy_encoder =
@@ -597,7 +599,10 @@ impl StitchPipeline {
     /// bound. Call [`Self::render_imported_textures`] once to set up
     /// bind groups, then use this for subsequent frames with the same
     /// textures to avoid per-frame bind group allocation.
-    pub fn render_to_target_gpu(&self, pose: Pose) -> Result<wgpu::CommandBuffer, PipelineError> {
+    pub fn render_to_target_gpu(
+        &self,
+        pose: RenderPose,
+    ) -> Result<wgpu::CommandBuffer, PipelineError> {
         let Some(scene) = &self.scene else {
             return Err(PipelineError::NoPlaneScene);
         };
@@ -606,7 +611,7 @@ impl StitchPipeline {
             scene,
             &self.calibration,
             pose,
-            self.calibration.topology.blend_width(),
+            self.calibration.projection.blend_width(),
         ))
     }
 
@@ -652,7 +657,7 @@ mod tests {
         let y_data = padded_plane(4, 3, 8);
         let u_data = padded_plane(2, 2, 4);
         let v_data = padded_plane(2, 2, 4);
-        let strided = StridedYuvPlanes {
+        let strided = StridedYuv420pPlanes {
             y: FramePlaneView {
                 data: &y_data,
                 stride: 8,
@@ -691,7 +696,7 @@ mod tests {
         let y_data: Vec<u8> = (0..12).collect();
         let u_data: Vec<u8> = (0..4).collect();
         let v_data: Vec<u8> = (4..8).collect();
-        let strided = StridedYuvPlanes {
+        let strided = StridedYuv420pPlanes {
             y: FramePlaneView {
                 data: &y_data,
                 stride: 4,
@@ -721,7 +726,7 @@ mod tests {
     #[test]
     fn copy_into_reuses_buffer_without_realloc() {
         let plane = padded_plane(4, 3, 8);
-        let strided = StridedYuvPlanes {
+        let strided = StridedYuv420pPlanes {
             y: FramePlaneView {
                 data: &plane,
                 stride: 8,

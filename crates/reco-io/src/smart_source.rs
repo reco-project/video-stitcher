@@ -741,9 +741,8 @@ impl FrameSource for SmartFileSource {
     }
 
     fn is_exhausted(&self) -> bool {
-        // CPU mode defers to the inner FfmpegFileSource's own flag, which
-        // is also set by `try_next_frame` (the zero-copy modes don't
-        // implement `try_next_frame`, so their local flag is sufficient).
+        // CPU mode also honors the inner source's exhaustion state.
+        // SmartFileSource exposes blocking reads, not polling.
         match &self.mode {
             SourceMode::Cpu(source) => self.exhausted || source.is_exhausted(),
             #[cfg(target_os = "linux")]

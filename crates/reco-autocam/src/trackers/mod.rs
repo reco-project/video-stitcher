@@ -2,7 +2,7 @@
 //!
 //! Each tracker implements the
 //! [`Tracker`](reco_core::detect::tracker::Tracker) contract, turning a
-//! per-frame stream of [`MappedDetection`](reco_core::detect::director::MappedDetection)s
+//! per-frame stream of [`MappedDetection`](reco_core::detect::mapped_detection::MappedDetection)s
 //! into a [`TrackedEntity`](reco_core::detect::tracker::TrackedEntity)
 //! list a panner can consume.
 //!

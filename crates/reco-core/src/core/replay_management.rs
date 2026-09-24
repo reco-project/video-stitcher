@@ -77,7 +77,7 @@ impl super::StitchCore {
     /// the CPU vs GPU decision is never silent.
     ///
     /// Returns `StitchCoreError::Config` when the pipeline's input
-    /// format is BGRA (the pack shader only handles YUV420P / NV12)
+    /// format is RGBA (the pack shader only handles YUV420P / NV12)
     /// or when the layout / output dims violate YUV420P alignment.
     #[cfg(feature = "gpu")]
     pub fn enable_gpu_stacked_replay(
@@ -91,9 +91,9 @@ impl super::StitchCore {
         let source_format = match gpu.pipeline.input_format() {
             InputFormat::Yuv420p => SourceFormat::Yuv420p,
             InputFormat::Nv12 => SourceFormat::Nv12,
-            InputFormat::Bgra => {
+            InputFormat::Rgba => {
                 return Err(StitchCoreError::Config(
-                    "GPU stacked replay requires YUV420P or NV12 input; BGRA pipelines must use \
+                    "GPU stacked replay requires YUV420P or NV12 input; RGBA pipelines must use \
                      the CPU replay-recording path"
                         .into(),
                 ));
@@ -254,7 +254,7 @@ impl super::StitchCore {
     /// textures. Used by CPU-upload submit paths where
     /// `queue.write_texture` has just populated the renderer's
     /// own textures - fires from the `submit_frame` push path and from the
-    /// session's `process_frame` non-zero-copy branch. Zero-copy
+    /// session's `render_frame` non-zero-copy branch. Zero-copy
     /// paths take [`Self::pack_gpu_stacked_replay_from_views`]
     /// instead because their source data lives in shared
     /// textures that bypass the renderer's internal planes.
@@ -299,14 +299,14 @@ impl super::StitchCore {
                 StackedPackSource::Nv12 { y: &ly, uv: &lu },
                 StackedPackSource::Nv12 { y: &ry, uv: &ru },
             ),
-            InputFormat::Bgra => {
+            InputFormat::Rgba => {
                 // Shouldn't happen: enable_gpu_stacked_replay
-                // rejects BGRA up front. Defensive no-op so the
+                // rejects RGBA up front. Defensive no-op so the
                 // live render loop can't panic on an invariant
                 // violation.
                 log::error!(
                     "pack_replay_from_pipeline: packer enabled but pipeline input_format is \
-                     BGRA; skipping pack (this is a logic bug in StitchCore)"
+                     RGBA; skipping pack (this is a logic bug in StitchCore)"
                 );
                 return;
             }

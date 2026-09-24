@@ -13,16 +13,16 @@ use super::StitchSession;
 mod coverage;
 use super::types::*;
 use crate::calibration::{Calibration, Framing, Lens};
-use crate::detect::detector::{Detection, DetectorError, DetectorFrame, UnifiedDetector};
-use crate::detect::director::MappedDetection;
+use crate::detect::detector::{Detection, Detector, DetectorError, DetectorFrame};
+use crate::detect::mapped_detection::MappedDetection;
 use crate::detect::panner::{PanContext, Panner};
 use crate::detect::tracker::{TrackState, TrackedEntity, Tracker, WorldState};
 use crate::geometry::CameraIndex;
-use crate::geometry::Pose;
+use crate::geometry::WorldPose;
 use crate::projection::LShape;
 use crate::render::viewport::ViewportSize;
 use crate::sink::{OutputFrame, OutputSink, SinkError, SinkInput};
-use crate::source::{FrameSet, FrameSource, SourceError, SourceInfo, YuvData};
+use crate::source::{FrameSet, FrameSource, SourceError, SourceInfo, Yuv420pData};
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
@@ -56,7 +56,7 @@ fn test_calibration() -> Calibration {
 fn solid_frame() -> FrameSet {
     let y_size = (W * H) as usize;
     let uv_size = ((W / 2) * (H / 2)) as usize;
-    let yuv = YuvData {
+    let yuv = Yuv420pData {
         y: vec![128u8; y_size],
         u: vec![128u8; uv_size],
         v: vec![128u8; uv_size],
@@ -116,7 +116,7 @@ impl MockDetector {
     }
 }
 
-impl UnifiedDetector for MockDetector {
+impl Detector for MockDetector {
     fn name(&self) -> &'static str {
         "mock"
     }
@@ -181,11 +181,11 @@ impl Tracker for MockTracker {
 
 /// Mock panner that returns a fixed position regardless of the world.
 struct MockPanner {
-    position: Pose,
+    position: WorldPose,
 }
 
 impl Panner for MockPanner {
-    fn decide(&mut self, _world: &WorldState, _ctx: &PanContext<'_>) -> Pose {
+    fn decide(&mut self, _world: &WorldState, _ctx: &PanContext<'_>) -> WorldPose {
         self.position
     }
 }
@@ -232,16 +232,16 @@ impl OutputSink for MockEncoder {
 /// frame. Two entry points driving one AI stack must produce
 /// identical logs.
 struct RecordingPanner {
-    log: Arc<Mutex<Vec<(u64, Pose)>>>,
+    log: Arc<Mutex<Vec<(u64, WorldPose)>>>,
 }
 
 impl Panner for RecordingPanner {
-    fn decide(&mut self, _world: &WorldState, ctx: &PanContext<'_>) -> Pose {
+    fn decide(&mut self, _world: &WorldState, ctx: &PanContext<'_>) -> WorldPose {
         self.log
             .lock()
             .unwrap()
-            .push((ctx.frame_index, ctx.previous_position));
-        Pose {
+            .push((ctx.frame_index, ctx.previous_pose));
+        WorldPose {
             yaw: 0.001 * ctx.frame_index as f32,
             pitch: -0.0005 * ctx.frame_index as f32,
             ..Default::default()
@@ -255,8 +255,8 @@ impl Panner for RecordingPanner {
 struct NanPanner;
 
 impl Panner for NanPanner {
-    fn decide(&mut self, _world: &WorldState, _ctx: &PanContext<'_>) -> Pose {
-        Pose {
+    fn decide(&mut self, _world: &WorldState, _ctx: &PanContext<'_>) -> WorldPose {
+        WorldPose {
             yaw: f32::NAN,
             pitch: f32::NAN,
             ..Default::default()
@@ -271,7 +271,7 @@ impl Panner for NanPanner {
 /// setters and aren't part of the builder API).
 fn build_test_session(
     encoder: Option<Box<dyn OutputSink>>,
-    detector: Option<Box<dyn UnifiedDetector>>,
+    detector: Option<Box<dyn Detector>>,
     detection_interval: u64,
 ) -> Result<StitchSession, SessionError> {
     let mut builder = StitchSession::builder()
@@ -357,7 +357,7 @@ fn tracker_receives_detections() {
         .expect("session build");
     session.set_ball_tracker(Box::new(tracker));
     session.set_panner(Box::new(MockPanner {
-        position: Pose::default(),
+        position: WorldPose::default(),
     }));
 
     let mut source = MockSource::new(3);
@@ -773,7 +773,7 @@ fn mono_cylinder_session_runs_end_to_end_without_gpu() {
             self.0 -= 1;
             let y_size = (W * H) as usize;
             let uv_size = ((W / 2) * (H / 2)) as usize;
-            Ok(Some(FrameSet::Yuv420p(vec![YuvData {
+            Ok(Some(FrameSet::Yuv420p(vec![Yuv420pData {
                 y: vec![128u8; y_size],
                 u: vec![128u8; uv_size],
                 v: vec![128u8; uv_size],
@@ -785,7 +785,7 @@ fn mono_cylinder_session_runs_end_to_end_without_gpu() {
     let cal = Calibration::new(
         vec![crate::calibration::Lens::flat(W, H)],
         crate::projection::Cylinder {
-            focal_length: f64::from(W),
+            radius: f64::from(W),
             ..Default::default()
         },
         Framing {

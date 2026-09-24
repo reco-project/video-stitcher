@@ -25,9 +25,9 @@ use std::path::Path;
 
 use crate::cuda_kernels::normalize_hwc_to_chw;
 use crate::npp_interop::{NppiRect, npp_mirror_c3, npp_nv12_to_rgb, npp_resize_c3};
-use reco_core::detect::detector::ChromaFormat;
+use reco_core::detect::detector::ChromaPlanes;
 use reco_core::detect::detector::{
-    Detection, DetectorError, DetectorFrame, GpuNv12Frame, UnifiedDetector,
+    CudaNv12Frame, Detection, Detector, DetectorError, DetectorFrame,
 };
 use reco_core::geometry::CameraIndex;
 use reco_core::interop::cuda::{
@@ -41,9 +41,7 @@ use super::postprocess;
 
 /// YOLO detector using native TensorRT inference.
 ///
-/// Implements [`GpuDetector`] for the zero-copy pipeline. Reuses the
-/// same NPP preprocessing as [`OrtGpuDetector`](super::ort_gpu::OrtGpuDetector)
-/// but replaces ORT inference with direct TensorRT API calls.
+/// Implements [`Detector`] using NPP preprocessing and direct TensorRT inference.
 ///
 /// # Drop order
 ///
@@ -60,7 +58,7 @@ pub struct TrtGpuDetector {
     nv12_8bit_y: CUdeviceptr,
     nv12_8bit_uv: CUdeviceptr,
     // Live-camera NV12 upload buffers. Lazy-allocated on the
-    // first `DetectorFrame::Cpu` call. nvarguscamerasrc +
+    // first `DetectorFrame::Yuv` call. nvarguscamerasrc +
     // appsink delivers CPU-resident NV12; a ~1-2 ms H2D memcpy
     // per frame lets that flow reuse the same TRT inference
     // path as NVDEC zero-copy. Zero-cost when the caller only
@@ -96,7 +94,7 @@ pub struct TrtGpuDetector {
 }
 
 /// SAFETY: The detector's GPU resources are accessed only from one
-/// thread at a time via the GpuDetector trait (which takes &mut self).
+/// thread at a time via the Detector trait (which takes &mut self).
 /// CUDA context management via cuda_ensure_context handles thread safety.
 unsafe impl Send for TrtGpuDetector {}
 
@@ -302,22 +300,13 @@ impl TrtGpuDetector {
 }
 
 impl TrtGpuDetector {
-    /// Core inference path shared by the legacy [`GpuDetector`] impl
-    /// and the new [`UnifiedDetector`] impl. Returns a typed
-    /// [`DetectorError`] so unified-trait consumers can react to CUDA
-    /// / NPP / TensorRT failures; the legacy impl collapses the error
-    /// to a log + empty vector for backward compatibility.
-    ///
-    /// Each CUDA / NPP / TRT step that previously used
-    /// `log::error!; return Vec::new()` now returns
-    /// `Err(DetectorError::InferenceFailed("stage: {err}"))` so
-    /// telemetry dashboards can still break down failures by origin.
+    /// CUDA NV12/P010 preprocessing and inference. Errors retain their CUDA, NPP or TensorRT stage context.
     fn detect_gpu_raw(
         &mut self,
         camera: CameraIndex,
-        frame: &GpuNv12Frame,
+        frame: &CudaNv12Frame,
     ) -> Result<Vec<Detection>, DetectorError> {
-        let GpuNv12Frame {
+        let CudaNv12Frame {
             y_ptr,
             uv_ptr,
             y_pitch,
@@ -531,9 +520,13 @@ impl TrtGpuDetector {
     }
 }
 
-impl UnifiedDetector for TrtGpuDetector {
+impl Detector for TrtGpuDetector {
     fn name(&self) -> &'static str {
         "tensorrt-native"
+    }
+
+    fn prefers_cuda_nv12(&self) -> bool {
+        true
     }
 
     fn detect(
@@ -541,8 +534,8 @@ impl UnifiedDetector for TrtGpuDetector {
         camera: CameraIndex,
         frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
-        // CUDA-residency backend: accept `Cuda(GpuNv12Frame)` for
-        // the zero-copy fast path, AND accept `Cpu(RawFrame)` with
+        // CUDA-residency backend: accept `Cuda(CudaNv12Frame)` for
+        // the zero-copy fast path, AND accept `Cpu(YuvView)` with
         // NV12 chroma via a transparent host→device upload so live
         // camera sources (nvarguscamerasrc + appsink delivering
         // CPU-resident NV12) can drive detection without a parallel
@@ -551,13 +544,13 @@ impl UnifiedDetector for TrtGpuDetector {
         // route elsewhere.
         match frame {
             #[cfg(any(target_os = "linux", target_os = "windows"))]
-            DetectorFrame::Cuda(gpu_frame) => self.detect_gpu_raw(camera, gpu_frame),
+            DetectorFrame::CudaNv12(gpu_frame) => self.detect_gpu_raw(camera, gpu_frame),
             #[cfg(any(target_os = "linux", target_os = "windows"))]
-            DetectorFrame::Cpu(raw) => match &raw.chroma {
-                ChromaFormat::Nv12 { uv } => {
+            DetectorFrame::Yuv(raw) => match &raw.chroma {
+                ChromaPlanes::Nv12 { uv } => {
                     self.detect_cpu_nv12_upload(camera, raw.y, uv, raw.width, raw.height)
                 }
-                ChromaFormat::Yuv420p { .. } => Err(DetectorError::UnsupportedFrameKind),
+                ChromaPlanes::Yuv420p { .. } => Err(DetectorError::UnsupportedFrameKind),
             },
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             DetectorFrame::Rgba {
@@ -596,7 +589,7 @@ impl TrtGpuDetector {
     /// host→device memcpy cost (~1-2 ms for a 1080p frame on Orin
     /// Nano). This is the primary path for CSI-origin frames
     /// (nvarguscamerasrc + appsink); NVDEC-sourced frames continue
-    /// to use the zero-copy [`DetectorFrame::Cuda`] route.
+    /// to use the zero-copy [`DetectorFrame::CudaNv12`] route.
     fn detect_cpu_nv12_upload(
         &mut self,
         camera: CameraIndex,
@@ -657,7 +650,7 @@ impl TrtGpuDetector {
         )
         .map_err(|e| DetectorError::InferenceFailed(format!("UV H2D memcpy: {e}")))?;
 
-        let gpu_frame = GpuNv12Frame {
+        let gpu_frame = CudaNv12Frame {
             y_ptr: self.cpu_upload_y,
             uv_ptr: self.cpu_upload_uv,
             y_pitch: width_usize,

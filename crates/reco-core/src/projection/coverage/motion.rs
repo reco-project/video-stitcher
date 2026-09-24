@@ -26,7 +26,7 @@ const ZOOM_RATE: f32 = 30.0;
 const ZOOM_TOLERANCE: f64 = 0.002;
 const CONTACT_TOLERANCE: f32 = 1e-6;
 
-fn view(cal: &Calibration, p: Pose) -> Matrix4<f32> {
+fn view(cal: &Calibration, p: RenderPose) -> Matrix4<f32> {
     let camera = cal.virtual_camera();
     crate::geometry::view_matrix(
         &camera,
@@ -38,7 +38,7 @@ fn view(cal: &Calibration, p: Pose) -> Matrix4<f32> {
 }
 
 #[cfg(test)]
-fn direction(cal: &Calibration, p: Pose) -> Vector3<f32> {
+fn direction(cal: &Calibration, p: RenderPose) -> Vector3<f32> {
     view_direction(&view(cal, p))
 }
 
@@ -49,17 +49,17 @@ fn view_direction(view: &Matrix4<f32>) -> Vector3<f32> {
         .normalize()
 }
 
-fn aim(cal: &Calibration, direction: &Vector3<f32>, fov_degrees: f32) -> Pose {
+fn aim(cal: &Calibration, direction: &Vector3<f32>, fov_degrees: f32) -> RenderPose {
     let camera = cal.virtual_camera();
     let world = camera.direction_to_yaw_pitch(direction);
-    let (yaw, pitch) = crate::geometry::world_to_render_pose(
+    let (yaw, pitch) = crate::geometry::world_to_render_angles(
         &camera,
         world.yaw,
         world.pitch,
         cal.framing.tilt as f32,
         cal.framing.roll as f32,
     );
-    Pose {
+    RenderPose {
         yaw,
         pitch,
         fov_degrees,
@@ -70,7 +70,7 @@ fn aim(cal: &Calibration, direction: &Vector3<f32>, fov_degrees: f32) -> Pose {
 fn screen(
     cal: &Calibration,
     size: &ViewportSize,
-    p: Pose,
+    p: RenderPose,
     target: &Vector3<f32>,
 ) -> Option<[f64; 2]> {
     let ray = view(cal, p) * Vector4::new(target.x, target.y, target.z, 0.0);
@@ -94,7 +94,7 @@ fn project_ray(ray: Vector4<f32>, scale: [f64; 2]) -> Option<[f64; 2]> {
 
 // Lexicographic: behind-camera class, visibility error, centering error.
 // Keep the class separate so it cannot round away small angular improvements.
-fn score(cal: &Calibration, size: &ViewportSize, p: Pose, target: &Vector3<f32>) -> [f64; 3] {
+fn score(cal: &Calibration, size: &ViewportSize, p: RenderPose, target: &Vector3<f32>) -> [f64; 3] {
     let view = view(cal, p);
     score_view(&view, screen_scale(size, p.fov_degrees), target, || {
         view_direction(&view).cast()
@@ -132,7 +132,7 @@ fn better<const N: usize>(a: [f64; N], b: [f64; N]) -> bool {
         .is_some_and(|order| order.is_lt())
 }
 
-pub(super) fn distance(a: Pose, b: Pose) -> f32 {
+pub(super) fn distance(a: RenderPose, b: RenderPose) -> f32 {
     (a.yaw - b.yaw).hypot(a.pitch - b.pitch)
 }
 
@@ -143,11 +143,11 @@ pub(super) fn initial(
     fov: f32,
     roof: &roof::Roof,
     route: &Route,
-) -> Option<Pose> {
+) -> Option<RenderPose> {
     if !valid_query(
         cal,
         size,
-        Pose {
+        RenderPose {
             yaw: 0.0,
             pitch: 0.0,
             fov_degrees: fov,
@@ -176,7 +176,7 @@ pub(super) fn initial(
 }
 
 pub(super) struct Advance {
-    pub(super) pose: Pose,
+    pub(super) pose: RenderPose,
     pub(super) velocity: [f32; 2],
     pub(super) support_queries: usize,
     pub(super) objective: [f64; 4],
@@ -184,7 +184,7 @@ pub(super) struct Advance {
 
 #[derive(Clone, Copy)]
 pub(super) struct MotionWindow {
-    pub(super) previous: Pose,
+    pub(super) previous: RenderPose,
     pub(super) velocity: [f32; 2],
     pub(super) dt: f32,
 }
@@ -208,7 +208,7 @@ fn valid_motion(
 }
 
 impl MotionWindow {
-    fn admits(&self, p: Pose) -> bool {
+    fn admits(&self, p: RenderPose) -> bool {
         let v = self.velocity_at(p);
         v[0].hypot(v[1]) <= RATE + 1e-5
             && (v[0] - self.velocity[0]).hypot(v[1] - self.velocity[1]) / self.dt
@@ -220,7 +220,7 @@ impl MotionWindow {
         self.dt * (steps * speed - decrement * steps * (steps + 1.0) * 0.5)
     }
 
-    fn aim_step(&self, target: Pose) -> Pose {
+    fn aim_step(&self, target: RenderPose) -> RenderPose {
         let distance = distance(self.previous, target);
         if distance < 1e-8 {
             return self.project(target);
@@ -237,35 +237,35 @@ impl MotionWindow {
         self.project(interpolate(self.previous, target, self.dt * lo / distance))
     }
 
-    fn velocity_at(&self, p: Pose) -> [f32; 2] {
+    fn velocity_at(&self, p: RenderPose) -> [f32; 2] {
         [
             (p.yaw - self.previous.yaw) / self.dt,
             (p.pitch - self.previous.pitch) / self.dt,
         ]
     }
 
-    fn stopping_pose(&self, p: Pose) -> Pose {
+    fn stopping_pose(&self, p: RenderPose) -> RenderPose {
         let v = self.velocity_at(p);
         let speed = v[0].hypot(v[1]);
         if speed < 1e-8 {
             return p;
         }
         let distance = self.stopping_distance(speed);
-        Pose {
+        RenderPose {
             yaw: p.yaw + v[0] * distance / speed,
             pitch: p.pitch + v[1] * distance / speed,
             ..p
         }
     }
 
-    fn braking_step(&self) -> Pose {
+    fn braking_step(&self) -> RenderPose {
         let speed = self.velocity[0].hypot(self.velocity[1]);
         let scale = if speed > 0.0 {
             (1.0 - ACCELERATION * self.dt / speed).max(0.0)
         } else {
             0.0
         };
-        let pose = Pose {
+        let pose = RenderPose {
             yaw: self.previous.yaw + self.velocity[0] * scale * self.dt,
             pitch: self.previous.pitch + self.velocity[1] * scale * self.dt,
             ..self.previous
@@ -278,7 +278,7 @@ impl MotionWindow {
     }
 
     // Euclidean projection onto the intersection of speed and acceleration disks.
-    fn project(&self, p: Pose) -> Pose {
+    fn project(&self, p: RenderPose) -> RenderPose {
         let wanted = Vector2::new(
             f64::from(p.yaw - self.previous.yaw),
             f64::from(p.pitch - self.previous.pitch),
@@ -316,7 +316,7 @@ impl MotionWindow {
                     .total_cmp(&(b - wanted).norm_squared())
             })
             .unwrap();
-        let rounded = Pose {
+        let rounded = RenderPose {
             yaw: self.previous.yaw + q.x as f32,
             pitch: self.previous.pitch + q.y as f32,
             ..self.previous
@@ -335,7 +335,7 @@ impl MotionWindow {
                     rounded.pitch.next_up(),
                 ]
                 .into_iter()
-                .map(move |pitch| Pose {
+                .map(move |pitch| RenderPose {
                     yaw,
                     pitch,
                     ..rounded
@@ -343,7 +343,7 @@ impl MotionWindow {
             })
             .filter(|p| self.admits(*p))
             .min_by(|a, b| {
-                let cost = |p: &Pose| {
+                let cost = |p: &RenderPose| {
                     (f64::from(p.yaw) - f64::from(self.previous.yaw) - q.x).powi(2)
                         + (f64::from(p.pitch) - f64::from(self.previous.pitch) - q.y).powi(2)
                 };
@@ -374,7 +374,7 @@ pub(super) fn solve_motion(
     );
     let floor = previous.fov_degrees;
     let window = MotionWindow {
-        previous: Pose {
+        previous: RenderPose {
             fov_degrees: fov,
             ..previous
         },
@@ -391,7 +391,7 @@ pub(super) fn solve_motion(
             wanted = p;
         }
     }
-    let objective = |p: Pose| {
+    let objective = |p: RenderPose| {
         if let Some(guide) = guide {
             let rest = window.stopping_pose(p);
             return [
@@ -430,8 +430,8 @@ pub(super) fn solve_motion(
     let brake = window.braking_step();
     let radius = RATE * dt;
     let mut queries = 0;
-    let permitted = |p: Pose| roof.contains(p);
-    let certified = |p: Pose| {
+    let permitted = |p: RenderPose| roof.contains(p);
+    let certified = |p: RenderPose| {
         if !window.admits(p) {
             return false;
         }
@@ -454,8 +454,8 @@ pub(super) fn solve_motion(
             objective: objective(requested),
         });
     }
-    let preliminary = |p: Pose| {
-        let p = Pose {
+    let preliminary = |p: RenderPose| {
+        let p = RenderPose {
             fov_degrees: floor.min(fov),
             ..p
         };
@@ -463,7 +463,7 @@ pub(super) fn solve_motion(
     };
     // Fit zoom at each candidate position, including the real movement and
     // a stopping continuation. Holding FOV is allowed; teleporting is not.
-    let fit = |mut p: Pose| {
+    let fit = |mut p: RenderPose| {
         if !window.admits(p) {
             return None;
         }
@@ -474,7 +474,7 @@ pub(super) fn solve_motion(
             roof.segment_ceiling(pair[0], pair[1])
                 .map(|value| ceiling.min(value))
         })?;
-        let supported = |p: Pose| {
+        let supported = |p: RenderPose| {
             f64::from(p.fov_degrees) + roof::FOV_EPSILON <= ceiling && roof.segment(previous, p)
         };
         if supported(p) {
@@ -493,7 +493,7 @@ pub(super) fn solve_motion(
                 break;
             }
             let mid = (lo + hi) * 0.5;
-            let candidate = Pose {
+            let candidate = RenderPose {
                 fov_degrees: floor + mid * (fov - floor),
                 ..p
             };
@@ -524,7 +524,7 @@ pub(super) fn solve_motion(
         for i in 0..64 {
             let angle = i as f32 * std::f32::consts::TAU / 64.0;
             queries += 1;
-            if let Some(p) = fit(window.project(Pose {
+            if let Some(p) = fit(window.project(RenderPose {
                 yaw: previous.yaw + radius * angle.cos(),
                 pitch: previous.pitch + radius * angle.sin(),
                 ..window.previous
@@ -550,7 +550,7 @@ pub(super) fn solve_motion(
         let ring: Vec<_> = (0..8)
             .map(|i| {
                 let angle = i as f32 * std::f32::consts::TAU / 8.0;
-                let p = window.project(Pose {
+                let p = window.project(RenderPose {
                     yaw: best.yaw + step * angle.cos(),
                     pitch: best.pitch + step * angle.sin(),
                     ..window.previous
@@ -559,7 +559,7 @@ pub(super) fn solve_motion(
                 (p, preliminary(p))
             })
             .collect();
-        let mut consider = |p: Pose| {
+        let mut consider = |p: RenderPose| {
             if !improves(objective(p), best_score) {
                 return;
             }
@@ -609,7 +609,7 @@ pub(super) fn solve_motion(
 }
 
 #[cfg(test)]
-fn footprint(cal: &Calibration, size: &ViewportSize, p: Pose) -> Vec<[f32; 2]> {
+fn footprint(cal: &Calibration, size: &ViewportSize, p: RenderPose) -> Vec<[f32; 2]> {
     let inverse = view(cal, p).try_inverse().unwrap();
     let vertical = (p.fov_degrees.to_radians() * 0.5).tan();
     let horizontal = vertical * size.aspect_ratio();

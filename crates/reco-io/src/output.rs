@@ -102,7 +102,7 @@ impl fmt::Display for Quality {
 /// Output container format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
-pub enum Format {
+pub enum Container {
     /// MPEG-4 Part 14. Widest compatibility. `moov` atom finalized
     /// at close - partial files are unreadable.
     #[default]
@@ -118,7 +118,7 @@ pub enum Format {
     Flv,
 }
 
-impl Format {
+impl Container {
     /// Detect the appropriate container from an output path or URL.
     /// RTMP/RTSP URLs get FLV; file paths infer from extension.
     pub fn for_output(path: &str) -> Self {
@@ -147,7 +147,7 @@ impl Format {
     }
 }
 
-impl FromStr for Format {
+impl FromStr for Container {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
