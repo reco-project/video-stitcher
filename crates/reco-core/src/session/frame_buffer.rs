@@ -165,6 +165,7 @@ mod tests {
         assert!((yaws[2] - 0.3).abs() < 1e-6);
     }
 
+    #[cfg(debug_assertions)]
     #[test]
     #[should_panic(expected = "push called on full buffer")]
     fn push_on_full_panics() {

@@ -54,7 +54,7 @@ pub enum ChromaFormat<'a> {
 ///
 /// Coordinates are in normalized image space `[0.0, 1.0]` relative to
 /// the frame dimensions. The active
-/// [`Projection`](crate::projection::Projection) maps these to panoramic
+/// [`Calibration::map_source_point`](crate::calibration::Calibration::map_source_point) maps these to world-reference
 /// yaw/pitch.
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Detection {

@@ -7,13 +7,13 @@
 //! resolution, coverage, and the replay ring buffer.
 //!
 //! Batch file processing layers a thin pull-adapter on top
-//! ([`StitchSession`](crate::session::StitchSession)::run).
+//! (`StitchSession::run`, available with the `gpu` feature).
 //!
 //! ## Foundation traits
 //!
 //! `StitchCore` composes the foundation traits:
 //!
-//! - [`crate::projection::Projection`] - camera-geometry contract,
+//! - The internal `Projection` trait - camera-geometry contract,
 //!   implemented directly by the calibration topology's parameter
 //!   structs ([`LShape`](crate::projection::LShape),
 //!   [`Cylinder`](crate::projection::Cylinder)). The executor reads it
@@ -35,10 +35,12 @@
 //! - `pose` - pose resolution, detection scheduling, panorama mapping
 
 mod calibration_update;
+mod coverage_motion;
 mod pose;
 mod render;
 pub mod replay_buffer;
 mod replay_management;
+mod resize;
 pub mod types;
 
 use std::time::{Duration, Instant};
@@ -53,7 +55,6 @@ use crate::geometry::Pose;
 use crate::gpu::rgba_readback::RgbaReadback;
 #[cfg(feature = "gpu")]
 use crate::gpu::yuv_stack_packer::YuvStackPacker;
-use crate::projection::{CoverageBoundary, PanoramaExtent};
 use crate::stitch::{Executor, StitchExecutor};
 
 use self::replay_buffer::ReplayBuffer;
@@ -66,11 +67,11 @@ use self::types::{StackedReplayRecorder, StitchCoreError};
 /// See the module-level docs for design rationale. `StitchCore` owns:
 ///
 /// - An [`Executor`] (CPU or GPU) - the render substrate, which itself
-///   owns the active [`Projection`](crate::projection::Projection)
+///   owns the active calibration and its projection geometry
 ///   (and, on the GPU arm, the wgpu pipeline).
-/// - An [`RgbaReadback`] triple-buffered staging ring for CPU delivery
+/// - An `RgbaReadback` triple-buffered staging ring for CPU delivery
 ///   (GPU executors only; the CPU path returns owned bytes).
-/// - A coverage boundary precomputed from calibration for `safe_clamp`.
+/// - A lazily derived coverage map shared by manual input and automatic motion.
 /// - Optional [`Tracker`]s and an optional [`Panner`] that together
 ///   drive the viewport pose, plus a pipeline-stage chain.
 /// - An optional [`ReplayBuffer`].
@@ -100,7 +101,8 @@ pub struct StitchCore {
     pub(crate) output_width: u32,
     pub(crate) output_height: u32,
 
-    pub(crate) coverage: Option<CoverageBoundary>,
+    pub(crate) coverage_motion: Option<crate::projection::coverage::controller::Controller>,
+    pending_coverage: Option<resize::PendingCoverage>,
 
     /// Per-class trackers that feed a shared [`WorldState`](crate::detect::tracker::WorldState)
     /// consumed by [`StitchCore::panner`]. Slot-based on purpose:
@@ -163,16 +165,7 @@ pub struct StitchCore {
     #[cfg(feature = "gpu")]
     pub(crate) stacked_gpu_recorder: Option<Box<dyn StackedReplayGpuRecorder>>,
 
-    /// Whether `resolve_current_pose` clamps output through the
-    /// coverage boundary ("constrained look"). `true` by default so
-    /// the viewport never reveals black panorama edges; toggle off
-    /// when the user wants to explore the raw panorama space (e.g. to
-    /// find the edge of coverage during debugging or a cinematographic
-    /// effect).
-    ///
-    /// The public [`Self::safe_clamp`] method remains available
-    /// regardless of this flag - it's the primitive consumers use
-    /// for ad-hoc clamping outside the render loop.
+    /// Apply coverage constraints to automatic presentation and direct interaction. Explicit render-at-pose methods bypass this policy.
     pub(crate) constrained_look: bool,
 
     pub(crate) frame_count: u64,
@@ -184,7 +177,7 @@ impl StitchCore {
     /// orchestration is the same.
     ///
     /// The executor owns the render substrate and the projection (see
-    /// [`GpuExecutorConfig`](crate::stitch::GpuExecutorConfig) /
+    /// `GpuExecutorConfig` (with the `gpu` feature) /
     /// [`CpuExecutor::new`](crate::stitch::CpuExecutor::new)); the
     /// engine layers orchestration on top: detection, pose resolution,
     /// coverage clamping, replay, and delivery. Enable the replay ring
@@ -210,10 +203,6 @@ impl StitchCore {
             StitchExecutor::name(&executor)
         );
 
-        // The projection owns coverage construction: a new projection
-        // brings its own boundary representation with it.
-        let coverage = executor.coverage();
-
         Ok(Self {
             executor,
             #[cfg(feature = "gpu")]
@@ -222,7 +211,8 @@ impl StitchCore {
             mono_detection_warned: false,
             output_width,
             output_height,
-            coverage: Some(coverage),
+            coverage_motion: None,
+            pending_coverage: None,
             ball_tracker: None,
             player_tracker: None,
             panner: None,
@@ -360,55 +350,22 @@ impl StitchCore {
         &self.last_detections
     }
 
-    /// The resolved viewport pose for the next render, already clamped
-    /// through coverage + FOV limits. Exposed so interactive consumers
-    /// (OBS pan/zoom, GUI drag) can preview where the core *would*
-    /// render if they submit right now.
-    pub fn current_pose(&mut self) -> Pose {
-        // A peek does no detection work of its own, so the director
-        // sees `fresh_detection = false`. The next real submit will
-        // fire the schedule-driven detection path and pass the actual
-        // run result.
-        self.resolve_current_pose(false)
-    }
-
-    /// Clamp a prospective pose through the coverage boundary. No-op
-    /// if no coverage is available (e.g. the calibration produced a
-    /// degenerate boundary). Pure: reads and returns poses, touches no
-    /// pipeline state.
-    ///
-    /// Input is treated as world-space (matches the director-output
-    /// contract). Output is render-space: resolved through the shared
-    /// `resolve_render_pose` authority (world-space clamp + roll-aware
-    /// tilt/roll basis inversion), identical to the export/director path.
-    pub fn safe_clamp(&self, pose: Pose) -> Pose {
-        let Some(coverage) = &self.coverage else {
-            return pose;
-        };
-        let fov = pose.fov_degrees.min(coverage.max_fov_degrees());
-        let aspect = self.executor.viewport_size().aspect_ratio();
-        let rig_tilt = self.executor.calibration().framing.tilt as f32;
-        let rig_roll = self.executor.calibration().framing.roll as f32;
-        let framing = &self.executor.calibration().framing;
-        let cam = self.executor.projection().virtual_camera(framing);
-        let (yaw, pitch) = crate::geometry::resolve_render_pose(
-            coverage, &cam, rig_tilt, rig_roll, pose.yaw, pose.pitch, fov, aspect,
-        );
-        Pose {
-            yaw,
-            pitch,
-            fov_degrees: fov,
-        }
+    #[cfg(test)]
+    pub(crate) fn current_pose(&self) -> Pose {
+        self.coverage_motion
+            .as_ref()
+            .and_then(|c| c.current())
+            .unwrap_or_else(|| self.world_to_render_pose(self.previous_panner_pose))
     }
 
     /// Orient a world-space pose into the render-space `(yaw, pitch)` the
     /// `view_matrix` consumes - the rig tilt/roll basis inversion without
-    /// any coverage clamping. The orient half of [`Self::safe_clamp`];
+    /// any coverage clamping;
     /// the unconstrained render path uses it so disabling the clamp never
     /// disables horizon leveling.
-    pub fn orient_pose(&self, world: Pose) -> Pose {
+    pub fn world_to_render_pose(&self, world: Pose) -> Pose {
         let framing = &self.executor.calibration().framing;
-        let cam = self.executor.projection().virtual_camera(framing);
+        let cam = self.calibration().virtual_camera();
         let (yaw, pitch) = crate::geometry::world_to_render_pose(
             &cam,
             world.yaw,
@@ -420,6 +377,28 @@ impl StitchCore {
             yaw,
             pitch,
             fov_degrees: world.fov_degrees,
+        }
+    }
+
+    /// Recover the world-space look direction of a render-space pose under the accepted calibration.
+    ///
+    /// Inverse of [`Self::world_to_render_pose`] away from the yaw singularity at the poles. Preserves FOV and does not run coverage. Use before a framing edit, then orient the result under the accepted new calibration to retain the look direction.
+    pub fn render_to_world_pose(&self, render: Pose) -> Pose {
+        let framing = &self.calibration().framing;
+        let camera = self.calibration().virtual_camera();
+        let view = crate::geometry::view_matrix(
+            &camera,
+            render.yaw,
+            render.pitch,
+            framing.tilt as f32,
+            framing.roll as f32,
+        );
+        let direction = nalgebra::Vector3::new(-view[(2, 0)], -view[(2, 1)], -view[(2, 2)]);
+        let angles = camera.direction_to_yaw_pitch(&direction);
+        Pose {
+            yaw: angles.yaw,
+            pitch: angles.pitch,
+            fov_degrees: render.fov_degrees,
         }
     }
 
@@ -439,9 +418,56 @@ impl StitchCore {
     /// the GPU streaming readback ring is rebuilt at the new size
     /// (frames in flight in the old ring are dropped) and the executor's
     /// NV12 delivery re-creates itself on next use (it is keyed by dims).
+    /// Configured coverage motion is rebuilt before the resize is accepted. A failed
+    /// map rebuild returns `None` without changing the viewport or motion state.
     pub fn resize(&mut self, width: u32, height: u32) -> Option<(u32, u32)> {
+        if width == 0 || height == 0 {
+            return None;
+        }
+        if (width, height) == (self.output_width, self.output_height)
+            && (width, height)
+                == (
+                    self.executor.viewport_size().width,
+                    self.executor.viewport_size().height,
+                )
+        {
+            return Some((width, height));
+        }
+        let rebuilt = match self
+            .coverage_motion
+            .as_ref()
+            .filter(|controller| {
+                !controller
+                    .matches_viewport(&crate::render::viewport::ViewportSize { width, height })
+            })
+            .map(|controller| {
+                controller.rebuild(
+                    self.calibration(),
+                    &crate::render::viewport::ViewportSize { width, height },
+                )
+            })
+            .transpose()
+        {
+            Ok(controller) => controller,
+            Err(error) => {
+                log::warn!("Coverage resize rejected: {error}");
+                return None;
+            }
+        };
+        self.apply_resize(width, height, rebuilt)
+    }
+
+    fn apply_resize(
+        &mut self,
+        width: u32,
+        height: u32,
+        rebuilt: Option<crate::projection::coverage::controller::Controller>,
+    ) -> Option<(u32, u32)> {
         let accepted = self.executor.resize(width, height);
         if accepted.is_some() {
+            if let Some(controller) = rebuilt {
+                self.coverage_motion = Some(controller);
+            }
             self.output_width = width;
             self.output_height = height;
             #[cfg(feature = "gpu")]
@@ -473,22 +499,14 @@ impl StitchCore {
         self.executor.set_flip_180(left, right);
     }
 
-    /// Maximum vertical FOV (degrees) that fits inside the coverage, or
-    /// `None` when the calibration produced a degenerate boundary.
+    /// Connected coverage FOV cap, or `None` before the map has been prepared.
     pub fn max_fov_degrees(&self) -> Option<f32> {
-        self.coverage.as_ref().map(|c| c.max_fov_degrees())
+        self.coverage_motion.as_ref().map(|c| c.cap())
     }
 
     // -----------------------------------------------------------------
     // Coverage / calibration / projection introspection
     // -----------------------------------------------------------------
-
-    /// The precomputed coverage boundary for "no-black" viewport
-    /// constraining. Some calibrations produce a degenerate boundary
-    /// in which case this is `None` (very rare in practice).
-    pub fn coverage(&self) -> Option<&CoverageBoundary> {
-        self.coverage.as_ref()
-    }
 
     /// Whether the render loop's pose resolution clamps through the
     /// coverage boundary. `true` by default. Consumers
@@ -501,16 +519,17 @@ impl StitchCore {
 
     /// Enable or disable constrained-look clamping.
     ///
-    /// When `true`, [`Self::submit_frame`] and the
-    /// `submit_frame_*_at_pose` variants pass the director's (or caller's)
-    /// pose through [`Self::safe_clamp`] before rendering.
-    /// When `false`, the raw pose is used verbatim; the FOV max is
-    /// still respected (pipeline-set) but coverage-based yaw/pitch
-    /// clamping is skipped.
+    /// Applies to [`Self::advance_pose`], director-driven push submits and session
+    /// presentation. Disabling it bypasses coverage but retains world-to-render
+    /// orientation. Changing the flag resets the motion clock, not the map.
+    /// Explicit render-at-pose methods consume an already-resolved render pose.
     ///
-    /// The public [`Self::safe_clamp`] method is unaffected - it
-    /// always clamps, regardless of this flag.
     pub fn set_constrained_look(&mut self, enabled: bool) {
+        if enabled != self.constrained_look
+            && let Some(controller) = &mut self.coverage_motion
+        {
+            controller.reset();
+        }
         self.constrained_look = enabled;
     }
 
@@ -518,23 +537,8 @@ impl StitchCore {
     /// Consumers handling `HotkeyIntent::ToggleConstrained`
     /// wire it to this method.
     pub fn toggle_constrained_look(&mut self) -> bool {
-        self.constrained_look = !self.constrained_look;
+        self.set_constrained_look(!self.constrained_look);
         self.constrained_look
-    }
-
-    /// Full angular extent of the stitched panorama, derived from the
-    /// coverage boundary. Higher-level shortcut for analytics consumers.
-    pub fn panorama_extent(&self) -> Option<PanoramaExtent> {
-        self.coverage.as_ref().map(|c| {
-            let (yaw_min, yaw_max) = c.yaw_range();
-            let (pitch_min, pitch_max) = c.pitch_range();
-            PanoramaExtent {
-                yaw_min,
-                yaw_max,
-                pitch_min,
-                pitch_max,
-            }
-        })
     }
 
     /// Short name of the active projection (for logs + UI labels).
@@ -789,7 +793,10 @@ mod tests {
         assert_eq!(core.output_dims(), (w, h));
         assert_eq!(core.camera_count(), 2);
         assert_eq!(core.projection_name(), "l-shape-stereo-2camera");
-        assert!(core.coverage().is_some(), "coverage builds without a GPU");
+        assert!(
+            core.prepare_coverage().is_ok(),
+            "coverage builds without a GPU"
+        );
         assert!(core.max_fov_degrees().is_some());
 
         let mut calibration = core.calibration().clone();
@@ -802,16 +809,15 @@ mod tests {
         assert_eq!(core.output_dims(), (48, 26));
 
         // Coverage clamp works CPU-side (pure geometry).
-        let clamped = core.safe_clamp(Pose {
+        let requested = Pose {
             yaw: 10.0,
             pitch: 10.0,
             fov_degrees: 50.0,
-        });
+        };
+        let clamped = core.constrain_render_pose(requested, requested).unwrap();
         assert!(clamped.yaw.is_finite() && clamped.pitch.is_finite());
-        assert!(
-            clamped.yaw.abs() < 10.0,
-            "clamp actually constrained the pose"
-        );
+        assert!(clamped.pitch.abs() < std::f32::consts::FRAC_PI_2);
+        assert!(clamped.fov_degrees <= core.max_fov_degrees().unwrap());
 
         // The YUV submit path works on the CPU arm - synchronously
         // (no warmup), at the resized output dimensions.
@@ -823,7 +829,7 @@ mod tests {
             v: uv,
         };
         let frames = crate::source::FrameSet::Yuv420p(vec![cam.clone(), cam]);
-        match core.submit_frame(&frames) {
+        match core.submit_frame(&frames, 1.0 / 30.0) {
             Ok(crate::core::types::RenderOutcome::Rgba(bytes)) => {
                 assert_eq!(bytes.len(), 48 * 26 * 4);
             }
@@ -877,7 +883,7 @@ mod tests {
         };
         let mono_set = crate::source::FrameSet::Yuv420p(vec![cam]);
         // RenderOutcome borrows the core and is not Debug; unwrap by match.
-        let err = match core.submit_frame(&mono_set) {
+        let err = match core.submit_frame(&mono_set, 1.0 / 30.0) {
             Ok(_) => panic!("a 1-camera set on a 2-camera projection must be rejected"),
             Err(e) => e,
         };
@@ -933,7 +939,10 @@ mod tests {
         let mut gpu_core = StitchCore::new(Executor::Gpu(Box::new(gpu_exec))).expect("gpu engine");
 
         // CPU: synchronous - the first submit yields the frame.
-        let cpu_rgba = match cpu_core.submit_frame(&frames).expect("cpu submit") {
+        let cpu_rgba = match cpu_core
+            .submit_frame(&frames, 1.0 / 30.0)
+            .expect("cpu submit")
+        {
             RenderOutcome::Rgba(bytes) => bytes.to_vec(),
             RenderOutcome::Warmup => panic!("CPU submit is synchronous - no warmup"),
         };
@@ -943,7 +952,9 @@ mod tests {
         // (same input, same resolved pose), so any yielded frame works.
         let mut gpu_rgba = None;
         for _ in 0..3 {
-            if let RenderOutcome::Rgba(bytes) = gpu_core.submit_frame(&frames).expect("gpu submit")
+            if let RenderOutcome::Rgba(bytes) = gpu_core
+                .submit_frame(&frames, 1.0 / 30.0)
+                .expect("gpu submit")
             {
                 gpu_rgba = Some(bytes.to_vec());
                 break;
@@ -995,14 +1006,16 @@ mod tests {
         ]);
 
         // Warm the ring at the original size, then resize.
-        let _ = core.submit_frame(&frames).expect("submit");
+        let _ = core.submit_frame(&frames, 1.0 / 30.0).expect("submit");
         assert_eq!(core.resize(128, 72), Some((128, 72)));
 
         // The rebuilt ring delivers frames at the new size by the
         // third post-resize submit.
         let mut delivered = None;
         for _ in 0..3 {
-            if let RenderOutcome::Rgba(bytes) = core.submit_frame(&frames).expect("submit") {
+            if let RenderOutcome::Rgba(bytes) =
+                core.submit_frame(&frames, 1.0 / 30.0).expect("submit")
+            {
                 delivered = Some(bytes.len());
                 break;
             }

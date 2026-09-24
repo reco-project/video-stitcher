@@ -12,7 +12,7 @@ pub mod tracker;
 
 /// Shared interface for types that accept detection/tracking/panning
 /// configuration. Implemented by both [`StitchCore`](crate::core::StitchCore)
-/// and [`StitchSession`](crate::session::StitchSession), so consumers like
+/// and `StitchSession` (with the `gpu` feature), so consumers like
 /// `reco_autocam::setup_autocam` can configure either without duplication.
 pub trait DetectionTarget {
     /// Attach a detector backend.

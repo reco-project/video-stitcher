@@ -110,6 +110,8 @@ pub enum ErrorPolicy {
 /// conflict with trivial cost (~150 bytes of scalars).
 #[derive(Default)]
 pub(crate) struct FrameLoopContext {
+    /// Output frame duration, independent of decode and processing time.
+    pub(crate) frame_seconds: f32,
     /// CUDA buffer info for GPU detection (Linux zero-copy path).
     #[cfg(target_os = "linux")]
     pub(crate) gpu_buf_info: Option<(

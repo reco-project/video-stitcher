@@ -26,13 +26,23 @@ pub struct Pose {
     ///
     /// Typical range: 30.0 (zoomed in) to 120.0 (wide). The single
     /// home for fov: it travels with yaw/pitch in every pose, and the
-    /// render boundary clamps it to `(1, 179)` before building a
+    /// render boundary clamps it to `[1, 179]` before building a
     /// projection matrix. There is no retained pipeline fov state.
     pub fov_degrees: f32,
 }
 
+/// An angular direction in the virtual camera's reference frame, without zoom.
+/// Rig tilt and roll are not applied to these world-reference angles.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct YawPitch {
+    /// Horizontal angle in radians.
+    pub yaw: f32,
+    /// Vertical angle in radians; positive looks up.
+    pub pitch: f32,
+}
+
 impl Pose {
-    /// The fov this pose renders with: clamped to `(1, 179)` degrees.
+    /// The fov this pose renders with: clamped to `[1, 179]` degrees.
     ///
     /// The single home for the render-boundary guard - 0 or 180 would
     /// produce a NaN/Inf projection matrix (GPU) or a degenerate

@@ -8,10 +8,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::calibration::{
-    Calibration, CalibrationError, Framing, expect_finite, expect_in_range, expect_positive,
+    CalibrationError, Framing, Lens, expect_finite, expect_in_range, expect_positive,
 };
 use crate::geometry::{CameraIndex, Pose, VirtualCamera};
-use crate::projection::{CoverageBoundary, Projection, ProjectionContext};
+use crate::projection::{Projection, ProjectionContext, SourceMapError};
 use crate::render::viewport::ViewportSize;
 use crate::stitch::{BlendRule, SurfaceMap, SurfaceUv};
 
@@ -92,24 +92,22 @@ impl Projection for Cylinder {
         VirtualCamera::new(&[0.0, 0.0, 0.0], &[0.0, 0.0, -1.0])
     }
 
-    fn camera_to_panorama(
+    fn map_source_point(
         &self,
         _camera: CameraIndex,
-        _norm_x: f32,
-        _norm_y: f32,
-        _calibration: &Calibration,
-    ) -> Option<Pose> {
-        // Detection dispatch is still two-camera-only. Returning None makes
-        // the cylinder's absent inverse map explicit without implying support.
-        None
+        _point: [f32; 2],
+        _lenses: &[Lens],
+        _framing: &Framing,
+    ) -> Result<crate::geometry::YawPitch, SourceMapError> {
+        Err(SourceMapError::Unsupported)
     }
 
     fn surface_maps(&self, ctx: &ProjectionContext) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {
         vec![(
             Box::new(CylinderMap::new(
                 self,
-                &ctx.calibration.framing,
-                f64::from(ctx.calibration.lenses[0].height),
+                ctx.framing,
+                f64::from(ctx.lenses[0].height),
                 ctx.viewport_size,
                 ctx.pose,
             )),
@@ -126,30 +124,6 @@ impl Projection for Cylinder {
         // plane pipeline and render garbage. None fails GPU-executor
         // construction fast; the CPU path is complete.
         None
-    }
-
-    /// The cylinder's panorama is exactly rectangular in (yaw, pitch):
-    /// yaw spans the angular sweep, pitch spans what the painted
-    /// height subtends at the radius.
-    fn coverage(&self, calibration: &Calibration) -> CoverageBoundary {
-        let yaw_half = (self.sweep_deg.to_radians() * 0.5) as f32;
-        let height = self
-            .video_height
-            .unwrap_or(f64::from(calibration.lenses[0].height));
-        let pitch_half = (((height * 0.5) / self.focal_length).atan()) as f32;
-        // The painted band is world-fixed; rig tilt/roll shape how
-        // panning traverses it, not where it is - the clamp's rotated
-        // viewport margining (the same mechanism a tilted L-shape
-        // uses) accounts for the edge roll.
-        CoverageBoundary::rectangular(
-            -yaw_half,
-            yaw_half,
-            -pitch_half,
-            pitch_half,
-            self.virtual_camera(&calibration.framing),
-            calibration.framing.tilt as f32,
-            calibration.framing.roll as f32,
-        )
     }
 }
 
@@ -212,10 +186,6 @@ struct CylinderMap {
     /// Half the painted height (world units): bounds the ray-cylinder
     /// hit vertically and maps linearly to source V.
     half_height: f64,
-    /// Output dimensions, cast once here because `sample_uv` runs per
-    /// output pixel.
-    out_w: f64,
-    out_h: f64,
 }
 
 impl CylinderMap {
@@ -295,18 +265,49 @@ impl CylinderMap {
             radius: cylinder.focal_length,
             sweep: cylinder.sweep_deg.to_radians(),
             half_height: cylinder.video_height.unwrap_or(source_height_px) * 0.5,
-            out_w: f64::from(viewport_size.width),
-            out_h: f64::from(viewport_size.height),
         }
     }
 }
 
 impl SurfaceMap for CylinderMap {
-    fn sample_uv(&self, out_x: u32, out_y: u32) -> Option<SurfaceUv> {
-        // Pixel centre -> NDC, +Y up (the top output row looks up).
-        let ndc_x = (f64::from(out_x) + 0.5) / self.out_w * 2.0 - 1.0;
-        let ndc_y = 1.0 - (f64::from(out_y) + 0.5) / self.out_h * 2.0;
+    fn covers_ndc(&self, min: [f64; 2], max: [f64; 2], rotation_bound: f64) -> bool {
+        use super::interval::Interval as I;
+        if !rotation_bound.is_finite() || !(0.0..=std::f64::consts::PI).contains(&rotation_bound) {
+            return false;
+        }
+        let (x, y) = (I::new(min[0], max[0]), I::new(min[1], max[1]));
+        let ray = |i: usize| {
+            I::point(self.forward[i])
+                + x * I::point(self.right[i] * self.tan_half_h)
+                + y * I::point(self.up[i] * self.tan_half_v)
+        };
+        let (rx, ry, rz) = (ray(0), ray(1), ray(2));
+        let horiz = (rx.square() + rz.square()).sqrt();
+        let height = ry.abs_max() * self.radius;
+        let limit = self.half_height * horiz.lo;
+        if !horiz.finite()
+            || !height.is_finite()
+            || !limit.is_finite()
+            || !(self.radius / horiz.lo).is_finite()
+            || horiz.lo < 1e-9
+            || height > limit - 1e-7
+        {
+            return false;
+        }
+        if self.sweep >= std::f64::consts::TAU {
+            return true;
+        }
+        let (s, c) = (self.sweep * 0.5).sin_cos();
+        let a = I::point(-s) * rz + I::point(c) * rx;
+        let b = I::point(-s) * rz - I::point(c) * rx;
+        if self.sweep <= std::f64::consts::PI {
+            a.lo > 1e-7 && b.lo > 1e-7
+        } else {
+            a.lo > 1e-7 || b.lo > 1e-7
+        }
+    }
 
+    fn sample_uv(&self, [ndc_x, ndc_y]: [f64; 2]) -> Option<SurfaceUv> {
         let a = ndc_x * self.tan_half_h;
         let b = ndc_y * self.tan_half_v;
         let ray = [
@@ -441,7 +442,7 @@ mod tests {
                         },
                         pose(yaw, pitch),
                     );
-                    let sample = map.sample_uv(0, 0).expect("center ray covered");
+                    let sample = map.sample_uv([0.0, 0.0]).expect("center ray covered");
                     let theta = (sample.u - 0.5) * cylinder.sweep_deg.to_radians();
                     let hit = nalgebra::Vector4::new(
                         (cylinder.focal_length * theta.sin()) as f32,
@@ -465,7 +466,9 @@ mod tests {
 
     #[test]
     fn center_pixel_at_zero_pose_samples_the_video_center() {
-        let s = map(0.0, 0.0).sample_uv(100, 50).expect("center covered");
+        let s = map(0.0, 0.0)
+            .sample_uv(cfg().pixel_ndc(100, 50))
+            .expect("center covered");
         assert!((s.u - 0.5).abs() < TOL, "u = {}", s.u);
         assert!((s.v - 0.5).abs() < TOL, "v = {}", s.v);
     }
@@ -475,8 +478,8 @@ mod tests {
         // The un-mirrored invariant: at pose zero, the right side of
         // the output shows the right half of the panorama.
         let m = map(0.0, 0.0);
-        let left_px = m.sample_uv(10, 50).unwrap();
-        let right_px = m.sample_uv(190, 50).unwrap();
+        let left_px = m.sample_uv(cfg().pixel_ndc(10, 50)).unwrap();
+        let right_px = m.sample_uv(cfg().pixel_ndc(190, 50)).unwrap();
         assert!(
             left_px.u < 0.5 && right_px.u > 0.5,
             "screen left/right must sample video left/right: {} / {}",
@@ -489,8 +492,8 @@ mod tests {
     fn yaw_follows_the_virtual_camera_sense() {
         // VirtualCamera's positive yaw turns toward -X = the video's
         // left half; the magnitude is exact (0.4 rad over a PI sweep).
-        let ahead = map(0.0, 0.0).sample_uv(100, 50).unwrap();
-        let panned = map(0.4, 0.0).sample_uv(100, 50).unwrap();
+        let ahead = map(0.0, 0.0).sample_uv(cfg().pixel_ndc(100, 50)).unwrap();
+        let panned = map(0.4, 0.0).sample_uv(cfg().pixel_ndc(100, 50)).unwrap();
         assert!(
             panned.u < ahead.u - 0.05,
             "yaw +0.4 turns toward the video's left: {} -> {}",
@@ -503,7 +506,7 @@ mod tests {
 
     #[test]
     fn positive_pitch_looks_up_toward_lower_v() {
-        let up = map(0.0, 0.2).sample_uv(100, 50).unwrap();
+        let up = map(0.0, 0.2).sample_uv(cfg().pixel_ndc(100, 50)).unwrap();
         // Center ray at pitch p hits at y = r*tan(p): v = 0.5 - r*tan(p)/h.
         let t = Cylinder::default();
         let expected = 0.5 - t.focal_length * (0.2f64).tan() / SRC_H;
@@ -527,8 +530,8 @@ mod tests {
             &cfg(),
             pose(0.0, 0.0),
         );
-        let top = tall.sample_uv(100, 0).unwrap();
-        let bottom = tall.sample_uv(100, 99).unwrap();
+        let top = tall.sample_uv(cfg().pixel_ndc(100, 0)).unwrap();
+        let bottom = tall.sample_uv(cfg().pixel_ndc(100, 99)).unwrap();
         assert!(
             top.v < bottom.v,
             "the top output row must sample the upper video region: {} vs {}",
@@ -540,14 +543,14 @@ mod tests {
     #[test]
     fn rays_beyond_the_sweep_are_discarded() {
         // 180-degree sweep: looking straight backward has no coverage.
-        let s = map(std::f32::consts::PI, 0.0).sample_uv(100, 50);
+        let s = map(std::f32::consts::PI, 0.0).sample_uv(cfg().pixel_ndc(100, 50));
         assert!(s.is_none(), "the back of the cylinder is unpainted");
     }
 
     #[test]
     fn rays_beyond_the_painted_height_are_discarded() {
         // Looking up past the band: pitch well beyond atan(540/2400).
-        let s = map(0.0, 0.5).sample_uv(100, 50);
+        let s = map(0.0, 0.5).sample_uv(cfg().pixel_ndc(100, 50));
         assert!(s.is_none(), "above the painted band");
     }
 
@@ -557,7 +560,7 @@ mod tests {
         // the tilt: the center pixel samples r*tan(t) above the video
         // center, exactly like pitching by t (band height 20k here).
         let tilted = map_rig(0.15, 0.0, 0.0);
-        let s = tilted.sample_uv(100, 50).unwrap();
+        let s = tilted.sample_uv(cfg().pixel_ndc(100, 50)).unwrap();
         let t = Cylinder::default();
         let expected = 0.5 - t.focal_length * (0.15f64).tan() / 20_000.0;
         assert!((s.v - expected).abs() < TOL, "v = {} vs {expected}", s.v);
@@ -572,14 +575,14 @@ mod tests {
         // so yaw + offset stays inside the 180-degree sweep.
         let level_v = {
             let m = map_rig(0.0, 0.0, 0.9);
-            let l = m.sample_uv(60, 50).unwrap();
-            let r = m.sample_uv(140, 50).unwrap();
+            let l = m.sample_uv(cfg().pixel_ndc(60, 50)).unwrap();
+            let r = m.sample_uv(cfg().pixel_ndc(140, 50)).unwrap();
             (l.v - r.v).abs()
         };
         let tilted_v = {
             let m = map_rig(0.15, 0.0, 0.9);
-            let l = m.sample_uv(60, 50).unwrap();
-            let r = m.sample_uv(140, 50).unwrap();
+            let l = m.sample_uv(cfg().pixel_ndc(60, 50)).unwrap();
+            let r = m.sample_uv(cfg().pixel_ndc(140, 50)).unwrap();
             (l.v - r.v).abs()
         };
         assert!(level_v < 5e-3, "level rig stays symmetric: {level_v}");
@@ -596,16 +599,16 @@ mod tests {
         // displace vertically, the center pixel stays on the axis.
         let level_m = map_rig(0.0, 0.0, 0.0);
         let rolled = map_rig(0.0, 0.15, 0.0);
-        let l = level_m.sample_uv(180, 50).unwrap();
-        let r = rolled.sample_uv(180, 50).unwrap();
+        let l = level_m.sample_uv(cfg().pixel_ndc(180, 50)).unwrap();
+        let r = rolled.sample_uv(cfg().pixel_ndc(180, 50)).unwrap();
         assert!(
             (l.v - r.v).abs() > 1e-3,
             "roll must displace off-center samples: {} vs {}",
             l.v,
             r.v
         );
-        let lc = level_m.sample_uv(100, 50).unwrap();
-        let rc = rolled.sample_uv(100, 50).unwrap();
+        let lc = level_m.sample_uv(cfg().pixel_ndc(100, 50)).unwrap();
+        let rc = rolled.sample_uv(cfg().pixel_ndc(100, 50)).unwrap();
         assert!((lc.u - rc.u).abs() < TOL && (lc.v - rc.v).abs() < TOL);
     }
 }

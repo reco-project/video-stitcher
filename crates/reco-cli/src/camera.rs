@@ -536,7 +536,7 @@ pub fn run_camera(
                 } else {
                     session.update_director(start.elapsed())?;
                 }
-                let pos = session.director_position();
+                let pos = session.advance_presented_pose(1.0 / capture_fps as f32)?;
                 session.process_frame_gpu_rgba(
                     demosaic_left.output_texture(),
                     demosaic_right.output_texture(),
@@ -616,7 +616,7 @@ pub fn run_camera(
         // camera ISP + GPU pipeline init don't skew the reported rate.
         if let Some(frames) = source.next_frame()? {
             session.detect_and_update_director(&frames, start.elapsed())?;
-            let pos = session.director_position();
+            let pos = session.advance_presented_pose(1.0 / capture_fps as f32)?;
             session.process_frame(&frames, pos)?;
             println!("Warmup complete, starting capture...");
         }
@@ -633,7 +633,7 @@ pub fn run_camera(
             };
 
             session.detect_and_update_director(&frames, start.elapsed())?;
-            let pos = session.director_position();
+            let pos = session.advance_presented_pose(1.0 / capture_fps as f32)?;
             session.process_frame(&frames, pos)?;
             frame_count += 1;
             progress.report(frame_count);
@@ -666,7 +666,7 @@ pub fn run_camera(
             };
 
             session.detect_and_update_director(&frame, start.elapsed())?;
-            let pos = session.director_position();
+            let pos = session.advance_presented_pose(1.0 / capture_fps as f32)?;
             session.process_frame(&frame, pos)?;
             frame_count += 1;
             progress.report(frame_count);

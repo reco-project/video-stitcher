@@ -10,6 +10,17 @@ use super::StitchSession;
 use crate::session::types::{FrameProgress, ProgressCallback, SessionError};
 use crate::source::FrameSource;
 
+fn frame_seconds(fps: f64) -> Result<f32, SessionError> {
+    let seconds = (1.0 / fps) as f32;
+    if fps.is_finite() && fps > 0.0 && seconds.is_finite() && seconds > 0.0 {
+        Ok(seconds)
+    } else {
+        Err(SessionError::Config(format!(
+            "source frame rate must be finite and positive, got {fps}"
+        )))
+    }
+}
+
 /// Centered moving-average of a pose over the past + current + ahead
 /// window. Averages yaw, pitch, AND fov, so the zoom is smoothed the
 /// same lag-free way the angles are - otherwise FOV jitter survives the
@@ -225,6 +236,7 @@ impl StitchSession {
 
         let start = std::time::Instant::now();
         let ctx = crate::session::types::FrameLoopContext {
+            frame_seconds: frame_seconds(source.info().fps)?,
             #[cfg(target_os = "linux")]
             gpu_buf_info: self.core.executor.gpu().and_then(|g| g.cuda_buf_info()),
         };
@@ -497,6 +509,7 @@ impl StitchSession {
         let start = std::time::Instant::now();
 
         let ctx = crate::session::types::FrameLoopContext {
+            frame_seconds: frame_seconds(source.info().fps)?,
             #[cfg(target_os = "linux")]
             gpu_buf_info: self.core.executor.gpu().and_then(|g| g.cuda_buf_info()),
         };
@@ -570,6 +583,7 @@ impl StitchSession {
             self.core.executor.viewport_size().height
         );
 
+        let frame_seconds = frame_seconds(source.info().fps)?;
         let mut nv12 = Vec::new();
         while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
             let frame_t0 = std::time::Instant::now();
@@ -590,7 +604,7 @@ impl StitchSession {
             }
 
             let stitch_t0 = std::time::Instant::now();
-            let outcome = self.core.submit_frame(&frame)?;
+            let outcome = self.core.submit_frame(&frame, frame_seconds)?;
             let crate::core::types::RenderOutcome::Rgba(rgba) = outcome else {
                 unreachable!("the CPU executor stitches synchronously - no warmup");
             };
@@ -631,5 +645,18 @@ impl StitchSession {
         }
 
         Ok(self.frame_count)
+    }
+}
+
+#[cfg(test)]
+mod frame_rate_tests {
+    use super::frame_seconds;
+
+    #[test]
+    fn session_clock_rejects_unknown_or_unrepresentable_rates() {
+        for fps in [0.0, -30.0, f64::NAN, f64::INFINITY, f64::MAX] {
+            assert!(frame_seconds(fps).is_err(), "fps={fps}");
+        }
+        assert_eq!(frame_seconds(30.0).unwrap(), 1.0 / 30.0);
     }
 }

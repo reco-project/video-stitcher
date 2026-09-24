@@ -9,13 +9,13 @@ use nalgebra::{Matrix3, Matrix4, Perspective3, Point3, Translation3, UnitQuatern
 use serde::{Deserialize, Serialize};
 
 use crate::calibration::{
-    Calibration, CalibrationError, Framing, Lens, expect_finite, expect_in_range, expect_positive,
+    CalibrationError, Framing, Lens, expect_finite, expect_in_range, expect_positive,
 };
 use crate::geometry::{
     CameraIndex, FAR_PLANE, NEAR_PLANE, Pose, VirtualCamera, opengl_to_wgpu_matrix, view_matrix,
 };
 use crate::lens::kb4;
-use crate::projection::{CoverageBoundary, Projection, ProjectionContext};
+use crate::projection::{Projection, ProjectionContext, SourceMapError};
 use crate::render::viewport::ViewportSize;
 use crate::stitch::{BlendRule, SurfaceMap, SurfaceUv};
 
@@ -195,80 +195,6 @@ impl PlaneScene {
     }
 }
 
-/// Pitch slices in the sampled L-shape coverage representation.
-const COVERAGE_SLICES: usize = 400;
-/// Inset from source-frame edges to avoid unstable extreme lens corners.
-const COVERAGE_MARGIN: f32 = 0.02;
-/// Sampling intervals along each source-frame edge.
-const COVERAGE_EDGE_STEPS: u32 = 400;
-/// Sampling intervals along each axis of the interior grid.
-const COVERAGE_GRID_STEPS: u32 = 20;
-
-impl LShape {
-    /// Map against an already-derived plane scene. Coverage reuses one scene
-    /// for thousands of samples instead of rebuilding it per point.
-    fn camera_to_panorama_in_scene(
-        camera: CameraIndex,
-        norm_x: f32,
-        norm_y: f32,
-        lenses: &[Lens],
-        scene: &PlaneScene,
-    ) -> Option<Pose> {
-        // The index doubles as the lens lookup; out-of-range cameras map
-        // to None like any other unmappable input.
-        let params = lenses.get(camera)?;
-
-        // Camera pixel [0,1] -> plane UV in extended shader space.
-        let plane_uv = inverse_fisheye(norm_x as f64, norm_y as f64, params)?;
-        let world_point = plane_uv_to_world(plane_uv, camera, scene);
-        let camera_position = scene.camera.eye;
-        let direction = (world_point - camera_position).normalize();
-        Some(scene.camera.direction_to_yaw_pitch(&direction))
-    }
-
-    /// Sample the L-shape's irregular boundary while reusing one plane scene.
-    fn coverage_samples(lenses: &[Lens], scene: &PlaneScene) -> [Vec<(f32, f32)>; 2] {
-        let mut samples = [Vec::new(), Vec::new()];
-
-        for (camera, points) in samples.iter_mut().enumerate() {
-            // Dense edge sampling: 400 intervals on each of four edges.
-            for i in 0..=COVERAGE_EDGE_STEPS {
-                let t = COVERAGE_MARGIN
-                    + (1.0 - 2.0 * COVERAGE_MARGIN) * (i as f32 / COVERAGE_EDGE_STEPS as f32);
-                for &(norm_x, norm_y) in &[
-                    (t, COVERAGE_MARGIN),
-                    (t, 1.0 - COVERAGE_MARGIN),
-                    (COVERAGE_MARGIN, t),
-                    (1.0 - COVERAGE_MARGIN, t),
-                ] {
-                    if let Some(pose) =
-                        Self::camera_to_panorama_in_scene(camera, norm_x, norm_y, lenses, scene)
-                    {
-                        points.push((pose.yaw, pose.pitch));
-                    }
-                }
-            }
-
-            // Sparse interior grid: 20 intervals on each axis.
-            for x in 0..=COVERAGE_GRID_STEPS {
-                let norm_x = COVERAGE_MARGIN
-                    + (1.0 - 2.0 * COVERAGE_MARGIN) * (x as f32 / COVERAGE_GRID_STEPS as f32);
-                for y in 0..=COVERAGE_GRID_STEPS {
-                    let norm_y = COVERAGE_MARGIN
-                        + (1.0 - 2.0 * COVERAGE_MARGIN) * (y as f32 / COVERAGE_GRID_STEPS as f32);
-                    if let Some(pose) =
-                        Self::camera_to_panorama_in_scene(camera, norm_x, norm_y, lenses, scene)
-                    {
-                        points.push((pose.yaw, pose.pitch));
-                    }
-                }
-            }
-        }
-
-        samples
-    }
-}
-
 /// Inverse KB4 fisheye: distorted camera pixel `[0,1]` to extended plane UV.
 fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &Lens) -> Option<(f64, f64)> {
     let w = params.width as f64;
@@ -339,9 +265,6 @@ struct PlaneMap {
     /// `clip_z = z_row . [local_x, local_y, 1]`. The 3x3 inverse drops z, but the
     /// GPU rasterizer still depth-clips, so the z-row is kept to reconstruct it.
     z_row: (f64, f64, f64),
-    /// Output dimensions in pixels.
-    out_w: f64,
-    out_h: f64,
     /// Camera aspect (`width / height`) baked into the plane quad's half-height.
     plane_aspect: f64,
     /// Normalised intrinsics: `fx/w`, `fy/h`, `cx/w`, `cy/h` (by calibration
@@ -354,6 +277,8 @@ struct PlaneMap {
     d: [f64; 4],
     /// Lens-correction amount in `[0, 1]` (`1` = full KB4, `0` = equidistant).
     correction: f64,
+    tan_half_h: f64,
+    tan_half_v: f64,
 }
 
 impl PlaneMap {
@@ -362,8 +287,6 @@ impl PlaneMap {
         model: Matrix4<f32>,
         view_projection: &Matrix4<f32>,
         cam: &Lens,
-        out_w: u32,
-        out_h: u32,
         plane_aspect: f64,
         correction: f64,
     ) -> Self {
@@ -389,8 +312,6 @@ impl PlaneMap {
         Self {
             m3_inv,
             z_row,
-            out_w: out_w as f64,
-            out_h: out_h as f64,
             plane_aspect,
             fx_n: cam.fx / w,
             fy_n: cam.fy / h,
@@ -398,16 +319,84 @@ impl PlaneMap {
             cy_n: cam.cy / h,
             d: cam.distortion,
             correction,
+            tan_half_h: 1.0
+                / (view_projection[(0, 0)] as f64)
+                    .hypot(view_projection[(0, 1)] as f64)
+                    .hypot(view_projection[(0, 2)] as f64),
+            tan_half_v: 1.0
+                / (view_projection[(1, 0)] as f64)
+                    .hypot(view_projection[(1, 1)] as f64)
+                    .hypot(view_projection[(1, 2)] as f64),
         }
     }
 }
 
 impl SurfaceMap for PlaneMap {
-    fn sample_uv(&self, out_x: u32, out_y: u32) -> Option<SurfaceUv> {
-        // Output pixel centre -> wgpu NDC (x right, y up).
-        let ndc_x = (out_x as f64 + 0.5) / self.out_w * 2.0 - 1.0;
-        let ndc_y = 1.0 - (out_y as f64 + 0.5) / self.out_h * 2.0;
+    fn covers_ndc(&self, min: [f64; 2], max: [f64; 2], rotation_bound: f64) -> bool {
+        use super::interval::Interval as I;
+        if !rotation_bound.is_finite() || !(0.0..=std::f64::consts::PI).contains(&rotation_bound) {
+            return false;
+        }
+        let Some(m) = self.m3_inv else {
+            return false;
+        };
+        let (x, y) = (I::new(min[0], max[0]), I::new(min[1], max[1]));
+        let row = |i| I::point(m[(i, 0)]) * x + I::point(m[(i, 1)]) * y + I::point(m[(i, 2)]);
+        let w = row(2);
+        if w.lo <= 1e-12 {
+            return false;
+        }
+        let lx = row(0) / w;
+        let ly = row(1) / w;
+        let depth_coefficient =
+            |i| self.z_row.0 * m[(0, i)] + self.z_row.1 * m[(1, i)] + self.z_row.2 * m[(2, i)];
+        let depth = I::point(depth_coefficient(0)) * x
+            + I::point(depth_coefficient(1)) * y
+            + I::point(depth_coefficient(2));
+        if !depth.inside(1e-7, 1.0 - 1e-7) {
+            return false;
+        }
+        if rotation_bound > 0.0 {
+            let clip_w = I::point(1.0) / w;
+            let distance = clip_w.hi
+                * (1.0
+                    + (x.abs_max() * self.tan_half_h).powi(2)
+                    + (y.abs_max() * self.tan_half_v).powi(2))
+                .sqrt();
+            let margin = 2.0 * (rotation_bound * 0.5).sin() * distance;
+            if clip_w.lo - margin < f64::from(NEAR_PLANE) + 1e-6
+                || clip_w.hi + margin > f64::from(FAR_PLANE) - 1e-6
+            {
+                return false;
+            }
+        }
+        let u = lx + I::point(0.5);
+        let v = I::point(0.5) - ly * I::point(self.plane_aspect);
+        if !u.inside(1e-7, 1.0 - 1e-7) || !v.inside(1e-7, 1.0 - 1e-7) {
+            return false;
+        }
+        let xn = (u * I::point(2.0) - I::point(0.5 + self.cx_n)) / I::point(self.fx_n);
+        let yn = (v * I::point(2.0) - I::point(0.5 + self.cy_n)) / I::point(self.fy_n);
+        let r = (xn.square() + yn.square()).sqrt();
+        if !r.finite() {
+            return false;
+        }
+        // atan(r)/r decreases for nonnegative r. The shader blends only the polynomial coefficients.
+        let ratio = |r: f64| if r < 1e-10 { 1.0 } else { r.atan() / r };
+        let base = I::new(ratio(r.hi) - 1e-12, ratio(r.lo.max(0.0)) + 1e-12);
+        let t2 = I::new(r.lo.max(0.0).atan() - 1e-12, r.hi.atan() + 1e-12).square();
+        let mut polynomial = I::point(self.d[3] * self.correction);
+        for k in self.d[..3].iter().rev() {
+            polynomial = polynomial * t2 + I::point(k * self.correction);
+        }
+        polynomial = polynomial * t2 + I::point(1.0);
+        let scale = base * polynomial;
+        let du = I::point(self.fx_n) * xn * scale + I::point(self.cx_n);
+        let dv = I::point(self.fy_n) * yn * scale + I::point(self.cy_n);
+        du.inside(1e-7, 1.0 - 1e-7) && dv.inside(1e-7, 1.0 - 1e-7)
+    }
 
+    fn sample_uv(&self, [ndc_x, ndc_y]: [f64; 2]) -> Option<SurfaceUv> {
         // A singular MVP (edge-on plane) covers nothing.
         let m3_inv = self.m3_inv?;
         // Inverse rasterize to plane-local coordinates (homogeneous divide).
@@ -480,15 +469,16 @@ impl SurfaceMap for PlaneMap {
 /// every output pixel (up to f32/f64 precision).
 fn l_shape_plane_maps(
     topology: &LShape,
-    calib: &Calibration,
+    lenses: &[Lens],
+    framing: &Framing,
     viewport_size: &ViewportSize,
     pose: Pose,
 ) -> (PlaneMap, PlaneMap) {
     // Known limitation: both planes are sized with lens 0's aspect.
     // Mixed-aspect rigs are valid calibrations; per-plane aspects are
     // the planned generalization.
-    let plane_aspect = calib.lenses[0].aspect();
-    let scene = topology.scene(&calib.framing, plane_aspect);
+    let plane_aspect = lenses[0].aspect();
+    let scene = topology.scene(framing, plane_aspect);
 
     let out_aspect = viewport_size.aspect_ratio();
     let projection = opengl_to_wgpu_matrix()
@@ -503,8 +493,8 @@ fn l_shape_plane_maps(
         &scene.camera,
         pose.yaw,
         pose.pitch,
-        calib.framing.tilt as f32,
-        calib.framing.roll as f32,
+        framing.tilt as f32,
+        framing.roll as f32,
     );
     let view_projection = projection * view;
 
@@ -512,20 +502,16 @@ fn l_shape_plane_maps(
     let left = PlaneMap::new(
         scene.model_matrix_left(),
         &view_projection,
-        &calib.lenses[0],
-        viewport_size.width,
-        viewport_size.height,
+        &lenses[0],
         aspect,
-        calib.lenses[0].correction as f64,
+        lenses[0].correction as f64,
     );
     let right = PlaneMap::new(
         scene.model_matrix_right(),
         &view_projection,
-        &calib.lenses[1],
-        viewport_size.width,
-        viewport_size.height,
+        &lenses[1],
         aspect,
-        calib.lenses[1].correction as f64,
+        lenses[1].correction as f64,
     );
     (left, right)
 }
@@ -544,35 +530,29 @@ impl Projection for LShape {
         VirtualCamera::new(&[axis, 0.0, axis], &[-axis, 0.0, -axis])
     }
 
-    fn camera_to_panorama(
+    fn map_source_point(
         &self,
         camera: CameraIndex,
-        norm_x: f32,
-        norm_y: f32,
-        calibration: &Calibration,
-    ) -> Option<Pose> {
-        let scene = self.scene(&calibration.framing, calibration.lenses[0].aspect());
-        Self::camera_to_panorama_in_scene(camera, norm_x, norm_y, &calibration.lenses, &scene)
-    }
-
-    /// Dense edge sampling of both planes through the virtual camera -
-    /// the L-shape's panorama boundary is irregular, so it is measured,
-    /// not computed analytically.
-    fn coverage(&self, calibration: &Calibration) -> CoverageBoundary {
-        let scene = self.scene(&calibration.framing, calibration.lenses[0].aspect());
-        let samples = Self::coverage_samples(&calibration.lenses, &scene);
-        let per_camera = [samples[0].as_slice(), samples[1].as_slice()];
-        CoverageBoundary::from_samples(
-            &per_camera,
-            COVERAGE_SLICES,
-            self.virtual_camera(&calibration.framing),
-            calibration.framing.tilt as f32,
-            calibration.framing.roll as f32,
-        )
+        point: [f32; 2],
+        lenses: &[Lens],
+        framing: &Framing,
+    ) -> Result<crate::geometry::YawPitch, SourceMapError> {
+        let first = lenses.first().ok_or(SourceMapError::InvalidCamera)?;
+        let scene = self.scene(framing, first.aspect());
+        let lens = lenses.get(camera).ok_or(SourceMapError::InvalidCamera)?;
+        let plane_uv = inverse_fisheye(f64::from(point[0]), f64::from(point[1]), lens)
+            .ok_or(SourceMapError::NoDirection)?;
+        let world_point = plane_uv_to_world(plane_uv, camera, &scene);
+        let direction = (world_point - scene.camera.eye).normalize();
+        if !direction.iter().all(|v| v.is_finite()) {
+            return Err(SourceMapError::NoDirection);
+        }
+        Ok(scene.camera.direction_to_yaw_pitch(&direction))
     }
 
     fn surface_maps(&self, ctx: &ProjectionContext) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {
-        let (left, right) = l_shape_plane_maps(self, ctx.calibration, ctx.viewport_size, ctx.pose);
+        let (left, right) =
+            l_shape_plane_maps(self, ctx.lenses, ctx.framing, ctx.viewport_size, ctx.pose);
         vec![
             (Box::new(left), BlendRule::Opaque),
             (
@@ -769,14 +749,15 @@ mod tests {
         let cfg = ViewportSize::default();
         let cal = crate::stitch::test_support::calib(1920, 1080);
         let topology = cal.topology.l_shape().unwrap();
-        let (left, right) = l_shape_plane_maps(topology, &cal, &cfg, Pose::default());
+        let (left, right) =
+            l_shape_plane_maps(topology, &cal.lenses, &cal.framing, &cfg, Pose::default());
         // Across the output, every covered pixel must report a UV inside [0,1],
         // and at least one plane must cover a healthy fraction of the frame.
         let mut covered = 0usize;
         for y in (0..cfg.height).step_by(17) {
             for x in (0..cfg.width).step_by(17) {
                 for m in [&left, &right] {
-                    if let Some(s) = m.sample_uv(x, y) {
+                    if let Some(s) = m.sample_uv(cfg.pixel_ndc(x, y)) {
                         assert!((0.0..=1.0).contains(&s.u) && (0.0..=1.0).contains(&s.v));
                         covered += 1;
                     }

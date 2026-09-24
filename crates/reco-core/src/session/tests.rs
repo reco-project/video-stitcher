@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use super::StitchSession;
+mod coverage;
 use super::types::*;
 use crate::calibration::{Calibration, Framing, Lens};
 use crate::detect::detector::{Detection, DetectorError, DetectorFrame, UnifiedDetector};
@@ -591,7 +592,7 @@ fn push_and_pull_share_one_ai_brain() {
 
     for _ in 0..FRAMES {
         let frames = solid_frame();
-        core.submit_frame(&frames).expect("submit");
+        core.submit_frame(&frames, 1.0 / 30.0).expect("submit");
     }
 
     let pull = pull_log.lock().unwrap();
@@ -783,7 +784,10 @@ fn mono_cylinder_session_runs_end_to_end_without_gpu() {
     const FRAMES: u64 = 4;
     let cal = Calibration::new(
         vec![crate::calibration::Lens::flat(W, H)],
-        crate::projection::Cylinder::default(),
+        crate::projection::Cylinder {
+            focal_length: f64::from(W),
+            ..Default::default()
+        },
         Framing {
             axis_offset: 0.0,
             tilt: 0.0,

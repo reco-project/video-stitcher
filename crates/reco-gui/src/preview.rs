@@ -165,15 +165,14 @@ impl PreviewBridge {
         (self.viewport_width, self.viewport_height)
     }
 
-    /// Resize the render target. Updates both the pipeline viewport and
-    /// the texture dimensions used for per-frame allocation.
-    pub fn resize(&mut self, width: u32, height: u32) {
-        if width == 0 || height == 0 {
-            return;
+    /// Poll a nonblocking preview resize. Texture dimensions change only after coverage accepts it.
+    pub fn resize(&mut self, width: u32, height: u32) -> Result<bool, StitchCoreError> {
+        let accepted = self.engine.resize_preview(width, height)?;
+        if accepted {
+            self.viewport_width = width;
+            self.viewport_height = height;
         }
-        self.viewport_width = width;
-        self.viewport_height = height;
-        self.engine.resize(width, height);
+        Ok(accepted)
     }
 
     /// Render a single camera through orthographic projection with

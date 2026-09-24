@@ -9,15 +9,15 @@ use crate::session::types::{FrameLoopContext, SessionError};
 use crate::source::FrameSet;
 
 impl StitchSession {
-    /// Get the current viewport position from the director, or default.
+    /// Resolve the latest world-space camera decision for the next submitted frame.
     ///
-    /// The engine resolves it: the panner's latest world-space decision
-    /// through [`StitchCore::safe_clamp`](crate::core::StitchCore::safe_clamp)
-    /// (the single pose-resolution authority - FOV cap, coverage clamp,
-    /// roll-aware basis inversion), the `PosePresented` trace, and the
-    /// FOV write-back. Panners output unconstrained positions.
-    pub fn director_position(&mut self) -> Pose {
-        self.core.presented_clamped_pose(self.frame_count)
+    /// Manual source loops call this after detection and director updates, before an explicit render-at-pose method. `frame_seconds` is the output frame duration, independent of processing time. The batch loop calls this automatically after lookahead smoothing, for every frame residency.
+    pub fn advance_presented_pose(&mut self, frame_seconds: f32) -> Result<Pose, SessionError> {
+        Ok(self.core.advance_pose(
+            self.core.previous_panner_pose,
+            self.frame_count,
+            frame_seconds,
+        )?)
     }
 
     /// Full per-frame pipeline: detect, pose, render, replay, telemetry.
@@ -41,8 +41,6 @@ impl StitchSession {
         frame_t0: std::time::Instant,
         ctx: &FrameLoopContext,
     ) -> Result<(), SessionError> {
-        let _ = &ctx;
-
         // In the buffered lookahead path, detection already ran during
         // the produce phase. Skip it here and go straight to pose.
         let (ran_detection, detect_time) = if self.skip_detection {
@@ -169,7 +167,7 @@ impl StitchSession {
         };
 
         // ── 2. Pose ────────────────────────────────────────────────
-        let pos = self.director_position();
+        let pos = self.advance_presented_pose(ctx.frame_seconds)?;
 
         // ── 3. Render + replay ─────────────────────────────────────
         #[allow(unused_mut)]

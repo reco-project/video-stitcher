@@ -8,7 +8,7 @@ The 2026-04-18 deep review found consumer input paths duplicated three ways acro
 
 ## What it owns
 
-- **`PoseControl`** - the unified mouse / drag / wheel / keyboard -> yaw / pitch / FOV state machine. Stores the pose in world space and eases `current` toward `target` each tick. The single source of truth for viewport panning across consumers. The rig tilt/roll correction that keeps the horizon level is applied at the render site by `reco_core::render::stitch_renderer::StitchRenderer::orient_pose`, not here.
+- **`PoseControl`** - the shared mouse / drag / wheel / keyboard -> yaw / pitch / FOV state machine. Stores render-space poses and accepts direct input through `StitchCore::constrain_render_pose`, without tracking inertia. Convert world-space reset directions with `StitchCore::world_to_render_pose` before giving them to the control; do not orient the accepted pose again when rendering.
 - **`ControlIntent`** - a small intent vocabulary (`Hotkey`, `Pose`) for surfaces that speak a higher level than raw mouse deltas.
 - **`IntentTranslator`** - dispatches a `ControlIntent` stream onto a borrowed `PoseControl`.
 

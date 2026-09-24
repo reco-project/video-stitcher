@@ -4,17 +4,11 @@
 //! system) into the render-space pose the `view_matrix` consumes, so the
 //! rendered horizon stays level under pan on a tilted/rolled rig.
 //!
-//! - `world_to_render_pose` (crate-internal): the orient leaf - exact
-//!   inverse of `view_matrix`'s yaw/pitch composition in the tilted+rolled
-//!   reference frame.
-//! - `resolve_render_pose` (crate-internal): coverage-clamp + orient,
-//!   the combined authority for the auto/AI path.
+//! The inverse of `view_matrix`'s yaw/pitch composition in the tilted and rolled reference frame.
 
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
 use nalgebra::{Unit, UnitQuaternion, Vector3};
-
-use crate::projection::CoverageBoundary;
 
 use super::virtual_camera::VirtualCamera;
 
@@ -115,87 +109,6 @@ pub fn world_to_render_pose(
     // Principal yaw for downstream clamps.
     let yaw = (yaw + PI).rem_euclid(TAU) - PI;
     (yaw, pitch)
-}
-
-/// Signed roll of the rendered viewport relative to the panorama's
-/// upright frame at a world-space pose: the angle between `view_matrix`'s
-/// rendered up vector and the zero-roll up for that look direction.
-///
-/// Zero on a level rig (panning never rolls the frame); grows with pan
-/// on a tilted/rolled rig - the intentional "natural roll" `view_matrix`
-/// documents. [`CoverageBoundary::safe_clamp`] uses it to size its
-/// margins against the *rotated* viewport rectangle instead of an
-/// axis-aligned one, which under tilt leaked black corners past the
-/// clamp.
-pub(crate) fn render_viewport_roll(
-    cam: &VirtualCamera,
-    world_yaw: f32,
-    world_pitch: f32,
-    rig_tilt: f32,
-    rig_roll: f32,
-) -> f32 {
-    if rig_tilt.abs() < 1e-6 && rig_roll.abs() < 1e-6 {
-        return 0.0;
-    }
-    let (ry, rp) = world_to_render_pose(cam, world_yaw, world_pitch, rig_tilt, rig_roll);
-    let (u, f0) = rig_frame(cam, rig_tilt, rig_roll);
-    // Rebuild view_matrix's rotation at the render pose.
-    let yaw_q = UnitQuaternion::from_axis_angle(&Unit::new_normalize(u), ry);
-    let pitch_q = UnitQuaternion::from_axis_angle(&Unit::new_normalize(yaw_q * cam.base_right), rp);
-    let rotation = pitch_q * yaw_q;
-    let fwd = (rotation * f0).normalize();
-    // Both ups orthogonalized against the look direction (look_at_rh does
-    // the same internally), then the signed angle between them around it.
-    let perp = |v: Vector3<f32>| v - fwd * v.dot(&fwd);
-    let up_rendered = perp(rotation * u);
-    let up_ref = perp(VirtualCamera::world_up());
-    if up_rendered.norm() < 1e-6 || up_ref.norm() < 1e-6 {
-        return 0.0; // looking along an up axis: roll reference undefined
-    }
-    up_ref
-        .cross(&up_rendered)
-        .dot(&fwd)
-        .atan2(up_ref.dot(&up_rendered))
-}
-
-/// Resolve a world-space target look-direction into the render-space
-/// `(yaw, pitch)` the `view_matrix` consumes.
-///
-/// The auto/director and AI-panner paths (StitchCore + StitchSession)
-/// route through this, so their coverage clamp and rig tilt+roll
-/// correction can never drift into per-call copies. Interactive
-/// consumers clamp ([`CoverageBoundary::safe_clamp`] via
-/// `PoseControl`) and orient (`StitchCore::orient_pose`) as separate
-/// steps, sharing the same [`world_to_render_pose`] leaf.
-///
-/// It bridges the two halves of the geometry seam:
-/// 1. Clamp the world target to the coverage boundary. This stage is
-///    *projection-coupled*: `CoverageBoundary` and its clamp encode a
-///    bounded, non-wrapping panorama (today's L-shape) - a cylinder or
-///    sphere would need its own. The target is already world-space and
-///    coverage is panorama-native, so the clamp is pure world-space.
-/// 2. Invert `view_matrix`'s tilt+roll composition via
-///    [`world_to_render_pose`] so the horizon stays level under pan. This
-///    stage *is* projection agnostic (pure virtual-camera orientation)
-///    and roll-aware (exact solve, guarded by the round-trip test).
-///
-/// `fov` and `aspect` size the clamp margins; capping `fov` against
-/// `coverage.max_fov_degrees()` is the caller's policy, kept out of here.
-///
-/// (Steps 6-8 will dispatch stage 1 through the `Projection` trait so a
-/// new projection brings its own clamp; stage 2 stays shared.)
-pub fn resolve_render_pose(
-    coverage: &CoverageBoundary,
-    cam: &VirtualCamera,
-    rig_tilt: f32,
-    rig_roll: f32,
-    world_yaw: f32,
-    world_pitch: f32,
-    fov: f32,
-    aspect: f32,
-) -> (f32, f32) {
-    let clamped = coverage.safe_clamp(world_yaw, world_pitch, fov, aspect);
-    world_to_render_pose(cam, clamped.yaw, clamped.pitch, rig_tilt, rig_roll)
 }
 
 #[cfg(test)]

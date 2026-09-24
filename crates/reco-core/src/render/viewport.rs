@@ -8,7 +8,7 @@
 /// Output viewport geometry: the rectangle the panorama is rendered
 /// into. Zoom travels with yaw/pitch in every
 /// [`Pose`](crate::geometry::Pose), never here.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewportSize {
     /// Output width in pixels.
     pub width: u32,
@@ -26,6 +26,14 @@ impl Default for ViewportSize {
 }
 
 impl ViewportSize {
+    /// Convert an output pixel centre to normalized device coordinates, with positive Y pointing up.
+    pub(crate) fn pixel_ndc(&self, x: u32, y: u32) -> [f64; 2] {
+        [
+            (x as f64 + 0.5) / self.width as f64 * 2.0 - 1.0,
+            1.0 - (y as f64 + 0.5) / self.height as f64 * 2.0,
+        ]
+    }
+
     /// Aspect ratio of the output (width / height).
     ///
     /// Returns 1.0 if height is zero (degenerate viewport).

@@ -43,7 +43,7 @@ const FOV_KEY_STEP: f32 = 5.0;
 /// FOV change per scroll tick (degrees).
 const FOV_SCROLL_STEP: f32 = 3.0;
 /// Minimum FOV (degrees) - prevents extreme zoom-in.
-const FOV_MIN: f32 = 20.0;
+const FOV_MIN: f32 = 1.0;
 /// Maximum FOV (degrees) - prevents extreme zoom-out.
 const FOV_MAX: f32 = 150.0;
 /// Default FOV at startup (degrees).
@@ -147,14 +147,7 @@ pub fn run_preview(
 
     let frame_duration = std::time::Duration::from_secs_f64(1.0 / info.fps);
 
-    // Precompute max FOV from coverage boundary using calibration metadata.
-    // The actual CoverageBoundary is computed inside StitchCore::new().
-    let max_fov = {
-        let coverage = cal.topology.projection().coverage(&cal);
-        coverage.max_fov_degrees().min(FOV_MAX)
-    };
     let initial_fov = FOV_DEFAULT;
-    log::info!("Preview: max FOV = {max_fov:.1} degrees (coverage-limited)");
 
     let fps_rational = info.fps_rational.unwrap_or((30, 1));
     let total_frames = source.total_frames();
@@ -178,16 +171,10 @@ pub fn run_preview(
         pose: {
             use reco_control::pose_control::{PoseControl, PoseControlConfig};
             use reco_core::geometry::Pose;
-            // Match preview's historical feel: 0.005 rad/px drag,
-            // 0.05 rad arrow step, 3.0 deg scroll step, 0.3 smoothing.
-            // `invert_drag_x = true` reproduces preview's "drag right
-            // increases yaw" convention (opposite of PoseControl default).
             PoseControl::new(PoseControlConfig {
-                drag_deg_per_pixel: 0.005_f32.to_degrees(),
                 wheel_fov_per_tick: FOV_SCROLL_STEP,
-                smoothing: 0.3,
                 fov_min_degrees: FOV_MIN,
-                fov_max_degrees: max_fov.min(FOV_MAX),
+                fov_max_degrees: FOV_MAX,
                 invert_drag_x: true,
                 invert_drag_y: false,
                 hotkey_yaw_step_rad: ARROW_PAN_STEP,
@@ -209,12 +196,13 @@ pub fn run_preview(
         last_mouse_pos: None,
         rig_tilt: rig_tilt_degrees.to_radians(),
         rig_roll,
-        max_fov,
-        clamp_enabled: false,
+        clamp_enabled: true,
+        failure: None,
         interrupted: interrupted.clone(),
         recording: None,
         recording_path: None,
         recording_frames: 0,
+        record_frame: false,
         fps: info.fps,
         fps_rational,
         total_frames,
@@ -222,6 +210,9 @@ pub fn run_preview(
     };
 
     event_loop.run_app(&mut app)?;
+    if let Some(error) = app.failure {
+        anyhow::bail!(error);
+    }
     Ok(())
 }
 
@@ -241,10 +232,7 @@ struct App {
     height: u32,
     current_left: YuvData,
     current_right: YuvData,
-    /// Unified pose state (target + current yaw/pitch/FOV with smoothing),
-    /// stored in world space. Drives every pan / zoom input; the rig
-    /// tilt/roll correction that keeps the horizon level under pan is
-    /// applied at the render site via `StitchCore::orient_pose`.
+    /// Requested and accepted render-space pose, with no temporal smoothing.
     pose: reco_control::pose_control::PoseControl,
     frame_count: u64,
     playing: bool,
@@ -256,16 +244,16 @@ struct App {
     last_mouse_pos: Option<(f64, f64)>,
     rig_tilt: f32,
     rig_roll: f32,
-    /// Maximum FOV from coverage (cached from coverage.max_fov_degrees()).
-    max_fov: f32,
     /// Whether coverage boundary clamping is active.
     clamp_enabled: bool,
+    failure: Option<String>,
     /// Ctrl-C signal from the main thread.
     interrupted: Arc<AtomicBool>,
     // -- Recording state --
     recording: Option<Box<dyn OutputSink>>,
     recording_path: Option<String>,
     recording_frames: u64,
+    record_frame: bool,
     fps: f64,
     fps_rational: (i32, i32),
     // -- Seek state --
@@ -276,6 +264,22 @@ struct App {
 }
 
 impl App {
+    fn advance_playback(&mut self) {
+        if (self.playing || self.recording.is_some())
+            && let Some(clock) =
+                advance_playback_clock(self.last_frame_time, Instant::now(), self.frame_duration)
+        {
+            self.last_frame_time = clock;
+            if self.playing {
+                self.advance_frame();
+            }
+            if self.recording.is_some() {
+                self.record_frame = true;
+                self.needs_redraw = true;
+            }
+        }
+    }
+
     fn start_recording(&mut self) {
         let epoch = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -283,8 +287,12 @@ impl App {
             .as_secs();
         let path = format!("reco_recording_{epoch}.mp4");
         // NV12 requires width divisible by 4 and height divisible by 2.
-        let rec_w = self.width & !3;
-        let rec_h = self.height & !1;
+        let Some(renderer) = &self.renderer else {
+            return;
+        };
+        let (width, height) = renderer.output_dims();
+        let rec_w = width & !3;
+        let rec_h = height & !1;
         let (encoder, enc_name) = match reco_io::adapters::create_encoder(
             Path::new(&path),
             rec_w,
@@ -306,19 +314,23 @@ impl App {
         self.recording = Some(Box::new(encoder));
         self.recording_path = Some(path);
         self.recording_frames = 0;
+        self.record_frame = true;
+        self.needs_redraw = true;
     }
 
     fn stop_recording(&mut self) {
+        self.record_frame = false;
         // Flush remaining NV12 frames from triple-buffer.
         if let Some(ref mut renderer) = self.renderer {
+            let (width, height) = renderer.output_dims();
             for _ in 0..2 {
                 if let Ok(Some(nv12)) = renderer.flush_nv12()
                     && let Some(ref mut enc) = self.recording
                 {
                     let _ = enc.consume(OutputFrame {
                         data: nv12,
-                        width: self.width & !3,
-                        height: self.height & !1,
+                        width: width & !3,
+                        height: height & !1,
                         format: PixelFormat::Nv12,
                         pts_us: (self.recording_frames as f64 / self.fps * 1_000_000.0) as i64,
                     });
@@ -363,14 +375,6 @@ impl App {
             return;
         }
         self.cal = renderer.calibration().clone();
-        self.max_fov = renderer.max_fov_degrees().unwrap_or(FOV_MAX).min(FOV_MAX);
-        if self.clamp_enabled {
-            let mut cfg = *self.pose.config();
-            cfg.fov_max_degrees = self.max_fov;
-            self.pose.set_config(cfg);
-            self.pose
-                .set_target_fov(self.pose.target_pose().fov_degrees.min(self.max_fov));
-        }
         self.needs_redraw = true;
     }
 
@@ -417,32 +421,13 @@ impl App {
         }
     }
 
-    /// Step PoseControl one tick + optional coverage clamp + push
-    /// the resolved FOV onto the pipeline. Returns `true` if the
-    /// pose moved (needs redraw).
-    fn smooth_camera(&mut self) -> bool {
-        const EPSILON: f32 = 0.0001;
-        const FOV_EPSILON: f32 = 0.01;
-
-        let before = self.pose.current_pose();
-        self.pose.tick();
-
-        if self.clamp_enabled
-            && let Some(ref renderer) = self.renderer
-            && let Some(coverage) = renderer.coverage()
-        {
-            let aspect = self.width as f32 / self.height as f32;
-            self.pose.clamp_via_coverage(coverage, aspect);
+    /// Resolve each input against the accepted pose, discarding blocked movement.
+    fn apply_camera(&mut self) -> Result<(), reco_core::core::types::StitchCoreError> {
+        if let Some(renderer) = &mut self.renderer {
+            renderer.set_constrained_look(self.clamp_enabled);
+            self.pose.constrain(renderer)?;
         }
-
-        // FOV rides the pose into every render call (render_to_view /
-        // render_and_readback_nv12), so no cached push is needed here.
-
-        let after = self.pose.current_pose();
-        let dy = (after.yaw - before.yaw).abs();
-        let dp = (after.pitch - before.pitch).abs();
-        let df = after.fov_degrees - before.fov_degrees;
-        dy > EPSILON || dp > EPSILON || df.abs() > FOV_EPSILON
+        Ok(())
     }
 }
 
@@ -515,7 +500,16 @@ impl ApplicationHandler for App {
             },
         )
         .expect("create executor");
-        let renderer = StitchCore::new(Executor::Gpu(Box::new(executor))).expect("create engine");
+        let mut renderer =
+            StitchCore::new(Executor::Gpu(Box::new(executor))).expect("create engine");
+        self.pose
+            .set_target(renderer.world_to_render_pose(self.pose.target_pose()));
+        if let Err(error) = renderer.prepare_coverage() {
+            self.failure = Some(error.to_string());
+            self.source.take();
+            event_loop.exit();
+            return;
+        }
 
         println!(
             "Preview ready: GPU = {}, format = {:?}",
@@ -574,11 +568,14 @@ impl ApplicationHandler for App {
                             view_formats,
                         },
                     );
-                    renderer.resize(self.width, self.height);
                     self.needs_redraw = true;
                 }
             }
-            WindowEvent::KeyboardInput { event, .. } => {
+            WindowEvent::KeyboardInput {
+                event,
+                is_synthetic: false,
+                ..
+            } => {
                 use winit::keyboard::{KeyCode, PhysicalKey};
                 if event.state == winit::event::ElementState::Pressed {
                     match event.physical_key {
@@ -617,15 +614,9 @@ impl ApplicationHandler for App {
                                 )));
                             self.needs_redraw = true;
                         }
-                        PhysicalKey::Code(KeyCode::Space) => {
+                        PhysicalKey::Code(KeyCode::Space) if !event.repeat => {
                             self.playing = !self.playing;
-                            if self.playing {
-                                event_loop.set_control_flow(ControlFlow::Poll);
-                                println!("Playing");
-                            } else {
-                                event_loop.set_control_flow(ControlFlow::Wait);
-                                println!("Paused");
-                            }
+                            println!("{}", if self.playing { "Playing" } else { "Paused" });
                         }
                         PhysicalKey::Code(KeyCode::KeyN) => {
                             // Step one frame (blocking - waits for decode)
@@ -716,7 +707,7 @@ impl ApplicationHandler for App {
                                 self.cal.lenses[1].distortion[0]
                             );
                         }
-                        PhysicalKey::Code(KeyCode::KeyC) => {
+                        PhysicalKey::Code(KeyCode::KeyC) if !event.repeat => {
                             self.clamp_enabled = !self.clamp_enabled;
                             println!(
                                 "Coverage clamping: {}",
@@ -732,7 +723,7 @@ impl ApplicationHandler for App {
                                 Err(e) => eprintln!("Failed to save calibration: {e}"),
                             }
                         }
-                        PhysicalKey::Code(KeyCode::KeyR) => {
+                        PhysicalKey::Code(KeyCode::KeyR) if !event.repeat => {
                             if self.recording.is_some() {
                                 self.stop_recording();
                             } else {
@@ -763,27 +754,22 @@ impl ApplicationHandler for App {
                 if button == MouseButton::Left {
                     let pressed = state == ElementState::Pressed;
                     self.mouse_dragging = pressed;
-                    if pressed {
-                        // Capture start position - first CursorMoved will anchor here
-                        self.last_mouse_pos = None;
-                    } else {
-                        self.last_mouse_pos = None;
-                        if !self.playing {
-                            event_loop.set_control_flow(ControlFlow::Wait);
-                        }
-                    }
                 }
             }
-            WindowEvent::CursorMoved { position, .. } if self.mouse_dragging => {
-                if let Some((prev_x, prev_y)) = self.last_mouse_pos {
+            WindowEvent::CursorMoved { position, .. } => {
+                if self.mouse_dragging
+                    && let Some((prev_x, prev_y)) = self.last_mouse_pos
+                {
                     let dx = (position.x - prev_x) as f32;
                     let dy = (position.y - prev_y) as f32;
-                    self.pose.apply_drag(dx, dy);
-                } else {
-                    // First move after click - switch to Poll for smooth updates
-                    event_loop.set_control_flow(ControlFlow::Poll);
+                    self.pose.apply_drag(dx, dy, self.height as f32);
+                    self.needs_redraw = true;
                 }
                 self.last_mouse_pos = Some((position.x, position.y));
+            }
+            WindowEvent::Focused(false) | WindowEvent::CursorLeft { .. } => {
+                self.mouse_dragging = false;
+                self.last_mouse_pos = None;
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let scroll = match delta {
@@ -794,18 +780,19 @@ impl ApplicationHandler for App {
                 self.needs_redraw = true;
             }
             WindowEvent::RedrawRequested => {
-                // Apply camera smoothing before rendering
-                if self.smooth_camera() {
-                    self.needs_redraw = true;
-                }
-                if !self.needs_redraw && !self.playing {
+                if !self.needs_redraw {
                     return;
                 }
-                self.needs_redraw = false;
-
-                let (Some(surface), Some(renderer)) =
-                    (self.surface.as_ref(), self.renderer.as_mut())
-                else {
+                if let Err(error) = self.apply_camera() {
+                    self.failure = Some(error.to_string());
+                    if self.recording.is_some() {
+                        self.stop_recording();
+                    }
+                    self.source.take();
+                    event_loop.exit();
+                    return;
+                }
+                let Some(surface) = self.surface.as_ref() else {
                     return;
                 };
 
@@ -815,6 +802,13 @@ impl ApplicationHandler for App {
                         log::warn!("Surface error: {e:?}");
                         return;
                     }
+                };
+                // Surface acquisition can wait for vsync. Select a due video
+                // frame after that wait rather than presenting stale content.
+                self.advance_playback();
+                self.needs_redraw = false;
+                let Some(renderer) = self.renderer.as_mut() else {
+                    return;
                 };
                 let render_format = reco_core::render::strip_srgb(self.surface_format);
                 let view = frame
@@ -826,17 +820,16 @@ impl ApplicationHandler for App {
 
                 let left = self.current_left.as_planes();
                 let right = self.current_right.as_planes();
-                // World-space pose -> render-space via the shared rig
-                // tilt/roll basis inversion (roll-aware; the horizon
-                // stays level under pan).
-                let render = renderer.orient_pose(self.pose.current_pose());
+                let render = self.pose.current_pose();
                 if let Err(e) = renderer.render_to_view(&left, &right, render, &view) {
                     log::error!("Render failed: {e}");
                     return;
                 }
 
                 // Record: render to internal target + NV12 readback.
-                if self.recording.is_some() {
+                if self.recording.is_some() && self.record_frame {
+                    self.record_frame = false;
+                    let (width, height) = renderer.output_dims();
                     match renderer.render_and_readback_nv12(&left, &right, render) {
                         Ok(Some(nv12)) => {
                             let pts_us =
@@ -844,8 +837,8 @@ impl ApplicationHandler for App {
                             if let Some(ref mut enc) = self.recording
                                 && let Err(e) = enc.consume(OutputFrame {
                                     data: nv12,
-                                    width: self.width & !3,
-                                    height: self.height & !1,
+                                    width: width & !3,
+                                    height: height & !1,
                                     format: PixelFormat::Nv12,
                                     pts_us,
                                 })
@@ -855,10 +848,7 @@ impl ApplicationHandler for App {
                             }
                             self.recording_frames += 1;
                         }
-                        Ok(None) => {
-                            // First 2 frames: triple-buffer warming up.
-                            self.recording_frames += 1;
-                        }
+                        Ok(None) => {}
                         Err(e) => {
                             eprintln!("Recording readback error: {e}");
                             self.stop_recording();
@@ -871,10 +861,19 @@ impl ApplicationHandler for App {
             _ => {}
         }
 
-        if self.needs_redraw
-            && let Some(w) = &self.window
-        {
-            w.request_redraw();
+        if self.needs_redraw {
+            if let Err(error) = self.apply_camera() {
+                self.failure = Some(error.to_string());
+                if self.recording.is_some() {
+                    self.stop_recording();
+                }
+                self.source.take();
+                event_loop.exit();
+                return;
+            }
+            if let Some(w) = &self.window {
+                w.request_redraw();
+            }
         }
     }
 
@@ -889,13 +888,6 @@ impl ApplicationHandler for App {
             return;
         }
 
-        // Keep animating while PoseControl smoothing hasn't converged.
-        let target = self.pose.target_pose();
-        let current = self.pose.current_pose();
-        let smoothing_active = (target.yaw - current.yaw).abs() > 0.0001
-            || (target.pitch - current.pitch).abs() > 0.0001
-            || (target.fov_degrees - current.fov_degrees).abs() > 0.01;
-
         // Execute coalesced seek: rapid key presses accumulate into
         // pending_seek; only the final target runs here (one seek
         // instead of many). Blocking: waits for first frame to render.
@@ -904,26 +896,115 @@ impl ApplicationHandler for App {
             self.needs_redraw = true;
         }
 
-        if !self.playing && !smoothing_active {
-            return;
+        let mut resizing = false;
+        if self.recording.is_none()
+            && let Some(renderer) = &mut self.renderer
+        {
+            let before = renderer.output_dims();
+            match renderer.resize_preview(self.width, self.height) {
+                Ok(ready) => {
+                    resizing = !ready;
+                    if renderer.output_dims() != before {
+                        self.needs_redraw = true;
+                    }
+                }
+                Err(error) => {
+                    self.failure = Some(error.to_string());
+                    self.source.take();
+                    event_loop.exit();
+                    return;
+                }
+            }
         }
 
-        if self.playing {
-            let elapsed = self.last_frame_time.elapsed();
-            if elapsed < self.frame_duration {
-                std::thread::sleep(self.frame_duration - elapsed);
-            }
-
-            self.advance_frame();
-            self.last_frame_time = Instant::now();
-
-            if !self.playing {
-                event_loop.set_control_flow(ControlFlow::Wait);
-            }
+        if self.playing || self.recording.is_some() {
+            self.advance_playback();
+            event_loop.set_control_flow(ControlFlow::WaitUntil(
+                self.last_frame_time + self.frame_duration,
+            ));
+        } else if resizing {
+            event_loop.set_control_flow(ControlFlow::WaitUntil(
+                Instant::now() + std::time::Duration::from_millis(16),
+            ));
+        } else {
+            event_loop.set_control_flow(ControlFlow::Wait);
         }
 
-        if let Some(w) = &self.window {
+        if self.needs_redraw
+            && let Some(w) = &self.window
+        {
             w.request_redraw();
         }
+    }
+}
+
+fn advance_playback_clock(
+    previous: Instant,
+    now: Instant,
+    period: std::time::Duration,
+) -> Option<Instant> {
+    // Redraw delays must not accumulate into slower playback. Rebase after
+    // a missed whole period so pauses and stalls cannot cause catch-up bursts.
+    let next = previous + period;
+    if now < next {
+        return None;
+    }
+    if now.saturating_duration_since(next) >= period {
+        Some(now)
+    } else {
+        Some(next)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn redraw_jitter_does_not_accumulate_over_900_frames() {
+        let start = Instant::now();
+        let period = Duration::from_micros(33_367);
+        let mut clock = start;
+        for frame in 1..=900 {
+            let scheduled = start + period * frame;
+            let redraw_delay = Duration::from_millis(u64::from(frame % 17));
+            clock = advance_playback_clock(clock, scheduled + redraw_delay, period).unwrap();
+            assert_eq!(clock, scheduled);
+        }
+    }
+
+    #[test]
+    fn missed_periods_rebase_without_a_catch_up_burst() {
+        let start = Instant::now();
+        let period = Duration::from_millis(33);
+        for delay in [period * 2, Duration::from_secs(60)] {
+            let resumed = start + delay;
+            let clock = advance_playback_clock(start, resumed, period).unwrap();
+            assert_eq!(clock, resumed);
+            let next = advance_playback_clock(clock, resumed + period, period).unwrap();
+            assert_eq!(next, resumed + period);
+        }
+    }
+
+    #[test]
+    fn display_wait_crosses_deadline_without_advancing_twice() {
+        let start = Instant::now();
+        let period = Duration::from_millis(33);
+        assert_eq!(
+            advance_playback_clock(start, start + Duration::from_millis(25), period),
+            None
+        );
+        let after_display_wait = start + Duration::from_millis(40);
+        let clock = advance_playback_clock(start, after_display_wait, period).unwrap();
+        assert_eq!(clock, start + period);
+        assert_eq!(
+            advance_playback_clock(clock, after_display_wait, period),
+            None
+        );
+        assert_eq!(
+            advance_playback_clock(clock, start + period * 2, period),
+            Some(start + period * 2)
+        );
     }
 }

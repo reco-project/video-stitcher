@@ -29,7 +29,7 @@ pub enum StitchCoreError {
     #[error("calibration change requires rebuilding the engine: {0}")]
     CalibrationRequiresRebuild(&'static str),
     /// Executor construction or stitch error. The `From` impl lets
-    /// consumers `?` a [`GpuExecutor`](crate::stitch::GpuExecutor)
+    /// consumers `?` a `GpuExecutor` (with the `gpu` feature)
     /// build straight into the engine's error type.
     #[error("executor: {0}")]
     Executor(#[from] StitchError),
@@ -98,7 +98,7 @@ pub struct ReplayFrame {
 /// implementation in reco-io (under the `stacked-output` feature)
 /// can be plugged into [`super::StitchCore`] without pulling I/O types
 /// into core. Consumers who only care about the pull API and go
-/// through [`crate::session::StitchSession`] plus a
+/// through `StitchSession` (with the `gpu` feature) plus a
 /// `reco_io::StitchJob::with_replay_recording(...)` builder never
 /// touch this trait directly.
 ///

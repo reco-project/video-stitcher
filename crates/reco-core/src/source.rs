@@ -397,7 +397,7 @@ pub struct SourceInfo {
 /// Sources that deliver GPU-resident frames (CUDA/Vulkan shared textures,
 /// Metal CVPixelBuffers) should override [`is_gpu_resident`](Self::is_gpu_resident)
 /// to return `true` and provide their pixel format via
-/// [`gpu_pixel_format`](Self::gpu_pixel_format). The session uses this metadata
+/// `gpu_pixel_format` (with the `gpu` feature). The session uses this metadata
 /// to auto-configure bind groups, texture formats, and rotation handling.
 pub trait FrameSource: Send {
     /// Source metadata (dimensions, frame rate).

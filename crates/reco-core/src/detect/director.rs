@@ -1,6 +1,6 @@
 //! Value types shared by every pose-resolution path.
 //!
-//! [`Pose`] is the camera's yaw / pitch / FOV triple, the
+//! [`Pose`](crate::geometry::Pose) is the camera's yaw / pitch / FOV triple, the
 //! output of any [`Panner`](super::panner::Panner) and the input the
 //! renderer crops the panorama with. [`MappedDetection`] is a raw
 //! detection enriched with panorama-space coordinates; trackers
@@ -14,7 +14,7 @@
 //! avoid a repo-wide import churn.
 
 use crate::geometry::CameraIndex;
-use crate::geometry::Pose;
+use crate::geometry::YawPitch;
 
 /// A detection mapped to panorama coordinates.
 ///
@@ -22,8 +22,7 @@ use crate::geometry::Pose;
 /// External consumers (coaching, VAR, stats) observe detections via
 /// [`PipelineEventSink`](super::pipeline_event::PipelineEventSink).
 /// Wraps a raw camera-space detection with a panorama-space
-/// [`Pose`] computed via
-/// [`Projection::camera_to_panorama`](crate::projection::Projection::camera_to_panorama).
+/// [`YawPitch`] computed via [`Calibration::map_source_point`](crate::calibration::Calibration::map_source_point).
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct MappedDetection {
     /// Which camera this detection came from.
@@ -45,7 +44,34 @@ pub struct MappedDetection {
     /// `pixel_w = camera_size.0 * calibration.lenses[camera].width as f32`.
     pub camera_size: (f32, f32),
 
-    /// Position in panorama space (yaw/pitch).
-    /// `None` if the active projection has no mapping or inversion failed.
-    pub position: Option<Pose>,
+    /// World-reference angular position (yaw/pitch, before rig tilt/roll orientation).
+    /// `None` if mapping is unsupported or the source point cannot be mapped.
+    pub position: Option<YawPitch>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mapped_position_serializes_without_an_invented_fov() {
+        let detection = MappedDetection {
+            camera: 0,
+            class_id: 1,
+            confidence: 0.9,
+            camera_center: (0.5, 0.5),
+            camera_size: (0.1, 0.2),
+            position: Some(YawPitch {
+                yaw: 0.25,
+                pitch: -0.1,
+            }),
+        };
+        let json = serde_json::to_value(detection).unwrap();
+        assert_eq!(json["position"]["yaw"], 0.25);
+        assert_eq!(
+            json["position"]["pitch"],
+            serde_json::to_value(-0.1_f32).unwrap()
+        );
+        assert!(json["position"].get("fov_degrees").is_none());
+    }
 }

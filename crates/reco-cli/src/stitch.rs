@@ -135,7 +135,8 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     // future frames so the panner can lead and the loop can centered-smooth.
     // For a plain stitch (no model) or sweep mode it would only add latency
     // and VRAM, so skip it and say why.
-    let tracking_active = args.model_path.is_some() && args.tracking_mode != "sweep";
+    let tracking_active = args.trajectory_path.is_some()
+        || (args.model_path.is_some() && args.tracking_mode != "sweep");
     if args.lookahead > 0.0 {
         if tracking_active {
             job = job.lookahead(args.lookahead);
@@ -145,7 +146,7 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
             );
         } else {
             log::debug!(
-                "Lookahead {:.1}s ignored: no AI tracking (needs --model, non-sweep); \
+                "Lookahead {:.1}s ignored: no tracking (needs --trajectory or --model, non-sweep); \
                  a plain stitch needs none",
                 args.lookahead
             );
@@ -219,9 +220,14 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     #[cfg(feature = "autocam")]
     if args.trajectory_path.is_none() && args.tracking_mode == "sweep" {
         job = job.on_session(|session, _source| {
-            // Use 80% of coverage max FOV so the viewport fits comfortably.
-            let max_fov = session.coverage().map_or(50.0, |c| c.max_fov_degrees());
-            let sweep_fov = (max_fov * 0.8).clamp(5.0, 50.0);
+            let max_fov = session
+                .core_mut()
+                .prepare_coverage()
+                .unwrap_or_else(|error| {
+                    log::warn!("Cannot prepare sweep coverage: {error}");
+                    50.0
+                });
+            let sweep_fov = (max_fov * 0.8).clamp(1.0, 50.0);
             let panner =
                 Box::new(reco_autocam::panners::SweepPanner::new(0.8, 10.0).with_fov(sweep_fov));
             session.set_panner(panner);

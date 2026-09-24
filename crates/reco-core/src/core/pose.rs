@@ -1,7 +1,7 @@
 //! Pose resolution and detection internals for
 //! [`StitchCore`](super::StitchCore).
 //!
-//! Contains the internal pose-resolution logic (`resolve_current_pose`),
+//! Contains the internal panner request logic (`request_current_pose`),
 //! the detection schedule (`should_run_detection`), YUV detection
 //! dispatch, panorama-coordinate mapping, and session-start anchoring.
 
@@ -34,10 +34,9 @@ impl super::StitchCore {
         }
     }
 
-    pub(super) fn resolve_current_pose(&mut self, fresh_detection: bool) -> Pose {
-        // Pull raw director output (or default) and clamp through
-        // coverage. The resolved pose - fov included - is the render
-        // parameter; there is no pipeline fov state to write back.
+    pub(super) fn request_current_pose(&mut self, fresh_detection: bool) -> Pose {
+        // Pull a world-space request; the presentation boundary owns its
+        // conversion to render space and any coverage constraint.
         //
         // `fresh_detection` is the ACTUAL run decision for this frame,
         // not the schedule-would-fire predicate. The BGRA submit path
@@ -50,18 +49,9 @@ impl super::StitchCore {
             .map(|s| s.elapsed().as_secs_f64() * 1000.0)
             .unwrap_or(0.0);
         let _ = fresh_detection; // reserved for future freshness-aware panners
-        let raw = self
-            .dispatch_pose(self.frame_count, timestamp_ms, "StitchCore")
+        self.dispatch_pose(self.frame_count, timestamp_ms, "StitchCore")
             .pose
-            .unwrap_or_default();
-        // The toggle gates only the coverage clamp; the tilt/roll basis
-        // inversion is unconditional - a tilted rig must render level
-        // whether or not the viewport is constrained.
-        if self.constrained_look {
-            self.safe_clamp(raw)
-        } else {
-            self.orient_pose(raw)
-        }
+            .unwrap_or_default()
     }
 
     /// Whether the detection schedule fires at `index` - true when a
@@ -169,24 +159,6 @@ impl super::StitchCore {
     #[cfg_attr(not(feature = "gpu"), allow(dead_code))] // session (gpu-gated) drives this
     pub(crate) fn set_previous_panner_pose(&mut self, pose: Pose) {
         self.previous_panner_pose = pose;
-    }
-
-    /// The pull session's presentation pose: always-clamped resolve of
-    /// the panner's latest decision (batch export never reveals black
-    /// edges, independent of the constrained-look toggle), with the
-    /// `PosePresented` trace.
-    #[cfg_attr(not(feature = "gpu"), allow(dead_code))] // session (gpu-gated) drives this
-    pub(crate) fn presented_clamped_pose(&mut self, index: u64) -> Pose {
-        let pos = self.safe_clamp(self.previous_panner_pose);
-        if let Some(sink) = self.event_sink.as_deref_mut() {
-            sink.emit(
-                crate::detect::pipeline_event::PipelineEvent::PosePresented {
-                    frame_index: index,
-                    pose: pos,
-                },
-            );
-        }
-        pos
     }
 
     /// Whether the attached detector consumes CUDA device pointers
@@ -303,12 +275,9 @@ impl super::StitchCore {
         detections
             .into_iter()
             .map(|d| {
-                let position = calibration.topology.projection().camera_to_panorama(
-                    d.camera,
-                    d.center_x,
-                    d.center_y,
-                    calibration,
-                );
+                let position = calibration
+                    .map_source_point(d.camera, [d.center_x, d.center_y])
+                    .ok();
                 MappedDetection {
                     camera: d.camera,
                     class_id: d.class_id,

@@ -353,7 +353,7 @@ impl Lens {
 /// Scene geometry parameters: which shape the sources are painted on.
 ///
 /// Serialized with a mandatory `type` tag (`"l-shape"` / `"cylinder"`).
-/// The matching [`Projection`] dispatches
+/// The matching projection implementation dispatches
 /// the actual geometry; this carries its parameters. The virtual-camera
 /// position lives in [`Framing`], not here.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -394,7 +394,7 @@ impl Topology {
     /// build: every topology variant IS a [`Projection`], so the
     /// document is the engine and there is no second object to keep
     /// in sync.
-    pub fn projection(&self) -> &dyn Projection {
+    pub(crate) fn projection(&self) -> &dyn Projection {
         match self {
             Topology::LShape(t) => t,
             Topology::Cylinder(t) => t,

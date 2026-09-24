@@ -196,37 +196,6 @@ impl StitchSession {
         })
     }
 
-    /// The precomputed coverage boundary for "no-black" viewport constraining.
-    ///
-    /// Delegates to [`StitchCore::coverage`]; use
-    /// [`CoverageBoundary::safe_clamp`](crate::projection::CoverageBoundary::safe_clamp) to
-    /// constrain viewport positions, or
-    /// [`CoverageBoundary::max_fov_degrees`](crate::projection::CoverageBoundary::max_fov_degrees)
-    /// for the zoom-out ceiling.
-    pub fn coverage(&self) -> Option<&crate::projection::CoverageBoundary> {
-        self.core.coverage()
-    }
-
-    /// Full angular extent of the stitched panorama.
-    ///
-    /// Higher-level shortcut for analytics consumers (heatmaps, zone
-    /// statistics) that want the coverage bounds without reaching into
-    /// [`CoverageBoundary`](crate::projection::CoverageBoundary). Returns
-    /// `None` if the session has no coverage boundary (should not happen
-    /// for sessions built from a valid calibration).
-    pub fn panorama_extent(&self) -> Option<crate::projection::PanoramaExtent> {
-        self.core.coverage().map(|c| {
-            let (yaw_min, yaw_max) = c.yaw_range();
-            let (pitch_min, pitch_max) = c.pitch_range();
-            crate::projection::PanoramaExtent {
-                yaw_min,
-                yaw_max,
-                pitch_min,
-                pitch_max,
-            }
-        })
-    }
-
     /// Number of frames processed so far.
     pub fn frame_count(&self) -> u64 {
         self.frame_count

@@ -18,11 +18,10 @@ mod virtual_camera;
 // internals (clip-space correction, column packing) stay crate-private
 // until a consumer demonstrates the need.
 pub use matrices::{FAR_PLANE, NEAR_PLANE, view_matrix};
-pub use rig_correction::{resolve_render_pose, world_to_render_pose};
-pub use types::{CameraIndex, Pose};
+pub use rig_correction::world_to_render_pose;
+pub use types::{CameraIndex, Pose, YawPitch};
 pub use virtual_camera::VirtualCamera;
 
 #[cfg(feature = "gpu")]
 pub(crate) use matrices::matrix4_to_columns;
 pub(crate) use matrices::opengl_to_wgpu_matrix;
-pub(crate) use rig_correction::render_viewport_roll;

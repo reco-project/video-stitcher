@@ -55,6 +55,7 @@ const PROP_INPUT_WIDTH: &CStr = c"input_width";
 const PROP_INPUT_HEIGHT: &CStr = c"input_height";
 const PROP_YAW: &CStr = c"yaw";
 const PROP_PITCH: &CStr = c"pitch";
+const PROP_CONSTRAINED: &CStr = c"constrained_look";
 /// Name of the OBS source that feeds the left camera.
 const PROP_LEFT_SOURCE: &CStr = c"left_source";
 /// Name of the OBS source that feeds the right camera.
@@ -158,13 +159,9 @@ struct RecoSource {
     input_width: u32,
     input_height: u32,
 
-    /// Shared pan/zoom state machine from reco-core. Handles drag
-    /// sensitivity, wheel ticks, FOV clamping, and pose smoothing
-    /// so reco-obs doesn't duplicate those concerns. Target pose is
-    /// set from the yaw/pitch sliders in Properties and mutated by
-    /// Interact drag/wheel events; `current_*` is the interpolated
-    /// pose that actually gets submitted to the pipeline each tick.
+    /// Direct render-space pan/zoom input, accepted through engine coverage before rendering.
     pose: PoseControl,
+    constrained_look: bool,
 
     /// Interactive drag state. `true` between mouse-left-down and
     /// mouse-left-up events. When true, mouse_move deltas translate to
@@ -250,6 +247,7 @@ impl RecoSource {
                 ..Default::default()
             }),
             dragging: false,
+            constrained_look: true,
             last_mouse_x: 0,
             last_mouse_y: 0,
             rgba_buffer: Vec::new(),
@@ -715,45 +713,42 @@ impl RecoSource {
                 self.try_init_pipeline();
                 self.warned_unsupported_format = false;
             } else {
-                // Advance the PoseControl interpolation once per tick
-                // and submit at the eased pose - fov rides in it like
-                // yaw/pitch, so there is no pipeline zoom state to
-                // sync. Smoothing means the actual submitted pose lags
-                // one tick behind the most recent drag or scroll,
-                // which gives the visible output a natural ease-in
-                // rather than jittering on every mouse event.
-                self.pose.tick();
-                let current = self.pose.current_pose();
-                let result = match self.input_format {
-                    InputFormat::Yuv420p => {
-                        // Wrap OBS planes as StridedYuvPlanes and repack
-                        // into the cached tight buffers. `copy_into` takes
-                        // a single memcpy fast path when stride == width.
-                        let left_strided = strided_from_obs(l);
-                        let right_strided = strided_from_obs(r);
-                        let left_tight = left_strided.copy_into(&mut self.left_repack);
-                        let right_tight = right_strided.copy_into(&mut self.right_repack);
-                        let session = self.core.as_mut().expect("checked above");
-                        session.submit_frame_yuv_at_pose(&left_tight, &right_tight, current)
+                // Direct interaction is fitted once more before submission, including after geometry changes.
+                let engine = self.core.as_mut().expect("checked above");
+                engine.set_constrained_look(self.constrained_look);
+                let result = self.pose.constrain(engine).and_then(|()| {
+                    let current = self.pose.current_pose();
+                    match self.input_format {
+                        InputFormat::Yuv420p => {
+                            // Wrap OBS planes as StridedYuvPlanes and repack
+                            // into the cached tight buffers. `copy_into` takes
+                            // a single memcpy fast path when stride == width.
+                            let left_strided = strided_from_obs(l);
+                            let right_strided = strided_from_obs(r);
+                            let left_tight = left_strided.copy_into(&mut self.left_repack);
+                            let right_tight = right_strided.copy_into(&mut self.right_repack);
+                            let session = self.core.as_mut().expect("checked above");
+                            session.submit_frame_yuv_at_pose(&left_tight, &right_tight, current)
+                        }
+                        InputFormat::Bgra => {
+                            // BGRA sources: swizzle bytes into cached RGBA
+                            // buffers once per frame. Shader expects RGB in
+                            // .rgb of a single sample. RGBA sources pass
+                            // through without swizzle (we go through the same
+                            // path because the caller would typically hand us
+                            // the right order already).
+                            let left_bgra = build_bgra_planes(l, &mut self.left_repack);
+                            let right_bgra = build_bgra_planes(r, &mut self.right_repack);
+                            let session = self.core.as_mut().expect("checked above");
+                            session.submit_frame_bgra_at_pose(&left_bgra, &right_bgra, current)
+                        }
+                        InputFormat::Nv12 => {
+                            // Not yet supported in reco-obs; guarded above.
+                            // Return a Warmup so the match arms below align.
+                            Ok(RenderOutcome::Warmup)
+                        }
                     }
-                    InputFormat::Bgra => {
-                        // BGRA sources: swizzle bytes into cached RGBA
-                        // buffers once per frame. Shader expects RGB in
-                        // .rgb of a single sample. RGBA sources pass
-                        // through without swizzle (we go through the same
-                        // path because the caller would typically hand us
-                        // the right order already).
-                        let left_bgra = build_bgra_planes(l, &mut self.left_repack);
-                        let right_bgra = build_bgra_planes(r, &mut self.right_repack);
-                        let session = self.core.as_mut().expect("checked above");
-                        session.submit_frame_bgra_at_pose(&left_bgra, &right_bgra, current)
-                    }
-                    InputFormat::Nv12 => {
-                        // Not yet supported in reco-obs; guarded above.
-                        // Return a Warmup so the match arms below align.
-                        Ok(RenderOutcome::Warmup)
-                    }
-                };
+                });
                 match result {
                     Ok(RenderOutcome::Rgba(rgba)) => {
                         self.rgba_buffer.copy_from_slice(rgba);
@@ -921,6 +916,7 @@ unsafe extern "C" fn source_get_defaults(settings: *mut ffi::obs_data_t) {
     crate::ffi_catch!((), {
         unsafe {
             ffi::obs_data_set_default_int(settings, PROP_OUTPUT_WIDTH.as_ptr(), 1920);
+            ffi::obs_data_set_default_bool(settings, PROP_CONSTRAINED.as_ptr(), true);
             ffi::obs_data_set_default_int(settings, PROP_OUTPUT_HEIGHT.as_ptr(), 1080);
             ffi::obs_data_set_default_int(settings, PROP_INPUT_WIDTH.as_ptr(), 1920);
             ffi::obs_data_set_default_int(settings, PROP_INPUT_HEIGHT.as_ptr(), 1080);
@@ -998,6 +994,11 @@ unsafe extern "C" fn source_get_properties(_data: *mut c_void) -> *mut ffi::obs_
                 ffi::obs_path_type::OBS_PATH_FILE,
                 c"JSON files (*.json)".as_ptr(),
                 ptr::null(),
+            );
+            ffi::obs_properties_add_bool(
+                props,
+                PROP_CONSTRAINED.as_ptr(),
+                c"Constrain view to coverage".as_ptr(),
             );
 
             ffi::obs_properties_add_int(
@@ -1295,7 +1296,13 @@ unsafe extern "C" fn source_mouse_move(
         // (invert_drag_x = true for PTZ-head feel, invert_drag_y =
         // false for drag-scene Y). No local math or clamp logic to
         // maintain.
-        src.pose.apply_drag(dx, dy);
+        src.pose.apply_drag(dx, dy, src.output_height as f32);
+        if let Some(core) = &mut src.core {
+            core.set_constrained_look(src.constrained_look);
+            if let Err(error) = src.pose.constrain(core) {
+                log::error!("reco-obs: cannot fit drag: {error}");
+            }
+        }
     })
 }
 
@@ -1319,6 +1326,12 @@ unsafe extern "C" fn source_mouse_wheel(
         // conventions, FOV sensitivity, and clamping internally.
         let notches = (y_delta as f32) / WHEEL_NOTCHES_PER_DELTA;
         src.pose.apply_wheel(notches);
+        if let Some(core) = &mut src.core {
+            core.set_constrained_look(src.constrained_look);
+            if let Err(error) = src.pose.constrain(core) {
+                log::error!("reco-obs: cannot fit zoom: {error}");
+            }
+        }
     })
 }
 
@@ -1534,14 +1547,10 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
             src.warned_unsupported_format = false;
         }
 
-        // Viewport position - property-driven yaw/pitch sliders.
-        // Yaw/pitch sliders drive the pose target; PoseControl eases
-        // current toward it on each tick. Consumers who scrubber-
-        // jump the slider see a smooth 1-2 frame ease into position
-        // rather than an instantaneous snap (reco-core default
-        // smoothing 0.3).
+        // Property sliders and mouse input share the same render-space controls.
         let target_yaw_deg = ffi::obs_data_get_double(settings, PROP_YAW.as_ptr()) as f32;
         let target_pitch_deg = ffi::obs_data_get_double(settings, PROP_PITCH.as_ptr()) as f32;
+        src.constrained_look = ffi::obs_data_get_bool(settings, PROP_CONSTRAINED.as_ptr());
         src.pose.set_target(Pose {
             yaw: target_yaw_deg.to_radians(),
             pitch: target_pitch_deg.to_radians(),
@@ -1638,5 +1647,8 @@ pub(crate) fn source_info() -> ffi::obs_source_info {
         missing_files: None,
         video_get_color_space: None,
         filter_add: None,
+        // SAFETY: obs_source_info contains scalars (both enums have a zero variant),
+        // pointers and optional callbacks. New optional callbacks default to null.
+        ..unsafe { std::mem::zeroed() }
     }
 }

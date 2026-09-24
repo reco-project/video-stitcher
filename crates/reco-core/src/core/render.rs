@@ -40,6 +40,7 @@ impl super::StitchCore {
     pub fn submit_frame(
         &mut self,
         frames: &crate::source::FrameSet,
+        frame_seconds: f32,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         use crate::source::FrameSet;
         match frames {
@@ -58,7 +59,8 @@ impl super::StitchCore {
                     recorder.record_yuv(&left.as_planes(), &right.as_planes(), src_w, src_h);
                 }
                 let ran_detection = self.detect_yuv_set(cams);
-                let pose = self.resolve_current_pose(ran_detection);
+                let requested = self.request_current_pose(ran_detection);
+                let pose = self.advance_pose(requested, self.frame_count, frame_seconds)?;
                 match &self.executor {
                     Executor::Cpu(_) => {
                         let planes: Vec<YuvPlanes<'_>> =
@@ -79,7 +81,8 @@ impl super::StitchCore {
                 // The stacked replay recorder is YUV420P-native and
                 // does not tap NV12 submits today.
                 let ran_detection = self.detect_nv12_set(cams);
-                let pose = self.resolve_current_pose(ran_detection);
+                let requested = self.request_current_pose(ran_detection);
+                let pose = self.advance_pose(requested, self.frame_count, frame_seconds)?;
                 match &self.executor {
                     Executor::Cpu(_) => {
                         let planes: Vec<crate::render::planes::Nv12Planes<'_>> =
@@ -278,8 +281,7 @@ impl super::StitchCore {
 
         // `submit_frame_yuv_at_pose` bypasses resolve_current_pose (caller
         // provides the pose directly), but detection still runs on the
-        // schedule so directors stay populated for a later `current_pose()`
-        // peek or a regular `submit_frame` submit.
+        // schedule so directors stay populated for a later regular submit.
         if self.detection_due(self.frame_count) {
             let (src_w, src_h) = self.executor.source_info();
             self.run_yuv_detection(left, right, src_w, src_h);

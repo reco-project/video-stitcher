@@ -763,6 +763,13 @@ impl StitchJob {
             hook(&mut session, &source);
         }
 
+        if session.core().constrained_look() {
+            session
+                .core_mut()
+                .prepare_coverage()
+                .map_err(|error| StitchError::Other(error.to_string()))?;
+        }
+
         // Start decode threads now that hooks (ORT/DML init) have completed.
         source.start_decoding();
 

@@ -19,7 +19,7 @@
 
 use crate::calibration::Calibration;
 use crate::geometry::Pose;
-use crate::projection::{CoverageBoundary, Projection};
+use crate::projection::Projection;
 use crate::render::planes::{Nv12Planes, YuvPlanes};
 use crate::render::viewport::ViewportSize;
 
@@ -148,7 +148,6 @@ impl CpuExecutor {
         pose: Pose,
     ) -> Result<Vec<u8>, StitchError> {
         stitch_rgba(
-            self.projection(),
             planes,
             self.cam,
             &self.calib,
@@ -165,7 +164,6 @@ impl CpuExecutor {
     /// inherent entry covers planar YUV sources (file decode).
     pub fn stitch_yuv(&self, planes: &[YuvPlanes<'_>], pose: Pose) -> Result<Vec<u8>, StitchError> {
         super::cpu::stitch_rgba_yuv420p(
-            self.projection(),
             planes,
             self.cam,
             &self.calib,
@@ -247,7 +245,7 @@ impl GpuExecutorConfig {
 }
 
 /// GPU executor - the sole owner of the wgpu `StitchPipeline` and of
-/// the [`Projection`] bound to it.
+/// the projection geometry bound to it.
 ///
 /// [`StitchCore`](crate::core::StitchCore) holds one of these as its
 /// render substrate and drives the streaming paths (pipelined readback,
@@ -930,8 +928,8 @@ impl StitchExecutor for GpuExecutor {
 /// [`StitchCore`](crate::core::StitchCore) holds exactly one and
 /// resolves every render + live-config operation through it. The
 /// GPU-only streaming surface (command-buffer renders, resident-frame
-/// imports, readback rings) is reached via [`Executor::gpu`] /
-/// [`Executor::gpu_mut`] - a typed accessor, no downcasting.
+/// imports, readback rings) is reached via `Executor::gpu` /
+/// `Executor::gpu_mut` with the `gpu` feature - typed accessors, no downcasting.
 ///
 /// Calibration edits are accepted by [`StitchCore`](crate::core::StitchCore). The GPU arm caches derived scene geometry; the CPU stitch kernel reads the accepted document per call.
 pub enum Executor {
@@ -986,19 +984,12 @@ impl Executor {
 
     /// The projection in effect: a borrow of the calibration
     /// document's topology on either arm.
-    pub fn projection(&self) -> &dyn Projection {
+    pub(crate) fn projection(&self) -> &dyn Projection {
         match self {
             Executor::Cpu(c) => c.projection(),
             #[cfg(feature = "gpu")]
             Executor::Gpu(g) => g.pipeline.projection(),
         }
-    }
-
-    /// The projection's coverage boundary over this executor's
-    /// document: `projection().coverage(calibration())` always pair,
-    /// so the executor offers the pairing directly.
-    pub fn coverage(&self) -> CoverageBoundary {
-        self.projection().coverage(self.calibration())
     }
 
     /// Source frame dimensions `(width, height)` per camera.
@@ -1103,20 +1094,10 @@ mod tests {
     #[cfg(feature = "gpu")]
     use crate::stitch::test_support::{Agreement, AgreementBounds, gpu_or_skip, nv12};
 
-    /// The no-black guarantee, end to end: flat mid-grey input pushed
-    /// through the real render path (`safe_clamp` -> `world_to_render_pose`
-    /// -> CPU stitch) must not produce black (uncovered) pixels, even at
-    /// extreme clamped targets on tilted/rolled rigs. Before the
-    /// roll-aware clamp margins, the axis-aligned margin model leaked
-    /// 4-9% black at ~19 deg tilt (worse zoomed in); the residual bound
-    /// here covers slice-resolution imprecision only (#334, measured
-    /// 0.34% worst-case independent of tilt/roll).
-    ///
-    /// CPU-only on purpose: the property is about the clamp + pose
-    /// geometry, which the GPU shares verbatim via `l_shape_plane_maps`.
+    /// Flat input rendered through the shared coverage constraint has no missing pixels, including extreme targets with tilt and roll.
     #[test]
     fn clamped_poses_render_no_black_edges() {
-        use crate::geometry::resolve_render_pose;
+        use crate::core::StitchCore;
 
         let (cam_w, cam_h) = (256u32, 144u32);
         let (out_w, out_h) = (192u32, 108u32);
@@ -1126,7 +1107,6 @@ mod tests {
             y: &gray_y,
             uv: &gray_uv,
         };
-        let aspect_out = out_w as f32 / out_h as f32;
         let black_frac = |rgba: &[u8]| {
             let black = rgba
                 .chunks_exact(4)
@@ -1148,15 +1128,17 @@ mod tests {
             let mut cal = calib(cam_w, cam_h);
             cal.framing.tilt = tilt;
             cal.framing.roll = roll;
-            let coverage = cal.topology.projection().coverage(&cal);
-            let cam = cal.topology.projection().virtual_camera(&cal.framing);
-            let fov = (coverage.max_fov_degrees() * fov_factor).min(60.0);
             let config = ViewportSize {
                 width: out_w,
                 height: out_h,
             };
             let mut backend =
-                CpuExecutor::new(cal.clone(), config, cam_w, cam_h, false).expect("cpu");
+                CpuExecutor::new(cal.clone(), config.clone(), cam_w, cam_h, false).expect("cpu");
+            let mut core = StitchCore::new(Executor::Cpu(Box::new(
+                CpuExecutor::new(cal.clone(), config, cam_w, cam_h, false).unwrap(),
+            )))
+            .unwrap();
+            let fov = (core.prepare_coverage().unwrap() * fov_factor).min(60.0);
 
             for &(wy, wp) in &[
                 (0.0f32, 0.0f32),
@@ -1169,26 +1151,15 @@ mod tests {
                 (-3.0, 0.0),
                 (3.0, 0.0),
             ] {
-                // Through the real authority (clamp + orient in one call),
-                // so this test tracks any stage it grows in Steps 6-8.
-                let (ry, rp) = resolve_render_pose(
-                    &coverage,
-                    &cam,
-                    tilt as f32,
-                    roll as f32,
-                    wy,
-                    wp,
-                    fov,
-                    aspect_out,
-                );
-                let pose = Pose {
-                    yaw: ry,
-                    pitch: rp,
+                let requested = core.world_to_render_pose(Pose {
+                    yaw: wy,
+                    pitch: wp,
                     fov_degrees: fov,
-                };
+                });
+                let pose = core.constrain_render_pose(requested, requested).unwrap();
                 let frac = black_frac(&backend.stitch(&[planes, planes], pose).unwrap());
                 assert!(
-                    frac < 0.01,
+                    frac == 0.0,
                     "black fraction {frac:.4} at tilt={tilt} roll={roll} fov={fov:.1} target=({wy},{wp})"
                 );
             }

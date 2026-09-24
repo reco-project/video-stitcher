@@ -10,7 +10,6 @@
 
 use crate::calibration::Calibration;
 use crate::geometry::Pose;
-use crate::projection::Projection;
 use crate::render::planes::{Nv12Planes, YuvPlanes};
 use crate::render::viewport::ViewportSize;
 
@@ -58,7 +57,6 @@ fn check_plane(plane: &[u8], expected: usize) -> Result<(), StitchError> {
 /// the X5) get a typed error instead of an out-of-bounds panic.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn stitch_rgba(
-    projection: &dyn Projection,
     planes: &[Nv12Planes<'_>],
     cam: (u32, u32),
     calib: &Calibration,
@@ -68,7 +66,7 @@ pub(crate) fn stitch_rgba(
 ) -> Result<Vec<u8>, StitchError> {
     let (cw, ch) = cam;
     check_source_dims(cw, ch)?;
-    check_camera_count(projection, planes.len())?;
+    check_camera_count(calib, planes.len())?;
     let (w, h) = (cw as usize, ch as usize);
     for p in planes {
         check_plane(p.y, w * h)?;
@@ -78,13 +76,7 @@ pub(crate) fn stitch_rgba(
         .iter()
         .map(|p| move |u, v| sample_nv12(p, cw, ch, u, v, full_range))
         .collect();
-    Ok(stitch_with(
-        projection,
-        calib,
-        viewport_size,
-        pose,
-        &samplers,
-    ))
+    Ok(stitch_with(calib, viewport_size, pose, &samplers))
 }
 
 /// Stitch two YUV420p (planar) camera frames into an RGBA panorama on the CPU.
@@ -94,7 +86,6 @@ pub(crate) fn stitch_rgba(
 /// desktop/cloud where FFmpeg software decode yields YUV420p.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn stitch_rgba_yuv420p(
-    projection: &dyn Projection,
     planes: &[YuvPlanes<'_>],
     cam: (u32, u32),
     calib: &Calibration,
@@ -104,7 +95,7 @@ pub(crate) fn stitch_rgba_yuv420p(
 ) -> Result<Vec<u8>, StitchError> {
     let (cw, ch) = cam;
     check_source_dims(cw, ch)?;
-    check_camera_count(projection, planes.len())?;
+    check_camera_count(calib, planes.len())?;
     let (w, h) = (cw as usize, ch as usize);
     let chroma = (w / 2) * (h / 2);
     for p in planes {
@@ -116,18 +107,13 @@ pub(crate) fn stitch_rgba_yuv420p(
         .iter()
         .map(|p| move |u, v| sample_yuv420p(p, cw, ch, u, v, full_range))
         .collect();
-    Ok(stitch_with(
-        projection,
-        calib,
-        viewport_size,
-        pose,
-        &samplers,
-    ))
+    Ok(stitch_with(calib, viewport_size, pose, &samplers))
 }
 
 /// The supplied frame count must match the camera count the
 /// projection consumes; a mismatch would silently sample the wrong camera.
-fn check_camera_count(projection: &dyn Projection, planes: usize) -> Result<(), StitchError> {
+fn check_camera_count(calib: &Calibration, planes: usize) -> Result<(), StitchError> {
+    let projection = calib.topology.projection();
     if planes != projection.camera_count() {
         return Err(StitchError::InvalidConfig(format!(
             "projection '{}' consumes {} camera(s) but {planes} frame(s) were supplied",
@@ -140,23 +126,17 @@ fn check_camera_count(projection: &dyn Projection, planes: usize) -> Result<(), 
 
 /// Format-agnostic gather and composite driven by the projection.
 ///
-/// The surface list comes from [`Projection::surface_maps`] - this is the
+/// The surface list comes from [`Calibration::surface_maps`] - this is the
 /// L1 dispatch made real. `samplers[i]` maps a normalised camera UV to
 /// sRGB-domain RGB for source frame `i`; the loop itself knows nothing
 /// about the pixel format.
 fn stitch_with(
-    projection: &dyn Projection,
     calib: &Calibration,
     viewport_size: &ViewportSize,
     pose: Pose,
     samplers: &[impl Fn(f64, f64) -> [f64; 3]],
 ) -> Vec<u8> {
-    let ctx = crate::projection::ProjectionContext {
-        calibration: calib,
-        viewport_size,
-        pose,
-    };
-    let surfaces = projection.surface_maps(&ctx);
+    let surfaces = calib.surface_maps(viewport_size, pose);
     let sampler_refs: Vec<&dyn Fn(f64, f64) -> [f64; 3]> = samplers
         .iter()
         .map(|s| s as &dyn Fn(f64, f64) -> [f64; 3])
@@ -193,11 +173,16 @@ fn composite_rgba(
         samplers.len()
     );
     let mut out = vec![0u8; (out_w * out_h * 4) as usize];
+    let viewport_size = ViewportSize {
+        width: out_w,
+        height: out_h,
+    };
     for py in 0..out_h {
         for px in 0..out_w {
             let mut rgb = [0.0f64; 3];
+            let ndc = viewport_size.pixel_ndc(px, py);
             for ((map, rule), sample) in surfaces.iter().zip(samplers) {
-                if let Some(s) = map.sample_uv(px, py) {
+                if let Some(s) = map.sample_uv(ndc) {
                     let alpha = rule.alpha(s.edge);
                     let src = sample(s.u, s.v);
                     rgb = [

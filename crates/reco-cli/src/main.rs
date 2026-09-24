@@ -346,7 +346,7 @@ enum Commands {
         capture_height: u32,
 
         /// Capture frame rate.
-        #[arg(long, default_value_t = 30)]
+        #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u32).range(1..))]
         capture_fps: u32,
 
         /// Output width in pixels.
@@ -521,7 +521,7 @@ enum Commands {
         capture_height: u32,
 
         /// Capture frame rate.
-        #[arg(long, default_value_t = 30)]
+        #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u32).range(1..))]
         capture_fps: u32,
 
         /// Output width in pixels.
@@ -1189,5 +1189,46 @@ fn main() -> anyhow::Result<()> {
 
             Ok(())
         }
+    }
+}
+
+#[cfg(all(test, any(feature = "gstreamer", feature = "libcamera")))]
+mod tests {
+    use super::*;
+
+    #[cfg(feature = "gstreamer")]
+    #[test]
+    fn camera_rejects_zero_capture_fps_before_startup() {
+        let args = [
+            "reco",
+            "camera",
+            "--left-device",
+            "0",
+            "--right-device",
+            "1",
+            "-c",
+            "match.json",
+            "-o",
+            "out.mp4",
+            "--capture-fps",
+        ];
+        assert!(Cli::try_parse_from(args.into_iter().chain(["0"])).is_err());
+        assert!(Cli::try_parse_from(args.into_iter().chain(["1"])).is_ok());
+    }
+
+    #[cfg(feature = "libcamera")]
+    #[test]
+    fn libcamera_rejects_zero_capture_fps_before_startup() {
+        let args = [
+            "reco",
+            "libcamera",
+            "-c",
+            "match.json",
+            "-o",
+            "out.mp4",
+            "--capture-fps",
+        ];
+        assert!(Cli::try_parse_from(args.into_iter().chain(["0"])).is_err());
+        assert!(Cli::try_parse_from(args.into_iter().chain(["1"])).is_ok());
     }
 }

@@ -1,56 +1,8 @@
-//! Unified pose control: mouse / drag / wheel / keyboard → yaw / pitch / FOV.
+//! Direct viewport input shared by CLI preview, GUI and OBS.
 //!
-//! Replaces three divergent per-consumer implementations
-//! (reco-cli/preview, reco-gui, reco-obs):
-//! each had its own units (radians vs degrees), FOV clamp
-//! (20-150deg in two of them, no clamp at all in reco-obs), drag
-//! sensitivity (hand-tuned differently), and smoothing factor
-//! (0.3 vs 0.25 vs zero). With PoseControl those all come from
-//! one place, configurable per-consumer but with plan-mandated
-//! defaults (radians internal, degrees for FOV).
-//!
-//! # Usage
-//!
-//! Consumers instantiate a `PoseControl` per session, feed it input events
-//! via `apply_drag`, `apply_wheel`, `apply_hotkey`, and `set_target`, then
-//! call `tick` once per frame to ease the *current* pose toward the
-//! *target* pose. The current pose is what the renderer submits; the
-//! target is what the input layer wanted. Optional coverage-based
-//! clamping keeps the viewport inside the no-black region.
-//!
-//! ```rust,ignore
-//! use reco_core::pose_control::{PoseControl, PoseControlConfig};
-//!
-//! let mut pose = PoseControl::with_defaults();
-//!
-//! // Mouse drag from UI layer:
-//! pose.apply_drag(delta_x_pixels, delta_y_pixels);
-//! // Scroll wheel (one notch up = zoom in a bit):
-//! pose.apply_wheel(1.0);
-//! // Per-frame smoothing tick:
-//! pose.tick();
-//! // (Optional) clamp current pose through the session's coverage:
-//! pose.clamp_via_coverage(core.coverage().unwrap(), aspect);
-//! // Feed the engine (world-space pose -> StitchCore::orient_pose):
-//! let vp = pose.current_pose();
-//! ```
-//!
-//! # Units
-//!
-//! **Radians internal** for yaw/pitch;
-//! **degrees** for FOV (matches the rest of the reco-core pipeline
-//! and the viewport config). Conversion helpers live on
-//! `apply_drag` / `apply_wheel` where the UI layer hands over pixel or
-//! tick deltas.
-//!
-//! # Thread safety
-//!
-//! Not `Sync` (holds mutable drag state). Consumers that need
-//! cross-thread access wrap in `Mutex`. Send-only is sufficient for
-//! the worker / UI split every consumer actually needs.
-
+//! Inputs update a render-space target. Call [`PoseControl::constrain`](crate::pose_control::PoseControl::constrain) after each input and before rendering to accept it through the engine's coverage policy. Blocked deltas are discarded, so releasing or reversing a drag has no residual motion. Automatic tracking and its timing belong to the engine, not these controls.
+use reco_core::core::{StitchCore, types::StitchCoreError};
 use reco_core::geometry::Pose;
-use reco_core::projection::CoverageBoundary;
 
 use crate::{ControlIntent, PoseIntent};
 
@@ -90,37 +42,19 @@ pub enum HotkeyIntent {
     ToggleConstrained,
 }
 
-/// Configuration knobs for [`PoseControl`]. All have sensible
-/// defaults; consumers typically only override `drag_deg_per_pixel`
-/// or `smoothing` if the feel is wrong on their input device.
+/// Zoom limits, input steps, axis directions and reset pose for direct interaction.
 #[derive(Debug, Clone, Copy)]
 pub struct PoseControlConfig {
-    /// Drag sensitivity in degrees-per-pixel for both axes. reco-obs
-    /// shipped `0.1`; reco-gui + reco-cli used hand-tuned multipliers
-    /// that work out to roughly the same after accounting for their
-    /// local radian conversions. `0.1` is the harmonized default.
-    pub drag_deg_per_pixel: f32,
-
     /// Wheel sensitivity in FOV-degrees-per-tick. Positive tick
     /// counts narrow FOV (zoom in); negative widen. `3.0` is
     /// comfortable on mouse wheels and trackpad scrolls.
     pub wheel_fov_per_tick: f32,
 
-    /// Per-tick smoothing factor in `[0, 1]`. `1.0` disables
-    /// smoothing (current snaps to target); lower values give a
-    /// critical-damped ease. Default `0.3` matches reco-cli; GUI
-    /// consumers that want tighter response override to `0.5` or
-    /// higher.
-    pub smoothing: f32,
-
-    /// Minimum FOV in degrees (zoomed-in limit). `20.0` matches
-    /// reco-cli + reco-gui.
+    /// Minimum FOV in degrees (zoomed-in limit). The default matches the engine's one-degree coverage floor.
     pub fov_min_degrees: f32,
 
     /// Maximum FOV in degrees (zoomed-out limit), the baseline ceiling.
-    /// `clamp_via_coverage` applies the tighter `coverage.max_fov_degrees()`
-    /// limit transiently (without changing this baseline) so the viewport
-    /// never reveals black edges while constrained look is on.
+    /// The engine applies its geometric cap without changing this baseline.
     pub fov_max_degrees: f32,
 
     /// Whether drag deltas on the X axis are inverted. Off
@@ -154,10 +88,8 @@ pub struct PoseControlConfig {
 impl Default for PoseControlConfig {
     fn default() -> Self {
         Self {
-            drag_deg_per_pixel: 0.1,
             wheel_fov_per_tick: 3.0,
-            smoothing: 0.3,
-            fov_min_degrees: 20.0,
+            fov_min_degrees: 1.0,
             fov_max_degrees: 150.0,
             invert_drag_x: false,
             invert_drag_y: false,
@@ -175,16 +107,7 @@ impl Default for PoseControlConfig {
 
 /// Unified pose state machine driven by input events.
 ///
-/// Owns two poses: `target` (what the input layer just wanted) and
-/// `current` (what the renderer should draw this frame). Each `tick`
-/// eases current toward target by `config.smoothing`.
-///
-/// Poses are stored in **world space** (the panorama's native frame,
-/// matching the AI/director path). The rig tilt+roll correction that
-/// keeps the horizon level under pan is applied at the render site by
-/// [`StitchCore::orient_pose`](reco_core::core::StitchCore::orient_pose),
-/// not here; coverage clamping ([`Self::clamp_via_coverage`]) is also
-/// world-space.
+/// Owns the render-space input target and the last accepted pose. [`Self::constrain`] fits the target through the engine, then stores the accepted result in both. Do not apply world-to-render orientation again at the render site.
 #[derive(Debug, Clone)]
 pub struct PoseControl {
     target_yaw_rad: f32,
@@ -215,7 +138,7 @@ impl PoseControl {
         }
     }
 
-    /// Build a `PoseControl` with plan-mandated defaults.
+    /// Build a `PoseControl` with the default input settings.
     pub fn with_defaults() -> Self {
         Self::new(PoseControlConfig::default())
     }
@@ -224,17 +147,19 @@ impl PoseControl {
     // Input events
     // ---------------------------------------------------------------
 
-    /// Apply a pixel-space drag delta. The UI layer computes the
-    /// delta between consecutive mouse-move events; this method
-    /// translates it into radians using `config.drag_deg_per_pixel`.
+    /// Apply a drag in displayed-viewport pixels, scaled by current vertical FOV and viewport height.
     ///
-    /// Dragging right (positive dx) pans the camera right, which
-    /// means **decreasing** yaw (camera looks further left of the
-    /// scene). Dragging down (positive dy) pans down (pitch
-    /// decreases) unless `invert_drag_y` is set. This matches
-    /// standard panning-camera conventions.
-    pub fn apply_drag(&mut self, dx_pixels: f32, dy_pixels: f32) {
-        let deg_per_pixel = self.config.drag_deg_per_pixel;
+    /// Supply the displayed image height, not the source or render-target height. Invalid dimensions and non-finite deltas are ignored. Axis direction is controlled by the invert flags.
+    pub fn apply_drag(&mut self, dx_pixels: f32, dy_pixels: f32, viewport_height: f32) {
+        if !viewport_height.is_finite()
+            || viewport_height <= 0.0
+            || !dx_pixels.is_finite()
+            || !dy_pixels.is_finite()
+        {
+            return;
+        }
+        let radians_per_pixel =
+            2.0 * (self.current_fov_deg.to_radians() * 0.5).tan() / viewport_height;
         // The baseline convention is "drag the scene": drag right
         // (positive dx) yaws the camera left (yaw decreases), drag
         // down (positive dy) pitches the camera up (pitch increases).
@@ -250,8 +175,8 @@ impl PoseControl {
         } else {
             dy_pixels
         };
-        let dx_rad = raw_dx * deg_per_pixel.to_radians();
-        let dy_rad = raw_dy * deg_per_pixel.to_radians();
+        let dx_rad = raw_dx * radians_per_pixel;
+        let dy_rad = raw_dy * radians_per_pixel;
         self.target_yaw_rad += dx_rad;
         self.target_pitch_rad += dy_rad;
     }
@@ -320,10 +245,7 @@ impl PoseControl {
         }
     }
 
-    /// Replace the target pose outright. Used when an external
-    /// source (an AI director, a calibration reset, a replay seek)
-    /// produces a pose the UI layer did not; current still eases to
-    /// it over the next few ticks.
+    /// Replace the pending render-space pose. [`Self::constrain`] accepts it before rendering.
     pub fn set_target(&mut self, pose: Pose) {
         self.target_yaw_rad = pose.yaw;
         self.target_pitch_rad = pose.pitch;
@@ -340,67 +262,28 @@ impl PoseControl {
     }
 
     // ---------------------------------------------------------------
-    // Per-frame step
-    // ---------------------------------------------------------------
-
-    /// Advance the current pose toward the target using the
-    /// configured smoothing factor.
-    pub fn tick(&mut self) {
-        let s = self.config.smoothing;
-        self.tick_with(s);
-    }
-
-    /// Advance with an explicit smoothing factor (called by [`Self::tick`]).
-    fn tick_with(&mut self, smoothing: f32) {
-        let s = smoothing.clamp(0.0, 1.0);
-        self.current_yaw_rad += (self.target_yaw_rad - self.current_yaw_rad) * s;
-        self.current_pitch_rad += (self.target_pitch_rad - self.current_pitch_rad) * s;
-        self.current_fov_deg += (self.target_fov_deg - self.current_fov_deg) * s;
-    }
-
-    // ---------------------------------------------------------------
     // Coverage clamping
     // ---------------------------------------------------------------
 
-    /// Clamp both target and current pose through the session's
-    /// coverage boundary, and narrow `config.fov_max_degrees` to
-    /// `coverage.max_fov_degrees()`. This keeps the viewport inside
-    /// the no-black region the projection can render. Safe to call
-    /// every tick.
+    /// Resolve direct render-space input immediately through the engine's coverage policy.
     ///
-    /// The stored poses are world-space (the panorama's native
-    /// coordinate frame, matching the AI/director path), so this is a
-    /// direct world-space clamp with no rig-tilt round-trip.
-    pub fn clamp_via_coverage(&mut self, coverage: &CoverageBoundary, aspect: f32) {
-        // Coverage FOV ceiling for this pass, bounded by the configured
-        // baseline. Applied transiently to target/current FOV; the config's
-        // `fov_max_degrees` baseline is left untouched, so disabling
-        // constrained look (which stops calling this) frees the FOV again.
-        let max_fov = coverage.max_fov_degrees().min(self.config.fov_max_degrees);
-        self.target_fov_deg = self.target_fov_deg.min(max_fov);
-        self.current_fov_deg = self.current_fov_deg.min(max_fov);
+    /// Accepts the fitted pose as both current and target, discarding blocked input without smoothing or changing the configured zoom range. Errors preserve both poses. Call after each input and after viewport or calibration changes, before rendering.
+    pub fn constrain(&mut self, core: &mut StitchCore) -> Result<(), StitchCoreError> {
+        let accepted = core.constrain_render_pose(self.current_pose(), self.target_pose())?;
+        self.set_pose(accepted);
+        Ok(())
+    }
 
-        // target_*/current_* are world-space, as is the coverage
-        // boundary, so clamp directly (no human<->world mapping).
-        let clamp = |yaw: f32, pitch: f32, fov: f32| -> (f32, f32) {
-            let clamped = coverage.safe_clamp(yaw, pitch, fov, aspect);
-            (clamped.yaw, clamped.pitch)
-        };
-        let (ty, tp) = clamp(
-            self.target_yaw_rad,
-            self.target_pitch_rad,
-            self.target_fov_deg,
-        );
-        self.target_yaw_rad = ty;
-        self.target_pitch_rad = tp;
-
-        let (cy, cp) = clamp(
-            self.current_yaw_rad,
-            self.current_pitch_rad,
-            self.current_fov_deg,
-        );
-        self.current_yaw_rad = cy;
-        self.current_pitch_rad = cp;
+    /// Replace current and target together after an external coordinate-frame change.
+    ///
+    /// Does not validate coverage or change the configured reset pose. Call [`Self::constrain`] before rendering under the new calibration.
+    pub fn set_pose(&mut self, accepted: Pose) {
+        self.target_yaw_rad = accepted.yaw;
+        self.target_pitch_rad = accepted.pitch;
+        self.target_fov_deg = accepted.fov_degrees;
+        self.current_yaw_rad = accepted.yaw;
+        self.current_pitch_rad = accepted.pitch;
+        self.current_fov_deg = accepted.fov_degrees;
     }
 
     // ---------------------------------------------------------------
@@ -439,22 +322,9 @@ impl PoseControl {
     pub fn current_fov_deg(&self) -> f32 {
         self.current_fov_deg
     }
-
-    /// Borrowed config.
-    pub fn config(&self) -> &PoseControlConfig {
-        &self.config
-    }
-
-    /// Replace the config. Does not re-clamp the current pose —
-    /// call [`PoseControl::clamp_via_coverage`] or [`PoseControl::tick`] afterward if needed.
-    pub fn set_config(&mut self, config: PoseControlConfig) {
-        self.config = config;
-    }
 }
 
-// Compile-time bound check: PoseControl is `Send` so a worker thread
-// (e.g. OBS tick callback) can hold one. Not `Sync` — drags mutate
-// state; cross-thread shared access requires a `Mutex`.
+// Worker callbacks can own the controls; mutations require exclusive access.
 const _: fn() = || {
     fn assert_send<T: Send>() {}
     fn assert_clone<T: Clone>() {}
@@ -476,12 +346,10 @@ mod tests {
     // ---- Defaults -----------------------------------------------------
 
     #[test]
-    fn defaults_match_plan_mandate() {
-        // Plan: radians internal + degrees for FOV + 20-150deg clamp.
+    fn defaults_use_degrees_for_zoom_and_radians_for_pan() {
         let cfg = PoseControlConfig::default();
-        assert_eq!(cfg.fov_min_degrees, 20.0);
+        assert_eq!(cfg.fov_min_degrees, 1.0);
         assert_eq!(cfg.fov_max_degrees, 150.0);
-        assert_eq!(cfg.drag_deg_per_pixel, 0.1);
         assert_eq!(cfg.wheel_fov_per_tick, 3.0);
         assert_eq!(cfg.rest_pose.fov_degrees, 75.0);
     }
@@ -494,17 +362,45 @@ mod tests {
         // further left of the scene; the grab-the-world drag convention).
         let mut p = fresh();
         let y0 = p.target_yaw_rad;
-        p.apply_drag(100.0, 0.0);
+        p.apply_drag(100.0, 0.0, 600.0);
         assert!(p.target_yaw_rad < y0);
     }
 
     #[test]
-    fn drag_uses_configured_sensitivity() {
-        // 100px at 0.1 deg/px = 10 degrees = 0.1745 rad.
+    fn drag_uses_perspective_scale() {
         let mut p = fresh();
-        p.apply_drag(100.0, 0.0);
-        let expected = -(10.0_f32).to_radians();
+        p.apply_drag(100.0, 0.0, 600.0);
+        let expected = -2.0 * (p.current_fov_deg.to_radians() * 0.5).tan() * 100.0 / 600.0;
         assert!((p.target_yaw_rad - expected).abs() < 1e-5);
+    }
+
+    #[test]
+    fn drag_scales_with_display_size_and_ignores_invalid_input() {
+        let mut small = fresh();
+        let mut large = fresh();
+        small.apply_drag(30.0, -20.0, 300.0);
+        large.apply_drag(60.0, -40.0, 600.0);
+        assert_eq!(small.target_pose(), large.target_pose());
+        let before = small.target_pose();
+        for height in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            small.apply_drag(10.0, 10.0, height);
+        }
+        small.apply_drag(f32::NAN, 0.0, 300.0);
+        small.apply_drag(0.0, f32::INFINITY, 300.0);
+        assert_eq!(small.target_pose(), before);
+    }
+
+    #[test]
+    fn narrow_coverage_does_not_prevent_zooming_in() {
+        let mut p = PoseControl::new(PoseControlConfig {
+            rest_pose: Pose {
+                fov_degrees: 12.0,
+                ..Pose::default()
+            },
+            ..Default::default()
+        });
+        p.apply_wheel(1.0);
+        assert_eq!(p.target_pose().fov_degrees, 9.0);
     }
 
     #[test]
@@ -514,7 +410,7 @@ mod tests {
             ..Default::default()
         });
         let p0 = p.target_pitch_rad;
-        p.apply_drag(0.0, 50.0);
+        p.apply_drag(0.0, 50.0, 600.0);
         assert!(
             p.target_pitch_rad < p0,
             "invert_y: positive dy lowers pitch"
@@ -560,7 +456,7 @@ mod tests {
     #[test]
     fn hotkey_reset_returns_target_to_rest() {
         let mut p = fresh();
-        p.apply_drag(500.0, -300.0);
+        p.apply_drag(500.0, -300.0, 600.0);
         p.apply_wheel(10.0);
         p.apply_hotkey(HotkeyIntent::Reset);
         let rest = p.config.rest_pose;
@@ -578,61 +474,10 @@ mod tests {
         assert_eq!(before, after);
     }
 
-    // ---- Tick (smoothing) ---------------------------------------------
-
-    #[test]
-    fn tick_eases_current_toward_target() {
-        let mut p = fresh();
-        p.apply_drag(100.0, 0.0); // moves target only
-        let before = p.current_yaw_rad;
-        p.tick();
-        let after = p.current_yaw_rad;
-        let target = p.target_yaw_rad;
-        assert!(
-            (before - after).abs() > 0.0 && (after - target).abs() < (before - target).abs(),
-            "tick moves current partway toward target"
-        );
-    }
-
-    #[test]
-    fn tick_with_one_snaps_to_target() {
-        let mut p = fresh();
-        p.apply_drag(100.0, 50.0);
-        p.apply_wheel(2.0);
-        p.tick_with(1.0);
-        assert!((p.current_yaw_rad - p.target_yaw_rad).abs() < 1e-6);
-        assert!((p.current_pitch_rad - p.target_pitch_rad).abs() < 1e-6);
-        assert!((p.current_fov_deg - p.target_fov_deg).abs() < 1e-6);
-    }
-
-    #[test]
-    fn tick_with_zero_does_not_move_current() {
-        let mut p = fresh();
-        p.apply_drag(100.0, 50.0);
-        let before = (p.current_yaw_rad, p.current_pitch_rad);
-        p.tick_with(0.0);
-        assert_eq!(before, (p.current_yaw_rad, p.current_pitch_rad));
-    }
-
-    // ---- Convergence --------------------------------------------------
-
-    #[test]
-    fn repeated_ticks_converge_to_target() {
-        let mut p = fresh();
-        p.apply_drag(200.0, -100.0);
-        p.apply_wheel(5.0);
-        for _ in 0..200 {
-            p.tick();
-        }
-        assert!((p.current_yaw_rad - p.target_yaw_rad).abs() < 1e-3);
-        assert!((p.current_pitch_rad - p.target_pitch_rad).abs() < 1e-3);
-        assert!((p.current_fov_deg - p.target_fov_deg).abs() < 1e-2);
-    }
-
     // ---- set_target ---------------------------------------------------
 
     #[test]
-    fn set_target_updates_target_but_not_current_until_tick() {
+    fn set_target_waits_for_acceptance() {
         let mut p = fresh();
         let c0 = p.current_yaw_rad;
         p.set_target(Pose {
@@ -669,5 +514,50 @@ mod tests {
         p.apply_intent(ControlIntent::Hotkey(HotkeyIntent::YawRight));
         p.apply_intent(ControlIntent::Pose(PoseIntent::Reset));
         assert!((p.target_yaw_rad - p.config.rest_pose.yaw).abs() < 1e-5);
+    }
+}
+#[test]
+fn direct_acceptance_copies_the_target_exactly_after_large_reversals() {
+    use reco_core::{
+        calibration::{Calibration, Framing, Lens},
+        projection::Cylinder,
+        render::viewport::ViewportSize,
+        stitch::{CpuExecutor, Executor},
+    };
+    let cal = Calibration::new(
+        vec![Lens::flat(64, 32)],
+        Cylinder::default(),
+        Framing {
+            axis_offset: 0.0,
+            tilt: 0.0,
+            roll: 0.0,
+        },
+    );
+    let executor = CpuExecutor::new(
+        cal,
+        ViewportSize {
+            width: 64,
+            height: 32,
+        },
+        64,
+        32,
+        false,
+    )
+    .unwrap();
+    let mut core = StitchCore::new(Executor::Cpu(Box::new(executor))).unwrap();
+    core.set_constrained_look(false);
+    let mut control = PoseControl::with_defaults();
+    control.set_target_fov(1.0);
+    control.constrain(&mut core).unwrap();
+    assert_eq!(control.current_fov_deg(), 1.0);
+    for yaw in [2.9, -0.0000001, -2.9, 0.0000001] {
+        let p = Pose {
+            yaw,
+            pitch: -yaw * 0.1,
+            fov_degrees: 37.12345,
+        };
+        control.set_target(p);
+        control.constrain(&mut core).unwrap();
+        assert_eq!(control.current_pose(), p);
     }
 }

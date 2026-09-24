@@ -81,7 +81,7 @@ impl Tracker for ClassProvider {
 mod tests {
     use super::*;
     use reco_core::geometry::CameraIndex;
-    use reco_core::geometry::Pose;
+    use reco_core::geometry::YawPitch;
 
     fn det(camera: CameraIndex, yaw: f32, pitch: f32, conf: f32) -> MappedDetection {
         MappedDetection {
@@ -90,11 +90,7 @@ mod tests {
             confidence: conf,
             camera_center: (0.5, 0.5),
             camera_size: (0.05, 0.05),
-            position: Some(Pose {
-                yaw,
-                pitch,
-                ..Default::default()
-            }),
+            position: Some(YawPitch { yaw, pitch }),
         }
     }
 

@@ -5,6 +5,57 @@ use reco_core::calibration::{Framing, Lens};
 use reco_core::projection::LShape;
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
 
+#[test]
+fn preview_rest_and_reset_keep_the_world_direction_on_tilted_rigs() {
+    use reco_core::core::StitchCore;
+    use reco_core::render::viewport::ViewportSize;
+    use reco_core::stitch::{CpuExecutor, Executor};
+
+    for (tilt, roll) in [(0.0, 0.0), (0.2, 0.0), (0.12, -0.09)] {
+        let mut cal = calibration();
+        cal.framing.tilt = tilt;
+        cal.framing.roll = roll;
+        let executor = CpuExecutor::new(
+            cal,
+            ViewportSize {
+                width: 64,
+                height: 36,
+            },
+            64,
+            36,
+            false,
+        )
+        .unwrap();
+        let mut core = StitchCore::new(Executor::Cpu(Box::new(executor))).unwrap();
+        core.set_constrained_look(false);
+        let expected = core.world_to_render_pose(PoseControlConfig::default().rest_pose);
+        let mut pose = preview_pose_control(Some(&core));
+        assert_eq!(pose.current_pose(), expected);
+        pose.apply_drag(100.0, -30.0, 360.0);
+        pose.constrain(&mut core).unwrap();
+        assert_ne!(pose.current_pose(), expected);
+        pose.apply_intent(ControlIntent::Pose(PoseIntent::Reset));
+        pose.constrain(&mut core).unwrap();
+        assert_eq!(pose.current_pose(), expected);
+    }
+}
+
+#[test]
+fn drag_scale_uses_the_contained_image_not_the_letterbox() {
+    assert_eq!(displayed_image_height(600.0, 900.0, (1920, 1080)), 337.5);
+    assert_eq!(displayed_image_height(900.0, 600.0, (1080, 1920)), 600.0);
+    assert_eq!(displayed_image_height(640.0, 360.0, (1920, 1080)), 360.0);
+    let mut fitted = preview_pose_control(None);
+    let mut letterboxed = fitted.clone();
+    fitted.apply_drag(40.0, 20.0, 337.5);
+    letterboxed.apply_drag(
+        40.0,
+        20.0,
+        displayed_image_height(600.0, 900.0, (1920, 1080)),
+    );
+    assert_eq!(fitted.target_pose(), letterboxed.target_pose());
+}
+
 struct HeadlessPlatform;
 
 impl slint::platform::Platform for HeadlessPlatform {
@@ -58,11 +109,13 @@ fn exercise_editor(state: &mut AppState, app: &RecoApp) {
             lens.correction = 0.0;
         }
     }));
+    finish_edit(state, app);
     assert_eq!(state.lens_correction_amount, 0.0);
     let untouched_right =
         serde_json::to_value(&state.calibration.as_ref().unwrap().lenses[1]).unwrap();
     let profile = Lens::fisheye(128, 72, 80.0, 82.0, 66.0, 38.0, [-0.01, 0.0, 0.0, 0.0]);
     assert!(state.apply_lens_profile(app, &profile, "left"));
+    finish_edit(state, app);
     state.sync_calibration_controls(app);
     let cal = state.calibration.as_ref().unwrap();
     assert_eq!((cal.lenses[0].width, cal.lenses[0].height), (64, 36));
@@ -90,9 +143,108 @@ fn exercise_editor(state: &mut AppState, app: &RecoApp) {
         assert_eq!(bridge.engine().calibration(), &accepted);
     }
     assert!(state.apply_lens_profile(app, &profile, "both"));
+    finish_edit(state, app);
     let accepted = state.calibration.as_ref().unwrap();
     assert_eq!(accepted.lenses[0], accepted.lenses[1]);
     assert_eq!(accepted.lenses[1].correction, 0.0);
+}
+
+fn finish_edit(state: &mut AppState, app: &RecoApp) {
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while state.pending_calibration.is_some() {
+        assert!(
+            Instant::now() < deadline,
+            "calibration preparation timed out"
+        );
+        state.poll_calibration_edit(app);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
+fn exercise_pending_framing(state: &mut AppState, app: &RecoApp) {
+    let deadline = Instant::now() + Duration::from_secs(120);
+    while state
+        .bridge
+        .as_mut()
+        .unwrap()
+        .engine_mut()
+        .prepare_coverage_preview()
+        .unwrap()
+        .is_none()
+    {
+        assert!(Instant::now() < deadline, "coverage preparation timed out");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    state.use_constrained_look = false;
+    state.lens_preview_active = false;
+    state.reset_view();
+    state.clamp_targets();
+    let original = state.calibration.clone().unwrap();
+    assert!(state.edit_calibration(app, |cal| cal.framing.tilt = 0.12));
+    assert!(state.pending_calibration.is_some());
+    assert_eq!(state.calibration.as_ref(), Some(&original));
+    assert!(state.save_calibration().unwrap_err().contains("updating"));
+    assert!(
+        state
+            .start_recording("h264", "medium")
+            .unwrap_err()
+            .contains("updating")
+    );
+    assert!(state.edit_calibration(app, |cal| cal.framing.roll = -0.09));
+    assert_eq!(
+        state.pending_calibration.as_ref().unwrap().framing.tilt,
+        0.12
+    );
+    assert!(!state.edit_calibration(app, |cal| cal.framing.axis_offset = 0.0));
+    assert!(
+        state.pending_calibration.is_some(),
+        "bad edit must not discard a valid pending draft"
+    );
+    state.apply_pan(30.0, -10.0, 640.0, 360.0);
+    let world = state
+        .bridge
+        .as_ref()
+        .unwrap()
+        .engine()
+        .render_to_world_pose(state.pose.current_pose());
+    finish_edit(state, app);
+    let cal = state.calibration.as_ref().unwrap();
+    assert_eq!(cal.framing.tilt, 0.12);
+    assert_eq!(cal.framing.roll, -0.09);
+    assert_eq!(state.bridge.as_ref().unwrap().engine().calibration(), cal);
+    let accepted = state
+        .bridge
+        .as_ref()
+        .unwrap()
+        .engine()
+        .render_to_world_pose(state.pose.current_pose());
+    assert!((world.yaw - accepted.yaw).abs() < 1e-5);
+    assert!((world.pitch - accepted.pitch).abs() < 1e-5);
+    assert_eq!(world.fov_degrees, accepted.fov_degrees);
+    state.reset_view();
+    let reset = state
+        .bridge
+        .as_ref()
+        .unwrap()
+        .engine()
+        .render_to_world_pose(state.pose.current_pose());
+    assert!(reset.yaw.abs() < 1e-5 && reset.pitch.abs() < 1e-5);
+
+    let accepted = state.calibration.clone().unwrap();
+    assert!(state.edit_calibration(app, |cal| {
+        for lens in &mut cal.lenses {
+            lens.cx = 1e9;
+        }
+    }));
+    assert!(state.pending_calibration.is_some());
+    finish_edit(state, app);
+    assert_eq!(state.calibration.as_ref(), Some(&accepted));
+    assert_eq!(
+        state.bridge.as_ref().unwrap().engine().calibration(),
+        &accepted
+    );
+    assert_eq!(app.get_lens_left_cx(), accepted.lenses[0].cx as f32);
+    assert_eq!(app.get_status_text(), "[ERROR] Calibration unchanged");
 }
 
 #[test]
@@ -140,4 +292,7 @@ fn editor_rolls_back_invalid_controls_and_keeps_preview_and_document_together() 
         .unwrap(),
     );
     exercise_editor(&mut state, &app);
+    if state.bridge.is_some() {
+        exercise_pending_framing(&mut state, &app);
+    }
 }

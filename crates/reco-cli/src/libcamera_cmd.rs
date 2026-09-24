@@ -174,7 +174,7 @@ pub fn run_libcamera(
         if let Err(e) = session.detect_and_update_director(&frame, start.elapsed()) {
             log::warn!("detection failed on this frame: {e}");
         }
-        let pos = session.director_position();
+        let pos = session.advance_presented_pose(1.0 / capture_fps as f32)?;
         session.process_frame(&frame, pos)?;
         println!("Warmup complete, starting capture...");
     }
@@ -193,7 +193,7 @@ pub fn run_libcamera(
         if let Err(e) = session.detect_and_update_director(&frame, start.elapsed()) {
             log::warn!("detection failed on this frame: {e}");
         }
-        let pos = session.director_position();
+        let pos = session.advance_presented_pose(1.0 / capture_fps as f32)?;
         session.process_frame(&frame, pos)?;
         frame_count += 1;
         progress.report(frame_count);

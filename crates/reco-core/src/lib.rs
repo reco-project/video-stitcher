@@ -4,7 +4,7 @@
 //!
 //! `reco-core` is the foundation of the Reco Video Stitcher. It provides the
 //! complete GPU pipeline for stitching two camera feeds into a seamless panoramic
-//! view, using [`wgpu`] for cross-platform GPU acceleration.
+//! view, using `wgpu` for cross-platform GPU acceleration.
 //!
 //! ## Architecture
 //!

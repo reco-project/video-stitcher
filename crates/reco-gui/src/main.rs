@@ -69,20 +69,8 @@ const PREVIEW_HEIGHT_DEFAULT: u32 = 1080;
 const TICK_INTERVAL_MS: i64 = 2;
 
 /// FOV clamp range (degrees), matching CLI preview.
-const FOV_MIN: f32 = 20.0;
+const FOV_MIN: f32 = 1.0;
 const FOV_MAX: f32 = 150.0;
-
-/// Mouse drag sensitivity passed to `PoseControlConfig`. `0.287`
-/// deg/px = 0.005 rad/px - matches the pre-migration GUI constant
-/// (`MOUSE_SENSITIVITY = 0.005`) and the CLI preview's
-/// `drag_deg_per_pixel`.
-const DRAG_DEG_PER_PIXEL: f32 = 0.287;
-
-/// Exponential smoothing factor passed to `PoseControlConfig`. `0.25`
-/// gives a time constant of ~3-4 ticks at 60Hz render rate - fast
-/// enough to track input, soft enough to hide per-pixel jitter.
-/// Matches the pre-migration GUI constant `CAMERA_SMOOTHING`.
-const POSE_SMOOTHING: f32 = 0.25;
 
 /// How long the seek-slider fraction must stay stable before we
 /// actually execute the seek. Debouncing is required because every
@@ -217,6 +205,8 @@ struct AppState {
     right_input: Option<reco_io::stitch_job::InputPath>,
     calibration_path: Option<PathBuf>,
     calibration: Option<Calibration>,
+    pending_calibration: Option<Calibration>,
+    pending_calibration_playback: Option<Playback>,
     playback: Playback,
     bridge: Option<PreviewBridge>,
     recording_tx: Option<std::sync::mpsc::SyncSender<RecordingFrame>>,
@@ -269,6 +259,9 @@ struct AppState {
     /// through the camera-smoothing path but still need a re-render.
     /// Cleared by the timer after it renders.
     preview_dirty: bool,
+    /// Keep polling the first coverage build even when playback is paused.
+    coverage_pending: bool,
+    coverage_error_reported: bool,
     /// Interrupt flag for a running export. Set to true when the user
     /// clicks Cancel; StitchJob checks it between frames and aborts.
     export_interrupted: Arc<AtomicBool>,
@@ -307,11 +300,7 @@ struct AppState {
     /// manual match.json load populates them.
     cal_baseline_left_params: Option<reco_core::calibration::Lens>,
     cal_baseline_right_params: Option<reco_core::calibration::Lens>,
-    /// When true, `clamp_targets` pins yaw/pitch to the coverage boundary
-    /// via `CoverageBoundary::safe_clamp` so the viewport never shows
-    /// black margins. When false, pan/zoom is unrestricted - useful for
-    /// calibration debug where the user wants to see beyond the stitched
-    /// region. Bound to the Slint `use-constrained-look` checkbox.
+    /// Fit direct input through engine coverage. Disabling permits inspecting outside the stitched region during calibration. Bound to the Slint `use-constrained-look` checkbox.
     use_constrained_look: bool,
     /// When true, the preview shows a single camera through orthographic
     /// projection instead of the stitched panorama.
@@ -469,6 +458,23 @@ struct RecordingFrame {
     pts_us: i64,
 }
 
+fn preview_pose_control(engine: Option<&reco_core::core::StitchCore>) -> PoseControl {
+    let mut config = PoseControlConfig {
+        fov_min_degrees: FOV_MIN,
+        fov_max_degrees: FOV_MAX,
+        invert_drag_x: true,
+        ..PoseControlConfig::default()
+    };
+    if let Some(engine) = engine {
+        config.rest_pose = engine.world_to_render_pose(config.rest_pose);
+    }
+    PoseControl::new(config)
+}
+
+fn displayed_image_height(width: f32, height: f32, image: (u32, u32)) -> f32 {
+    height.min(width * image.1 as f32 / image.0 as f32)
+}
+
 impl AppState {
     fn new(user_settings: crate::settings::GuiSettings) -> Self {
         Self {
@@ -478,6 +484,8 @@ impl AppState {
             right_input: None,
             calibration_path: None,
             calibration: None,
+            pending_calibration: None,
+            pending_calibration_playback: None,
             playback: Playback::new(),
             bridge: None,
             recording_tx: None,
@@ -498,20 +506,12 @@ impl AppState {
             auto_export_done: 0,
             #[cfg(feature = "automation")]
             auto_export_base: None,
-            pose: PoseControl::new(PoseControlConfig {
-                drag_deg_per_pixel: DRAG_DEG_PER_PIXEL,
-                smoothing: POSE_SMOOTHING,
-                fov_min_degrees: FOV_MIN,
-                fov_max_degrees: FOV_MAX,
-                // Pre-migration GUI: drag-right -> target_yaw +=,
-                // i.e. PTZ-head convention. `invert_drag_x = true`
-                // keeps that exact feel.
-                invert_drag_x: true,
-                ..PoseControlConfig::default()
-            }),
+            pose: preview_pose_control(None),
             pending_seek: None,
             last_render_at: None,
             preview_dirty: false,
+            coverage_pending: false,
+            coverage_error_reported: false,
             export_interrupted: Arc::new(AtomicBool::new(false)),
             export_last_progress_at: Arc::new(Mutex::new(None)),
             export_thread: None,
@@ -536,19 +536,16 @@ impl AppState {
     }
 
     fn reset_pipeline(&mut self) {
+        self.pending_calibration = None;
+        self.pending_calibration_playback = None;
         self.bridge = None;
         self.playback = Playback::new();
-        self.pose = PoseControl::new(PoseControlConfig {
-            drag_deg_per_pixel: DRAG_DEG_PER_PIXEL,
-            smoothing: POSE_SMOOTHING,
-            fov_min_degrees: FOV_MIN,
-            fov_max_degrees: FOV_MAX,
-            invert_drag_x: true,
-            ..PoseControlConfig::default()
-        });
+        self.pose = preview_pose_control(None);
         self.pending_seek = None;
         self.last_render_at = None;
         self.preview_dirty = false;
+        self.coverage_pending = false;
+        self.coverage_error_reported = false;
     }
 
     /// Build a PreviewBridge using the captured Slint GPU handles. Fails
@@ -579,35 +576,89 @@ impl AppState {
         .map_err(|e| format!("GPU init error: {e}"))
     }
 
-    /// Apply a draft before publishing it to the editor and save path.
+    /// Coalesce editor drafts while the accepted document remains renderable.
     fn edit_calibration(&mut self, app: &RecoApp, edit: impl FnOnce(&mut Calibration)) -> bool {
-        let result = if let Some(bridge) = self.bridge.as_mut() {
-            bridge
-                .engine_mut()
-                .edit_calibration(edit)
-                .map(|()| bridge.engine().calibration().clone())
-        } else {
-            let Some(mut calibration) = self.calibration.clone() else {
-                return false;
-            };
-            edit(&mut calibration);
-            calibration
-                .validate()
-                .map(|()| calibration)
-                .map_err(reco_core::core::types::StitchCoreError::from)
+        let Some(mut draft) = self.editor_calibration().cloned() else {
+            return false;
         };
-        let calibration = match result {
-            Ok(calibration) => calibration,
+        edit(&mut draft);
+        match self.apply_calibration(draft.clone()) {
+            Ok(true) => self.finish_calibration_edit(app),
+            Ok(false) => {
+                self.pending_calibration = Some(draft);
+                self.preview_dirty = true;
+                app.set_status_text("Updating calibration…".into());
+            }
             Err(error) => {
                 self.report_calibration_error(app, error);
                 return false;
             }
-        };
+        }
+        true
+    }
+
+    fn editor_calibration(&self) -> Option<&Calibration> {
+        self.pending_calibration
+            .as_ref()
+            .or(self.calibration.as_ref())
+    }
+
+    fn apply_calibration(
+        &mut self,
+        calibration: Calibration,
+    ) -> Result<bool, reco_core::core::types::StitchCoreError> {
+        if let Some(bridge) = self.bridge.as_mut() {
+            let previous_framing = &bridge.engine().calibration().framing;
+            let world = (previous_framing.tilt != calibration.framing.tilt
+                || previous_framing.roll != calibration.framing.roll)
+                .then(|| {
+                    bridge
+                        .engine()
+                        .render_to_world_pose(self.pose.current_pose())
+                });
+            if !bridge
+                .engine_mut()
+                .update_calibration_preview(calibration.clone())?
+            {
+                return Ok(false);
+            }
+            if let Some(world) = world {
+                self.pose
+                    .set_pose(bridge.engine().world_to_render_pose(world));
+            }
+        } else {
+            calibration.validate()?;
+        }
         self.lens_correction_amount = calibration.lenses[0].correction;
         self.calibration = Some(calibration);
         self.preview_dirty = true;
         self.clamp_targets();
-        true
+        Ok(true)
+    }
+
+    fn finish_calibration_edit(&mut self, app: &RecoApp) {
+        self.pending_calibration = None;
+        if let Some(playback) = self.pending_calibration_playback.take() {
+            self.playback = playback;
+        }
+        self.sync_calibration_controls(app);
+        sync_roi_points(self, app);
+        app.set_status_text("Calibration updated".into());
+    }
+
+    fn poll_calibration_edit(&mut self, app: &RecoApp) {
+        let Some(draft) = self.pending_calibration.clone() else {
+            return;
+        };
+        match self.apply_calibration(draft) {
+            Ok(true) => self.finish_calibration_edit(app),
+            Ok(false) => (),
+            Err(error) => {
+                self.pending_calibration = None;
+                self.pending_calibration_playback = None;
+                self.report_calibration_error(app, error);
+            }
+        };
     }
 
     fn report_calibration_error(&mut self, app: &RecoApp, error: impl std::fmt::Display) {
@@ -623,7 +674,7 @@ impl AppState {
         profile: &reco_core::calibration::Lens,
         side: &str,
     ) -> bool {
-        let Some(cal) = self.calibration.as_ref() else {
+        let Some(cal) = self.editor_calibration() else {
             return false;
         };
         let lenses = cal
@@ -649,7 +700,7 @@ impl AppState {
     }
 
     fn sync_calibration_controls(&self, app: &RecoApp) {
-        let Some(cal) = self.calibration.as_ref() else {
+        let Some(cal) = self.editor_calibration() else {
             return;
         };
         if let Some(layout) = cal.topology.l_shape() {
@@ -669,6 +720,9 @@ impl AppState {
 
     /// Write the current (edited) calibration back to disk.
     fn save_calibration(&self) -> Result<(), String> {
+        if self.pending_calibration.is_some() {
+            return Err("Calibration is still updating; save after the preview updates".into());
+        }
         let (Some(cal), Some(path)) = (&self.calibration, &self.calibration_path) else {
             return Err("No calibration or path to save".into());
         };
@@ -708,6 +762,9 @@ impl AppState {
 
         self.calibration = Some(cal);
         self.bridge = Some(bridge);
+        self.pending_calibration = None;
+        self.pending_calibration_playback = None;
+        self.reset_view();
         Ok(true)
     }
 
@@ -732,6 +789,9 @@ impl AppState {
 
         self.calibration = Some(cal);
         self.bridge = Some(bridge);
+        self.pending_calibration = None;
+        self.pending_calibration_playback = None;
+        self.reset_view();
         Ok(true)
     }
 
@@ -748,6 +808,11 @@ impl AppState {
     }
 
     fn start_recording(&mut self, codec: &str, quality: &str) -> Result<PathBuf, String> {
+        if self.pending_calibration.is_some() {
+            return Err(
+                "Calibration is still updating; start recording after the preview updates".into(),
+            );
+        }
         let bridge = self.bridge.as_ref().ok_or("No pipeline")?;
         let (w, h) = bridge.viewport_size();
         let rec_w = w & !3;
@@ -830,6 +895,9 @@ impl AppState {
     /// same path works for both playback ticks and seek/step — no more
     /// sync vs async distinction.
     fn render_current(&mut self) -> Option<slint::Image> {
+        if !self.lens_preview_active && !self.clamp_targets() {
+            return None;
+        }
         let frame = self.playback.current_frame()?;
 
         let left = frame.left.as_planes();
@@ -853,11 +921,7 @@ impl AppState {
             };
         }
 
-        let pose = self
-            .bridge
-            .as_ref()?
-            .engine()
-            .orient_pose(self.pose.current_pose());
+        let pose = self.pose.current_pose();
 
         let recording = self.is_recording();
         if recording {
@@ -914,17 +978,16 @@ impl AppState {
     /// Apply a pixel-space pan delta. Feeds `PoseControl::apply_drag`
     /// then runs the coverage clamp so the resulting target stays
     /// inside the no-black region.
-    fn apply_pan(&mut self, dx_px: f32, dy_px: f32) {
-        self.pose.apply_drag(dx_px, dy_px);
+    fn apply_pan(&mut self, dx_px: f32, dy_px: f32, width: f32, height: f32) {
+        let Some(bridge) = &self.bridge else { return };
+        let height = displayed_image_height(width, height, bridge.viewport_size());
+        self.pose.apply_drag(dx_px, dy_px, height);
         self.clamp_targets();
-        // Flag dirty so the playback timer requests redraws until the
-        // smoothing lerp settles. Without this, when paused, the lerp
-        // after the mouse is released is never run (timer sees nothing
-        // to do and stops nudging Slint), so pan motion snaps/stalls.
+        // Paused playback still needs a redraw after input.
         self.preview_dirty = true;
     }
 
-    /// Apply a FOV delta (degrees). Clamps the target; tick handles smoothing.
+    /// Apply and constrain a FOV delta in degrees.
     fn apply_zoom(&mut self, delta_deg: f32) {
         self.pose
             .apply_intent(ControlIntent::Pose(PoseIntent::DeltaFovDeg(delta_deg)));
@@ -932,7 +995,7 @@ impl AppState {
         self.preview_dirty = true;
     }
 
-    /// Set FOV absolute (from the slider). Updates target; tick applies it.
+    /// Set and constrain the slider's absolute FOV.
     fn set_fov(&mut self, fov_deg: f32) {
         self.pose
             .apply_intent(ControlIntent::Pose(PoseIntent::SetFovDeg(fov_deg)));
@@ -940,23 +1003,10 @@ impl AppState {
         self.preview_dirty = true;
     }
 
-    /// Advance the PoseControl one smoothing step and push the
-    /// resulting FOV back to the renderer pipeline. Returns `true`
-    /// when the pose changed measurably (caller uses this to decide
-    /// whether to re-render).
-    fn smooth_camera(&mut self) -> bool {
+    /// Refit input after geometry changes, reporting whether a redraw is needed.
+    fn resolve_camera(&mut self) -> bool {
         let before = self.pose.current_pose();
-        self.pose.tick();
-        if self.use_constrained_look
-            && let Some(bridge) = self.bridge.as_ref()
-        {
-            let renderer = bridge.engine();
-            let (vw, vh) = bridge.viewport_size();
-            let aspect = vw as f32 / vh as f32;
-            if let Some(coverage) = renderer.coverage() {
-                self.pose.clamp_via_coverage(coverage, aspect);
-            }
-        }
+        self.clamp_targets();
         let after = self.pose.current_pose();
 
         let yaw_changed = (before.yaw - after.yaw).abs() > f32::EPSILON;
@@ -1000,7 +1050,11 @@ impl AppState {
             return false;
         }
         if let Some(playback) = playback {
-            self.playback = playback;
+            if self.pending_calibration.is_some() {
+                self.pending_calibration_playback = Some(playback);
+            } else {
+                self.playback = playback;
+            }
         }
         true
     }
@@ -1032,30 +1086,54 @@ impl AppState {
         }
     }
 
-    /// Reset yaw/pitch/fov targets to the rest pose. Routes through
-    /// the translator so the same intent path works for both Slint
-    /// callbacks and future remote transports.
+    /// Restore the calibrated world-space rest direction as render-space input.
     fn reset_view(&mut self) {
-        self.pose
-            .apply_intent(ControlIntent::Pose(PoseIntent::Reset));
+        self.pose = preview_pose_control(self.bridge.as_ref().map(|bridge| bridge.engine()));
+        self.preview_dirty = true;
     }
 
-    /// Clamp the pose through the coverage boundary so pan input
-    /// cannot set an unreachable goal. Delegates to
-    /// `PoseControl::clamp_via_coverage`.
-    fn clamp_targets(&mut self) {
-        if !self.use_constrained_look {
-            return;
-        }
-        let Some(bridge) = self.bridge.as_ref() else {
-            return;
+    /// Accept the render-space input through the engine, discarding blocked deltas.
+    fn clamp_targets(&mut self) -> bool {
+        let Some(bridge) = self.bridge.as_mut() else {
+            self.coverage_pending = false;
+            return false;
         };
-        let renderer = bridge.engine();
-        let (vw, vh) = bridge.viewport_size();
-        let aspect = vw as f32 / vh as f32;
-        if let Some(coverage) = renderer.coverage() {
-            self.pose.clamp_via_coverage(coverage, aspect);
+        let renderer = bridge.engine_mut();
+        renderer.set_constrained_look(self.use_constrained_look);
+        if self.use_constrained_look {
+            match renderer.prepare_coverage_preview() {
+                Ok(Some(_)) => {
+                    self.coverage_pending = false;
+                    self.coverage_error_reported = false;
+                }
+                Ok(None) => {
+                    self.coverage_pending = true;
+                    self.coverage_error_reported = false;
+                    return false;
+                }
+                Err(error) => {
+                    self.coverage_pending = false;
+                    if !self.coverage_error_reported {
+                        log::error!("Cannot prepare preview coverage: {error}");
+                        self.toasts.push(
+                            Severity::Error,
+                            "Coverage unavailable",
+                            error.to_string(),
+                        );
+                        self.coverage_error_reported = true;
+                    }
+                    return false;
+                }
+            }
+        } else {
+            self.coverage_pending = false;
+            self.coverage_error_reported = false;
         }
+        if let Err(error) = self.pose.constrain(renderer) {
+            log::error!("Cannot fit preview: {error}");
+            return false;
+        }
+        true
     }
 
     /// Seek by a relative number of seconds (positive = forward).
@@ -2897,18 +2975,19 @@ fn main() -> anyhow::Result<()> {
 
     // ── Camera / view control callbacks ──
     //
-    // These handlers NEVER render synchronously. They only mutate
-    // targets (or cheap per-renderer params like blend/rig tilt). The
-    // 2ms timer tick reads targets, lerps current toward them, and
-    // renders at a capped ~60Hz. This eliminates two problems at once:
-    //   1. Per-pixel drag events no longer each trigger a GPU render,
-    //      so the UI thread stays responsive to input
-    //   2. Pan motion is visually continuous rather than the discrete
-    //      jumps from raw input events
+    // Fit input immediately, then let the rendering notifier coalesce redraws.
 
     let state_ref = Rc::clone(&state);
+    let app_weak = app.as_weak();
     app.on_pan(move |dx_px, dy_px| {
-        state_ref.borrow_mut().apply_pan(dx_px, dy_px);
+        if let Some(app) = app_weak.upgrade() {
+            state_ref.borrow_mut().apply_pan(
+                dx_px,
+                dy_px,
+                app.get_preview_area_width(),
+                app.get_preview_area_height(),
+            );
+        }
     });
 
     let state_ref = Rc::clone(&state);
@@ -3110,8 +3189,7 @@ fn main() -> anyhow::Result<()> {
         // document lens - rebuilding via a constructor here used to reset
         // the user's lens-correction toggle to full.
         let Some((left_base, right_base)) = s
-            .calibration
-            .as_ref()
+            .editor_calibration()
             .map(|c| (c.lenses[0].clone(), c.lenses[1].clone()))
             .or_else(|| {
                 s.bridge.as_ref().map(|b| {
@@ -3560,6 +3638,10 @@ fn main() -> anyhow::Result<()> {
         let mut s = state_ref.borrow_mut();
         if s.export_thread.is_some() {
             log::warn!("Export already running, ignoring start request");
+            return;
+        }
+        if s.pending_calibration.is_some() {
+            app.set_export_error_text("Calibration is still updating; export after the preview updates".into());
             return;
         }
         let output_path = PathBuf::from(&output_str);
@@ -4111,7 +4193,7 @@ fn main() -> anyhow::Result<()> {
                 return;
             }
 
-            // Playback, camera-lerp, and rendering now happen in
+            // Playback, pose fitting, and rendering happen in
             // `vsync_render_tick` (driven by Slint's BeforeRendering
             // notifier), so this timer only handles work that does
             // not need vsync alignment. When playback is active we
@@ -4141,8 +4223,12 @@ fn main() -> anyhow::Result<()> {
 /// frame was submitted.
 fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) -> bool {
     let mut s = state.borrow_mut();
+    let mut resizing = false;
     if s.is_exporting() {
         return false;
+    }
+    if let Some(app) = app_weak.upgrade() {
+        s.poll_calibration_edit(&app);
     }
 
     // Adaptive preview: resize render target to match the preview
@@ -4151,6 +4237,7 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
     // match. Also caps at 1920x1080 to prevent GPU starvation on
     // high-DPI displays.
     if !s.is_recording()
+        && s.pending_calibration.is_none()
         && let Some(app) = app_weak.upgrade()
         && let Some(bridge) = s.bridge.as_mut()
     {
@@ -4158,12 +4245,15 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
         let area_h = (app.get_preview_area_height().max(240.0) as u32).min(1080);
         let (cur_w, cur_h) = bridge.viewport_size();
         if area_w.abs_diff(cur_w) > 16 || area_h.abs_diff(cur_h) > 16 {
-            bridge.resize(area_w, area_h);
-            s.preview_dirty = true;
+            match bridge.resize(area_w, area_h) {
+                Ok(true) => s.preview_dirty = true,
+                Ok(false) => resizing = true,
+                Err(error) => app.set_status_text(format!("Cannot resize preview: {error}").into()),
+            }
         }
     }
 
-    let camera_changed = s.smooth_camera();
+    let camera_changed = s.resolve_camera();
     let video_advanced = match s.playback.tick() {
         Ok(advanced) => advanced,
         Err(e) => {
@@ -4176,15 +4266,14 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
     };
 
     let was_dirty = s.preview_dirty;
-    if !(camera_changed || video_advanced || was_dirty) {
+    let preparing = resizing
+        || s.pending_calibration.is_some()
+        || (s.coverage_pending && s.use_constrained_look && !s.lens_preview_active);
+    if !(camera_changed || video_advanced || was_dirty || preparing) {
         return false;
     }
-    // Clear dirty only if the camera has fully converged on its target.
-    // If the lerp still has work to do, keep dirty so the timer will
-    // nudge Slint for another BeforeRendering on the next tick - that
-    // is how paused panning stays smooth until the user lets go AND
-    // the camera eases to rest.
-    s.preview_dirty = camera_changed;
+    // Keep polling geometry preparation even while playback is paused.
+    s.preview_dirty = preparing;
 
     let img = s.render_current();
     if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
@@ -4199,10 +4288,7 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
                 app.set_status_text("Playback finished".into());
             }
         }
-        // Reflect camera state to the UI properties so sliders and
-        // the reset button stay in sync with what the user is
-        // actually seeing. FOV comes from PoseControl's current (the
-        // renderer pipeline's fov is driven by `smooth_camera`).
+        // Show the accepted pose, including any geometric FOV cap.
         let current = s.pose.current_pose();
         app.set_yaw(current.yaw);
         app.set_pitch(current.pitch);

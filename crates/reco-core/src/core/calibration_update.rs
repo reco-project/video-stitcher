@@ -2,6 +2,7 @@
 
 use super::{StitchCore, StitchCoreError};
 use crate::calibration::Calibration;
+use crate::projection::coverage::controller::Controller;
 
 impl StitchCore {
     /// Edit a private draft and accept it through [`Self::update_calibration`].
@@ -20,10 +21,55 @@ impl StitchCore {
     ///
     /// Invalid documents and changed image dimensions or topology kind are rejected without changing the accepted state. With a tracker or panner attached, only no-op and L-shape blend-width edits are accepted: neither changes mapping, framing, timing or ROI. These preserve coverage and cached detections; other accepted edits refresh coverage and clear detections. Backend geometry is refreshed on every changed document. See this module's CPU/GPU regression tests.
     pub fn update_calibration(&mut self, calibration: Calibration) -> Result<(), StitchCoreError> {
+        let tracking_unchanged = self.validate_calibration_update(&calibration)?;
+        if self.calibration() == &calibration {
+            return Ok(());
+        }
+        let rebuilt = if tracking_unchanged {
+            None
+        } else {
+            self.coverage_motion
+                .as_ref()
+                .map(|controller| controller.rebuild(&calibration, self.executor.viewport_size()))
+                .transpose()
+                .map_err(StitchCoreError::Config)?
+        };
+        self.accept_calibration(calibration, tracking_unchanged, rebuilt);
+        Ok(())
+    }
+
+    /// Prepare a live calibration edit without blocking on coverage construction.
+    ///
+    /// Poll with the latest draft until `Ok(true)`. While `Ok(false)`, the accepted document, render geometry and coverage remain unchanged. Shares the single worker with [`Self::resize_preview`]; superseded results are discarded after completion. Revalidates against the current engine before accepting. Errors preserve the accepted state. See this module's acceptance and stale-result tests.
+    pub fn update_calibration_preview(
+        &mut self,
+        calibration: Calibration,
+    ) -> Result<bool, StitchCoreError> {
+        let tracking_unchanged = self.validate_calibration_update(&calibration)?;
+        if self.calibration() == &calibration {
+            return Ok(true);
+        }
+        let rebuilt = if !tracking_unchanged && self.coverage_motion.is_some() {
+            let size = self.executor.viewport_size().clone();
+            match self.poll_coverage(&calibration, &size)? {
+                None => return Ok(false),
+                Some(controller) => Some(controller),
+            }
+        } else {
+            None
+        };
+        self.accept_calibration(calibration, tracking_unchanged, rebuilt);
+        Ok(true)
+    }
+
+    fn validate_calibration_update(
+        &self,
+        calibration: &Calibration,
+    ) -> Result<bool, StitchCoreError> {
         calibration.validate()?;
         let current = self.calibration();
-        if current == &calibration {
-            return Ok(());
+        if current == calibration {
+            return Ok(true);
         }
         if std::mem::discriminant(&current.topology)
             != std::mem::discriminant(&calibration.topology)
@@ -57,17 +103,22 @@ impl StitchCore {
                 "camera control retains state from the current calibration",
             ));
         }
-        let coverage = if tracking_unchanged {
-            None
-        } else {
-            Some(calibration.topology.projection().coverage(&calibration))
-        };
+        Ok(tracking_unchanged)
+    }
+
+    fn accept_calibration(
+        &mut self,
+        calibration: Calibration,
+        tracking_unchanged: bool,
+        rebuilt: Option<Controller>,
+    ) {
         self.executor.apply_calibration(calibration);
-        if let Some(coverage) = coverage {
-            self.coverage = Some(coverage);
+        if let Some(controller) = rebuilt {
+            self.coverage_motion = Some(controller);
+        }
+        if !tracking_unchanged {
             self.last_detections.clear();
         }
-        Ok(())
     }
 }
 
@@ -87,6 +138,57 @@ mod tests {
 
     const WIDTH: u32 = 64;
     const HEIGHT: u32 = 36;
+
+    #[test]
+    fn preview_edits_accept_only_the_latest_draft_and_preserve_old_render_while_pending() {
+        let mut core = cpu(calib(WIDTH, HEIGHT));
+        core.prepare_coverage().unwrap();
+        let original = core.calibration().clone();
+        let original_cap = core.max_fov_degrees();
+        let original_pixels = render(&mut core);
+        let mut first = original.clone();
+        first.framing.tilt += 0.03;
+        assert!(!core.update_calibration_preview(first).unwrap());
+        assert_eq!(core.calibration(), &original);
+        assert_eq!(core.max_fov_degrees(), original_cap);
+        assert_eq!(render(&mut core), original_pixels);
+
+        let mut latest = original.clone();
+        latest.framing.roll -= 0.04;
+        latest.lenses[0].correction = 0.8;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+        while !core.update_calibration_preview(latest.clone()).unwrap() {
+            assert!(std::time::Instant::now() < deadline);
+            assert_eq!(core.calibration(), &original);
+            assert_eq!(core.max_fov_degrees(), original_cap);
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert_eq!(core.calibration(), &latest);
+        let mut fresh = cpu(latest.clone());
+        assert_eq!(
+            core.max_fov_degrees(),
+            Some(fresh.prepare_coverage().unwrap())
+        );
+        assert_eq!(render(&mut core), render(&mut fresh));
+        let accepted_pixels = render(&mut core);
+        let mut invalid = latest;
+        invalid.lenses[0].width = 0;
+        assert!(core.update_calibration_preview(invalid).is_err());
+        assert_eq!(render(&mut core), accepted_pixels);
+    }
+
+    #[test]
+    fn preview_edit_revalidates_camera_control_added_during_preparation() {
+        let mut core = cpu(calib(WIDTH, HEIGHT));
+        core.prepare_coverage().unwrap();
+        let original = core.calibration().clone();
+        let mut draft = original.clone();
+        draft.framing.roll += 0.05;
+        assert!(!core.update_calibration_preview(draft.clone()).unwrap());
+        core.panner = Some(Box::new(NoopControl));
+        assert!(core.update_calibration_preview(draft).is_err());
+        assert_eq!(core.calibration(), &original);
+    }
 
     fn cpu(calibration: Calibration) -> StitchCore {
         let executor = CpuExecutor::new(
@@ -125,7 +227,10 @@ mod tests {
             confidence: 1.0,
             camera_center: (0.5, 0.5),
             camera_size: (0.1, 0.1),
-            position: Some(Pose::default()),
+            position: Some(crate::geometry::YawPitch {
+                yaw: 0.0,
+                pitch: 0.0,
+            }),
         }
     }
 
@@ -135,7 +240,7 @@ mod tests {
         core.last_detections.push(detection());
         let accepted = serde_json::to_value(core.calibration()).unwrap();
         let pixels = render(&mut core);
-        let coverage = core.coverage().unwrap().yaw_range();
+        let coverage = core.prepare_coverage().unwrap();
         let mut drafts = Vec::new();
         for invalid in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::MAX] {
             let mut draft = calibration.clone();
@@ -157,7 +262,7 @@ mod tests {
                 Err(StitchCoreError::Calibration(_))
             ));
             assert_eq!(serde_json::to_value(core.calibration()).unwrap(), accepted);
-            assert_eq!(core.coverage().unwrap().yaw_range(), coverage);
+            assert_eq!(core.prepare_coverage().unwrap(), coverage);
             assert_eq!(render(&mut core), pixels);
             assert_eq!(core.last_detections.len(), 1);
         }
@@ -220,12 +325,8 @@ mod tests {
                 serde_json::to_value(fresh.calibration()).unwrap()
             );
             assert_eq!(
-                core.coverage().unwrap().yaw_range(),
-                fresh.coverage().unwrap().yaw_range()
-            );
-            assert_eq!(
-                core.coverage().unwrap().pitch_range(),
-                fresh.coverage().unwrap().pitch_range()
+                core.prepare_coverage().unwrap(),
+                fresh.prepare_coverage().unwrap()
             );
             for yaw in [-3.0, 0.0, 3.0] {
                 let pose = Pose {
@@ -233,8 +334,9 @@ mod tests {
                     pitch: 1.0,
                     fov_degrees: 60.0,
                 };
-                let actual = core.safe_clamp(pose);
-                let expected = fresh.safe_clamp(pose);
+                let requested = core.world_to_render_pose(pose);
+                let actual = core.constrain_render_pose(requested, requested).unwrap();
+                let expected = fresh.constrain_render_pose(requested, requested).unwrap();
                 assert_eq!((actual.yaw, actual.pitch), (expected.yaw, expected.pitch));
             }
             assert_eq!(render(&mut core), render(&mut fresh));
@@ -275,7 +377,7 @@ mod tests {
                 _ => core.set_panner(Box::new(NoopControl)),
             }
             core.last_detections.push(detection());
-            let coverage = core.coverage().unwrap().yaw_range();
+            let coverage = core.prepare_coverage().unwrap();
             let initial_pixels = render(&mut core);
             let mut changed_pixels = false;
             core.edit_calibration(|_| {}).unwrap();
@@ -285,7 +387,7 @@ mod tests {
                 })
                 .unwrap();
                 assert_eq!(core.last_detections.len(), 1);
-                assert_eq!(core.coverage().unwrap().yaw_range(), coverage);
+                assert_eq!(core.prepare_coverage().unwrap(), coverage);
                 assert_eq!(core.ball_tracker.is_some(), slot == 0);
                 assert_eq!(core.player_tracker.is_some(), slot == 1);
                 assert_eq!(core.panner.is_some(), slot == 2);

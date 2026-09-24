@@ -50,12 +50,6 @@ Hiding the source via the eye icon fixes it. Needs auto-hide on pick.
 **Impact**: Medium. Only OBS Interact window works for pan/zoom. Need
 obs_hotkey_register_source for keyboard, SDL3 sidecar for gamepad.
 
-### A13. No constrained-look toggle
-
-**Impact**: Medium. CoverageBoundary::safe_clamp exists but the OBS
-plugin applies raw yaw/pitch. Extreme pan shows black borders. Fix:
-add a constrained_look property, ~30 min.
-
 ### A14. No live calibration workflow for non-file sources
 
 **Impact**: High. Calibration requires video files. Live OBS sources
@@ -93,4 +87,3 @@ metadata. Finalized files scrub normally.
 **Impact**: High UX. User must manually set input W/H in properties.
 Mismatched dims silently freeze output. Should auto-detect from first
 frame and rebuild the pipeline.
-

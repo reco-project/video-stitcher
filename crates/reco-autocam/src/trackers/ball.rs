@@ -114,7 +114,7 @@ impl BallTracker {
     /// Detections whose panorama yaw/pitch is further than this from
     /// the last accepted position are rejected. Cross-camera and
     /// same-camera candidates use the same gate because the
-    /// underlying [`Pose`](reco_core::geometry::Pose)
+    /// underlying [`YawPitch`](reco_core::geometry::YawPitch)
     /// yaw/pitch coordinate system is camera-agnostic.
     pub fn with_max_jump_rad(mut self, rad: f32) -> Self {
         self.max_jump_rad = rad.max(0.0);
@@ -347,7 +347,7 @@ impl Tracker for BallTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reco_core::geometry::Pose;
+    use reco_core::geometry::YawPitch;
 
     fn det(
         camera: CameraIndex,
@@ -363,11 +363,7 @@ mod tests {
             confidence: conf,
             camera_center: (cx, cy),
             camera_size: (0.05, 0.05),
-            position: Some(Pose {
-                yaw,
-                pitch,
-                ..Default::default()
-            }),
+            position: Some(YawPitch { yaw, pitch }),
         }
     }
 

@@ -1,6 +1,6 @@
 //! Stitch executors (L2): the CPU software path and the GPU pipeline owner.
 //!
-//! [`GpuExecutor`] owns the wgpu render pipeline;
+//! `GpuExecutor` (with the `gpu` feature) owns the wgpu render pipeline;
 //! [`StitchCore`](crate::core::StitchCore) embeds one as its render
 //! substrate. The rest of this module is the pure-Rust, no-wgpu software
 //! stitcher that mirrors the GPU fisheye shader (`shaders/fisheye.wgsl`,
@@ -9,8 +9,7 @@
 //!
 //! 1. **Correctness oracle** for the GPU path. The geometry reuses
 //!    `crate::lens::kb4` and the same view/projection matrices as
-//!    [`crate::render`], so the CPU and GPU outputs agree by construction
-//!    rather than by coincidence.
+//!    [`crate::render`]. CPU/GPU agreement is checked by the stitch oracle tests.
 //! 2. **Rendering path for GPU-less targets** (edge SoCs, cloud CPU workers)
 //!    where wgpu is unavailable or uneconomical.
 //!
@@ -18,15 +17,7 @@
 //!
 //! `SurfaceMap` is the only projection-specific piece: it maps an output
 //! pixel to a source-camera UV. The two-plane L-shape provides one
-//! `PlaneMap` per camera. The gather loop in `cpu` is currently specialised
-//! to the two-surface L-shape composite; the trait is the seam that N-surface
-//! projections (cylinder, N-camera) build on.
-//!
-//! ## Phase 1 scope
-//!
-//! Float reference, NV12 input, RGBA output, L-shape only. The integer /
-//! memory-tuned specialisation and NV12-direct output are deliberate later
-//! additions, gated on profiling (see the cpu-stitch portability work).
+//! `PlaneMap` per camera; cylinder provides one map. The CPU gather loop composites the ordered surface list returned by calibration. External compositors can use the same maps and blend weights; `tests/calibrated_mapping.rs` checks that public path against CPU rendering for both shapes.
 
 mod cpu;
 mod executor;
@@ -52,8 +43,8 @@ pub enum BlendRule {
 }
 
 impl BlendRule {
-    /// Blend factor for a covered pixel with the given edge coordinate.
-    pub(crate) fn alpha(&self, edge: f64) -> f64 {
+    /// Blend factor for a covered pixel with the finite [`SurfaceUv::edge`] coordinate returned by its map. Composite as `previous + (source - previous) * alpha` in surface order.
+    pub fn alpha(&self, edge: f64) -> f64 {
         match *self {
             BlendRule::Opaque => 1.0,
             BlendRule::Smoothstep(width) if width > 0.0 => smoothstep(0.0, width, edge),
@@ -86,13 +77,14 @@ pub struct SurfaceUv {
 ///
 /// Implemented once per projection. The L-shape supplies two (one per camera
 /// plane); the CPU gather loop queries each surface and composites the ones
-/// that cover a pixel. The L-shape composite loop is two-surface today; this
-/// trait is the seam future N-surface projections build on. It is the CPU dual
+/// that cover a pixel. Maps are obtained through [`Calibration::surface_maps`](crate::calibration::Calibration::surface_maps). It is the CPU dual
 /// of the GPU rasterizer's per-fragment plane-UV interpolation.
 pub trait SurfaceMap {
-    /// Map an output pixel centre to its source-camera UV, or `None` when this
-    /// surface does not cover the pixel (the GPU shader's bounds discard).
-    fn sample_uv(&self, out_x: u32, out_y: u32) -> Option<SurfaceUv>;
+    /// Map a view-plane point in normalized device coordinates to source-camera UV, or `None` outside this surface. The viewport is `[-1, 1]` on each axis, with positive Y pointing up. Positions between pixel centres and beyond the viewport follow the same mapping.
+    fn sample_uv(&self, ndc: [f64; 2]) -> Option<SurfaceUv>;
+
+    /// Conservatively certify source support throughout a continuous NDC rectangle. `rotation_bound` additionally reserves depth-clipping room for rotations up to that angle in radians about the same eye. Returning `false` means unknown; blending is excluded.
+    fn covers_ndc(&self, min: [f64; 2], max: [f64; 2], rotation_bound: f64) -> bool;
 }
 
 /// Shared test fixtures + GPU acquisition for the stitch test modules.
@@ -292,16 +284,8 @@ mod tests {
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
 
-        let out = stitch_rgba(
-            calib.topology.projection(),
-            &[left, right],
-            (w, h),
-            &calib,
-            &cfg,
-            Pose::default(),
-            false,
-        )
-        .unwrap();
+        let out =
+            stitch_rgba(&[left, right], (w, h), &calib, &cfg, Pose::default(), false).unwrap();
         assert_eq!(out.len(), (w * h * 4) as usize);
         // Alpha channel is fully opaque.
         assert!(out.iter().skip(3).step_by(4).all(|&a| a == 255));
@@ -320,26 +304,8 @@ mod tests {
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
 
-        let a = stitch_rgba(
-            calib.topology.projection(),
-            &[left, right],
-            (w, h),
-            &calib,
-            &cfg,
-            Pose::default(),
-            false,
-        )
-        .unwrap();
-        let b = stitch_rgba(
-            calib.topology.projection(),
-            &[left, right],
-            (w, h),
-            &calib,
-            &cfg,
-            Pose::default(),
-            false,
-        )
-        .unwrap();
+        let a = stitch_rgba(&[left, right], (w, h), &calib, &cfg, Pose::default(), false).unwrap();
+        let b = stitch_rgba(&[left, right], (w, h), &calib, &cfg, Pose::default(), false).unwrap();
         assert_eq!(a, b, "stitch must be deterministic");
 
         // Some pixels are covered (non-black) - the planes are in view.
@@ -420,7 +386,6 @@ mod tests {
 
         // CPU reference on the same inputs (limited range, matching the GPU default).
         let cpu_rgba = stitch_rgba(
-            calib.topology.projection(),
             &[left, right],
             (cam_w, cam_h),
             &calib,
@@ -520,7 +485,6 @@ mod tests {
         let gpu_rgba = gpu_rgba.expect("gpu should produce a frame after 3 renders");
 
         let cpu_rgba = stitch_rgba_yuv420p(
-            calib.topology.projection(),
             &[left, right],
             (cam_w, cam_h),
             &calib,
@@ -631,7 +595,6 @@ mod tests {
         }
         let gpu_rgba = gpu_rgba.expect("gpu frame");
         let cpu_rgba = stitch_rgba(
-            calib.topology.projection(),
             &[*left, *right],
             cam,
             calib,
@@ -957,7 +920,6 @@ mod tests {
 
         // ~1px of output (fov 75 over 192px ~= 0.007 rad/px); 0.01 rad is decisive.
         let perturbed = stitch_rgba(
-            cal.topology.projection(),
             &[left, right],
             (cam_w, cam_h),
             &cal,
