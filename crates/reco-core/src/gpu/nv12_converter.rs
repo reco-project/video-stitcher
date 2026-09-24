@@ -13,20 +13,9 @@
 //!
 //! ## Triple-buffered readback
 //!
-//! Uses three staging buffers to eliminate blocking GPU polls. The CPU
-//! always reads back from 2 frames ago, which is guaranteed to have
-//! completed on the GPU. A non-blocking `PollType::Poll` is used instead
-//! of `wait_indefinitely()`, with a blocking fallback as a safety net.
-//!
-//! ## Performance
-//!
-//! On an RTX 5070 at 1080p, this replaces:
-//! - CPU swscale RGBA→NV12: ~2.5ms
-//! - GPU readback of RGBA (8.3 MB): ~0.78ms
-//!
-//! With:
-//! - GPU compute shader: ~0.1ms
-//! - GPU readback of NV12 (3.1 MB): ~0.29ms
+//! Uses three staging buffers to overlap GPU work with CPU readback.
+//! The CPU reads back from two frames ago. If that work has not completed,
+//! readback waits for it; triple buffering is not a nonblocking guarantee.
 
 use super::GpuContext;
 use bytemuck::{Pod, Zeroable};
@@ -46,9 +35,8 @@ struct Nv12Params {
 /// Call [`convert_and_readback`](Self::convert_and_readback) after rendering
 /// each frame to get NV12 data ready for the encoder.
 ///
-/// Uses three staging buffers so the CPU always reads from 2 frames ago,
-/// which is guaranteed complete on the GPU. This eliminates the blocking
-/// `device.poll(Wait)` stall (7-14ms) by using non-blocking `PollType::Poll`.
+/// Uses three staging buffers so the CPU reads from two frames ago.
+/// Readback can still block when GPU work has not completed.
 ///
 /// The write slot cycles 0 -> 1 -> 2 -> 0. The read slot is always
 /// `(write_slot + 1) % 3`, which was written 2 frames ago.
@@ -70,13 +58,9 @@ pub struct Nv12Converter {
     /// Cached bind group for the current render target. Avoids per-frame
     /// descriptor pool allocation which causes OOM on Vulkan (wgpu#7525).
     ///
-    /// Stores a raw pointer to the texture for identity comparison (never
-    /// dereferenced). Stale addresses are not a risk here because wgpu
-    /// textures are `Arc`-wrapped internally - the pointer remains stable
-    /// for the texture's lifetime. The caller always passes the same
-    /// render target reference, and if a new texture is created (e.g.,
-    /// on resize), its address will differ, correctly invalidating the cache.
-    cached_bind_group: Option<(*const wgpu::Texture, wgpu::BindGroup)>,
+    /// Retain the texture handle and compare GPU resource identity, not the
+    /// address of a caller-owned handle that can be moved or replaced.
+    cached_bind_group: Option<(wgpu::Texture, wgpu::BindGroup)>,
     /// Triple-buffered readback buffers (avoids 3 MB allocation per frame at 1080p).
     readback_buffers: [Vec<u8>; 3],
     /// Reusable channel for map_async signaling (avoids per-frame channel alloc).
@@ -343,11 +327,10 @@ impl Nv12Converter {
         // Cache the bind group to avoid per-frame descriptor pool allocation,
         // which causes OOM on the Vulkan backend (wgpu#7525). Rebuild only
         // if the render target texture changes.
-        let texture_ptr: *const wgpu::Texture = render_target;
         let needs_rebuild = self
             .cached_bind_group
             .as_ref()
-            .is_none_or(|(ptr, _)| *ptr != texture_ptr);
+            .is_none_or(|(texture, _)| texture != render_target);
 
         if needs_rebuild {
             let render_target_view =
@@ -370,7 +353,7 @@ impl Nv12Converter {
                     },
                 ],
             });
-            self.cached_bind_group = Some((texture_ptr, bind_group));
+            self.cached_bind_group = Some((render_target.clone(), bind_group));
         }
 
         let (_, bind_group) = self
@@ -507,4 +490,72 @@ pub enum Nv12Error {
     /// Invalid output dimensions.
     #[error("invalid NV12 dimensions: {0}")]
     InvalidDimensions(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn replacing_a_texture_handle_preserves_frame_identity_and_drain_order() {
+        let Some(gpu) = crate::stitch::test_support::gpu_or_skip() else {
+            return;
+        };
+        let make_texture = |value: u8| {
+            let size = wgpu::Extent3d {
+                width: 4,
+                height: 2,
+                depth_or_array_layers: 1,
+            };
+            let texture = gpu.device().create_texture(&wgpu::TextureDescriptor {
+                label: Some("nv12-frame-identity"),
+                size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            gpu.queue().write_texture(
+                texture.as_image_copy(),
+                &[value; 32],
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(16),
+                    rows_per_image: Some(2),
+                },
+                size,
+            );
+            texture
+        };
+        let mut converter = Nv12Converter::new(&gpu, 4, 2).unwrap();
+        // Replacing the handle in-place must not reuse its former texture's binding.
+        let mut texture = Box::new(make_texture(0));
+        for values in [&[0u8][..], &[255, 0][..], &[0, 255, 0, 255, 0][..]] {
+            let mut output = Vec::new();
+            for &value in values {
+                *texture = make_texture(value);
+                let commands = gpu
+                    .device()
+                    .create_command_encoder(&Default::default())
+                    .finish();
+                if let Some(bytes) = converter
+                    .convert_and_readback(&gpu, &texture, commands)
+                    .unwrap()
+                {
+                    output.push(bytes[0]);
+                }
+            }
+            while let Some(bytes) = converter.flush_pending(&gpu).unwrap() {
+                output.push(bytes[0]);
+            }
+            let expected: Vec<_> = values
+                .iter()
+                .map(|&v| if v == 0 { 16 } else { 235 })
+                .collect();
+            assert_eq!(output, expected);
+            assert!(converter.flush_pending(&gpu).unwrap().is_none());
+        }
+    }
 }
