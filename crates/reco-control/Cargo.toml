@@ -16,13 +16,15 @@ description = "Operator pose-control state machine and intent dispatch for Reco"
 # default so headless / embedded builds stay lean.
 [features]
 default = []
-gopro = ["dep:reqwest", "dep:tokio"]
+gopro = ["dep:reqwest", "dep:log", "dep:thiserror", "dep:serde_json"]
 
 [dependencies]
-reco-core = { path = "../reco-core" }
-log = "0.4"
-thiserror = "2"
+reco-core = { path = "../reco-core", default-features = false }
+log = { version = "0.4", optional = true }
+thiserror = { version = "2", optional = true }
 reqwest = { version = "0.12", features = ["rustls-tls", "json", "blocking"], default-features = false, optional = true }
 serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", optional = true }
+
+[dev-dependencies]
 serde_json = "1"
-tokio = { version = "1", features = ["rt"], optional = true }

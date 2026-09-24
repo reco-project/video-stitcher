@@ -34,8 +34,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use reco_calibrate::{LensProfileInfo, ProfileSource};
+use reco_control::ControlIntent;
 use reco_control::pose_control::{PoseControl, PoseControlConfig};
-use reco_control::{ControlIntent, PoseIntent};
 use reco_core::calibration::Calibration;
 use reco_core::wgpu;
 
@@ -205,8 +205,6 @@ struct AppState {
     right_input: Option<reco_io::stitch_job::InputPath>,
     calibration_path: Option<PathBuf>,
     calibration: Option<Calibration>,
-    pending_calibration: Option<Calibration>,
-    pending_calibration_playback: Option<Playback>,
     playback: Playback,
     bridge: Option<PreviewBridge>,
     recording_tx: Option<std::sync::mpsc::SyncSender<RecordingFrame>>,
@@ -468,7 +466,7 @@ fn preview_pose_control(engine: Option<&reco_core::core::StitchCore>) -> PoseCon
     if let Some(engine) = engine {
         config.rest_pose = engine.world_to_render_pose(config.rest_pose);
     }
-    PoseControl::new(config)
+    PoseControl::new(config).expect("valid calibrated preview controls")
 }
 
 fn displayed_image_height(width: f32, height: f32, image: (u32, u32)) -> f32 {
@@ -484,8 +482,6 @@ impl AppState {
             right_input: None,
             calibration_path: None,
             calibration: None,
-            pending_calibration: None,
-            pending_calibration_playback: None,
             playback: Playback::new(),
             bridge: None,
             recording_tx: None,
@@ -536,8 +532,6 @@ impl AppState {
     }
 
     fn reset_pipeline(&mut self) {
-        self.pending_calibration = None;
-        self.pending_calibration_playback = None;
         self.bridge = None;
         self.playback = Playback::new();
         self.pose = preview_pose_control(None);
@@ -576,19 +570,14 @@ impl AppState {
         .map_err(|e| format!("GPU init error: {e}"))
     }
 
-    /// Coalesce editor drafts while the accepted document remains renderable.
+    /// Apply validated editor geometry without waiting for derived coverage.
     fn edit_calibration(&mut self, app: &RecoApp, edit: impl FnOnce(&mut Calibration)) -> bool {
         let Some(mut draft) = self.editor_calibration().cloned() else {
             return false;
         };
         edit(&mut draft);
-        match self.apply_calibration(draft.clone()) {
-            Ok(true) => self.finish_calibration_edit(app),
-            Ok(false) => {
-                self.pending_calibration = Some(draft);
-                self.preview_dirty = true;
-                app.set_status_text("Updating calibration…".into());
-            }
+        match self.apply_calibration(draft) {
+            Ok(()) => self.finish_calibration_edit(app),
             Err(error) => {
                 self.report_calibration_error(app, error);
                 return false;
@@ -598,15 +587,13 @@ impl AppState {
     }
 
     fn editor_calibration(&self) -> Option<&Calibration> {
-        self.pending_calibration
-            .as_ref()
-            .or(self.calibration.as_ref())
+        self.calibration.as_ref()
     }
 
     fn apply_calibration(
         &mut self,
         calibration: Calibration,
-    ) -> Result<bool, reco_core::core::types::StitchCoreError> {
+    ) -> Result<(), reco_core::core::types::StitchCoreError> {
         if let Some(bridge) = self.bridge.as_mut() {
             let previous_framing = &bridge.engine().calibration().framing;
             let world = (previous_framing.tilt != calibration.framing.tilt
@@ -616,12 +603,9 @@ impl AppState {
                         .engine()
                         .render_to_world_pose(self.pose.current_pose())
                 });
-            if !bridge
+            bridge
                 .engine_mut()
-                .update_calibration_preview(calibration.clone())?
-            {
-                return Ok(false);
-            }
+                .update_calibration_preview(calibration.clone())?;
             if let Some(world) = world {
                 self.pose
                     .set_pose(bridge.engine().world_to_render_pose(world));
@@ -633,32 +617,13 @@ impl AppState {
         self.calibration = Some(calibration);
         self.preview_dirty = true;
         self.clamp_targets();
-        Ok(true)
+        Ok(())
     }
 
     fn finish_calibration_edit(&mut self, app: &RecoApp) {
-        self.pending_calibration = None;
-        if let Some(playback) = self.pending_calibration_playback.take() {
-            self.playback = playback;
-        }
         self.sync_calibration_controls(app);
         sync_roi_points(self, app);
         app.set_status_text("Calibration updated".into());
-    }
-
-    fn poll_calibration_edit(&mut self, app: &RecoApp) {
-        let Some(draft) = self.pending_calibration.clone() else {
-            return;
-        };
-        match self.apply_calibration(draft) {
-            Ok(true) => self.finish_calibration_edit(app),
-            Ok(false) => (),
-            Err(error) => {
-                self.pending_calibration = None;
-                self.pending_calibration_playback = None;
-                self.report_calibration_error(app, error);
-            }
-        };
     }
 
     fn report_calibration_error(&mut self, app: &RecoApp, error: impl std::fmt::Display) {
@@ -720,9 +685,6 @@ impl AppState {
 
     /// Write the current (edited) calibration back to disk.
     fn save_calibration(&self) -> Result<(), String> {
-        if self.pending_calibration.is_some() {
-            return Err("Calibration is still updating; save after the preview updates".into());
-        }
         let (Some(cal), Some(path)) = (&self.calibration, &self.calibration_path) else {
             return Err("No calibration or path to save".into());
         };
@@ -762,8 +724,6 @@ impl AppState {
 
         self.calibration = Some(cal);
         self.bridge = Some(bridge);
-        self.pending_calibration = None;
-        self.pending_calibration_playback = None;
         self.reset_view();
         Ok(true)
     }
@@ -789,8 +749,6 @@ impl AppState {
 
         self.calibration = Some(cal);
         self.bridge = Some(bridge);
-        self.pending_calibration = None;
-        self.pending_calibration_playback = None;
         self.reset_view();
         Ok(true)
     }
@@ -808,11 +766,6 @@ impl AppState {
     }
 
     fn start_recording(&mut self, codec: &str, quality: &str) -> Result<PathBuf, String> {
-        if self.pending_calibration.is_some() {
-            return Err(
-                "Calibration is still updating; start recording after the preview updates".into(),
-            );
-        }
         let bridge = self.bridge.as_ref().ok_or("No pipeline")?;
         let (w, h) = bridge.viewport_size();
         let rec_w = w & !3;
@@ -929,8 +882,7 @@ impl AppState {
             let (w, h) = bridge.viewport_size();
             let fps = self.playback.fps();
 
-            // NV12 readback for the encoder on every frame. This is the
-            // only stitch render per frame - no separate display render.
+            // Encode the accepted interactive pose, also used by the display below.
             match bridge
                 .engine_mut()
                 .render_and_readback_nv12(&left, &right, pose)
@@ -990,15 +942,14 @@ impl AppState {
     /// Apply and constrain a FOV delta in degrees.
     fn apply_zoom(&mut self, delta_deg: f32) {
         self.pose
-            .apply_intent(ControlIntent::Pose(PoseIntent::DeltaFovDeg(delta_deg)));
+            .apply_intent(ControlIntent::DeltaFovDeg(delta_deg));
         self.clamp_targets();
         self.preview_dirty = true;
     }
 
     /// Set and constrain the slider's absolute FOV.
     fn set_fov(&mut self, fov_deg: f32) {
-        self.pose
-            .apply_intent(ControlIntent::Pose(PoseIntent::SetFovDeg(fov_deg)));
+        self.pose.apply_intent(ControlIntent::SetFovDeg(fov_deg));
         self.clamp_targets();
         self.preview_dirty = true;
     }
@@ -1050,11 +1001,7 @@ impl AppState {
             return false;
         }
         if let Some(playback) = playback {
-            if self.pending_calibration.is_some() {
-                self.pending_calibration_playback = Some(playback);
-            } else {
-                self.playback = playback;
-            }
+            self.playback = playback;
         }
         true
     }
@@ -1100,38 +1047,20 @@ impl AppState {
         };
         let renderer = bridge.engine_mut();
         renderer.set_constrained_look(self.use_constrained_look);
-        if self.use_constrained_look {
-            match renderer.prepare_coverage_preview() {
-                Ok(Some(_)) => {
-                    self.coverage_pending = false;
-                    self.coverage_error_reported = false;
-                }
-                Ok(None) => {
-                    self.coverage_pending = true;
-                    self.coverage_error_reported = false;
-                    return false;
-                }
-                Err(error) => {
-                    self.coverage_pending = false;
-                    if !self.coverage_error_reported {
-                        log::error!("Cannot prepare preview coverage: {error}");
-                        self.toasts.push(
-                            Severity::Error,
-                            "Coverage unavailable",
-                            error.to_string(),
-                        );
-                        self.coverage_error_reported = true;
-                    }
-                    return false;
-                }
+        let result = self.pose.constrain_preview(renderer);
+        self.coverage_pending =
+            result.is_ok() && self.use_constrained_look && renderer.max_fov_degrees().is_none();
+        if let Err(error) = result {
+            if !self.coverage_error_reported {
+                log::error!("Cannot fit preview: {error}");
+                self.toasts
+                    .push(Severity::Error, "Coverage unavailable", error.to_string());
+                self.coverage_error_reported = true;
             }
+            // Valid geometry remains editable even when no covered viewport exists.
+            self.pose.set_pose(self.pose.target_pose());
         } else {
-            self.coverage_pending = false;
             self.coverage_error_reported = false;
-        }
-        if let Err(error) = self.pose.constrain(renderer) {
-            log::error!("Cannot fit preview: {error}");
-            return false;
         }
         true
     }
@@ -3640,10 +3569,6 @@ fn main() -> anyhow::Result<()> {
             log::warn!("Export already running, ignoring start request");
             return;
         }
-        if s.pending_calibration.is_some() {
-            app.set_export_error_text("Calibration is still updating; export after the preview updates".into());
-            return;
-        }
         let output_path = PathBuf::from(&output_str);
         if let Some(parent) = output_path.parent() {
             if !parent.exists() {
@@ -4200,7 +4125,7 @@ fn main() -> anyhow::Result<()> {
             // nudge Slint to keep redrawing so BeforeRendering fires
             // even if nothing marked the window dirty yet.
             if let Some(app) = app_weak.upgrade()
-                && (app.get_playing() || s.pending_seek.is_some() || s.preview_dirty)
+                && (app.get_playing() || s.pending_seek.is_some() || s.preview_dirty || s.coverage_pending)
             {
                 app.window().request_redraw();
             }
@@ -4223,12 +4148,8 @@ fn main() -> anyhow::Result<()> {
 /// frame was submitted.
 fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) -> bool {
     let mut s = state.borrow_mut();
-    let mut resizing = false;
     if s.is_exporting() {
         return false;
-    }
-    if let Some(app) = app_weak.upgrade() {
-        s.poll_calibration_edit(&app);
     }
 
     // Adaptive preview: resize render target to match the preview
@@ -4237,7 +4158,6 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
     // match. Also caps at 1920x1080 to prevent GPU starvation on
     // high-DPI displays.
     if !s.is_recording()
-        && s.pending_calibration.is_none()
         && let Some(app) = app_weak.upgrade()
         && let Some(bridge) = s.bridge.as_mut()
     {
@@ -4246,14 +4166,27 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
         let (cur_w, cur_h) = bridge.viewport_size();
         if area_w.abs_diff(cur_w) > 16 || area_h.abs_diff(cur_h) > 16 {
             match bridge.resize(area_w, area_h) {
-                Ok(true) => s.preview_dirty = true,
-                Ok(false) => resizing = true,
+                Ok(()) => s.preview_dirty = true,
                 Err(error) => app.set_status_text(format!("Cannot resize preview: {error}").into()),
             }
         }
     }
 
     let camera_changed = s.resolve_camera();
+    if let Some(app) = app_weak.upgrade() {
+        const PREPARING: &str = "Updating coverage… preview may show black edges";
+        if s.coverage_pending {
+            if app.get_status_text() != PREPARING {
+                app.set_status_text(PREPARING.into());
+            }
+        } else if app.get_status_text() == PREPARING {
+            app.set_status_text(if s.coverage_error_reported {
+                "Coverage unavailable; preview remains unconstrained".into()
+            } else {
+                "Coverage ready".into()
+            });
+        }
+    }
     let video_advanced = match s.playback.tick() {
         Ok(advanced) => advanced,
         Err(e) => {
@@ -4266,14 +4199,11 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
     };
 
     let was_dirty = s.preview_dirty;
-    let preparing = resizing
-        || s.pending_calibration.is_some()
-        || (s.coverage_pending && s.use_constrained_look && !s.lens_preview_active);
-    if !(camera_changed || video_advanced || was_dirty || preparing) {
+    // Poll readiness while paused without submitting unchanged video frames.
+    s.preview_dirty = false;
+    if !(camera_changed || video_advanced || was_dirty) {
         return false;
     }
-    // Keep polling geometry preparation even while playback is paused.
-    s.preview_dirty = preparing;
 
     let img = s.render_current();
     if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {

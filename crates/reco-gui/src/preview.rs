@@ -165,14 +165,12 @@ impl PreviewBridge {
         (self.viewport_width, self.viewport_height)
     }
 
-    /// Poll a nonblocking preview resize. Texture dimensions change only after coverage accepts it.
-    pub fn resize(&mut self, width: u32, height: u32) -> Result<bool, StitchCoreError> {
-        let accepted = self.engine.resize_preview(width, height)?;
-        if accepted {
-            self.viewport_width = width;
-            self.viewport_height = height;
-        }
-        Ok(accepted)
+    /// Apply preview dimensions immediately; coverage is prepared independently.
+    pub fn resize(&mut self, width: u32, height: u32) -> Result<(), StitchCoreError> {
+        self.engine.resize_preview(width, height)?;
+        self.viewport_width = width;
+        self.viewport_height = height;
+        Ok(())
     }
 
     /// Render a single camera through orthographic projection with

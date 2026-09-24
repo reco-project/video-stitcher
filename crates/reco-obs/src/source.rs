@@ -235,17 +235,13 @@ impl RecoSource {
             output_height: 1080,
             input_width: 1920,
             input_height: 1080,
-            // PoseControl with reco-obs-specific feel: drag right
-            // moves the camera right (PTZ-head / invert_drag_x), drag
-            // down pitches the camera up (reco-core baseline
-            // invert_drag_y=false). Smoothing kept at the reco-core
-            // default (0.3) so drag/zoom ease into target rather
-            // than snap.
+            // Preserve the source's PTZ-style horizontal drag convention.
             pose: PoseControl::new(PoseControlConfig {
                 invert_drag_x: true,
                 invert_drag_y: false,
                 ..Default::default()
-            }),
+            })
+            .expect("valid OBS pose controls"),
             dragging: false,
             constrained_look: true,
             last_mouse_x: 0,
@@ -1217,10 +1213,7 @@ unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::g
 // Interactive mouse callbacks (click-drag to pan, wheel to zoom)
 // ---------------------------------------------------------------------------
 
-// Drag sensitivity and wheel-tick FOV step are owned by
-// `reco_control::pose_control::PoseControlConfig` (drag_deg_per_pixel,
-// wheel_fov_per_tick). Overriding either is a one-line tweak at
-// construction time in RecoSource::new.
+// Controls derive drag sensitivity from the viewport and FOV; wheel sensitivity is configured per source.
 
 /// `y_delta` units per standard mouse-wheel notch under the Qt
 /// convention OBS inherits (see

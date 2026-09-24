@@ -49,8 +49,17 @@ impl Controller {
         size: &ViewportSize,
         config: MapConfig,
     ) -> Result<Self, String> {
+        Self::new_cancellable(calibration, size, config, None)
+    }
+
+    pub(crate) fn new_cancellable(
+        calibration: &Calibration,
+        size: &ViewportSize,
+        config: MapConfig,
+        cancelled: Option<&std::sync::atomic::AtomicBool>,
+    ) -> Result<Self, String> {
         let started = std::time::Instant::now();
-        let roof = roof::Roof::build(
+        let roof = roof::Roof::build_cancellable(
             calibration,
             size,
             roof::Grid {
@@ -61,6 +70,7 @@ impl Controller {
             },
             config.fov,
             config.tolerance,
+            cancelled,
         )
         .ok_or("invalid coverage map configuration")?;
         let span = config

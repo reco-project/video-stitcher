@@ -94,12 +94,24 @@ impl Roof {
             .map(move |i| self.grid.pose(i % stride, i / stride, self.minimum_fov))
     }
 
+    #[cfg(test)]
     pub(super) fn build(
         cal: &Calibration,
         size: &ViewportSize,
         grid: Grid,
         fov: [f32; 2],
         tolerance: f32,
+    ) -> Option<Self> {
+        Self::build_cancellable(cal, size, grid, fov, tolerance, None)
+    }
+
+    pub(super) fn build_cancellable(
+        cal: &Calibration,
+        size: &ViewportSize,
+        grid: Grid,
+        fov: [f32; 2],
+        tolerance: f32,
+        cancelled: Option<&std::sync::atomic::AtomicBool>,
     ) -> Option<Self> {
         if !grid.valid()
             || cal.validate().is_err()
@@ -114,7 +126,13 @@ impl Roof {
             return None;
         }
         let workers = std::thread::available_parallelism().map_or(1, usize::from);
-        Some(Self::build_cells(cal, size, grid, fov, tolerance, workers))
+        let workers = if cancelled.is_some() {
+            workers.saturating_sub(1).clamp(1, 2)
+        } else {
+            workers
+        };
+        let roof = Self::build_cells(cal, size, grid, fov, tolerance, workers, cancelled);
+        (!is_cancelled(cancelled)).then_some(roof)
     }
 
     fn build_cells(
@@ -124,10 +142,14 @@ impl Roof {
         fov: [f32; 2],
         tolerance: f32,
         workers: usize,
+        cancelled: Option<&std::sync::atomic::AtomicBool>,
     ) -> Self {
         let count = grid.columns * grid.rows;
         let workers = workers.clamp(1, count);
         let compute = |i| {
+            if is_cancelled(cancelled) {
+                return 0.0;
+            }
             Self::cell_ceiling(
                 cal,
                 size,
@@ -164,7 +186,9 @@ impl Roof {
         };
         let mut roof = Self::from_cells(grid, fov[0], &cells);
         // Bound additional projection proofs across the entire refinement pass.
-        roof.refine_bottlenecks(cal, size, 256, Some(&cells));
+        if !is_cancelled(cancelled) {
+            roof.refine_bottlenecks_cancellable(cal, size, 256, Some(&cells), cancelled);
+        }
         roof
     }
 
@@ -562,4 +586,8 @@ impl Roof {
         }
         true
     }
+}
+
+fn is_cancelled(cancelled: Option<&std::sync::atomic::AtomicBool>) -> bool {
+    cancelled.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
 }

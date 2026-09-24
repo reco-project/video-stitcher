@@ -21,8 +21,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-use reco_control::pose_control::HotkeyIntent;
-use reco_control::{ControlIntent, PoseIntent};
+use reco_control::ControlIntent;
 use reco_core::core::StitchCore;
 use reco_core::render::viewport::ViewportSize;
 use reco_core::sink::{OutputFrame, OutputSink, PixelFormat};
@@ -177,15 +176,13 @@ pub fn run_preview(
                 fov_max_degrees: FOV_MAX,
                 invert_drag_x: true,
                 invert_drag_y: false,
-                hotkey_yaw_step_rad: ARROW_PAN_STEP,
-                hotkey_pitch_step_rad: ARROW_PAN_STEP,
                 hotkey_fov_step_deg: FOV_KEY_STEP,
                 rest_pose: Pose {
                     yaw: 0.0,
                     pitch: 0.0,
                     fov_degrees: initial_fov,
                 },
-            })
+            })?
         },
         frame_count: 1,
         playing: false,
@@ -198,6 +195,7 @@ pub fn run_preview(
         rig_roll,
         clamp_enabled: true,
         failure: None,
+        coverage_error_reported: false,
         interrupted: interrupted.clone(),
         recording: None,
         recording_path: None,
@@ -247,6 +245,7 @@ struct App {
     /// Whether coverage boundary clamping is active.
     clamp_enabled: bool,
     failure: Option<String>,
+    coverage_error_reported: bool,
     /// Ctrl-C signal from the main thread.
     interrupted: Arc<AtomicBool>,
     // -- Recording state --
@@ -370,7 +369,9 @@ impl App {
         let Some(renderer) = self.renderer.as_mut() else {
             return;
         };
-        if let Err(error) = renderer.edit_calibration(edit) {
+        let mut draft = renderer.calibration().clone();
+        edit(&mut draft);
+        if let Err(error) = renderer.update_calibration_preview(draft) {
             eprintln!("Calibration unchanged: {error}");
             return;
         }
@@ -422,12 +423,20 @@ impl App {
     }
 
     /// Resolve each input against the accepted pose, discarding blocked movement.
-    fn apply_camera(&mut self) -> Result<(), reco_core::core::types::StitchCoreError> {
+    fn apply_camera(&mut self) {
         if let Some(renderer) = &mut self.renderer {
             renderer.set_constrained_look(self.clamp_enabled);
-            self.pose.constrain(renderer)?;
+            match self.pose.constrain_preview(renderer) {
+                Ok(()) => self.coverage_error_reported = false,
+                Err(error) => {
+                    if !self.coverage_error_reported {
+                        eprintln!("Coverage unavailable; preview remains unconstrained: {error}");
+                        self.coverage_error_reported = true;
+                    }
+                    self.pose.set_pose(self.pose.target_pose());
+                }
+            }
         }
-        Ok(())
     }
 }
 
@@ -500,16 +509,9 @@ impl ApplicationHandler for App {
             },
         )
         .expect("create executor");
-        let mut renderer =
-            StitchCore::new(Executor::Gpu(Box::new(executor))).expect("create engine");
+        let renderer = StitchCore::new(Executor::Gpu(Box::new(executor))).expect("create engine");
         self.pose
             .set_target(renderer.world_to_render_pose(self.pose.target_pose()));
-        if let Err(error) = renderer.prepare_coverage() {
-            self.failure = Some(error.to_string());
-            self.source.take();
-            event_loop.exit();
-            return;
-        }
 
         println!(
             "Preview ready: GPU = {}, format = {:?}",
@@ -578,173 +580,143 @@ impl ApplicationHandler for App {
             } => {
                 use winit::keyboard::{KeyCode, PhysicalKey};
                 if event.state == winit::event::ElementState::Pressed {
-                    match event.physical_key {
-                        PhysicalKey::Code(KeyCode::Escape | KeyCode::KeyQ) => {
-                            if self.recording.is_some() {
-                                self.stop_recording();
+                    if let PhysicalKey::Code(key) = event.physical_key
+                        && let Some(intent) = pose_key_intent(key)
+                    {
+                        self.pose.apply_intent(intent);
+                        self.needs_redraw = true;
+                    } else {
+                        match event.physical_key {
+                            PhysicalKey::Code(KeyCode::Escape | KeyCode::KeyQ) => {
+                                if self.recording.is_some() {
+                                    self.stop_recording();
+                                }
+                                self.source.take();
+                                event_loop.exit();
                             }
-                            self.source.take();
-                            event_loop.exit();
-                        }
-                        PhysicalKey::Code(KeyCode::ArrowLeft) => {
-                            self.pose
-                                .apply_intent(ControlIntent::Pose(PoseIntent::DeltaYawRad(
-                                    ARROW_PAN_STEP,
-                                )));
-                            self.needs_redraw = true;
-                        }
-                        PhysicalKey::Code(KeyCode::ArrowRight) => {
-                            self.pose
-                                .apply_intent(ControlIntent::Pose(PoseIntent::DeltaYawRad(
-                                    -ARROW_PAN_STEP,
-                                )));
-                            self.needs_redraw = true;
-                        }
-                        PhysicalKey::Code(KeyCode::ArrowUp) => {
-                            self.pose
-                                .apply_intent(ControlIntent::Pose(PoseIntent::DeltaPitchRad(
-                                    ARROW_PAN_STEP,
-                                )));
-                            self.needs_redraw = true;
-                        }
-                        PhysicalKey::Code(KeyCode::ArrowDown) => {
-                            self.pose
-                                .apply_intent(ControlIntent::Pose(PoseIntent::DeltaPitchRad(
-                                    -ARROW_PAN_STEP,
-                                )));
-                            self.needs_redraw = true;
-                        }
-                        PhysicalKey::Code(KeyCode::Space) if !event.repeat => {
-                            self.playing = !self.playing;
-                            println!("{}", if self.playing { "Playing" } else { "Paused" });
-                        }
-                        PhysicalKey::Code(KeyCode::KeyN) => {
-                            // Step one frame (blocking - waits for decode)
-                            self.playing = false;
-                            self.step_frame();
-                        }
-                        PhysicalKey::Code(KeyCode::KeyP) => {
-                            // Skip 30 frames (blocking - waits for decode)
-                            for _ in 0..FRAME_SKIP_COUNT {
+                            PhysicalKey::Code(KeyCode::Space) if !event.repeat => {
+                                self.playing = !self.playing;
+                                println!("{}", if self.playing { "Playing" } else { "Paused" });
+                            }
+                            PhysicalKey::Code(KeyCode::KeyN) => {
+                                // Step one frame (blocking - waits for decode)
+                                self.playing = false;
                                 self.step_frame();
                             }
-                        }
-                        PhysicalKey::Code(KeyCode::Equal | KeyCode::NumpadAdd) => {
-                            self.pose
-                                .apply_intent(ControlIntent::Hotkey(HotkeyIntent::ZoomIn));
-                            self.needs_redraw = true;
-                        }
-                        PhysicalKey::Code(KeyCode::Minus | KeyCode::NumpadSubtract) => {
-                            self.pose
-                                .apply_intent(ControlIntent::Hotkey(HotkeyIntent::ZoomOut));
-                            self.needs_redraw = true;
-                        }
-                        PhysicalKey::Code(
-                            key @ (KeyCode::Digit0
-                            | KeyCode::Digit1
-                            | KeyCode::Digit2
-                            | KeyCode::Digit3
-                            | KeyCode::Digit4
-                            | KeyCode::Digit5
-                            | KeyCode::Digit6
-                            | KeyCode::Digit7
-                            | KeyCode::Digit8
-                            | KeyCode::Digit9
-                            | KeyCode::KeyB),
-                        ) => {
-                            self.edit_calibration(|cal| {
-                                let layout =
-                                    cal.topology.l_shape_mut().expect("guarded at startup");
-                                match key {
-                                    KeyCode::Digit1 => {
-                                        layout.intersect = (layout.intersect + 0.01).min(1.0)
-                                    }
-                                    KeyCode::Digit2 => {
-                                        layout.intersect = (layout.intersect - 0.01).max(0.0)
-                                    }
-                                    KeyCode::Digit3 => cal.framing.axis_offset += 0.005,
-                                    KeyCode::Digit4 => cal.framing.axis_offset -= 0.005,
-                                    KeyCode::Digit5 => layout.x_ty += 0.005,
-                                    KeyCode::Digit6 => layout.x_ty -= 0.005,
-                                    KeyCode::KeyB => {
-                                        layout.blend_width = if layout.blend_width >= 0.19 {
-                                            0.0
-                                        } else {
-                                            layout.blend_width + 0.05
-                                        };
-                                    }
-                                    KeyCode::Digit7 | KeyCode::Digit8 => {
-                                        let scale =
-                                            if key == KeyCode::Digit7 { 1.02 } else { 0.98 };
-                                        for lens in &mut cal.lenses {
-                                            lens.fx *= scale;
-                                            lens.fy *= scale;
-                                        }
-                                    }
-                                    KeyCode::Digit9 | KeyCode::Digit0 => {
-                                        let delta = if key == KeyCode::Digit9 {
-                                            0.005
-                                        } else {
-                                            -0.005
-                                        };
-                                        for lens in &mut cal.lenses {
-                                            lens.distortion[0] += delta;
-                                        }
-                                    }
-                                    _ => unreachable!(),
+                            PhysicalKey::Code(KeyCode::KeyP) => {
+                                // Skip 30 frames (blocking - waits for decode)
+                                for _ in 0..FRAME_SKIP_COUNT {
+                                    self.step_frame();
                                 }
-                            });
-                            let layout = self.cal.topology.l_shape().expect("guarded at startup");
-                            println!(
-                                "intersect: {:.4}, camera_axis_offset: {:.4}, x_ty: {:.4}, blend_width: {:.2}, focal length: {:.1}/{:.1}, k1: {:.4}/{:.4}",
-                                layout.intersect,
-                                self.cal.framing.axis_offset,
-                                layout.x_ty,
-                                layout.blend_width,
-                                self.cal.lenses[0].fx,
-                                self.cal.lenses[1].fx,
-                                self.cal.lenses[0].distortion[0],
-                                self.cal.lenses[1].distortion[0]
-                            );
-                        }
-                        PhysicalKey::Code(KeyCode::KeyC) if !event.repeat => {
-                            self.clamp_enabled = !self.clamp_enabled;
-                            println!(
-                                "Coverage clamping: {}",
-                                if self.clamp_enabled { "ON" } else { "OFF" }
-                            );
-                            self.needs_redraw = true;
-                        }
-                        PhysicalKey::Code(KeyCode::KeyS) => {
-                            // Save calibration
-                            let path = std::path::Path::new("calibration_adjusted.json");
-                            match self.cal.to_file(path) {
-                                Ok(()) => println!("Calibration saved to {}", path.display()),
-                                Err(e) => eprintln!("Failed to save calibration: {e}"),
                             }
-                        }
-                        PhysicalKey::Code(KeyCode::KeyR) if !event.repeat => {
-                            if self.recording.is_some() {
-                                self.stop_recording();
-                            } else {
-                                self.start_recording();
+                            PhysicalKey::Code(
+                                key @ (KeyCode::Digit0
+                                | KeyCode::Digit1
+                                | KeyCode::Digit2
+                                | KeyCode::Digit3
+                                | KeyCode::Digit4
+                                | KeyCode::Digit5
+                                | KeyCode::Digit6
+                                | KeyCode::Digit7
+                                | KeyCode::Digit8
+                                | KeyCode::Digit9
+                                | KeyCode::KeyB),
+                            ) => {
+                                self.edit_calibration(|cal| {
+                                    let layout =
+                                        cal.topology.l_shape_mut().expect("guarded at startup");
+                                    match key {
+                                        KeyCode::Digit1 => {
+                                            layout.intersect = (layout.intersect + 0.01).min(1.0)
+                                        }
+                                        KeyCode::Digit2 => {
+                                            layout.intersect = (layout.intersect - 0.01).max(0.0)
+                                        }
+                                        KeyCode::Digit3 => cal.framing.axis_offset += 0.005,
+                                        KeyCode::Digit4 => cal.framing.axis_offset -= 0.005,
+                                        KeyCode::Digit5 => layout.x_ty += 0.005,
+                                        KeyCode::Digit6 => layout.x_ty -= 0.005,
+                                        KeyCode::KeyB => {
+                                            layout.blend_width = if layout.blend_width >= 0.19 {
+                                                0.0
+                                            } else {
+                                                layout.blend_width + 0.05
+                                            };
+                                        }
+                                        KeyCode::Digit7 | KeyCode::Digit8 => {
+                                            let scale =
+                                                if key == KeyCode::Digit7 { 1.02 } else { 0.98 };
+                                            for lens in &mut cal.lenses {
+                                                lens.fx *= scale;
+                                                lens.fy *= scale;
+                                            }
+                                        }
+                                        KeyCode::Digit9 | KeyCode::Digit0 => {
+                                            let delta = if key == KeyCode::Digit9 {
+                                                0.005
+                                            } else {
+                                                -0.005
+                                            };
+                                            for lens in &mut cal.lenses {
+                                                lens.distortion[0] += delta;
+                                            }
+                                        }
+                                        _ => unreachable!(),
+                                    }
+                                });
+                                let layout =
+                                    self.cal.topology.l_shape().expect("guarded at startup");
+                                println!(
+                                    "intersect: {:.4}, camera_axis_offset: {:.4}, x_ty: {:.4}, blend_width: {:.2}, focal length: {:.1}/{:.1}, k1: {:.4}/{:.4}",
+                                    layout.intersect,
+                                    self.cal.framing.axis_offset,
+                                    layout.x_ty,
+                                    layout.blend_width,
+                                    self.cal.lenses[0].fx,
+                                    self.cal.lenses[1].fx,
+                                    self.cal.lenses[0].distortion[0],
+                                    self.cal.lenses[1].distortion[0]
+                                );
                             }
+                            PhysicalKey::Code(KeyCode::KeyC) if !event.repeat => {
+                                self.clamp_enabled = !self.clamp_enabled;
+                                println!(
+                                    "Coverage clamping: {}",
+                                    if self.clamp_enabled { "ON" } else { "OFF" }
+                                );
+                                self.needs_redraw = true;
+                            }
+                            PhysicalKey::Code(KeyCode::KeyS) => {
+                                // Save calibration
+                                let path = std::path::Path::new("calibration_adjusted.json");
+                                match self.cal.to_file(path) {
+                                    Ok(()) => println!("Calibration saved to {}", path.display()),
+                                    Err(e) => eprintln!("Failed to save calibration: {e}"),
+                                }
+                            }
+                            PhysicalKey::Code(KeyCode::KeyR) if !event.repeat => {
+                                if self.recording.is_some() {
+                                    self.stop_recording();
+                                } else {
+                                    self.start_recording();
+                                }
+                            }
+                            PhysicalKey::Code(KeyCode::BracketLeft) => {
+                                let step = (SEEK_STEP_SECS * self.fps) as u64;
+                                let base = self.pending_seek.unwrap_or(self.frame_count);
+                                self.pending_seek = Some(base.saturating_sub(step));
+                            }
+                            PhysicalKey::Code(KeyCode::BracketRight) => {
+                                let step = (SEEK_STEP_SECS * self.fps) as u64;
+                                let max = self.total_frames.unwrap_or(u64::MAX);
+                                let base = self.pending_seek.unwrap_or(self.frame_count);
+                                self.pending_seek = Some((base + step).min(max));
+                            }
+                            PhysicalKey::Code(KeyCode::Home) => {
+                                self.pending_seek = Some(0);
+                            }
+                            _ => {}
                         }
-                        PhysicalKey::Code(KeyCode::BracketLeft) => {
-                            let step = (SEEK_STEP_SECS * self.fps) as u64;
-                            let base = self.pending_seek.unwrap_or(self.frame_count);
-                            self.pending_seek = Some(base.saturating_sub(step));
-                        }
-                        PhysicalKey::Code(KeyCode::BracketRight) => {
-                            let step = (SEEK_STEP_SECS * self.fps) as u64;
-                            let max = self.total_frames.unwrap_or(u64::MAX);
-                            let base = self.pending_seek.unwrap_or(self.frame_count);
-                            self.pending_seek = Some((base + step).min(max));
-                        }
-                        PhysicalKey::Code(KeyCode::Home) => {
-                            self.pending_seek = Some(0);
-                        }
-                        _ => {}
                     }
                 }
             }
@@ -783,15 +755,7 @@ impl ApplicationHandler for App {
                 if !self.needs_redraw {
                     return;
                 }
-                if let Err(error) = self.apply_camera() {
-                    self.failure = Some(error.to_string());
-                    if self.recording.is_some() {
-                        self.stop_recording();
-                    }
-                    self.source.take();
-                    event_loop.exit();
-                    return;
-                }
+                self.apply_camera();
                 let Some(surface) = self.surface.as_ref() else {
                     return;
                 };
@@ -862,15 +826,7 @@ impl ApplicationHandler for App {
         }
 
         if self.needs_redraw {
-            if let Err(error) = self.apply_camera() {
-                self.failure = Some(error.to_string());
-                if self.recording.is_some() {
-                    self.stop_recording();
-                }
-                self.source.take();
-                event_loop.exit();
-                return;
-            }
+            self.apply_camera();
             if let Some(w) = &self.window {
                 w.request_redraw();
             }
@@ -902,8 +858,8 @@ impl ApplicationHandler for App {
         {
             let before = renderer.output_dims();
             match renderer.resize_preview(self.width, self.height) {
-                Ok(ready) => {
-                    resizing = !ready;
+                Ok(()) => {
+                    resizing = self.clamp_enabled && renderer.max_fov_degrees().is_none();
                     if renderer.output_dims() != before {
                         self.needs_redraw = true;
                     }
@@ -915,6 +871,13 @@ impl ApplicationHandler for App {
                     return;
                 }
             }
+        }
+
+        if resizing {
+            let before = self.pose.current_pose();
+            self.apply_camera();
+            self.needs_redraw |= self.pose.current_pose() != before;
+            resizing = !self.coverage_error_reported;
         }
 
         if self.playing || self.recording.is_some() {
@@ -935,6 +898,19 @@ impl ApplicationHandler for App {
         {
             w.request_redraw();
         }
+    }
+}
+
+fn pose_key_intent(key: winit::keyboard::KeyCode) -> Option<ControlIntent> {
+    use winit::keyboard::KeyCode;
+    match key {
+        KeyCode::ArrowLeft => Some(ControlIntent::DeltaYawRad(ARROW_PAN_STEP)),
+        KeyCode::ArrowRight => Some(ControlIntent::DeltaYawRad(-ARROW_PAN_STEP)),
+        KeyCode::ArrowUp => Some(ControlIntent::DeltaPitchRad(ARROW_PAN_STEP)),
+        KeyCode::ArrowDown => Some(ControlIntent::DeltaPitchRad(-ARROW_PAN_STEP)),
+        KeyCode::Equal | KeyCode::NumpadAdd => Some(ControlIntent::ZoomIn),
+        KeyCode::Minus | KeyCode::NumpadSubtract => Some(ControlIntent::ZoomOut),
+        _ => None,
     }
 }
 
@@ -960,6 +936,34 @@ fn advance_playback_clock(
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[test]
+    fn keyboard_pose_bindings_preserve_signs_and_zoom_steps() {
+        use reco_control::pose_control::{PoseControl, PoseControlConfig};
+        use winit::keyboard::KeyCode;
+        for (key, yaw, pitch, fov) in [
+            (KeyCode::ArrowLeft, 0.05, 0.0, 75.0),
+            (KeyCode::ArrowRight, -0.05, 0.0, 75.0),
+            (KeyCode::ArrowUp, 0.0, 0.05, 75.0),
+            (KeyCode::ArrowDown, 0.0, -0.05, 75.0),
+            (KeyCode::Equal, 0.0, 0.0, 70.0),
+            (KeyCode::NumpadAdd, 0.0, 0.0, 70.0),
+            (KeyCode::Minus, 0.0, 0.0, 80.0),
+            (KeyCode::NumpadSubtract, 0.0, 0.0, 80.0),
+        ] {
+            let mut control = PoseControl::new(PoseControlConfig {
+                hotkey_fov_step_deg: FOV_KEY_STEP,
+                ..Default::default()
+            })
+            .unwrap();
+            control.apply_intent(pose_key_intent(key).unwrap());
+            let pose = control.target_pose();
+            assert_eq!((pose.yaw, pose.pitch, pose.fov_degrees), (yaw, pitch, fov));
+        }
+        for key in [KeyCode::KeyC, KeyCode::KeyR, KeyCode::Space] {
+            assert!(pose_key_intent(key).is_none());
+        }
+    }
 
     #[test]
     fn redraw_jitter_does_not_accumulate_over_900_frames() {

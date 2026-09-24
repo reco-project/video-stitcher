@@ -6,10 +6,7 @@
 //!
 //! # Communication channels
 //!
-//! OpenGoPro supports BLE, WiFi HTTP, and USB HTTP. This module
-//! starts with USB HTTP (Phase 1): reliable, wired, each camera at a
-//! unique IP (`172.2X.1YZ.51:8080` where XYZ are the serial suffix).
-//! BLE discovery/wake and streaming land in later phases.
+//! This module exposes synchronous HTTP commands over USB or WiFi. It does not perform BLE discovery or wake-up.
 //!
 //! # Multi-camera for stereo sports
 //!

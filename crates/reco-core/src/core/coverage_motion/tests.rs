@@ -326,7 +326,7 @@ fn same_aspect_resize_preserves_the_map_and_motion() {
     };
     let initial = core.advance_pose(request, 7, 1.0 / 30.0).unwrap();
     let cap = core.max_fov_degrees();
-    assert!(core.resize_preview(320, 180).unwrap());
+    core.resize_preview(320, 180).unwrap();
     assert_eq!(core.current_pose(), initial);
     assert_eq!(core.max_fov_degrees(), cap);
     assert!(core.pending_coverage.is_none());
@@ -348,13 +348,15 @@ fn same_aspect_resize_preserves_the_map_and_motion() {
 fn preview_resize_rejects_superseded_dimensions_and_calibration() {
     let mut core = core();
     core.prepare_coverage().unwrap();
-    assert!(!core.resize_preview(90, 160).unwrap());
-    assert_eq!(core.output_dims(), (160, 90));
+    core.resize_preview(90, 160).unwrap();
+    assert_eq!(core.output_dims(), (90, 160));
+    assert!(core.prepare_coverage_preview().unwrap().is_none());
     core.edit_calibration(|cal| cal.framing.roll = 0.08)
         .unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while !core.resize_preview(200, 200).unwrap() {
-        assert_eq!(core.output_dims(), (160, 90));
+    core.resize_preview(200, 200).unwrap();
+    while core.prepare_coverage_preview().unwrap().is_none() {
+        assert_eq!(core.output_dims(), (200, 200));
         assert!(std::time::Instant::now() < deadline);
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
@@ -471,22 +473,95 @@ fn failed_preview_resize_is_cached_and_a_valid_request_can_follow() {
     let mut core = core();
     core.prepare_coverage().unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    core.resize_preview(100_000, 1).unwrap();
     loop {
-        match core.resize_preview(100_000, 1) {
+        match core.prepare_coverage_preview() {
             Err(_) => break,
-            Ok(false) => {
+            Ok(None) => {
                 assert!(std::time::Instant::now() < deadline);
                 std::thread::sleep(std::time::Duration::from_millis(5));
             }
-            Ok(true) => panic!("extreme aspect unexpectedly supported"),
+            Ok(Some(_)) => panic!("extreme aspect unexpectedly supported"),
         }
     }
-    assert_eq!(core.output_dims(), (160, 90));
+    assert_eq!(core.output_dims(), (100_000, 1));
     assert!(core.pending_coverage.is_some());
-    assert!(core.resize_preview(100_000, 1).is_err());
-    while !core.resize_preview(200, 200).unwrap() {
+    assert!(core.prepare_coverage_preview().is_err());
+    core.resize_preview(200, 200).unwrap();
+    while core.prepare_coverage_preview().unwrap().is_none() {
         assert!(std::time::Instant::now() < deadline);
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     assert_eq!(core.output_dims(), (200, 200));
+}
+
+#[test]
+fn combined_preview_edits_accept_input_until_current_coverage_is_ready() {
+    let mut core = core();
+    core.prepare_coverage().unwrap();
+    let outside = Pose {
+        yaw: 2.5,
+        pitch: 0.7,
+        fov_degrees: 120.0,
+    };
+    for i in 0..24 {
+        let mut cal = core.calibration().clone();
+        cal.framing.roll = f64::from(i) * 0.005;
+        core.update_calibration_preview(cal.clone()).unwrap();
+        core.resize_preview(160 + i, 100 + i % 3).unwrap();
+        assert_eq!(core.calibration(), &cal);
+        assert_eq!(core.output_dims(), (160 + i, 100 + i % 3));
+        assert_eq!(
+            core.constrain_preview_pose(outside, outside).unwrap(),
+            outside
+        );
+        assert_eq!(core.max_fov_degrees(), None);
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    let fitted = loop {
+        let pose = core.constrain_preview_pose(outside, outside).unwrap();
+        if core.max_fov_degrees().is_some() {
+            break pose;
+        }
+        assert_eq!(pose, outside);
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    };
+    assert_ne!(fitted, outside);
+    assert_border_supported(&core, fitted);
+    let mut expected = self::core();
+    expected
+        .update_calibration(core.calibration().clone())
+        .unwrap();
+    let (width, height) = core.output_dims();
+    expected.resize(width, height).unwrap();
+    assert_eq!(
+        core.max_fov_degrees(),
+        Some(expected.prepare_coverage().unwrap())
+    );
+    assert_eq!(core.constrain_preview_pose(fitted, fitted).unwrap(), fitted);
+}
+
+#[test]
+fn strict_resolution_after_preview_edit_never_returns_uncovered_input() {
+    let mut core = core();
+    core.resize_preview(200, 200).unwrap();
+    let outside = Pose {
+        yaw: 2.0,
+        pitch: 0.6,
+        fov_degrees: 100.0,
+    };
+    assert_eq!(
+        core.constrain_preview_pose(outside, outside).unwrap(),
+        outside
+    );
+    let fitted = core.constrain_render_pose(outside, outside).unwrap();
+    assert_border_supported(&core, fitted);
+    assert!(core.pending_coverage.is_none());
+    let mut cal = core.calibration().clone();
+    cal.framing.roll = 0.1;
+    core.update_calibration_preview(cal).unwrap();
+    assert!(core.max_fov_degrees().is_none());
+    let tracked = core.advance_pose(outside, 0, 1.0 / 30.0).unwrap();
+    assert_border_supported(&core, tracked);
 }

@@ -70,6 +70,10 @@ jobs:
       # on its own.
       - name: Clippy (reco-core wgpu-free)
         run: cargo clippy -p reco-core --all-targets --no-default-features -- -D warnings
+      - name: Clippy (reco-control CPU-only)
+        run: cargo clippy -p reco-control --all-targets --no-default-features -- -D warnings
+      - name: Clippy (reco-control device helper)
+        run: cargo clippy -p reco-control --all-targets --features gopro -- -D warnings
 
   # ===========================================================================
   # test — default features + profiling + all-features.
@@ -109,6 +113,16 @@ jobs:
         run: cargo test -p reco-core --no-default-features
         env:
           RECO_REQUIRE_GPU: ""
+      - name: Run tests (reco-control CPU-only)
+        run: |
+          cargo test -p reco-control --no-default-features
+          control_graph="$(cargo tree -p reco-control --no-default-features -e normal --prefix none)"
+          if [[ "$control_graph" == *"wgpu v"* || "$control_graph" == *"reqwest v"* ]]; then
+            echo "Viewport controls unexpectedly enable GPU or HTTP dependencies" >&2
+            exit 1
+          fi
+      - name: Run tests (reco-control device helper)
+        run: cargo test -p reco-control --features gopro
 
   # ===========================================================================
   # doc — full workspace docs, all features enabled, warnings-as-errors.

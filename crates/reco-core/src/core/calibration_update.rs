@@ -4,6 +4,19 @@ use super::{StitchCore, StitchCoreError};
 use crate::calibration::Calibration;
 use crate::projection::coverage::controller::Controller;
 
+/// Compare geometry while ignoring blending, which affects neither tracking nor coverage.
+pub(super) fn same_geometry(current: &Calibration, updated: &Calibration) -> bool {
+    if current == updated {
+        return true;
+    }
+    // Newly added fields conservatively require invalidation too.
+    let mut geometry = updated.clone();
+    if let (Some(old), Some(new)) = (current.topology.l_shape(), geometry.topology.l_shape_mut()) {
+        new.blend_width = old.blend_width;
+    }
+    current == &geometry
+}
+
 impl StitchCore {
     /// Edit a private draft and accept it through [`Self::update_calibration`].
     ///
@@ -38,28 +51,22 @@ impl StitchCore {
         Ok(())
     }
 
-    /// Prepare a live calibration edit without blocking on coverage construction.
+    /// Apply validated preview geometry immediately without waiting for coverage.
     ///
-    /// Poll with the latest draft until `Ok(true)`. While `Ok(false)`, the accepted document, render geometry and coverage remain unchanged. Shares the single worker with [`Self::resize_preview`]; superseded results are discarded after completion. Revalidates against the current engine before accepting. Errors preserve the accepted state. See this module's acceptance and stale-result tests.
+    /// Geometry changes invalidate coverage; use [`Self::prepare_coverage_preview`] to rebuild asynchronously. A valid document can have no usable coverage: that preparation error does not roll back the edited document. Invalid documents and edits incompatible with attached tracking are rejected without mutation. Offline export and automatic tracking should use [`Self::update_calibration`].
     pub fn update_calibration_preview(
         &mut self,
         calibration: Calibration,
-    ) -> Result<bool, StitchCoreError> {
+    ) -> Result<(), StitchCoreError> {
         let tracking_unchanged = self.validate_calibration_update(&calibration)?;
         if self.calibration() == &calibration {
-            return Ok(true);
+            return Ok(());
         }
-        let rebuilt = if !tracking_unchanged && self.coverage_motion.is_some() {
-            let size = self.executor.viewport_size().clone();
-            match self.poll_coverage(&calibration, &size)? {
-                None => return Ok(false),
-                Some(controller) => Some(controller),
-            }
-        } else {
-            None
-        };
-        self.accept_calibration(calibration, tracking_unchanged, rebuilt);
-        Ok(true)
+        if !tracking_unchanged {
+            self.invalidate_preview_coverage();
+        }
+        self.accept_calibration(calibration, tracking_unchanged, None);
+        Ok(())
     }
 
     fn validate_calibration_update(
@@ -84,16 +91,7 @@ impl StitchCore {
                 "topology kind or calibration image dimensions changed",
             ));
         }
-        // Compare the complete document except for the one tracking-neutral field.
-        // Newly added fields conservatively require invalidation too.
-        let mut tracking_calibration = calibration.clone();
-        if let (Some(old), Some(new)) = (
-            current.topology.l_shape(),
-            tracking_calibration.topology.l_shape_mut(),
-        ) {
-            new.blend_width = old.blend_width;
-        }
-        let tracking_unchanged = current == &tracking_calibration;
+        let tracking_unchanged = same_geometry(current, calibration);
         if !tracking_unchanged
             && (self.ball_tracker.is_some()
                 || self.player_tracker.is_some()
@@ -140,27 +138,28 @@ mod tests {
     const HEIGHT: u32 = 36;
 
     #[test]
-    fn preview_edits_accept_only_the_latest_draft_and_preserve_old_render_while_pending() {
+    fn preview_edits_render_immediately_and_publish_only_current_coverage() {
         let mut core = cpu(calib(WIDTH, HEIGHT));
         core.prepare_coverage().unwrap();
         let original = core.calibration().clone();
-        let original_cap = core.max_fov_degrees();
         let original_pixels = render(&mut core);
         let mut first = original.clone();
         first.framing.tilt += 0.03;
-        assert!(!core.update_calibration_preview(first).unwrap());
-        assert_eq!(core.calibration(), &original);
-        assert_eq!(core.max_fov_degrees(), original_cap);
-        assert_eq!(render(&mut core), original_pixels);
+        core.update_calibration_preview(first.clone()).unwrap();
+        assert_eq!(core.calibration(), &first);
+        assert_eq!(core.max_fov_degrees(), None);
+        assert_ne!(render(&mut core), original_pixels);
+        assert!(core.prepare_coverage_preview().unwrap().is_none());
 
         let mut latest = original.clone();
         latest.framing.roll -= 0.04;
         latest.lenses[0].correction = 0.8;
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
-        while !core.update_calibration_preview(latest.clone()).unwrap() {
+        core.update_calibration_preview(latest.clone()).unwrap();
+        while core.prepare_coverage_preview().unwrap().is_none() {
             assert!(std::time::Instant::now() < deadline);
-            assert_eq!(core.calibration(), &original);
-            assert_eq!(core.max_fov_degrees(), original_cap);
+            assert_eq!(core.calibration(), &latest);
+            assert_eq!(core.max_fov_degrees(), None);
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
         assert_eq!(core.calibration(), &latest);
@@ -178,13 +177,12 @@ mod tests {
     }
 
     #[test]
-    fn preview_edit_revalidates_camera_control_added_during_preparation() {
+    fn preview_edit_rejects_changes_with_attached_camera_control() {
         let mut core = cpu(calib(WIDTH, HEIGHT));
         core.prepare_coverage().unwrap();
         let original = core.calibration().clone();
         let mut draft = original.clone();
         draft.framing.roll += 0.05;
-        assert!(!core.update_calibration_preview(draft.clone()).unwrap());
         core.panner = Some(Box::new(NoopControl));
         assert!(core.update_calibration_preview(draft).is_err());
         assert_eq!(core.calibration(), &original);

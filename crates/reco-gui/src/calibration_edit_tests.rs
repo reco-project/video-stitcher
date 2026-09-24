@@ -34,7 +34,7 @@ fn preview_rest_and_reset_keep_the_world_direction_on_tilted_rigs() {
         pose.apply_drag(100.0, -30.0, 360.0);
         pose.constrain(&mut core).unwrap();
         assert_ne!(pose.current_pose(), expected);
-        pose.apply_intent(ControlIntent::Pose(PoseIntent::Reset));
+        pose.apply_intent(ControlIntent::Reset);
         pose.constrain(&mut core).unwrap();
         assert_eq!(pose.current_pose(), expected);
     }
@@ -109,13 +109,11 @@ fn exercise_editor(state: &mut AppState, app: &RecoApp) {
             lens.correction = 0.0;
         }
     }));
-    finish_edit(state, app);
     assert_eq!(state.lens_correction_amount, 0.0);
     let untouched_right =
         serde_json::to_value(&state.calibration.as_ref().unwrap().lenses[1]).unwrap();
     let profile = Lens::fisheye(128, 72, 80.0, 82.0, 66.0, 38.0, [-0.01, 0.0, 0.0, 0.0]);
     assert!(state.apply_lens_profile(app, &profile, "left"));
-    finish_edit(state, app);
     state.sync_calibration_controls(app);
     let cal = state.calibration.as_ref().unwrap();
     assert_eq!((cal.lenses[0].width, cal.lenses[0].height), (64, 36));
@@ -143,22 +141,9 @@ fn exercise_editor(state: &mut AppState, app: &RecoApp) {
         assert_eq!(bridge.engine().calibration(), &accepted);
     }
     assert!(state.apply_lens_profile(app, &profile, "both"));
-    finish_edit(state, app);
     let accepted = state.calibration.as_ref().unwrap();
     assert_eq!(accepted.lenses[0], accepted.lenses[1]);
     assert_eq!(accepted.lenses[1].correction, 0.0);
-}
-
-fn finish_edit(state: &mut AppState, app: &RecoApp) {
-    let deadline = Instant::now() + Duration::from_secs(120);
-    while state.pending_calibration.is_some() {
-        assert!(
-            Instant::now() < deadline,
-            "calibration preparation timed out"
-        );
-        state.poll_calibration_edit(app);
-        std::thread::sleep(Duration::from_millis(1));
-    }
 }
 
 fn exercise_pending_framing(state: &mut AppState, app: &RecoApp) {
@@ -179,27 +164,33 @@ fn exercise_pending_framing(state: &mut AppState, app: &RecoApp) {
     state.lens_preview_active = false;
     state.reset_view();
     state.clamp_targets();
-    let original = state.calibration.clone().unwrap();
     assert!(state.edit_calibration(app, |cal| cal.framing.tilt = 0.12));
-    assert!(state.pending_calibration.is_some());
-    assert_eq!(state.calibration.as_ref(), Some(&original));
-    assert!(state.save_calibration().unwrap_err().contains("updating"));
+    assert_eq!(state.calibration.as_ref().unwrap().framing.tilt, 0.12);
+    assert_eq!(
+        state.bridge.as_ref().unwrap().engine().max_fov_degrees(),
+        None
+    );
+    state.use_constrained_look = true;
+    // A recording sink must not change interactive camera acceptance or editing.
+    let (tx, _rx) = std::sync::mpsc::sync_channel(4);
+    state.recording_tx = Some(tx);
+    assert!(state.is_recording());
+    assert!(state.clamp_targets());
+    assert!(state.coverage_pending);
     assert!(
         state
-            .start_recording("h264", "medium")
-            .unwrap_err()
-            .contains("updating")
+            .bridge
+            .as_ref()
+            .unwrap()
+            .engine()
+            .max_fov_degrees()
+            .is_none()
     );
+    state.use_constrained_look = false;
     assert!(state.edit_calibration(app, |cal| cal.framing.roll = -0.09));
-    assert_eq!(
-        state.pending_calibration.as_ref().unwrap().framing.tilt,
-        0.12
-    );
+    assert_eq!(state.calibration.as_ref().unwrap().framing.tilt, 0.12);
     assert!(!state.edit_calibration(app, |cal| cal.framing.axis_offset = 0.0));
-    assert!(
-        state.pending_calibration.is_some(),
-        "bad edit must not discard a valid pending draft"
-    );
+    assert_eq!(state.calibration.as_ref().unwrap().framing.roll, -0.09);
     state.apply_pan(30.0, -10.0, 640.0, 360.0);
     let world = state
         .bridge
@@ -207,7 +198,6 @@ fn exercise_pending_framing(state: &mut AppState, app: &RecoApp) {
         .unwrap()
         .engine()
         .render_to_world_pose(state.pose.current_pose());
-    finish_edit(state, app);
     let cal = state.calibration.as_ref().unwrap();
     assert_eq!(cal.framing.tilt, 0.12);
     assert_eq!(cal.framing.roll, -0.09);
@@ -230,21 +220,39 @@ fn exercise_pending_framing(state: &mut AppState, app: &RecoApp) {
         .render_to_world_pose(state.pose.current_pose());
     assert!(reset.yaw.abs() < 1e-5 && reset.pitch.abs() < 1e-5);
 
-    let accepted = state.calibration.clone().unwrap();
     assert!(state.edit_calibration(app, |cal| {
         for lens in &mut cal.lenses {
             lens.cx = 1e9;
         }
     }));
-    assert!(state.pending_calibration.is_some());
-    finish_edit(state, app);
-    assert_eq!(state.calibration.as_ref(), Some(&accepted));
+    let edited = state.calibration.clone().unwrap();
+    assert_eq!(edited.lenses[0].cx, 1e9);
     assert_eq!(
         state.bridge.as_ref().unwrap().engine().calibration(),
-        &accepted
+        &edited
     );
-    assert_eq!(app.get_lens_left_cx(), accepted.lenses[0].cx as f32);
-    assert_eq!(app.get_status_text(), "[ERROR] Calibration unchanged");
+    assert_eq!(app.get_lens_left_cx(), 1e9_f32);
+    assert_eq!(app.get_status_text(), "Calibration updated");
+    state.use_constrained_look = true;
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
+        assert!(
+            state.clamp_targets(),
+            "coverage failure must not freeze editing"
+        );
+        if state.coverage_error_reported {
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert_eq!(state.calibration.as_ref(), Some(&edited));
+    assert!(!state.coverage_pending);
+    assert!(state.is_recording());
+    let before = state.pose.current_pose();
+    state.apply_pan(20.0, 10.0, 640.0, 360.0);
+    assert_ne!(before, state.pose.current_pose());
+    state.recording_tx = None;
 }
 
 #[test]

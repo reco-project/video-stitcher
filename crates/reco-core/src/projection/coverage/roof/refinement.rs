@@ -3,15 +3,27 @@
 use super::*;
 
 impl Roof {
+    #[cfg(test)]
     pub(super) fn refine_bottlenecks(
+        &mut self,
+        cal: &Calibration,
+        size: &ViewportSize,
+        budget: usize,
+        original_cells: Option<&[f32]>,
+    ) {
+        self.refine_bottlenecks_cancellable(cal, size, budget, original_cells, None);
+    }
+
+    pub(super) fn refine_bottlenecks_cancellable(
         &mut self,
         cal: &Calibration,
         size: &ViewportSize,
         mut budget: usize,
         original_cells: Option<&[f32]>,
+        cancelled: Option<&std::sync::atomic::AtomicBool>,
     ) {
         let stride = self.grid.columns + 1;
-        while budget > 0 {
+        while budget > 0 && !is_cancelled(cancelled) {
             let (capacity, parents) = self.connections();
             let Some(i) = (0..self.heights.len())
                 .filter(|&i| {
@@ -86,6 +98,9 @@ impl Roof {
             // A lift can change a cell's diagonal. Certify both resulting triangles
             // in every incident cell, including the other side of a periodic seam.
             let supported = cells.iter().all(|&(x, y, old_split)| {
+                if is_cancelled(cancelled) {
+                    return false;
+                }
                 self.triangles(x, y).into_iter().all(|triangle| {
                     if self.main_diagonal(x, y) == old_split
                         && triangle.iter().all(|&(dx, dy)| {

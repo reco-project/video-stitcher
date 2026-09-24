@@ -52,7 +52,15 @@ fn measure_roof_construction() {
     let mut last = None;
     for _ in 0..3 {
         let started = std::time::Instant::now();
-        let roof = Roof::build_cells(&calibration, &size, grid, [20.0, 120.0], tolerance, workers);
+        let roof = Roof::build_cells(
+            &calibration,
+            &size,
+            grid,
+            [20.0, 120.0],
+            tolerance,
+            workers,
+            None,
+        );
         times.push(started.elapsed().as_secs_f64());
         if let Some(previous) = &last {
             let previous: &Roof = previous;
@@ -108,11 +116,11 @@ fn parallel_diagnostic_matches_serial_map_exactly() {
         columns: 8,
         rows: 8,
     };
-    let serial = Roof::build_cells(&cal, &size, grid, [20.0, 120.0], 0.05, 1);
+    let serial = Roof::build_cells(&cal, &size, grid, [20.0, 120.0], 0.05, 1, None);
     let automatic = Roof::build(&cal, &size, grid, [20.0, 120.0], 0.05).unwrap();
     assert_eq!(serial.heights, automatic.heights);
     for workers in [2, 4] {
-        let parallel = Roof::build_cells(&cal, &size, grid, [20.0, 120.0], 0.05, workers);
+        let parallel = Roof::build_cells(&cal, &size, grid, [20.0, 120.0], 0.05, workers, None);
         assert_eq!(serial.heights, parallel.heights);
     }
 }

@@ -5,6 +5,21 @@ use crate::geometry::Pose;
 use crate::projection::coverage::controller::{Controller, MapConfig};
 
 impl StitchCore {
+    /// Resolve direct preview input without waiting for coverage construction.
+    ///
+    /// While coverage is being prepared, returns validated input unchanged, permitting black edges. Once ready, fits the current pose through coverage. Does not change the user's constrained-look setting or advance the tracking clock. Interactive recording follows this behavior; offline export and automatic tracking use strict pose resolution instead.
+    pub fn constrain_preview_pose(
+        &mut self,
+        previous: Pose,
+        requested: Pose,
+    ) -> Result<Pose, StitchCoreError> {
+        validate_interactive_poses(previous, requested)?;
+        if !self.constrained_look || self.prepare_coverage_preview()?.is_none() {
+            return Ok(requested);
+        }
+        self.constrain_render_pose(previous, requested)
+    }
+
     /// Constrain direct manipulation without advancing the tracking clock or adding inertia.
     ///
     /// Both arguments and the result are render-space poses, directly usable by render-at-pose methods. Feed the accepted result back into the input control so blocked movement does not accumulate. Yaw requests use the nearest periodic equivalent to the previous pose. Movement follows a supported segment and slides at contact; zoom may move the view inward to fit. A previous pose invalidated by geometry changes or re-enabling constraints is fitted anew. Disabled constraints return the request unchanged. The derived coverage map is built on first use.
@@ -13,14 +28,7 @@ impl StitchCore {
         previous: Pose,
         requested: Pose,
     ) -> Result<Pose, StitchCoreError> {
-        if [previous, requested].iter().any(|p| {
-            !p.yaw.is_finite()
-                || !p.pitch.is_finite()
-                || !p.fov_degrees.is_finite()
-                || !(1.0..=179.0).contains(&p.fov_degrees)
-        }) {
-            return Err(StitchCoreError::Config("invalid interactive pose".into()));
-        }
+        validate_interactive_poses(previous, requested)?;
         if !self.constrained_look {
             return Ok(requested);
         }
@@ -34,8 +42,10 @@ impl StitchCore {
 
     /// Prepare coverage for the accepted calibration and viewport, returning its vertical FOV cap.
     ///
-    /// Optional warm-up: pose constraints call this lazily. Repeated calls preserve the map and motion state. A failed construction leaves the engine unchanged. Geometry edits and viewport resizes rebuild an existing map; no-op and blend-only edits preserve it.
+    /// Optional warm-up: strict pose constraints call this lazily. Repeated calls preserve the map and motion state. A failed construction leaves the accepted geometry unchanged. Strict geometry edits and viewport resizes rebuild an existing map; preview edits invalidate it. No-op and blend-only edits preserve it.
     pub fn prepare_coverage(&mut self) -> Result<f32, StitchCoreError> {
+        // Strict consumers own synchronous readiness, not a pending preview job.
+        self.pending_coverage = None;
         if let Some(controller) = &self.coverage_motion {
             if controller.matches_viewport(self.executor.viewport_size()) {
                 return Ok(controller.cap());
@@ -106,6 +116,18 @@ impl StitchCore {
         }
         Ok(pose)
     }
+}
+
+fn validate_interactive_poses(previous: Pose, requested: Pose) -> Result<(), StitchCoreError> {
+    if [previous, requested].iter().any(|p| {
+        !p.yaw.is_finite()
+            || !p.pitch.is_finite()
+            || !p.fov_degrees.is_finite()
+            || !(1.0..=179.0).contains(&p.fov_degrees)
+    }) {
+        return Err(StitchCoreError::Config("invalid interactive pose".into()));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

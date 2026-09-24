@@ -6,13 +6,24 @@ use crate::{
     projection::coverage::controller::{Controller, MapConfig},
     render::viewport::ViewportSize,
 };
-use std::sync::mpsc::{Receiver, TryRecvError};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+    mpsc::{Receiver, TryRecvError},
+};
 
 pub(super) struct PendingCoverage {
     calibration: Calibration,
     size: ViewportSize,
     result: Receiver<Result<Controller, String>>,
     error: Option<String>,
+    cancelled: Arc<AtomicBool>,
+}
+
+impl Drop for PendingCoverage {
+    fn drop(&mut self) {
+        self.cancelled.store(true, Ordering::Relaxed);
+    }
 }
 
 impl StitchCore {
@@ -35,33 +46,29 @@ impl StitchCore {
         Ok(Some(cap))
     }
 
-    /// Request a preview resize without waiting for coverage construction.
+    /// Apply preview dimensions immediately, invalidating coverage when the aspect changes.
     ///
-    /// Poll with the latest desired dimensions until `Ok(true)`. `Ok(false)` keeps the previous viewport and coverage available for rendering. At most one map builds at a time; superseded results are discarded. A failed request leaves the engine unchanged. Identical-aspect resizes reuse the map and motion state. GPU allocation still happens on the calling thread when the result is accepted.
-    pub fn resize_preview(&mut self, width: u32, height: u32) -> Result<bool, StitchCoreError> {
+    /// Coverage is prepared separately by [`Self::prepare_coverage_preview`]. Same-aspect resizes preserve coverage and motion. Delivery allocation still happens on the calling thread. Recording consumers must retain their encoder dimensions.
+    pub fn resize_preview(&mut self, width: u32, height: u32) -> Result<(), StitchCoreError> {
         let size = ViewportSize { width, height };
         size.validate()
             .map_err(|e| StitchCoreError::Config(e.to_string()))?;
         if (width, height) == self.output_dims() && self.executor.viewport_size() == &size {
-            return Ok(true);
+            return Ok(());
         }
-        if self
-            .coverage_motion
-            .as_ref()
-            .is_none_or(|c| c.matches_viewport(&size))
-        {
-            return self
-                .resize(width, height)
-                .map(|_| true)
-                .ok_or_else(|| StitchCoreError::Config("viewport resize rejected".into()));
+        let aspect_changed = self.executor.viewport_size().aspect_ratio() != size.aspect_ratio();
+        self.apply_resize(width, height, None)
+            .ok_or_else(|| StitchCoreError::Config("viewport resize rejected".into()))?;
+        if aspect_changed {
+            self.invalidate_preview_coverage();
         }
-        let calibration = self.calibration().clone();
-        match self.poll_coverage(&calibration, &size)? {
-            None => Ok(false),
-            Some(controller) => self
-                .apply_resize(width, height, Some(controller))
-                .map(|_| true)
-                .ok_or_else(|| StitchCoreError::Config("viewport resize rejected".into())),
+        Ok(())
+    }
+
+    pub(super) fn invalidate_preview_coverage(&mut self) {
+        self.coverage_motion = None;
+        if let Some(pending) = &self.pending_coverage {
+            pending.cancelled.store(true, Ordering::Relaxed);
         }
     }
 
@@ -71,7 +78,12 @@ impl StitchCore {
         size: &ViewportSize,
     ) -> Result<Option<Controller>, StitchCoreError> {
         if let Some(pending) = &self.pending_coverage {
-            let current = pending.size == *size && pending.calibration == *calibration;
+            let current = !pending.cancelled.load(Ordering::Relaxed)
+                && pending.size.aspect_ratio() == size.aspect_ratio()
+                && super::calibration_update::same_geometry(&pending.calibration, calibration);
+            if !current {
+                pending.cancelled.store(true, Ordering::Relaxed);
+            }
             if current && let Some(error) = &pending.error {
                 return Err(StitchCoreError::Config(error.clone()));
             }
@@ -100,10 +112,24 @@ impl StitchCore {
         let (sender, result) = std::sync::mpsc::sync_channel(1);
         let task_calibration = calibration.clone();
         let task_size = size.clone();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let task_cancelled = Arc::clone(&cancelled);
         std::thread::Builder::new()
             .name("reco-coverage-prepare".into())
             .spawn(move || {
-                let result = Controller::new(&task_calibration, &task_size, MapConfig::default());
+                // Coalesce continuous edits without occupying compute workers.
+                for _ in 0..12 {
+                    if task_cancelled.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                let result = Controller::new_cancellable(
+                    &task_calibration,
+                    &task_size,
+                    MapConfig::default(),
+                    Some(&task_cancelled),
+                );
                 let _ = sender.send(result);
             })
             .map_err(|error| StitchCoreError::Config(error.to_string()))?;
@@ -112,7 +138,102 @@ impl StitchCore {
             size: size.clone(),
             result,
             error: None,
+            cancelled,
         });
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::stitch::{CpuExecutor, Executor};
+
+    fn core() -> StitchCore {
+        let cal = crate::stitch::test_support::calib(64, 32);
+        let size = ViewportSize {
+            width: 64,
+            height: 32,
+        };
+        StitchCore::new(Executor::Cpu(Box::new(
+            CpuExecutor::new(cal, size, 64, 32, false).unwrap(),
+        )))
+        .unwrap()
+    }
+
+    #[test]
+    fn blend_edits_reuse_pending_job_and_cached_failure() {
+        let mut core = core();
+        core.prepare_coverage_preview().unwrap();
+        let cancelled = Arc::clone(&core.pending_coverage.as_ref().unwrap().cancelled);
+        let mut cal = core.calibration().clone();
+        cal.topology.l_shape_mut().unwrap().blend_width *= 0.5;
+        core.update_calibration_preview(cal).unwrap();
+        core.prepare_coverage_preview().unwrap();
+        assert!(Arc::ptr_eq(
+            &cancelled,
+            &core.pending_coverage.as_ref().unwrap().cancelled
+        ));
+        assert!(!cancelled.load(Ordering::Relaxed));
+
+        core.pending_coverage.as_mut().unwrap().error = Some("unavailable".into());
+        let mut cal = core.calibration().clone();
+        cal.topology.l_shape_mut().unwrap().blend_width *= 0.5;
+        core.update_calibration_preview(cal).unwrap();
+        assert!(core.prepare_coverage_preview().is_err());
+        assert!(Arc::ptr_eq(
+            &cancelled,
+            &core.pending_coverage.as_ref().unwrap().cancelled
+        ));
+        assert!(!cancelled.load(Ordering::Relaxed));
+        let mut cal = core.calibration().clone();
+        cal.framing.roll += 0.1;
+        core.update_calibration_preview(cal).unwrap();
+        assert!(cancelled.load(Ordering::Relaxed));
+        assert!(core.prepare_coverage_preview().unwrap().is_none());
+    }
+
+    #[test]
+    fn same_aspect_resize_reuses_pending_job_and_drop_cancels_it() {
+        let mut core = core();
+        assert!(core.prepare_coverage_preview().unwrap().is_none());
+        let cancelled = Arc::clone(&core.pending_coverage.as_ref().unwrap().cancelled);
+        core.resize_preview(128, 64).unwrap();
+        assert!(core.prepare_coverage_preview().unwrap().is_none());
+        assert!(Arc::ptr_eq(
+            &cancelled,
+            &core.pending_coverage.as_ref().unwrap().cancelled
+        ));
+        assert!(!cancelled.load(Ordering::Relaxed));
+        drop(core);
+        assert!(cancelled.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn invalidation_cancels_before_replacement_and_never_publishes_old_result() {
+        let mut core = core();
+        core.prepare_coverage_preview().unwrap();
+        let cancelled = Arc::clone(&core.pending_coverage.as_ref().unwrap().cancelled);
+        core.resize_preview(64, 64).unwrap();
+        assert!(cancelled.load(Ordering::Relaxed));
+        assert!(core.max_fov_degrees().is_none());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            core.prepare_coverage_preview().unwrap();
+            let pending = core.pending_coverage.as_ref().unwrap();
+            if !Arc::ptr_eq(&cancelled, &pending.cancelled) {
+                assert_eq!(
+                    pending.size,
+                    ViewportSize {
+                        width: 64,
+                        height: 64
+                    }
+                );
+                assert!(!pending.cancelled.load(Ordering::Relaxed));
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::yield_now();
+        }
     }
 }
