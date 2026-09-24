@@ -3,9 +3,7 @@
 //! Wraps any [`OutputSink`] and runs it on a dedicated thread,
 //! decoupling the render loop from sink latency. The caller submits
 //! NV12 data via a bounded channel; the thread consumes frames in the
-//! background. This is critical on Apple M4 where VideoToolbox encode
-//! takes ~3.5ms/frame - without the thread, this stall dominates the
-//! frame time even though GPU readback is only ~0.5ms.
+//! background. Encoding remains independent of the rendering backend.
 //!
 //! ## Buffer pool
 //!
@@ -56,6 +54,8 @@ pub struct SinkThread {
     pool_rx: Option<Receiver<Vec<u8>>>,
     /// The sink thread handle.
     handle: Option<JoinHandle<Result<(), SinkError>>>,
+    /// Preserve failure after joining so later shutdown cannot report success.
+    error: Option<SinkError>,
     /// Output dimensions (needed for OutputFrame construction).
     width: u32,
     height: u32,
@@ -93,6 +93,7 @@ impl SinkThread {
             tx: Some(tx),
             pool_rx: Some(pool_rx),
             handle: Some(handle),
+            error: None,
             stats,
             width,
             height,
@@ -106,6 +107,9 @@ impl SinkThread {
     /// `pts_us` is the presentation timestamp in microseconds.
     pub fn submit(&mut self, nv12_data: &[u8], pts_us: i64) -> Result<(), SinkError> {
         profile_scope!("sink_thread_submit");
+        if let Some(error) = &self.error {
+            return Err(error.clone());
+        }
         let tx = self.tx.as_ref().ok_or_else(|| SinkError::Consume {
             frame_index: None,
             reason: "sink already finished".into(),
@@ -156,7 +160,7 @@ impl SinkThread {
             frame_index: None,
             reason: "sink thread died".into(),
         };
-        match self.handle.take() {
+        let error = match self.handle.take() {
             Some(handle) => match handle.join() {
                 Ok(Err(e)) => e,
                 Ok(Ok(())) => generic(),
@@ -165,7 +169,9 @@ impl SinkThread {
                 },
             },
             None => generic(),
-        }
+        };
+        self.error = Some(error.clone());
+        error
     }
 
     /// Snapshot of sink-thread counters: (frames, avg consume ms,
@@ -194,13 +200,14 @@ impl SinkThread {
         // Drop pool_rx so the sink thread's pool_tx sends don't block.
         self.pool_rx.take();
 
-        let result = if let Some(handle) = self.handle.take() {
-            handle.join().map_err(|_| SinkError::Finish {
-                reason: "sink thread panicked".into(),
-            })?
-        } else {
-            Ok(())
-        };
+        if let Some(handle) = self.handle.take() {
+            self.error = match handle.join() {
+                Ok(result) => result.err(),
+                Err(_) => Some(SinkError::Finish {
+                    reason: "sink thread panicked".into(),
+                }),
+            };
+        }
 
         let (frames, avg_ms, bp_count, bp_ms) = self.stats();
         if frames > 0 {
@@ -209,7 +216,7 @@ impl SinkThread {
                  backpressure {bp_count} stalls totaling {bp_ms:.1}ms"
             );
         }
-        result
+        self.error.clone().map_or(Ok(()), Err)
     }
 
     /// The sink thread's main loop.
@@ -224,13 +231,19 @@ impl SinkThread {
         while let Ok(job) = rx.recv() {
             profile_scope!("sink_consume");
             let t0 = Instant::now();
-            sink.consume(OutputFrame {
+            if let Err(error) = sink.consume(OutputFrame {
                 data: &job.data,
                 width,
                 height,
                 format: PixelFormat::Nv12,
                 pts_us: job.pts_us,
-            })?;
+            }) {
+                // Finalize the recoverable prefix, preserving the original failure.
+                if let Err(finish_error) = sink.finish() {
+                    log::warn!("Sink finalization after consume failure: {finish_error}");
+                }
+                return Err(error);
+            }
             stats
                 .consume_busy_ns
                 .fetch_add(t0.elapsed().as_nanos() as u64, Ordering::Relaxed);
@@ -329,5 +342,65 @@ mod tests {
             err.to_string().contains("codec rejected the frame"),
             "generic error masked the sink's real failure: {err}"
         );
+        assert_eq!(t.finish().unwrap_err().to_string(), err.to_string());
+        assert_eq!(t.finish().unwrap_err().to_string(), err.to_string());
+        assert_eq!(
+            t.submit(&data, 100).unwrap_err().to_string(),
+            err.to_string()
+        );
+    }
+
+    #[test]
+    fn failures_finalize_once_and_remain_visible_on_repeated_finish() {
+        struct ProbeSink {
+            fail_consume: bool,
+            finishes: Arc<AtomicU64>,
+        }
+        impl OutputSink for ProbeSink {
+            fn name(&self) -> &str {
+                "probe"
+            }
+            fn wants(&self) -> SinkInput {
+                SinkInput::CpuBytes(PixelFormat::Nv12)
+            }
+            fn consume(&mut self, _: OutputFrame<'_>) -> Result<(), SinkError> {
+                if self.fail_consume {
+                    Err(SinkError::Consume {
+                        frame_index: Some(0),
+                        reason: "consume failure".into(),
+                    })
+                } else {
+                    Ok(())
+                }
+            }
+            fn finish(&mut self) -> Result<(), SinkError> {
+                self.finishes.fetch_add(1, Ordering::Relaxed);
+                Err(SinkError::Finish {
+                    reason: "finish failure".into(),
+                })
+            }
+        }
+        for fail_consume in [false, true] {
+            let finishes = Arc::new(AtomicU64::new(0));
+            let mut thread = SinkThread::new(
+                Box::new(ProbeSink {
+                    fail_consume,
+                    finishes: finishes.clone(),
+                }),
+                16,
+                16,
+                1,
+            );
+            thread.submit(&[0; 16 * 16 * 3 / 2], 0).unwrap();
+            let error = thread.finish().unwrap_err().to_string();
+            assert!(error.contains(if fail_consume {
+                "consume failure"
+            } else {
+                "finish failure"
+            }));
+            assert_eq!(thread.finish().unwrap_err().to_string(), error);
+            drop(thread);
+            assert_eq!(finishes.load(Ordering::Relaxed), 1);
+        }
     }
 }
