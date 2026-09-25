@@ -107,6 +107,10 @@ impl StackedSource {
 // that; the Send impl is carried by VideoDecoder (which the
 // crate already marks Send).
 impl FrameSource for StackedSource {
+    fn is_full_range(&self) -> bool {
+        self.decoder.is_full_range()
+    }
+
     fn info(&self) -> SourceInfo {
         let tw = self.layout.tile_width();
         let th = self.layout.tile_height();

@@ -48,8 +48,9 @@ impl ReplayRecordingSource {
     pub fn wrap(
         inner: Box<dyn FrameSource>,
         path: &Path,
-        config: StackedEncoderConfig,
+        mut config: StackedEncoderConfig,
     ) -> Result<Self, StackedEncodeError> {
+        config.full_range = inner.is_full_range();
         let info = inner.info();
         let layout = GridLayout::vstack(info.width, info.height, 2).ok_or_else(|| {
             StackedEncodeError::Pack(StackError::TileDimensionMismatch {

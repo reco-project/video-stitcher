@@ -50,6 +50,11 @@ pub struct Playback {
 }
 
 impl Playback {
+    /// Range of the decoded source planes.
+    pub fn is_full_range(&self) -> bool {
+        self.source.as_ref().is_some_and(FrameSource::is_full_range)
+    }
+
     /// Create an empty playback controller (no source loaded).
     pub fn new() -> Self {
         Self {

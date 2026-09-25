@@ -182,6 +182,7 @@ impl PreviewBridge {
         planes: &Yuv420pPlanes<'_>,
         params: &Lens,
         correction_amount: f32,
+        full_range: bool,
     ) -> Result<slint::Image, PipelineError> {
         let lp = self.lens_preview.get_or_insert_with(|| {
             let aspect = self.input_width as f32 / self.input_height as f32;
@@ -194,7 +195,13 @@ impl PreviewBridge {
             )
         });
 
-        let texture = lp.render_yuv(self.engine.gpu(), planes, params, correction_amount);
+        let texture = lp.render_yuv(
+            self.engine.gpu(),
+            planes,
+            params,
+            correction_amount,
+            full_range,
+        );
 
         slint::Image::try_from(texture).map_err(|_| PipelineError::InvalidConfig {
             reason: "slint::Image::try_from(wgpu::Texture) failed".into(),

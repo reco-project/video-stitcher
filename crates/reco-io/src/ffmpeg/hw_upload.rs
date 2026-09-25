@@ -39,13 +39,23 @@ impl HardwareUpload {
     ///
     /// Returns an error if VAAPI is unavailable, which lets the encoder
     /// fallback chain move on to the next candidate.
-    pub(super) fn new_vaapi(width: u32, height: u32) -> Result<Self, EncodeError> {
+    pub(super) fn new_vaapi(
+        width: u32,
+        height: u32,
+        device: Option<&str>,
+    ) -> Result<Self, EncodeError> {
+        let device = device
+            .map(std::ffi::CString::new)
+            .transpose()
+            .map_err(|_| EncodeError::InvalidConfig("device contains a NUL byte".into()))?;
         unsafe {
             let mut device_ref = ptr::null_mut();
             let ret = ffmpeg::sys::av_hwdevice_ctx_create(
                 &mut device_ref,
                 ffmpeg::sys::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI,
-                ptr::null(),
+                device
+                    .as_ref()
+                    .map_or(ptr::null(), |device| device.as_ptr()),
                 ptr::null_mut(),
                 0,
             );

@@ -32,7 +32,9 @@ pub struct CameraRunConfig<'a> {
     pub height: u32,
     pub blend: Option<f32>,
     pub encoder_name: Option<String>,
-    pub codec: &'a str,
+    /// Device identifier for the named encoder.
+    pub encoder_device: Option<String>,
+    pub codec: Option<&'a str>,
     pub quality: &'a str,
     pub end_time: Option<f64>,
     pub max_frames: Option<u64>,
@@ -93,6 +95,7 @@ pub fn run_camera(
         height,
         blend,
         encoder_name,
+        encoder_device,
         codec,
         quality,
         end_time,
@@ -353,27 +356,24 @@ pub fn run_camera(
     }
 
     reco_io::init();
-    let out_quality: reco_io::output::Quality = quality.parse().unwrap_or_else(|_| {
-        log::warn!("Unknown quality '{quality}', defaulting to balanced");
-        reco_io::output::Quality::Balanced
-    });
-    let out_codec: reco_io::output::Codec = codec.parse().unwrap_or_else(|_| {
-        log::warn!("Unknown codec '{codec}', defaulting to H.264");
-        reco_io::output::Codec::H264
-    });
+    let out_quality: reco_io::output::Quality = quality.parse().map_err(anyhow::Error::msg)?;
+    let out_codec = codec
+        .map(str::parse)
+        .transpose()
+        .map_err(anyhow::Error::msg)?;
     let out_format: reco_io::output::Container = if let Some(c) = container {
         c.parse()
             .map_err(|e: String| anyhow::anyhow!("{e} (expected mp4, fmp4, mkv, mov, or flv)"))?
     } else {
-        reco_io::output::Container::default()
+        reco_io::output::Container::for_output(output)
     };
     let enc_config = reco_io::ffmpeg::encoder::EncoderConfig {
         encoder_name,
-        codec: out_codec.into(),
-        quality_preset: out_quality.into(),
-        quality: quality_value,
+        device: encoder_device,
+        codec: out_codec,
+        quality: quality_value.map_or(out_quality, reco_io::output::Quality::Value),
         preset,
-        container: out_format.into(),
+        container: out_format,
         gop_size: Some(60),
         stream_url: stream_url.map(|s| s.to_string()),
         ..Default::default()

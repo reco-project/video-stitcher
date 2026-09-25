@@ -777,6 +777,7 @@ impl VideoDecoder {
     }
 
     /// Decode the next YUV420P frame, or `None` once the decoder is drained.
+    /// Pixel-layout conversion preserves the source range reported by [`Self::is_full_range`].
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "decode_frame")
@@ -1006,22 +1007,42 @@ impl VideoDecoder {
                     self.width,
                     self.height
                 );
-                self.scaler = Some(
-                    ScalingContext::get(
-                        frame_format,
-                        self.width,
-                        self.height,
-                        Pixel::YUV420P,
-                        self.width,
-                        self.height,
-                        ScalingFlags::POINT,
+                let mut scaler = ScalingContext::get(
+                    frame_format,
+                    self.width,
+                    self.height,
+                    Pixel::YUV420P,
+                    self.width,
+                    self.height,
+                    ScalingFlags::POINT,
+                )
+                .map_err(|e| {
+                    DecodeError::ConversionError(format!(
+                        "cannot create scaler for {frame_format:?}: {e}"
+                    ))
+                })?;
+                // Preserve the source range when changing pixel layout; YUVJ defaults would compress it.
+                // SAFETY: the scaler is uniquely owned and FFmpeg owns the constant coefficient table.
+                let result = unsafe {
+                    let coefficients = ffi::sws_getCoefficients(ffi::SWS_CS_ITU709);
+                    ffi::sws_setColorspaceDetails(
+                        scaler.as_mut_ptr(),
+                        coefficients,
+                        i32::from(self.is_full_range),
+                        coefficients,
+                        i32::from(self.is_full_range),
+                        0,
+                        1 << 16,
+                        1 << 16,
                     )
-                    .map_err(|e| {
-                        DecodeError::ConversionError(format!(
-                            "cannot create scaler for {frame_format:?}: {e}"
-                        ))
-                    })?,
-                );
+                };
+                if result < 0 {
+                    return Err(DecodeError::ConversionError(format!(
+                        "cannot preserve decoded color range: {}",
+                        ffmpeg::Error::from(result)
+                    )));
+                }
+                self.scaler = Some(scaler);
             }
 
             if let Some(scaler) = &mut self.scaler {
@@ -1436,6 +1457,61 @@ mod tests {
         assert_eq!(dec.frame_rate(), R60);
     }
 
+    #[test]
+    fn cpu_extraction_preserves_full_range_samples() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("full-range.mov");
+        write_mjpeg_60fps(&path);
+        let mut decoder = super::VideoDecoder::open_software(&path).unwrap();
+        assert!(decoder.is_full_range());
+        let frame = decoder.next_frame().unwrap().unwrap();
+        assert!(
+            frame.y.iter().all(|&value| value.abs_diff(32) <= 1),
+            "full-range samples changed: {}",
+            frame.y[0]
+        );
+        use reco_core::source::FrameSource;
+        let mut source = crate::adapters::FfmpegFileSource::open_inputs(
+            &[crate::InputPath::Single(path)],
+            0,
+            true,
+        )
+        .unwrap();
+        assert!(source.is_full_range());
+        let reco_core::source::FrameSet::Yuv420p(planes) = source.next_frame().unwrap().unwrap()
+        else {
+            panic!("expected CPU planes")
+        };
+        assert!(planes[0].y.iter().all(|&value| value.abs_diff(32) <= 1));
+        assert!(frame.u.iter().all(|&value| value.abs_diff(64) <= 1));
+        assert!(frame.v.iter().all(|&value| value.abs_diff(192) <= 1));
+        assert!(planes[0].u.iter().all(|&value| value.abs_diff(64) <= 1));
+        assert!(planes[0].v.iter().all(|&value| value.abs_diff(192) <= 1));
+    }
+
+    #[test]
+    fn cpu_source_rejects_mixed_camera_ranges_in_both_orders() {
+        let dir = tempfile::tempdir().unwrap();
+        let full = dir.path().join("full.mov");
+        let limited = dir.path().join("limited.mp4");
+        write_mjpeg_60fps(&full);
+        let config = crate::ffmpeg::encoder::EncoderConfig {
+            encoder_name: Some("libx264".into()),
+            ..Default::default()
+        };
+        let mut encoder =
+            crate::ffmpeg::encoder::VideoEncoder::new(&limited, 64, 64, R60, &config).unwrap();
+        encoder.write_nv12_frame(&[128; 64 * 64 * 3 / 2]).unwrap();
+        encoder.finish().unwrap();
+        for paths in [[full.clone(), limited.clone()], [limited, full]] {
+            let inputs = paths.map(crate::InputPath::Single);
+            let error = crate::adapters::FfmpegFileSource::open_inputs(&inputs, 0, true)
+                .err()
+                .expect("mixed range must fail");
+            assert!(error.to_string().contains("color ranges differ"));
+        }
+    }
+
     fn write_mjpeg_60fps(path: &std::path::Path) {
         use ffmpeg::codec;
 
@@ -1459,8 +1535,8 @@ mod tests {
         let stream_time_base = octx.stream(0).unwrap().time_base();
 
         let mut frame = ffmpeg::util::frame::Video::new(ffmpeg::format::Pixel::YUVJ420P, 64, 64);
-        for plane in 0..3 {
-            frame.data_mut(plane).fill(128);
+        for (plane, value) in [32, 64, 192].into_iter().enumerate() {
+            frame.data_mut(plane).fill(value);
         }
         for i in 0..6 {
             frame.set_pts(Some(i));

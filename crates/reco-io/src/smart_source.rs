@@ -173,12 +173,18 @@ impl SmartFileSource {
         let decode_backend = probe.backend();
         drop(probe);
 
-        let right_rotation = crate::ffmpeg::decoder::VideoDecoder::open(right_probe_path)
-            .map(|d| d.rotation())
-            .unwrap_or_else(|e| {
-                log::warn!("Failed to probe right video for rotation ({e}), assuming 0 degrees");
-                0
-            });
+        let right_probe =
+            crate::ffmpeg::decoder::VideoDecoder::open(right_probe_path).map_err(|e| {
+                SourceError::Init {
+                    path: right_probe_path.display().to_string(),
+                    reason: e.to_string(),
+                }
+            })?;
+        if right_probe.is_full_range() != full_range {
+            return Err(SourceError::Init { path: right_probe_path.display().to_string(), reason: "camera color ranges differ; mixed full-range and limited-range inputs are not supported".into() });
+        }
+        let right_rotation = right_probe.rotation();
+        drop(right_probe);
 
         // Detect zero-copy capability
         let hwaccel_disabled = std::env::var("RECO_NO_HWACCEL").is_ok();
@@ -236,11 +242,14 @@ impl SmartFileSource {
         };
         let probe_path = first.first_path();
 
-        let probe = crate::ffmpeg::decoder::VideoDecoder::open(probe_path).map_err(|e| {
-            SourceError::Init {
-                path: probe_path.display().to_string(),
-                reason: format!("{e}"),
-            }
+        let open_probe = if software_decode {
+            crate::ffmpeg::decoder::VideoDecoder::open_software
+        } else {
+            crate::ffmpeg::decoder::VideoDecoder::open
+        };
+        let probe = open_probe(probe_path).map_err(|e| SourceError::Init {
+            path: probe_path.display().to_string(),
+            reason: format!("{e}"),
         })?;
         let fps_r = probe.frame_rate();
         let info = SourceInfo {

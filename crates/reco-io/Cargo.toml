@@ -33,7 +33,7 @@ thiserror = "2"
 tracing = { workspace = true, optional = true }
 
 # FFmpeg backend
-ffmpeg-next = { version = "8", default-features = false, features = ["codec", "format", "software-scaling"], optional = true }
+ffmpeg-next = { version = "9", default-features = false, features = ["codec", "format", "software-scaling"], optional = true }
 
 # GStreamer backend
 gstreamer = { version = "0.25", optional = true }

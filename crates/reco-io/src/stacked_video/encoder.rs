@@ -1,18 +1,9 @@
-//! Stacked-video encoder. Wraps
-//! [`crate::ffmpeg::encoder::VideoEncoder`] with a default
-//! configuration suited to the replay-recording use case:
-//! fragmented MP4 (readable while being written), YUV420P planar
-//! pixel format (skips the RGBA scaler), and a software encoder
-//! so it doesn't contend with the GPU encoder already running
-//! the live stitch output.
+//! Encode packed camera planes for replay, without applying rendered-output colour conversion.
 //!
-//! Consumers can override any of these via the [`StackedEncoderConfig`]
-//! builder. Hardware-encoded stacked output would need an NV12
-//! pack variant; not implemented.
+//! Uses Matroska and automatic encoder selection by default. Planar input is interleaved when the encoder requires NV12. Consumers configure encoding through [`StackedEncoderConfig`].
 use super::{GridLayout, StackError, pack_yuv420p};
-use crate::ffmpeg::encoder::{
-    Container, EncodeError, EncoderConfig, Quality, VideoCodec, VideoEncoder,
-};
+use crate::ffmpeg::encoder::{EncodeError, EncoderConfig, VideoEncoder};
+use crate::output::{Codec, Container, Quality, QualityPreset};
 use reco_core::source::Yuv420pFrame;
 use std::path::Path;
 use thiserror::Error;
@@ -37,8 +28,8 @@ pub enum StackedEncodeError {
 #[derive(Debug, Clone)]
 pub struct StackedEncoderConfig {
     /// Inner encoder config. Container defaults to
-    /// [`Container::Matroska`]; codec defaults to
-    /// [`VideoCodec::H264`]; encoder auto-detects hardware
+    /// [`Container::Mkv`]; codec defaults to
+    /// [`Codec::H264`]; encoder auto-detects hardware
     /// (NVENC/AMF/VT) with software fallback. The encoder
     /// handles YUV420P-to-NV12 interleave automatically when
     /// a hardware encoder is selected.
@@ -50,31 +41,19 @@ pub struct StackedEncoderConfig {
     /// warning - a 60fps session recorded at a 30fps time base plays
     /// half-speed.
     pub fps: Option<(i32, i32)>,
+    /// Range of the supplied camera planes. Recording wrappers derive this from their source.
+    pub full_range: bool,
 }
 
 impl Default for StackedEncoderConfig {
     fn default() -> Self {
         Self {
             inner: EncoderConfig {
-                // Matroska is the replay-recording default:
-                // streamable (readers can open mid-write),
-                // crash-safe (partial files are always
-                // recoverable), and OBS's own default. fMP4 is
-                // also supported via `Container::Mp4Fragmented`
-                // but currently trips a muxer/libx264 finalize
-                // bug in ffmpeg 7 / ffmpeg-next 8 that we
-                // haven't root-caused (write_trailer returns
-                // AVERROR -162 even with the canonical
-                // movflags recipe; plain MP4 and Matroska
-                // both finalize cleanly with identical stream
-                // setup). Flagged for follow-up; consumers
-                // that explicitly opt in to fMP4 today will
-                // hit it.
-                container: Container::Matroska,
-                codec: VideoCodec::H264,
-                quality_preset: Quality::Fast,
+                // Matroska does not require a finalized central index to read completed clusters.
+                container: Container::Mkv,
+                codec: Some(Codec::H264),
+                quality: Quality::Preset(QualityPreset::Fast),
                 encoder_name: None,
-                quality: None,
                 preset: None,
                 audio_source: None,
                 audio_start_time: 0.0,
@@ -86,8 +65,10 @@ impl Default for StackedEncoderConfig {
                 // default of 250.
                 gop_size: Some(30),
                 stream_url: None,
+                ..Default::default()
             },
             fps: None,
+            full_range: false,
         }
     }
 }
@@ -121,12 +102,13 @@ impl StackedEncoder {
             (30, 1)
         });
         let fps = ffmpeg_next::Rational(fps_num, fps_den);
-        let encoder = VideoEncoder::new(
+        let encoder = VideoEncoder::new_source(
             output_path,
             layout.packed_width(),
             layout.packed_height(),
             fps,
             &config.inner,
+            config.full_range,
         )?;
         log::info!(
             "StackedEncoder: {}x{} grid ({} rows x {} cols, tile {}x{}) -> {} ({}, {})",
@@ -141,7 +123,8 @@ impl StackedEncoder {
             match config.inner.container {
                 Container::Mp4 => "mp4",
                 Container::Mp4Fragmented => "fmp4",
-                Container::Matroska => "mkv",
+                Container::Mov => "mov",
+                Container::Mkv => "mkv",
                 Container::Flv => "flv",
             },
         );
@@ -169,15 +152,9 @@ impl StackedEncoder {
         self.push(&opts)
     }
 
-    /// Push buffered bytes to disk without finalizing the
-    /// container.
+    /// Publish encoded packets and container buffers for concurrent replay readers.
     ///
-    /// Required for write-while-read replay: a concurrent reader
-    /// only sees bytes once the AVIO layer has written them to
-    /// the file descriptor, and fMP4 flushes fragments only on
-    /// this call (or when the next keyframe forces one). Call
-    /// periodically from the replay path, typically once per
-    /// keyframe or every few seconds.
+    /// Frames buffered inside the encoder may still be pending. No storage synchronization is performed.
     ///
     /// Does not finalize the file; [`Self::finish`] is still
     /// required when the recording session ends.

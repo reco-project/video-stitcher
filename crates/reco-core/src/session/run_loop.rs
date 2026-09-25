@@ -64,9 +64,7 @@ impl StitchSession {
     fn configure_from_source(&mut self, source: &dyn FrameSource) {
         self.gpu_pixel_format = source.gpu_pixel_format();
         self.is_full_range = source.is_full_range();
-        if self.is_full_range {
-            self.core.set_full_range(true);
-        }
+        self.core.set_full_range(self.is_full_range);
         // Apply rotation via shader UV flip ONLY for GPU-resident sources.
         // CPU sources handle rotation via buffer reversal in the decoder,
         // so applying the shader flip too would rotate 360 degrees (no-op but wrong).
@@ -573,8 +571,8 @@ impl StitchSession {
         // color range is a per-source property the software stitch
         // consumes too - without this, full-range sources rendered with
         // the limited-range conversion.
+        self.core.set_full_range(source.is_full_range());
         if source.is_full_range() {
-            self.core.set_full_range(true);
             log::info!("CPU stitch: full-range YUV source, using full-range conversion");
         }
         let (nv12_w, nv12_h) = self.nv12_delivery_dims();

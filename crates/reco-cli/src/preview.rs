@@ -292,16 +292,12 @@ impl App {
         let (width, height) = renderer.output_dims();
         let rec_w = width & !3;
         let rec_h = height & !1;
-        let (encoder, enc_name) = match reco_io::adapters::create_encoder(
+        let encoder = match reco_io::adapters::FfmpegFileEncoder::new(
             Path::new(&path),
             rec_w,
             rec_h,
             self.fps_rational,
-            "h264",
-            "balanced",
-            None,
-            None,
-            None,
+            &reco_io::ffmpeg::encoder::EncoderConfig::default(),
         ) {
             Ok(pair) => pair,
             Err(e) => {
@@ -309,7 +305,7 @@ impl App {
                 return;
             }
         };
-        println!("[REC] Recording to {path} ({enc_name})");
+        println!("[REC] Recording to {path} ({})", encoder.encoder_name());
         self.recording = Some(Box::new(encoder));
         self.recording_path = Some(path);
         self.recording_frames = 0;

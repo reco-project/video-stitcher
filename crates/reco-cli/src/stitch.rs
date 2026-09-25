@@ -29,7 +29,9 @@ pub struct StitchArgs<'a> {
     pub end_time: Option<f64>,
     pub max_frames: Option<u64>,
     pub encoder_name: Option<String>,
-    pub codec: &'a str,
+    /// Device identifier for the named encoder.
+    pub encoder_device: Option<String>,
+    pub codec: Option<&'a str>,
     pub quality: &'a str,
     pub sync_offset: i64,
     pub model_path: Option<&'a str>,
@@ -100,8 +102,7 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         .collect();
     let mut job = reco_io::StitchJob::with_calibration(inputs, cal, args.output);
     job = job
-        .codec(parse_codec(args.codec))
-        .quality(parse_quality(args.quality))
+        .quality(args.quality.parse().map_err(anyhow::Error::msg)?)
         .resolution(args.width, args.height)
         .on_progress(move |p: &reco_core::session::types::FrameProgress| {
             // Use the session's own elapsed clock so the reported
@@ -158,8 +159,14 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     if let Some(ref enc) = args.encoder_name {
         job = job.encoder_name(enc);
     }
+    if let Some(codec) = args.codec {
+        job = job.codec(codec.parse().map_err(anyhow::Error::msg)?);
+    }
+    if let Some(ref device) = args.encoder_device {
+        job = job.encoder_device(device);
+    }
     if let Some(qv) = args.quality_value {
-        job = job.quality_value(qv);
+        job = job.quality(reco_io::output::Quality::Value(qv));
     }
     if let Some(ref preset) = args.preset {
         job = job.preset(preset);
@@ -385,18 +392,4 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     }
 
     Ok(())
-}
-
-fn parse_codec(s: &str) -> reco_io::output::Codec {
-    s.parse().unwrap_or_else(|_| {
-        log::warn!("Unknown codec '{s}', defaulting to H.264");
-        reco_io::output::Codec::H264
-    })
-}
-
-fn parse_quality(s: &str) -> reco_io::output::Quality {
-    s.parse().unwrap_or_else(|_| {
-        log::warn!("Unknown quality '{s}', defaulting to balanced");
-        reco_io::output::Quality::Balanced
-    })
 }

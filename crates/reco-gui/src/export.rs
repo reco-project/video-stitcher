@@ -128,8 +128,12 @@ pub fn run_export(
 ) -> ExportOutcome {
     use reco_io::output::{Codec, Quality};
 
-    let codec: Codec = codec_str.parse().unwrap_or_default();
-    let quality: Quality = quality_str.parse().unwrap_or_default();
+    let (codec, quality) = match (codec_str.parse::<Codec>(), quality_str.parse::<Quality>()) {
+        (Ok(codec), Ok(quality)) => (codec, quality),
+        (Err(reason), _) | (_, Err(reason)) => {
+            return ExportOutcome::Failed(reco_io::stitch_job::StitchError::Other(reason));
+        }
+    };
 
     #[cfg(feature = "autocam")]
     let field_roi = cal.field_roi.clone();

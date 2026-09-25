@@ -7,6 +7,7 @@
 pub mod calibration_io;
 pub mod decoder;
 pub mod encoder;
+mod hevc_color;
 mod hw_upload;
 
 use std::sync::Once;

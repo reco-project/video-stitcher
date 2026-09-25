@@ -99,6 +99,37 @@ impl FrameSource for MockSource {
     }
 }
 
+#[test]
+fn reused_session_applies_both_full_and_limited_source_ranges() {
+    struct RangeSource(bool);
+    impl FrameSource for RangeSource {
+        fn info(&self) -> SourceInfo {
+            MockSource::new(0).info()
+        }
+        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+            Ok(None)
+        }
+        fn is_full_range(&self) -> bool {
+            self.0
+        }
+    }
+    let mut session = build_cpu_session();
+    for full_range in [true, false] {
+        session
+            .run(
+                &mut RangeSource(full_range),
+                1,
+                &AtomicBool::new(false),
+                None,
+            )
+            .unwrap();
+        let crate::stitch::Executor::Cpu(executor) = &session.core.executor else {
+            panic!("expected CPU")
+        };
+        assert_eq!(executor.full_range, full_range);
+    }
+}
+
 // ─── MockDetector ──────────────────────────────────────────────────────
 
 /// Mock detector that returns canned detections and counts calls.

@@ -220,6 +220,7 @@ fn file_source_delivers_every_frame_and_persists_eof() {
     let input = InputPath::Single(path);
     for inputs in [vec![input.clone()], vec![input.clone(); 2], vec![input; 3]] {
         let mut source = FfmpegFileSource::open_inputs(&inputs, 0, true).unwrap();
+        assert_eq!(source.decode_backend(), DecodeBackend::Software);
         for index in 0..FRAMES {
             let FrameSet::Yuv420p(cameras) = source.next_frame().unwrap().unwrap() else {
                 panic!("expected CPU frames");

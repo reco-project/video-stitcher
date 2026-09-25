@@ -10,11 +10,11 @@
 //!
 //! ```rust,ignore
 //! use reco_io::StitchJob;
-//! use reco_io::output::{Codec, Quality};
+//! use reco_io::output::{Codec, Quality, QualityPreset};
 //!
 //! StitchJob::new(["left.mp4", "right.mp4"], "match.json", "output.mp4")
 //!     .codec(Codec::HEVC)
-//!     .quality(Quality::High)
+//!     .quality(Quality::Preset(QualityPreset::High))
 //!     .on_progress(|p| println!("{:.0}%", p.percent()))
 //!     .run(&interrupted)?;
 //! ```
@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
-use crate::output::{AudioMode, Bitrate, Codec, Container, Quality};
+use crate::output::{AudioMode, Codec, Container, Quality};
 use reco_core::render::viewport::ViewportSize;
 use reco_core::session::StitchSession;
 use reco_core::session::types::FrameProgress;
@@ -44,13 +44,13 @@ pub struct StitchJob {
     output: PathBuf,
 
     // Output settings
-    codec: Codec,
-    bitrate: Bitrate,
-    container: Container,
+    codec: Option<Codec>,
+    quality: Quality,
+    container: Option<Container>,
     audio: AudioMode,
     resolution: Option<(u32, u32)>,
     encoder_name: Option<String>,
-    quality_value: Option<u8>,
+    encoder_device: Option<String>,
     preset: Option<String>,
 
     // Processing window
@@ -266,6 +266,11 @@ pub enum StitchError {
 }
 
 impl StitchJob {
+    fn resolved_container(&self) -> Container {
+        self.container
+            .unwrap_or_else(|| Container::for_output(&self.output.to_string_lossy()))
+    }
+
     /// Create a job from file paths (loads calibration from JSON).
     ///
     /// `inputs` is one video per camera in projection order; the
@@ -280,13 +285,13 @@ impl StitchJob {
             inputs: inputs.into_iter().map(Into::into).collect(),
             calibration: CalibrationSource::File(calibration.as_ref().to_path_buf()),
             output: output.as_ref().to_path_buf(),
-            codec: Codec::default(),
-            bitrate: Bitrate::default(),
-            container: Container::default(),
+            codec: None,
+            quality: Quality::default(),
+            container: None,
             audio: AudioMode::default(),
             resolution: None,
             encoder_name: None,
-            quality_value: None,
+            encoder_device: None,
             preset: None,
             start_time: None,
             end_time: None,
@@ -320,25 +325,19 @@ impl StitchJob {
 
     /// Set the output video codec.
     pub fn codec(mut self, codec: Codec) -> Self {
-        self.codec = codec;
+        self.codec = Some(codec);
         self
     }
 
-    /// Set the bitrate control strategy.
-    pub fn bitrate(mut self, bitrate: Bitrate) -> Self {
-        self.bitrate = bitrate;
-        self
-    }
-
-    /// Set the output quality (convenience for `bitrate(Bitrate::Quality(...))`).
+    /// Set the output quality selection.
     pub fn quality(mut self, quality: Quality) -> Self {
-        self.bitrate = Bitrate::Quality(quality);
+        self.quality = quality;
         self
     }
 
     /// Set the output container format.
     pub fn container(mut self, container: Container) -> Self {
-        self.container = container;
+        self.container = Some(container);
         self
     }
 
@@ -360,11 +359,9 @@ impl StitchJob {
         self
     }
 
-    /// Override encoder quality on a normalized 0-100 scale (higher = better).
-    /// Converted to encoder-specific parameters (CRF, CQ, global_quality)
-    /// internally. See [`crate::ffmpeg::encoder::EncoderConfig::quality`].
-    pub fn quality_value(mut self, quality: u8) -> Self {
-        self.quality_value = Some(quality);
+    /// Select a device for the named encoder: VAAPI render node or NVENC GPU index.
+    pub fn encoder_device(mut self, device: impl Into<String>) -> Self {
+        self.encoder_device = Some(device.into());
         self
     }
 
@@ -473,27 +470,9 @@ impl StitchJob {
         self
     }
 
-    /// Set the replay tile downscale. Must
-    /// be called AFTER [`Self::with_replay_recording`] — no-op with
-    /// a warn if replay recording wasn't enabled first.
+    /// Deliver decoded frames in CPU memory instead of using GPU zero-copy, for consumers such as CPU detectors.
     ///
-    /// `(width, height)` are the per-tile dims after scale; the
-    /// atlas height becomes `height * N` for an N-vstack layout. A
-    /// 1080p source with `.with_replay_scale(1280, 720)` produces
-    /// a 1280x1440 atlas (two 720p tiles stacked).
-    ///
-    /// The GPU pack path folds this into the compute shader's
-    /// sampler at no extra cost (linear filter handles the scale).
-    /// The CPU path doesn't support downscale today — enabling it
-    /// on a CPU-resident source logs a warn and the replay file
-    /// keeps the source dims.
-    ///
-    /// Dimensions must be YUV420P-aligned: `width` divisible by 4
-    /// (pack shader quirk), `height` even.
-    /// Force CPU decode instead of GPU zero-copy (NVDEC). Required
-    /// when AI tracking uses ORT CPU detection and TensorRT is not
-    /// available. CPU decode is ~5-10x slower but gives the detector
-    /// access to the frames.
+    /// Hardware decoding may still be used with a transfer to CPU memory. [`Self::cpu`] selects software decoding and rendering together.
     pub fn force_cpu_decode(mut self) -> Self {
         self.force_cpu_decode = true;
         self
@@ -520,6 +499,8 @@ impl StitchJob {
         self
     }
 
+    /// Downscale replay recording on the GPU. Width must be divisible by four and height even.
+    /// The CPU executor ignores this setting. Call after [`Self::with_replay_recording`].
     #[cfg(feature = "stacked-output")]
     pub fn with_replay_scale(mut self, width: u32, height: u32) -> Self {
         if let Some(ref mut cfg) = self.replay_recording {
@@ -596,6 +577,12 @@ impl StitchJob {
     /// This is a blocking call that processes all frames (or until the
     /// interrupt flag is set). Returns a [`StitchResult`] with statistics.
     pub fn run(mut self, interrupted: &AtomicBool) -> Result<StitchResult, StitchError> {
+        let container = self.resolved_container();
+        if self.encoder_device.is_some() && self.encoder_name.is_none() {
+            return Err(StitchError::Other(
+                "encoder device selection requires a named encoder".into(),
+            ));
+        }
         crate::init();
         let start = std::time::Instant::now();
 
@@ -658,7 +645,7 @@ impl StitchJob {
         } else {
             let gpu = reco_core::gpu::GpuContext::new_blocking()?;
             let source = if self.force_cpu_decode {
-                log::info!("Force CPU decode: zero-copy disabled by --no-zero-copy");
+                log::info!("CPU-resident frames: zero-copy disabled by --no-zero-copy");
                 crate::SmartFileSource::open_cpu_only(&self.inputs, effective_sync, false)?
             } else {
                 crate::SmartFileSource::open(
@@ -816,10 +803,6 @@ impl StitchJob {
             log::warn!("FPS not available from source metadata, defaulting to 30fps");
             (30, 1)
         });
-        let quality = match &self.bitrate {
-            Bitrate::Quality(q) => crate::ffmpeg::encoder::Quality::from(*q),
-            Bitrate::Crf(_) => crate::ffmpeg::encoder::Quality::Balanced,
-        };
         let fps = if info.fps > 0.0 { info.fps } else { 30.0 };
         let start_secs = self
             .start_time
@@ -842,24 +825,16 @@ impl StitchJob {
             AudioMode::Disabled => None,
         };
 
-        // --cpu defaults the encoder to software so the whole run keeps
-        // its no-GPU promise; an explicit encoder choice still wins.
-        let encoder_name = match (&self.encoder_name, self.cpu_stitch) {
-            (None, true) => {
-                log::info!("CPU stitch: defaulting to the libx264 software encoder");
-                Some("libx264".to_string())
-            }
-            (name, _) => name.clone(),
-        };
         let enc_config = crate::ffmpeg::encoder::EncoderConfig {
-            encoder_name,
-            codec: self.codec.into(),
-            quality_preset: quality,
-            quality: self.quality_value,
+            encoder_name: self.encoder_name.clone(),
+            device: self.encoder_device.clone(),
+            software_only: self.cpu_stitch,
+            codec: self.codec,
+            quality: self.quality,
             preset: self.preset.clone(),
             audio_source,
             audio_start_time: start_secs,
-            container: self.container.into(),
+            container,
             gop_size: None,
             stream_url: None,
         };
@@ -884,6 +859,7 @@ impl StitchJob {
                     crate::ffmpeg::encoder::VideoEncoder::replay_encoder_name(&enc_name)
                         .map(String::from);
             }
+            cfg.encoder_config.full_range = source.is_full_range();
             if cfg.encoder_config.fps.is_none() {
                 cfg.encoder_config.fps = Some(fps_rational);
                 log::info!(
@@ -1137,7 +1113,7 @@ impl StitchJob {
         // requested outcome.
         if frame_count > 0 {
             let output_path = self.output.clone();
-            match crate::ffmpeg::decoder::VideoDecoder::open(&output_path) {
+            match crate::ffmpeg::decoder::VideoDecoder::open_software(&output_path) {
                 Ok(d) => {
                     let dur = d.duration_secs().unwrap_or(0.0);
                     if d.width() == 0 || d.height() == 0 || dur <= 0.0 {
@@ -1169,6 +1145,33 @@ impl StitchJob {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn omitted_container_follows_destination_explicit_container_wins() {
+        for (path, expected) in [
+            ("out.mkv", Container::Mkv),
+            ("out.mov", Container::Mov),
+            ("out.mp4", Container::Mp4),
+        ] {
+            let job = StitchJob::new(["missing.mp4"], "missing.json", path);
+            assert_eq!(job.resolved_container(), expected);
+            assert_eq!(
+                job.container(Container::Mp4Fragmented).resolved_container(),
+                Container::Mp4Fragmented
+            );
+        }
+    }
+
+    #[test]
+    fn device_without_encoder_is_rejected_before_loading_calibration() {
+        let job = StitchJob::new(["missing.mp4"], "missing.json", "out.mp4")
+            .encoder_device("/dev/dri/renderD129");
+        let error = job
+            .run(&std::sync::atomic::AtomicBool::new(false))
+            .unwrap_err();
+        assert!(error.to_string().contains("encoder"), "{error}");
+        assert!(!matches!(error, StitchError::Calibration(_)));
+    }
 
     /// The arity check runs against the projection BEFORE any decoder or
     /// GPU spins up: with nonexistent input paths, a wrong input count

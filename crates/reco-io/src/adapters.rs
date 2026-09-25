@@ -17,14 +17,14 @@ use crate::ffmpeg;
 #[cfg(feature = "ffmpeg")]
 fn input_duration_secs(input: &crate::stitch_job::InputPath) -> Option<f64> {
     match input {
-        crate::stitch_job::InputPath::Single(p) => ffmpeg::decoder::VideoDecoder::open(p)
+        crate::stitch_job::InputPath::Single(p) => ffmpeg::decoder::VideoDecoder::open_software(p)
             .ok()
             .and_then(|d| d.duration_secs()),
         crate::stitch_job::InputPath::Chained(paths) => {
             let mut total = 0.0f64;
             let mut any = false;
             for p in paths {
-                match ffmpeg::decoder::VideoDecoder::open(p) {
+                match ffmpeg::decoder::VideoDecoder::open_software(p) {
                     Ok(d) => {
                         if let Some(dur) = d.duration_secs() {
                             total += dur;
@@ -64,9 +64,10 @@ fn input_duration_secs(input: &crate::stitch_job::InputPath) -> Option<f64> {
 /// - Negative offset: skip N frames from camera 0 (it started first)
 #[cfg(feature = "ffmpeg")]
 pub struct FfmpegFileSource {
-    rx: std::sync::mpsc::Receiver<crate::decode_stream::Message<FrameSet>>,
+    rx: std::sync::mpsc::Receiver<crate::decode_stream::Message<Vec<Yuv420pData>>>,
     info: SourceInfo,
     decode_backend: ffmpeg::decoder::DecodeBackend,
+    full_range: bool,
     /// GPU pixel format (NV12 8-bit or P010 10-bit).
     pixel_format: reco_core::render::renderer::GpuPixelFormat,
     /// Per-camera rotation from stream metadata (0, 90, 180, 270),
@@ -134,12 +135,17 @@ impl FfmpegFileSource {
         }
 
         let probe_path = first.first_path();
-        let probe =
-            ffmpeg::decoder::VideoDecoder::open(probe_path).map_err(|e| SourceError::Init {
-                path: probe_path.display().to_string(),
-                reason: format!("{e}"),
-            })?;
+        let open_probe = if software_decode {
+            ffmpeg::decoder::VideoDecoder::open_software
+        } else {
+            ffmpeg::decoder::VideoDecoder::open
+        };
+        let probe = open_probe(probe_path).map_err(|e| SourceError::Init {
+            path: probe_path.display().to_string(),
+            reason: format!("{e}"),
+        })?;
         let fps_r = probe.frame_rate();
+        let full_range = probe.is_full_range();
         let fps = probe.fps();
         let durations: Vec<Option<f64>> = inputs.iter().map(input_duration_secs).collect();
         let effective_dur = durations.iter().flatten().copied().reduce(f64::min);
@@ -170,8 +176,14 @@ impl FfmpegFileSource {
         // without letting 25-vs-30 or 30-vs-60 setups through.
         let mut rotations = vec![first_rotation];
         for input in &inputs[1..] {
-            match ffmpeg::decoder::VideoDecoder::open(input.first_path()) {
+            match open_probe(input.first_path()) {
                 Ok(d) => {
+                    if d.is_full_range() != full_range {
+                        return Err(SourceError::Init {
+                            path: input.first_path().display().to_string(),
+                            reason: "camera color ranges differ; mixed full-range and limited-range inputs are not supported".into(),
+                        });
+                    }
                     let r = d.frame_rate();
                     let input_fps = r.0 as f64 / r.1 as f64;
                     if (input_fps - fps).abs() > 0.5 {
@@ -201,6 +213,7 @@ impl FfmpegFileSource {
 
         Ok(Self {
             rx,
+            full_range,
             info,
             decode_backend,
             pixel_format,
@@ -257,11 +270,12 @@ impl FfmpegFileSource {
     ///
     /// Re-probes the left file. Call once during setup, not per-frame.
     pub fn frame_rate(left_path: &std::path::Path) -> Result<(i32, i32), SourceError> {
-        let dec =
-            ffmpeg::decoder::VideoDecoder::open(left_path).map_err(|e| SourceError::Init {
+        let dec = ffmpeg::decoder::VideoDecoder::open_software(left_path).map_err(|e| {
+            SourceError::Init {
                 path: left_path.display().to_string(),
                 reason: format!("{e}"),
-            })?;
+            }
+        })?;
         let r = dec.frame_rate();
         Ok((r.0, r.1))
     }
@@ -319,7 +333,7 @@ impl FfmpegFileSource {
         sync_offset: i64,
         seek_secs: Option<f64>,
         software_decode: bool,
-    ) -> std::sync::mpsc::Receiver<crate::decode_stream::Message<FrameSet>> {
+    ) -> std::sync::mpsc::Receiver<crate::decode_stream::Message<Vec<Yuv420pData>>> {
         let rxs: Vec<_> = inputs
             .into_iter()
             .enumerate()
@@ -357,7 +371,7 @@ impl FfmpegFileSource {
                     if cams.len() != rxs.len() {
                         break;
                     }
-                    if tx.send(Ok(Some(FrameSet::Yuv420p(cams)))).is_err() {
+                    if tx.send(Ok(Some(cams))).is_err() {
                         break;
                     }
                 }
@@ -372,7 +386,7 @@ mod decode_tests {
     use super::*;
     use reco_core::source::FrameSource;
 
-    fn source(messages: Vec<crate::decode_stream::Message<FrameSet>>) -> FfmpegFileSource {
+    fn source(messages: Vec<crate::decode_stream::Message<Vec<Yuv420pData>>>) -> FfmpegFileSource {
         let (tx, rx) = std::sync::mpsc::sync_channel(messages.len());
         for message in messages {
             tx.send(message).unwrap();
@@ -387,6 +401,7 @@ mod decode_tests {
                 total_frames: None,
             },
             decode_backend: ffmpeg::decoder::DecodeBackend::Software,
+            full_range: false,
             pixel_format: reco_core::render::renderer::GpuPixelFormat::Nv12,
             rotations: vec![0],
             inputs: vec![],
@@ -399,7 +414,7 @@ mod decode_tests {
         }
     }
 
-    fn failure() -> crate::decode_stream::Message<FrameSet> {
+    fn failure() -> crate::decode_stream::Message<Vec<Yuv420pData>> {
         Err(SourceError::Read {
             reason: "decode failed".into(),
         })
@@ -408,7 +423,7 @@ mod decode_tests {
     #[test]
     fn blocking_and_polling_reads_propagate_worker_failure() {
         for polling in [true, false] {
-            let mut source = source(vec![Ok(Some(FrameSet::Yuv420p(vec![]))), failure()]);
+            let mut source = source(vec![Ok(Some(vec![])), failure()]);
             assert!(source.next_frame().unwrap().is_some());
             let error = if polling {
                 source.try_next_frame()
@@ -439,7 +454,7 @@ mod decode_tests {
 
     #[test]
     fn forward_seek_does_not_swallow_a_worker_failure() {
-        let mut source = source(vec![Ok(Some(FrameSet::Yuv420p(vec![]))), failure()]);
+        let mut source = source(vec![Ok(Some(vec![])), failure()]);
         assert!(
             source
                 .seek(2)
@@ -480,6 +495,10 @@ mod decode_tests {
 
 #[cfg(feature = "ffmpeg")]
 impl reco_core::source::FrameSource for FfmpegFileSource {
+    fn is_full_range(&self) -> bool {
+        self.full_range
+    }
+
     fn info(&self) -> SourceInfo {
         self.info.clone()
     }
@@ -507,7 +526,7 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
             .inspect_err(|error| self.terminal_error = Some(error.clone()))?;
         self.current_frame += u64::from(frames.is_some());
         self.exhausted = frames.is_none();
-        Ok(frames)
+        Ok(frames.map(FrameSet::Yuv420p))
     }
 
     fn try_next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
@@ -523,7 +542,7 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
                     result.inspect_err(|error| self.terminal_error = Some(error.clone()))?;
                 self.current_frame += u64::from(frames.is_some());
                 self.exhausted = frames.is_none();
-                Ok(frames)
+                Ok(frames.map(FrameSet::Yuv420p))
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => Ok(None),
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
@@ -608,67 +627,6 @@ pub fn detect_zero_copy(source: &FfmpegFileSource, gpu: &reco_core::gpu::GpuCont
         && gpu.supports_zero_copy()
 }
 
-// -- Encoder creation helper --
-
-/// Create an FFmpeg file encoder from high-level parameters.
-///
-/// Wraps codec parsing, quality mapping, and encoder creation into a single
-/// call. Returns the encoder and the name of the selected encoder backend
-/// (e.g. `"h264_nvenc"`, `"libx264"`).
-///
-/// This is the preferred way for consumers (CLI, GUI, cloud) to create an
-/// encoder without duplicating codec/quality parsing logic.
-///
-/// # Arguments
-///
-/// * `path` - Output file path.
-/// * `width`, `height` - Output frame dimensions.
-/// * `fps` - Frame rate as `(numerator, denominator)`.
-/// * `codec` - Codec name: `"h264"`, `"hevc"`, or `"av1"`.
-/// * `quality` - Quality preset: `"fast"`, `"balanced"`, or `"high"`.
-/// * `encoder_name` - Force a specific encoder by name, or `None` for auto-detection.
-/// * `quality_value` - Normalized quality override (0-100, higher = better), or `None` to use preset default.
-/// * `preset` - Override the encoder preset string, or `None` to use the quality tier default.
-#[cfg(feature = "ffmpeg")]
-#[allow(clippy::too_many_arguments)]
-pub fn create_encoder(
-    path: &std::path::Path,
-    width: u32,
-    height: u32,
-    fps: (i32, i32),
-    codec: &str,
-    quality: &str,
-    encoder_name: Option<String>,
-    quality_value: Option<u8>,
-    preset: Option<String>,
-) -> Result<(FfmpegFileEncoder, String), reco_core::sink::SinkError> {
-    use crate::output;
-
-    let out_codec: output::Codec = codec.parse().unwrap_or_else(|_| {
-        log::warn!("Unknown codec '{codec}', defaulting to H.264");
-        output::Codec::H264
-    });
-    let out_quality: output::Quality = quality.parse().unwrap_or_else(|_| {
-        log::warn!("Unknown quality '{quality}', defaulting to balanced");
-        output::Quality::Balanced
-    });
-    let enc_config = ffmpeg::encoder::EncoderConfig {
-        encoder_name,
-        codec: out_codec.into(),
-        quality_preset: out_quality.into(),
-        quality: quality_value,
-        preset,
-        audio_source: None,
-        audio_start_time: 0.0,
-        container: ffmpeg::encoder::Container::default(),
-        gop_size: None,
-        stream_url: None,
-    };
-    let encoder = FfmpegFileEncoder::new(path, width, height, fps, &enc_config)?;
-    let name = encoder.encoder_name().to_string();
-    Ok((encoder, name))
-}
-
 // -- FFmpeg File Encoder --
 
 /// File encoder backed by FFmpeg.
@@ -682,7 +640,9 @@ pub struct FfmpegFileEncoder {
 
 #[cfg(feature = "ffmpeg")]
 impl FfmpegFileEncoder {
-    /// Create a new file encoder.
+    /// Encode rendered frames using the renderer's BT.709 limited-range YUV convention.
+    ///
+    /// Raw camera planes belong in [`ffmpeg::encoder::VideoEncoder`] instead.
     pub fn new(
         path: &std::path::Path,
         width: u32,
@@ -691,10 +651,11 @@ impl FfmpegFileEncoder {
         config: &ffmpeg::encoder::EncoderConfig,
     ) -> Result<Self, SinkError> {
         let fps_rational = ffmpeg_next::Rational(fps.0, fps.1);
-        let inner = ffmpeg::encoder::VideoEncoder::new(path, width, height, fps_rational, config)
-            .map_err(|e| SinkError::Init {
-            reason: e.to_string(),
-        })?;
+        let inner =
+            ffmpeg::encoder::VideoEncoder::new_rendered(path, width, height, fps_rational, config)
+                .map_err(|e| SinkError::Init {
+                    reason: e.to_string(),
+                })?;
         Ok(Self { inner })
     }
 

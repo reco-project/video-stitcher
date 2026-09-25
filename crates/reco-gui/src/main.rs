@@ -559,7 +559,7 @@ impl AppState {
             .clone();
         // Save baseline layout so Reset Calibration can restore it.
         self.cal_baseline = Some(cal.clone());
-        PreviewBridge::new(
+        let mut bridge = PreviewBridge::new(
             gpu.device,
             gpu.queue,
             gpu.adapter_info,
@@ -569,7 +569,11 @@ impl AppState {
             PREVIEW_WIDTH_DEFAULT,
             PREVIEW_HEIGHT_DEFAULT,
         )
-        .map_err(|e| format!("GPU init error: {e}"))
+        .map_err(|e| format!("GPU init error: {e}"))?;
+        bridge
+            .engine_mut()
+            .set_full_range(self.playback.is_full_range());
+        Ok(bridge)
     }
 
     /// Apply validated editor geometry without waiting for derived coverage.
@@ -796,10 +800,15 @@ impl AppState {
         let folder = std::fs::canonicalize(&folder).unwrap_or(folder);
         let path = folder.join(format!("reco_recording_{epoch}.mp4"));
 
-        let (encoder, enc_name) = reco_io::adapters::create_encoder(
-            &path, rec_w, rec_h, fps_r, codec, quality, None, None, None,
-        )
-        .map_err(|e| format!("Failed to start recording: {e}"))?;
+        let config = reco_io::ffmpeg::encoder::EncoderConfig {
+            codec: Some(codec.parse::<reco_io::output::Codec>()?),
+            quality: quality.parse()?,
+            ..Default::default()
+        };
+        let encoder =
+            reco_io::adapters::FfmpegFileEncoder::new(&path, rec_w, rec_h, fps_r, &config)
+                .map_err(|e| format!("Failed to start recording: {e}"))?;
+        let enc_name = encoder.encoder_name();
 
         log::info!(
             "Recording started: {} ({enc_name}, {codec}/{quality})",
@@ -868,7 +877,12 @@ impl AppState {
             } else {
                 (&left, cal.lenses[0].clone())
             };
-            return match bridge.render_lens_preview(planes, &params, self.lens_correction_amount) {
+            return match bridge.render_lens_preview(
+                planes,
+                &params,
+                self.lens_correction_amount,
+                self.playback.is_full_range(),
+            ) {
                 Ok(img) => Some(img),
                 Err(e) => {
                     log::error!("Lens preview error: {e}");
@@ -1031,6 +1045,11 @@ impl AppState {
             if let Err(e) = self.playback.open(&left, &right, offset) {
                 log::error!("Failed to reopen playback after reorder: {e}");
                 return;
+            }
+            if let Some(bridge) = &mut self.bridge {
+                bridge
+                    .engine_mut()
+                    .set_full_range(self.playback.is_full_range());
             }
             self.preview_dirty = true;
         }
@@ -1611,9 +1630,9 @@ fn main() -> anyhow::Result<()> {
 
     let mut codecs: Vec<slint::SharedString> = Vec::new();
     for (label, codec) in [
-        ("h264", reco_io::ffmpeg::encoder::VideoCodec::H264),
-        ("hevc", reco_io::ffmpeg::encoder::VideoCodec::Hevc),
-        ("av1", reco_io::ffmpeg::encoder::VideoCodec::Av1),
+        ("h264", reco_io::output::Codec::H264),
+        ("hevc", reco_io::output::Codec::HEVC),
+        ("av1", reco_io::output::Codec::AV1),
     ] {
         if !reco_io::ffmpeg::encoder::available_encoders(codec).is_empty() {
             codecs.push(label.into());

@@ -159,9 +159,13 @@ enum Commands {
         #[arg(long)]
         encoder: Option<String>,
 
-        /// Output codec: h264, hevc, av1. Default: h264.
-        #[arg(long, default_value = "h264")]
-        codec: String,
+        /// VAAPI render node or NVENC GPU index. Requires --encoder.
+        #[arg(long, requires = "encoder")]
+        encoder_device: Option<String>,
+
+        /// Output codec: h264, hevc, av1. Defaults to the named encoder's codec, or h264.
+        #[arg(long)]
+        codec: Option<String>,
 
         /// Quality preset: fast, balanced, high.
         #[arg(long, default_value = "balanced")]
@@ -361,9 +365,13 @@ enum Commands {
         #[arg(long)]
         encoder: Option<String>,
 
-        /// Output codec: h264, hevc, av1.
-        #[arg(long, default_value = "h264")]
-        codec: String,
+        /// VAAPI render node or NVENC GPU index. Requires --encoder.
+        #[arg(long, requires = "encoder")]
+        encoder_device: Option<String>,
+
+        /// Output codec: h264, hevc, av1. Defaults to the named encoder's codec, or h264.
+        #[arg(long)]
+        codec: Option<String>,
 
         /// Quality preset: fast, balanced, high.
         #[arg(long, default_value = "fast")]
@@ -536,9 +544,13 @@ enum Commands {
         #[arg(long)]
         encoder: Option<String>,
 
-        /// Output codec: h264, hevc, av1.
-        #[arg(long, default_value = "h264")]
-        codec: String,
+        /// VAAPI render node or NVENC GPU index. Requires --encoder.
+        #[arg(long, requires = "encoder")]
+        encoder_device: Option<String>,
+
+        /// Output codec: h264, hevc, av1. Defaults to the named encoder's codec, or h264.
+        #[arg(long)]
+        codec: Option<String>,
 
         /// Quality preset: fast, balanced, high.
         #[arg(long, default_value = "fast")]
@@ -785,6 +797,7 @@ fn main() -> anyhow::Result<()> {
             end_time,
             max_frames,
             encoder,
+            encoder_device,
             codec,
             quality,
             blend,
@@ -817,7 +830,8 @@ fn main() -> anyhow::Result<()> {
                 end_time,
                 max_frames,
                 encoder_name: encoder,
-                codec: &codec,
+                encoder_device,
+                codec: codec.as_deref(),
                 quality: &quality,
                 sync_offset,
                 model_path: model.as_deref(),
@@ -884,6 +898,7 @@ fn main() -> anyhow::Result<()> {
             width,
             height,
             encoder,
+            encoder_device,
             codec,
             quality,
             blend,
@@ -953,7 +968,8 @@ fn main() -> anyhow::Result<()> {
                     height,
                     blend,
                     encoder_name: encoder,
-                    codec: &codec,
+                    encoder_device,
+                    codec: codec.as_deref(),
                     quality: &quality,
                     end_time,
                     max_frames,
@@ -1003,6 +1019,7 @@ fn main() -> anyhow::Result<()> {
             width,
             height,
             encoder,
+            encoder_device,
             codec,
             quality,
             blend,
@@ -1042,7 +1059,8 @@ fn main() -> anyhow::Result<()> {
                     height,
                     blend,
                     encoder_name: encoder,
-                    codec: &codec,
+                    encoder_device,
+                    codec: codec.as_deref(),
                     quality: &quality,
                     end_time,
                     max_frames,
@@ -1192,9 +1210,52 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
-#[cfg(all(test, any(feature = "gstreamer", feature = "libcamera")))]
+#[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encoder_device_requires_a_named_encoder() {
+        assert!(
+            Cli::try_parse_from([
+                "reco",
+                "stitch",
+                "left.mp4",
+                "right.mp4",
+                "-c",
+                "match.json",
+                "--encoder-device",
+                "/dev/dri/renderD129",
+            ])
+            .is_err()
+        );
+        let parsed = Cli::try_parse_from([
+            "reco",
+            "stitch",
+            "left.mp4",
+            "right.mp4",
+            "-c",
+            "match.json",
+            "--encoder",
+            "hevc_vaapi",
+            "--encoder-device",
+            "/dev/dri/renderD129",
+        ])
+        .unwrap();
+        let Commands::Stitch {
+            codec,
+            encoder_device,
+            ..
+        } = parsed.command
+        else {
+            panic!("wrong command");
+        };
+        assert_eq!(
+            codec, None,
+            "an omitted codec must not conflict with the named encoder"
+        );
+        assert_eq!(encoder_device.as_deref(), Some("/dev/dri/renderD129"));
+    }
 
     #[cfg(feature = "gstreamer")]
     #[test]

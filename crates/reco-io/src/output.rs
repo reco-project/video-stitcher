@@ -43,21 +43,26 @@ impl fmt::Display for Codec {
     }
 }
 
-/// Bitrate control strategy for the encoder.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub enum Bitrate {
-    /// Constant rate factor (quality-based, variable bitrate).
-    /// Lower values = higher quality. Typical range: 18-28 for H.264.
-    Crf(u8),
-    /// Encoder-agnostic quality preset. Each encoder backend maps this
-    /// to appropriate CRF/CQ values internally.
-    Quality(Quality),
+/// Mutually exclusive encoder quality selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Quality {
+    /// Normalized quality, from 0 to 100 (higher is better).
+    Value(u8),
+    /// Best-effort encoder tuning selected from a shared tier. Backends without portable quality controls use their driver defaults.
+    Preset(QualityPreset),
 }
 
-impl Default for Bitrate {
+impl Default for Quality {
     fn default() -> Self {
-        Self::Quality(Quality::default())
+        Self::Preset(QualityPreset::default())
+    }
+}
+
+impl FromStr for Quality {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.parse().map(Self::Preset)
     }
 }
 
@@ -66,7 +71,7 @@ impl Default for Bitrate {
 /// Each encoder backend maps these to its own CRF/CQ/preset values,
 /// abstracting away encoder-specific knobs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Quality {
+pub enum QualityPreset {
     /// Prioritize encode speed over quality/compression.
     Fast,
     /// Balance between speed and quality.
@@ -76,7 +81,7 @@ pub enum Quality {
     High,
 }
 
-impl FromStr for Quality {
+impl FromStr for QualityPreset {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -89,7 +94,7 @@ impl FromStr for Quality {
     }
 }
 
-impl fmt::Display for Quality {
+impl fmt::Display for QualityPreset {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Fast => f.write_str("fast"),
@@ -120,7 +125,7 @@ pub enum Container {
 
 impl Container {
     /// Detect the appropriate container from an output path or URL.
-    /// RTMP/RTSP URLs get FLV; file paths infer from extension.
+    /// RTMP URLs get FLV, SRT URLs get Matroska; file paths infer from extension.
     pub fn for_output(path: &str) -> Self {
         if path.starts_with("rtmp://") || path.starts_with("rtmps://") {
             Self::Flv

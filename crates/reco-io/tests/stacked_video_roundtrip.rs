@@ -12,7 +12,7 @@
 #![cfg(feature = "stacked-output")]
 
 use reco_core::source::Yuv420pFrame;
-use reco_io::ffmpeg::encoder::{Container, Quality};
+use reco_io::output::{Container, Quality, QualityPreset};
 use reco_io::stacked_video::encoder::{StackedEncoder, StackedEncoderConfig};
 use reco_io::stacked_video::source::StackedSource;
 use reco_io::stacked_video::{GridLayout, pack_yuv420p, unpack_yuv420p};
@@ -20,6 +20,61 @@ use reco_io::stacked_video::{GridLayout, pack_yuv420p, unpack_yuv420p};
 const TILE_W: u32 = 320;
 const TILE_H: u32 = 240;
 const N_FRAMES: usize = 60;
+
+#[test]
+fn raw_replay_preserves_range_and_planes_without_assigning_a_matrix() {
+    use reco_core::source::FrameSource;
+    use reco_io::stacked_video::replay::ReplayRecordingSource;
+    let dir = tempfile::tempdir().unwrap();
+    let layout = GridLayout::vstack(TILE_W, TILE_H, 2).unwrap();
+    for name in ["libx264", "libx265"] {
+        for full_range in [false, true] {
+            let path = dir.path().join(format!("{name}-{full_range}.mkv"));
+            let mut config = encoder_config(Container::Mkv);
+            config.inner.encoder_name = Some(name.into());
+            config.inner.codec = None;
+            config.full_range = full_range;
+            let mut writer = StackedEncoder::new(layout, &path, config.clone()).unwrap();
+            let left = synthetic_tile(0, 0);
+            let right = synthetic_tile(0, 1);
+            writer.push_all(&[&left, &right]).unwrap();
+            writer.finish().unwrap();
+            drop(writer);
+            let source = StackedSource::open(layout, &path).unwrap();
+            assert_eq!(source.is_full_range(), full_range);
+            let replay_path = dir.path().join(format!("{name}-{full_range}-replay.mkv"));
+            config.full_range = !full_range;
+            let mut recording =
+                ReplayRecordingSource::wrap(Box::new(source), &replay_path, config).unwrap();
+            assert!(recording.next_frame().unwrap().is_some());
+            assert!(recording.next_frame().unwrap().is_none());
+            drop(recording);
+            let input = ffmpeg_next::format::input(&replay_path).unwrap();
+            let parameters = input
+                .streams()
+                .best(ffmpeg_next::media::Type::Video)
+                .unwrap()
+                .parameters();
+            // SAFETY: the parameters are owned and remain live during inspection.
+            assert_eq!(
+                unsafe { (*parameters.as_ptr()).color_space },
+                ffmpeg_next::ffi::AVColorSpace::AVCOL_SPC_UNSPECIFIED
+            );
+            let mut replay = StackedSource::open(layout, &replay_path).unwrap();
+            assert_eq!(replay.is_full_range(), full_range);
+            let frames = replay.next_tuple().unwrap().unwrap();
+            for (actual, expected) in frames.iter().zip([&left, &right]) {
+                for (a, e) in [
+                    (&actual.y, &expected.y),
+                    (&actual.u, &expected.u),
+                    (&actual.v, &expected.v),
+                ] {
+                    assert!((mean(a) - mean(e)).abs() <= 3.0);
+                }
+            }
+        }
+    }
+}
 
 /// Synthetic tile: fills planes with per-frame/per-tile constant
 /// values so we can recover the written index after decode even
@@ -70,60 +125,43 @@ fn encoder_config(container: Container) -> StackedEncoderConfig {
     let base = StackedEncoderConfig::default();
     StackedEncoderConfig {
         inner: reco_io::ffmpeg::encoder::EncoderConfig {
+            encoder_name: Some("libx264".into()),
             container,
-            quality_preset: Quality::Fast,
+            quality: Quality::Preset(QualityPreset::Fast),
             gop_size: Some(10),
             ..base.inner
         },
         fps: base.fps,
+        full_range: false,
     }
 }
 
 /// Encode N frames to a fragmented MP4, then decode the whole file
 /// and verify we recover the left/right chroma distinction for each
 /// frame. End-to-end sanity: pack -> encode -> decode -> unpack.
-/// Fragmented MP4 finalize is currently broken under our stack
-/// (write_trailer returns AVERROR -162 even with the canonical
-/// movflags recipe that ffmpeg CLI accepts). Kept `#[ignore]`d as
-/// the regression fixture for the eventual fix; see the
-/// `Container` docstring for context.
 #[test]
-#[ignore]
 fn roundtrip_fmp4_recovers_tiles() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("stacked.mp4");
-    let layout = GridLayout::vstack(TILE_W, TILE_H, 2).expect("even dims");
-    let mut enc =
-        StackedEncoder::new(layout, &path, encoder_config(Container::Mp4Fragmented)).expect("open");
-    for i in 0..N_FRAMES {
-        let l = synthetic_tile(i, 0);
-        let r = synthetic_tile(i, 1);
-        enc.push(&[Some(&l), Some(&r)]).expect("push");
-    }
-    enc.finish().expect("finish fmp4");
-
-    let mut src = StackedSource::open(layout, &path).expect("open source");
-    let mut decoded = 0usize;
-    while src.next_tuple().expect("decode").is_some() {
-        decoded += 1;
-    }
-    assert_eq!(decoded, N_FRAMES, "all frames should round-trip fMP4");
+    roundtrip_recovers_tiles(Container::Mp4Fragmented, "stacked.mp4");
 }
 
 #[test]
 fn roundtrip_matroska_recovers_tiles() {
+    roundtrip_recovers_tiles(Container::Mkv, "stacked.mkv");
+}
+
+fn roundtrip_recovers_tiles(container: Container, filename: &str) {
     let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("stacked.mkv");
+    let path = dir.path().join(filename);
     let layout = GridLayout::vstack(TILE_W, TILE_H, 2).expect("even dims");
 
-    let mut enc =
-        StackedEncoder::new(layout, &path, encoder_config(Container::Matroska)).expect("open");
+    let mut enc = StackedEncoder::new(layout, &path, encoder_config(container)).expect("open");
     for i in 0..N_FRAMES {
         let l = synthetic_tile(i, 0);
         let r = synthetic_tile(i, 1);
         enc.push(&[Some(&l), Some(&r)]).expect("push");
     }
     enc.finish().expect("finish");
+    drop(enc);
 
     let mut src = StackedSource::open(layout, &path).expect("open source");
     let mut decoded = 0usize;
@@ -151,34 +189,25 @@ fn roundtrip_matroska_recovers_tiles() {
     assert_eq!(decoded, N_FRAMES, "all frames should round-trip");
 }
 
-/// Write-while-read: open a reader on the same file mid-write and
-/// verify it sees already-flushed fragments. This is the core
-/// guarantee behind replay-during-recording.
-///
-/// Fragmented MP4 flushes fragments on keyframes. `libx264` with
-/// `tune=zerolatency` (our Quality::Fast default) uses short GOPs,
-/// so we expect the first fragment to appear within a handful of
-/// frames.
-/// Matroska write-while-read: the guarantee replay-during-recording
-/// stands on.
-/// A reader opened on the same file while the writer is still pushing
-/// frames must see already-flushed clusters. Matroska flushes clusters
-/// periodically (roughly every keyframe with a short GOP), and the
-/// container has no central index that needs the trailer to be
-/// readable - so a concurrent reader sees content as soon as it
-/// hits disk.
+/// Explicit flush publishes decodable packets before the writer finishes.
 #[test]
 fn matroska_reader_sees_partial_writes() {
+    reader_sees_partial_writes(Container::Mkv, "stacked.mkv");
+}
+
+#[test]
+fn fmp4_reader_sees_partial_writes() {
+    reader_sees_partial_writes(Container::Mp4Fragmented, "stacked.mp4");
+}
+
+fn reader_sees_partial_writes(container: Container, filename: &str) {
     let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("stacked.mkv");
+    let path = dir.path().join(filename);
     let layout = GridLayout::vstack(TILE_W, TILE_H, 2).expect("even dims");
 
-    let mut enc =
-        StackedEncoder::new(layout, &path, encoder_config(Container::Matroska)).expect("open");
+    let mut enc = StackedEncoder::new(layout, &path, encoder_config(container)).expect("open");
 
-    // Push half the frames and flush so the AVIO layer writes to
-    // disk. Without flush(), ffmpeg buffers several clusters-worth
-    // of packets in memory before a single write.
+    // Flush both muxer and I/O buffers without closing the writer.
     for i in 0..(N_FRAMES / 2) {
         let l = synthetic_tile(i, 0);
         let r = synthetic_tile(i, 1);
@@ -190,14 +219,15 @@ fn matroska_reader_sees_partial_writes() {
     // holds its own. No file locks, no mmap; the OS lets both
     // coexist.
     let mut src = StackedSource::open(layout, &path)
-        .expect("reader should open Matroska while writer is still running");
+        .expect("reader should open while writer is still running");
 
-    // Drain whatever's readable right now. With the drain-on-EOF
-    // decoder fix, this returns every cluster the writer has
-    // flushed.
+    // Drain the packets published so far.
     let mut seen = 0usize;
     while let Some(tiles) = src.next_tuple().expect("decode") {
         assert_eq!(tiles.len(), 2);
+        assert!(tiles[0].y[0].abs_diff(synthetic_tile(seen, 0).y[0]) <= 4);
+        assert!(tiles[0].u[0].abs_diff(96) <= 4);
+        assert!(tiles[1].u[0].abs_diff(160) <= 4);
         seen += 1;
     }
     assert!(seen > 0, "reader should see at least one flushed cluster");
@@ -215,6 +245,8 @@ fn matroska_reader_sees_partial_writes() {
         enc.push(&[Some(&l), Some(&r)]).expect("push");
     }
     enc.finish().expect("writer finishes after read");
+    enc.flush().expect("flush after finish is harmless");
+    drop(enc);
 
     // Final file has all frames.
     let mut final_src = StackedSource::open(layout, &path).expect("reopen final");
@@ -243,7 +275,7 @@ fn session_recorder_records_planes() {
 
     let mut rec = reco_io::stacked_video::replay::SessionStackedRecorder::open(
         &path,
-        encoder_config(Container::Matroska),
+        encoder_config(Container::Mkv),
         TILE_W,
         TILE_H,
     )

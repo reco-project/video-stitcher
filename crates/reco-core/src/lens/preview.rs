@@ -269,12 +269,14 @@ impl LensPreviewRenderer {
     /// can be passed to `slint::Image::try_from(wgpu::Texture)`.
     ///
     /// `correction_amount`: 0.0 = equidistant (zero polynomial, not raw), 1.0 = full KB4 correction.
+    /// `full_range` selects the range of the supplied YUV planes.
     pub fn render_yuv(
         &self,
         gpu: &GpuContext,
         planes: &Yuv420pPlanes<'_>,
         params: &Lens,
         correction_amount: f32,
+        full_range: bool,
     ) -> wgpu::Texture {
         upload_plane(
             &gpu.queue,
@@ -302,8 +304,15 @@ impl LensPreviewRenderer {
         let ortho = Orthographic3::new(-0.5, 0.5, -hh, hh, -1.0, 1.0);
         let mvp = opengl_to_wgpu_matrix() * ortho.to_homogeneous();
 
-        let mut uniforms =
-            build_gpu_uniforms(&mvp, params, false, 0.0, InputFormat::Yuv420p, false, false);
+        let mut uniforms = build_gpu_uniforms(
+            &mvp,
+            params,
+            false,
+            0.0,
+            InputFormat::Yuv420p,
+            false,
+            full_range,
+        );
         uniforms.lens_preview[0] = correction_amount.clamp(-1.0, 1.0);
 
         gpu.queue
