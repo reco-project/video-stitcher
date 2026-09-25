@@ -64,7 +64,7 @@ fn input_duration_secs(input: &crate::stitch_job::InputPath) -> Option<f64> {
 /// - Negative offset: skip N frames from camera 0 (it started first)
 #[cfg(feature = "ffmpeg")]
 pub struct FfmpegFileSource {
-    rx: std::sync::mpsc::Receiver<FrameSet>,
+    rx: std::sync::mpsc::Receiver<crate::decode_stream::Message<FrameSet>>,
     info: SourceInfo,
     decode_backend: ffmpeg::decoder::DecodeBackend,
     /// GPU pixel format (NV12 8-bit or P010 10-bit).
@@ -82,12 +82,10 @@ pub struct FfmpegFileSource {
     current_frame: u64,
     /// True once the decode pipeline has signaled end-of-stream.
     ///
-    /// Set when the internal receiver reports `Disconnected` (both decode
-    /// threads have finished). A blocking `recv()` returning `Err` or a
-    /// non-blocking `try_recv()` returning `Disconnected` are the two
-    /// places this becomes `true`. Reset by `seek()`, which respawns
-    /// the decode pipeline.
+    /// Set only by explicit EOF, not by a failed or disconnected worker.
+    /// Reset by a seek that respawns the decode pipeline.
     exhausted: bool,
+    terminal_error: Option<SourceError>,
 }
 
 #[cfg(feature = "ffmpeg")]
@@ -213,6 +211,7 @@ impl FfmpegFileSource {
             total_frame_count,
             current_frame: 0,
             exhausted: false,
+            terminal_error: None,
         })
     }
 
@@ -272,87 +271,47 @@ impl FfmpegFileSource {
         label: String,
         seek_secs: Option<f64>,
         software_decode: bool,
-    ) -> std::sync::mpsc::Receiver<Yuv420pData> {
-        let (tx, rx) = std::sync::mpsc::sync_channel::<Yuv420pData>(4);
-
-        std::thread::Builder::new()
-            .name(format!("decode_{label}"))
-            .spawn(move || {
+    ) -> std::sync::mpsc::Receiver<crate::decode_stream::Message<Yuv420pData>> {
+        crate::decode_stream::spawn(
+            format!("decode_{label}"),
+            4,
+            move |tx| -> Result<(), ffmpeg::decoder::DecodeError> {
                 let open = if software_decode {
                     ffmpeg::decoder::VideoDecoder::open_input_software
                 } else {
                     ffmpeg::decoder::VideoDecoder::open_input
                 };
-                let mut dec = match open(&input) {
-                    Ok(d) => {
-                        log::info!(
-                            "{label} decoder: {} ({}x{})",
-                            d.backend(),
-                            d.width(),
-                            d.height()
-                        );
-                        d
-                    }
-                    Err(e) => {
-                        log::error!("Failed to open {label} video: {e}");
-                        return;
-                    }
-                };
+                let mut dec = open(&input)?;
+                log::info!(
+                    "{label} decoder: {} ({}x{})",
+                    dec.backend(),
+                    dec.width(),
+                    dec.height()
+                );
                 if let Some(secs) = seek_secs {
-                    if let Err(e) = dec.seek_to_secs(secs) {
-                        log::error!("{label} seek to {secs:.1}s failed: {e}");
-                        return;
+                    dec.seek_to_secs(secs)?;
+                }
+                // A seek lands at the preceding keyframe. Discard only frames
+                // before the requested timestamp; decoding failures propagate.
+                let mut target_us = seek_secs.map(|secs| (secs * 1_000_000.0) as i64);
+                while let Some(f) = dec.next_frame()? {
+                    if target_us.is_some_and(|target| f.timestamp_us < target) {
+                        continue;
                     }
-                    // FFmpeg seeks to the nearest keyframe BEFORE the target.
-                    // Decode and discard frames until we reach the target PTS.
-                    let target_us = (secs * 1_000_000.0) as i64;
-                    let mut skipped = 0u32;
-                    loop {
-                        match dec.next_frame() {
-                            Ok(Some(f)) if f.timestamp_us < target_us => {
-                                skipped += 1;
-                            }
-                            Ok(Some(f)) => {
-                                log::debug!(
-                                    "{label} seek: skipped {skipped} frames to reach target"
-                                );
-                                let buf = Yuv420pData {
-                                    y: f.y,
-                                    u: f.u,
-                                    v: f.v,
-                                };
-                                if tx.send(buf).is_err() {
-                                    return;
-                                }
-                                break;
-                            }
-                            _ => return,
-                        }
+                    target_us = None;
+                    let buf = Yuv420pData {
+                        y: f.y,
+                        u: f.u,
+                        v: f.v,
+                    };
+                    if tx.send(Ok(Some(buf))).is_err() {
+                        break;
                     }
                 }
-                loop {
-                    match dec.next_frame() {
-                        Ok(Some(f)) => {
-                            let buf = Yuv420pData {
-                                y: f.y,
-                                u: f.u,
-                                v: f.v,
-                            };
-                            if tx.send(buf).is_err() {
-                                break;
-                            }
-                        }
-                        Ok(None) => break,
-                        Err(e) => {
-                            log::error!("{label} decode error: {e}");
-                            break;
-                        }
-                    }
-                }
-            })
-            .expect("spawn decode thread");
-
-        rx
+                Ok(())
+            },
+        )
+        .0
     }
 
     fn spawn_decode_pipeline(
@@ -360,7 +319,7 @@ impl FfmpegFileSource {
         sync_offset: i64,
         seek_secs: Option<f64>,
         software_decode: bool,
-    ) -> std::sync::mpsc::Receiver<FrameSet> {
+    ) -> std::sync::mpsc::Receiver<crate::decode_stream::Message<FrameSet>> {
         let rxs: Vec<_> = inputs
             .into_iter()
             .enumerate()
@@ -369,55 +328,153 @@ impl FfmpegFileSource {
             })
             .collect();
 
-        let (tx, rx) = std::sync::mpsc::sync_channel::<FrameSet>(4);
-
-        std::thread::Builder::new()
-            .name("decode_zip".into())
-            .spawn(move || {
-                // Temporal alignment is defined between exactly two
-                // cameras (positive = camera 1 started first, negative
-                // = camera 0). Other arities have no alignment pair.
+        crate::decode_stream::spawn(
+            "decode_zip".into(),
+            4,
+            move |tx| -> Result<(), SourceError> {
+                // Temporal alignment is defined between exactly two cameras.
                 if let [cam0_rx, cam1_rx] = rxs.as_slice() {
-                    if sync_offset > 0 {
-                        for _ in 0..sync_offset {
-                            if cam1_rx.recv().is_err() {
-                                return;
-                            }
-                        }
-                        log::debug!("Sync offset: skipped {sync_offset} camera-1 frames");
-                    } else if sync_offset < 0 {
-                        let skip = sync_offset.unsigned_abs();
-                        for _ in 0..skip {
-                            if cam0_rx.recv().is_err() {
-                                return;
-                            }
-                        }
-                        log::debug!("Sync offset: skipped {skip} camera-0 frames");
+                    let skip_rx = if sync_offset > 0 { cam1_rx } else { cam0_rx };
+                    if !crate::decode_stream::skip(skip_rx, sync_offset.unsigned_abs())? {
+                        return Ok(());
                     }
                 } else if sync_offset != 0 {
                     log::info!(
-                        "Sync offset {sync_offset} ignored: alignment is defined for \
-                         two-camera jobs, this job has {}",
+                        "Sync offset {sync_offset} ignored: alignment is defined for two-camera jobs, this job has {}",
                         rxs.len()
                     );
                 }
 
-                'zip: loop {
+                loop {
                     let mut cams = Vec::with_capacity(rxs.len());
                     for rx in &rxs {
-                        match rx.recv() {
-                            Ok(frame) => cams.push(frame),
-                            Err(_) => break 'zip,
+                        if let Some(frame) = crate::decode_stream::receive(rx)? {
+                            cams.push(frame);
                         }
                     }
-                    if tx.send(FrameSet::Yuv420p(cams)).is_err() {
+                    // Read every camera's result before accepting EOF so a
+                    // failure at the same position as a shorter input isn't lost.
+                    if cams.len() != rxs.len() {
+                        break;
+                    }
+                    if tx.send(Ok(Some(FrameSet::Yuv420p(cams)))).is_err() {
                         break;
                     }
                 }
-            })
-            .expect("spawn decode zip thread");
+                Ok(())
+            },
+        ).0
+    }
+}
 
-        rx
+#[cfg(all(test, feature = "ffmpeg"))]
+mod decode_tests {
+    use super::*;
+    use reco_core::source::FrameSource;
+
+    fn source(messages: Vec<crate::decode_stream::Message<FrameSet>>) -> FfmpegFileSource {
+        let (tx, rx) = std::sync::mpsc::sync_channel(messages.len());
+        for message in messages {
+            tx.send(message).unwrap();
+        }
+        FfmpegFileSource {
+            rx,
+            info: SourceInfo {
+                width: 2,
+                height: 2,
+                fps: 30.0,
+                fps_rational: Some((30, 1)),
+                total_frames: None,
+            },
+            decode_backend: ffmpeg::decoder::DecodeBackend::Software,
+            pixel_format: reco_core::render::renderer::GpuPixelFormat::Nv12,
+            rotations: vec![0],
+            inputs: vec![],
+            sync_offset: 0,
+            software_decode: true,
+            total_frame_count: None,
+            current_frame: 0,
+            exhausted: false,
+            terminal_error: None,
+        }
+    }
+
+    fn failure() -> crate::decode_stream::Message<FrameSet> {
+        Err(SourceError::Read {
+            reason: "decode failed".into(),
+        })
+    }
+
+    #[test]
+    fn blocking_and_polling_reads_propagate_worker_failure() {
+        for polling in [true, false] {
+            let mut source = source(vec![Ok(Some(FrameSet::Yuv420p(vec![]))), failure()]);
+            assert!(source.next_frame().unwrap().is_some());
+            let error = if polling {
+                source.try_next_frame()
+            } else {
+                source.next_frame()
+            };
+            assert!(error.err().unwrap().to_string().contains("decode failed"));
+            assert!(
+                source
+                    .next_frame()
+                    .err()
+                    .unwrap()
+                    .to_string()
+                    .contains("decode failed")
+            );
+            assert!(
+                source
+                    .try_next_frame()
+                    .err()
+                    .unwrap()
+                    .to_string()
+                    .contains("decode failed")
+            );
+            assert!(!source.is_exhausted());
+            assert_eq!(source.current_frame, 1);
+        }
+    }
+
+    #[test]
+    fn forward_seek_does_not_swallow_a_worker_failure() {
+        let mut source = source(vec![Ok(Some(FrameSet::Yuv420p(vec![]))), failure()]);
+        assert!(
+            source
+                .seek(2)
+                .unwrap_err()
+                .to_string()
+                .contains("decode failed")
+        );
+        assert_eq!(source.current_frame, 1);
+        assert!(!source.is_exhausted());
+    }
+
+    #[test]
+    fn unexpected_worker_disconnect_is_not_completion() {
+        for polling in [true, false] {
+            let mut source = source(vec![]);
+            let result = if polling {
+                source.try_next_frame()
+            } else {
+                source.next_frame()
+            };
+            assert!(result.err().unwrap().to_string().contains("disconnected"));
+            assert!(!source.is_exhausted());
+        }
+    }
+
+    #[test]
+    fn worker_open_failure_reaches_the_receiver() {
+        let dir = tempfile::tempdir().unwrap();
+        let rx = FfmpegFileSource::spawn_single_decoder_at(
+            crate::InputPath::Single(dir.path().join("missing.mp4")),
+            "test".into(),
+            None,
+            true,
+        );
+        assert!(crate::decode_stream::receive(&rx).is_err());
     }
 }
 
@@ -440,28 +497,39 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
     }
 
     fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
-        match self.rx.recv() {
-            Ok(frames) => {
-                self.current_frame += 1;
-                Ok(Some(frames))
-            }
-            Err(_) => {
-                self.exhausted = true;
-                Ok(None)
-            }
+        if let Some(error) = &self.terminal_error {
+            return Err(error.clone());
         }
+        if self.exhausted {
+            return Ok(None);
+        }
+        let frames = crate::decode_stream::receive(&self.rx)
+            .inspect_err(|error| self.terminal_error = Some(error.clone()))?;
+        self.current_frame += u64::from(frames.is_some());
+        self.exhausted = frames.is_none();
+        Ok(frames)
     }
 
     fn try_next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+        if let Some(error) = &self.terminal_error {
+            return Err(error.clone());
+        }
+        if self.exhausted {
+            return Ok(None);
+        }
         match self.rx.try_recv() {
-            Ok(frames) => {
-                self.current_frame += 1;
-                Ok(Some(frames))
+            Ok(result) => {
+                let frames =
+                    result.inspect_err(|error| self.terminal_error = Some(error.clone()))?;
+                self.current_frame += u64::from(frames.is_some());
+                self.exhausted = frames.is_none();
+                Ok(frames)
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => Ok(None),
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                self.exhausted = true;
-                Ok(None)
+                let error = crate::decode_stream::disconnected();
+                self.terminal_error = Some(error.clone());
+                Err(error)
             }
         }
     }
@@ -489,9 +557,8 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
             if skip <= max_forward {
                 log::debug!("Forward seek: skipping {skip} frames via decode");
                 for _ in 0..skip {
-                    match self.rx.recv() {
-                        Ok(_) => self.current_frame += 1,
-                        Err(_) => break,
+                    if self.next_frame()?.is_none() {
+                        break;
                     }
                 }
                 return Ok(());
@@ -511,6 +578,7 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         );
         self.current_frame = frame;
         self.exhausted = false;
+        self.terminal_error = None;
         Ok(())
     }
 

@@ -16,6 +16,9 @@
 #[cfg(feature = "ffmpeg")]
 pub mod ffmpeg;
 
+#[cfg(feature = "ffmpeg")]
+mod decode_stream;
+
 #[cfg(feature = "gstreamer")]
 pub mod gstreamer;
 

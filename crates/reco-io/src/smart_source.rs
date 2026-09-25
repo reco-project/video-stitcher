@@ -43,9 +43,9 @@ pub struct SmartFileSource {
     /// True once the active backend has signaled end-of-stream.
     ///
     /// For the CPU mode this tracks the inner `FfmpegFileSource`'s flag;
-    /// for zero-copy modes this is set locally when the pair receiver
-    /// returns `Err` (decode threads finished).
+    /// for zero-copy modes this is set by an explicit EOF message.
     exhausted: bool,
+    terminal_error: Option<SourceError>,
 }
 
 enum SourceMode {
@@ -53,7 +53,11 @@ enum SourceMode {
     #[cfg(target_os = "linux")]
     GpuZeroCopy(Box<LinuxZeroCopyState>),
     #[cfg(target_os = "macos")]
-    MetalZeroCopy(std::sync::mpsc::Receiver<reco_core::interop::zero_copy::VtFramePair>),
+    MetalZeroCopy(
+        std::sync::mpsc::Receiver<
+            crate::decode_stream::Message<reco_core::interop::zero_copy::VtFramePair>,
+        >,
+    ),
     #[cfg(target_os = "windows")]
     D3d11ZeroCopy(Box<WindowsZeroCopyState>),
 }
@@ -66,10 +70,9 @@ enum WindowsDecodeState {
         sync_offset: i64,
     },
     Running {
-        pair_rx: std::sync::mpsc::Receiver<(
-            crate::ffmpeg::decoder::D3d11Frame,
-            crate::ffmpeg::decoder::D3d11Frame,
-        )>,
+        pair_rx: std::sync::mpsc::Receiver<
+            crate::decode_stream::Message<crate::zero_copy::D3d11FramePair>,
+        >,
         join_handles: Vec<std::thread::JoinHandle<()>>,
         shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
     },
@@ -88,10 +91,7 @@ struct WindowsZeroCopyState {
     ///
     /// Dropped when the next pair arrives (or the source is dropped),
     /// which is always after `stage_frame` has completed for this pair.
-    live_frame_guard: Option<(
-        crate::ffmpeg::decoder::D3d11Frame,
-        crate::ffmpeg::decoder::D3d11Frame,
-    )>,
+    live_frame_guard: Option<crate::zero_copy::D3d11FramePair>,
 }
 
 #[cfg(target_os = "windows")]
@@ -120,7 +120,11 @@ impl WindowsZeroCopyState {
 struct LinuxZeroCopyState {
     /// Paired frame signal receiver. Made `Option` so Drop can take it
     /// early to unblock the pairing thread before joining decode threads.
-    frame_rx: Option<std::sync::mpsc::Receiver<reco_core::interop::zero_copy::GpuFrameSignal>>,
+    frame_rx: Option<
+        std::sync::mpsc::Receiver<
+            crate::decode_stream::Message<reco_core::interop::zero_copy::GpuFrameSignal>,
+        >,
+    >,
     /// Shared textures (kept alive until Drop).
     shared: reco_core::interop::SharedTextureSet,
     /// Decode thread join handles.
@@ -288,6 +292,7 @@ impl SmartFileSource {
             right_rotation,
             decode_mode: "CPU upload",
             exhausted: false,
+            terminal_error: None,
         })
     }
 
@@ -437,6 +442,7 @@ impl SmartFileSource {
             right_rotation,
             decode_mode: "GPU zero-copy (CUDA/Vulkan)",
             exhausted: false,
+            terminal_error: None,
         })
     }
 
@@ -471,6 +477,7 @@ impl SmartFileSource {
             right_rotation,
             decode_mode: "Metal zero-copy (VideoToolbox)",
             exhausted: false,
+            terminal_error: None,
         })
     }
 
@@ -505,6 +512,7 @@ impl SmartFileSource {
             right_rotation,
             decode_mode: "D3D11VA zero-copy",
             exhausted: false,
+            terminal_error: None,
         })
     }
 
@@ -601,6 +609,12 @@ impl FrameSource for SmartFileSource {
     }
 
     fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+        if let Some(error) = &self.terminal_error {
+            return Err(error.clone());
+        }
+        if self.exhausted {
+            return Ok(None);
+        }
         match &mut self.mode {
             SourceMode::Cpu(source) => {
                 let frame = source.next_frame()?;
@@ -615,20 +629,24 @@ impl FrameSource for SmartFileSource {
                     .frame_rx
                     .as_ref()
                     .expect("frame_rx taken during shutdown");
-                match rx.recv() {
-                    Ok(signal) => Ok(Some(FrameSet::GpuResident {
+                match crate::decode_stream::receive(rx)
+                    .inspect_err(|error| self.terminal_error = Some(error.clone()))?
+                {
+                    Some(signal) => Ok(Some(FrameSet::GpuResident {
                         slots: [signal.left_slot, signal.right_slot],
                     })),
-                    Err(_) => {
+                    None => {
                         self.exhausted = true;
                         Ok(None)
                     }
                 }
             }
             #[cfg(target_os = "macos")]
-            SourceMode::MetalZeroCopy(rx) => match rx.recv() {
-                Ok(pair) => Ok(Some(FrameSet::MetalResident([pair.left, pair.right]))),
-                Err(_) => {
+            SourceMode::MetalZeroCopy(rx) => match crate::decode_stream::receive(rx)
+                .inspect_err(|error| self.terminal_error = Some(error.clone()))?
+            {
+                Some(pair) => Ok(Some(FrameSet::MetalResident([pair.left, pair.right]))),
+                None => {
                     self.exhausted = true;
                     Ok(None)
                 }
@@ -640,8 +658,10 @@ impl FrameSource for SmartFileSource {
                     WindowsDecodeState::Running { pair_rx, .. } => pair_rx,
                     _ => unreachable!(),
                 };
-                match pair_rx.recv() {
-                    Ok((left, right)) => {
+                match crate::decode_stream::receive(pair_rx)
+                    .inspect_err(|error| self.terminal_error = Some(error.clone()))?
+                {
+                    Some((left, right)) => {
                         let frames = FrameSet::D3d11Resident([
                             reco_core::source::D3d11CameraFrame {
                                 texture: left.texture,
@@ -660,7 +680,7 @@ impl FrameSource for SmartFileSource {
                         state.live_frame_guard = Some((left, right));
                         Ok(Some(frames))
                     }
-                    Err(_) => {
+                    None => {
                         self.exhausted = true;
                         Ok(None)
                     }
@@ -674,6 +694,12 @@ impl FrameSource for SmartFileSource {
     }
 
     fn skip_frames(&mut self, count: u64) -> Result<u64, SourceError> {
+        if let Some(error) = &self.terminal_error {
+            return Err(error.clone());
+        }
+        if self.exhausted {
+            return Ok(0);
+        }
         match &mut self.mode {
             #[cfg(target_os = "linux")]
             SourceMode::GpuZeroCopy(state) => {
@@ -684,12 +710,14 @@ impl FrameSource for SmartFileSource {
                 let left_tx = &state.shared.left_slot_free_tx;
                 let right_tx = &state.shared.right_slot_free_tx;
                 for i in 0..count {
-                    match rx.recv() {
-                        Ok(signal) => {
+                    match crate::decode_stream::receive(rx)
+                        .inspect_err(|error| self.terminal_error = Some(error.clone()))?
+                    {
+                        Some(signal) => {
                             let _ = left_tx.send(signal.left_slot);
                             let _ = right_tx.send(signal.right_slot);
                         }
-                        Err(_) => {
+                        None => {
                             self.exhausted = true;
                             return Ok(i);
                         }

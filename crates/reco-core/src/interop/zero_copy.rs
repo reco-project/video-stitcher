@@ -51,8 +51,9 @@ pub struct GpuFrameSignal {
 /// shared textures (ordering prevents CUDA error 700).
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub struct GpuDecodeHandles {
-    /// Receives paired frame signals (slot indices).
-    pub frame_rx: std::sync::mpsc::Receiver<GpuFrameSignal>,
+    /// Receives paired slots, then explicit EOF (`Ok(None)`) or failure.
+    pub frame_rx:
+        std::sync::mpsc::Receiver<Result<Option<GpuFrameSignal>, crate::source::SourceError>>,
     /// Join handles for the 2 decode threads + 1 pairing thread.
     /// Must be joined before dropping shared textures to ensure
     /// FFmpeg's CUDA context cleanup completes while shared memory

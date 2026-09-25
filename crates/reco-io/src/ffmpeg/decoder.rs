@@ -57,6 +57,24 @@ pub enum DecodeError {
     /// Pixel format conversion failed.
     #[error("format conversion: {0}")]
     ConversionError(String),
+
+    /// A hardware-only accessor was called on another backend.
+    #[error("decoder backend mismatch: expected {expected}, got {actual}")]
+    BackendMismatch {
+        /// Required backend.
+        expected: DecodeBackend,
+        /// Active backend.
+        actual: DecodeBackend,
+    },
+
+    /// A decoder returned a frame with incompatible residency.
+    #[error("unexpected decoded frame format: expected {expected:?}, got {actual:?}")]
+    UnexpectedFrameFormat {
+        /// Required hardware pixel format.
+        expected: Pixel,
+        /// Received pixel format.
+        actual: Pixel,
+    },
 }
 
 impl From<ffmpeg::Error> for DecodeError {
@@ -692,219 +710,137 @@ impl VideoDecoder {
         Ok(())
     }
 
-    /// Decode the next YUV420P frame, or `None` if the video is finished.
+    /// Receive one frame, supplying input only when the decoder requests it.
+    /// A demuxer EOF starts draining; only the decoder's EOF ends the stream.
+    fn receive_frame(&mut self) -> Result<bool, DecodeError> {
+        loop {
+            let received = {
+                profile_scope!("h264_decode");
+                self.decoder.receive_frame(&mut self.decoded_frame)
+            };
+            match received {
+                Ok(()) => {
+                    let width = self.decoded_frame.width();
+                    let height = self.decoded_frame.height();
+                    if width != self.width || height != self.height {
+                        return Err(DecodeError::ConversionError(format!(
+                            "decoded dimensions changed from {}x{} to {width}x{height}",
+                            self.width, self.height
+                        )));
+                    }
+                    return Ok(true);
+                }
+                Err(ffmpeg::Error::Eof) => return Ok(false),
+                Err(ffmpeg::Error::Other { errno })
+                    if errno == ffmpeg::error::EAGAIN && !self.eof_sent => {}
+                Err(error) => return Err(error.into()),
+            }
+
+            // PacketIter retries all non-EOF demux errors indefinitely.
+            // Read directly so failures reach the caller instead.
+            loop {
+                let mut packet = ffmpeg::Packet::empty();
+                match packet.read(&mut self.input) {
+                    Ok(()) if packet.stream() == self.video_stream_index => {
+                        profile_scope!("send_packet");
+                        self.decoder.send_packet(&packet)?;
+                        break;
+                    }
+                    Ok(()) => continue,
+                    Err(ffmpeg::Error::Eof) => {
+                        self.decoder.send_eof()?;
+                        self.eof_sent = true;
+                        break;
+                    }
+                    Err(error) => return Err(error.into()),
+                }
+            }
+        }
+    }
+
+    fn require_backend(&self, expected: DecodeBackend) -> Result<(), DecodeError> {
+        if self.backend != expected {
+            return Err(DecodeError::BackendMismatch {
+                expected,
+                actual: self.backend,
+            });
+        }
+        Ok(())
+    }
+
+    fn require_format(&self, expected: Pixel) -> Result<(), DecodeError> {
+        let actual = self.decoded_frame.format();
+        if actual != expected {
+            return Err(DecodeError::UnexpectedFrameFormat { expected, actual });
+        }
+        Ok(())
+    }
+
+    /// Decode the next YUV420P frame, or `None` once the decoder is drained.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "decode_frame")
     )]
     pub fn next_frame(&mut self) -> Result<Option<Yuv420pFrame>, DecodeError> {
-        // After EOF we still may have buffered frames in the decoder
-        // (multi-slice encoders like libx264 with `slices=7` or
-        // multi-reference H.264 with long GOPs hold several frames in
-        // the reorder queue). Keep draining until `receive_frame`
-        // stops returning frames — only then signal real end-of-stream.
-        if self.eof_sent {
-            profile_scope!("h264_decode");
-            if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
-                return Ok(Some(self.extract_yuv()?));
-            }
+        if !self.receive_frame()? {
             return Ok(None);
         }
-
-        // Try to receive a frame from packets already sent to the decoder,
-        // or read new packets until we get one.
-        loop {
-            {
-                profile_scope!("h264_decode");
-                if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
-                    return Ok(Some(self.extract_yuv()?));
-                }
-            }
-
-            // Need more data — read next video packet
-            let mut found_packet = false;
-            for (stream, packet) in self.input.packets() {
-                if stream.index() == self.video_stream_index {
-                    profile_scope!("send_packet");
-                    self.decoder.send_packet(&packet)?;
-                    found_packet = true;
-                    break;
-                }
-            }
-
-            if !found_packet {
-                self.eof_sent = true;
-                self.decoder.send_eof()?;
-                // Fall through to the `eof_sent` branch on subsequent
-                // calls; drain one frame now to keep the caller's
-                // "poll one at a time" loop moving forward.
-                if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
-                    return Ok(Some(self.extract_yuv()?));
-                }
-                return Ok(None);
-            }
-        }
+        self.extract_yuv().map(Some)
     }
 
     /// Decode the next frame and return raw GPU (CUDA) pointers.
     ///
-    /// Only valid when the backend is [`DecodeBackend::Cuda`]. Returns the
-    /// NV12 frame's CUDA device pointers (Y + interleaved UV) and their
-    /// pitches. The caller must copy via `cuMemcpy2D` before calling this
-    /// method again, as the pointers are reused by the decoder.
-    ///
-    /// Falls back to [`Self::next_frame`] for non-CUDA backends.
+    /// Requires [`DecodeBackend::Cuda`] and CUDA-resident output frames;
+    /// backend or residency mismatches return an error, not end-of-stream.
+    /// Returns `None` once the decoder is drained. The caller must copy the
+    /// planes via `cuMemcpy2D` before decoding again, as pointers are reused.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "decode_frame_gpu")
     )]
     pub fn next_frame_gpu(&mut self) -> Result<Option<GpuFrame>, DecodeError> {
-        if self.backend != DecodeBackend::Cuda {
-            // Fallback: decode to CPU and return None to signal "no GPU frame"
+        self.require_backend(DecodeBackend::Cuda)?;
+        if !self.receive_frame()? {
             return Ok(None);
         }
-
-        if self.eof_sent {
-            return Ok(None);
-        }
-
-        loop {
-            {
-                profile_scope!("h264_decode");
-                if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
-                    if is_hw_frame(&self.decoded_frame) {
-                        return Ok(Some(self.extract_gpu_frame()?));
-                    }
-                    // Frame came back as CPU (unusual) — fallback
-                    return Ok(None);
-                }
-            }
-
-            let mut found_packet = false;
-            for (stream, packet) in self.input.packets() {
-                if stream.index() == self.video_stream_index {
-                    profile_scope!("send_packet");
-                    self.decoder.send_packet(&packet)?;
-                    found_packet = true;
-                    break;
-                }
-            }
-
-            if !found_packet {
-                self.eof_sent = true;
-                self.decoder.send_eof()?;
-                if self.decoder.receive_frame(&mut self.decoded_frame).is_ok()
-                    && is_hw_frame(&self.decoded_frame)
-                {
-                    return Ok(Some(self.extract_gpu_frame()?));
-                }
-                return Ok(None);
-            }
-        }
+        self.require_format(Pixel::CUDA)?;
+        self.extract_gpu_frame().map(Some)
     }
 
     /// Decode the next frame and return the D3D11VA texture + array slice.
     ///
-    /// Only valid when the backend is [`DecodeBackend::D3d11va`]. Returns
-    /// `Ok(None)` for non-D3D11VA backends or at EOF. The caller must
-    /// stage-copy the frame before calling this method again, as the
-    /// decoder may reuse the array slice.
+    /// Requires [`DecodeBackend::D3d11va`] and D3D11-resident output frames;
+    /// backend or residency mismatches return an error, not end-of-stream.
+    /// Returns `None` once the decoder is drained. The caller must stage-copy
+    /// the frame before decoding again, as the decoder may reuse the slice.
     #[cfg(target_os = "windows")]
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "decode_frame_d3d11")
     )]
     pub fn next_frame_d3d11(&mut self) -> Result<Option<D3d11Frame>, DecodeError> {
-        if self.backend != DecodeBackend::D3d11va {
+        self.require_backend(DecodeBackend::D3d11va)?;
+        if !self.receive_frame()? {
             return Ok(None);
         }
-
-        if self.eof_sent {
-            return Ok(None);
-        }
-
-        loop {
-            {
-                profile_scope!("h264_decode");
-                if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
-                    if is_hw_frame(&self.decoded_frame) {
-                        return Ok(Some(self.extract_d3d11_frame()));
-                    }
-                    return Ok(None);
-                }
-            }
-
-            let mut found_packet = false;
-            for (stream, packet) in self.input.packets() {
-                if stream.index() == self.video_stream_index {
-                    profile_scope!("send_packet");
-                    self.decoder.send_packet(&packet)?;
-                    found_packet = true;
-                    break;
-                }
-            }
-
-            if !found_packet {
-                self.eof_sent = true;
-                self.decoder.send_eof()?;
-                if self.decoder.receive_frame(&mut self.decoded_frame).is_ok()
-                    && is_hw_frame(&self.decoded_frame)
-                {
-                    return Ok(Some(self.extract_d3d11_frame()));
-                }
-                return Ok(None);
-            }
-        }
+        self.require_format(Pixel::D3D11)?;
+        Ok(Some(self.extract_d3d11_frame()))
     }
 
     /// Decode the next frame and return a VideoToolbox `CVPixelBufferRef`.
     ///
-    /// Returns `Ok(None)` if the backend is not VideoToolbox or EOF is reached.
-    /// The returned `VtFrame.cv_pixel_buffer` is only valid until the next call
-    /// to this method - the caller must import it into Metal textures before
-    /// decoding another frame.
+    /// Requires [`DecodeBackend::VideoToolbox`] and VideoToolbox-resident frames;
+    /// backend or residency mismatches return an error, not end-of-stream.
+    /// Returns `None` once the decoder is drained. Retain or import the buffer
+    /// before decoding again, as the decoder may reuse it.
     #[cfg(target_os = "macos")]
     pub fn next_frame_vt(&mut self) -> Result<Option<VtFrame>, DecodeError> {
-        if self.backend != DecodeBackend::VideoToolbox {
+        self.require_backend(DecodeBackend::VideoToolbox)?;
+        if !self.receive_frame()? {
             return Ok(None);
         }
-
-        if self.eof_sent {
-            return Ok(None);
-        }
-
-        loop {
-            {
-                profile_scope!("h264_decode");
-                if self.decoder.receive_frame(&mut self.decoded_frame).is_ok() {
-                    if is_hw_frame(&self.decoded_frame) {
-                        return Ok(Some(self.extract_vt_frame()));
-                    }
-                    return Ok(None);
-                }
-            }
-
-            let mut found_packet = false;
-            for (stream, packet) in self.input.packets() {
-                if stream.index() == self.video_stream_index {
-                    profile_scope!("send_packet");
-                    self.decoder.send_packet(&packet)?;
-                    found_packet = true;
-                    break;
-                }
-            }
-
-            if !found_packet {
-                self.eof_sent = true;
-                self.decoder.send_eof()?;
-                if self.decoder.receive_frame(&mut self.decoded_frame).is_ok()
-                    && is_hw_frame(&self.decoded_frame)
-                {
-                    return Ok(Some(self.extract_vt_frame()));
-                }
-                return Ok(None);
-            }
-        }
+        self.require_format(Pixel::VIDEOTOOLBOX)?;
+        Ok(Some(self.extract_vt_frame()))
     }
 
     /// Convert a raw PTS value to microseconds using the stream time base.
@@ -981,7 +917,29 @@ impl VideoDecoder {
             )));
         }
 
-        let pixel_format = self.pixel_format();
+        // The codec's opening metadata can become stale across segments.
+        // CUDA frames describe their actual plane format in the frame pool.
+        let pixel_format = unsafe {
+            if raw.hw_frames_ctx.is_null() || (*raw.hw_frames_ctx).data.is_null() {
+                return Err(DecodeError::ConversionError(
+                    "CUDA frame has no frame pool".into(),
+                ));
+            }
+            let frames = &*((*raw.hw_frames_ctx).data as *const ffi::AVHWFramesContext);
+            match frames.sw_format {
+                ffi::AVPixelFormat::AV_PIX_FMT_NV12 => {
+                    reco_core::render::renderer::GpuPixelFormat::Nv12
+                }
+                ffi::AVPixelFormat::AV_PIX_FMT_P010LE => {
+                    reco_core::render::renderer::GpuPixelFormat::P010
+                }
+                format => {
+                    return Err(DecodeError::ConversionError(format!(
+                        "unsupported CUDA plane format: {format:?}"
+                    )));
+                }
+            }
+        };
         log::trace!(
             "GPU frame: y_ptr={:#x}, uv_ptr={:#x}, y_pitch={y_ls}, uv_pitch={uv_ls}, {pixel_format:?}, {}x{}",
             raw.data[0] as u64,
@@ -1017,9 +975,10 @@ impl VideoDecoder {
                     0,
                 );
                 if ret < 0 {
-                    log::error!("av_hwframe_transfer_data failed: {ret}");
-                    // Fall through to use decoded_frame directly (will likely fail)
-                    &self.decoded_frame
+                    return Err(DecodeError::ConversionError(format!(
+                        "av_hwframe_transfer_data: {}",
+                        ffmpeg::Error::from(ret)
+                    )));
                 } else {
                     // Copy PTS from the original frame
                     (*self.sw_frame.as_mut_ptr()).pts = (*self.decoded_frame.as_ptr()).pts;
@@ -1386,6 +1345,22 @@ mod tests {
     const R30: ffmpeg::Rational = ffmpeg::Rational(30, 1);
     const NTSC: ffmpeg::Rational = ffmpeg::Rational(30000, 1001);
     const UNSET: ffmpeg::Rational = ffmpeg::Rational(0, 0);
+
+    #[test]
+    fn software_frame_on_hardware_accessor_is_an_error_not_eof() {
+        ffmpeg::init().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("software.mov");
+        write_mjpeg_60fps(&path);
+        let mut decoder = super::VideoDecoder::open_software(&path).unwrap();
+        // A hardware device can be selected even for a software-only codec.
+        // Exercise that boundary without requiring a GPU on the test host.
+        decoder.backend = super::DecodeBackend::Cuda;
+        assert!(matches!(
+            decoder.next_frame_gpu(),
+            Err(super::DecodeError::UnexpectedFrameFormat { .. })
+        ));
+    }
 
     #[test]
     fn prefers_nominal_r_frame_rate() {
