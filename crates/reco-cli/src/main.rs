@@ -245,13 +245,6 @@ enum Commands {
         #[arg(long, value_parser = parse_wxh)]
         replay_scale: Option<(u32, u32)>,
 
-        /// Continue without tracking if detection cannot run (e.g.
-        /// zero-copy mode without TensorRT). By default the CLI
-        /// errors out when --model is given but detection fails to
-        /// initialize, since silent fallback hides a broken setup.
-        #[arg(long, default_value_t = false)]
-        allow_no_tracking: bool,
-
         /// Force CPU video decode instead of GPU zero-copy (NVDEC).
         /// Needed when AI tracking uses ORT CPU detection without
         /// TensorRT. Slower but lets the detector see the frames.
@@ -811,7 +804,6 @@ fn main() -> anyhow::Result<()> {
             container,
             replay,
             replay_scale,
-            allow_no_tracking,
             no_zero_copy,
             cpu,
             events,
@@ -843,7 +835,6 @@ fn main() -> anyhow::Result<()> {
                 container: container.as_deref(),
                 replay_path: replay.as_deref(),
                 replay_scale,
-                allow_no_tracking,
                 no_zero_copy,
                 cpu,
                 events_path: events.as_deref(),

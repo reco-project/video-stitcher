@@ -16,6 +16,128 @@ fn fixture(path: &std::path::Path) {
     fixture_encoding(path, "libx264");
 }
 
+#[test]
+fn job_setup_and_completion_are_explicit() {
+    use reco_core::session::types::RunCompletion;
+    use reco_io::stitch_job::StitchError;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("input.mp4");
+    fixture(&input);
+    let output = dir.path().join("output.mp4");
+    let job = || {
+        let lens =
+            reco_core::calibration::Lens::fisheye(WIDTH, HEIGHT, 64.0, 64.0, 64.0, 48.0, [0.0; 4]);
+        let cal = reco_core::calibration::Calibration::new(
+            vec![lens.clone(), lens],
+            reco_core::projection::LShape {
+                intersect: 0.5,
+                x_ty: 0.0,
+                x_rz: 0.0,
+                z_rx: 0.0,
+                x_rx: 0.0,
+                z_rz: 0.0,
+                blend_width: 0.05,
+            },
+            reco_core::calibration::Framing {
+                axis_offset: 0.25,
+                tilt: 0.0,
+                roll: 0.0,
+            },
+        );
+        reco_io::StitchJob::with_calibration([input.clone(), input.clone()], cal, &output)
+            .cpu()
+            .resolution(64, 64)
+            .audio(reco_io::output::AudioMode::Disabled)
+            .encoder_name("libx264")
+            .on_session(|session, _| {
+                session.core_mut().set_constrained_look(false);
+                Ok(())
+            })
+    };
+    let error = job()
+        .on_session(|_, _| Err(StitchError::Other("setup failure".into())))
+        .on_session(|_, _| panic!("must not run after failure"))
+        .run(&AtomicBool::new(false))
+        .unwrap_err();
+    assert_eq!(error.to_string(), "setup failure");
+    assert!(!output.exists(), "failed setup must not create an output");
+
+    for cancel_during_frames in [true, false] {
+        let flag = Arc::new(AtomicBool::new(false));
+        let progress_flag = flag.clone();
+        let finish_flag = flag.clone();
+        let result = job()
+            .max_frames(6)
+            .on_progress(move |p| {
+                if cancel_during_frames && p.frames_completed == 3 {
+                    progress_flag.store(true, Ordering::Relaxed);
+                }
+            })
+            .on_finalizing(move || finish_flag.store(true, Ordering::Relaxed))
+            .run(&flag)
+            .unwrap();
+        let expected = if cancel_during_frames { 3 } else { 6 };
+        assert_eq!(result.frames_processed, expected);
+        assert_eq!(
+            result.completion,
+            if cancel_during_frames {
+                RunCompletion::Cancelled
+            } else {
+                RunCompletion::Completed
+            }
+        );
+        let mut decoded = VideoDecoder::open_software(&output).unwrap();
+        let mut count = 0;
+        while decoded.next_frame().unwrap().is_some() {
+            count += 1;
+        }
+        assert_eq!(
+            count, expected,
+            "partial output must be finalized and decodable"
+        );
+    }
+
+    struct FailingFinish;
+    impl reco_core::sink::OutputSink for FailingFinish {
+        fn name(&self) -> &str {
+            "failing-finish"
+        }
+        fn wants(&self) -> reco_core::sink::SinkInput {
+            reco_core::sink::SinkInput::CpuBytes(reco_core::sink::PixelFormat::Nv12)
+        }
+        fn consume(
+            &mut self,
+            _: reco_core::sink::OutputFrame<'_>,
+        ) -> Result<(), reco_core::sink::SinkError> {
+            Ok(())
+        }
+        fn finish(&mut self) -> Result<(), reco_core::sink::SinkError> {
+            Err(reco_core::sink::SinkError::Finish {
+                reason: "finalization failure".into(),
+            })
+        }
+    }
+    let flag = Arc::new(AtomicBool::new(false));
+    let signal = flag.clone();
+    let result = job()
+        .on_session(|session, _| {
+            session.add_sink(
+                Box::new(FailingFinish),
+                reco_core::session::SinkOptions::threaded(1),
+            )?;
+            Ok(())
+        })
+        .on_progress(move |_| signal.store(true, Ordering::Relaxed))
+        .run(&flag);
+    assert!(flag.load(Ordering::Relaxed));
+    assert!(matches!(result, Err(StitchError::Session(_))), "{result:?}");
+}
+
 fn fixture_encoding(path: &std::path::Path, codec_name: &str) {
     fixture_size(path, codec_name, WIDTH, HEIGHT);
 }

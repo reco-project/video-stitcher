@@ -17,6 +17,24 @@ use crate::source::SourceError;
 
 use thiserror::Error;
 
+/// Why a frame-processing loop stopped successfully.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunCompletion {
+    /// The source ended or the requested frame limit was reached.
+    Completed,
+    /// The loop observed a cancellation request.
+    Cancelled,
+}
+
+/// Processing result before pending frames and sinks are finalized.
+#[derive(Debug, Clone, Copy)]
+pub struct RunResult {
+    /// Number of frames processed by the session.
+    pub frames_processed: u64,
+    /// The stop reason observed by the processing loop.
+    pub completion: RunCompletion,
+}
+
 /// Compute the frame limit from optional duration and max-frames constraints.
 ///
 /// Both `duration_secs` and `max_frames` are optional. When both are provided,

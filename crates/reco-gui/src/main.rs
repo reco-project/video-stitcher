@@ -263,14 +263,6 @@ struct AppState {
     /// Interrupt flag for a running export. Set to true when the user
     /// clicks Cancel; StitchJob checks it between frames and aborts.
     export_interrupted: Arc<AtomicBool>,
-    /// Timestamp of the last time `run_export`'s progress callback
-    /// fired. Used by the playback timer to detect when the encoder is
-    /// in its post-last-frame finalization phase (av_write_trailer +
-    /// index flush can take ~10 seconds) so we can display "Finalizing
-    /// output file…" instead of a stale frame count. Shared via Arc so
-    /// the worker thread can stamp it without going through
-    /// `invoke_from_event_loop`.
-    export_last_progress_at: Arc<Mutex<Option<Instant>>>,
     /// Join handle for the export worker. Held so the timer can see
     /// when the export finishes (via try_recv on export_rx).
     export_thread: Option<std::thread::JoinHandle<()>>,
@@ -511,7 +503,6 @@ impl AppState {
             coverage_pending: false,
             coverage_error_reported: false,
             export_interrupted: Arc::new(AtomicBool::new(false)),
-            export_last_progress_at: Arc::new(Mutex::new(None)),
             export_thread: None,
             export_rx: None,
             cal_baseline: None,
@@ -3680,12 +3671,6 @@ fn main() -> anyhow::Result<()> {
         let (tx, rx) = std::sync::mpsc::channel();
         s.export_rx = Some(rx);
 
-        // Don't seed the timestamp - wait for the first real progress update.
-        // Seeding with now() would trigger "Finalizing" if the first frame
-        // takes > 1.5s (common on slow GPUs or large videos).
-        *s.export_last_progress_at.lock().unwrap() = None;
-        let last_progress_at = Arc::clone(&s.export_last_progress_at);
-
         // Pause preview playback to avoid GPU contention with the
         // export pipeline. Preview rendering is also gated by
         // is_exporting() in vsync_render_tick.
@@ -3726,7 +3711,6 @@ fn main() -> anyhow::Result<()> {
                 autocam,
                 app_weak_bg,
                 &interrupted,
-                last_progress_at,
             );
             let _ = tx.send(outcome);
         });
@@ -3918,7 +3902,7 @@ fn main() -> anyhow::Result<()> {
 
             // Poll the export worker for completion.
             if let Some(rx) = &s.export_rx
-                && let Ok(outcome) = rx.try_recv()
+                && let Some(outcome) = crate::export::poll_export(rx)
             {
                 s.export_rx = None;
                 if let Some(h) = s.export_thread.take() {

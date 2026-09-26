@@ -82,10 +82,14 @@ fn main() {
                     .with_detection_interval(30);
                 let fps = source.info().fps as f32;
                 let gpu = source.is_gpu_resident();
-                match reco_autocam::setup_autocam(session, &cfg, fps, gpu) {
-                    Ok(active) => println!("    autocam active={active}"),
-                    Err(e) => println!("    autocam setup failed: {e}"),
+                let active = reco_autocam::setup_autocam(session, &cfg, fps, gpu)
+                    .map_err(|e| reco_io::stitch_job::StitchError::Other(e.to_string()))?;
+                if !active {
+                    return Err(reco_io::stitch_job::StitchError::Other(
+                        "autocam unavailable".into(),
+                    ));
                 }
+                Ok(())
             });
         }
 

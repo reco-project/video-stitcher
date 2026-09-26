@@ -50,7 +50,8 @@ fn source_rates_are_accepted_in_immediate_and_buffered_sessions() {
             assert_eq!(
                 session
                     .run(&mut source, 8, &AtomicBool::new(false), None)
-                    .unwrap(),
+                    .unwrap()
+                    .frames_processed,
                 8
             );
             session.finish().unwrap();
@@ -117,7 +118,8 @@ fn coverage_runs_once_after_immediate_or_lookahead_decisions() {
                     &AtomicBool::new(false),
                     None
                 )
-                .unwrap(),
+                .unwrap()
+                .frames_processed,
             180
         );
         session.finish().unwrap();

@@ -54,11 +54,6 @@ pub struct StitchArgs<'a> {
     /// Has no effect without [`Self::replay_path`]. GPU path only -
     /// CPU-resident sources log a warn and record at source dims.
     pub replay_scale: Option<(u32, u32)>,
-    /// When true, silently continue without tracking if detection
-    /// cannot run (e.g. zero-copy mode without TensorRT). Default
-    /// false: error out so the user knows tracking was requested but
-    /// not delivered.
-    pub allow_no_tracking: bool,
     /// Force CPU decode to enable ORT CPU detection without TensorRT.
     pub no_zero_copy: bool,
     pub cpu: bool,
@@ -215,10 +210,11 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
                     Ok(panner) => {
                         session.set_panner(Box::new(panner));
                         log::info!("Tracking mode: precomputed trajectory from {traj_path}");
+                        Ok(())
                     }
-                    Err(e) => {
-                        log::error!("Failed to load trajectory {traj_path}: {e}");
-                    }
+                    Err(e) => Err(reco_io::stitch_job::StitchError::Other(format!(
+                        "Failed to load trajectory {traj_path}: {e}"
+                    ))),
                 },
             );
     }
@@ -230,24 +226,15 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
             let max_fov = session
                 .core_mut()
                 .prepare_coverage()
-                .unwrap_or_else(|error| {
-                    log::warn!("Cannot prepare sweep coverage: {error}");
-                    50.0
-                });
+                .map_err(|error| reco_io::stitch_job::StitchError::Other(error.to_string()))?;
             let sweep_fov = (max_fov * 0.8).clamp(1.0, 50.0);
             let panner =
                 Box::new(reco_autocam::panners::SweepPanner::new(0.8, 10.0).with_fov(sweep_fov));
             session.set_panner(panner);
             log::info!("Tracking mode: sweep (debug, FOV={sweep_fov:.1} deg)");
+            Ok(())
         });
     }
-
-    // Flag set inside the on_session callback when tracking was requested
-    // but couldn't be initialized. Checked after job.run() to produce a
-    // clean error exit without segfaulting (process::exit inside a GPU
-    // callback crashes NVDEC/Vulkan teardown).
-    #[cfg(feature = "autocam")]
-    let tracking_failed = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     // Wire up autocam via the on_session callback if a model is provided.
     #[cfg(feature = "autocam")]
@@ -258,8 +245,6 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         let model_path = model_path.to_owned();
         let interval = args.detection_interval;
         let mode_str = args.tracking_mode.to_owned();
-        let allow_fallback = args.allow_no_tracking;
-        let tracking_failed = Arc::clone(&tracking_failed);
         // Resolve FieldPanner tuning up front so a bad preset/file fails
         // before rendering. Preset is the base; --panner-config overlays.
         let panner_cfg: Option<reco_autocam::panners::FieldPannerConfig> = {
@@ -335,53 +320,41 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
                 Ok(false) => {
                     let msg = "Tracking requested but detection cannot run in zero-copy mode. \
                                Build with --features tensorrt for GPU detection, \
-                               or use CPU decode (--no-zero-copy). \
-                               Pass --allow-no-tracking to continue without tracking.";
-                    if allow_fallback {
-                        log::warn!("{msg}");
-                    } else {
-                        log::error!("{msg}");
-                        tracking_failed.store(true, std::sync::atomic::Ordering::Relaxed);
-                    }
+                               or use CPU decode (--no-zero-copy).";
+                    return Err(reco_io::stitch_job::StitchError::Other(msg.into()));
                 }
                 Err(e) => {
-                    let msg = format!(
-                        "Autocam setup failed: {e}. \
-                                       Pass --allow-no-tracking to continue without tracking."
-                    );
-                    if allow_fallback {
-                        log::warn!("{msg}");
-                    } else {
-                        log::error!("{msg}");
-                        tracking_failed.store(true, std::sync::atomic::Ordering::Relaxed);
-                    }
+                    return Err(reco_io::stitch_job::StitchError::Other(format!(
+                        "Autocam setup failed: {e}"
+                    )));
                 }
             }
+            Ok(())
         });
     }
     #[cfg(not(feature = "autocam"))]
-    if args.model_path.is_some() {
-        log::warn!(
-            "--model specified but autocam feature is disabled. Build with --features autocam to enable AI tracking."
-        );
+    if args.model_path.is_some() || args.trajectory_path.is_some() || args.tracking_mode == "sweep"
+    {
+        anyhow::bail!("AI tracking is unavailable in this build");
     }
 
     let result = job.run(interrupted)?;
+    report_result(&result, args.output)
+}
 
-    #[cfg(feature = "autocam")]
-    if tracking_failed.load(std::sync::atomic::Ordering::Relaxed) {
-        anyhow::bail!(
-            "Tracking was requested but could not run. \
-             Pass --allow-no-tracking to continue without tracking."
-        );
-    }
-
+fn report_result(result: &reco_io::StitchResult, output: &str) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        result.completion != reco_core::session::types::RunCompletion::Cancelled,
+        "stitch cancelled after {} frames; finalized output: {}",
+        result.frames_processed,
+        output
+    );
     println!(
         "\nDone: {} frames in {:.1}s ({:.1} fps) -> {}",
         result.frames_processed,
         result.elapsed.as_secs_f64(),
         result.fps(),
-        args.output
+        output
     );
 
     if let Some(snap) = &result.telemetry {
@@ -392,4 +365,31 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reco_core::session::types::RunCompletion;
+
+    #[test]
+    fn partial_export_is_not_reported_as_command_success() {
+        let mut result = reco_io::StitchResult {
+            completion: RunCompletion::Completed,
+            frames_processed: 3,
+            elapsed: std::time::Duration::from_secs(1),
+            gpu_name: "test".into(),
+            encoder_name: "test".into(),
+            decode_mode: "test".into(),
+            telemetry: None,
+        };
+        assert!(report_result(&result, "output.mp4").is_ok());
+        result.completion = RunCompletion::Cancelled;
+        let error = report_result(&result, "output.mp4").unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("cancelled after 3 frames; finalized output: output.mp4")
+        );
+    }
 }

@@ -105,6 +105,8 @@ jobs:
         run: cargo test --workspace
       - name: Run tests (with profiling)
         run: cargo test --workspace --features profiling
+      - name: GPU session completion and cancellation
+        run: cargo test -p reco-core gpu_run_completion -- --ignored --test-threads=1
       # The wgpu-free build: -p bypasses workspace feature unification so
       # reco-core really compiles without wgpu, proving the CPU stitch /
       # geometry / calibration leaf stands alone (GPU-less targets).

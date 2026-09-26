@@ -394,9 +394,8 @@ impl App {
                 }
             }
             Err(e) => {
-                log::error!("Decode error: {e}");
                 self.playing = false;
-                println!("End of video");
+                eprintln!("Playback failed: {e}");
             }
         }
     }
@@ -414,9 +413,13 @@ impl App {
                 self.frame_count += 1;
                 self.needs_redraw = true;
             }
-            Ok(None) | Err(_) => {
+            Ok(None) => {
                 self.playing = false;
                 println!("End of video");
+            }
+            Err(error) => {
+                self.playing = false;
+                eprintln!("Playback failed: {error}");
             }
         }
     }

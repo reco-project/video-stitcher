@@ -341,7 +341,10 @@ fn basic_frame_loop() {
 
     session.finish().expect("finish");
 
-    assert_eq!(processed, 10, "should process all 10 frames");
+    assert_eq!(
+        processed.frames_processed, 10,
+        "should process all 10 frames"
+    );
 
     // The async encoder receives frames with a 1-frame pipeline delay
     // (NV12 double-buffering), so we expect at least 9 frames submitted.
@@ -400,7 +403,7 @@ fn tracker_receives_detections() {
 
     session.finish().expect("finish");
 
-    assert_eq!(processed, 3);
+    assert_eq!(processed.frames_processed, 3);
 
     let log = tracker_log.lock().unwrap();
     assert_eq!(log.len(), 3, "tracker should be updated once per frame");
@@ -449,7 +452,7 @@ fn detection_interval_respected() {
 
     session.finish().expect("finish");
 
-    assert_eq!(processed, 10);
+    assert_eq!(processed.frames_processed, 10);
 
     // With interval=3 and 10 frames (indices 0..9), detection runs at
     // frames 0, 3, 6, 9 = 4 times. Each detection call triggers detect()
@@ -481,7 +484,187 @@ fn nan_panner_does_not_crash() {
 
     session.finish().expect("finish");
 
-    assert_eq!(processed, 5, "all 5 frames should be processed");
+    assert_eq!(
+        processed.frames_processed, 5,
+        "all 5 frames should be processed"
+    );
+}
+
+#[test]
+fn run_completion_records_the_observed_stop_reason() {
+    for (frames, limit, cancel_after, expected, count) in [
+        (3, 10, None, RunCompletion::Completed, 3),
+        (10, 2, Some(2), RunCompletion::Completed, 2),
+        (10, 10, Some(2), RunCompletion::Cancelled, 2),
+        (10, 10, Some(0), RunCompletion::Cancelled, 0),
+    ] {
+        let mut session = build_cpu_session();
+        session.core_mut().set_constrained_look(false);
+        let flag = Arc::new(AtomicBool::new(cancel_after == Some(0)));
+        let signal = flag.clone();
+        let result = session
+            .run(
+                &mut MockSource::new(frames),
+                limit,
+                &flag,
+                Some(Box::new(move |p| {
+                    if cancel_after == Some(p.frames_completed) {
+                        signal.store(true, Ordering::Relaxed);
+                    }
+                })),
+            )
+            .unwrap();
+        flag.store(true, Ordering::Relaxed);
+        session.finish().unwrap();
+        assert_eq!(result.completion, expected);
+        assert_eq!(result.frames_processed, count);
+    }
+}
+
+#[test]
+fn cancellation_does_not_hide_source_or_finalization_errors() {
+    struct FailingSource(Arc<AtomicBool>);
+    impl FrameSource for FailingSource {
+        fn info(&self) -> SourceInfo {
+            MockSource::new(0).info()
+        }
+        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+            self.0.store(true, Ordering::Relaxed);
+            Err(SourceError::Read {
+                reason: "source failure".into(),
+            })
+        }
+    }
+    let flag = Arc::new(AtomicBool::new(false));
+    let mut session = build_cpu_session();
+    assert!(matches!(
+        session.run(&mut FailingSource(flag.clone()), 10, &flag, None),
+        Err(SessionError::Source(_))
+    ));
+
+    struct FailingFinish;
+    impl OutputSink for FailingFinish {
+        fn name(&self) -> &str {
+            "failing-finish"
+        }
+        fn wants(&self) -> SinkInput {
+            SinkInput::CpuBytes(crate::sink::PixelFormat::Nv12)
+        }
+        fn consume(&mut self, _: OutputFrame<'_>) -> Result<(), SinkError> {
+            Ok(())
+        }
+        fn finish(&mut self) -> Result<(), SinkError> {
+            Err(SinkError::Finish {
+                reason: "finish failure".into(),
+            })
+        }
+    }
+    let mut session = build_cpu_session();
+    session
+        .add_sink(Box::new(FailingFinish), super::SinkOptions::threaded(1))
+        .unwrap();
+    let result = session
+        .run(&mut MockSource::new(10), 10, &flag, None)
+        .unwrap();
+    assert_eq!(result.completion, RunCompletion::Cancelled);
+    assert!(session.finish().is_err());
+}
+
+#[test]
+#[ignore] // requires GPU
+fn gpu_run_completion_with_and_without_lookahead() {
+    for lookahead in [0, 4] {
+        for cancel_after in [None, Some(0), Some(2)] {
+            let mut session = build_test_session(None, None, 1).unwrap();
+            session.core_mut().set_constrained_look(false);
+            session.set_lookahead(lookahead);
+            let flag = Arc::new(AtomicBool::new(cancel_after == Some(0)));
+            let signal = flag.clone();
+            let result = session
+                .run(
+                    &mut MockSource::new(12),
+                    8,
+                    &flag,
+                    Some(Box::new(move |p| {
+                        if cancel_after == Some(p.frames_completed) {
+                            signal.store(true, Ordering::Relaxed);
+                        }
+                    })),
+                )
+                .unwrap();
+            assert_eq!(
+                result.completion,
+                if cancel_after.is_some() {
+                    RunCompletion::Cancelled
+                } else {
+                    RunCompletion::Completed
+                }
+            );
+            assert_eq!(result.frames_processed, cancel_after.unwrap_or(8));
+            session.finish().unwrap();
+        }
+    }
+}
+
+#[test]
+#[ignore] // requires GPU; exercised by the GPU session completion CI step
+fn gpu_run_completion_after_source_eof() {
+    struct EofSource {
+        source: MockSource,
+        eof: Arc<AtomicBool>,
+    }
+    impl FrameSource for EofSource {
+        fn info(&self) -> SourceInfo {
+            self.source.info()
+        }
+        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+            let frame = self.source.next_frame()?;
+            if frame.is_none() {
+                self.eof.store(true, Ordering::Relaxed);
+            }
+            Ok(frame)
+        }
+    }
+    for frames in [3, 5, 7] {
+        for cancel_after in [None, Some(frames - 1), Some(frames)] {
+            let mut session = build_test_session(None, None, 1).unwrap();
+            session.core_mut().set_constrained_look(false);
+            session.set_lookahead(4);
+            let eof = Arc::new(AtomicBool::new(false));
+            let observed_eof = eof.clone();
+            let flag = Arc::new(AtomicBool::new(false));
+            let signal = flag.clone();
+            let result = session
+                .run(
+                    &mut EofSource {
+                        source: MockSource::new(frames),
+                        eof,
+                    },
+                    u64::MAX,
+                    &flag,
+                    Some(Box::new(move |p| {
+                        if cancel_after == Some(p.frames_completed) {
+                            assert!(
+                                observed_eof.load(Ordering::Relaxed),
+                                "cancellation must arrive after EOF"
+                            );
+                            signal.store(true, Ordering::Relaxed);
+                        }
+                    })),
+                )
+                .unwrap();
+            assert_eq!(result.frames_processed, cancel_after.unwrap_or(frames));
+            assert_eq!(
+                result.completion,
+                if cancel_after.is_some_and(|at| at < frames) {
+                    RunCompletion::Cancelled
+                } else {
+                    RunCompletion::Completed
+                }
+            );
+            session.finish().unwrap();
+        }
+    }
 }
 
 // ─── compute_frame_limit tests (no GPU required) ──────────────────────
@@ -724,7 +907,7 @@ fn cpu_session_runs_end_to_end_without_gpu() {
         .expect("cpu run");
     session.finish().expect("finish");
 
-    assert_eq!(frames, FRAMES);
+    assert_eq!(frames.frames_processed, FRAMES);
     assert_eq!(
         encoded.load(Ordering::SeqCst),
         FRAMES,
@@ -854,7 +1037,7 @@ fn mono_cylinder_session_runs_end_to_end_without_gpu() {
         .expect("mono run");
     session.finish().expect("finish");
 
-    assert_eq!(frames, FRAMES);
+    assert_eq!(frames.frames_processed, FRAMES);
     assert_eq!(
         encoded.load(Ordering::SeqCst),
         FRAMES,

@@ -116,7 +116,8 @@ struct ReplayRecordingConfig {
 type ProgressCallback = Box<dyn FnMut(&FrameProgress) + Send>;
 
 /// Boxed session callback type alias to satisfy clippy::type_complexity.
-type SessionCallback = Box<dyn FnOnce(&mut StitchSession, &dyn FrameSource) + Send>;
+type SessionCallback =
+    Box<dyn FnOnce(&mut StitchSession, &dyn FrameSource) -> Result<(), StitchError> + Send>;
 
 /// Where to load calibration from.
 enum CalibrationSource {
@@ -210,9 +211,11 @@ impl From<PathBuf> for InputPath {
     }
 }
 
-/// Result of a completed stitch job.
+/// Statistics and stop reason of a finalized stitch job.
 #[derive(Debug)]
 pub struct StitchResult {
+    /// Stop reason observed before output finalization.
+    pub completion: reco_core::session::types::RunCompletion,
     pub frames_processed: u64,
     pub elapsed: Duration,
     pub gpu_name: String,
@@ -543,7 +546,8 @@ impl StitchJob {
         self
     }
 
-    /// Hook called after the session is created but before the frame loop.
+    /// Hook called after the session is created but before output creation and the frame loop.
+    /// An error aborts setup and prevents subsequent hooks from running.
     ///
     /// Use this to attach a detector, director, or other session configuration
     /// that requires access to the session and source metadata (dimensions, fps).
@@ -558,13 +562,20 @@ impl StitchJob {
     ///         let config = AutocamConfig::new("model.onnx")
     ///             .with_tracking_mode(TrackingMode::Field)
     ///             .with_detection_interval(3);
-    ///         reco_autocam::setup_autocam(session, &config, source.info().fps as f32, source.is_gpu_resident()).ok();
+    ///         let active = reco_autocam::setup_autocam(session, &config, source.info().fps as f32, source.is_gpu_resident())
+    ///             .map_err(|error| reco_io::stitch_job::StitchError::Other(error.to_string()))?;
+    ///         if !active {
+    ///             return Err(reco_io::stitch_job::StitchError::Other("tracking unavailable".into()));
+    ///         }
+    ///         Ok(())
     ///     })
     ///     .run(&interrupted)?;
     /// ```
     pub fn on_session(
         mut self,
-        cb: impl FnOnce(&mut StitchSession, &dyn FrameSource) + Send + 'static,
+        cb: impl FnOnce(&mut StitchSession, &dyn FrameSource) -> Result<(), StitchError>
+        + Send
+        + 'static,
     ) -> Self {
         self.session_hooks.push(Box::new(cb));
         self
@@ -747,7 +758,7 @@ impl StitchJob {
         }
 
         for hook in self.session_hooks.drain(..) {
-            hook(&mut session, &source);
+            hook(&mut session, &source)?;
         }
 
         if session.core().constrained_look() {
@@ -946,7 +957,7 @@ impl StitchJob {
         #[cfg(not(feature = "stacked-output"))]
         let replay_cfg: Option<()> = None;
 
-        let frame_count;
+        let run_result;
         // Tracks a CPU-path replay decorator when that arm is
         // chosen; the finalizer below calls `finish()` after the
         // run. GPU path finalizes via
@@ -1021,7 +1032,7 @@ impl StitchJob {
                     scale_note,
                     cfg.path.display(),
                 );
-                frame_count = session.run(
+                run_result = session.run(
                     &mut source,
                     frame_limit,
                     interrupted,
@@ -1051,7 +1062,7 @@ impl StitchJob {
                     *cfg.encoder_config,
                 )
                 .map_err(|e| StitchError::Other(format!("replay recording open: {e}")))?;
-                frame_count = session.run(
+                run_result = session.run(
                     &mut replay,
                     frame_limit,
                     interrupted,
@@ -1060,7 +1071,7 @@ impl StitchJob {
                 replay_src = Some(replay);
             }
         } else {
-            frame_count = session.run(
+            run_result = session.run(
                 &mut source,
                 frame_limit,
                 interrupted,
@@ -1072,7 +1083,7 @@ impl StitchJob {
             // Without the stacked-output feature, replay recording
             // is unavailable and `replay_cfg` is always None.
             let _ = replay_cfg;
-            frame_count = session.run(
+            run_result = session.run(
                 &mut source,
                 frame_limit,
                 interrupted,
@@ -1080,6 +1091,8 @@ impl StitchJob {
             )?;
         }
 
+        let completion = run_result.completion;
+        let frame_count = run_result.frames_processed;
         if let Some(cb) = self.on_finalizing.take() {
             cb();
         }
@@ -1132,6 +1145,7 @@ impl StitchJob {
         }
 
         Ok(StitchResult {
+            completion,
             frames_processed: frame_count,
             elapsed: start.elapsed(),
             gpu_name,

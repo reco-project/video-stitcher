@@ -4,8 +4,7 @@
 //! pumping progress back to the Slint UI via `invoke_from_event_loop`.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 use reco_core::calibration::Calibration;
@@ -32,7 +31,7 @@ pub enum ExportOutcome {
 /// [`run_export`].
 ///
 /// In an AI-less build (`--no-default-features`, no detection backend) the
-/// fields are only snapshotted and never read, so dead-code is allowed for
+/// tuning fields are only snapshotted and never read, so dead-code is allowed for
 /// that configuration alone.
 #[cfg_attr(not(feature = "autocam"), allow(dead_code))]
 #[derive(Debug, Clone)]
@@ -124,7 +123,6 @@ pub fn run_export(
     autocam: AutocamUiConfig,
     app_weak: slint::Weak<RecoApp>,
     interrupted: &AtomicBool,
-    last_progress_at: Arc<Mutex<Option<Instant>>>,
 ) -> ExportOutcome {
     use reco_io::output::{Codec, Quality};
 
@@ -180,7 +178,6 @@ pub fn run_export(
 
     let progress_weak = app_weak.clone();
     let progress_start = Instant::now();
-    let progress_last_at = Arc::clone(&last_progress_at);
     let effective_output = stream_url
         .as_ref()
         .filter(|u| !u.is_empty())
@@ -209,7 +206,6 @@ pub fn run_export(
         } else {
             0.0
         };
-        *progress_last_at.lock().unwrap() = Some(Instant::now());
 
         let weak = progress_weak.clone();
         let _ = slint::invoke_from_event_loop(move || {
@@ -268,6 +264,7 @@ pub fn run_export(
     job = job.on_session(move |session, _source| {
         let sink = ExportTelemetrySink { window: telem_weak };
         session.telemetry_mut().set_sink(Box::new(sink), 30);
+        Ok(())
     });
 
     // Lookahead buffers N future frames so the panner can centered-smooth
@@ -341,14 +338,19 @@ pub fn run_export(
                 info.fps as f32,
                 source.is_gpu_resident(),
             );
-            let banner: String = match result {
-                Ok(true) => "AI tracking: active".into(),
-                Ok(false) => {
+            match result {
+                Ok(true) => {}
+                Ok(false) => return Err(reco_io::stitch_job::StitchError::Other(
                     "AI tracking unavailable - build with --features tensorrt, or use CPU decode"
-                        .into()
+                        .into(),
+                )),
+                Err(e) => {
+                    return Err(reco_io::stitch_job::StitchError::Other(format!(
+                        "AI tracking failed: {e}"
+                    )));
                 }
-                Err(e) => format!("AI tracking failed: {e}"),
             };
+            let banner = "AI tracking: active";
             log::info!("Export: {banner}");
             let weak = status_weak.clone();
             let _ = slint::invoke_from_event_loop(move || {
@@ -360,6 +362,7 @@ pub fn run_export(
                     app.set_export_status_text(banner.into());
                 }
             });
+            Ok(())
         });
     }
     // Defense in depth: the GUI blocks Start when AI is on with no model,
@@ -367,19 +370,52 @@ pub fn run_export(
     // producing a tracking-free export.
     #[cfg(feature = "autocam")]
     if autocam.enabled && autocam.model_path.is_empty() {
-        log::warn!("AI tracking enabled but no model selected; exporting WITHOUT tracking");
+        return ExportOutcome::Failed(reco_io::stitch_job::StitchError::Other(
+            "AI tracking enabled but no model selected".into(),
+        ));
     }
     #[cfg(not(feature = "autocam"))]
-    let _ = &autocam;
+    if autocam.enabled {
+        return ExportOutcome::Failed(reco_io::stitch_job::StitchError::Other(
+            "AI tracking is unavailable in this build".into(),
+        ));
+    }
 
     match job.run(interrupted) {
-        Ok(r) => ExportOutcome::Ok(r.frames_processed, output),
-        Err(e) => {
-            if interrupted.load(Ordering::Relaxed) {
-                ExportOutcome::Cancelled
-            } else {
-                ExportOutcome::Failed(e)
+        Ok(r) => match r.completion {
+            reco_core::session::types::RunCompletion::Completed => {
+                ExportOutcome::Ok(r.frames_processed, output)
             }
-        }
+            reco_core::session::types::RunCompletion::Cancelled => ExportOutcome::Cancelled,
+        },
+        Err(e) => ExportOutcome::Failed(e),
+    }
+}
+
+/// Poll a worker without confusing a missing result with ongoing work.
+pub fn poll_export(rx: &std::sync::mpsc::Receiver<ExportOutcome>) -> Option<ExportOutcome> {
+    match rx.try_recv() {
+        Ok(outcome) => Some(outcome),
+        Err(std::sync::mpsc::TryRecvError::Empty) => None,
+        Err(std::sync::mpsc::TryRecvError::Disconnected) => Some(ExportOutcome::Failed(
+            reco_io::stitch_job::StitchError::Other(
+                "Export worker stopped without a result".into(),
+            ),
+        )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn worker_poll_distinguishes_pending_result_and_disconnection() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        assert!(poll_export(&rx).is_none());
+        tx.send(ExportOutcome::Cancelled).unwrap();
+        drop(tx);
+        assert!(matches!(poll_export(&rx), Some(ExportOutcome::Cancelled)));
+        assert!(matches!(poll_export(&rx), Some(ExportOutcome::Failed(_))));
     }
 }

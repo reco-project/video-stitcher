@@ -101,7 +101,8 @@ impl StitchSession {
     ///
     /// Runs the full decode-render-encode loop until the source is
     /// exhausted, the frame limit is reached, or the interrupt flag
-    /// is set. Returns the number of frames processed.
+    /// is set. Returns the processed frame count and the observed stop reason.
+    /// Reaching the frame limit takes precedence over a concurrent cancellation.
     ///
     /// Automatically handles CPU-resident and GPU-resident frames:
     /// - CPU frames (Yuv420p, Nv12): uploaded to GPU, rendered, encoded
@@ -119,7 +120,7 @@ impl StitchSession {
         frame_limit: u64,
         interrupted: &AtomicBool,
         mut on_progress: Option<ProgressCallback>,
-    ) -> Result<u64, SessionError> {
+    ) -> Result<super::types::RunResult, SessionError> {
         // The CPU arm runs its own synchronous loop: no GPU source
         // configuration, no staging, no zero-copy.
         if self.core.executor.gpu().is_none() {
@@ -154,8 +155,7 @@ impl StitchSession {
 
     /// Render one buffered frame at the post-smoothed pose.
     ///
-    /// Shared tail for the steady-state and drain render sites: emit the
-    /// per-frame trace events, set the pose/skip-detection/slot state,
+    /// Emit per-frame trace events, set the pose/skip-detection/slot state,
     /// render via `process_frame_any`, release the VRAM-pool slot, and
     /// fire the progress callback. `process_frame_any` increments
     /// `frame_count`, so events are emitted at the pre-increment index.
@@ -219,19 +219,19 @@ impl StitchSession {
 
     /// Buffered frame loop with lookahead.
     ///
-    /// Three phases: pre-fill the buffer with N frames (decode + detect),
-    /// then steady-state (produce one, consume one), then drain remaining
-    /// frames at EOF. The panner sees future WorldStates via
-    /// `decide_with_lookahead`.
+    /// Pre-fill the buffer with N frames (decode + detect), then produce
+    /// and render until EOF and the buffered tail are exhausted. The panner
+    /// sees future WorldStates via `decide_with_lookahead`.
     fn run_buffered(
         &mut self,
         source: &mut dyn FrameSource,
         frame_limit: u64,
         interrupted: &AtomicBool,
         on_progress: &mut Option<ProgressCallback>,
-    ) -> Result<u64, SessionError> {
+    ) -> Result<super::types::RunResult, SessionError> {
         use super::frame_buffer::{BufferedFrame, FrameBuffer};
 
+        let mut completion = super::types::RunCompletion::Completed;
         let start = std::time::Instant::now();
         let ctx = crate::session::types::FrameLoopContext {
             frame_seconds: frame_seconds(source.info().fps)?,
@@ -367,7 +367,7 @@ impl StitchSession {
         // ── Pre-fill: decode + detect N frames, no rendering ──────
         log::info!("Lookahead: pre-filling {} frames...", n);
         for _ in 0..n {
-            if interrupted.load(Ordering::Relaxed) {
+            if !continue_run(&mut completion, self.frame_count, frame_limit, interrupted) {
                 break;
             }
             if !produce_one(self, source, &mut buffer, &mut produce_count, start, &ctx)? {
@@ -426,7 +426,9 @@ impl StitchSession {
         // ── Panner warm-up: run panner post_smooth_half frames ahead ──
         let mut eof = buffer.len() < n;
         for _ in 0..post_smooth_half {
-            if buffer.is_empty() {
+            if buffer.is_empty()
+                || !continue_run(&mut completion, self.frame_count, frame_limit, interrupted)
+            {
                 break;
             }
             if !eof
@@ -439,7 +441,9 @@ impl StitchSession {
         }
 
         // ── Steady state: produce, run panner ahead, render with centered smooth ──
-        while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+        while !(eof && buffer.is_empty() && pose_queue.is_empty())
+            && continue_run(&mut completion, self.frame_count, frame_limit, interrupted)
+        {
             // Produce: decode + detect next frame
             if !eof
                 && !buffer.is_full()
@@ -470,31 +474,14 @@ impl StitchSession {
                 }
 
                 self.render_buffered_frame(oldest, smoothed_pose, start, &ctx, on_progress)?;
-            } else if eof && buffer.is_empty() && pose_queue.is_empty() {
-                break;
             }
-        }
-
-        // ── Drain: render remaining pose queue entries ────────────
-        while let Some((oldest, raw_pose)) = pose_queue.pop_front() {
-            if self.frame_count >= frame_limit || interrupted.load(Ordering::Relaxed) {
-                break;
-            }
-            let smoothed_pose = centered_smooth(
-                raw_pose,
-                pose_queue.iter().take(post_smooth_half).map(|(_, p)| *p),
-                past_poses.iter().copied(),
-            );
-            past_poses.push_back(raw_pose);
-            if past_poses.len() > post_smooth_half {
-                past_poses.pop_front();
-            }
-
-            self.render_buffered_frame(oldest, smoothed_pose, start, &ctx, on_progress)?;
         }
 
         self.skip_detection = false;
-        Ok(self.frame_count)
+        Ok(super::types::RunResult {
+            frames_processed: self.frame_count,
+            completion,
+        })
     }
 
     /// Standard frame loop. Handles CPU-resident and GPU-resident
@@ -505,7 +492,8 @@ impl StitchSession {
         frame_limit: u64,
         interrupted: &AtomicBool,
         on_progress: &mut Option<ProgressCallback>,
-    ) -> Result<u64, SessionError> {
+    ) -> Result<super::types::RunResult, SessionError> {
+        let mut completion = super::types::RunCompletion::Completed;
         let start = std::time::Instant::now();
 
         let ctx = crate::session::types::FrameLoopContext {
@@ -514,7 +502,7 @@ impl StitchSession {
             gpu_buf_info: self.core.executor.gpu().and_then(|g| g.cuda_buf_info()),
         };
 
-        while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+        while continue_run(&mut completion, self.frame_count, frame_limit, interrupted) {
             let frame_t0 = std::time::Instant::now();
 
             let frame = {
@@ -543,7 +531,10 @@ impl StitchSession {
             }
         }
 
-        Ok(self.frame_count)
+        Ok(super::types::RunResult {
+            frames_processed: self.frame_count,
+            completion,
+        })
     }
 
     /// Batch loop over the CPU executor: synchronous software stitch.
@@ -558,7 +549,8 @@ impl StitchSession {
         frame_limit: u64,
         interrupted: &AtomicBool,
         on_progress: &mut Option<ProgressCallback>,
-    ) -> Result<u64, SessionError> {
+    ) -> Result<super::types::RunResult, SessionError> {
+        let mut completion = super::types::RunCompletion::Completed;
         let start = std::time::Instant::now();
         if self.lookahead_frames > 0 {
             log::warn!(
@@ -585,7 +577,7 @@ impl StitchSession {
 
         let frame_seconds = frame_seconds(source.info().fps)?;
         let mut nv12 = Vec::new();
-        while self.frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+        while continue_run(&mut completion, self.frame_count, frame_limit, interrupted) {
             let frame_t0 = std::time::Instant::now();
             let frame = {
                 crate::profile_scope!("wait_decode");
@@ -644,8 +636,30 @@ impl StitchSession {
             }
         }
 
-        Ok(self.frame_count)
+        Ok(super::types::RunResult {
+            frames_processed: self.frame_count,
+            completion,
+        })
     }
+}
+
+// Record cancellation where it stops processing, not after finalization when
+// a late UI request could relabel an already completed run.
+fn continue_run(
+    completion: &mut super::types::RunCompletion,
+    frames: u64,
+    limit: u64,
+    interrupted: &AtomicBool,
+) -> bool {
+    use super::types::RunCompletion;
+    if frames >= limit || *completion == RunCompletion::Cancelled {
+        return false;
+    }
+    if interrupted.load(Ordering::Relaxed) {
+        *completion = RunCompletion::Cancelled;
+        return false;
+    }
+    true
 }
 
 #[cfg(test)]
