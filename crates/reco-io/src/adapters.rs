@@ -66,7 +66,7 @@ fn input_duration_secs(input: &crate::stitch_job::InputPath) -> Option<f64> {
 /// - Negative offset: skip N frames from camera 0 (it started first)
 #[cfg(feature = "ffmpeg")]
 pub struct FfmpegFileSource {
-    rx: std::sync::mpsc::Receiver<crate::decode_stream::Message<Vec<Yuv420pData>>>,
+    stream: crate::decode_stream::Restartable<Vec<Yuv420pData>>,
     info: SourceInfo,
     decode_backend: ffmpeg::decoder::DecodeBackend,
     full_range: bool,
@@ -211,10 +211,16 @@ impl FfmpegFileSource {
         }
 
         let inputs = inputs.to_vec();
-        let rx = Self::spawn_decode_pipeline(inputs.clone(), sync_offset, None, software_decode);
+        let decode_inputs = inputs.clone();
+        // The coordinator owns decoder cleanup and survives source drop only
+        // until that cleanup completes. Drop does not wait for it; reading a
+        // replacement's first frame still waits for cleanup and decoding.
+        let (stream, _coordinator) = crate::decode_stream::Restartable::new(move |tx, stop| {
+            Self::decode_pipeline(decode_inputs, sync_offset, None, software_decode, tx, stop)
+        })?;
 
         Ok(Self {
-            rx,
+            stream,
             full_range,
             info,
             decode_backend,
@@ -287,17 +293,28 @@ impl FfmpegFileSource {
         label: String,
         seek_secs: Option<f64>,
         software_decode: bool,
-    ) -> std::sync::mpsc::Receiver<crate::decode_stream::Message<Yuv420pData>> {
+        stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) -> (
+        std::sync::mpsc::Receiver<crate::decode_stream::Message<Yuv420pData>>,
+        std::thread::JoinHandle<()>,
+    ) {
         crate::decode_stream::spawn(
             format!("decode_{label}"),
             4,
             move |tx| -> Result<(), ffmpeg::decoder::DecodeError> {
+                use std::sync::atomic::Ordering;
+                if stop.load(Ordering::Relaxed) {
+                    return Ok(());
+                }
                 let open = if software_decode {
                     ffmpeg::decoder::VideoDecoder::open_input_software
                 } else {
                     ffmpeg::decoder::VideoDecoder::open_input
                 };
                 let mut dec = open(&input)?;
+                if stop.load(Ordering::Relaxed) {
+                    return Ok(());
+                }
                 log::info!(
                     "{label} decoder: {} ({}x{})",
                     dec.backend(),
@@ -310,7 +327,8 @@ impl FfmpegFileSource {
                 // A seek lands at the preceding keyframe. Discard only frames
                 // before the requested timestamp; decoding failures propagate.
                 let mut target_us = seek_secs.map(|secs| (secs * 1_000_000.0) as i64);
-                while let Some(f) = dec.next_frame()? {
+                while !stop.load(Ordering::Relaxed) {
+                    let Some(f) = dec.next_frame()? else { break };
                     if target_us.is_some_and(|target| f.timestamp_us < target) {
                         continue;
                     }
@@ -327,59 +345,88 @@ impl FfmpegFileSource {
                 Ok(())
             },
         )
-        .0
     }
 
-    fn spawn_decode_pipeline(
+    fn decode_pipeline(
         inputs: Vec<crate::stitch_job::InputPath>,
         sync_offset: i64,
         seek_secs: Option<f64>,
         software_decode: bool,
-    ) -> std::sync::mpsc::Receiver<crate::decode_stream::Message<Vec<Yuv420pData>>> {
-        let rxs: Vec<_> = inputs
-            .into_iter()
-            .enumerate()
-            .map(|(i, input)| {
-                Self::spawn_single_decoder_at(input, format!("cam{i}"), seek_secs, software_decode)
-            })
-            .collect();
+        tx: &std::sync::mpsc::SyncSender<crate::decode_stream::Message<Vec<Yuv420pData>>>,
+        stop: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), SourceError> {
+        use std::sync::atomic::Ordering;
+        let mut decoders = FileDecoders {
+            rxs: Vec::with_capacity(inputs.len()),
+            workers: Vec::with_capacity(inputs.len()),
+            stop: stop.clone(),
+        };
+        for (i, input) in inputs.into_iter().enumerate() {
+            if stop.load(Ordering::Relaxed) {
+                return Ok(());
+            }
+            let (rx, worker) = Self::spawn_single_decoder_at(
+                input,
+                format!("cam{i}"),
+                seek_secs,
+                software_decode,
+                stop.clone(),
+            );
+            decoders.rxs.push(rx);
+            decoders.workers.push(worker);
+        }
+        let rxs = &decoders.rxs;
+        // Temporal alignment is defined between exactly two cameras.
+        if let [cam0_rx, cam1_rx] = rxs.as_slice() {
+            let skip_rx = if sync_offset > 0 { cam1_rx } else { cam0_rx };
+            if !crate::decode_stream::skip(skip_rx, sync_offset.unsigned_abs())? {
+                return Ok(());
+            }
+        } else if sync_offset != 0 {
+            log::info!(
+                "Sync offset {sync_offset} ignored: alignment is defined for two-camera jobs, this job has {}",
+                rxs.len()
+            );
+        }
 
-        crate::decode_stream::spawn(
-            "decode_zip".into(),
-            4,
-            move |tx| -> Result<(), SourceError> {
-                // Temporal alignment is defined between exactly two cameras.
-                if let [cam0_rx, cam1_rx] = rxs.as_slice() {
-                    let skip_rx = if sync_offset > 0 { cam1_rx } else { cam0_rx };
-                    if !crate::decode_stream::skip(skip_rx, sync_offset.unsigned_abs())? {
-                        return Ok(());
-                    }
-                } else if sync_offset != 0 {
-                    log::info!(
-                        "Sync offset {sync_offset} ignored: alignment is defined for two-camera jobs, this job has {}",
-                        rxs.len()
-                    );
+        while !stop.load(Ordering::Relaxed) {
+            let mut cams = Vec::with_capacity(rxs.len());
+            for rx in rxs {
+                if let Some(frame) = crate::decode_stream::receive(rx)? {
+                    cams.push(frame);
                 }
+            }
+            // Read every camera's result before accepting EOF so a
+            // failure at the same position as a shorter input isn't lost.
+            if cams.len() != rxs.len() {
+                break;
+            }
+            if tx.send(Ok(Some(cams))).is_err() {
+                break;
+            }
+        }
+        Ok(())
+    }
+}
 
-                loop {
-                    let mut cams = Vec::with_capacity(rxs.len());
-                    for rx in &rxs {
-                        if let Some(frame) = crate::decode_stream::receive(rx)? {
-                            cams.push(frame);
-                        }
-                    }
-                    // Read every camera's result before accepting EOF so a
-                    // failure at the same position as a shorter input isn't lost.
-                    if cams.len() != rxs.len() {
-                        break;
-                    }
-                    if tx.send(Ok(Some(cams))).is_err() {
-                        break;
-                    }
-                }
-                Ok(())
-            },
-        ).0
+#[cfg(feature = "ffmpeg")]
+struct FileDecoders {
+    rxs: Vec<std::sync::mpsc::Receiver<crate::decode_stream::Message<Yuv420pData>>>,
+    workers: Vec<std::thread::JoinHandle<()>>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+#[cfg(feature = "ffmpeg")]
+impl Drop for FileDecoders {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        // Release every blocked producer before waiting for any of them.
+        self.rxs.clear();
+        for worker in self.workers.drain(..) {
+            if worker.join().is_err() {
+                log::error!("File decoder panicked during cleanup");
+            }
+        }
     }
 }
 
@@ -393,8 +440,9 @@ mod decode_tests {
         for message in messages {
             tx.send(message).unwrap();
         }
+        let stream = crate::decode_stream::Restartable::from_receiver(rx);
         FfmpegFileSource {
-            rx,
+            stream,
             info: SourceInfo {
                 width: 2,
                 height: 2,
@@ -485,13 +533,96 @@ mod decode_tests {
     #[test]
     fn worker_open_failure_reaches_the_receiver() {
         let dir = tempfile::tempdir().unwrap();
-        let rx = FfmpegFileSource::spawn_single_decoder_at(
+        let (rx, worker) = FfmpegFileSource::spawn_single_decoder_at(
             crate::InputPath::Single(dir.path().join("missing.mp4")),
             "test".into(),
             None,
             true,
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         );
         assert!(crate::decode_stream::receive(&rx).is_err());
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn decoder_cleanup_disconnects_all_queues_and_waits_for_inflight_work() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{Arc, mpsc};
+        use std::time::Duration;
+        let stop = Arc::new(AtomicBool::new(false));
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        let (disconnected_tx, disconnected_rx) = mpsc::channel();
+        let (rx, worker) = crate::decode_stream::spawn(
+            "controlled_decode".into(),
+            1,
+            move |_| -> Result<(), SourceError> {
+                entered_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                Ok(())
+            },
+        );
+        let (queued_rx, queued_worker) = crate::decode_stream::spawn(
+            "backpressured_decode".into(),
+            1,
+            move |tx| -> Result<(), SourceError> {
+                while tx
+                    .send(Ok(Some(Yuv420pData {
+                        y: vec![],
+                        u: vec![],
+                        v: vec![],
+                    })))
+                    .is_ok()
+                {}
+                disconnected_tx.send(()).unwrap();
+                Ok(())
+            },
+        );
+        let group = FileDecoders {
+            rxs: vec![rx, queued_rx],
+            workers: vec![worker, queued_worker],
+            stop: stop.clone(),
+        };
+        entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let cleanup = std::thread::spawn(move || {
+            drop(group);
+            done_tx.send(()).unwrap();
+        });
+        // A native call may remain in flight even after cancellation. Cleanup
+        // cannot finish or allow a replacement generation until it returns.
+        disconnected_rx
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        assert!(stop.load(Ordering::Relaxed));
+        assert!(matches!(done_rx.try_recv(), Err(mpsc::TryRecvError::Empty)));
+        release_tx.send(()).unwrap();
+        done_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        cleanup.join().unwrap();
+    }
+
+    #[test]
+    #[ignore = "requires RECO_DECODE_TEST_VIDEO pointing to a short, multi-frame video"]
+    fn real_pipeline_drop_joins_decoders() {
+        let path = std::path::PathBuf::from(std::env::var("RECO_DECODE_TEST_VIDEO").unwrap());
+        for software in [true, false] {
+            for offset in [-3, 0, 3] {
+                let inputs = vec![crate::InputPath::Single(path.clone()); 2];
+                let (stream, worker) = crate::decode_stream::Restartable::new(move |tx, stop| {
+                    FfmpegFileSource::decode_pipeline(inputs, offset, Some(0.1), software, tx, stop)
+                })
+                .unwrap();
+                assert!(stream.receive().unwrap().is_some());
+                drop(stream);
+                let (done_tx, done_rx) = std::sync::mpsc::channel();
+                let joiner = std::thread::spawn(move || done_tx.send(worker.join()).unwrap());
+                done_rx
+                    .recv_timeout(std::time::Duration::from_secs(5))
+                    .unwrap()
+                    .unwrap();
+                joiner.join().unwrap();
+            }
+        }
     }
 }
 
@@ -524,7 +655,9 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         if self.exhausted {
             return Ok(None);
         }
-        let frames = crate::decode_stream::receive(&self.rx)
+        let frames = self
+            .stream
+            .receive()
             .inspect_err(|error| self.terminal_error = Some(error.clone()))?;
         self.current_frame += u64::from(frames.is_some());
         self.exhausted = frames.is_none();
@@ -538,7 +671,7 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         if self.exhausted {
             return Ok(None);
         }
-        match self.rx.try_recv() {
+        match self.stream.try_receive() {
             Ok(result) => {
                 let frames =
                     result.inspect_err(|error| self.terminal_error = Some(error.clone()))?;
@@ -559,19 +692,18 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         // Two strategies depending on seek direction and distance:
         //
         // 1. **Forward ≤ 10s**: drain frames from the existing decode
-        //    pipeline. The decode threads are already running and
-        //    buffering, so this is near-instant with no NVDEC re-init.
+        //    pipeline, without reopening decoders. This still decodes
+        //    every intervening frame and can block the caller.
         //
-        // 2. **Backward or > 10s forward**: respawn the entire decode
-        //    pipeline at the target position. Each decoder seeks to the
+        // 2. **Backward or > 10s forward**: replace the decode generation
+        //    at the target position. Each decoder seeks to the
         //    nearest keyframe before the target, then decodes and
         //    discards frames until reaching the exact target PTS.
         //
-        // Callers handling rapid input (scrub bars, key repeat) should
-        // coalesce seek requests on their side and call this once with
-        // the final target. This method is blocking for strategy 1 and
-        // semi-blocking for strategy 2 (spawns threads, returns before
-        // first frame is decoded).
+        // Pending replacements coalesce behind cleanup of the old decoders.
+        // Strategy 2 returns before cleanup or decoding the first new frame.
+        // A subsequent blocking read waits for both. Native calls have no
+        // shutdown deadline, so a stuck decoder also stalls the replacement.
         if frame >= self.current_frame {
             let skip = frame - self.current_frame;
             let max_forward = (self.info.fps * 10.0) as u64;
@@ -588,15 +720,12 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
 
         let secs = frame as f64 / self.info.fps;
         log::debug!("Seeking to frame {frame} ({secs:.1}s)");
-        // Drop old receiver - disconnects current decode threads which
-        // exit on the next send() failure. Spawns fresh decoders that
-        // seek to the target keyframe and skip to the exact PTS.
-        self.rx = Self::spawn_decode_pipeline(
-            self.inputs.clone(),
-            self.sync_offset,
-            Some(secs),
-            self.software_decode,
-        );
+        let inputs = self.inputs.clone();
+        let sync_offset = self.sync_offset;
+        let software_decode = self.software_decode;
+        self.stream.replace(move |tx, stop| {
+            Self::decode_pipeline(inputs, sync_offset, Some(secs), software_decode, tx, stop)
+        });
         self.current_frame = frame;
         self.exhausted = false;
         self.terminal_error = None;

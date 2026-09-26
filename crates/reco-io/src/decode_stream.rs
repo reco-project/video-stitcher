@@ -5,6 +5,9 @@ use std::thread::JoinHandle;
 
 use reco_core::source::SourceError;
 
+mod restart;
+pub(crate) use restart::Restartable;
+
 pub(crate) type Message<T> = Result<Option<T>, SourceError>;
 
 pub(crate) fn disconnected() -> SourceError {

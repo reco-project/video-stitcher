@@ -364,6 +364,61 @@ fn file_source_delivers_every_frame_and_persists_eof() {
     }
 }
 
+#[test]
+fn repeated_seek_replacements_deliver_only_the_requested_generation() {
+    assert_seek_replacements(true);
+}
+
+#[test]
+#[ignore = "requires NVIDIA CUDA/NVDEC"]
+fn cuda_file_source_seek_replacements_deliver_requested_pixels() {
+    assert_seek_replacements(false);
+}
+
+fn assert_seek_replacements(software_decode: bool) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("seek.mp4");
+    fixture(&path);
+    let input = InputPath::Single(path);
+    for (count, offset) in [(1, 0_i64), (2, 0), (2, -3), (2, 3), (3, 0)] {
+        let mut source =
+            FfmpegFileSource::open_inputs(&vec![input.clone(); count], offset, software_decode)
+                .unwrap();
+        assert_eq!(
+            source.decode_backend(),
+            if software_decode {
+                DecodeBackend::Software
+            } else {
+                DecodeBackend::Cuda
+            }
+        );
+        for cycle in 0..6 {
+            source.seek(43).unwrap();
+            assert!(source.next_frame().unwrap().is_some());
+            // All targets lie inside the input and its GOP. Queue backward
+            // replacements while workers may be decoding/discarding frames.
+            for frame in [42, 36, 30, 24, 18] {
+                source.seek(frame).unwrap();
+            }
+            let target = cycle % 3 * 6;
+            source.seek(target as u64).unwrap();
+            let FrameSet::Yuv420p(cameras) = source.next_frame().unwrap().unwrap() else {
+                panic!("expected CPU frames");
+            };
+            assert_eq!(cameras.len(), count);
+            for (camera, frame) in cameras.into_iter().enumerate() {
+                let skipped =
+                    if count == 2 && ((offset > 0 && camera == 1) || (offset < 0 && camera == 0)) {
+                        offset.unsigned_abs() as usize
+                    } else {
+                        0
+                    };
+                assert_pixels(&frame.y, &frame.u, &frame.v, target + skipped);
+            }
+        }
+    }
+}
+
 /// Opt-in hardware gate: fails rather than silently skipping when CUDA is absent.
 #[test]
 #[ignore = "requires NVIDIA CUDA/NVDEC"]

@@ -49,7 +49,7 @@ pub struct SmartFileSource {
 }
 
 enum SourceMode {
-    Cpu(crate::adapters::FfmpegFileSource),
+    Cpu(Box<crate::adapters::FfmpegFileSource>),
     #[cfg(target_os = "linux")]
     GpuZeroCopy(Box<LinuxZeroCopyState>),
     #[cfg(target_os = "macos")]
@@ -73,8 +73,6 @@ enum WindowsDecodeState {
         pair_rx: std::sync::mpsc::Receiver<
             crate::decode_stream::Message<crate::zero_copy::D3d11FramePair>,
         >,
-        join_handles: Vec<std::thread::JoinHandle<()>>,
-        shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
     },
 }
 
@@ -107,11 +105,7 @@ impl WindowsZeroCopyState {
             let right = right.clone();
             let sync_offset = *sync_offset;
             let pair_rx = crate::zero_copy::spawn_d3d11_decode_pair(&left, &right, sync_offset);
-            self.decode = WindowsDecodeState::Running {
-                pair_rx,
-                join_handles: Vec::new(),
-                shutdown: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            };
+            self.decode = WindowsDecodeState::Running { pair_rx };
         }
     }
 }
@@ -293,7 +287,7 @@ impl SmartFileSource {
         let left_rotation = source.rotation(0);
         let right_rotation = source.rotation(1);
         Ok(Self {
-            mode: SourceMode::Cpu(source),
+            mode: SourceMode::Cpu(Box::new(source)),
             info,
             pixel_format,
             full_range,
@@ -664,7 +658,7 @@ impl FrameSource for SmartFileSource {
             SourceMode::D3d11ZeroCopy(state) => {
                 state.ensure_running();
                 let pair_rx = match &state.decode {
-                    WindowsDecodeState::Running { pair_rx, .. } => pair_rx,
+                    WindowsDecodeState::Running { pair_rx } => pair_rx,
                     _ => unreachable!(),
                 };
                 match crate::decode_stream::receive(pair_rx)
@@ -801,22 +795,8 @@ impl FrameSource for SmartFileSource {
 
 impl Drop for SmartFileSource {
     fn drop(&mut self) {
-        // D3D11VA / Metal: dropping the pair receiver breaks the
-        // channel, causing decode threads to exit when send() fails.
-        // Without this, orphaned decode threads keep the process alive.
-        #[cfg(target_os = "windows")]
-        if let SourceMode::D3d11ZeroCopy(state) = &mut self.mode {
-            if let WindowsDecodeState::Running { pair_rx, .. } = &mut state.decode {
-                drop(std::mem::replace(
-                    pair_rx,
-                    std::sync::mpsc::sync_channel(0).1,
-                ));
-                log::debug!("D3D11VA source dropped, decode threads signalled to exit");
-            }
-        }
-        // MetalZeroCopy: the Receiver is owned directly by the enum
-        // variant and drops naturally when the mode is replaced.
-
+        // D3D11VA and Metal own their queued frames. Their receivers drop
+        // with the mode; only CUDA borrows allocations requiring a join here.
         #[cfg(target_os = "linux")]
         if let SourceMode::GpuZeroCopy(state) = &mut self.mode {
             // Graceful shutdown ordering to prevent CUDA error 700:
