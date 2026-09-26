@@ -124,11 +124,13 @@ pub fn run_preview(
         (cal.framing.tilt as f32).to_degrees()
     };
 
+    let decoder_cleanup = reco_io::DecoderCleanup::default();
     let mut source = reco_io::adapters::FfmpegFileSource::open_with_offset(
         Path::new(left_path),
         Path::new(right_path),
         effective_sync,
     )?;
+    source.defer_cleanup(&decoder_cleanup);
     let info = source.info();
 
     println!(

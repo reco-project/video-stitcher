@@ -67,6 +67,8 @@ fn input_duration_secs(input: &crate::stitch_job::InputPath) -> Option<f64> {
 #[cfg(feature = "ffmpeg")]
 pub struct FfmpegFileSource {
     stream: crate::decode_stream::Restartable<Vec<Yuv420pData>>,
+    // Field order disconnects the stream before joining its coordinator.
+    cleanup: crate::decoder_cleanup::DecoderTask,
     info: SourceInfo,
     decode_backend: ffmpeg::decoder::DecodeBackend,
     full_range: bool,
@@ -212,15 +214,13 @@ impl FfmpegFileSource {
 
         let inputs = inputs.to_vec();
         let decode_inputs = inputs.clone();
-        // The coordinator owns decoder cleanup and survives source drop only
-        // until that cleanup completes. Drop does not wait for it; reading a
-        // replacement's first frame still waits for cleanup and decoding.
-        let (stream, _coordinator) = crate::decode_stream::Restartable::new(move |tx, stop| {
+        let (stream, coordinator) = crate::decode_stream::Restartable::new(move |tx, stop| {
             Self::decode_pipeline(decode_inputs, sync_offset, None, software_decode, tx, stop)
         })?;
 
         Ok(Self {
             stream,
+            cleanup: crate::decoder_cleanup::DecoderTask::new(coordinator),
             full_range,
             info,
             decode_backend,
@@ -239,6 +239,16 @@ impl FfmpegFileSource {
     /// The decode backend selected during probe (CUDA, VAAPI, or software).
     pub fn decode_backend(&self) -> ffmpeg::decoder::DecodeBackend {
         self.decode_backend
+    }
+
+    /// Transfer the cleanup wait to an interactive consumer's lifetime scope.
+    ///
+    /// By default, dropping a source cancels and joins its decoder workers.
+    /// With a live scope, dropping the source only cancels them; the scope
+    /// waits for cleanup when it is dropped. Seeking still waits for the old
+    /// decoder generation before delivering replacement frames.
+    pub fn defer_cleanup(&mut self, cleanup: &crate::DecoderCleanup) {
+        self.cleanup.defer_to(cleanup);
     }
 
     /// GPU pixel format for zero-copy shared textures.
@@ -442,6 +452,7 @@ mod decode_tests {
         }
         let stream = crate::decode_stream::Restartable::from_receiver(rx);
         FfmpegFileSource {
+            cleanup: Default::default(),
             stream,
             info: SourceInfo {
                 width: 2,

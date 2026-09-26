@@ -79,9 +79,11 @@ impl Playback {
         left: &InputPath,
         right: &InputPath,
         sync_offset: i64,
+        cleanup: &reco_io::DecoderCleanup,
     ) -> Result<(), SourceError> {
-        let source =
+        let mut source =
             FfmpegFileSource::open_inputs(&[left.clone(), right.clone()], sync_offset, false)?;
+        source.defer_cleanup(cleanup);
         let info = source.info();
         let fps = info.fps;
         let mut candidate = Self::new();
@@ -268,13 +270,48 @@ mod tests {
 
     #[test]
     #[ignore = "requires RECO_PLAYBACK_TEST_VIDEO pointing to a short, multi-frame video"]
+    fn replacement_process_exits_without_cuda_cleanup_errors() {
+        for _ in 0..3 {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "playback::tests::file_replacement_preserves_playback_on_first_frame_failure",
+                    "--ignored",
+                    "--test-threads=1",
+                ])
+                .output()
+                .unwrap();
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(output.status.success(), "{stderr}");
+            assert!(
+                String::from_utf8_lossy(&output.stdout).contains("1 passed;"),
+                "child did not run the playback test"
+            );
+            assert!(
+                !stderr.lines().any(|line| {
+                    (line.contains("cuCtx") || line.contains("cuMem")) && line.contains("failed")
+                }),
+                "decoder cleanup failed at process exit: {stderr}"
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "requires RECO_PLAYBACK_TEST_VIDEO pointing to a short, multi-frame video"]
     fn file_replacement_preserves_playback_on_first_frame_failure() {
         let path = std::path::PathBuf::from(std::env::var("RECO_PLAYBACK_TEST_VIDEO").unwrap());
         let input = InputPath::Single(path.clone());
         let missing = path.with_file_name("missing-playback-test-input.mp4");
         assert!(!missing.exists());
+        let cleanup = reco_io::DecoderCleanup::default();
         let mut playback = Playback::new();
-        playback.open(&input, &input, 0).unwrap();
+        playback.open(&input, &input, 0, &cleanup).unwrap();
+        if std::env::var_os("RECO_REQUIRE_CUDA").is_some() {
+            assert_eq!(
+                playback.source.as_ref().unwrap().decode_backend(),
+                reco_io::ffmpeg::decoder::DecodeBackend::Cuda
+            );
+        }
         for fraction in [0.6, 0.1, 0.8, 0.0] {
             playback.seek(fraction).unwrap();
             assert!(playback.current_frame().is_some());
@@ -286,15 +323,17 @@ mod tests {
         // Both first segments probe successfully. Advancing the right input
         // into a missing segment fails inside the decode worker.
         let broken = InputPath::Chained(vec![path, missing]);
-        let error = playback.open(&input, &broken, past_end).unwrap_err();
+        let error = playback
+            .open(&input, &broken, past_end, &cleanup)
+            .unwrap_err();
         assert!(matches!(error, SourceError::Read { .. }), "{error}");
         assert_eq!(playback.frame_index(), index);
         assert_eq!(playback.total_frames(), total);
         assert_eq!(playback.current_frame().unwrap().left.y, before);
-        assert!(playback.open(&input, &input, past_end).is_err());
+        assert!(playback.open(&input, &input, past_end, &cleanup).is_err());
         assert_eq!(playback.current_frame().unwrap().left.y, before);
         assert!(playback.step_forward().unwrap());
-        playback.open(&input, &input, 1).unwrap();
+        playback.open(&input, &input, 1, &cleanup).unwrap();
         assert_eq!(playback.frame_index(), 1);
         assert_eq!(playback.state(), PlayState::Paused);
     }

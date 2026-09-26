@@ -21,6 +21,8 @@ mod export;
 mod playback;
 mod preview;
 mod settings;
+#[cfg(test)]
+mod shutdown_tests;
 mod telemetry_client;
 mod toast;
 
@@ -206,6 +208,8 @@ struct AppState {
     calibration_path: Option<PathBuf>,
     calibration: Option<Calibration>,
     playback: Playback,
+    // Playback cancels before this scope waits for all retired decoders.
+    decoder_cleanup: reco_io::DecoderCleanup,
     bridge: Option<PreviewBridge>,
     recording_tx: Option<std::sync::mpsc::SyncSender<RecordingFrame>>,
     recording_thread: Option<std::thread::JoinHandle<()>>,
@@ -467,6 +471,16 @@ fn displayed_image_height(width: f32, height: f32, image: (u32, u32)) -> f32 {
     height.min(width * image.1 as f32 / image.0 as f32)
 }
 
+impl Drop for AppState {
+    fn drop(&mut self) {
+        self.export_interrupted.store(true, Ordering::Relaxed);
+        if let Some(worker) = self.export_thread.take() {
+            let _ = worker.join();
+        }
+        self.stop_recording();
+    }
+}
+
 impl AppState {
     fn new(user_settings: crate::settings::GuiSettings) -> Self {
         Self {
@@ -477,6 +491,7 @@ impl AppState {
             calibration_path: None,
             calibration: None,
             playback: Playback::new(),
+            decoder_cleanup: reco_io::DecoderCleanup::default(),
             bridge: None,
             recording_tx: None,
             recording_thread: None,
@@ -710,7 +725,7 @@ impl AppState {
         // Open video source.
         let sync_offset = cal.sync_offset;
         self.playback
-            .open(&left, &right, sync_offset)
+            .open(&left, &right, sync_offset, &self.decoder_cleanup)
             .map_err(|e| format!("Video open error: {e}"))?;
 
         let (input_w, input_h) = self
@@ -735,7 +750,7 @@ impl AppState {
 
         let sync_offset = cal.sync_offset;
         self.playback
-            .open(&left, &right, sync_offset)
+            .open(&left, &right, sync_offset, &self.decoder_cleanup)
             .map_err(|e| format!("Video open error: {e}"))?;
 
         let (input_w, input_h) = self
@@ -996,7 +1011,7 @@ impl AppState {
         let mut playback = None;
         if let (Some(left), Some(right)) = (&self.left_input, &self.right_input) {
             let mut candidate = Playback::new();
-            if let Err(error) = candidate.open(left, right, offset) {
+            if let Err(error) = candidate.open(left, right, offset, &self.decoder_cleanup) {
                 self.sync_calibration_controls(app);
                 self.toasts
                     .push(Severity::Error, "Sync unchanged", error.to_string());
@@ -1033,7 +1048,10 @@ impl AppState {
         if let (Some(left), Some(right)) = (&self.left_input, &self.right_input) {
             let left = left.clone();
             let right = right.clone();
-            if let Err(e) = self.playback.open(&left, &right, offset) {
+            if let Err(e) = self
+                .playback
+                .open(&left, &right, offset, &self.decoder_cleanup)
+            {
                 log::error!("Failed to reopen playback after reorder: {e}");
                 // The list already contains the new order. Keeping the old
                 // preview would misrepresent what export will read.

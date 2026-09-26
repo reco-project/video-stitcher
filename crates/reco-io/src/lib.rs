@@ -19,6 +19,11 @@ pub mod ffmpeg;
 #[cfg(feature = "ffmpeg")]
 mod decode_stream;
 
+#[cfg(feature = "ffmpeg")]
+mod decoder_cleanup;
+#[cfg(feature = "ffmpeg")]
+pub use decoder_cleanup::DecoderCleanup;
+
 #[cfg(feature = "gstreamer")]
 pub mod gstreamer;
 
