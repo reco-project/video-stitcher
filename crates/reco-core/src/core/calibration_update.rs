@@ -119,6 +119,7 @@ impl StitchCore {
         }
         if !tracking_unchanged {
             self.last_detections.clear();
+            self.detections_fresh = false;
         }
     }
 }
@@ -452,7 +453,7 @@ mod tests {
     struct NoopControl;
 
     impl Tracker for NoopControl {
-        fn update(&mut self, _: &[MappedDetection], _: f64) -> Vec<TrackedEntity> {
+        fn update(&mut self, _: &[MappedDetection], _: bool, _: f64) -> Vec<TrackedEntity> {
             vec![]
         }
         fn class_id(&self) -> u16 {

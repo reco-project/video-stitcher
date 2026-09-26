@@ -127,6 +127,8 @@ pub struct StitchCore {
     /// World-mapped detections from the last detection frame.
     /// Reused on skipped frames so the panner retains context.
     pub(crate) last_detections: Vec<MappedDetection>,
+    /// A successful detection batch not yet consumed by a tracker tick.
+    pub(crate) detections_fresh: bool,
 
     pub(crate) replay: Option<ReplayBuffer>,
 
@@ -209,6 +211,7 @@ impl StitchCore {
             detector: None,
             detection_interval: 1,
             last_detections: Vec::new(),
+            detections_fresh: false,
             replay: None,
             stacked_recorder: None,
             #[cfg(feature = "gpu")]
@@ -295,6 +298,8 @@ impl StitchCore {
     ///
     /// Frame loops schedule detection using [`Self::detection_due`]. Results carry world-reference angular positions for tracking and observation. Unsupported frame kinds are logged at debug level; other inference errors are warned without aborting rendering.
     pub fn set_detector(&mut self, detector: Box<dyn Detector>) {
+        self.last_detections.clear();
+        self.detections_fresh = false;
         self.detector = Some(detector);
     }
 
@@ -303,6 +308,7 @@ impl StitchCore {
     pub fn clear_detector(&mut self) {
         self.detector = None;
         self.last_detections.clear();
+        self.detections_fresh = false;
     }
 
     /// Set how often detection runs.
@@ -1141,6 +1147,104 @@ mod tests {
 
     /// `run_detection_frames` dispatches once per camera and caches
     /// the world-mapped results for the panner.
+    #[test]
+    fn detection_freshness_is_consumed_once_and_invalidated() {
+        use super::StitchCore;
+        use crate::detect::detector::{
+            ChromaPlanes, Detection, Detector, DetectorError, DetectorFrame, YuvView,
+        };
+        use crate::detect::mapped_detection::MappedDetection;
+        use crate::detect::tracker::{TrackedEntity, Tracker};
+        use std::sync::{Arc, Mutex};
+
+        struct Probe(Arc<Mutex<Vec<(usize, bool)>>>);
+        impl Tracker for Probe {
+            fn class_id(&self) -> u16 {
+                0
+            }
+            fn update(
+                &mut self,
+                detections: &[MappedDetection],
+                fresh: bool,
+                _: f64,
+            ) -> Vec<TrackedEntity> {
+                self.0.lock().unwrap().push((detections.len(), fresh));
+                vec![]
+            }
+        }
+        struct ScriptedDetector;
+        impl Detector for ScriptedDetector {
+            fn name(&self) -> &'static str {
+                "scripted"
+            }
+            fn detect(
+                &mut self,
+                camera: usize,
+                frame: &DetectorFrame<'_>,
+            ) -> Result<Vec<Detection>, DetectorError> {
+                let DetectorFrame::Yuv(frame) = frame else {
+                    unreachable!()
+                };
+                match frame.y[0] {
+                    0 => Ok(vec![]),
+                    1 => Ok(vec![Detection {
+                        camera,
+                        class_id: 0,
+                        confidence: 0.9,
+                        center_x: 0.5,
+                        center_y: 0.5,
+                        width: 0.1,
+                        height: 0.1,
+                    }]),
+                    _ => Err(DetectorError::UnsupportedFrameKind),
+                }
+            }
+        }
+        let mut core = cpu_engine(64, 36);
+        let log = Arc::new(Mutex::new(Vec::new()));
+        core.set_ball_tracker(Box::new(Probe(log.clone())));
+        core.set_detector(Box::new(ScriptedDetector));
+        let detect = |core: &mut StitchCore, value: u8| {
+            core.run_detection_frames(&[(
+                0,
+                DetectorFrame::Yuv(YuvView {
+                    y: &[value; 4],
+                    chroma: ChromaPlanes::Yuv420p {
+                        u: &[128],
+                        v: &[128],
+                    },
+                    width: 2,
+                    height: 2,
+                }),
+            )]);
+        };
+        detect(&mut core, 1);
+        core.update_trackers(0, 0.0);
+        core.update_trackers(1, 33.3);
+        detect(&mut core, 0);
+        core.update_trackers(2, 66.6);
+        detect(&mut core, 1);
+        detect(&mut core, 2);
+        core.update_trackers(3, 99.9);
+        detect(&mut core, 1);
+        core.set_detector(Box::new(ScriptedDetector));
+        core.update_trackers(4, 133.2);
+        detect(&mut core, 1);
+        core.clear_detector();
+        core.update_trackers(5, 166.5);
+        assert_eq!(
+            *log.lock().unwrap(),
+            [
+                (1, true),
+                (1, false),
+                (0, true),
+                (0, false),
+                (0, false),
+                (0, false)
+            ]
+        );
+    }
+
     #[test]
     fn run_detection_frames_dispatches_both_cameras() {
         use crate::detect::detector::{

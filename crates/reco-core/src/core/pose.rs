@@ -77,6 +77,7 @@ impl super::StitchCore {
             self.event_sink.as_deref_mut(),
             crate::detect::panner::DispatchContext {
                 detections: &self.last_detections,
+                fresh: std::mem::take(&mut self.detections_fresh),
                 calibration: self.executor.calibration(),
                 frame_index: index,
                 timestamp_ms,
@@ -91,7 +92,7 @@ impl super::StitchCore {
     }
 
     /// Run trackers only (no panner advance) - the lookahead produce
-    /// phase. Consumes the cached detections; returns the assembled
+    /// phase. Consumes measurement freshness once while retaining the cache; returns the assembled
     /// [`WorldState`] for buffering.
     pub fn update_trackers(&mut self, index: u64, timestamp_ms: f64) -> WorldState {
         crate::detect::panner::run_trackers(
@@ -99,6 +100,7 @@ impl super::StitchCore {
             self.ball_tracker.as_mut(),
             crate::detect::panner::DispatchContext {
                 detections: &self.last_detections,
+                fresh: std::mem::take(&mut self.detections_fresh),
                 calibration: self.executor.calibration(),
                 frame_index: index,
                 timestamp_ms,
@@ -160,9 +162,13 @@ impl super::StitchCore {
             return;
         };
         let mut out = Vec::new();
+        let mut fresh = false;
         for (camera, frame) in frames {
             match detector.detect(*camera, frame) {
-                Ok(v) => out.extend(v),
+                Ok(v) => {
+                    fresh = true;
+                    out.extend(v);
+                }
                 Err(DetectorError::UnsupportedFrameKind) => log::debug!(
                     "StitchCore detector '{}' does not support this frame residency ({camera:?})",
                     detector.name()
@@ -171,6 +177,7 @@ impl super::StitchCore {
             }
         }
         self.last_detections = self.map_detections(out);
+        self.detections_fresh = fresh;
     }
 
     /// Run detection on a stereo YUV420P frame pair - wraps each

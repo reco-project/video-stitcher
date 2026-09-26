@@ -54,10 +54,7 @@ use crate::trackers::filters::{CoastStatus, Coaster};
 /// false losses during fast plays.
 pub const DEFAULT_MAX_JUMP_RAD: f32 = 0.35;
 
-/// Default coast budget in sample-frames (tracker calls). At the
-/// POC's every-5-source-frames cadence on 30 fps footage, 20
-/// sample-frames ≈ 3.3 seconds of held position — matches what the
-/// POC's 4-minute DJI+GoPro evaluations settled on.
+/// Default coast budget in video frames, independent of the detection interval.
 pub const DEFAULT_COAST_FRAMES: u32 = 20;
 
 /// Default player-anchor radius in radians (~11°). Equivalent to
@@ -187,7 +184,13 @@ impl BallTracker {
 }
 
 impl Tracker for BallTracker {
-    fn update(&mut self, detections: &[MappedDetection], timestamp_ms: f64) -> Vec<TrackedEntity> {
+    fn update(
+        &mut self,
+        detections: &[MappedDetection],
+        fresh: bool,
+        _timestamp_ms: f64,
+    ) -> Vec<TrackedEntity> {
+        let detections = if fresh { detections } else { &[] };
         // Step 1-4: filter candidates down to survivors.
         let mut survivors: Vec<&MappedDetection> = Vec::with_capacity(detections.len());
         for det in detections {
@@ -232,7 +235,6 @@ impl Tracker for BallTracker {
                 pitch: pos.pitch,
                 origin: det.camera,
             });
-            let _ = timestamp_ms;
             self.age_frames = self.age_frames.saturating_add(1);
 
             if was_new_track {
@@ -368,9 +370,59 @@ mod tests {
     }
 
     #[test]
+    fn retained_measurements_do_not_reset_or_reacquire_a_track() {
+        let mut tracker = BallTracker::new(0).with_max_coast_frames(2);
+        let detections = [det(0, 0.2, 0.1, 0.8, 0.5, 0.5)];
+        assert_eq!(
+            tracker.update(&detections, true, 0.0)[0].state,
+            TrackState::Tracking
+        );
+        for frame in 1..=2 {
+            let held = tracker.update(&detections, false, frame as f64 * 33.3);
+            assert_eq!(held[0].state, TrackState::Coasting);
+            assert_eq!(held[0].yaw, 0.2);
+        }
+        assert_eq!(
+            tracker.update(&detections, false, 99.9)[0].state,
+            TrackState::Lost
+        );
+        assert!(tracker.update(&detections, false, 133.2).is_empty());
+        assert_eq!(
+            tracker.update(&detections, true, 166.5)[0].state,
+            TrackState::Tracking
+        );
+    }
+
+    #[test]
+    fn loss_budget_is_independent_of_detection_interval() {
+        for interval in [1, 3, 5, 30] {
+            let mut tracker = BallTracker::new(0).with_max_coast_frames(4);
+            let detections = [det(0, 0.2, 0.1, 0.8, 0.5, 0.5)];
+            tracker.update(&detections, true, 0.0);
+            let mut cached = detections.as_slice();
+            for frame in 1..=5 {
+                let fresh = frame % interval == 0;
+                if fresh {
+                    cached = &[];
+                }
+                let out = tracker.update(cached, fresh, frame as f64 * 33.3);
+                assert_eq!(
+                    out[0].state,
+                    if frame <= 4 {
+                        TrackState::Coasting
+                    } else {
+                        TrackState::Lost
+                    },
+                    "interval={interval}, frame={frame}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn empty_detections_produce_nothing() {
         let mut t = BallTracker::new(0);
-        let out = t.update(&[], 0.0);
+        let out = t.update(&[], true, 0.0);
         assert!(out.is_empty());
     }
 
@@ -378,7 +430,7 @@ mod tests {
     fn first_detection_emits_tracking() {
         let mut t = BallTracker::new(0);
         let d = det(0, 0.2, 0.1, 0.8, 0.5, 0.5);
-        let out = t.update(&[d], 0.0);
+        let out = t.update(&[d], true, 0.0);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].state, TrackState::Tracking);
         assert_eq!(out[0].yaw, 0.2);
@@ -391,7 +443,7 @@ mod tests {
         let mut t = BallTracker::new(32); // sports ball
         let d = det(0, 0.2, 0.1, 0.8, 0.5, 0.5);
         // d has class_id=0, tracker wants 32 — should be ignored.
-        let out = t.update(&[d], 0.0);
+        let out = t.update(&[d], true, 0.0);
         assert!(out.is_empty());
     }
 
@@ -400,7 +452,7 @@ mod tests {
         let mut t = BallTracker::new(0);
         let mut d = det(0, 0.2, 0.1, 0.8, 0.5, 0.5);
         d.position = None;
-        let out = t.update(&[d], 0.0);
+        let out = t.update(&[d], true, 0.0);
         assert!(out.is_empty());
     }
 
@@ -409,16 +461,16 @@ mod tests {
         let mut t = BallTracker::new(0).with_max_coast_frames(3);
         // Frame 1: acquire.
         let d1 = det(0, 0.2, 0.1, 0.8, 0.5, 0.5);
-        let out1 = t.update(&[d1], 0.0);
+        let out1 = t.update(&[d1], true, 0.0);
         assert_eq!(out1[0].state, TrackState::Tracking);
         // Frames 2-3: no detection, coasting.
-        let out2 = t.update(&[], 16.6);
+        let out2 = t.update(&[], true, 16.6);
         assert_eq!(out2[0].state, TrackState::Coasting);
-        let out3 = t.update(&[], 33.3);
+        let out3 = t.update(&[], true, 33.3);
         assert_eq!(out3[0].state, TrackState::Coasting);
         // Frame 4: reacquire — state back to Tracking.
         let d4 = det(0, 0.21, 0.11, 0.7, 0.51, 0.51);
-        let out4 = t.update(&[d4], 50.0);
+        let out4 = t.update(&[d4], true, 50.0);
         assert_eq!(out4[0].state, TrackState::Tracking);
     }
 
@@ -426,14 +478,14 @@ mod tests {
     fn coast_then_lost() {
         let mut t = BallTracker::new(0).with_max_coast_frames(2);
         let d = det(0, 0.2, 0.1, 0.8, 0.5, 0.5);
-        t.update(&[d], 0.0);
-        t.update(&[], 16.6); // coast 1
-        t.update(&[], 33.3); // coast 2
-        let out = t.update(&[], 50.0);
+        t.update(&[d], true, 0.0);
+        t.update(&[], true, 16.6); // coast 1
+        t.update(&[], true, 33.3); // coast 2
+        let out = t.update(&[], true, 50.0);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].state, TrackState::Lost);
         // One more — already lost, nothing to emit.
-        let out2 = t.update(&[], 66.6);
+        let out2 = t.update(&[], true, 66.6);
         assert!(out2.is_empty());
     }
 
@@ -442,10 +494,10 @@ mod tests {
         let mut t = BallTracker::new(0).with_max_jump_rad(0.1);
         // Acquire at yaw=0.
         let d1 = det(0, 0.0, 0.0, 0.9, 0.5, 0.5);
-        t.update(&[d1], 0.0);
+        t.update(&[d1], true, 0.0);
         // Big jump to yaw=1.0 — exceeds 0.1 gate.
         let d2 = det(0, 1.0, 0.0, 0.9, 0.5, 0.5);
-        let out = t.update(&[d2], 16.6);
+        let out = t.update(&[d2], true, 16.6);
         // No fresh accepted — tracker coasts on the last known.
         assert_eq!(out[0].state, TrackState::Coasting);
         assert_eq!(out[0].yaw, 0.0);
@@ -456,14 +508,14 @@ mod tests {
         let mut t = BallTracker::new(0).with_max_jump_rad(0.3);
         // Acquire on left at yaw=0.15.
         let d1 = det(0, 0.15, 0.0, 0.8, 0.9, 0.5);
-        let out1 = t.update(&[d1], 0.0);
+        let out1 = t.update(&[d1], true, 0.0);
         assert_eq!(out1[0].origin, 0);
         // Next frame: right camera reports the same ball at close yaw.
         // Even though pixel coords are totally different (ball now at
         // left edge of right frame), the panorama yaw distance (0.05)
         // is within max_jump — tracker must switch cameras.
         let d2 = det(1, 0.20, 0.0, 0.75, 0.05, 0.5);
-        let out2 = t.update(&[d2], 16.6);
+        let out2 = t.update(&[d2], true, 16.6);
         assert_eq!(out2[0].state, TrackState::Tracking);
         assert_eq!(out2[0].origin, 1);
     }
@@ -485,7 +537,7 @@ mod tests {
         t.set_players(&[player]);
         // Ball at yaw=0.2 is 0.8 rad from player — rejected.
         let d = det(0, 0.2, 0.0, 0.9, 0.5, 0.5);
-        let out = t.update(&[d], 0.0);
+        let out = t.update(&[d], true, 0.0);
         assert!(out.is_empty());
     }
 
@@ -494,7 +546,7 @@ mod tests {
         let mut t = BallTracker::new(0).with_player_anchor_rad(0.1);
         // No set_players() call — filter should not reject.
         let d = det(0, 0.2, 0.0, 0.9, 0.5, 0.5);
-        let out = t.update(&[d], 0.0);
+        let out = t.update(&[d], true, 0.0);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].state, TrackState::Tracking);
     }
@@ -527,7 +579,7 @@ mod tests {
         // A ball far from the (only) player must be rejected by the
         // anchor filter — proves observe_world propagated players.
         let d = det(0, 0.2, 0.0, 0.9, 0.5, 0.5);
-        let out = t.update(&[d], 0.0);
+        let out = t.update(&[d], true, 0.0);
         assert!(out.is_empty(), "observe_world did not populate anchors");
     }
 
@@ -550,7 +602,7 @@ mod tests {
         t.set_players(&[player]);
         t.observe_world(&WorldState::default());
         let d = det(0, 0.2, 0.0, 0.9, 0.5, 0.5);
-        let out = t.update(&[d], 0.0);
+        let out = t.update(&[d], true, 0.0);
         assert_eq!(out.len(), 1, "empty world should reset anchors");
     }
 
@@ -559,13 +611,13 @@ mod tests {
         let mut t = BallTracker::new(0).with_max_jump_rad(1.0);
         // Acquire at yaw=0.0.
         let d0 = det(0, 0.0, 0.0, 0.9, 0.5, 0.5);
-        t.update(&[d0], 0.0);
+        t.update(&[d0], true, 0.0);
         // Two candidates: one high-conf far (0.4 rad), one low-conf close (0.05 rad).
         // Score balances proximity against confidence (0.1-rad weight);
         // the close candidate wins because proximity dominates.
         let far = det(0, 0.40, 0.0, 0.95, 0.5, 0.5);
         let near = det(0, 0.05, 0.0, 0.55, 0.5, 0.5);
-        let out = t.update(&[far, near], 16.6);
+        let out = t.update(&[far, near], true, 16.6);
         assert_eq!(out.len(), 1);
         assert!(
             (out[0].yaw - 0.05).abs() < 1e-6,

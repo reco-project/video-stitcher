@@ -172,10 +172,11 @@ struct MockTracker {
 }
 
 /// Snapshot of what a tracker saw on a single `update()` call.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct TrackerSnapshot {
     frame_index: u64,
     detection_count: usize,
+    fresh: bool,
 }
 
 impl MockTracker {
@@ -185,13 +186,19 @@ impl MockTracker {
 }
 
 impl Tracker for MockTracker {
-    fn update(&mut self, detections: &[MappedDetection], _timestamp_ms: f64) -> Vec<TrackedEntity> {
+    fn update(
+        &mut self,
+        detections: &[MappedDetection],
+        fresh: bool,
+        _timestamp_ms: f64,
+    ) -> Vec<TrackedEntity> {
         // Session bumps frame_count after dispatch, so `log.len()` is
         // the per-call frame_index we see.
         let frame_index = self.log.lock().unwrap().len() as u64;
         self.log.lock().unwrap().push(TrackerSnapshot {
             frame_index,
             detection_count: detections.len(),
+            fresh,
         });
         vec![TrackedEntity {
             id: 0,
@@ -413,11 +420,61 @@ fn tracker_receives_detections() {
     // So each frame produces 4 mapped detections the tracker observes.
     for (i, snapshot) in log.iter().enumerate() {
         assert_eq!(snapshot.frame_index, i as u64);
+        assert!(snapshot.fresh);
         assert!(
             snapshot.detection_count > 0,
             "frame {i}: tracker should receive non-empty detections, got {}",
             snapshot.detection_count,
         );
+    }
+}
+
+#[test]
+#[ignore] // requires GPU
+fn tracker_freshness_matches_inference_with_and_without_lookahead() {
+    for lookahead in [0, 2] {
+        let calls = Arc::new(AtomicU64::new(0));
+        let detector = MockDetector::new(
+            vec![Detection {
+                camera: 0,
+                class_id: 0,
+                confidence: 0.9,
+                center_x: 0.5,
+                center_y: 0.5,
+                width: 0.1,
+                height: 0.1,
+            }],
+            calls.clone(),
+        );
+        let mut session = build_test_session(None, Some(Box::new(detector)), 3).unwrap();
+        session.core_mut().set_constrained_look(false);
+        session.set_lookahead(lookahead);
+        let log = Arc::new(Mutex::new(Vec::new()));
+        session.set_ball_tracker(Box::new(MockTracker::new(0, log.clone())));
+        session.set_panner(Box::new(MockPanner {
+            position: WorldPose::default(),
+        }));
+        let processed = session
+            .run(
+                &mut MockSource::new(9),
+                u64::MAX,
+                &AtomicBool::new(false),
+                None,
+            )
+            .unwrap();
+        session.finish().unwrap();
+        assert_eq!(processed.frames_processed, 9);
+        assert_eq!(calls.load(Ordering::Relaxed), 6);
+        let log = log.lock().unwrap();
+        assert_eq!(log.len(), 9);
+        for (frame, observation) in log.iter().enumerate() {
+            assert_eq!(
+                observation.fresh,
+                frame % 3 == 0,
+                "lookahead={lookahead}, frame={frame}"
+            );
+            assert!(observation.detection_count > 0);
+        }
     }
 }
 
@@ -741,19 +798,17 @@ fn push_and_pull_share_one_ai_brain() {
     // Pull side: session.run over a mock source.
     let pull_calls = Arc::new(AtomicU64::new(0));
     let pull_log = Arc::new(Mutex::new(Vec::new()));
+    let pull_tracks = Arc::new(Mutex::new(Vec::new()));
     let mut session = build_test_session(
         None,
         Some(Box::new(MockDetector::new(
             canned.clone(),
             Arc::clone(&pull_calls),
         ))),
-        1,
+        3,
     )
     .expect("session build");
-    session.set_ball_tracker(Box::new(MockTracker::new(
-        0,
-        Arc::new(Mutex::new(Vec::new())),
-    )));
+    session.set_ball_tracker(Box::new(MockTracker::new(0, pull_tracks.clone())));
     session.set_panner(Box::new(RecordingPanner {
         log: Arc::clone(&pull_log),
     }));
@@ -795,11 +850,10 @@ fn push_and_pull_share_one_ai_brain() {
         .expect("engine");
     let push_calls = Arc::new(AtomicU64::new(0));
     let push_log = Arc::new(Mutex::new(Vec::new()));
+    let push_tracks = Arc::new(Mutex::new(Vec::new()));
     core.set_detector(Box::new(MockDetector::new(canned, Arc::clone(&push_calls))));
-    core.set_ball_tracker(Box::new(MockTracker::new(
-        0,
-        Arc::new(Mutex::new(Vec::new())),
-    )));
+    core.set_detection_interval(3);
+    core.set_ball_tracker(Box::new(MockTracker::new(0, push_tracks.clone())));
     core.set_panner(Box::new(RecordingPanner {
         log: Arc::clone(&push_log),
     }));
@@ -811,6 +865,10 @@ fn push_and_pull_share_one_ai_brain() {
 
     let pull = pull_log.lock().unwrap();
     let push = push_log.lock().unwrap();
+    assert_eq!(*pull_tracks.lock().unwrap(), *push_tracks.lock().unwrap());
+    for (frame, observation) in push_tracks.lock().unwrap().iter().enumerate() {
+        assert_eq!(observation.fresh, frame % 3 == 0);
+    }
     assert_eq!(pull.len() as u64, FRAMES, "pull dispatched once per frame");
     assert_eq!(
         *pull, *push,

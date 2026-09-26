@@ -164,12 +164,18 @@ pub trait Tracker: Send {
     /// already contains [`WorldState::players`] from this frame.
     fn observe_world(&mut self, _world: &WorldState) {}
 
-    /// Incorporate the current frame's mapped detections and return
-    /// the updated set of tracked entities for this tracker's class.
+    /// Advance one video frame and return this class's current entities.
+    ///
+    /// `fresh` means the detections contain a new measurement batch. Otherwise they are retained observations, not evidence that an object was seen again. A fresh empty slice means inference succeeded but found nothing. Missing measurements must not reset a track's loss budget. Retained observations may still support held estimates.
     ///
     /// `timestamp_ms` is elapsed-since-session-start milliseconds,
     /// monotonically increasing across calls.
-    fn update(&mut self, detections: &[MappedDetection], timestamp_ms: f64) -> Vec<TrackedEntity>;
+    fn update(
+        &mut self,
+        detections: &[MappedDetection],
+        fresh: bool,
+        timestamp_ms: f64,
+    ) -> Vec<TrackedEntity>;
 
     /// The detection class this tracker cares about. Used by a
     /// class splitter in the session loop to route detections
@@ -190,6 +196,7 @@ mod tests {
         fn update(
             &mut self,
             _detections: &[MappedDetection],
+            _fresh: bool,
             _timestamp_ms: f64,
         ) -> Vec<TrackedEntity> {
             self.emit.clone()
@@ -218,7 +225,7 @@ mod tests {
             class_id: 32,
             emit: vec![entity(7, 0.25)],
         });
-        let out = t.update(&[], 0.0);
+        let out = t.update(&[], true, 0.0);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].id, 7);
         assert_eq!(out[0].yaw, 0.25);

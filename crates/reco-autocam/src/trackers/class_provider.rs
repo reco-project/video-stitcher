@@ -1,37 +1,14 @@
 //! Stateless class provider: projects the current frame's detections of
 //! one class into world entities, with no temporal tracking.
 //!
-//! # Why there is no tracking here
-//!
-//! A panner that aggregates a point cloud (the [`FieldPanner`] cluster)
-//! gets its robustness from the aggregation itself - the trim discards
-//! outliers - so per-entity identity, age, matching, velocity, and
-//! coasting have no consumer on the control path (verified by grep: only
-//! tests referenced them). Per the "every component needs a proven
-//! purpose" rule they are gone; recover them from git history if a
-//! future consumer (e.g. per-entity highlight overlays) needs identity.
-//!
-//! This is the counterpart to [`BallTracker`](crate::trackers::BallTracker):
-//! the ball is a noisy *singleton* with no cloud to average against, so
-//! it keeps a stateful tracker (jump-gate, coast, player-anchor). A
-//! point-cloud class (players, and later referees/keepers) needs none of
-//! that and uses this provider instead. The two are the [`Tracker`]
-//! trait's two real shapes.
-//!
-//! # Why there is no coast
-//!
-//! Detection-interval gaps are already bridged upstream: on the frames
-//! between detection cycles the session re-runs trackers on the
-//! *retained* `last_detections`, so the same entities are re-emitted
-//! every frame without any coast state here.
+//! [`FieldPanner`] aggregates a point cloud, so this provider needs no identity matching or trajectory state. It emits newly measured positions as tracking and retained observations as coasting, preserving confidence for cluster weighting. The core owns the detection cache; a successful empty batch removes the cloud. See `same_detections_emit_same_entities_across_frames`.
 //!
 //! [`FieldPanner`]: crate::panners::FieldPanner
 
 use reco_core::detect::mapped_detection::MappedDetection;
-use reco_core::detect::tracker::{TrackState, TrackedEntity, Tracker, WorldState};
+use reco_core::detect::tracker::{TrackState, TrackedEntity, Tracker};
 
-/// Emits this frame's detections of a single class as live tracked
-/// entities, one per detection, with no temporal state.
+/// Emits measured or retained detections of one class without temporal state.
 ///
 /// The identity fields it cannot meaningfully fill (`id`, `age_frames`)
 /// are left at `0`; `origin` records the reporting camera for
@@ -48,7 +25,12 @@ impl ClassProvider {
 }
 
 impl Tracker for ClassProvider {
-    fn update(&mut self, detections: &[MappedDetection], _timestamp_ms: f64) -> Vec<TrackedEntity> {
+    fn update(
+        &mut self,
+        detections: &[MappedDetection],
+        fresh: bool,
+        _timestamp_ms: f64,
+    ) -> Vec<TrackedEntity> {
         detections
             .iter()
             .filter(|d| d.class_id == self.class_id)
@@ -60,7 +42,11 @@ impl Tracker for ClassProvider {
                     yaw: pos.yaw,
                     pitch: pos.pitch,
                     confidence: d.confidence,
-                    state: TrackState::Tracking,
+                    state: if fresh {
+                        TrackState::Tracking
+                    } else {
+                        TrackState::Coasting
+                    },
                     age_frames: 0,
                     origin: d.camera,
                 })
@@ -70,10 +56,6 @@ impl Tracker for ClassProvider {
 
     fn class_id(&self) -> u16 {
         self.class_id
-    }
-
-    fn observe_world(&mut self, _world: &WorldState) {
-        // Stateless: nothing to observe.
     }
 }
 
@@ -102,7 +84,7 @@ mod tests {
             det(0, 0.5, 0.0, 0.8),
             det(1, -0.5, 0.0, 0.7),
         ];
-        let out = t.update(&dets, 0.0);
+        let out = t.update(&dets, true, 0.0);
         assert_eq!(out.len(), 3);
         assert!(out.iter().all(|e| e.state == TrackState::Tracking));
         // Positions and confidence pass straight through.
@@ -117,18 +99,22 @@ mod tests {
         // don't flicker without any coast state.
         let mut t = ClassProvider::new(0);
         let dets = vec![det(0, 0.1, 0.0, 0.9), det(0, 0.2, 0.0, 0.9)];
-        let a = t.update(&dets, 0.0);
-        let b = t.update(&dets, 16.7);
+        let a = t.update(&dets, true, 0.0);
+        let b = t.update(&dets, false, 16.7);
         assert_eq!(a.len(), b.len());
         for (x, y) in a.iter().zip(b.iter()) {
             assert!((x.yaw - y.yaw).abs() < 1e-6 && (x.pitch - y.pitch).abs() < 1e-6);
+            assert_eq!(x.confidence, y.confidence);
+            assert_eq!(x.state, TrackState::Tracking);
+            assert_eq!(y.state, TrackState::Coasting);
         }
+        assert!(t.update(&[], true, 33.4).is_empty());
     }
 
     #[test]
     fn no_detections_means_no_entities() {
         let mut t = ClassProvider::new(0);
-        assert!(t.update(&[], 0.0).is_empty());
+        assert!(t.update(&[], true, 0.0).is_empty());
     }
 
     #[test]
@@ -136,7 +122,7 @@ mod tests {
         let mut t = ClassProvider::new(0);
         let mut other = det(0, 0.3, 0.0, 0.9);
         other.class_id = 5;
-        let out = t.update(&[other, det(0, 0.1, 0.0, 0.9)], 0.0);
+        let out = t.update(&[other, det(0, 0.1, 0.0, 0.9)], true, 0.0);
         assert_eq!(out.len(), 1, "the class-5 detection is filtered out");
         assert!((out[0].yaw - 0.1).abs() < 1e-6);
     }
@@ -146,7 +132,7 @@ mod tests {
         let mut t = ClassProvider::new(0);
         let mut no_pos = det(0, 0.3, 0.0, 0.9);
         no_pos.position = None;
-        let out = t.update(&[no_pos], 0.0);
+        let out = t.update(&[no_pos], true, 0.0);
         assert!(out.is_empty());
     }
 
