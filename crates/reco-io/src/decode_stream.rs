@@ -8,6 +8,11 @@ use reco_core::source::SourceError;
 mod restart;
 pub(crate) use restart::Restartable;
 
+#[cfg(any(target_os = "windows", test))]
+mod owned_pair;
+#[cfg(any(target_os = "windows", test))]
+pub(crate) use owned_pair::OwnedPair;
+
 pub(crate) type Message<T> = Result<Option<T>, SourceError>;
 
 pub(crate) fn disconnected() -> SourceError {

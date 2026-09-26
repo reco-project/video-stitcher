@@ -70,15 +70,13 @@ enum WindowsDecodeState {
         sync_offset: i64,
     },
     Running {
-        pair_rx: std::sync::mpsc::Receiver<
-            crate::decode_stream::Message<crate::zero_copy::D3d11FramePair>,
-        >,
+        pair_rx: crate::decode_stream::OwnedPair<crate::ffmpeg::decoder::D3d11Frame>,
     },
+    Failed(SourceError),
 }
 
 #[cfg(target_os = "windows")]
 struct WindowsZeroCopyState {
-    decode: WindowsDecodeState,
     /// Holds the D3d11Frame pair from the most recent `next_frame()` call.
     ///
     /// The `_frame_ref` inside each D3d11Frame pins the decode pool slice
@@ -90,6 +88,8 @@ struct WindowsZeroCopyState {
     /// Dropped when the next pair arrives (or the source is dropped),
     /// which is always after `stage_frame` has completed for this pair.
     live_frame_guard: Option<crate::zero_copy::D3d11FramePair>,
+    // Release the displayed surfaces before cancelling and joining workers.
+    decode: WindowsDecodeState,
 }
 
 #[cfg(target_os = "windows")]
@@ -104,8 +104,11 @@ impl WindowsZeroCopyState {
             let left = left.clone();
             let right = right.clone();
             let sync_offset = *sync_offset;
-            let pair_rx = crate::zero_copy::spawn_d3d11_decode_pair(&left, &right, sync_offset);
-            self.decode = WindowsDecodeState::Running { pair_rx };
+            self.decode =
+                match crate::zero_copy::spawn_d3d11_decode_pair(&left, &right, sync_offset) {
+                    Ok(pair_rx) => WindowsDecodeState::Running { pair_rx },
+                    Err(error) => WindowsDecodeState::Failed(error),
+                };
         }
     }
 }
@@ -657,13 +660,12 @@ impl FrameSource for SmartFileSource {
             #[cfg(target_os = "windows")]
             SourceMode::D3d11ZeroCopy(state) => {
                 state.ensure_running();
-                let pair_rx = match &state.decode {
-                    WindowsDecodeState::Running { pair_rx } => pair_rx,
+                let result = match &state.decode {
+                    WindowsDecodeState::Running { pair_rx } => pair_rx.receive(),
+                    WindowsDecodeState::Failed(error) => Err(error.clone()),
                     _ => unreachable!(),
                 };
-                match crate::decode_stream::receive(pair_rx)
-                    .inspect_err(|error| self.terminal_error = Some(error.clone()))?
-                {
+                match result.inspect_err(|error| self.terminal_error = Some(error.clone()))? {
                     Some((left, right)) => {
                         let frames = FrameSet::D3d11Resident([
                             reco_core::source::D3d11CameraFrame {
@@ -795,8 +797,8 @@ impl FrameSource for SmartFileSource {
 
 impl Drop for SmartFileSource {
     fn drop(&mut self) {
-        // D3D11VA and Metal own their queued frames. Their receivers drop
-        // with the mode; only CUDA borrows allocations requiring a join here.
+        // Windows joins through its owned stream. CUDA additionally borrows
+        // allocations that must remain mapped until its workers finish.
         #[cfg(target_os = "linux")]
         if let SourceMode::GpuZeroCopy(state) = &mut self.mode {
             // Graceful shutdown ordering to prevent CUDA error 700:

@@ -3,6 +3,9 @@
 //! Frame messages are followed by explicit EOF or failure. CUDA copies finish
 //! before a slot is published; Metal and D3D11 messages retain their surfaces.
 
+#[cfg(all(test, target_os = "windows"))]
+mod windows_tests;
+
 #[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))]
 use crate::decode_stream::{Message, pair, spawn};
 #[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))]
@@ -197,22 +200,32 @@ fn spawn_d3d11_decode_thread_shared(
     input: crate::stitch_job::InputPath,
     label: &'static str,
     shared_device: crate::ffmpeg::decoder::SharedHwDevice,
-) -> std::sync::mpsc::Receiver<Message<crate::ffmpeg::decoder::D3d11Frame>> {
-    spawn(
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> (
+    std::sync::mpsc::Receiver<Message<crate::ffmpeg::decoder::D3d11Frame>>,
+    crate::decoder_cleanup::DecoderTask,
+) {
+    let (rx, worker) = spawn(
         format!("d3d11_decode_{label}"),
         4,
         move |tx| -> Result<(), DecodeError> {
+            if stop.load(std::sync::atomic::Ordering::Relaxed) {
+                return Ok(());
+            }
             let mut dec = VideoDecoder::open_input_with_shared_device(&input, &shared_device)?;
             log::info!("D3D11VA decode thread {label}: backend={}", dec.backend());
-            while let Some(frame) = dec.next_frame_d3d11()? {
+            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                let Some(frame) = dec.next_frame_d3d11()? else {
+                    break;
+                };
                 if tx.send(Ok(Some(frame))).is_err() {
                     break;
                 }
             }
             Ok(())
         },
-    )
-    .0
+    );
+    (rx, crate::decoder_cleanup::DecoderTask::new(worker))
 }
 
 #[cfg(target_os = "windows")]
@@ -227,21 +240,37 @@ pub(crate) type D3d11FramePair = (
 /// Positive `sync_offset` skips right frames; negative skips left frames.
 /// The receiver emits retained texture pairs, then explicit EOF or an error.
 #[cfg(target_os = "windows")]
-pub fn spawn_d3d11_decode_pair(
+pub(crate) fn spawn_d3d11_decode_pair(
     left: &crate::stitch_job::InputPath,
     right: &crate::stitch_job::InputPath,
     sync_offset: i64,
-) -> std::sync::mpsc::Receiver<Message<D3d11FramePair>> {
-    let Some(shared_device) = crate::ffmpeg::decoder::create_shared_hw_device() else {
-        let (tx, rx) = std::sync::mpsc::sync_channel(1);
-        let _ = tx.send(Err(reco_core::source::SourceError::Init {
+) -> Result<
+    crate::decode_stream::OwnedPair<crate::ffmpeg::decoder::D3d11Frame>,
+    reco_core::source::SourceError,
+> {
+    let shared_device = crate::ffmpeg::decoder::create_shared_hw_device().ok_or_else(|| {
+        reco_core::source::SourceError::Init {
             path: "D3D11VA".into(),
             reason: "hardware device creation failed".into(),
-        }));
-        return rx;
-    };
-    let left_rx = spawn_d3d11_decode_thread_shared(left.clone(), "left", shared_device.new_ref());
-    let right_rx =
-        spawn_d3d11_decode_thread_shared(right.clone(), "right", shared_device.new_ref());
-    pair(left_rx, right_rx, sync_offset, 4, |frames| frames).0
+        }
+    })?;
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let left = spawn_d3d11_decode_thread_shared(
+        left.clone(),
+        "left",
+        shared_device.new_ref(),
+        stop.clone(),
+    );
+    let right = spawn_d3d11_decode_thread_shared(
+        right.clone(),
+        "right",
+        shared_device.new_ref(),
+        stop.clone(),
+    );
+    Ok(crate::decode_stream::OwnedPair::new(
+        left,
+        right,
+        sync_offset,
+        stop,
+    ))
 }
