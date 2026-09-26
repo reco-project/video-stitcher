@@ -84,21 +84,24 @@ impl Playback {
             FfmpegFileSource::open_inputs(&[left.clone(), right.clone()], sync_offset, false)?;
         let info = source.info();
         let fps = info.fps;
-        self.total_frames = source.total_frames();
-        self.frame_duration = if fps > 0.0 {
+        let mut candidate = Self::new();
+        candidate.total_frames = source.total_frames();
+        candidate.frame_duration = if fps > 0.0 {
             Duration::from_secs_f64(1.0 / fps)
         } else {
             Duration::from_millis(33)
         };
-        self.info = Some(info);
-        self.source = Some(source);
-        self.state = PlayState::Paused;
-        self.frame_index = 0;
-        self.current_frame = None;
-        self.playback_anchor = None;
+        candidate.info = Some(info);
+        candidate.source = Some(source);
+        candidate.state = PlayState::Paused;
 
-        // Decode the first frame so we have something to display.
-        self.step_forward()?;
+        // Keep the working source until the replacement can display a frame.
+        if !candidate.step_forward()? {
+            return Err(SourceError::Read {
+                reason: "no paired frames available at the requested sync offset".into(),
+            });
+        }
+        *self = candidate;
         Ok(())
     }
 
@@ -256,5 +259,43 @@ impl Playback {
 
     pub fn input_dimensions(&self) -> Option<(u32, u32)> {
         self.info.as_ref().map(|i| (i.width, i.height))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires RECO_PLAYBACK_TEST_VIDEO pointing to a short, multi-frame video"]
+    fn file_replacement_preserves_playback_on_first_frame_failure() {
+        let path = std::path::PathBuf::from(std::env::var("RECO_PLAYBACK_TEST_VIDEO").unwrap());
+        let input = InputPath::Single(path.clone());
+        let missing = path.with_file_name("missing-playback-test-input.mp4");
+        assert!(!missing.exists());
+        let mut playback = Playback::new();
+        playback.open(&input, &input, 0).unwrap();
+        for fraction in [0.6, 0.1, 0.8, 0.0] {
+            playback.seek(fraction).unwrap();
+            assert!(playback.current_frame().is_some());
+        }
+        let before = playback.current_frame().unwrap().left.y.clone();
+        let index = playback.frame_index();
+        let total = playback.total_frames();
+        let past_end = (total.unwrap() * 2 + 1) as i64;
+        // Both first segments probe successfully. Advancing the right input
+        // into a missing segment fails inside the decode worker.
+        let broken = InputPath::Chained(vec![path, missing]);
+        let error = playback.open(&input, &broken, past_end).unwrap_err();
+        assert!(matches!(error, SourceError::Read { .. }), "{error}");
+        assert_eq!(playback.frame_index(), index);
+        assert_eq!(playback.total_frames(), total);
+        assert_eq!(playback.current_frame().unwrap().left.y, before);
+        assert!(playback.open(&input, &input, past_end).is_err());
+        assert_eq!(playback.current_frame().unwrap().left.y, before);
+        assert!(playback.step_forward().unwrap());
+        playback.open(&input, &input, 1).unwrap();
+        assert_eq!(playback.frame_index(), 1);
+        assert_eq!(playback.state(), PlayState::Paused);
     }
 }

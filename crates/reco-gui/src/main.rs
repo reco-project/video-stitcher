@@ -1018,7 +1018,7 @@ impl AppState {
     /// rebuilding the GPU pipeline. Used after a segment reorder: the
     /// calibration and bridge are unchanged, only the decode order differs,
     /// so the next render picks up the new order from the start.
-    fn reopen_source(&mut self) {
+    fn reopen_source(&mut self, app: &RecoApp) {
         // Nothing consumes the source until a preview pipeline exists (e.g.
         // before calibration), so skip the costly decoder open. try_init opens
         // it in the current order once calibration is loaded.
@@ -1035,6 +1035,18 @@ impl AppState {
             let right = right.clone();
             if let Err(e) = self.playback.open(&left, &right, offset) {
                 log::error!("Failed to reopen playback after reorder: {e}");
+                // The list already contains the new order. Keeping the old
+                // preview would misrepresent what export will read.
+                self.unload_pipeline();
+                app.set_files_loaded(false);
+                app.set_playing(false);
+                app.set_preview_frame(slint::Image::default());
+                self.toasts.push(
+                    Severity::Error,
+                    "Could not reopen reordered inputs",
+                    e.to_string(),
+                );
+                crate::toast::sync_to_ui(&self.toasts, app);
                 return;
             }
             if let Some(bridge) = &mut self.bridge {
@@ -2486,8 +2498,11 @@ fn main() -> anyhow::Result<()> {
         // and repaints immediately, then the (slow) 4K concat re-probe runs on
         // the next tick instead of freezing the UI on every drop.
         let reopen = Rc::clone(&state_ref);
+        let app_weak = app_weak.clone();
         slint::Timer::single_shot(std::time::Duration::from_millis(40), move || {
-            reopen.borrow_mut().reopen_source();
+            if let Some(app) = app_weak.upgrade() {
+                reopen.borrow_mut().reopen_source(&app);
+            }
         });
     });
 
@@ -2524,8 +2539,11 @@ fn main() -> anyhow::Result<()> {
         drop(s);
         // Re-open the preview source off the drop handler (see left handler).
         let reopen = Rc::clone(&state_ref);
+        let app_weak = app_weak.clone();
         slint::Timer::single_shot(std::time::Duration::from_millis(40), move || {
-            reopen.borrow_mut().reopen_source();
+            if let Some(app) = app_weak.upgrade() {
+                reopen.borrow_mut().reopen_source(&app);
+            }
         });
     });
 

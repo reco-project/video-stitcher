@@ -313,4 +313,20 @@ fn editor_rolls_back_invalid_controls_and_keeps_preview_and_document_together() 
     if state.bridge.is_some() {
         exercise_pending_framing(&mut state, &app);
     }
+
+    // Once the segment list has changed, a failed reopen must not leave the
+    // old source presented as though it matched the new order.
+    state.left_input = Some(reco_io::InputPath::Single(PathBuf::new()));
+    state.right_input = state.left_input.clone();
+    app.set_files_loaded(true);
+    app.set_playing(true);
+    state.reopen_source(&app);
+    assert!(state.bridge.is_none());
+    assert_eq!(state.playback.state(), PlayState::Empty);
+    assert!(!app.get_files_loaded());
+    assert!(!app.get_playing());
+    assert!(
+        app.get_status_text()
+            .contains("Could not reopen reordered inputs")
+    );
 }
