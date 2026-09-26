@@ -5,7 +5,9 @@
 //! in `reco-core`. Backend code stays clean and trait-free; all trait
 //! plumbing lives here.
 
+#[cfg(feature = "ffmpeg")]
 use reco_core::sink::{OutputFrame, OutputSink, PixelFormat, SinkError, SinkInput};
+#[cfg(feature = "ffmpeg")]
 use reco_core::source::{FrameSet, SourceError, SourceInfo, Yuv420pData};
 
 #[cfg(feature = "ffmpeg")]

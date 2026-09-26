@@ -4,6 +4,8 @@
 //! location. Run with `cargo test -p reco-io -- --ignored` when footage
 //! is available.
 
+#![cfg(feature = "ffmpeg")]
+
 use std::path::Path;
 
 use reco_io::ffmpeg::calibration_io;
