@@ -247,12 +247,7 @@ impl super::StitchCore {
 
     /// Submit a stereo YUV420P frame pair at an explicit pose.
     ///
-    /// Same full loop as [`Self::submit_frame`] - anchors the
-    /// session-start clock, runs detection when
-    /// `frame_count % detection_interval == 0`, renders, reads back
-    /// RGBA, pushes into the replay buffer, increments frame_count -
-    /// but bypasses the panner and uses the caller-supplied pose
-    /// directly - fov included, like every render path.
+    /// Renders the supplied pose without detection, tracker updates or camera-motion resolution. Anchors the session clock, reads back RGBA, records replay when enabled and increments the frame count. Callers that also need inference use [`Self::detection_due`] and [`Self::run_detection_frames`] explicitly.
     ///
     /// This is the canonical submit path for interactive UIs (OBS
     /// pan/zoom sliders, mouse-drag preview) where pose comes from
@@ -273,13 +268,6 @@ impl super::StitchCore {
             recorder.record_yuv(left, right, src_w, src_h);
         }
 
-        // `submit_frame_yuv420p_at_pose` bypasses the panner request (caller
-        // provides the pose directly), but detection still runs on the
-        // schedule so panners stay populated for a later regular submit.
-        if self.detection_due(self.frame_count) {
-            let (src_w, src_h) = self.executor.source_dims();
-            self.run_yuv_detection(left, right, src_w, src_h);
-        }
         match &self.executor {
             Executor::Cpu(_) => self.submit_cpu_yuv(&[*left, *right], pose),
             #[cfg(feature = "gpu")]

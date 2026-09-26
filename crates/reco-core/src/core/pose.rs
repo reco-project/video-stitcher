@@ -7,13 +7,9 @@ use crate::geometry::CameraIndex;
 use crate::geometry::WorldPose;
 use crate::render::planes::Yuv420pPlanes;
 
-/// What one [`StitchCore::dispatch_pose`] tick produced - the numbers
-/// the session's telemetry records plus the panner's raw decision.
+/// Tracking statistics from one [`super::StitchCore::dispatch_pose`] tick.
 #[cfg_attr(not(feature = "gpu"), allow(dead_code))] // session (gpu-gated) reads these
 pub(crate) struct DispatchStats {
-    /// The panner's decided pose (world-space, pre-clamp). `None` when
-    /// no panner is attached.
-    pub pose: Option<WorldPose>,
     /// Mapped detections the dispatch consumed.
     pub detections: u32,
     /// Player tracks active this frame.
@@ -35,9 +31,8 @@ impl super::StitchCore {
             .session_start
             .map(|s| s.elapsed().as_secs_f64() * 1000.0)
             .unwrap_or(0.0);
-        self.dispatch_pose(self.frame_count, timestamp_ms, "StitchCore")
-            .pose
-            .unwrap_or_default()
+        self.dispatch_pose(self.frame_count, timestamp_ms, "StitchCore");
+        self.requested_world_pose
     }
 
     /// Whether the detection schedule fires at `index` - true when a
@@ -89,7 +84,6 @@ impl super::StitchCore {
             },
         );
         DispatchStats {
-            pose: result.as_ref().map(|r| r.pose),
             detections: self.last_detections.len() as u32,
             active_tracks: result.as_ref().map_or(0, |r| r.active_tracks),
             ball_present: result.as_ref().is_some_and(|r| r.ball_present),

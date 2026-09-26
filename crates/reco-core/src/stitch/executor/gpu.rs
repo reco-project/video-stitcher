@@ -480,19 +480,15 @@ impl GpuExecutor {
 
     /// Lazily create the D3D11VA staging pool, sized for
     /// `lookahead_frames` of buffering (0 = double-buffered stereo).
-    ///
-    /// Returns `true` if the pool was created by this call: the first
-    /// staged frame performs cross-API warmup (device extraction,
-    /// shared-handle imports), so callers skip rendering it.
     #[cfg(target_os = "windows")]
     pub(crate) fn ensure_d3d11_staging(
         &mut self,
         lookahead_frames: usize,
         needs_cuda: bool,
         pixel_format: crate::render::renderer::GpuPixelFormat,
-    ) -> Result<bool, String> {
+    ) -> Result<(), String> {
         if self.residency.d3d11_staging.is_some() {
-            return Ok(false);
+            return Ok(());
         }
         // For lookahead, size slots to the max frames simultaneously
         // in flight (decoded but not yet rendered), x2 for left+right.
@@ -523,7 +519,7 @@ impl GpuExecutor {
         .map_err(|e| format!("D3D11 staging pool: {e}"))?;
         log::info!("D3D11VA staging pool created: {w}x{h}, {n_slots} {pixel_format:?} slots");
         self.residency.d3d11_staging = Some(pool);
-        Ok(true)
+        Ok(())
     }
 
     /// Stage a decoded D3D11VA stereo frame into the given pool slots.

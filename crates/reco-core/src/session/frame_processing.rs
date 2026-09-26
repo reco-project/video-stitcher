@@ -41,6 +41,24 @@ impl StitchSession {
         frame_t0: std::time::Instant,
         ctx: &FrameLoopContext,
     ) -> Result<(), SessionError> {
+        #[allow(unused_mut)]
+        let mut upload_time = std::time::Duration::ZERO;
+        #[cfg(target_os = "windows")]
+        if let FrameSet::D3d11Resident([left, right]) = frame
+            && self.current_vram_slot.is_none()
+        {
+            // Finish previous GPU reads before reusing the staging slots. Detection
+            // and rendering must both consume the newly staged pair.
+            self.core
+                .gpu()
+                .device()
+                .poll(wgpu::PollType::wait_indefinitely())
+                .map_err(|e| SessionError::ZeroCopy(e.to_string()))?;
+            let staging_t0 = std::time::Instant::now();
+            self.stage_d3d11_frames(left.texture, left.slice, right.texture, right.slice)?;
+            upload_time = staging_t0.elapsed();
+        }
+
         // In the buffered lookahead path, detection already ran during
         // the produce phase. Skip it here and go straight to pose.
         let (ran_detection, detect_time) = if self.skip_detection {
@@ -170,8 +188,6 @@ impl StitchSession {
         let pos = self.advance_render_pose(ctx.frame_seconds)?;
 
         // ── 3. Render + replay ─────────────────────────────────────
-        #[allow(unused_mut)]
-        let mut upload_time = std::time::Duration::ZERO;
         let render_t0 = std::time::Instant::now();
         match frame {
             #[cfg(target_os = "linux")]
@@ -191,29 +207,12 @@ impl StitchSession {
                 }
             }
             #[cfg(target_os = "windows")]
-            FrameSet::D3d11Resident([left, right]) => {
+            FrameSet::D3d11Resident(..) => {
                 if let Some(staging_slot) = self.current_vram_slot {
                     // Buffered path: staging was done during produce.
                     // Render from the pre-staged slot.
                     self.render_d3d11_from_slot(staging_slot, staging_slot + 1, pos)?;
                 } else {
-                    // Immediate path: stage and render now.
-                    let _ = self
-                        .core
-                        .gpu()
-                        .device()
-                        .poll(wgpu::PollType::wait_indefinitely());
-                    let staging_t0 = std::time::Instant::now();
-                    let first = self.stage_d3d11_frames(
-                        left.texture,
-                        left.slice,
-                        right.texture,
-                        right.slice,
-                    )?;
-                    upload_time = staging_t0.elapsed();
-                    if first {
-                        return Ok(());
-                    }
                     self.render_d3d11_staged(pos)?;
                 }
             }
@@ -225,7 +224,6 @@ impl StitchSession {
 
         // ── 4. Telemetry (uniform for all paths) ───────────────────
         let stitch_time = render_time
-            .saturating_sub(upload_time)
             .saturating_sub(self.last_readback_time)
             .saturating_sub(self.last_submit_time);
         self.telemetry.record_frame(crate::telemetry::FrameTiming {
@@ -429,8 +427,7 @@ impl StitchSession {
     /// Stage D3D11VA decoded frames into the executor's staging pool
     /// (immediate path, double-buffered slots).
     ///
-    /// Returns `true` on the first call (pool just created) to signal
-    /// that this frame should be skipped (cross-API warmup).
+    /// Waits for each native copy before detection or rendering uses its views.
     #[cfg(target_os = "windows")]
     fn stage_d3d11_frames(
         &mut self,
@@ -438,13 +435,12 @@ impl StitchSession {
         left_slice: usize,
         right_texture: *mut std::ffi::c_void,
         right_slice: usize,
-    ) -> Result<bool, SessionError> {
+    ) -> Result<(), SessionError> {
         // D3D11 detection consumes wgpu views, not CUDA imports.
         let needs_cuda = false;
         let lookahead_frames = self.lookahead_frames;
         let pixel_format = self.gpu_pixel_format;
-        let first_frame = self
-            .gpu_exec()
+        self.gpu_exec()
             .ensure_d3d11_staging(lookahead_frames, needs_cuda, pixel_format)
             .map_err(SessionError::ZeroCopy)?;
         let left_pool_slot = self.frame_count as usize % 2;
@@ -459,7 +455,7 @@ impl StitchSession {
                 right_pool_slot,
             )
             .map_err(SessionError::ZeroCopy)?;
-        Ok(first_frame)
+        Ok(())
     }
 
     /// Render from specific D3D11 staging slots (buffered lookahead path).

@@ -5,6 +5,8 @@ use crate::InputPath;
 use crate::ffmpeg::decoder::DecodeBackend;
 use reco_core::source::{FrameSet, FrameSource};
 
+mod detection_order;
+
 fn input() -> InputPath {
     let path = std::path::PathBuf::from(std::env::var("RECO_DECODE_TEST_VIDEO").unwrap());
     assert_eq!(

@@ -103,9 +103,8 @@ pub(crate) struct DispatchContext<'a> {
     pub caller: &'static str,
 }
 
-/// Requested world pose and tracking statistics from one tracker/panner update.
+/// Tracking statistics from one tracker/panner update.
 pub(crate) struct DispatchResult {
-    pub pose: WorldPose,
     pub active_tracks: u32,
     pub ball_present: bool,
 }
@@ -195,7 +194,6 @@ pub(crate) fn dispatch(
     }
 
     Some(DispatchResult {
-        pose,
         active_tracks,
         ball_present,
     })

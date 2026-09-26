@@ -38,6 +38,8 @@ mod render;
 pub mod replay_buffer;
 mod replay_management;
 mod resize;
+#[cfg(test)]
+mod submission_tests;
 pub mod types;
 
 use std::time::{Duration, Instant};
@@ -100,17 +102,13 @@ pub struct StitchCore {
     /// Per-class trackers that feed a shared [`WorldState`](crate::detect::tracker::WorldState)
     /// consumed by [`StitchCore::panner`]. Slot-based on purpose:
     /// `ball_tracker` fills `world.ball`, `player_tracker` fills
-    /// `world.players`. More slots land with future entity classes.
-    ///
-    /// The panner only runs when at least one tracker is registered
-    /// AND a panner is set. Otherwise the pose stays at the pipeline
-    /// default.
+    /// `world.players`. An attached panner also runs without trackers,
+    /// receiving an empty world state.
     pub(crate) ball_tracker: Option<Box<dyn Tracker>>,
     pub(crate) player_tracker: Option<Box<dyn Tracker>>,
     /// Camera-motion policy. Consumes the assembled
     /// [`WorldState`](crate::detect::tracker::WorldState) each frame and emits
-    /// a [`WorldPose`]. When unset, the pose stays at the
-    /// pipeline default.
+    /// a [`WorldPose`]. When unset, the last world request is retained.
     pub(crate) panner: Option<Box<dyn Panner>>,
     /// Latest world-space request, including lookahead smoothing when active. Used for render-pose resolution and passed as the previous pose on the next panner update.
     pub(crate) requested_world_pose: WorldPose,
@@ -230,9 +228,7 @@ impl StitchCore {
     /// Attach a singleton ball tracker. Replaces any existing one.
     ///
     /// The tracker only drives the pose when a [`Panner`] is also
-    /// attached via [`set_panner`](Self::set_panner); attached without
-    /// a panner it still runs so detection sinks see consistent output
-    /// but the pose stays at the pipeline default.
+    /// attached via [`set_panner`](Self::set_panner). Automatic immediate dispatch runs trackers only with a panner; [`Self::update_trackers`] also permits explicit tracking without moving the camera.
     pub fn set_ball_tracker(&mut self, tracker: Box<dyn Tracker>) {
         log::info!(
             "StitchCore: ball tracker attached (class_id={})",
@@ -250,8 +246,7 @@ impl StitchCore {
     ///
     /// The tracker's output populates
     /// [`WorldState::players`](crate::detect::tracker::WorldState::players)
-    /// each frame. Phase-5 implementation - until that phase lands,
-    /// this setter is usable from consumers but typically left unset.
+    /// when tracking runs.
     pub fn set_player_tracker(&mut self, tracker: Box<dyn Tracker>) {
         log::info!(
             "StitchCore: player tracker attached (class_id={})",
@@ -275,7 +270,7 @@ impl StitchCore {
         self.panner = Some(panner);
     }
 
-    /// Remove the attached panner without resetting the stored world request. Sessions retain that request; automatic push submission uses the default world pose when no panner is attached. Explicit-pose rendering is unaffected.
+    /// Remove the attached panner without resetting the stored world request. Automatic submissions and sessions retain that request; explicit-pose rendering is unaffected.
     pub fn clear_panner(&mut self) {
         log::info!("StitchCore: panner detached");
         self.panner = None;
@@ -1067,7 +1062,7 @@ mod tests {
     }
 
     #[test]
-    fn clearing_panner_retains_session_request_but_push_uses_default() {
+    fn clearing_panner_retains_request_for_push_and_session() {
         use crate::detect::panner::{PanContext, Panner};
         use crate::detect::tracker::WorldState;
         use crate::geometry::WorldPose;
@@ -1082,6 +1077,7 @@ mod tests {
             }
         }
         let mut core = cpu_engine(64, 36);
+        assert_eq!(core.request_current_pose(), WorldPose::default());
         core.set_panner(Box::new(FixedPanner));
         let requested = core.request_current_pose();
         assert_eq!(requested.fov_degrees, 52.0);
@@ -1091,8 +1087,35 @@ mod tests {
             core.decide_pose_with_lookahead(&WorldState::default(), &[], 1, 33.0),
             requested
         );
-        assert_eq!(core.request_current_pose(), WorldPose::default());
+        assert_eq!(core.request_current_pose(), requested);
         assert_eq!(core.requested_world_pose, requested);
+
+        core.set_constrained_look(false);
+        core.enable_replay_buffer(Some(std::time::Duration::from_secs(1)));
+        let image = crate::source::Yuv420pData {
+            y: vec![128; 64 * 36],
+            u: vec![128; 32 * 18],
+            v: vec![128; 32 * 18],
+        };
+        let frames = crate::source::FrameSet::Yuv420p(vec![image.clone(), image]);
+        core.submit_frame(&frames, 1.0 / 30.0).unwrap();
+        let presented = core.replay_buffer().unwrap().latest().unwrap().pose;
+        assert_eq!(
+            presented,
+            core.calibration().world_to_render_pose(requested)
+        );
+        #[cfg(feature = "gpu")]
+        {
+            let mut session =
+                crate::session::StitchSession::with_executor(cpu_engine(64, 36).executor).unwrap();
+            session.core_mut().set_constrained_look(false);
+            session.set_panner(Box::new(FixedPanner));
+            session
+                .update_world_pose(std::time::Duration::ZERO)
+                .unwrap();
+            session.core_mut().clear_panner();
+            assert_eq!(session.advance_render_pose(1.0 / 30.0).unwrap(), presented);
+        }
     }
 
     /// Detection scheduling: no detector means never due; with one,

@@ -98,8 +98,7 @@ impl StitchSession {
     }
 
     /// Attach a panner. When set, the tracker/panner path owns
-    /// pose resolution each frame; without a panner the pose stays at
-    /// the pipeline default.
+    /// pose resolution each frame; without a panner the last world request is retained.
     pub fn set_panner(&mut self, panner: Box<dyn crate::detect::panner::Panner>) {
         self.core.set_panner(panner);
     }
