@@ -27,6 +27,8 @@ use reco_core::profile_scope;
 
 use std::path::Path;
 use std::ptr;
+#[cfg(target_os = "windows")]
+use std::sync::{Arc, Mutex};
 use thiserror::Error;
 
 /// Errors from the video decoder. `Clone + Send + Sync` so the
@@ -237,6 +239,8 @@ pub struct VideoDecoder {
     sw_frame: VideoFrame,
     converted_frame: VideoFrame,
     _hw_device_ref: *mut ffi::AVBufferRef,
+    #[cfg(target_os = "windows")]
+    pending_hw_init: Option<Arc<Mutex<()>>>,
     /// Concat manifest kept alive so the temp file isn't deleted while
     /// the demuxer reads it. None for single-file inputs.
     _manifest: Option<tempfile::NamedTempFile>,
@@ -515,6 +519,12 @@ impl VideoDecoder {
             sw_frame: VideoFrame::empty(),
             converted_frame: VideoFrame::empty(),
             _hw_device_ref: hw_device_ref,
+            #[cfg(target_os = "windows")]
+            pending_hw_init: if backend == DecodeBackend::D3d11va {
+                shared_device.map(|shared| Arc::clone(&shared.decoder_init))
+            } else {
+                None
+            },
             _manifest: None,
             y_buf: Vec::with_capacity(y_size),
             u_buf: Vec::with_capacity(uv_size),
@@ -713,6 +723,16 @@ impl VideoDecoder {
     /// Receive one frame, supplying input only when the decoder requests it.
     /// A demuxer EOF starts draining; only the decoder's EOF ends the stream.
     fn receive_frame(&mut self) -> Result<bool, DecodeError> {
+        // D3D11 decoder profile enumeration can race on a shared device.
+        // FFmpeg initializes lazily, so serialize through the first frame,
+        // not just codec open. Subsequent decoding remains independent.
+        #[cfg(target_os = "windows")]
+        let initialization = self.pending_hw_init.clone();
+        #[cfg(target_os = "windows")]
+        let _guard = initialization.as_ref().map(|gate| {
+            // The mutex protects execution, not mutable state.
+            gate.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        });
         loop {
             let received = {
                 profile_scope!("h264_decode");
@@ -728,9 +748,19 @@ impl VideoDecoder {
                             self.width, self.height
                         )));
                     }
+                    #[cfg(target_os = "windows")]
+                    {
+                        self.pending_hw_init = None;
+                    }
                     return Ok(true);
                 }
-                Err(ffmpeg::Error::Eof) => return Ok(false),
+                Err(ffmpeg::Error::Eof) => {
+                    #[cfg(target_os = "windows")]
+                    {
+                        self.pending_hw_init = None;
+                    }
+                    return Ok(false);
+                }
                 Err(ffmpeg::Error::Other { errno })
                     if errno == ffmpeg::error::EAGAIN && !self.eof_sent => {}
                 Err(error) => return Err(error.into()),
@@ -1115,6 +1145,8 @@ fn is_hw_frame(frame: &VideoFrame) -> bool {
 pub struct SharedHwDevice {
     device_ref: *mut ffi::AVBufferRef,
     backend: DecodeBackend,
+    #[cfg(target_os = "windows")]
+    decoder_init: Arc<Mutex<()>>,
 }
 
 // SAFETY: The underlying AVBufferRef is refcounted. The D3D11VA/CUDA device
@@ -1129,6 +1161,8 @@ impl SharedHwDevice {
         Self {
             device_ref: unsafe { ffi::av_buffer_ref(self.device_ref) },
             backend: self.backend,
+            #[cfg(target_os = "windows")]
+            decoder_init: Arc::clone(&self.decoder_init),
         }
     }
 
@@ -1163,6 +1197,8 @@ pub fn create_shared_hw_device() -> Option<SharedHwDevice> {
             return Some(SharedHwDevice {
                 device_ref,
                 backend,
+                #[cfg(target_os = "windows")]
+                decoder_init: Arc::new(Mutex::new(())),
             });
         }
     }
@@ -1366,6 +1402,34 @@ mod tests {
     const R30: ffmpeg::Rational = ffmpeg::Rational(30, 1);
     const NTSC: ffmpeg::Rational = ffmpeg::Rational(30000, 1001);
     const UNSET: ffmpeg::Rational = ffmpeg::Rational(0, 0);
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn shared_initialization_gate_is_only_retained_until_first_result() {
+        use super::{Arc, Mutex, VideoDecoder};
+
+        ffmpeg::init().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("software.mov");
+        write_mjpeg_60fps(&path);
+        let mut decoder = VideoDecoder::open_software(&path).unwrap();
+        let gate = Arc::new(Mutex::new(()));
+        decoder.pending_hw_init = Some(Arc::clone(&gate));
+
+        decoder.width += 2;
+        assert!(decoder.next_frame().is_err());
+        assert!(decoder.pending_hw_init.is_some());
+        decoder.width -= 2;
+        assert!(decoder.next_frame().unwrap().is_some());
+        assert!(decoder.pending_hw_init.is_none());
+        assert_eq!(Arc::strong_count(&gate), 1);
+        while decoder.next_frame().unwrap().is_some() {}
+
+        decoder.pending_hw_init = Some(Arc::clone(&gate));
+        assert!(decoder.next_frame().unwrap().is_none());
+        assert!(decoder.pending_hw_init.is_none());
+        assert_eq!(Arc::strong_count(&gate), 1);
+    }
 
     #[test]
     fn software_frame_on_hardware_accessor_is_an_error_not_eof() {

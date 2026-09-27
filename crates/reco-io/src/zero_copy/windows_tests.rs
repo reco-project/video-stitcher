@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::InputPath;
-use crate::ffmpeg::decoder::DecodeBackend;
+use crate::ffmpeg::decoder::{DecodeBackend, SharedHwDevice, create_shared_hw_device};
 use reco_core::source::{FrameSet, FrameSource};
 
 mod detection_order;
@@ -14,6 +14,45 @@ fn input() -> InputPath {
         DecodeBackend::D3d11va
     );
     InputPath::Single(path)
+}
+
+#[test]
+#[ignore = "requires Windows D3D11VA and RECO_DECODE_TEST_VIDEO, a short multi-frame file"]
+fn shared_d3d11_decoders_start_concurrently_and_drain() {
+    let single = input();
+    let chained = InputPath::Chained(vec![
+        single.first_path().to_owned(),
+        single.first_path().to_owned(),
+    ]);
+    for input in [single, chained] {
+        let mut reference = VideoDecoder::open_input_software(&input).unwrap();
+        let mut expected = 0;
+        while reference.next_frame().unwrap().is_some() {
+            expected += 1;
+        }
+        assert!(expected > 3);
+        for _ in 0..128 {
+            let shared = create_shared_hw_device().unwrap();
+            assert_eq!(shared.backend(), DecodeBackend::D3d11va);
+            let start = std::sync::Barrier::new(2);
+            let decode = |device: SharedHwDevice| {
+                start.wait();
+                let mut decoder =
+                    VideoDecoder::open_input_with_shared_device(&input, &device).unwrap();
+                let mut count = 0;
+                while decoder.next_frame_d3d11().unwrap().is_some() {
+                    count += 1;
+                }
+                assert_eq!(count, expected);
+            };
+            std::thread::scope(|scope| {
+                let other = shared.new_ref();
+                let worker = scope.spawn(|| decode(other));
+                decode(shared);
+                worker.join().unwrap();
+            });
+        }
+    }
 }
 
 #[test]
