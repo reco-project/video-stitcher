@@ -10,6 +10,24 @@ fn config() -> MapConfig {
     MapConfig::default()
 }
 
+// Liveness guard for unoptimized CI, not a coverage construction performance budget.
+fn wait_for_coverage(core: &mut StitchCore) -> Result<f32, StitchCoreError> {
+    let started = std::time::Instant::now();
+    loop {
+        match core.prepare_coverage_preview()? {
+            Some(cap) => return Ok(cap),
+            None => {
+                assert!(
+                    started.elapsed() < std::time::Duration::from_secs(120),
+                    "coverage worker did not complete for {:?}",
+                    core.output_dims()
+                );
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+    }
+}
+
 #[test]
 fn render_pose_round_trip_preserves_world_direction_and_fov() {
     let mut core = core();
@@ -356,13 +374,8 @@ fn preview_resize_rejects_superseded_dimensions_and_calibration() {
     assert!(core.prepare_coverage_preview().unwrap().is_none());
     core.edit_calibration(|cal| cal.framing.roll = 0.08)
         .unwrap();
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     core.resize_preview(200, 200).unwrap();
-    while core.prepare_coverage_preview().unwrap().is_none() {
-        assert_eq!(core.output_dims(), (200, 200));
-        assert!(std::time::Instant::now() < deadline);
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
+    wait_for_coverage(&mut core).unwrap();
     assert_eq!(core.output_dims(), (200, 200));
     let mut expected = self::core();
     expected
@@ -483,26 +496,20 @@ fn first_preview_preparation_publishes_only_a_complete_map() {
 fn failed_preview_resize_is_cached_and_a_valid_request_can_follow() {
     let mut core = core();
     core.prepare_coverage().unwrap();
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     core.resize_preview(100_000, 1).unwrap();
-    loop {
-        match core.prepare_coverage_preview() {
-            Err(_) => break,
-            Ok(None) => {
-                assert!(std::time::Instant::now() < deadline);
-                std::thread::sleep(std::time::Duration::from_millis(5));
-            }
-            Ok(Some(_)) => panic!("extreme aspect unexpectedly supported"),
-        }
-    }
+    let error = wait_for_coverage(&mut core).unwrap_err().to_string();
+    assert!(
+        error.contains("no connected coverage"),
+        "unexpected preparation failure: {error}"
+    );
     assert_eq!(core.output_dims(), (100_000, 1));
     assert!(core.pending_coverage.is_some());
-    assert!(core.prepare_coverage_preview().is_err());
+    assert_eq!(
+        core.prepare_coverage_preview().unwrap_err().to_string(),
+        error
+    );
     core.resize_preview(200, 200).unwrap();
-    while core.prepare_coverage_preview().unwrap().is_none() {
-        assert!(std::time::Instant::now() < deadline);
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
+    wait_for_coverage(&mut core).unwrap();
     assert_eq!(core.output_dims(), (200, 200));
 }
 

@@ -161,6 +161,68 @@ mod tests {
         .unwrap()
     }
 
+    fn controlled_job(
+        core: &mut StitchCore,
+    ) -> std::sync::mpsc::SyncSender<Result<Controller, String>> {
+        let (sender, result) = std::sync::mpsc::sync_channel(1);
+        core.pending_coverage = Some(PendingCoverage {
+            calibration: core.calibration().clone(),
+            size: core.executor.viewport_size().clone(),
+            result,
+            error: None,
+            cancelled: Arc::new(AtomicBool::new(false)),
+        });
+        sender
+    }
+
+    #[test]
+    fn pending_result_failure_and_disconnect_are_not_success() {
+        for disconnected in [false, true] {
+            let mut core = core();
+            let sender = controlled_job(&mut core);
+            assert!(core.prepare_coverage_preview().unwrap().is_none());
+            assert!(core.coverage_motion.is_none());
+            if !disconnected {
+                sender.send(Err("controlled failure".into())).unwrap();
+            }
+            drop(sender);
+            let error = core.prepare_coverage_preview().unwrap_err().to_string();
+            assert!(error.contains(if disconnected {
+                "worker stopped"
+            } else {
+                "controlled failure"
+            }));
+            assert_eq!(
+                core.prepare_coverage_preview().unwrap_err().to_string(),
+                error
+            );
+            assert!(core.coverage_motion.is_none());
+        }
+    }
+
+    #[test]
+    fn completed_superseded_result_is_rejected_before_replacement() {
+        let mut core = core();
+        core.prepare_coverage().unwrap();
+        let old = core.coverage_motion.take().unwrap();
+        let sender = controlled_job(&mut core);
+        let cancelled = core.pending_coverage.as_ref().unwrap().cancelled.clone();
+        sender.send(Ok(old)).unwrap();
+        core.resize_preview(64, 64).unwrap();
+        assert!(cancelled.load(Ordering::Relaxed));
+        assert!(core.prepare_coverage_preview().unwrap().is_none());
+        assert!(core.coverage_motion.is_none());
+        let current = core.pending_coverage.as_ref().unwrap();
+        assert!(!Arc::ptr_eq(&cancelled, &current.cancelled));
+        assert_eq!(
+            current.size,
+            ViewportSize {
+                width: 64,
+                height: 64
+            }
+        );
+    }
+
     #[test]
     fn blend_edits_reuse_pending_job_and_cached_failure() {
         let mut core = core();
