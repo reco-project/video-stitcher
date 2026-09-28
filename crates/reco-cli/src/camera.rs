@@ -52,6 +52,8 @@ pub struct CameraRunConfig<'a> {
     /// the loop centered-smooths past+future poses. 0 disables it.
     /// Only effective with AI tracking (a model + non-sweep mode).
     pub lookahead: f64,
+    /// Optional retained-image byte allowance for buffered NVMM capture.
+    pub lookahead_memory_bytes: Option<usize>,
     pub quality_value: Option<u8>,
     pub preset: Option<String>,
     /// Output container (`mp4` / `fmp4` / `mkv`). None -> `mp4`.
@@ -108,6 +110,7 @@ pub fn run_camera(
         #[cfg(feature = "snapshot")]
         snapshot_interval,
         lookahead,
+        lookahead_memory_bytes,
         quality_value,
         preset,
         container,
@@ -229,23 +232,9 @@ pub fn run_camera(
         log::warn!("--model specified but autocam feature is disabled");
     }
 
-    // Lookahead buffer (same semantics as `reco stitch --lookahead`): the
-    // panner leads by this window and the loop centered-smooths past +
-    // future poses. It only helps when an AI panner drives the camera, so
-    // gate it on a model + non-sweep tracking mode. Converts seconds ->
-    // frames using the capture rate, then routes the live path through the
-    // session's buffered loop (`run_buffered`).
     let ai_tracking = model_path.is_some() && tracking != "sweep";
-    if lookahead > 0.0 {
-        if ai_tracking {
-            let frames = (lookahead * capture_fps as f64).round() as usize;
-            session.set_lookahead(frames);
-            println!("Lookahead: {lookahead:.2}s buffer ({frames} frames @ {capture_fps} fps)");
-        } else {
-            log::debug!(
-                "Lookahead {lookahead:.2}s ignored: no AI tracking (needs --model, non-sweep)"
-            );
-        }
+    if lookahead > 0.0 && !(ai_tracking && use_nvmm) {
+        log::warn!("capture lookahead requires NVMM with AI tracking (model, non-sweep)");
     }
 
     let mode_str = if v4l2_direct {
@@ -554,6 +543,16 @@ pub fn run_camera(
             progress.finish(frame_count, output);
         }
     } else if use_nvmm {
+        if lookahead > 0.0 && ai_tracking {
+            let frames = (lookahead * capture_fps as f64).round() as usize;
+            let budget = reco_io::lookahead::image_budget(
+                Some(session.core().gpu()),
+                lookahead_memory_bytes,
+            )
+            .map_err(anyhow::Error::msg)?;
+            session.set_lookahead(frames, budget);
+            println!("Lookahead: {lookahead:.2}s buffer ({frames} frames @ {capture_fps} fps)");
+        }
         // NVMM zero-copy path: DMA-buf Vulkan import for rendering,
         // NvBufSurfTransform for detection. No CPU copies at all.
         //

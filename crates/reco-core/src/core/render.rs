@@ -27,10 +27,8 @@ impl super::StitchCore {
     /// fills; the CPU executor stitches synchronously.
     ///
     /// The set length is validated against the projection's camera
-    /// count by the executor (`check_camera_count` on the CPU arm; the
-    /// GPU render program is two-camera until the mono GPU pass lands,
-    /// so other lengths get a typed error there). Detection consumes every camera; the stacked replay recorder
-    /// consumes two-camera sets only.
+    /// count by the executor. Detection consumes every
+    /// camera; the stacked replay recorder consumes two-camera sets only.
     ///
     /// GPU-resident variants (shared-texture slots, D3D11, NVMM,
     /// Metal) are session-managed zero-copy paths, not push submits;
@@ -39,6 +37,29 @@ impl super::StitchCore {
         &mut self,
         frames: &crate::source::FrameSet,
         frame_seconds: f32,
+    ) -> Result<RenderOutcome<'_>, StitchCoreError> {
+        if !matches!(
+            frames,
+            crate::source::FrameSet::Yuv420p(_) | crate::source::FrameSet::Nv12(_)
+        ) {
+            return Err(StitchCoreError::Config(
+                "submit_frame requires CPU-resident YUV420P or NV12 frames".into(),
+            ));
+        }
+        self.anchor_session_start();
+        if self.detection_due(self.frame_count) {
+            self.run_cpu_detection(frames);
+        }
+        let requested = self.request_current_pose();
+        let pose = self.advance_pose(requested, self.frame_count, frame_seconds)?;
+        self.submit_frame_at_pose(frames, pose)
+    }
+
+    /// Render CPU-resident inputs without advancing detection or camera control.
+    pub(crate) fn submit_frame_at_pose(
+        &mut self,
+        frames: &crate::source::FrameSet,
+        pose: RenderPose,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         use crate::source::FrameSet;
         match frames {
@@ -56,11 +77,6 @@ impl super::StitchCore {
                     let (src_w, src_h) = self.executor.source_dims();
                     recorder.record_yuv(&left.as_planes(), &right.as_planes(), src_w, src_h);
                 }
-                if self.detection_due(self.frame_count) {
-                    self.run_cpu_detection(frames);
-                }
-                let requested = self.request_current_pose();
-                let pose = self.advance_pose(requested, self.frame_count, frame_seconds)?;
                 match &self.executor {
                     Executor::Cpu(_) => {
                         let planes: Vec<Yuv420pPlanes<'_>> =
@@ -68,23 +84,13 @@ impl super::StitchCore {
                         self.submit_cpu_yuv(&planes, pose)
                     }
                     #[cfg(feature = "gpu")]
-                    Executor::Gpu(_) => match cams.as_slice() {
-                        [left, right] => {
-                            self.submit_gpu_yuv(&left.as_planes(), &right.as_planes(), pose)
-                        }
-                        _ => Err(Self::mono_gpu_not_wired()),
-                    },
+                    Executor::Gpu(_) => self.submit_gpu_frames(frames, pose),
                 }
             }
             FrameSet::Nv12(cams) => {
                 self.anchor_session_start();
                 // The stacked replay recorder is YUV420P-native and
                 // does not tap NV12 submits today.
-                if self.detection_due(self.frame_count) {
-                    self.run_cpu_detection(frames);
-                }
-                let requested = self.request_current_pose();
-                let pose = self.advance_pose(requested, self.frame_count, frame_seconds)?;
                 match &self.executor {
                     Executor::Cpu(_) => {
                         let planes: Vec<crate::render::planes::Nv12Planes<'_>> =
@@ -92,12 +98,7 @@ impl super::StitchCore {
                         self.submit_cpu_nv12(&planes, pose)
                     }
                     #[cfg(feature = "gpu")]
-                    Executor::Gpu(_) => match cams.as_slice() {
-                        [left, right] => {
-                            self.submit_gpu_nv12(&left.as_planes(), &right.as_planes(), pose)
-                        }
-                        _ => Err(Self::mono_gpu_not_wired()),
-                    },
+                    Executor::Gpu(_) => self.submit_gpu_frames(frames, pose),
                 }
             }
             _ => Err(StitchCoreError::Config(
@@ -108,15 +109,19 @@ impl super::StitchCore {
         }
     }
 
-    /// Typed error for GPU submits of set shapes the two-camera GPU
-    /// program cannot render yet.
     #[cfg(feature = "gpu")]
-    fn mono_gpu_not_wired() -> StitchCoreError {
-        StitchCoreError::Executor(crate::stitch::StitchError::InvalidConfig(
-            "the mono GPU pass is not wired yet; run mono topologies on the \
-             CPU executor"
-                .into(),
-        ))
+    fn submit_gpu_frames(
+        &mut self,
+        frames: &crate::source::FrameSet,
+        pose: RenderPose,
+    ) -> Result<RenderOutcome<'_>, StitchCoreError> {
+        let cmd = self
+            .executor
+            .gpu()
+            .expect("GPU submit")
+            .pipeline
+            .render_frame_set(frames, pose)?;
+        self.deliver_gpu_render(cmd, pose)
     }
 
     /// CPU arm of the YUV submits: synchronous software stitch - RGBA
@@ -168,6 +173,15 @@ impl super::StitchCore {
             unreachable!("routed from the GPU arm");
         };
         let cmd = gpu.pipeline.render_to_target(left, right, pose)?;
+        self.deliver_gpu_render(cmd, pose)
+    }
+
+    #[cfg(feature = "gpu")]
+    fn deliver_gpu_render(
+        &mut self,
+        cmd: wgpu::CommandBuffer,
+        pose: RenderPose,
+    ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         // GPU stacked-replay pack runs before the readback so the
         // borrow checker sees `self.readback` free while the pack
         // runs. Queue ordering: `queue.write_texture` inside
@@ -254,42 +268,6 @@ impl super::StitchCore {
         let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
-        };
-        let rgba = self
-            .readback
-            .as_mut()
-            .expect("gpu engine owns the readback ring")
-            .readback(gpu.pipeline.gpu(), gpu.pipeline.render_target(), cmd)?;
-        self.frame_count += 1;
-        if let (Some(replay), Some(bytes)) = (self.replay.as_mut(), rgba) {
-            replay.push(ReplayFrame {
-                rgba: bytes.to_vec(),
-                captured_at,
-                pose,
-            });
-        }
-        Ok(match rgba {
-            Some(bytes) => RenderOutcome::Rgba(bytes),
-            None => RenderOutcome::Warmup,
-        })
-    }
-
-    /// GPU arm of the NV12 submits.
-    #[cfg(feature = "gpu")]
-    fn submit_gpu_nv12(
-        &mut self,
-        left: &crate::render::planes::Nv12Planes<'_>,
-        right: &crate::render::planes::Nv12Planes<'_>,
-        pose: RenderPose,
-    ) -> Result<RenderOutcome<'_>, StitchCoreError> {
-        let Executor::Gpu(gpu) = &self.executor else {
-            unreachable!("routed from the GPU arm");
-        };
-        let cmd = gpu.pipeline.render_to_target_nv12(left, right, pose)?;
-        self.pack_replay_from_pipeline();
-        let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
-        let Executor::Gpu(gpu) = &self.executor else {
-            unreachable!("routed from the GPU arm");
         };
         let rgba = self
             .readback

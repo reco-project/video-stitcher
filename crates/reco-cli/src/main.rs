@@ -198,9 +198,13 @@ enum Commands {
         /// pose lag-free. The validated dead-zone/reactivity defaults
         /// assume this is on, so it defaults to 1.5. Only engages with AI
         /// tracking (needs --model, non-sweep); ignored for a plain
-        /// stitch. Held in a VRAM pool, not the decode slots. 0 = off.
+        /// stitch. Retains source images on their selected storage path. 0 = off.
         #[arg(long, default_value_t = 1.5)]
         lookahead: f64,
+
+        /// Override retained lookahead image storage in bytes (not total process memory).
+        #[arg(long)]
+        lookahead_memory_bytes: Option<usize>,
 
         /// Tracking mode: "field" (ball + players, default), "ball"
         /// (ball only), "sweep" (no AI, debug pan). field is robust with
@@ -412,6 +416,10 @@ enum Commands {
         /// non-sweep). 0 = off (immediate render).
         #[arg(long, default_value_t = 0.75)]
         lookahead: f64,
+
+        /// Override retained lookahead image storage in bytes (not total process memory).
+        #[arg(long)]
+        lookahead_memory_bytes: Option<usize>,
 
         /// Encoder quality on a 0-100 scale (higher = better). Overrides the
         /// quality preset. See `stitch --help` for the full mapping table.
@@ -798,6 +806,7 @@ fn main() -> anyhow::Result<()> {
             model,
             detection_interval,
             lookahead,
+            lookahead_memory_bytes,
             tracking,
             quality_value,
             preset,
@@ -829,6 +838,7 @@ fn main() -> anyhow::Result<()> {
                 model_path: model.as_deref(),
                 detection_interval,
                 lookahead,
+                lookahead_memory_bytes,
                 tracking_mode: &tracking,
                 quality_value,
                 preset,
@@ -902,6 +912,7 @@ fn main() -> anyhow::Result<()> {
             #[cfg(feature = "snapshot")]
             snapshot_interval,
             lookahead,
+            lookahead_memory_bytes,
             quality_value,
             preset,
             container,
@@ -972,6 +983,7 @@ fn main() -> anyhow::Result<()> {
                     #[cfg(feature = "snapshot")]
                     snapshot_interval,
                     lookahead,
+                    lookahead_memory_bytes,
                     quality_value,
                     preset,
                     container: container.as_deref(),

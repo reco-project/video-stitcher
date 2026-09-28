@@ -2,13 +2,13 @@
 //!
 //! Copies FFmpeg's D3D11VA decoded NV12 frames to shared staging textures,
 //! then imports those into wgpu via DX12 shared handles. Eliminates the
-//! GPU -> CPU -> GPU roundtrip (~50ms/frame on Surface-class hardware).
+//! GPU -> CPU -> GPU roundtrip.
 //!
 //! ## Architecture
 //!
 //! ```text
 //! D3D11VA decode pool (FFmpeg-owned)
-//!        |  CopySubresourceRegion (~0.2ms GPU-GPU)
+//!        |  CopySubresourceRegion
 //! D3D11 staging texture (SHARED_NTHANDLE, on FFmpeg's D3D11 device)
 //!        |  NT handle -> DX12 OpenSharedHandle
 //! wgpu NV12 texture -> Plane0 (R8Unorm Y) + Plane1 (Rg8Unorm UV)
@@ -16,7 +16,7 @@
 //! stitch render pass
 //! ```
 //!
-//! The staging pool is initialized lazily on the first `stage_frame` call.
+//! The staging pool is initialized lazily on the first `stage_frames` call.
 //! It extracts the D3D11 device from the source texture via `GetDevice`,
 //! ensuring staging textures live on the same device as FFmpeg's decode
 //! pool. This avoids cross-device copies which hang on NVIDIA GPUs.
@@ -71,11 +71,11 @@ impl From<D3d11InteropError> for crate::session::types::SessionError {
 
 /// Lazily-initialized D3D11 staging resources.
 ///
-/// Created on the first `stage_frame` call using the device obtained from
+/// Created on the first `stage_frames` call using the device obtained from
 /// the source texture, so all D3D11 operations stay on a single device.
 struct StagingState {
     /// FFmpeg's D3D11 device that owns the decode pool and the staging
-    /// textures. `stage_frame` rejects source frames from any other device:
+    /// textures. `stage_frames` rejects source frames from any other device:
     /// a cross-device `CopySubresourceRegion` faults the GPU.
     device: ID3D11Device,
     context: ID3D11DeviceContext,
@@ -94,7 +94,7 @@ struct StagingState {
 /// with pre-built Y and UV plane views.
 ///
 /// The pool is constructed lightweight; the D3D11 device and staging
-/// textures are created lazily on the first `stage_frame` call by
+/// textures are created lazily on the first `stage_frames` call by
 /// extracting FFmpeg's own device from the source texture. This ensures
 /// `CopySubresourceRegion` never crosses device boundaries, which would
 /// hang on NVIDIA hardware.
@@ -109,7 +109,7 @@ pub struct D3d11StagingPool {
     pixel_format: crate::render::renderer::GpuPixelFormat,
     /// Import D3D11 textures into CUDA for GPU-resident detection.
     enable_cuda: bool,
-    /// Lazily initialized on first `stage_frame` call.
+    /// Lazily initialized on first `stage_frames` call.
     state: Option<StagingState>,
 }
 
@@ -118,7 +118,7 @@ impl D3d11StagingPool {
     ///
     /// This only validates the wgpu backend and stores the dimensions.
     /// The actual D3D11 device, staging textures, and wgpu imports are
-    /// created on the first `stage_frame` call.
+    /// created on the first `stage_frames` call.
     pub fn new(
         gpu: &GpuContext,
         width: u32,
@@ -370,71 +370,63 @@ impl D3d11StagingPool {
         Ok(())
     }
 
-    /// Copy a D3D11VA decoded frame from the decode pool to a staging slot.
+    /// Copy decoded D3D11VA frames into staging slots and await the batch.
     ///
-    /// On the first call, extracts the D3D11 device from the source texture
-    /// and creates all staging resources on that device. Subsequent calls
-    /// reuse the initialized state.
-    ///
-    /// Performs `CopySubresourceRegion` (GPU-to-GPU, ~0.2ms) then waits
-    /// for completion via an event query before returning.
-    pub fn stage_frame(
+    /// All sources must belong to the same decode device. One completion
+    /// query covers every copy before the caller releases the decoded frames.
+    pub fn stage_frames(
         &mut self,
-        src_texture: *mut c_void,
-        array_slice: usize,
-        slot: usize,
+        frames: &[(*mut c_void, usize, usize)],
     ) -> Result<(), D3d11InteropError> {
-        if src_texture.is_null() {
-            return Err(D3d11InteropError::StagingCopy("null source texture".into()));
+        if frames.is_empty() {
+            return Ok(());
         }
-        if slot >= self.n_slots {
-            return Err(D3d11InteropError::StagingCopy(format!(
-                "slot {slot} out of range (0..{})",
-                self.n_slots
-            )));
-        }
-
-        unsafe {
-            // Reconstruct the ID3D11Texture2D from the raw pointer.
-            // SAFETY: FFmpeg guarantees data[0] is a valid ID3D11Texture2D*
-            // for the lifetime of the decoded frame. We AddRef via clone
-            // to get our own reference, then release at scope end.
-            let unknown: windows::core::IUnknown = windows::core::IUnknown::from_raw(src_texture);
-            let src: ID3D11Texture2D = unknown.cast()?;
-            std::mem::forget(unknown);
-
-            self.ensure_initialized(&src)?;
-            let state = self.state.as_ref().unwrap();
-
-            // The staging textures live on the device captured at init. A
-            // CopySubresourceRegion from a texture on a different device faults
-            // the GPU (DEVICE_REMOVED on desktop NVIDIA, driver hang on
-            // laptops). Reject it with a clear error - the stereo decoders
-            // sharing one hw device is an invariant of this path.
-            let src_device = src.GetDevice()?;
-            if Interface::as_raw(&src_device) != Interface::as_raw(&state.device) {
-                return Err(D3d11InteropError::StagingCopy(
-                    "source frame is on a different D3D11 device than the staging pool; \
-                     the stereo decoders must share one hw device"
-                        .into(),
-                ));
+        for &(texture, _, slot) in frames {
+            if texture.is_null() {
+                return Err(D3d11InteropError::StagingCopy("null source texture".into()));
             }
-
-            let src_subresource = array_slice as u32;
-
-            state.context.CopySubresourceRegion(
-                &state.staging[slot],
-                0,
-                0,
-                0,
-                0,
-                &src,
-                src_subresource,
-                None,
-            );
-
-            state.context.Flush();
+            if slot >= self.n_slots {
+                return Err(D3d11InteropError::StagingCopy(format!(
+                    "slot {slot} out of range (0..{})",
+                    self.n_slots
+                )));
+            }
+        }
+        unsafe {
+            let sources: Vec<ID3D11Texture2D> = frames
+                .iter()
+                .map(|&(texture, _, _)| {
+                    // Borrow FFmpeg's reference; cast obtains our own AddRef.
+                    let unknown =
+                        std::mem::ManuallyDrop::new(windows::core::IUnknown::from_raw(texture));
+                    unknown.cast()
+                })
+                .collect::<windows::core::Result<_>>()?;
+            self.ensure_initialized(&sources[0])?;
+            let state = self.state.as_ref().unwrap();
+            // Validate the entire batch before issuing any GPU copies.
+            for src in &sources {
+                let device = src.GetDevice()?;
+                if Interface::as_raw(&device) != Interface::as_raw(&state.device) {
+                    return Err(D3d11InteropError::StagingCopy(
+                        "source frame is on a different D3D11 device than the staging pool; the decoders must share one hw device".into()
+                    ));
+                }
+            }
+            for (src, &(_, slice, slot)) in sources.iter().zip(frames) {
+                state.context.CopySubresourceRegion(
+                    &state.staging[slot],
+                    0,
+                    0,
+                    0,
+                    0,
+                    src,
+                    slice as u32,
+                    None,
+                );
+            }
             state.context.End(&state.event_query);
+            state.context.Flush();
             let mut spins: u32 = 0;
             loop {
                 let mut done: i32 = 0;
@@ -471,7 +463,7 @@ impl D3d11StagingPool {
     /// Y plane view (R8Unorm, full resolution) for the given slot.
     ///
     /// # Panics
-    /// Panics if called before the first `stage_frame` (pool not initialized).
+    /// Panics if called before the first `stage_frames` (pool not initialized).
     pub fn y_view(&self, slot: usize) -> &wgpu::TextureView {
         &self
             .state
@@ -483,7 +475,7 @@ impl D3d11StagingPool {
     /// UV plane view (Rg8Unorm, half resolution) for the given slot.
     ///
     /// # Panics
-    /// Panics if called before the first `stage_frame` (pool not initialized).
+    /// Panics if called before the first `stage_frames` (pool not initialized).
     pub fn uv_view(&self, slot: usize) -> &wgpu::TextureView {
         &self
             .state

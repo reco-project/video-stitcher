@@ -67,11 +67,11 @@ pub struct StitchSession {
     /// Attached output sinks; every rendered frame fans out to all of
     /// them in attach order.
     pub(crate) sinks: Vec<sinks::AttachedSink>,
-    /// When true, `process_frame_any` skips detection (the produce phase
-    /// already ran it and stored the WorldState in the buffer).
-    pub(crate) skip_detection: bool,
+    /// Reused software RGBA-to-NV12 conversion storage, empty on GPU sessions.
+    pub(crate) cpu_nv12: Vec<u8>,
     /// Number of lookahead frames (0 = disabled).
     pub(crate) lookahead_frames: usize,
+    pub(crate) lookahead_memory_bytes: usize,
     pub(crate) frame_count: u64,
     /// Session start time for metrics computation.
     session_start: Option<std::time::Instant>,
@@ -167,8 +167,8 @@ impl StitchSession {
     /// The primitive constructor: [`Self::with_gpu`] is the GPU
     /// convenience that builds the executor from a [`SessionConfig`].
     /// With a [`CpuExecutor`](crate::stitch::CpuExecutor) arm the
-    /// session runs the software stitch loop ([`Self::run`] dispatches
-    /// per arm) and needs no GPU at all; the GPU-only entry points
+    /// session uses software rendering in the shared frame loop and
+    /// needs no GPU at all; the GPU-only entry points
     /// (resident-frame submits, [`Self::submit_render_output`]) panic
     /// on the CPU arm - batch consumers drive [`Self::run`].
     pub fn with_executor(executor: Executor) -> Result<Self, SessionError> {
@@ -177,8 +177,9 @@ impl StitchSession {
         Ok(Self {
             core,
             sinks: Vec::new(),
-            skip_detection: false,
+            cpu_nv12: Vec::new(),
             lookahead_frames: 0,
+            lookahead_memory_bytes: 0,
             frame_count: 0,
             session_start: None,
             error_policy: ErrorPolicy::default(),

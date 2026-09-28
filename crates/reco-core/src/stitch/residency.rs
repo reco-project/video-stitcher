@@ -16,27 +16,16 @@ pub(crate) struct Residency {
     pub(crate) bind_groups: Option<crate::render::pipeline::GpuSourceBindGroups>,
     /// Slot-free senders for decode backpressure.
     #[cfg(target_os = "linux")]
-    pub(crate) slot_free_tx: Option<(
-        std::sync::mpsc::SyncSender<u8>,
-        std::sync::mpsc::SyncSender<u8>,
-    )>,
+    pub(crate) slot_free_tx: Option<Vec<std::sync::mpsc::SyncSender<u8>>>,
     /// CUDA buffer info for GPU detection on the shared textures.
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub(crate) cuda_buf_info: Option<(
-        crate::interop::zero_copy::GpuBufInfo,
-        crate::interop::zero_copy::GpuBufInfo,
-    )>,
-    /// Views over the 8 shared textures, layout `[left_y_0, left_uv_0,
-    /// left_y_1, left_uv_1, right_y_0, right_uv_0, right_y_1,
-    /// right_uv_1]`. Views hold an Arc on the underlying texture, so
-    /// the shared-memory lifetime stays bound to the source's
-    /// [`SharedTextureSet`](crate::interop::SharedTextureSet).
     #[cfg(target_os = "linux")]
-    pub(crate) shared_views: Option<[wgpu::TextureView; 8]>,
-    /// The 8 shared textures (2 slots x 2 cameras x Y/UV), cloned for
-    /// `copy_texture_to_texture` into the VRAM pool (cheap, Arc inside).
+    pub(crate) cuda_buf_info: Option<Vec<crate::interop::zero_copy::GpuBufInfo>>,
+    /// Per-camera views: Y/UV for slots 0 and 1.
     #[cfg(target_os = "linux")]
-    pub(crate) shared_textures: Option<[wgpu::Texture; 8]>,
+    pub(crate) shared_views: Option<Vec<[wgpu::TextureView; 4]>>,
+    /// Texture handles for device-local copies into the lookahead pool.
+    #[cfg(target_os = "linux")]
+    pub(crate) shared_textures: Option<Vec<[wgpu::Texture; 4]>>,
     /// DMA-buf -> Vulkan texture cache for the NVMM zero-copy path
     /// (Jetson). Keyed by DMA-buf fd; the ISP rotates a small fd pool
     /// so each buffer is imported once.

@@ -37,6 +37,7 @@ pub struct StitchArgs<'a> {
     pub model_path: Option<&'a str>,
     pub detection_interval: u64,
     pub lookahead: f64,
+    pub lookahead_memory_bytes: Option<usize>,
     pub tracking_mode: &'a str,
     pub quality_value: Option<u8>,
     pub preset: Option<String>,
@@ -133,6 +134,9 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     // and VRAM, so skip it and say why.
     let tracking_active = args.trajectory_path.is_some()
         || (args.model_path.is_some() && args.tracking_mode != "sweep");
+    if let Some(bytes) = args.lookahead_memory_bytes {
+        job = job.lookahead_memory_limit(bytes);
+    }
     if args.lookahead > 0.0 {
         if tracking_active {
             job = job.lookahead(args.lookahead);

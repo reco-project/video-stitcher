@@ -147,14 +147,15 @@ fn d3d11_detection_reads_current_frame_with_and_without_lookahead() {
             ))
             .unwrap();
             session.core_mut().set_constrained_look(false);
-            session.set_lookahead(lookahead);
+            session.set_lookahead(lookahead, usize::MAX);
             session.set_detection_interval(interval);
             let samples = Arc::new(Mutex::new(Vec::new()));
             session.set_detector(Box::new(LumaProbe {
                 gpu: gpu.clone(),
                 samples: samples.clone(),
             }));
-            let mut source = crate::SmartFileSource::open(&input, &input, &gpu, 3).unwrap();
+            let mut source =
+                crate::SmartFileSource::open(&[input.clone(), input.clone()], &gpu, 3).unwrap();
             assert!(source.is_gpu_resident());
             let result = session
                 .run(

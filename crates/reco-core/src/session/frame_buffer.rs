@@ -2,9 +2,8 @@
 //!
 //! Holds N decoded frames with their detection metadata so the
 //! panner can see future WorldStates when deciding the current
-//! frame's viewport position. Works for both CPU-resident frames
-//! (`FrameSet::Yuv420p` / `Nv12`) and GPU-resident frames, where
-//! the pixels live in the VRAM pool and `vram_slot` indexes them.
+//! frame's viewport position. Owned host planes and retained Metal buffers
+//! stay with the frame; borrowed native images use a persistent staging slot.
 
 use std::collections::VecDeque;
 
@@ -22,6 +21,7 @@ pub(crate) struct BufferedFrame {
     /// VRAM pool slot index (Some when GPU-resident, None for CPU frames).
     /// The pool slot is released after rendering.
     pub vram_slot: Option<usize>,
+    pub retained_bytes: usize,
 }
 
 /// Fixed-capacity ring buffer of decoded frames.
@@ -37,7 +37,7 @@ pub(crate) struct FrameBuffer {
 impl FrameBuffer {
     pub fn new(capacity: usize) -> Self {
         Self {
-            frames: VecDeque::with_capacity(capacity),
+            frames: VecDeque::new(),
             capacity,
         }
     }
@@ -111,6 +111,7 @@ mod tests {
             elapsed_ms: 0.0,
             decode_time: std::time::Duration::from_millis(3),
             vram_slot: None,
+            retained_bytes: 0,
         }
     }
 

@@ -99,7 +99,9 @@ fn d3d11_source_repeated_close_releases_current_and_queued_frames() {
     let gpu = reco_core::gpu::GpuContext::new_blocking().unwrap();
     for offset in [-3_i64, 0, 3, i64::MIN, i64::MAX] {
         for _ in 0..3 {
-            let mut source = crate::SmartFileSource::open(&input, &input, &gpu, offset).unwrap();
+            let mut source =
+                crate::SmartFileSource::open(&[input.clone(), input.clone()], &gpu, offset)
+                    .unwrap();
             assert!(source.is_gpu_resident());
             source.start_decoding();
             if offset.unsigned_abs() <= 3 {

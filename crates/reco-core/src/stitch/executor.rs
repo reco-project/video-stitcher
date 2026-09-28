@@ -439,34 +439,93 @@ mod tests {
 
     #[test]
     #[cfg(feature = "gpu")]
-    fn gpu_backend_refuses_cpu_only_projections() {
+    fn cylinder_gpu_matches_cpu_mapping_and_rejects_invalid_frames() {
         let Some(gpu) = gpu_or_skip() else {
             return;
         };
-
-        // The cylinder has no GPU program yet: construction must fail
-        // with the typed error, never bind a placeholder pipeline.
-        let (cam_w, cam_h) = (192u32, 108u32);
-        let cal = Calibration::new(
-            vec![Lens::flat(cam_w, cam_h)],
-            crate::projection::Cylinder::default(),
-            Framing {
-                axis_offset: 0.0,
-                tilt: 0.0,
-                roll: 0.0,
-            },
-        );
-        let Err(err) = GpuExecutor::new(
-            gpu,
-            GpuExecutorConfig::new(cal, cam_w, cam_h, InputFormat::Nv12),
-        ) else {
-            panic!("cylinder+GPU must fail fast");
+        eprintln!("cylinder oracle adapter: {}", gpu.gpu_name());
+        let (w, h) = (192, 108);
+        let (y, uv) = nv12(w, h, 0);
+        let frame = Nv12Planes { y: &y, uv: &uv };
+        let white_y = vec![200; (w * h) as usize];
+        let white_uv = vec![128; (w * h / 2) as usize];
+        let white = Nv12Planes {
+            y: &white_y,
+            uv: &white_uv,
         };
-        assert!(matches!(
-            err,
-            StitchError::NoGpuProgram {
-                projection: "cylindrical-mono-1camera"
+        for (out_w, out_h, surface_height) in [(80, 48, None), (48, 80, Some(80.0))] {
+            for arc in [90.0, 180.0, 270.0, 360.0] {
+                for full_range in [false, true] {
+                    let cal = Calibration::new(
+                        vec![Lens::flat(w, h)],
+                        crate::projection::Cylinder {
+                            radius: 90.0,
+                            arc_deg: arc,
+                            surface_height,
+                        },
+                        Framing {
+                            axis_offset: 0.0,
+                            tilt: 0.21,
+                            roll: -0.15,
+                        },
+                    );
+                    let viewport = ViewportSize {
+                        width: out_w,
+                        height: out_h,
+                    };
+                    let mut cpu =
+                        CpuExecutor::new(cal.clone(), viewport.clone(), w, h, full_range).unwrap();
+                    let mut render = GpuExecutor::new(
+                        gpu.clone(),
+                        GpuExecutorConfig {
+                            viewport_size: viewport,
+                            full_range,
+                            ..GpuExecutorConfig::new(cal, w, h, InputFormat::Nv12)
+                        },
+                    )
+                    .unwrap();
+                    for yaw in [0.0, -0.6, 0.7, 3.1] {
+                        let pose = RenderPose {
+                            yaw,
+                            pitch: 0.15,
+                            fov_degrees: 65.0,
+                        };
+                        let actual = render.stitch(&[frame], pose).unwrap();
+                        let expected = cpu.stitch(&[frame], pose).unwrap();
+                        assert!(
+                            actual
+                                .iter()
+                                .zip(&expected)
+                                .all(|(a, b)| a.abs_diff(*b) <= 2),
+                            "cylinder pixel mismatch: arc={arc} yaw={yaw} full={full_range}"
+                        );
+                        Agreement::compare(&actual, &expected).assert_within(
+                            AgreementBounds::DEFAULT,
+                            &format!("cylinder arc={arc} yaw={yaw} full={full_range}"),
+                        );
+                        let actual_mask = render.stitch(&[white], pose).unwrap();
+                        let expected_mask = cpu.stitch(&[white], pose).unwrap();
+                        assert!(
+                            actual_mask
+                                .chunks_exact(4)
+                                .zip(expected_mask.chunks_exact(4))
+                                .all(|(a, b)| (a[0] == 0) == (b[0] == 0)),
+                            "cylinder validity mask: arc={arc} yaw={yaw}"
+                        );
+                    }
+                    assert!(render.stitch(&[], RenderPose::default()).is_err());
+                    assert!(
+                        render
+                            .stitch(&[frame, frame], RenderPose::default())
+                            .is_err()
+                    );
+                    assert!(
+                        render
+                            .stitch(&[Nv12Planes { y: &[0], uv: &[0] }], RenderPose::default())
+                            .is_err()
+                    );
+                }
             }
-        ));
+        }
     }
 }

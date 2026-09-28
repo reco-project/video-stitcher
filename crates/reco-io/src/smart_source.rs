@@ -14,14 +14,15 @@
 //! use reco_io::SmartFileSource;
 //!
 //! let gpu = reco_core::gpu::GpuContext::new_blocking()?;
-//! let mut source = SmartFileSource::open("left.mp4", "right.mp4", &gpu, 0)?;
+//! let inputs = [reco_io::InputPath::Single("panorama.mp4".into())];
+//! let mut source = SmartFileSource::open(&inputs, &gpu, 0)?;
 //! // source implements FrameSource - pass to session.run()
 //! ```
 
 use reco_core::render::renderer::GpuPixelFormat;
 use reco_core::source::{FrameSet, FrameSource, SourceError, SourceInfo};
 
-/// GPU-aware stereo file source that auto-selects the optimal decode path.
+/// GPU-aware file source that auto-selects the optimal decode path.
 ///
 /// Probes the input files at construction and selects the best available
 /// backend: CUDA/Vulkan zero-copy on Linux, D3D11VA/DX12 on Windows, VideoToolbox/Metal
@@ -82,11 +83,11 @@ struct WindowsZeroCopyState {
     /// The `_frame_ref` inside each D3d11Frame pins the decode pool slice
     /// in FFmpeg's surface allocator. Without this, the slice is recycled
     /// as soon as the raw pointers are extracted into `FrameSet::D3d11Resident`,
-    /// and the decoder thread can overwrite the surface before `stage_frame`
+    /// and the decoder thread can overwrite the surface before `stage_frames`
     /// copies it - causing frame reordering glitches on Intel and NVIDIA.
     ///
     /// Dropped when the next pair arrives (or the source is dropped),
-    /// which is always after `stage_frame` has completed for this pair.
+    /// which is always after `stage_frames` has completed for this pair.
     live_frame_guard: Option<crate::zero_copy::D3d11FramePair>,
     // Release the displayed surfaces before cancelling and joining workers.
     decode: WindowsDecodeState,
@@ -115,13 +116,9 @@ impl WindowsZeroCopyState {
 
 #[cfg(target_os = "linux")]
 struct LinuxZeroCopyState {
-    /// Paired frame signal receiver. Made `Option` so Drop can take it
-    /// early to unblock the pairing thread before joining decode threads.
-    frame_rx: Option<
-        std::sync::mpsc::Receiver<
-            crate::decode_stream::Message<reco_core::interop::zero_copy::GpuFrameSignal>,
-        >,
-    >,
+    /// Frame-set receiver. Drop takes it early to unblock the collector
+    /// before joining decode workers.
+    frame_rx: Option<std::sync::mpsc::Receiver<crate::decode_stream::Message<Vec<u8>>>>,
     /// Shared textures (kept alive until Drop).
     shared: reco_core::interop::SharedTextureSet,
     /// Decode thread join handles.
@@ -131,23 +128,26 @@ struct LinuxZeroCopyState {
 }
 
 impl SmartFileSource {
-    /// Open a stereo file source with automatic backend selection.
+    /// Open a file source with automatic backend selection.
     ///
-    /// Probes the left video for metadata (resolution, codec, rotation,
-    /// pixel format) and the right video for rotation. Detects whether
-    /// GPU zero-copy is available based on the decode backend and GPU
-    /// capabilities.
+    /// Probes input metadata and chooses native residency when the decoder,
+    /// GPU and input layout support it. CUDA/Vulkan supports one or two
+    /// inputs; D3D11 and Metal imports require two.
     ///
     /// `sync_offset` applies temporal alignment between cameras:
-    /// positive skips right frames, negative skips left frames.
+    /// positive skips camera 1, negative skips camera 0. Ignored for mono.
     pub fn open(
-        left: &crate::stitch_job::InputPath,
-        right: &crate::stitch_job::InputPath,
+        inputs: &[crate::stitch_job::InputPath],
         gpu: &reco_core::gpu::GpuContext,
         sync_offset: i64,
     ) -> Result<Self, SourceError> {
+        let Some(left) = inputs.first() else {
+            return Err(SourceError::Init {
+                path: "(none)".into(),
+                reason: "at least one input video is required".into(),
+            });
+        };
         let left_probe_path = left.first_path();
-        let right_probe_path = right.first_path();
 
         let probe = crate::ffmpeg::decoder::VideoDecoder::open(left_probe_path).map_err(|e| {
             SourceError::Init {
@@ -170,18 +170,33 @@ impl SmartFileSource {
         let decode_backend = probe.backend();
         drop(probe);
 
-        let right_probe =
-            crate::ffmpeg::decoder::VideoDecoder::open(right_probe_path).map_err(|e| {
-                SourceError::Init {
-                    path: right_probe_path.display().to_string(),
-                    reason: e.to_string(),
-                }
-            })?;
-        if right_probe.is_full_range() != full_range {
-            return Err(SourceError::Init { path: right_probe_path.display().to_string(), reason: "camera color ranges differ; mixed full-range and limited-range inputs are not supported".into() });
+        let mut right_rotation = 0;
+        let mut matching_layout = true;
+        for (camera, input) in inputs.iter().enumerate().skip(1) {
+            let probe =
+                crate::ffmpeg::decoder::VideoDecoder::open(input.first_path()).map_err(|e| {
+                    SourceError::Init {
+                        path: input.first_path().display().to_string(),
+                        reason: e.to_string(),
+                    }
+                })?;
+            if probe.is_full_range() != full_range {
+                return Err(SourceError::Init { path: input.first_path().display().to_string(), reason: "camera color ranges differ; mixed full-range and limited-range inputs are not supported".into() });
+            }
+            matching_layout &= probe.width() == info.width
+                && probe.height() == info.height
+                && probe.pixel_format() == pixel_format
+                && is_backend_zero_copy_capable(probe.backend());
+            if camera == 1 {
+                right_rotation = probe.rotation();
+            }
         }
-        let right_rotation = right_probe.rotation();
-        drop(right_probe);
+        // The other native importers still consume pairs.
+        let native_input_count = if cfg!(target_os = "linux") {
+            matches!(inputs.len(), 1 | 2)
+        } else {
+            inputs.len() == 2
+        };
 
         // Detect zero-copy capability
         let hwaccel_disabled = std::env::var("RECO_NO_HWACCEL").is_ok();
@@ -190,19 +205,23 @@ impl SmartFileSource {
         }
         let backend_capable = is_backend_zero_copy_capable(decode_backend);
         let gpu_capable = gpu.supports_zero_copy();
-        let use_zero_copy = !hwaccel_disabled && backend_capable && gpu_capable;
+        let use_zero_copy = !hwaccel_disabled
+            && backend_capable
+            && gpu_capable
+            && matching_layout
+            && native_input_count;
 
         if !use_zero_copy && !hwaccel_disabled {
             log::info!(
                 "Zero-copy disabled: decode_backend={decode_backend} (capable={backend_capable}), \
-                 gpu_zero_copy={gpu_capable}. Using CPU upload path."
+                 gpu_zero_copy={gpu_capable}, matching_layout={matching_layout}, \
+                 supported_input_count={native_input_count}. Using CPU upload path."
             );
         }
 
         if use_zero_copy {
             Self::open_zero_copy(
-                left,
-                right,
+                inputs,
                 gpu,
                 sync_offset,
                 info,
@@ -212,14 +231,7 @@ impl SmartFileSource {
                 right_rotation,
             )
         } else {
-            Self::open_cpu(
-                &[left.clone(), right.clone()],
-                sync_offset,
-                false,
-                info,
-                pixel_format,
-                full_range,
-            )
+            Self::open_cpu(inputs, sync_offset, false, info, pixel_format, full_range)
         }
     }
 
@@ -305,8 +317,7 @@ impl SmartFileSource {
     #[cfg(target_os = "linux")]
     #[allow(clippy::too_many_arguments)]
     fn open_zero_copy(
-        left: &crate::stitch_job::InputPath,
-        right: &crate::stitch_job::InputPath,
+        inputs: &[crate::stitch_job::InputPath],
         gpu: &reco_core::gpu::GpuContext,
         sync_offset: i64,
         info: SourceInfo,
@@ -320,7 +331,7 @@ impl SmartFileSource {
         use reco_core::interop::zero_copy::GpuBufInfo;
 
         let map_err = |msg: String| SourceError::Init {
-            path: left.first_path().display().to_string(),
+            path: inputs[0].first_path().display().to_string(),
             reason: msg,
         };
 
@@ -359,80 +370,38 @@ impl SmartFileSource {
             Ok((y, uv))
         };
 
-        let (left_y_0, left_uv_0) = create_pair("left[0]")?;
-        let (left_y_1, left_uv_1) = create_pair("left[1]")?;
-        let (right_y_0, right_uv_0) = create_pair("right[0]")?;
-        let (right_y_1, right_uv_1) = create_pair("right[1]")?;
-
-        log::info!(
-            "SmartFileSource: GPU zero-copy ({input_width}x{input_height}, {pixel_format:?}), Y pitch={}/{}",
-            left_y_0.pitch,
-            left_y_1.pitch
-        );
-
-        let left_buf = GpuBufInfo {
-            y_ptr: [left_y_0.cuda_ptr, left_y_1.cuda_ptr],
-            uv_ptr: [left_uv_0.cuda_ptr, left_uv_1.cuda_ptr],
-            y_pitch: [left_y_0.pitch, left_y_1.pitch],
-            uv_pitch: [left_uv_0.pitch, left_uv_1.pitch],
-            width: input_width,
-            height: input_height,
-            pixel_format,
-        };
-        let right_buf = GpuBufInfo {
-            y_ptr: [right_y_0.cuda_ptr, right_y_1.cuda_ptr],
-            uv_ptr: [right_uv_0.cuda_ptr, right_uv_1.cuda_ptr],
-            y_pitch: [right_y_0.pitch, right_y_1.pitch],
-            uv_pitch: [right_uv_0.pitch, right_uv_1.pitch],
-            width: input_width,
-            height: input_height,
-            pixel_format,
-        };
-
-        // Slot-free channels for backpressure
-        let (left_slot_free_tx, left_slot_free_rx) = std::sync::mpsc::sync_channel::<u8>(2);
-        let (right_slot_free_tx, right_slot_free_rx) = std::sync::mpsc::sync_channel::<u8>(2);
-        left_slot_free_tx.send(0).expect("seed slot");
-        left_slot_free_tx.send(1).expect("seed slot");
-        right_slot_free_tx.send(0).expect("seed slot");
-        right_slot_free_tx.send(1).expect("seed slot");
-
-        // Shutdown flag for graceful decode thread exit
+        let mut cameras = Vec::with_capacity(inputs.len());
+        let mut decoders = Vec::with_capacity(inputs.len());
+        for input in inputs {
+            let (y0, uv0) = create_pair("slot0")?;
+            let (y1, uv1) = create_pair("slot1")?;
+            let buf = GpuBufInfo {
+                y_ptr: [y0.cuda_ptr, y1.cuda_ptr],
+                uv_ptr: [uv0.cuda_ptr, uv1.cuda_ptr],
+                y_pitch: [y0.pitch, y1.pitch],
+                uv_pitch: [uv0.pitch, uv1.pitch],
+                width: input_width,
+                height: input_height,
+                pixel_format,
+            };
+            let (tx, rx) = std::sync::mpsc::sync_channel(2);
+            tx.send(0).expect("seed slot");
+            tx.send(1).expect("seed slot");
+            decoders.push((input.clone(), buf.clone(), rx));
+            cameras.push(reco_core::interop::shared_textures::SharedCameraTextures {
+                textures: [y0, uv0, y1, uv1],
+                buf,
+                slot_free_tx: tx,
+            });
+        }
         let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-
-        // Spawn decode threads
-        let decode_handles = crate::zero_copy::spawn_decode_threads_gpu(
-            left.clone(),
-            right.clone(),
-            left_buf.clone(),
-            right_buf.clone(),
-            left_slot_free_rx,
-            right_slot_free_rx,
-            sync_offset,
-            shutdown.clone(),
+        let decode_handles =
+            crate::zero_copy::spawn_decode_threads_gpu(decoders, sync_offset, shutdown.clone());
+        let shared = SharedTextureSet { cameras };
+        log::info!(
+            "SmartFileSource: GPU zero-copy ({} camera(s), {input_width}x{input_height}, {pixel_format:?})",
+            inputs.len()
         );
-
-        // Build bind groups placeholder - session will create them from texture refs
-        // For now, we need a dummy bind group. Actually, the bind groups need the
-        // pipeline which we don't have. The session will create them via
-        // configure_gpu_source() when run() starts.
-        //
-        // Store textures in SharedTextureSet without bind groups.
-        // We'll need to split SharedTextureSet or use a different approach.
-        // For now, let's store the textures and bufs directly.
-
-        let shared = SharedTextureSet {
-            textures: [
-                left_y_0, left_uv_0, left_y_1, left_uv_1, right_y_0, right_uv_0, right_y_1,
-                right_uv_1,
-            ],
-            left_buf,
-            right_buf,
-            left_slot_free_tx,
-            right_slot_free_tx,
-            left_slot_free_rx: None,
-            right_slot_free_rx: None,
-        };
 
         Ok(Self {
             mode: SourceMode::GpuZeroCopy(Box::new(LinuxZeroCopyState {
@@ -455,8 +424,7 @@ impl SmartFileSource {
     #[cfg(target_os = "macos")]
     #[allow(clippy::too_many_arguments)]
     fn open_zero_copy(
-        left: &crate::stitch_job::InputPath,
-        right: &crate::stitch_job::InputPath,
+        inputs: &[crate::stitch_job::InputPath],
         _gpu: &reco_core::gpu::GpuContext,
         sync_offset: i64,
         info: SourceInfo,
@@ -465,7 +433,7 @@ impl SmartFileSource {
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
-        let pair_rx = crate::zero_copy::spawn_vt_decode_pair(left, right, sync_offset);
+        let pair_rx = crate::zero_copy::spawn_vt_decode_pair(&inputs[0], &inputs[1], sync_offset);
 
         log::info!(
             "SmartFileSource: Metal zero-copy ({}x{}, VideoToolbox decode{})",
@@ -490,8 +458,7 @@ impl SmartFileSource {
     #[cfg(target_os = "windows")]
     #[allow(clippy::too_many_arguments)]
     fn open_zero_copy(
-        left: &crate::stitch_job::InputPath,
-        right: &crate::stitch_job::InputPath,
+        inputs: &[crate::stitch_job::InputPath],
         _gpu: &reco_core::gpu::GpuContext,
         sync_offset: i64,
         info: SourceInfo,
@@ -505,8 +472,8 @@ impl SmartFileSource {
         Ok(Self {
             mode: SourceMode::D3d11ZeroCopy(Box::new(WindowsZeroCopyState {
                 decode: WindowsDecodeState::Pending {
-                    left: left.clone(),
-                    right: right.clone(),
+                    left: inputs[0].clone(),
+                    right: inputs[1].clone(),
                     sync_offset,
                 },
                 live_frame_guard: None,
@@ -525,8 +492,7 @@ impl SmartFileSource {
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     #[allow(clippy::too_many_arguments)]
     fn open_zero_copy(
-        left: &crate::stitch_job::InputPath,
-        right: &crate::stitch_job::InputPath,
+        inputs: &[crate::stitch_job::InputPath],
         _gpu: &reco_core::gpu::GpuContext,
         sync_offset: i64,
         info: SourceInfo,
@@ -536,14 +502,7 @@ impl SmartFileSource {
         _right_rotation: i32,
     ) -> Result<Self, SourceError> {
         log::info!("SmartFileSource: zero-copy not yet implemented for this platform, using CPU");
-        Self::open_cpu(
-            &[left.clone(), right.clone()],
-            sync_offset,
-            false,
-            info,
-            pixel_format,
-            full_range,
-        )
+        Self::open_cpu(inputs, sync_offset, false, info, pixel_format, full_range)
     }
 
     /// Human-readable description of the active decode path.
@@ -559,51 +518,6 @@ impl SmartFileSource {
     pub fn shared_texture_set(&self) -> Option<&reco_core::interop::SharedTextureSet> {
         match &self.mode {
             SourceMode::GpuZeroCopy(state) => Some(&state.shared),
-            _ => None,
-        }
-    }
-
-    /// Take the slot-free senders for backpressure (GPU zero-copy only).
-    ///
-    /// The session needs these to release slots back to the decode threads
-    /// after rendering each frame. Returns `None` for CPU-mode sources.
-    ///
-    /// **Important:** The returned senders are clones. The caller MUST drop
-    /// them before this source is dropped, otherwise the `Drop` impl cannot
-    /// fully signal decode threads to shut down (the cloned senders keep the
-    /// channel alive). In practice, the session drops senders when `run()`
-    /// returns, which happens before the source is dropped.
-    #[cfg(target_os = "linux")]
-    pub fn take_slot_senders(
-        &mut self,
-    ) -> Option<(
-        std::sync::mpsc::SyncSender<u8>,
-        std::sync::mpsc::SyncSender<u8>,
-    )> {
-        match &mut self.mode {
-            SourceMode::GpuZeroCopy(state) => {
-                // Clone senders (they're clonable) for the session
-                Some((
-                    state.shared.left_slot_free_tx.clone(),
-                    state.shared.right_slot_free_tx.clone(),
-                ))
-            }
-            _ => None,
-        }
-    }
-
-    /// Access the CUDA buffer info for GPU detection (GPU zero-copy only).
-    #[cfg(target_os = "linux")]
-    pub fn gpu_buf_info(
-        &self,
-    ) -> Option<(
-        &reco_core::interop::zero_copy::GpuBufInfo,
-        &reco_core::interop::zero_copy::GpuBufInfo,
-    )> {
-        match &self.mode {
-            SourceMode::GpuZeroCopy(state) => {
-                Some((&state.shared.left_buf, &state.shared.right_buf))
-            }
             _ => None,
         }
     }
@@ -638,9 +552,7 @@ impl FrameSource for SmartFileSource {
                 match crate::decode_stream::receive(rx)
                     .inspect_err(|error| self.terminal_error = Some(error.clone()))?
                 {
-                    Some(signal) => Ok(Some(FrameSet::GpuResident {
-                        slots: [signal.left_slot, signal.right_slot],
-                    })),
+                    Some(signal) => Ok(Some(FrameSet::GpuResident { slots: signal })),
                     None => {
                         self.exhausted = true;
                         Ok(None)
@@ -678,7 +590,7 @@ impl FrameSource for SmartFileSource {
                             },
                         ]);
                         // Keep the D3d11Frame pair alive so FFmpeg doesn't
-                        // recycle the decode pool slices before stage_frame
+                        // recycle the decode pool slices before stage_frames
                         // copies them. The previous guard is dropped here,
                         // which is safe because its staging copy already
                         // completed in the previous loop iteration.
@@ -712,15 +624,14 @@ impl FrameSource for SmartFileSource {
                     .frame_rx
                     .as_ref()
                     .expect("frame_rx taken during shutdown");
-                let left_tx = &state.shared.left_slot_free_tx;
-                let right_tx = &state.shared.right_slot_free_tx;
                 for i in 0..count {
                     match crate::decode_stream::receive(rx)
                         .inspect_err(|error| self.terminal_error = Some(error.clone()))?
                     {
                         Some(signal) => {
-                            let _ = left_tx.send(signal.left_slot);
-                            let _ = right_tx.send(signal.right_slot);
+                            for (camera, slot) in state.shared.cameras.iter().zip(signal) {
+                                let _ = camera.slot_free_tx.send(slot);
+                            }
                         }
                         None => {
                             self.exhausted = true;
@@ -811,7 +722,7 @@ impl Drop for SmartFileSource {
 
             // Step 1: Signal shutdown to decode threads (they check this
             // flag via recv_timeout, so they exit even if slot senders
-            // are still alive from take_slot_senders).
+            // are still held by the session).
             state
                 .shutdown
                 .store(true, std::sync::atomic::Ordering::Release);

@@ -16,52 +16,68 @@ use crate::session::types::SessionError;
 use crate::source::FrameSet;
 
 /// Per-camera CUDA NV12 frames from the shared-texture slot pointers.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "linux")]
 pub(super) fn cuda_nv12_frames(
-    left_buf: &crate::interop::zero_copy::GpuBufInfo,
-    right_buf: &crate::interop::zero_copy::GpuBufInfo,
-    left_slot: u8,
-    right_slot: u8,
-    left_rotation: i32,
-    right_rotation: i32,
-) -> [(CameraIndex, DetectorFrame<'static>); 2] {
+    buffers: &[crate::interop::zero_copy::GpuBufInfo],
+    slots: &[u8],
+    rotations: [i32; 2],
+) -> Vec<(CameraIndex, DetectorFrame<'static>)> {
     use crate::detect::detector::CudaNv12Frame;
-    let ls = left_slot as usize;
-    let rs = right_slot as usize;
-    let is_10bit = left_buf.pixel_format == crate::render::renderer::GpuPixelFormat::P010;
-    [
-        (
-            0,
-            DetectorFrame::CudaNv12(CudaNv12Frame {
-                y_ptr: left_buf.y_ptr[ls],
-                uv_ptr: left_buf.uv_ptr[ls],
-                y_pitch: left_buf.y_pitch[ls],
-                uv_pitch: left_buf.uv_pitch[ls],
-                width: left_buf.width,
-                height: left_buf.height,
-                rotation: left_rotation,
-                is_10bit,
-            }),
-        ),
-        (
-            1,
-            DetectorFrame::CudaNv12(CudaNv12Frame {
-                y_ptr: right_buf.y_ptr[rs],
-                uv_ptr: right_buf.uv_ptr[rs],
-                y_pitch: right_buf.y_pitch[rs],
-                uv_pitch: right_buf.uv_pitch[rs],
-                width: right_buf.width,
-                height: right_buf.height,
-                rotation: right_rotation,
-                is_10bit,
-            }),
-        ),
-    ]
+    buffers
+        .iter()
+        .zip(slots)
+        .enumerate()
+        .map(|(camera, (buf, &slot))| {
+            let slot = usize::from(slot);
+            (
+                camera,
+                DetectorFrame::CudaNv12(CudaNv12Frame {
+                    y_ptr: buf.y_ptr[slot],
+                    uv_ptr: buf.uv_ptr[slot],
+                    y_pitch: buf.y_pitch[slot],
+                    uv_pitch: buf.uv_pitch[slot],
+                    width: buf.width,
+                    height: buf.height,
+                    rotation: rotations[camera],
+                    is_10bit: buf.pixel_format == crate::render::renderer::GpuPixelFormat::P010,
+                }),
+            )
+        })
+        .collect()
+}
+
+/// Per-camera views selected from shared double-buffered textures.
+#[cfg(target_os = "linux")]
+pub(super) fn shared_nv12_frames<'a>(
+    views: &'a [[wgpu::TextureView; 4]],
+    slots: &[u8],
+    width: u32,
+    height: u32,
+    rotations: [i32; 2],
+) -> Vec<(CameraIndex, DetectorFrame<'a>)> {
+    views
+        .iter()
+        .zip(slots)
+        .enumerate()
+        .map(|(camera, (views, &slot))| {
+            let slot = usize::from(slot);
+            (
+                camera,
+                DetectorFrame::WgpuNv12 {
+                    y_view: &views[slot * 2],
+                    uv_view: &views[slot * 2 + 1],
+                    width,
+                    height,
+                    rotation: rotations[camera],
+                },
+            )
+        })
+        .collect()
 }
 
 /// Per-camera wgpu NV12 texture-view frames (shared decode textures /
 /// D3D11 staging views).
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn wgpu_nv12_frames<'a>(
     left_y: &'a wgpu::TextureView,
@@ -160,32 +176,24 @@ impl StitchSession {
                 FrameSet::GpuResident { slots } => {
                     if self.core.detector_prefers_cuda_nv12() {
                         let bufs = self.core.executor.gpu().and_then(|g| g.cuda_buf_info());
-                        if let Some((left_buf, right_buf)) = bufs {
+                        if let Some(bufs) = bufs {
                             crate::profile_scope!("gpu_detect_total");
                             let frames = cuda_nv12_frames(
-                                &left_buf,
-                                &right_buf,
-                                slots[0],
-                                slots[1],
-                                self.left_rotation,
-                                self.right_rotation,
+                                &bufs,
+                                slots,
+                                [self.left_rotation, self.right_rotation],
                             );
                             self.core.run_detection_frames(&frames);
                         }
                     } else if let Some(views) = self.shared_views() {
                         crate::profile_scope!("detect_wgpu_nv12");
-                        let ls = slots[0] as usize;
-                        let rs = slots[1] as usize;
                         let (w, h) = self.core.source_dims();
-                        let frames = wgpu_nv12_frames(
-                            &views[ls * 2],
-                            &views[ls * 2 + 1],
-                            &views[4 + rs * 2],
-                            &views[4 + rs * 2 + 1],
+                        let frames = shared_nv12_frames(
+                            &views,
+                            slots,
                             w,
                             h,
-                            self.left_rotation,
-                            self.right_rotation,
+                            [self.left_rotation, self.right_rotation],
                         );
                         self.core.run_detection_frames(&frames);
                     }
@@ -375,20 +383,18 @@ impl StitchSession {
     }
 
     /// Run GPU-resident detection from CUDA NV12 shared textures.
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(target_os = "linux")]
     pub(crate) fn detect_and_update_world_pose_cuda_nv12(
         &mut self,
-        left_buf: &crate::interop::zero_copy::GpuBufInfo,
-        right_buf: &crate::interop::zero_copy::GpuBufInfo,
-        left_slot: u8,
-        right_slot: u8,
+        buffers: &[crate::interop::zero_copy::GpuBufInfo],
+        slots: &[u8],
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
         let lr = self.left_rotation;
         let rr = self.right_rotation;
         self.detect_and_update_world_pose_with(elapsed, |core| {
             crate::profile_scope!("gpu_detect_total");
-            let frames = cuda_nv12_frames(left_buf, right_buf, left_slot, right_slot, lr, rr);
+            let frames = cuda_nv12_frames(buffers, slots, [lr, rr]);
             core.run_detection_frames(&frames);
         })
     }

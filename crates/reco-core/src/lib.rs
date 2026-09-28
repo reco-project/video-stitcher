@@ -93,6 +93,8 @@ pub mod gpu;
 #[cfg(feature = "gpu")]
 pub mod interop;
 pub mod lens;
+#[cfg(any(feature = "gpu", test))]
+mod lookahead;
 #[cfg(all(target_os = "linux", feature = "gpu"))]
 pub mod nvbuf_transform;
 pub mod projection;

@@ -103,9 +103,15 @@ impl StitchSession {
         self.core.set_panner(panner);
     }
 
-    /// Set the lookahead buffer depth in frames.
-    pub fn set_lookahead(&mut self, frames: usize) {
+    /// Set the lookahead depth and retained source-image allowance in bytes.
+    ///
+    /// A nonzero depth requires a nonzero allowance. Counts owned host planes
+    /// across both scheduling queues and native staging payload estimates,
+    /// not total process memory or driver overhead. Exceeding the allowance
+    /// aborts the run without shortening the requested lookahead.
+    pub fn set_lookahead(&mut self, frames: usize, max_image_bytes: usize) {
         self.lookahead_frames = frames;
+        self.lookahead_memory_bytes = max_image_bytes;
     }
 
     /// Attach a stacked-video replay recorder.

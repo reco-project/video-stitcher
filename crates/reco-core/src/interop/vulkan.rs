@@ -4,8 +4,8 @@
 //! resulting `VkImage` into a [`wgpu::Texture`] via the HAL escape hatch.
 //!
 //! The flow:
-//! 1. CUDA allocates shareable memory and exports a POSIX fd
-//! 2. This module creates a `VkImage` with `VK_KHR_external_memory_fd`
+//! 1. Create a linear `VkImage` and query its allocation requirements
+//! 2. CUDA allocates shareable memory and exports a POSIX fd
 //! 3. Imports the fd as the backing memory for the image
 //! 4. Wraps the `VkImage` into `wgpu::Texture` via `create_texture_from_hal`
 //!
@@ -57,22 +57,11 @@ pub fn create_shared_texture(
     format: wgpu::TextureFormat,
 ) -> Result<SharedTexture, CudaInteropError> {
     use ash::vk;
+    use std::os::fd::{FromRawFd, IntoRawFd, OwnedFd};
     use wgpu::hal::api::Vulkan;
 
-    let bpp = format_bytes_per_pixel(format);
-
-    // Allocate row-aligned: Vulkan may require specific row pitch alignment.
-    // Start with a generous pitch (aligned to 256 bytes, common GPU requirement).
-    let row_bytes = width as usize * bpp;
-    let pitch = (row_bytes + 255) & !255; // align to 256
-    let alloc_size = pitch * height as usize;
-
-    let shared_mem = crate::interop::cuda::allocate_shared_memory(alloc_size)?;
-    let cuda_ptr = shared_mem.device_ptr;
-    let fd = shared_mem.shared_handle;
-
     // Access the raw Vulkan device through wgpu's HAL
-    let (vk_image, device_memory, actual_pitch) = unsafe {
+    let (vk_image, device_memory, layout, shared_mem) = unsafe {
         let hal_device_guard = gpu
             .device
             .as_hal::<Vulkan>()
@@ -121,7 +110,6 @@ pub fn create_shared_texture(
             array_layer: 0,
         };
         let layout = raw_device.get_image_subresource_layout(vk_image, subresource);
-        let actual_pitch = layout.row_pitch as usize;
 
         // Find a DEVICE_LOCAL memory type
         let mem_props = {
@@ -148,38 +136,56 @@ pub fn create_shared_texture(
                     .find(|&i| (mem_reqs.memory_type_bits & (1 << i)) != 0)
             })
             .ok_or_else(|| {
+                raw_device.destroy_image(vk_image, None);
                 CudaInteropError::VulkanError("no compatible memory type for imported image".into())
             })?;
 
-        // Import the CUDA fd as Vulkan memory
+        // Use the image's requirements, not a guessed row alignment.
+        let shared_mem = crate::interop::cuda::allocate_shared_memory(mem_reqs.size as usize)
+            .inspect_err(|_| raw_device.destroy_image(vk_image, None))?;
+        let fd = shared_mem.shared_handle;
+        let fd_owner = OwnedFd::from_raw_fd(fd);
+
+        // Each allocation backs exactly one image. Explicit dedication also
+        // prevents zero-valued reads of large imported linear images; exercised
+        // by shared_texture_preserves_cuda_pixels.
         let mut import_info = vk::ImportMemoryFdInfoKHR::default()
             .handle_type(vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD)
             .fd(fd);
 
+        let mut dedicated = vk::MemoryDedicatedAllocateInfo::default().image(vk_image);
         let alloc_info = vk::MemoryAllocateInfo::default()
             .allocation_size(shared_mem.alloc_size as u64)
             .memory_type_index(memory_type_index)
-            .push_next(&mut import_info);
+            .push_next(&mut import_info)
+            .push_next(&mut dedicated);
 
         let device_memory = raw_device.allocate_memory(&alloc_info, None).map_err(|e| {
+            raw_device.destroy_image(vk_image, None);
             CudaInteropError::VulkanError(format!("vkAllocateMemory (import fd): {e:?}"))
         })?;
+        // A successful import transfers descriptor ownership to Vulkan.
+        let _ = fd_owner.into_raw_fd();
 
         // Bind the imported memory to the image
         raw_device
             .bind_image_memory(vk_image, device_memory, 0)
-            .map_err(|e| CudaInteropError::VulkanError(format!("vkBindImageMemory: {e:?}")))?;
+            .map_err(|e| {
+                raw_device.destroy_image(vk_image, None);
+                raw_device.free_memory(device_memory, None);
+                CudaInteropError::VulkanError(format!("vkBindImageMemory: {e:?}"))
+            })?;
 
         log::info!(
             "Vulkan image created: {}x{} {:?}, pitch={}, imported fd={}",
             width,
             height,
             format,
-            actual_pitch,
+            layout.row_pitch,
             fd
         );
 
-        (vk_image, device_memory, actual_pitch)
+        (vk_image, device_memory, layout, shared_mem)
     };
 
     // Wrap the VkImage into a wgpu texture via HAL.
@@ -225,7 +231,9 @@ pub fn create_shared_texture(
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format,
-                usage: wgpu::TextureUses::RESOURCE | wgpu::TextureUses::COPY_DST,
+                usage: wgpu::TextureUses::RESOURCE
+                    | wgpu::TextureUses::COPY_DST
+                    | wgpu::TextureUses::COPY_SRC,
                 memory_flags: wgpu::hal::MemoryFlags::empty(),
                 view_formats: vec![],
             },
@@ -259,22 +267,10 @@ pub fn create_shared_texture(
 
     Ok(SharedTexture {
         texture: wgpu_texture,
-        cuda_ptr,
-        pitch: actual_pitch,
+        cuda_ptr: shared_mem.device_ptr + layout.offset,
+        pitch: layout.row_pitch as usize,
         _shared_mem: shared_mem,
     })
-}
-
-/// Bytes per pixel for the texture formats we use.
-fn format_bytes_per_pixel(format: wgpu::TextureFormat) -> usize {
-    match format {
-        wgpu::TextureFormat::R8Unorm => 1,
-        wgpu::TextureFormat::Rg8Unorm => 2,
-        wgpu::TextureFormat::R16Unorm => 2,
-        wgpu::TextureFormat::Rg16Unorm => 4,
-        wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Rgba8UnormSrgb => 4,
-        _ => panic!("unsupported format for CUDA interop: {format:?}"),
-    }
 }
 
 /// Map wgpu texture format to Vulkan format.
@@ -327,6 +323,83 @@ pub fn create_nv12_shared_texture(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires NVIDIA CUDA and Vulkan external-memory interop"]
+    fn shared_texture_preserves_cuda_pixels() {
+        use crate::interop::cuda::{cuda_ensure_context, cuda_memcpy_htod_2d, cuda_synchronize};
+        let gpu = GpuContext::new_blocking().unwrap();
+        cuda_ensure_context().unwrap();
+        for (width, height, format, bpp) in [
+            (128_u32, 96_u32, wgpu::TextureFormat::R8Unorm, 1),
+            (960, 540, wgpu::TextureFormat::Rg8Unorm, 2),
+            (7500, 2500, wgpu::TextureFormat::R8Unorm, 1),
+            (3750, 1250, wgpu::TextureFormat::Rg8Unorm, 2),
+            (7500, 2500, wgpu::TextureFormat::R16Unorm, 2),
+            (3750, 1250, wgpu::TextureFormat::Rg16Unorm, 4),
+        ] {
+            let texture = create_shared_texture(&gpu, width, height, format).unwrap();
+            let row_bytes = width * bpp;
+            let stride = row_bytes.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+                * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+            let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("interop_pixel_check"),
+                size: u64::from(stride) * u64::from(height),
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            });
+            let mut expected = vec![0_u8; (row_bytes * height) as usize];
+            for generation in 0..3 {
+                for (index, byte) in expected.iter_mut().enumerate() {
+                    *byte = ((index + generation * 79) % 251) as u8;
+                }
+                cuda_memcpy_htod_2d(
+                    texture.cuda_ptr,
+                    texture.pitch,
+                    expected.as_ptr(),
+                    row_bytes as usize,
+                    row_bytes as usize,
+                    height as usize,
+                )
+                .unwrap();
+                cuda_synchronize().unwrap();
+                let mut encoder = gpu.device.create_command_encoder(&Default::default());
+                encoder.copy_texture_to_buffer(
+                    texture.texture.as_image_copy(),
+                    wgpu::TexelCopyBufferInfo {
+                        buffer: &buffer,
+                        layout: wgpu::TexelCopyBufferLayout {
+                            offset: 0,
+                            bytes_per_row: Some(stride),
+                            rows_per_image: None,
+                        },
+                    },
+                    texture.texture.size(),
+                );
+                gpu.queue.submit([encoder.finish()]);
+                buffer
+                    .slice(..)
+                    .map_async(wgpu::MapMode::Read, |result| result.unwrap());
+                gpu.device
+                    .poll(wgpu::PollType::wait_indefinitely())
+                    .unwrap();
+                {
+                    let mapped = buffer.slice(..).get_mapped_range();
+                    for (row, (actual, expected)) in mapped
+                        .chunks_exact(stride as usize)
+                        .zip(expected.chunks_exact(row_bytes as usize))
+                        .enumerate()
+                    {
+                        assert!(
+                            &actual[..row_bytes as usize] == expected,
+                            "{width}x{height} {format:?}, generation {generation}, row {row}"
+                        );
+                    }
+                }
+                buffer.unmap();
+            }
+        }
+    }
 
     #[test]
     fn test_create_shared_texture() {

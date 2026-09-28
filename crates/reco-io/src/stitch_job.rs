@@ -88,6 +88,7 @@ pub struct StitchJob {
     /// Lookahead buffer depth in seconds. When > 0, the session
     /// decodes N frames ahead to give the panner future context.
     lookahead_secs: f64,
+    lookahead_memory_bytes: Option<usize>,
 
     /// Path for pipeline event JSONL output. When set, attaches a
     /// `JsonlSink` to the session that records every detection,
@@ -309,6 +310,7 @@ impl StitchJob {
             force_cpu_decode: false,
             cpu_stitch: false,
             lookahead_secs: 0.0,
+            lookahead_memory_bytes: None,
             events_path: None,
         }
     }
@@ -495,6 +497,15 @@ impl StitchJob {
         self
     }
 
+    /// Override the retained lookahead image allowance in bytes.
+    ///
+    /// Without an override, the application selects an allowance at run time.
+    /// This is not a total process-memory limit. Zero rejects enabled lookahead.
+    pub fn lookahead_memory_limit(mut self, bytes: usize) -> Self {
+        self.lookahead_memory_bytes = Some(bytes);
+        self
+    }
+
     /// Record pipeline events (detections, filter decisions, pan
     /// decisions) to a JSONL file for offline analysis.
     pub fn events(mut self, path: impl AsRef<Path>) -> Self {
@@ -621,34 +632,8 @@ impl StitchJob {
                 self.inputs.len()
             )));
         }
-        let mono = camera_count == 1;
-
-        // Decode + render strategy. --cpu never touches the GPU;
-        // otherwise the GPU renders and decode is zero-copy unless
-        // forced off. Mono topologies render on the CPU executor
-        // regardless (the mono GPU pass is not wired yet); zero-copy
-        // decode selection is a two-camera path.
-        log::debug!(
-            "StitchJob::run: cameras={camera_count} cpu_stitch={} force_cpu_decode={}",
-            self.cpu_stitch,
-            self.force_cpu_decode
-        );
-        let (gpu, mut source) = if mono {
-            if !self.cpu_stitch {
-                log::info!("mono projection: software render (the mono GPU pass is not wired yet)");
-            }
-            // effective_sync passes through so the decode layer logs
-            // the single-input ignore instead of silently zeroing it.
-            (
-                None,
-                crate::SmartFileSource::open_cpu_only(
-                    &self.inputs,
-                    effective_sync,
-                    self.cpu_stitch,
-                )?,
-            )
-        } else if self.cpu_stitch {
-            log::info!("CPU stitch: software render + software decode, no GPU touched (--cpu)");
+        let (gpu, mut source) = if self.cpu_stitch {
+            log::info!("CPU stitch: software render + software decode");
             (
                 None,
                 crate::SmartFileSource::open_cpu_only(&self.inputs, effective_sync, true)?,
@@ -656,15 +641,9 @@ impl StitchJob {
         } else {
             let gpu = reco_core::gpu::GpuContext::new_blocking()?;
             let source = if self.force_cpu_decode {
-                log::info!("CPU-resident frames: zero-copy disabled by --no-zero-copy");
                 crate::SmartFileSource::open_cpu_only(&self.inputs, effective_sync, false)?
             } else {
-                crate::SmartFileSource::open(
-                    &self.inputs[0],
-                    &self.inputs[1],
-                    &gpu,
-                    effective_sync,
-                )?
+                crate::SmartFileSource::open(&self.inputs, &gpu, effective_sync)?
             };
             (Some(gpu), source)
         };
@@ -745,16 +724,7 @@ impl StitchJob {
         // Configure GPU bind groups if source is GPU-resident
         #[cfg(target_os = "linux")]
         if let Some(shared) = source.shared_texture_set() {
-            session.setup_gpu_source(shared);
-        }
-
-        // Configure lookahead buffer if requested.
-        if self.lookahead_secs > 0.0 {
-            let fps = crate::adapters::FfmpegFileSource::frame_rate(self.inputs[0].first_path())
-                .map(|(n, d)| if d != 0 { n as f64 / d as f64 } else { 30.0 })
-                .unwrap_or(30.0);
-            let frames = (self.lookahead_secs * fps).round() as usize;
-            session.set_lookahead(frames);
+            session.setup_gpu_source(shared)?;
         }
 
         for hook in self.session_hooks.drain(..) {
@@ -862,6 +832,15 @@ impl StitchJob {
             Box::new(encoder),
             reco_core::session::SinkOptions::threaded(2),
         )?;
+
+        // Sample the allowance after inference and output resources are initialized.
+        if self.lookahead_secs > 0.0 {
+            let frames = (self.lookahead_secs * info.fps).round() as usize;
+            let native_gpu = source.is_gpu_resident().then(|| session.core().gpu());
+            let budget = crate::lookahead::image_budget(native_gpu, self.lookahead_memory_bytes)
+                .map_err(StitchError::Other)?;
+            session.set_lookahead(frames, budget);
+        }
 
         #[cfg(feature = "stacked-output")]
         if let Some(ref mut cfg) = self.replay_recording {

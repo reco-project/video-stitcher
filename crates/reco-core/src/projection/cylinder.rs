@@ -57,6 +57,47 @@ impl Default for Cylinder {
 }
 
 impl Cylinder {
+    #[cfg(feature = "gpu")]
+    pub(crate) fn gpu_uniforms(
+        &self,
+        framing: &Framing,
+        source_height: f64,
+        aspect: f32,
+        pose: RenderPose,
+        flags: [u32; 4],
+    ) -> CylinderUniforms {
+        let map = CylinderMap::new(
+            self,
+            framing,
+            source_height,
+            &ViewportSize {
+                width: 1,
+                height: 1,
+            },
+            pose,
+        );
+        let vector = |v: [f64; 3], scale: f64| {
+            [
+                (v[0] * scale) as f32,
+                (v[1] * scale) as f32,
+                (v[2] * scale) as f32,
+                0.0,
+            ]
+        };
+        CylinderUniforms {
+            forward: vector(map.forward, 1.0),
+            right: vector(map.right, map.tan_half_v * f64::from(aspect)),
+            up: vector(map.up, map.tan_half_v),
+            shape: [
+                (map.radius / (2.0 * map.half_height)) as f32,
+                map.arc_rad as f32,
+                0.0,
+                0.0,
+            ],
+            flags,
+        }
+    }
+
     /// Validate the cylinder's parameters: positive finite
     /// radius/height, arc in `(0, 360]` degrees.
     pub(crate) fn validate(&self) -> Result<(), CalibrationError> {
@@ -76,6 +117,17 @@ impl Cylinder {
         }
         Ok(())
     }
+}
+
+#[cfg(feature = "gpu")]
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct CylinderUniforms {
+    forward: [f32; 4],
+    right: [f32; 4],
+    up: [f32; 4],
+    shape: [f32; 4],
+    flags: [u32; 4],
 }
 
 impl ProjectionGeometry for Cylinder {
@@ -126,12 +178,16 @@ impl ProjectionGeometry for Cylinder {
 
     #[cfg(feature = "gpu")]
     fn gpu_program(&self) -> Option<crate::render::GpuProgram> {
-        // TODO: wire the mono GPU pass. The cylinder composite is a
-        // fullscreen pass with its own bind layout, and a placeholder
-        // descriptor would bind cylindrical_mono.wgsl to the L-shape's
-        // plane pipeline and render garbage. None fails GPU-executor
-        // construction fast; the CPU path is complete.
-        None
+        Some(crate::render::GpuProgram {
+            wgsl: concat!(
+                include_str!("../shaders/video_sampling.wgsl"),
+                include_str!("../shaders/cylinder.wgsl")
+            ),
+            vs_entry: "vs_main",
+            fs_entry: "fs_main",
+            blend: wgpu::BlendState::REPLACE,
+            pass: crate::render::GpuPass::Cylinder,
+        })
     }
 }
 
@@ -166,7 +222,7 @@ fn rotate(v: [f64; 3], k: [f64; 3], angle: f64) -> [f64; 3] {
 /// SYNC_WITH: geometry/rig_correction.rs `rig_frame` - the frame
 /// construction must match or the two projections disagree on what a
 /// calibrated tilt means.
-/// Cylinder rendering is CPU-only. Ray-basis quantities are precomputed in f64.
+/// Ray-basis quantities are precomputed in f64 for CPU sampling and GPU uniforms.
 struct CylinderMap {
     /// Rotated camera basis for ray construction: the ray for NDC
     /// `(x, y)` is `forward + right * x * tan_h + up * y * tan_v`.

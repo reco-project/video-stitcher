@@ -8,29 +8,20 @@
 use crate::interop::vulkan::SharedTexture;
 use crate::interop::zero_copy::GpuBufInfo;
 
-/// Bundled shared textures, CUDA buffer info, slot channels, and bind
-/// groups for the Linux CUDA/Vulkan zero-copy path.
-///
-/// Constructed by the source (e.g. `SmartFileSource`), consumed by
-/// `StitchSession::setup_gpu_source` + `run`. The caller must pass
-/// `left_buf` / `right_buf` and the slot-free receivers to the decode
-/// thread spawner, then pass this struct (minus the receivers) to the
-/// session.
+/// One camera's double-buffered CUDA/Vulkan textures and decode backpressure.
+/// Must outlive the decode workers that write these textures.
+pub struct SharedCameraTextures {
+    /// Y/UV planes for slots 0 and 1, in that order.
+    pub textures: [SharedTexture; 4],
+    /// CUDA destinations for this camera's decoder.
+    pub buf: GpuBufInfo,
+    /// Returns a consumed slot to the decoder.
+    pub slot_free_tx: std::sync::mpsc::SyncSender<u8>,
+}
+
+/// Shared decode surfaces in projection input order.
+/// The source owns these until its decode workers have joined.
 pub struct SharedTextureSet {
-    /// The 8 shared textures: [left_y_0, left_uv_0, left_y_1, left_uv_1,
-    /// right_y_0, right_uv_0, right_y_1, right_uv_1].
-    /// Must be dropped after decode threads are joined.
-    pub textures: [SharedTexture; 8],
-    /// CUDA buffer info for left camera decode thread.
-    pub left_buf: GpuBufInfo,
-    /// CUDA buffer info for right camera decode thread.
-    pub right_buf: GpuBufInfo,
-    /// Slot-free sender for left camera (decode backpressure).
-    pub left_slot_free_tx: std::sync::mpsc::SyncSender<u8>,
-    /// Slot-free sender for right camera (decode backpressure).
-    pub right_slot_free_tx: std::sync::mpsc::SyncSender<u8>,
-    /// Slot-free receiver for left camera. Taken by decode thread spawner.
-    pub left_slot_free_rx: Option<std::sync::mpsc::Receiver<u8>>,
-    /// Slot-free receiver for right camera. Taken by decode thread spawner.
-    pub right_slot_free_rx: Option<std::sync::mpsc::Receiver<u8>>,
+    /// One double-buffered surface per input.
+    pub cameras: Vec<SharedCameraTextures>,
 }

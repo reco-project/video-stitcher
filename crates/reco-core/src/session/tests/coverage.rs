@@ -42,7 +42,7 @@ fn source_rates_are_accepted_in_immediate_and_buffered_sessions() {
             let executor = CpuExecutor::new(cal.clone(), size.clone(), W, H, false).unwrap();
             let mut session =
                 StitchSession::with_executor(Executor::Cpu(Box::new(executor))).unwrap();
-            session.set_lookahead(lookahead);
+            session.set_lookahead(lookahead, usize::MAX);
             let mut source = RatedSource {
                 source: MockSource::new(8),
                 fps,
@@ -79,7 +79,7 @@ fn coverage_runs_once_after_immediate_or_lookahead_decisions() {
         height: H,
     };
     let config = MapConfig::default();
-    for (gpu, lookahead) in [(false, 0), (true, 0), (true, 8)] {
+    for (gpu, lookahead) in [(false, 0), (false, 8), (true, 0), (true, 8)] {
         let executor = if gpu {
             let Some(gpu) = crate::stitch::test_support::gpu_or_skip() else {
                 continue;
@@ -107,7 +107,7 @@ fn coverage_runs_once_after_immediate_or_lookahead_decisions() {
         let mut session = StitchSession::with_executor(executor).unwrap();
         session.core_mut().prepare_coverage().unwrap();
         session.set_panner(Box::new(Steps));
-        session.set_lookahead(lookahead);
+        session.set_lookahead(lookahead, usize::MAX);
         let events = Arc::new(Mutex::new(Vec::new()));
         session.set_event_sink(Box::new(Events(events.clone())));
         assert_eq!(

@@ -128,14 +128,13 @@ pub enum ErrorPolicy {
 /// conflict with trivial cost (~150 bytes of scalars).
 #[derive(Default)]
 pub(crate) struct FrameLoopContext {
+    /// The buffered producer already ran detection and tracking.
+    pub(crate) tracking_complete: bool,
     /// Output frame duration, independent of decode and processing time.
     pub(crate) frame_seconds: f32,
     /// CUDA buffer info for GPU detection (Linux zero-copy path).
     #[cfg(target_os = "linux")]
-    pub(crate) gpu_buf_info: Option<(
-        crate::interop::zero_copy::GpuBufInfo,
-        crate::interop::zero_copy::GpuBufInfo,
-    )>,
+    pub(crate) gpu_buf_info: Option<Vec<crate::interop::zero_copy::GpuBufInfo>>,
 }
 
 /// Errors from [`StitchSession`](super::StitchSession). `Clone + Send + Sync` so consumers

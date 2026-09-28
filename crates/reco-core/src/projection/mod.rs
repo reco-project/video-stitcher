@@ -41,9 +41,6 @@ pub enum SourceMapError {
     /// The point is outside the normalized image or contains a non-finite value.
     #[error("source point must be finite and within [0, 1]")]
     InvalidPoint,
-    /// This projection does not implement source-point mapping yet.
-    #[error("source-point mapping is unsupported by this projection")]
-    Unsupported,
     /// The inverse lens/geometry calculation has no finite solution.
     #[error("source point has no finite mapped direction")]
     NoDirection,
@@ -559,11 +556,14 @@ mod tests {
     }
 
     #[test]
-    fn cylindrical_projection_has_no_detection_mapping() {
+    fn cylindrical_projection_maps_the_source_center_forward() {
         let cal = cylinder_cal();
         assert_eq!(
             cal.map_source_point(0, [0.5, 0.5]),
-            Err(SourceMapError::Unsupported)
+            Ok(YawPitch {
+                yaw: 0.0,
+                pitch: 0.0
+            })
         );
     }
 

@@ -88,6 +88,11 @@ impl super::StitchCore {
         let Some(gpu) = self.executor.gpu() else {
             return Err(StitchCoreError::RequiresGpu);
         };
+        if gpu.pipeline.calibration().projection.camera_count() != 2 {
+            return Err(StitchCoreError::Config(
+                "GPU stacked replay requires two cameras".into(),
+            ));
+        }
         let source_format = match gpu.pipeline.input_format() {
             InputFormat::Yuv420p => SourceFormat::Yuv420p,
             InputFormat::Nv12 => SourceFormat::Nv12,

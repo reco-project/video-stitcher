@@ -38,9 +38,8 @@ pub enum PipelineError {
     #[error("render error: {0}")]
     Render(#[from] RenderError),
 
-    /// The active projection has no GPU plane pass (the mono cylinder,
-    /// until its projection-owned fullscreen pass lands).
-    #[error("this projection has no GPU plane scene; the mono GPU pass is not wired yet")]
+    /// A stereo-plane entry point was used with a non-planar projection.
+    #[error("this entry point requires a stereo plane projection; use the frame-set render path")]
     NoPlaneScene,
 
     /// Wrong FrameSet variant for this render method.
@@ -66,8 +65,7 @@ pub enum PipelineError {
 pub(crate) struct StitchPipeline {
     /// GPU device and queue.
     pub(crate) gpu: GpuContext,
-    /// L-shape plane placement. `None` for plane-less topologies -
-    /// their GPU pass carries its own geometry when it lands.
+    /// Cached L-shape plane placement; fullscreen projections do not use it.
     pub(crate) scene: Option<PlaneScene>,
     /// Calibration data (camera intrinsics + layout).
     pub(crate) calibration: Calibration,
@@ -86,8 +84,7 @@ pub(crate) struct StitchPipeline {
 /// corresponds to a double-buffer index used by the decode thread.
 #[cfg(target_os = "linux")]
 pub(crate) struct GpuSourceBindGroups {
-    left: [wgpu::BindGroup; 2],
-    right: [wgpu::BindGroup; 2],
+    cameras: Vec<[wgpu::BindGroup; 2]>,
 }
 
 impl StitchPipeline {
@@ -265,56 +262,45 @@ impl StitchPipeline {
     #[cfg(target_os = "linux")]
     pub fn configure_gpu_source(
         &mut self,
-        left_textures: [(
-            &crate::interop::vulkan::SharedTexture,
-            &crate::interop::vulkan::SharedTexture,
-        ); 2],
-        right_textures: [(
-            &crate::interop::vulkan::SharedTexture,
-            &crate::interop::vulkan::SharedTexture,
-        ); 2],
+        shared: &crate::interop::SharedTextureSet,
     ) -> GpuSourceBindGroups {
-        let left_bg_0 = self.renderer.create_texture_bind_group(
-            &left_textures[0].0.texture,
-            &left_textures[0].1.texture,
-            "left_slot0",
-        );
-        let left_bg_1 = self.renderer.create_texture_bind_group(
-            &left_textures[1].0.texture,
-            &left_textures[1].1.texture,
-            "left_slot1",
-        );
-        let right_bg_0 = self.renderer.create_texture_bind_group(
-            &right_textures[0].0.texture,
-            &right_textures[0].1.texture,
-            "right_slot0",
-        );
-        let right_bg_1 = self.renderer.create_texture_bind_group(
-            &right_textures[1].0.texture,
-            &right_textures[1].1.texture,
-            "right_slot1",
-        );
         GpuSourceBindGroups {
-            left: [left_bg_0, left_bg_1],
-            right: [right_bg_0, right_bg_1],
+            cameras: shared
+                .cameras
+                .iter()
+                .map(|camera| {
+                    std::array::from_fn(|slot| {
+                        self.renderer.create_texture_bind_group(
+                            &camera.textures[slot * 2].texture,
+                            &camera.textures[slot * 2 + 1].texture,
+                            "decode_slot",
+                        )
+                    })
+                })
+                .collect(),
         }
     }
 
-    /// Select bind groups for a GPU-resident frame and render.
-    ///
-    /// Call this instead of manually setting bind groups on the renderer.
+    /// Select each camera's shared decode slot and render.
     #[cfg(target_os = "linux")]
     pub fn render_gpu_frame(
         &mut self,
         bind_groups: &GpuSourceBindGroups,
-        left_slot: u8,
-        right_slot: u8,
+        slots: &[u8],
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
-        self.renderer
-            .set_left_bind_group(bind_groups.left[left_slot as usize].clone());
-        self.renderer
-            .set_right_bind_group(bind_groups.right[right_slot as usize].clone());
+        self.check_inputs(slots.len(), InputFormat::Nv12)?;
+        if bind_groups.cameras.len() != slots.len() || slots.iter().any(|&slot| slot > 1) {
+            return Err(PipelineError::InvalidConfig {
+                reason: "invalid shared decode slots".into(),
+            });
+        }
+        for (camera, &slot) in slots.iter().enumerate() {
+            self.renderer.set_camera_bind_group(
+                camera,
+                bind_groups.cameras[camera][usize::from(slot)].clone(),
+            );
+        }
         self.render_to_target_gpu(pose)
     }
 
@@ -330,15 +316,22 @@ impl StitchPipeline {
     }
 
     /// Render from pre-built bind groups (VRAM pool path).
+    #[cfg(target_os = "linux")]
     pub fn render_with_bind_groups(
         &mut self,
-        left_bg: &wgpu::BindGroup,
-        right_bg: &wgpu::BindGroup,
+        groups: &[wgpu::BindGroup],
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
-        self.renderer.set_left_bind_group(left_bg.clone());
-        self.renderer.set_right_bind_group(right_bg.clone());
+        self.check_inputs(groups.len(), InputFormat::Nv12)?;
+        for (camera, group) in groups.iter().enumerate() {
+            self.renderer.set_camera_bind_group(camera, group.clone());
+        }
         self.render_to_target_gpu(pose)
+    }
+
+    /// Release imported textures before returning to host-backed input.
+    pub(crate) fn clear_imported_bind_groups(&mut self) {
+        self.renderer.clear_imported_bind_groups();
     }
 
     /// Render from imported GPU textures (e.g. Metal/VideoToolbox zero-copy).
@@ -355,14 +348,18 @@ impl StitchPipeline {
         right_uv: &wgpu::Texture,
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
+        if self.scene.is_none() {
+            return Err(PipelineError::NoPlaneScene);
+        }
+
         let left_bg = self
             .renderer
             .create_texture_bind_group(left_y, left_uv, "metal_left");
         let right_bg = self
             .renderer
             .create_texture_bind_group(right_y, right_uv, "metal_right");
-        self.renderer.set_left_bind_group(left_bg);
-        self.renderer.set_right_bind_group(right_bg);
+        self.renderer.set_camera_bind_group(0, left_bg);
+        self.renderer.set_camera_bind_group(1, right_bg);
         self.render_to_target_gpu(pose)
     }
 
@@ -379,14 +376,18 @@ impl StitchPipeline {
         right_uv: &wgpu::TextureView,
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
+        if self.scene.is_none() {
+            return Err(PipelineError::NoPlaneScene);
+        }
+
         let left_bg = self
             .renderer
             .create_bind_group_from_views(left_y, left_uv, "d3d11_left");
         let right_bg = self
             .renderer
             .create_bind_group_from_views(right_y, right_uv, "d3d11_right");
-        self.renderer.set_left_bind_group(left_bg);
-        self.renderer.set_right_bind_group(right_bg);
+        self.renderer.set_camera_bind_group(0, left_bg);
+        self.renderer.set_camera_bind_group(1, right_bg);
         self.render_to_target_gpu(pose)
     }
 
@@ -395,40 +396,64 @@ impl StitchPipeline {
     /// Handles YUV420P vs NV12 format differences internally.
     /// For GPU-resident frames, use [`Self::render_gpu_frame`] instead.
     ///
-    /// The GPU render program is two-camera (the mono GPU pass is not
-    /// wired yet), so any other set length gets a typed error here.
+    /// Validates camera count and pixel format before uploading.
     pub fn render_frame_set(
         &self,
         frames: &crate::source::FrameSet,
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
+        self.upload_frame_set(frames)?;
+        self.render_to_target_gpu(pose)
+    }
+
+    fn upload_frame_set(&self, frames: &crate::source::FrameSet) -> Result<(), PipelineError> {
         use crate::source::FrameSet;
         match frames {
-            FrameSet::Yuv420p(cams) => match cams.as_slice() {
-                [left, right] => self.render_to_target(&left.as_planes(), &right.as_planes(), pose),
-                _ => Err(PipelineError::UnsupportedFrameVariant {
-                    reason: "the GPU render program is two-camera; the mono GPU pass \
-                             is not wired yet",
-                }),
-            },
-            FrameSet::Nv12(cams) => match cams.as_slice() {
-                [left, right] => {
-                    self.render_to_target_nv12(&left.as_planes(), &right.as_planes(), pose)
+            FrameSet::Yuv420p(cams) => {
+                self.check_inputs(cams.len(), InputFormat::Yuv420p)?;
+                for (camera, data) in cams.iter().enumerate() {
+                    self.renderer
+                        .upload_yuv(&self.gpu, camera, &data.as_planes())?;
                 }
-                _ => Err(PipelineError::UnsupportedFrameVariant {
-                    reason: "the GPU render program is two-camera; the mono GPU pass \
-                             is not wired yet",
-                }),
-            },
-            FrameSet::GpuResident { .. } => Err(PipelineError::UnsupportedFrameVariant {
-                reason: "GpuResident frames must use render_gpu_frame()",
-            }),
-            #[allow(unreachable_patterns)]
+                Ok(())
+            }
+            FrameSet::Nv12(cams) => {
+                self.check_inputs(cams.len(), InputFormat::Nv12)?;
+                for (camera, data) in cams.iter().enumerate() {
+                    self.renderer
+                        .upload_nv12(&self.gpu, camera, &data.as_planes())?;
+                }
+                Ok(())
+            }
             _ => Err(PipelineError::UnsupportedFrameVariant {
-                reason: "GPU-resident FrameSet variants use their platform render \
-                         paths, not the CPU-upload render",
+                reason: "resident frames require their platform render path",
             }),
         }
+    }
+
+    fn check_inputs(&self, count: usize, format: InputFormat) -> Result<(), PipelineError> {
+        let expected = self.calibration.projection.camera_count();
+        if count != expected || format != self.input_format() {
+            return Err(PipelineError::InvalidConfig {
+                reason: format!(
+                    "expected {expected} {:?} cameras, got {count} {format:?}",
+                    self.input_format()
+                ),
+            });
+        }
+        Ok(())
+    }
+
+    pub(crate) fn render_nv12(
+        &self,
+        cameras: &[Nv12Planes<'_>],
+        pose: RenderPose,
+    ) -> Result<wgpu::CommandBuffer, PipelineError> {
+        self.check_inputs(cameras.len(), InputFormat::Nv12)?;
+        for (camera, data) in cameras.iter().enumerate() {
+            self.renderer.upload_nv12(&self.gpu, camera, data)?;
+        }
+        self.render_to_target_gpu(pose)
     }
 
     /// Render a frame directly to a texture view (for window display).
@@ -452,7 +477,7 @@ impl StitchPipeline {
 
         self.renderer.render_to_view(
             &self.gpu,
-            scene,
+            Some(scene),
             &self.calibration,
             pose,
             self.viewport_size.aspect_ratio(),
@@ -487,38 +512,7 @@ impl StitchPipeline {
 
         Ok(self.renderer.render_to_target(
             &self.gpu,
-            scene,
-            &self.calibration,
-            pose,
-            self.calibration.projection.blend_width(),
-        ))
-    }
-
-    /// Upload NV12 frames and render to the internal target.
-    ///
-    /// Like `render_to_target` but accepts NV12 input (Y + interleaved UV)
-    /// instead of YUV420P. Requires the pipeline to be initialized with
-    /// `InputFormat::Nv12`.
-    #[cfg_attr(
-        feature = "profiling",
-        tracing::instrument(skip_all, name = "render_to_target_nv12")
-    )]
-    pub fn render_to_target_nv12(
-        &self,
-        left: &Nv12Planes<'_>,
-        right: &Nv12Planes<'_>,
-        pose: RenderPose,
-    ) -> Result<wgpu::CommandBuffer, PipelineError> {
-        let Some(scene) = &self.scene else {
-            return Err(PipelineError::NoPlaneScene);
-        };
-        self.renderer.upload_left_nv12(&self.gpu, left.y, left.uv)?;
-        self.renderer
-            .upload_right_nv12(&self.gpu, right.y, right.uv)?;
-
-        Ok(self.renderer.render_to_target(
-            &self.gpu,
-            scene,
+            Some(scene),
             &self.calibration,
             pose,
             self.calibration.projection.blend_width(),
@@ -549,7 +543,7 @@ impl StitchPipeline {
 
         Ok(self.renderer.render_to_target(
             &self.gpu,
-            scene,
+            Some(scene),
             &self.calibration,
             pose,
             self.calibration.projection.blend_width(),
@@ -568,6 +562,10 @@ impl StitchPipeline {
         right_rgba: &wgpu::Texture,
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
+        if self.scene.is_none() {
+            return Err(PipelineError::NoPlaneScene);
+        }
+
         // Copy demosaiced textures into stitch pipeline input planes
         let mut copy_encoder =
             self.gpu
@@ -603,12 +601,9 @@ impl StitchPipeline {
         &self,
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
-        let Some(scene) = &self.scene else {
-            return Err(PipelineError::NoPlaneScene);
-        };
         Ok(self.renderer.render_to_target(
             &self.gpu,
-            scene,
+            self.scene.as_ref(),
             &self.calibration,
             pose,
             self.calibration.projection.blend_width(),

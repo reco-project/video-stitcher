@@ -313,9 +313,8 @@ unsafe impl Send for NvmmPlaneInfo {}
 /// CPU variants carry one entry per camera; the stitch boundary
 /// rejects a length that does not match the projection's camera count
 /// (`check_camera_count` in `stitch::cpu`, mirrored by the submit
-/// dispatch). Platform zero-copy variants are pinned to two cameras by
-/// type - their decode channels and texture pools are pair-shaped by
-/// design and guarded, not generalized.
+/// dispatch). CUDA/Vulkan slots also carry one entry per input and are
+/// validated by the session. Metal, D3D11 and NVMM imports carry stereo pairs.
 #[non_exhaustive]
 pub enum FrameSet {
     /// CPU-resident YUV420P planes (3 planes per camera).
@@ -327,7 +326,7 @@ pub enum FrameSet {
     /// camera, that the pipeline uses to select the correct bind group.
     GpuResident {
         /// Per-camera double-buffer slot indices.
-        slots: [u8; 2],
+        slots: Vec<u8>,
     },
     /// macOS zero-copy: retained CVPixelBuffers from VideoToolbox
     /// decode, one per camera. The session imports these as Metal
@@ -349,6 +348,37 @@ pub enum FrameSet {
 }
 
 impl FrameSet {
+    /// Owned image payload retained by this descriptor, excluding separately
+    /// accounted staging pools and borrowed native handles.
+    #[cfg(feature = "gpu")]
+    pub(crate) fn retained_image_bytes(&self) -> Result<usize, String> {
+        let sum = |total: usize, bytes: usize| total.checked_add(bytes);
+        let bytes = match self {
+            Self::Yuv420p(frames) => frames
+                .iter()
+                .flat_map(|f| [f.y.capacity(), f.u.capacity(), f.v.capacity()])
+                .try_fold(0, sum),
+            Self::Nv12(frames) => frames
+                .iter()
+                .flat_map(|f| [f.y.capacity(), f.uv.capacity()])
+                .try_fold(0, sum),
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            Self::MetalResident(frames) => frames
+                .iter()
+                .try_fold(0usize, |total, frame| {
+                    let bytes = frame.data_size();
+                    if bytes == 0 {
+                        return Err("retained Metal image byte size unavailable".to_string());
+                    }
+                    total
+                        .checked_add(bytes)
+                        .ok_or_else(|| "retained image byte size overflow".to_string())
+                })
+                .map(Some)?,
+            _ => Some(0),
+        };
+        bytes.ok_or_else(|| "retained image byte size overflow".into())
+    }
     /// Consume a two-camera YUV420P set into its per-camera payloads.
     ///
     /// `None` for any other shape - the interactive stereo consumers

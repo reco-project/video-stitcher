@@ -38,6 +38,8 @@ pub mod adapters;
 /// writes each event as one JSON line. Wrap in `BackpressuredSink`
 /// to keep serialization off the render thread.
 pub mod jsonl_sink;
+/// Application policy for retained lookahead images.
+pub mod lookahead;
 pub mod output;
 
 #[cfg(feature = "ffmpeg")]

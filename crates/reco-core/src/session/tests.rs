@@ -131,6 +131,76 @@ fn reused_session_applies_both_full_and_limited_source_ranges() {
     }
 }
 
+#[test]
+#[ignore = "requires GPU readback"]
+fn reused_session_replaces_source_rotation_without_double_flipping_host_frames() {
+    struct EmptySource {
+        native: bool,
+        rotation: i32,
+    }
+    impl FrameSource for EmptySource {
+        fn info(&self) -> SourceInfo {
+            MockSource::new(0).info()
+        }
+        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+            Ok(None)
+        }
+        fn is_gpu_resident(&self) -> bool {
+            self.native
+        }
+        fn left_rotation(&self) -> i32 {
+            self.rotation
+        }
+        fn right_rotation(&self) -> i32 {
+            self.rotation
+        }
+    }
+    fn image(session: &StitchSession) -> Vec<u8> {
+        let mut frames = solid_frame();
+        let FrameSet::Yuv420p(cameras) = &mut frames else {
+            unreachable!()
+        };
+        for camera in cameras {
+            for (i, y) in camera.y.iter_mut().enumerate() {
+                *y = 32 + (i % W as usize * 3) as u8;
+            }
+        }
+        let pipeline = &session.gpu_exec_ref().pipeline;
+        let gpu = pipeline.gpu();
+        let cmd = pipeline
+            .render_frame_set(&frames, crate::geometry::RenderPose::default())
+            .unwrap();
+        let mut readback = crate::gpu::rgba_readback::RgbaReadback::new(gpu, W, H).unwrap();
+        readback
+            .readback(gpu, pipeline.render_target(), cmd)
+            .unwrap();
+        readback.flush_pending(gpu).unwrap().unwrap().to_vec()
+    }
+    let mut session = build_test_session(None, None, 1).unwrap();
+    let baseline = image(&session);
+    for (native, rotation) in [(true, 180), (true, 0), (true, 180), (false, 180)] {
+        session
+            .run(
+                &mut EmptySource { native, rotation },
+                1,
+                &AtomicBool::new(false),
+                None,
+            )
+            .unwrap();
+        let flipped = native && rotation == 180;
+        assert_eq!(
+            image(&session) != baseline,
+            flipped,
+            "native={native}, rotation={rotation}"
+        );
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        assert_eq!(
+            (session.left_rotation, session.right_rotation),
+            if native { (rotation, rotation) } else { (0, 0) }
+        );
+    }
+}
+
 // ─── MockDetector ──────────────────────────────────────────────────────
 
 /// Mock detector that returns canned detections and counts calls.
@@ -290,7 +360,7 @@ impl Panner for RecordingPanner {
 
 // ─── NaN Panner ────────────────────────────────────────────────────────
 
-/// Panner that returns NaN yaw/pitch to test coverage clamping resilience.
+/// Panner that returns invalid yaw/pitch to exercise presentation validation.
 struct NanPanner;
 
 impl Panner for NanPanner {
@@ -361,6 +431,67 @@ fn basic_frame_loop() {
         (9..=10).contains(&count),
         "encoder should receive 9-10 frames, got {count}"
     );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires GPU staging allocation"]
+fn host_run_releases_native_history_before_budget_admission() {
+    struct NativeEmptySource;
+    impl FrameSource for NativeEmptySource {
+        fn info(&self) -> SourceInfo {
+            MockSource::new(0).info()
+        }
+        fn is_gpu_resident(&self) -> bool {
+            true
+        }
+        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+            Ok(None)
+        }
+    }
+
+    for depth in [0, 2] {
+        let mut session = build_test_session(None, None, 1).unwrap();
+        session.core_mut().set_constrained_look(false);
+        session.set_lookahead(5, usize::MAX);
+        session
+            .run(
+                &mut NativeEmptySource,
+                u64::MAX,
+                &AtomicBool::new(false),
+                None,
+            )
+            .unwrap();
+        assert!(session.gpu_exec_ref().residency.pool.is_some());
+
+        // Even a rejected host run must not retain the unused native history.
+        session.set_lookahead(2, 1);
+        assert!(matches!(
+            session.run(
+                &mut MockSource::new(3),
+                u64::MAX,
+                &AtomicBool::new(false),
+                None
+            ),
+            Err(SessionError::Config(_))
+        ));
+        assert!(session.gpu_exec_ref().residency.pool.is_none());
+
+        session.set_lookahead(depth, (W * H * 3 * 3) as usize);
+        assert_eq!(
+            session
+                .run(
+                    &mut MockSource::new(3),
+                    u64::MAX,
+                    &AtomicBool::new(false),
+                    None
+                )
+                .unwrap()
+                .frames_processed,
+            3
+        );
+        assert!(session.gpu_exec_ref().residency.pool.is_none());
+    }
 }
 
 #[test]
@@ -449,7 +580,7 @@ fn tracker_freshness_matches_inference_with_and_without_lookahead() {
         );
         let mut session = build_test_session(None, Some(Box::new(detector)), 3).unwrap();
         session.core_mut().set_constrained_look(false);
-        session.set_lookahead(lookahead);
+        session.set_lookahead(lookahead, usize::MAX);
         let log = Arc::new(Mutex::new(Vec::new()));
         session.set_ball_tracker(Box::new(MockTracker::new(0, log.clone())));
         session.set_panner(Box::new(MockPanner {
@@ -525,7 +656,7 @@ fn detection_interval_respected() {
 
 #[test]
 #[ignore] // requires GPU
-fn nan_panner_does_not_crash() {
+fn nan_panner_is_rejected_before_output() {
     let submitted = Arc::new(AtomicU64::new(0));
     let encoder = MockEncoder::new(Arc::clone(&submitted));
 
@@ -535,47 +666,50 @@ fn nan_panner_does_not_crash() {
     let mut source = MockSource::new(5);
     let interrupted = AtomicBool::new(false);
 
-    // This should not panic. Coverage clamping handles NaN gracefully.
-    let processed = session
+    let error = session
         .run(&mut source, u64::MAX, &interrupted, None)
-        .expect("run should succeed even with NaN panner output");
+        .expect_err("non-finite panner output must fail presentation validation");
+    assert!(matches!(
+        error,
+        SessionError::Core(crate::core::types::StitchCoreError::Config(_))
+    ));
 
     session.finish().expect("finish");
 
-    assert_eq!(
-        processed.frames_processed, 5,
-        "all 5 frames should be processed"
-    );
+    assert_eq!(submitted.load(Ordering::Relaxed), 0);
 }
 
 #[test]
 fn run_completion_records_the_observed_stop_reason() {
-    for (frames, limit, cancel_after, expected, count) in [
-        (3, 10, None, RunCompletion::Completed, 3),
-        (10, 2, Some(2), RunCompletion::Completed, 2),
-        (10, 10, Some(2), RunCompletion::Cancelled, 2),
-        (10, 10, Some(0), RunCompletion::Cancelled, 0),
-    ] {
-        let mut session = build_cpu_session();
-        session.core_mut().set_constrained_look(false);
-        let flag = Arc::new(AtomicBool::new(cancel_after == Some(0)));
-        let signal = flag.clone();
-        let result = session
-            .run(
-                &mut MockSource::new(frames),
-                limit,
-                &flag,
-                Some(Box::new(move |p| {
-                    if cancel_after == Some(p.frames_completed) {
-                        signal.store(true, Ordering::Relaxed);
-                    }
-                })),
-            )
-            .unwrap();
-        flag.store(true, Ordering::Relaxed);
-        session.finish().unwrap();
-        assert_eq!(result.completion, expected);
-        assert_eq!(result.frames_processed, count);
+    for depth in [0, 2, 20] {
+        for (frames, limit, cancel_after, expected, count) in [
+            (3, 10, None, RunCompletion::Completed, 3),
+            (10, 2, Some(2), RunCompletion::Completed, 2),
+            (10, 10, Some(2), RunCompletion::Cancelled, 2),
+            (10, 10, Some(0), RunCompletion::Cancelled, 0),
+        ] {
+            let mut session = build_cpu_session();
+            session.set_lookahead(depth, usize::MAX);
+            session.core_mut().set_constrained_look(false);
+            let flag = Arc::new(AtomicBool::new(cancel_after == Some(0)));
+            let signal = flag.clone();
+            let result = session
+                .run(
+                    &mut MockSource::new(frames),
+                    limit,
+                    &flag,
+                    Some(Box::new(move |p| {
+                        if cancel_after == Some(p.frames_completed) {
+                            signal.store(true, Ordering::Relaxed);
+                        }
+                    })),
+                )
+                .unwrap();
+            flag.store(true, Ordering::Relaxed);
+            session.finish().unwrap();
+            assert_eq!(result.completion, expected);
+            assert_eq!(result.frames_processed, count);
+        }
     }
 }
 
@@ -635,7 +769,7 @@ fn gpu_run_completion_with_and_without_lookahead() {
         for cancel_after in [None, Some(0), Some(2)] {
             let mut session = build_test_session(None, None, 1).unwrap();
             session.core_mut().set_constrained_look(false);
-            session.set_lookahead(lookahead);
+            session.set_lookahead(lookahead, usize::MAX);
             let flag = Arc::new(AtomicBool::new(cancel_after == Some(0)));
             let signal = flag.clone();
             let result = session
@@ -687,7 +821,7 @@ fn gpu_run_completion_after_source_eof() {
         for cancel_after in [None, Some(frames - 1), Some(frames)] {
             let mut session = build_test_session(None, None, 1).unwrap();
             session.core_mut().set_constrained_look(false);
-            session.set_lookahead(4);
+            session.set_lookahead(4, usize::MAX);
             let eof = Arc::new(AtomicBool::new(false));
             let observed_eof = eof.clone();
             let flag = Arc::new(AtomicBool::new(false));
@@ -999,7 +1133,7 @@ fn cpu_session_rejects_gpu_resident_frames() {
             }
         }
         fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
-            Ok(Some(FrameSet::GpuResident { slots: [0, 0] }))
+            Ok(Some(FrameSet::GpuResident { slots: vec![0, 0] }))
         }
     }
 
@@ -1008,14 +1142,9 @@ fn cpu_session_rejects_gpu_resident_frames() {
     let err = session
         .run(&mut ResidentSource, u64::MAX, &interrupted, None)
         .expect_err("resident frames must be rejected on the CPU executor");
-    // The rejection is the engine's: `submit_frame` refuses resident
-    // sets with a typed config error, which the session wraps.
     assert!(
-        matches!(
-            err,
-            SessionError::Core(crate::core::types::StitchCoreError::Config(_))
-        ),
-        "expected the engine's typed config error, got: {err}"
+        matches!(err, SessionError::Config(_)),
+        "expected a typed configuration error, got: {err}"
     );
 }
 

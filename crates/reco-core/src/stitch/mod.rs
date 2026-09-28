@@ -394,9 +394,7 @@ mod tests {
                 .expect("readback");
         let mut gpu_rgba: Option<Vec<u8>> = None;
         for _ in 0..3 {
-            let cmd = pipeline
-                .render_to_target_nv12(&left, &right, pose)
-                .expect("render");
+            let cmd = pipeline.render_nv12(&[left, right], pose).expect("render");
             let tex = pipeline.render_target();
             if let Some(bytes) = readback
                 .readback(pipeline.gpu(), tex, cmd)
@@ -606,7 +604,7 @@ mod tests {
         let mut gpu_rgba = None;
         for _ in 0..3 {
             let cmd = pipeline
-                .render_to_target_nv12(left, right, pose)
+                .render_nv12(&[*left, *right], pose)
                 .expect("render");
             let tex = pipeline.render_target();
             if let Some(b) = readback

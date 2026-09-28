@@ -1384,13 +1384,7 @@ impl VideoEncoder {
     /// `(width / 2) * (height / 2)`. Odd dimensions are rejected
     /// because 4:2:0 chroma subsampling requires even width/height.
     ///
-    /// This path exists for the stacked-video replay encoder
-    /// ([`crate::stacked_video::encoder::StackedEncoder`]), which
-    /// produces YUV420P natively from its pack primitive. Feeding
-    /// RGBA through [`Self::write_frame`] would trigger a
-    /// YUV→RGBA→YUV roundtrip for every replay frame; skipping the
-    /// scaler saves ~1-2ms per frame at 1080p and avoids colorspace
-    /// drift from repeated range conversion.
+    /// The stacked-video replay encoder (`stacked-output` feature) produces YUV420P directly. Feeding RGBA through [`Self::write_frame`] would add a YUV→RGBA→YUV roundtrip; this path avoids that conversion and its rounding loss.
     ///
     /// Adapts to the encoder's staging pixel format: writes separate
     /// U and V planes for YUV420P (software encoders), or interleaves

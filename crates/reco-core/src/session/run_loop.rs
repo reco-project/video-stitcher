@@ -44,7 +44,10 @@ fn centered_smooth(
     let mut sum_fov = raw_pose.fov_degrees;
     let mut n = 1u32;
     for p in ahead.chain(past) {
-        sum_yaw += p.yaw;
+        // Average neighboring directions on the current pose's angular branch.
+        let delta = (p.yaw - raw_pose.yaw + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU)
+            - std::f32::consts::PI;
+        sum_yaw += raw_pose.yaw + delta;
         sum_pitch += p.pitch;
         sum_fov += p.fov_degrees;
         n += 1;
@@ -57,6 +60,33 @@ fn centered_smooth(
 }
 
 impl StitchSession {
+    fn validate_source_frame(&self, frame: &crate::source::FrameSet) -> Result<(), SessionError> {
+        use crate::source::FrameSet;
+        let cameras = match frame {
+            FrameSet::Yuv420p(cameras) => cameras.len(),
+            FrameSet::Nv12(cameras) => cameras.len(),
+            _ if self.core.executor.gpu().is_none() => {
+                return Err(SessionError::Config(
+                    "native resident frames require a GPU executor".into(),
+                ));
+            }
+            FrameSet::GpuResident { slots } => {
+                if slots.iter().any(|&slot| slot > 1) {
+                    return Err(SessionError::Config("invalid shared decode slot".into()));
+                }
+                slots.len()
+            }
+            _ => 2,
+        };
+        let expected = self.core.calibration().projection.camera_count();
+        if cameras != expected {
+            return Err(SessionError::Config(format!(
+                "expected {expected} source cameras, got {cameras}"
+            )));
+        }
+        Ok(())
+    }
+
     /// Auto-configure the session from source metadata.
     ///
     /// Called at the start of [`run`](Self::run). Applies rotation from
@@ -68,19 +98,20 @@ impl StitchSession {
         // Apply rotation via shader UV flip ONLY for GPU-resident sources.
         // CPU sources handle rotation via buffer reversal in the decoder,
         // so applying the shader flip too would rotate 360 degrees (no-op but wrong).
-        if source.is_gpu_resident() {
-            let (lr, rr) = (source.left_rotation(), source.right_rotation());
-            if lr == 180 || rr == 180 {
-                self.core.set_flip_180(lr == 180, rr == 180);
-                log::info!("Rotation: UV flip left={}, right={}", lr == 180, rr == 180);
-            }
-            // Store rotation for the GPU detector preprocessing path.
-            // The detector needs to flip frames independently of the render shader.
-            #[cfg(any(target_os = "linux", target_os = "windows"))]
-            {
-                self.left_rotation = lr;
-                self.right_rotation = rr;
-            }
+        let (lr, rr) = if source.is_gpu_resident() {
+            (source.left_rotation(), source.right_rotation())
+        } else {
+            (0, 0)
+        };
+        self.core.set_flip_180(lr == 180, rr == 180);
+        if lr == 180 || rr == 180 {
+            log::info!("Rotation: UV flip left={}, right={}", lr == 180, rr == 180);
+        }
+        // Detector preprocessing consumes the same source orientation independently.
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        {
+            self.left_rotation = lr;
+            self.right_rotation = rr;
         }
     }
 
@@ -91,10 +122,22 @@ impl StitchSession {
     /// decode backpressure channels. Call this before
     /// [`run`](Self::run) when using a GPU-resident [`FrameSource`]
     /// like `SmartFileSource`.
+    /// Requires a GPU executor and one shared surface per projection input.
     #[cfg(target_os = "linux")]
-    pub fn setup_gpu_source(&mut self, shared: &crate::interop::SharedTextureSet) {
+    pub fn setup_gpu_source(
+        &mut self,
+        shared: &crate::interop::SharedTextureSet,
+    ) -> Result<(), SessionError> {
+        if self.core.executor.gpu().is_none()
+            || self.core.calibration().projection.camera_count() != shared.cameras.len()
+        {
+            return Err(SessionError::Config(
+                "shared decode textures must match the GPU executor camera count".into(),
+            ));
+        }
         self.gpu_exec().configure_shared_textures(shared);
         log::info!("Session configured for GPU-resident source");
+        Ok(())
     }
 
     /// Batch-process frames from a source into the attached sinks.
@@ -105,7 +148,7 @@ impl StitchSession {
     /// Reaching the frame limit takes precedence over a concurrent cancellation.
     ///
     /// Automatically handles CPU-resident and GPU-resident frames:
-    /// - CPU frames (Yuv420p, Nv12): uploaded to GPU, rendered, encoded
+    /// - CPU frames (Yuv420p, Nv12): software-rendered or uploaded to the GPU
     /// - GPU frames (GpuResident): rendered directly from shared textures
     ///
     /// Does NOT call [`Self::finish`] - the caller must do that after this
@@ -121,13 +164,26 @@ impl StitchSession {
         interrupted: &AtomicBool,
         mut on_progress: Option<ProgressCallback>,
     ) -> Result<super::types::RunResult, SessionError> {
-        // The CPU arm runs its own synchronous loop: no GPU source
-        // configuration, no staging, no zero-copy.
-        if self.core.executor.gpu().is_none() {
-            return self.run_cpu(source, frame_limit, interrupted, &mut on_progress);
+        if source.is_gpu_resident() && self.core.executor.gpu().is_none() {
+            return Err(SessionError::Config(
+                "native resident sources require a GPU executor".into(),
+            ));
         }
 
         self.configure_from_source(source);
+
+        // A host-backed run cannot consume cached native staging images.
+        // Release them before starting its retained-image allowance.
+        if !source.is_gpu_resident()
+            && let Some(exec) = self.core.executor.gpu_mut()
+        {
+            exec.pipeline.clear_imported_bind_groups();
+            exec.residency.pool = None;
+            #[cfg(target_os = "windows")]
+            {
+                exec.residency.d3d11_staging = None;
+            }
+        }
 
         let result = if self.lookahead_frames > 0 {
             let fps = source.info().fps.max(1.0);
@@ -191,22 +247,22 @@ impl StitchSession {
         }
 
         self.core.set_requested_world_pose(smoothed_pose);
-        self.skip_detection = true;
         self.current_vram_slot = oldest.vram_slot;
 
         let frame_t0 = std::time::Instant::now();
-        self.process_frame_any(
+        let result = self.process_frame_any(
             &oldest.frame,
             start.elapsed(),
             oldest.decode_time,
             frame_t0,
             ctx,
-        )?;
+        );
 
         if let Some(slot) = oldest.vram_slot {
             self.gpu_exec().release_pool_slot(slot);
         }
         self.current_vram_slot = None;
+        result?;
 
         if let Some(cb) = on_progress.as_mut() {
             cb(&FrameProgress {
@@ -234,89 +290,112 @@ impl StitchSession {
         let mut completion = super::types::RunCompletion::Completed;
         let start = std::time::Instant::now();
         let ctx = crate::session::types::FrameLoopContext {
+            tracking_complete: true,
             frame_seconds: frame_seconds(source.info().fps)?,
             #[cfg(target_os = "linux")]
             gpu_buf_info: self.core.executor.gpu().and_then(|g| g.cuda_buf_info()),
         };
         let n = self.lookahead_frames;
-        let mut buffer = FrameBuffer::new(n + 1);
+        let mut image_budget = crate::lookahead::ImageBudget::new(self.lookahead_memory_bytes)
+            .map_err(SessionError::Config)?;
+        let capacity = n
+            .checked_add(1)
+            .ok_or_else(|| SessionError::Config("lookahead capacity overflow".into()))?;
+        let mut buffer = FrameBuffer::new(capacity);
         let mut produce_count: u64 = 0;
 
-        // Create VRAM pool if the source is GPU-resident.
-        if source.is_gpu_resident() && self.gpu_exec_ref().residency.pool.is_none() {
-            let post_smooth_half = (n / 2).max(1);
-            // Keep in sync with the D3D11 staging pool sizing in the
-            // executor's ensure_d3d11_staging (peak occupancy + slack).
-            let pool_size = n + post_smooth_half + 4;
+        // Borrowed native surfaces need persistent staging. Metal frames own
+        // retained CVPixelBuffers and render directly from those buffers.
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        if source.is_gpu_resident() {
+            let pool_size = crate::lookahead::pool_slots(n).map_err(SessionError::Config)?;
             let (w, h) = self.core.source_dims();
-            let per_slot = crate::gpu::vram_pool::estimate_vram(
+            let per_slot = crate::lookahead::image_bytes(
                 w,
                 h,
-                1,
+                self.core.calibration().projection.camera_count(),
                 self.gpu_pixel_format.bytes_per_sample(),
-            );
-            let required = per_slot * pool_size;
+            )
+            .map_err(SessionError::Config)?;
+            let required = per_slot
+                .checked_mul(pool_size)
+                .ok_or_else(|| SessionError::Config("lookahead pool byte size overflow".into()))?;
+            if self
+                .gpu_exec_ref()
+                .residency
+                .pool
+                .as_ref()
+                .is_some_and(|p| p.capacity() != pool_size)
+            {
+                return Err(SessionError::Config(
+                    "lookahead pool size changed; create a new session".into(),
+                ));
+            }
 
             // Pre-flight VRAM budget check: fail fast with a fit suggestion.
             // available_vram() is None on backends with no budget API; there
             // we skip the check and rely on the allocation-time catch in
             // VramPool::new plus graceful teardown for any slip-through.
-            match self.gpu_exec_ref().pipeline.gpu().available_vram() {
-                Some((free, total)) => {
-                    // Budget trusts the driver's "free" figure when it is
-                    // believable (it already excludes the compositor and the
-                    // rest of the pipeline) and falls back to a fraction of
-                    // total when free reads bogus (~0 on a multi-GB card).
-                    // Sampled here just before pool creation, after the GUI
-                    // preview is released, so it reflects real export-time room.
-                    // Shared with the export-panel risk slider for consistency;
-                    // over-allocation is caught gracefully at pool creation.
-                    let budget = crate::gpu::vram_pool::lookahead_budget_bytes(free, total);
-                    log::info!(
-                        "VRAM budget: {:.2} GB usable of {:.2} GB total ({:.2} GB reported free); \
+            #[cfg(target_os = "windows")]
+            let needs_allocation = self.gpu_exec_ref().residency.d3d11_staging.is_none();
+            #[cfg(not(target_os = "windows"))]
+            let needs_allocation = self.gpu_exec_ref().residency.pool.is_none();
+            if needs_allocation {
+                match self.gpu_exec_ref().pipeline.gpu().available_vram() {
+                    Some((free, total)) => {
+                        // Budget trusts the driver's "free" figure when it is
+                        // believable (it already excludes the compositor and the
+                        // rest of the pipeline) and falls back to a fraction of
+                        // total when free reads bogus (~0 on a multi-GB card).
+                        // Sampled here just before pool creation, after the GUI
+                        // preview is released, so it reflects real export-time room.
+                        // Over-allocation is caught at pool creation.
+                        let budget = crate::gpu::vram_pool::lookahead_budget_bytes(free, total);
+                        log::info!(
+                            "VRAM budget: {:.2} GB usable of {:.2} GB total ({:.2} GB reported free); \
                          lookahead pool needs {:.2} GB ({pool_size} slots @ {w}x{h})",
-                        budget as f64 / 1e9,
-                        total as f64 / 1e9,
-                        free as f64 / 1e9,
-                        required as f64 / 1e9,
-                    );
-                    if required > budget {
-                        let fps = source.info().fps.max(1.0);
-                        // Shared with the export-panel risk slider so the
-                        // suggested ceiling here matches the slider's red zone.
-                        let max_n = crate::gpu::vram_pool::max_lookahead_frames(per_slot, budget);
-                        let max_secs = max_n as f64 / fps;
-                        let req_secs = n as f64 / fps;
-                        return Err(SessionError::Config(format!(
-                            "not enough VRAM for a {req_secs:.1}s lookahead: reduce the lookahead \
+                            budget as f64 / 1e9,
+                            total as f64 / 1e9,
+                            free as f64 / 1e9,
+                            required as f64 / 1e9,
+                        );
+                        if required > budget {
+                            let fps = source.info().fps.max(1.0);
+                            let max_n = crate::lookahead::max_frames(per_slot, budget);
+                            let max_secs = max_n as f64 / fps;
+                            let req_secs = n as f64 / fps;
+                            return Err(SessionError::Config(format!(
+                                "not enough VRAM for a {req_secs:.1}s lookahead: reduce the lookahead \
                              to <= {max_secs:.1}s, use lower-resolution source footage, or free \
                              GPU memory. The frame pool needs ~{:.1} GB ({pool_size} slots @ \
                              {w}x{h}); usable budget is ~{:.1} GB of {:.1} GB total.",
-                            required as f64 / 1e9,
-                            budget as f64 / 1e9,
-                            total as f64 / 1e9,
-                        )));
+                                required as f64 / 1e9,
+                                budget as f64 / 1e9,
+                                total as f64 / 1e9,
+                            )));
+                        }
                     }
-                }
-                None => {
-                    log::info!(
-                        "VRAM budget query unavailable on this backend; relying on \
+                    None => {
+                        log::info!(
+                            "VRAM budget query unavailable on this backend; relying on \
                          allocation-time OOM handling for the {pool_size}-slot lookahead pool \
                          (~{:.2} GB @ {w}x{h})",
-                        required as f64 / 1e9,
-                    );
+                            required as f64 / 1e9,
+                        );
+                    }
                 }
             }
 
-            // The VramPool is only consumed on Linux (CUDA/Vulkan copy) and
-            // macOS (Metal CVPixelBuffer import). On Windows the lookahead
-            // frames live in the separate D3D11 staging pool, so a VramPool
-            // here would be allocated-but-unused VRAM (it roughly doubles the
-            // footprint). The pre-flight budget check above still runs on all
-            // platforms; on Windows it sizes the D3D11 staging pool, whose
-            // total VRAM equals estimate_vram(w,h,1,bps)*pool_size.
-            #[cfg(not(target_os = "windows"))]
-            {
+            image_budget.retain(required).map_err(|error| {
+                let max_frames = crate::lookahead::max_frames(per_slot, self.lookahead_memory_bytes);
+                SessionError::Config(format!(
+                    "{error}; requested {n} frames, staging payload fits at most {max_frames} lookahead frames"
+                ))
+            })?;
+
+            // Windows uses its D3D11 staging pool instead of a second allocation.
+            #[cfg(target_os = "linux")]
+            if self.gpu_exec_ref().residency.pool.is_none() {
                 let pixel_format = self.gpu_pixel_format;
                 self.gpu_exec()
                     .create_lookahead_pool(w, h, pool_size, pixel_format)
@@ -327,6 +406,7 @@ impl StitchSession {
         let produce_one = |session: &mut StitchSession,
                            source: &mut dyn FrameSource,
                            buffer: &mut FrameBuffer,
+                           image_budget: &mut crate::lookahead::ImageBudget,
                            produce_count: &mut u64,
                            start: std::time::Instant,
                            _ctx: &crate::session::types::FrameLoopContext|
@@ -338,18 +418,29 @@ impl StitchSession {
             };
             let decode_time = frame_t0.elapsed();
             let elapsed = start.elapsed();
+            session.validate_source_frame(&frame)?;
+            let retained_bytes = frame.retained_image_bytes().map_err(SessionError::Config)?;
+            image_budget
+                .retain(retained_bytes)
+                .map_err(SessionError::Config)?;
 
             // Stage GPU frames to persistent slots BEFORE detection,
             // so detection can use the staged textures.
             let vram_slot = session.copy_to_vram_pool(&frame, *produce_count)?;
 
-            let world_state = session.detect_and_track_only(&frame, elapsed, *produce_count)?;
-            let detections = session.core.last_detections().to_vec();
-
-            // Detection has now read the decode slot; it is safe to hand
-            // it back to the decode thread for reuse. Releasing earlier
-            // (inside copy_to_vram_pool) raced detection's read.
+            let world_state = session.detect_and_track_only(&frame, elapsed, *produce_count);
+            // Detection still reads the original decode surface after staging.
             session.release_gpu_decode_slot(&frame);
+            let world_state = match world_state {
+                Ok(state) => state,
+                Err(error) => {
+                    if let Some(slot) = vram_slot {
+                        session.gpu_exec().release_pool_slot(slot);
+                    }
+                    return Err(error);
+                }
+            };
+            let detections = session.core.last_detections().to_vec();
 
             buffer.push(BufferedFrame {
                 frame,
@@ -358,130 +449,163 @@ impl StitchSession {
                 elapsed_ms: elapsed.as_secs_f64() * 1000.0,
                 decode_time,
                 vram_slot,
+                retained_bytes,
             });
 
             *produce_count += 1;
             Ok(true)
         };
 
-        // ── Pre-fill: decode + detect N frames, no rendering ──────
-        log::info!("Lookahead: pre-filling {} frames...", n);
-        for _ in 0..n {
-            if !continue_run(&mut completion, self.frame_count, frame_limit, interrupted) {
-                break;
+        let mut pose_queue = std::collections::VecDeque::new();
+        let result = (|| {
+            // ── Pre-fill: decode + detect N frames, no rendering ──────
+            log::info!("Lookahead: pre-filling {} frames...", n);
+            for _ in 0..n {
+                if !continue_run(&mut completion, self.frame_count, frame_limit, interrupted) {
+                    break;
+                }
+                if !produce_one(
+                    self,
+                    source,
+                    &mut buffer,
+                    &mut image_budget,
+                    &mut produce_count,
+                    start,
+                    &ctx,
+                )? {
+                    break;
+                }
             }
-            if !produce_one(self, source, &mut buffer, &mut produce_count, start, &ctx)? {
-                break;
-            }
-        }
-        log::info!(
-            "Lookahead: pre-filled {} frames, starting render",
-            buffer.len()
-        );
+            log::info!(
+                "Lookahead: pre-filled {} frames, starting render",
+                buffer.len()
+            );
 
-        // Centered post-smooth: the panner runs AHEAD of rendering
-        // so we can average past + future poses symmetrically.
-        let post_smooth_half: usize = (n / 2).max(1);
+            // Centered post-smooth: the panner runs AHEAD of rendering
+            // so we can average past + future poses symmetrically.
+            let post_smooth_half: usize = (n / 2).max(1);
 
-        // frame_count stays at 0 - produce_count drives detection
-        // interval, frame_count counts rendered output.
+            // Production schedules detection independently of rendered output.
+            let mut past_poses: std::collections::VecDeque<crate::geometry::WorldPose> =
+                std::collections::VecDeque::new();
+            let mut panner_frame_idx: u64 = 0;
 
-        // Queue of (frame, raw_pose) pairs. The panner fills this
-        // ahead of rendering. Rendering consumes from the front,
-        // using the centered average of past + current + future poses.
-        let mut pose_queue: std::collections::VecDeque<(
-            BufferedFrame,
-            crate::geometry::WorldPose,
-        )> = std::collections::VecDeque::new();
-        let mut past_poses: std::collections::VecDeque<crate::geometry::WorldPose> =
-            std::collections::VecDeque::new();
-        let mut panner_frame_idx: u64 = 0;
+            // Helper: run the panner on the oldest buffered frame, push
+            // the (frame, pose) pair into the pose queue. The engine owns
+            // the panner; the buffer supplies the future WorldState window.
+            let run_panner_once = |session: &mut StitchSession,
+                                   buffer: &mut FrameBuffer,
+                                   pose_queue: &mut std::collections::VecDeque<(
+                BufferedFrame,
+                crate::geometry::WorldPose,
+            )>,
+                                   panner_frame_idx: &mut u64| {
+                if let Some(frame) = buffer.pop() {
+                    let futures = buffer.future_world_states();
+                    let pose = session.core.decide_pose_with_lookahead(
+                        &frame.world_state,
+                        &futures,
+                        *panner_frame_idx,
+                        frame.elapsed_ms,
+                    );
+                    *panner_frame_idx += 1;
+                    pose_queue.push_back((frame, pose));
+                    true
+                } else {
+                    false
+                }
+            };
 
-        // Helper: run the panner on the oldest buffered frame, push
-        // the (frame, pose) pair into the pose queue. The engine owns
-        // the panner; the buffer supplies the future WorldState window.
-        let run_panner_once = |session: &mut StitchSession,
-                               buffer: &mut FrameBuffer,
-                               pose_queue: &mut std::collections::VecDeque<(
-            BufferedFrame,
-            crate::geometry::WorldPose,
-        )>,
-                               panner_frame_idx: &mut u64| {
-            if let Some(frame) = buffer.pop() {
-                let futures = buffer.future_world_states();
-                let pose = session.core.decide_pose_with_lookahead(
-                    &frame.world_state,
-                    &futures,
-                    *panner_frame_idx,
-                    frame.elapsed_ms,
-                );
-                *panner_frame_idx += 1;
-                pose_queue.push_back((frame, pose));
-                true
-            } else {
-                false
-            }
-        };
-
-        // ── Panner warm-up: run panner post_smooth_half frames ahead ──
-        let mut eof = buffer.len() < n;
-        for _ in 0..post_smooth_half {
-            if buffer.is_empty()
-                || !continue_run(&mut completion, self.frame_count, frame_limit, interrupted)
-            {
-                break;
-            }
-            if !eof
-                && !buffer.is_full()
-                && !produce_one(self, source, &mut buffer, &mut produce_count, start, &ctx)?
-            {
-                eof = true;
-            }
-            run_panner_once(self, &mut buffer, &mut pose_queue, &mut panner_frame_idx);
-        }
-
-        // ── Steady state: produce, run panner ahead, render with centered smooth ──
-        while !(eof && buffer.is_empty() && pose_queue.is_empty())
-            && continue_run(&mut completion, self.frame_count, frame_limit, interrupted)
-        {
-            // Produce: decode + detect next frame
-            if !eof
-                && !buffer.is_full()
-                && !produce_one(self, source, &mut buffer, &mut produce_count, start, &ctx)?
-            {
-                eof = true;
-            }
-
-            // Run panner on next buffered frame (stays ahead of rendering)
-            if !buffer.is_empty() {
+            // ── Panner warm-up: run panner post_smooth_half frames ahead ──
+            let mut eof = buffer.len() < n;
+            for _ in 0..post_smooth_half {
+                if buffer.is_empty()
+                    || !continue_run(&mut completion, self.frame_count, frame_limit, interrupted)
+                {
+                    break;
+                }
+                if !eof
+                    && !buffer.is_full()
+                    && !produce_one(
+                        self,
+                        source,
+                        &mut buffer,
+                        &mut image_budget,
+                        &mut produce_count,
+                        start,
+                        &ctx,
+                    )?
+                {
+                    eof = true;
+                }
                 run_panner_once(self, &mut buffer, &mut pose_queue, &mut panner_frame_idx);
             }
 
-            // Render: consume from pose queue when we have enough context
-            if pose_queue.len() > post_smooth_half || (eof && !pose_queue.is_empty()) {
-                let (oldest, raw_pose) = pose_queue.pop_front().unwrap();
-
-                // Centered post-smooth: average past + current + future
-                // poses (yaw/pitch/fov) so zoom is smoothed like the angles.
-                let smoothed_pose = centered_smooth(
-                    raw_pose,
-                    pose_queue.iter().take(post_smooth_half).map(|(_, p)| *p),
-                    past_poses.iter().copied(),
-                );
-                past_poses.push_back(raw_pose);
-                if past_poses.len() > post_smooth_half {
-                    past_poses.pop_front();
+            // ── Steady state: produce, run panner ahead, render with centered smooth ──
+            while !(eof && buffer.is_empty() && pose_queue.is_empty())
+                && continue_run(&mut completion, self.frame_count, frame_limit, interrupted)
+            {
+                // Produce: decode + detect next frame
+                if !eof
+                    && !buffer.is_full()
+                    && !produce_one(
+                        self,
+                        source,
+                        &mut buffer,
+                        &mut image_budget,
+                        &mut produce_count,
+                        start,
+                        &ctx,
+                    )?
+                {
+                    eof = true;
                 }
 
-                self.render_buffered_frame(oldest, smoothed_pose, start, &ctx, on_progress)?;
+                // Run panner on next buffered frame (stays ahead of rendering)
+                if !buffer.is_empty() {
+                    run_panner_once(self, &mut buffer, &mut pose_queue, &mut panner_frame_idx);
+                }
+
+                // Render: consume from pose queue when we have enough context
+                if pose_queue.len() > post_smooth_half || (eof && !pose_queue.is_empty()) {
+                    let (oldest, raw_pose) = pose_queue.pop_front().unwrap();
+
+                    // Centered post-smooth: average past + current + future
+                    // poses (yaw/pitch/fov) so zoom is smoothed like the angles.
+                    let smoothed_pose = centered_smooth(
+                        raw_pose,
+                        pose_queue.iter().take(post_smooth_half).map(|(_, p)| *p),
+                        past_poses.iter().copied(),
+                    );
+                    past_poses.push_back(raw_pose);
+                    if past_poses.len() > post_smooth_half {
+                        past_poses.pop_front();
+                    }
+
+                    let retained_bytes = oldest.retained_bytes;
+                    let rendered =
+                        self.render_buffered_frame(oldest, smoothed_pose, start, &ctx, on_progress);
+                    image_budget.release(retained_bytes);
+                    rendered?;
+                }
+            }
+
+            Ok(super::types::RunResult {
+                frames_processed: self.frame_count,
+                completion,
+            })
+        })();
+        while let Some(frame) = buffer.pop() {
+            if let Some(slot) = frame.vram_slot {
+                self.gpu_exec().release_pool_slot(slot);
             }
         }
-
-        self.skip_detection = false;
-        Ok(super::types::RunResult {
-            frames_processed: self.frame_count,
-            completion,
-        })
+        for (frame, _) in pose_queue {
+            if let Some(slot) = frame.vram_slot {
+                self.gpu_exec().release_pool_slot(slot);
+            }
+        }
+        result
     }
 
     /// Standard frame loop. Handles CPU-resident and GPU-resident
@@ -497,6 +621,7 @@ impl StitchSession {
         let start = std::time::Instant::now();
 
         let ctx = crate::session::types::FrameLoopContext {
+            tracking_complete: false,
             frame_seconds: frame_seconds(source.info().fps)?,
             #[cfg(target_os = "linux")]
             gpu_buf_info: self.core.executor.gpu().and_then(|g| g.cuda_buf_info()),
@@ -514,6 +639,8 @@ impl StitchSession {
             };
             let decode_time = frame_t0.elapsed();
 
+            self.validate_source_frame(&frame)?;
+
             if let Some(sink) = self.core.event_sink.as_deref_mut() {
                 sink.emit(crate::detect::pipeline_event::PipelineEvent::FrameStart {
                     frame_index: self.frame_count,
@@ -523,111 +650,6 @@ impl StitchSession {
 
             self.process_frame_any(&frame, start.elapsed(), decode_time, frame_t0, &ctx)?;
 
-            if let Some(cb) = on_progress.as_mut() {
-                cb(&FrameProgress {
-                    frames_completed: self.frame_count,
-                    elapsed: start.elapsed(),
-                });
-            }
-        }
-
-        Ok(super::types::RunResult {
-            frames_processed: self.frame_count,
-            completion,
-        })
-    }
-
-    /// Batch loop over the CPU executor: synchronous software stitch.
-    ///
-    /// Decode, submit (detection + pose + stitch run inside the
-    /// engine's `submit_frame_*`), convert to NV12 on the CPU, fan out
-    /// to the sinks. No staging ring, no warmup, no zero-copy - the
-    /// engine returns RGBA for the submitted frame immediately.
-    fn run_cpu(
-        &mut self,
-        source: &mut dyn FrameSource,
-        frame_limit: u64,
-        interrupted: &AtomicBool,
-        on_progress: &mut Option<ProgressCallback>,
-    ) -> Result<super::types::RunResult, SessionError> {
-        let mut completion = super::types::RunCompletion::Completed;
-        let start = std::time::Instant::now();
-        if self.lookahead_frames > 0 {
-            log::warn!(
-                "Lookahead ({} frames) is not implemented on the CPU executor; \
-                 running the immediate loop",
-                self.lookahead_frames
-            );
-        }
-        // The CPU loop skips the GPU-source configuration entirely, but
-        // color range is a per-source property the software stitch
-        // consumes too - without this, full-range sources rendered with
-        // the limited-range conversion.
-        self.core.set_full_range(source.is_full_range());
-        if source.is_full_range() {
-            log::info!("CPU stitch: full-range YUV source, using full-range conversion");
-        }
-        let (nv12_w, nv12_h) = self.nv12_delivery_dims();
-        let render_w = self.core.executor.viewport_size().width;
-        log::info!(
-            "CPU stitch loop: software render at {}x{}, NV12 delivery {nv12_w}x{nv12_h}",
-            render_w,
-            self.core.executor.viewport_size().height
-        );
-
-        let frame_seconds = frame_seconds(source.info().fps)?;
-        let mut nv12 = Vec::new();
-        while continue_run(&mut completion, self.frame_count, frame_limit, interrupted) {
-            let frame_t0 = std::time::Instant::now();
-            let frame = {
-                crate::profile_scope!("wait_decode");
-                match source.next_frame()? {
-                    Some(f) => f,
-                    None => break,
-                }
-            };
-            let decode_time = frame_t0.elapsed();
-
-            if let Some(sink) = self.core.event_sink.as_deref_mut() {
-                sink.emit(crate::detect::pipeline_event::PipelineEvent::FrameStart {
-                    frame_index: self.frame_count,
-                    timestamp_ms: start.elapsed().as_secs_f64() * 1000.0,
-                });
-            }
-
-            let stitch_t0 = std::time::Instant::now();
-            let outcome = self.core.submit_frame(&frame, frame_seconds)?;
-            let crate::core::types::RenderOutcome::Rgba(rgba) = outcome else {
-                unreachable!("the CPU executor stitches synchronously - no warmup");
-            };
-            let stitch_time = stitch_t0.elapsed();
-
-            let convert_t0 = std::time::Instant::now();
-            crate::render::nv12_cpu::rgba_to_nv12_into(rgba, render_w, nv12_w, nv12_h, &mut nv12)?;
-            let convert_time = convert_t0.elapsed();
-
-            let submit_t0 = std::time::Instant::now();
-            super::sinks::deliver_frame(
-                &mut self.sinks,
-                &nv12,
-                nv12_w,
-                nv12_h,
-                self.frame_count as i64,
-            )?;
-            let submit_time = submit_t0.elapsed();
-
-            self.telemetry.record_frame(crate::telemetry::FrameTiming {
-                decode: Some(decode_time),
-                stitch: Some(stitch_time),
-                // The CPU conversion is this arm's counterpart of the
-                // GPU readback slot.
-                readback: Some(convert_time),
-                submit: Some(submit_time),
-                total: Some(frame_t0.elapsed()),
-                ..Default::default()
-            });
-
-            self.frame_count += 1;
             if let Some(cb) = on_progress.as_mut() {
                 cb(&FrameProgress {
                     frames_completed: self.frame_count,
@@ -664,7 +686,30 @@ fn continue_run(
 
 #[cfg(test)]
 mod frame_rate_tests {
-    use super::frame_seconds;
+    use super::{centered_smooth, frame_seconds};
+    use crate::geometry::WorldPose;
+
+    #[test]
+    fn centered_yaw_average_uses_the_local_angular_branch() {
+        for sign in [-1.0, 1.0] {
+            let raw = WorldPose {
+                yaw: sign * 179.0_f32.to_radians(),
+                pitch: 0.2,
+                fov_degrees: 60.0,
+            };
+            for turns in [-2.0, 0.0, 3.0] {
+                let neighbor = WorldPose {
+                    yaw: -raw.yaw + turns * std::f32::consts::TAU,
+                    pitch: 0.4,
+                    fov_degrees: 80.0,
+                };
+                let result = centered_smooth(raw, [neighbor].into_iter(), [].into_iter());
+                assert!(result.yaw.cos() < -0.9999);
+                assert!((result.pitch - 0.3).abs() < 1e-6);
+                assert_eq!(result.fov_degrees, 70.0);
+            }
+        }
+    }
 
     #[test]
     fn session_clock_rejects_unknown_or_unrepresentable_rates() {

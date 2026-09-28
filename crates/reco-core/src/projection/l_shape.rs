@@ -563,7 +563,10 @@ impl ProjectionGeometry for LShape {
     #[cfg(feature = "gpu")]
     fn gpu_program(&self) -> Option<crate::render::GpuProgram> {
         Some(crate::render::GpuProgram {
-            wgsl: include_str!("../shaders/fisheye.wgsl"),
+            wgsl: concat!(
+                include_str!("../shaders/video_sampling.wgsl"),
+                include_str!("../shaders/fisheye.wgsl")
+            ),
             vs_entry: "vs_main",
             fs_entry: "fs_main",
             // Seam transition: the right plane's smoothstep alpha blends
@@ -576,7 +579,7 @@ impl ProjectionGeometry for LShape {
                 },
                 alpha: wgpu::BlendComponent::OVER,
             },
-            vertex_layout: crate::render::renderer::Vertex::LAYOUT,
+            pass: crate::render::GpuPass::Planes,
         })
     }
 }

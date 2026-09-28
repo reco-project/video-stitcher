@@ -447,6 +447,21 @@ mod tests {
         };
         rejection_preserves_state(make);
         accepted_matches_fresh(make, calib(WIDTH, HEIGHT));
+        accepted_matches_fresh(
+            make,
+            Calibration::new(
+                vec![Lens::flat(WIDTH, HEIGHT)],
+                crate::projection::Cylinder {
+                    radius: 64.0,
+                    ..Default::default()
+                },
+                crate::calibration::Framing {
+                    axis_offset: 0.0,
+                    tilt: 0.0,
+                    roll: 0.0,
+                },
+            ),
+        );
         blend_edits_preserve_tracking(make);
     }
 

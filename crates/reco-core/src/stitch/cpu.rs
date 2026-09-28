@@ -247,7 +247,7 @@ fn sample_yuv420p(
 /// BT.709 YCbCr -> sRGB-domain R'G'B', inputs normalised to `[0, 1]`.
 ///
 /// Limited range rescales to full before the matrix. Mirrors
-/// `fisheye.wgsl::sample_yuv`.
+/// `video_sampling.wgsl::sample_video`.
 #[inline]
 fn yuv_to_rgb(y_raw: f64, u_raw: f64, v_raw: f64, full_range: bool) -> [f64; 3] {
     let (y, cb, cr) = if full_range {

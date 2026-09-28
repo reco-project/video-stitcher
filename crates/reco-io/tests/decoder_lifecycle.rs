@@ -12,6 +12,175 @@ const FRAMES: usize = 48;
 const WIDTH: u32 = 128;
 const HEIGHT: u32 = 96;
 
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires NVIDIA CUDA/NVDEC and Vulkan external-memory interop"]
+fn cuda_mono_session_preserves_pixels_order_and_buffered_tail() {
+    use reco_core::calibration::{Calibration, Framing, Lens};
+    use reco_core::projection::Cylinder;
+    use reco_core::render::renderer::InputFormat;
+    use reco_core::session::{SinkOptions, StitchSession};
+    use reco_core::sink::{OutputFrame, OutputSink, SinkError, SinkInput};
+    use reco_core::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
+    use std::sync::{Arc, Mutex, atomic::AtomicBool};
+
+    struct Capture(Arc<Mutex<Vec<Vec<u8>>>>);
+    impl OutputSink for Capture {
+        fn name(&self) -> &str {
+            "capture"
+        }
+        fn wants(&self) -> SinkInput {
+            SinkInput::CpuBytes(reco_core::sink::PixelFormat::Nv12)
+        }
+        fn consume(&mut self, frame: OutputFrame<'_>) -> Result<(), SinkError> {
+            self.0.lock().unwrap().push(frame.data.to_vec());
+            Ok(())
+        }
+        fn finish(&mut self) -> Result<(), SinkError> {
+            Ok(())
+        }
+    }
+    for (width, height) in [(WIDTH, HEIGHT), (7500, 2500)] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("reordered.mp4");
+        fixture_size(&path, "libx264", width, height);
+        let input = InputPath::Single(path);
+        let run = |native: bool, depth: usize, limit: u64, budget: usize| {
+            let gpu = reco_core::gpu::GpuContext::new_blocking().unwrap();
+            let mut source = if native {
+                reco_io::SmartFileSource::open(std::slice::from_ref(&input), &gpu, 0).unwrap()
+            } else {
+                reco_io::SmartFileSource::open_cpu_only(std::slice::from_ref(&input), 0, true)
+                    .unwrap()
+            };
+            assert_eq!(source.is_gpu_resident(), native);
+            let cal = Calibration::new(
+                vec![Lens::flat(width, height)],
+                Cylinder {
+                    radius: f64::from(width),
+                    ..Default::default()
+                },
+                Framing {
+                    axis_offset: 0.0,
+                    tilt: 0.0,
+                    roll: 0.0,
+                },
+            );
+            let mut config = GpuExecutorConfig::new(
+                cal,
+                width,
+                height,
+                if native {
+                    InputFormat::Nv12
+                } else {
+                    InputFormat::Yuv420p
+                },
+            );
+            config.viewport_size = reco_core::render::viewport::ViewportSize {
+                width: 64,
+                height: 48,
+            };
+            let executor = GpuExecutor::new(gpu, config).unwrap();
+            let mut session =
+                StitchSession::with_executor(Executor::Gpu(Box::new(executor))).unwrap();
+            session.core_mut().set_constrained_look(false);
+            session.set_lookahead(depth, budget);
+            if let Some(shared) = source.shared_texture_set() {
+                session.setup_gpu_source(shared).unwrap();
+            }
+            let frames = Arc::new(Mutex::new(Vec::new()));
+            session
+                .add_sink(
+                    Box::new(Capture(frames.clone())),
+                    SinkOptions::inline_lossy(),
+                )
+                .unwrap();
+            let result = session
+                .run(&mut source, limit, &AtomicBool::new(false), None)
+                .map_err(|error| error.to_string())?;
+            let reuse = native && depth <= 5 && limit == u64::MAX && budget == usize::MAX;
+            if reuse {
+                struct HostFrame {
+                    info: reco_core::source::SourceInfo,
+                    frame: Option<FrameSet>,
+                }
+                impl FrameSource for HostFrame {
+                    fn info(&self) -> reco_core::source::SourceInfo {
+                        self.info.clone()
+                    }
+                    fn next_frame(
+                        &mut self,
+                    ) -> Result<Option<FrameSet>, reco_core::source::SourceError>
+                    {
+                        Ok(self.frame.take())
+                    }
+                }
+                // Switch ownership after real decoded frames have been staged
+                // and rendered. The one-frame host allowance is smaller than
+                // the native pool; rendering must sample the new upload.
+                let image = reco_core::source::Nv12Data {
+                    y: vec![128; width as usize * height as usize],
+                    uv: vec![128; width as usize * height as usize / 2],
+                };
+                session.set_lookahead(5, image.y.capacity() + image.uv.capacity());
+                let mut host = HostFrame {
+                    info: source.info(),
+                    frame: Some(FrameSet::Nv12(vec![image])),
+                };
+                assert_eq!(
+                    session
+                        .run(&mut host, u64::MAX, &AtomicBool::new(false), None)
+                        .unwrap()
+                        .frames_processed,
+                    result.frames_processed + 1
+                );
+            }
+            session.finish().unwrap();
+            let mut frames = frames.lock().unwrap().clone();
+            assert_eq!(
+                result.frames_processed as usize + usize::from(reuse),
+                frames.len()
+            );
+            if reuse {
+                let center = frames.last().unwrap()[24 * 64 + 32];
+                assert!(
+                    center.abs_diff(128) <= 2,
+                    "host frame center={center}, input={width}x{height}"
+                );
+                frames.pop();
+            }
+            Ok::<_, String>(frames)
+        };
+        let reference = run(false, 0, u64::MAX, usize::MAX).unwrap();
+        assert_eq!(reference.len(), FRAMES);
+        assert!(reference.windows(2).all(|pair| pair[0] != pair[1]));
+        for depth in [0, 5, FRAMES + 3] {
+            for limit in [1, 2, 7, u64::MAX] {
+                let actual = run(true, depth, limit, usize::MAX).unwrap();
+                assert_eq!(actual.len(), FRAMES.min(limit as usize));
+                for (index, (expected, actual)) in reference.iter().zip(&actual).enumerate() {
+                    assert_eq!(expected.len(), actual.len());
+                    let max_error = expected
+                        .iter()
+                        .zip(actual)
+                        .map(|(&a, &b)| a.abs_diff(b))
+                        .max()
+                        .unwrap();
+                    assert!(
+                        max_error <= 2,
+                        "{width}x{height} frame {index}, depth {depth}, limit {limit}: error {max_error}"
+                    );
+                }
+            }
+        }
+        // Depth five retains eleven native staging slots (5 + 2 + 4).
+        let exact_budget = width as usize * height as usize * 3 / 2 * 11;
+        assert_eq!(run(true, 5, u64::MAX, exact_budget).unwrap().len(), FRAMES);
+        let error = run(true, 5, u64::MAX, exact_budget - 1).unwrap_err();
+        assert!(error.contains("image storage"), "{error}");
+    }
+}
+
 fn fixture(path: &std::path::Path) {
     fixture_encoding(path, "libx264");
 }
@@ -473,7 +642,8 @@ fn cuda_workers_preserve_completion_failure_and_cancellation() {
     let input = InputPath::Single(path.clone());
 
     for offset in [-3_i64, 0, 3] {
-        let mut source = reco_io::SmartFileSource::open(&input, &input, &gpu, offset).unwrap();
+        let mut source =
+            reco_io::SmartFileSource::open(&[input.clone(), input.clone()], &gpu, offset).unwrap();
         assert!(source.is_gpu_resident(), "requires the CUDA zero-copy path");
         assert_eq!(
             source.skip_frames((FRAMES + 1) as u64).unwrap(),
@@ -488,7 +658,8 @@ fn cuda_workers_preserve_completion_failure_and_cancellation() {
     // the longer producer even when it is waiting for a reusable slot.
     let chain = InputPath::Chained(vec![path.clone(), path]);
     for (left, right) in [(&chain, &input), (&input, &chain)] {
-        let mut source = reco_io::SmartFileSource::open(left, right, &gpu, 0).unwrap();
+        let mut source =
+            reco_io::SmartFileSource::open(&[left.clone(), right.clone()], &gpu, 0).unwrap();
         assert!(source.is_gpu_resident());
         assert_eq!(
             source.skip_frames((FRAMES * 2) as u64).unwrap(),
@@ -498,7 +669,8 @@ fn cuda_workers_preserve_completion_failure_and_cancellation() {
 
     let software_input = InputPath::Single(software_path);
     for (left, right) in [(&input, &software_input), (&software_input, &input)] {
-        let mut source = reco_io::SmartFileSource::open(left, right, &gpu, 0).unwrap();
+        let mut source =
+            reco_io::SmartFileSource::open(&[left.clone(), right.clone()], &gpu, 0).unwrap();
         assert!(source.is_gpu_resident());
         let error = source
             .next_frame()
@@ -521,16 +693,29 @@ fn cuda_workers_preserve_completion_failure_and_cancellation() {
         );
     }
 
+    for offset in [0, 3] {
+        let mut source =
+            reco_io::SmartFileSource::open(std::slice::from_ref(&input), &gpu, offset).unwrap();
+        assert!(source.is_gpu_resident());
+        assert_eq!(
+            source.skip_frames((FRAMES + 1) as u64).unwrap(),
+            FRAMES as u64
+        );
+        assert!(source.is_exhausted());
+    }
+
     let smaller = dir.path().join("smaller.mp4");
     fixture_size(&smaller, "libx264", 64, 64);
     let resized = InputPath::Chained(vec![input.first_path().to_path_buf(), smaller]);
-    let mut source = reco_io::SmartFileSource::open(&resized, &resized, &gpu, 0).unwrap();
+    let mut source =
+        reco_io::SmartFileSource::open(&[resized.clone(), resized.clone()], &gpu, 0).unwrap();
     assert!(source.is_gpu_resident());
     assert!(source.skip_frames((FRAMES * 2) as u64).is_err());
     assert!(!source.is_exhausted());
     drop(source);
 
-    let mut source = reco_io::SmartFileSource::open(&input, &input, &gpu, 0).unwrap();
+    let mut source =
+        reco_io::SmartFileSource::open(&[input.clone(), input.clone()], &gpu, 0).unwrap();
     assert!(source.is_gpu_resident());
     assert_eq!(source.skip_frames(1).unwrap(), 1);
     drop(source);

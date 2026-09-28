@@ -25,14 +25,14 @@ pub(crate) fn receive<T>(rx: &Receiver<Message<T>>) -> Message<T> {
     rx.recv().map_err(|_| disconnected())?
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos", test))]
+#[cfg(any(target_os = "windows", target_os = "macos", test))]
 fn receive_pair<T>(left: &Receiver<Message<T>>, right: &Receiver<Message<T>>) -> Message<(T, T)> {
     let left = receive(left)?;
     let right = receive(right)?;
     Ok(left.zip(right))
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos", test))]
+#[cfg(any(target_os = "windows", target_os = "macos", test))]
 pub(crate) fn pair<T: Send + 'static, U: Send + 'static>(
     left: Receiver<Message<T>>,
     right: Receiver<Message<T>>,
@@ -54,6 +54,35 @@ pub(crate) fn pair<T: Send + 'static, U: Send + 'static>(
                 }
             }
             Ok(())
+        },
+    )
+}
+
+/// Collect one frame from every input, stopping at the shortest input.
+/// Read all terminal messages before accepting EOF, so another input's error is not hidden.
+#[cfg(any(target_os = "linux", target_os = "windows", test))]
+pub(crate) fn collect<T: Send + 'static>(
+    inputs: Vec<Receiver<Message<T>>>,
+    capacity: usize,
+) -> (Receiver<Message<Vec<T>>>, JoinHandle<()>) {
+    spawn(
+        "decode_collect".into(),
+        capacity,
+        move |tx| -> Result<(), SourceError> {
+            if inputs.is_empty() {
+                return Ok(());
+            }
+            loop {
+                let mut frames = Vec::with_capacity(inputs.len());
+                for input in &inputs {
+                    if let Some(frame) = receive(input)? {
+                        frames.push(frame);
+                    }
+                }
+                if frames.len() != inputs.len() || tx.send(Ok(Some(frames))).is_err() {
+                    return Ok(());
+                }
+            }
         },
     )
 }
@@ -106,6 +135,41 @@ mod tests {
         Err(SourceError::Read {
             reason: "broken input".into(),
         })
+    }
+
+    #[test]
+    fn collects_mono_and_multiple_inputs_in_order() {
+        for cameras in [1, 2, 3] {
+            let inputs = (0..cameras)
+                .map(|camera| scripted(vec![Ok(Some(camera)), Ok(Some(camera + 10)), Ok(None)]))
+                .collect();
+            let (rx, worker) = collect(inputs, 1);
+            assert_eq!(receive(&rx).unwrap(), Some((0..cameras).collect()));
+            assert_eq!(receive(&rx).unwrap(), Some((10..10 + cameras).collect()));
+            assert_eq!(receive(&rx).unwrap(), None);
+            worker.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn collection_preserves_errors_at_eof_and_cancels_blocked_sends() {
+        for failed in 0..3 {
+            let inputs = (0..3)
+                .map(|i| {
+                    scripted(if i == failed {
+                        vec![failure()]
+                    } else {
+                        vec![Ok(None)]
+                    })
+                })
+                .collect();
+            let (rx, worker) = collect(inputs, 1);
+            assert!(receive(&rx).is_err());
+            worker.join().unwrap();
+        }
+        let (rx, worker) = collect(vec![scripted(vec![Ok(Some(1)), Ok(Some(2)), Ok(None)])], 0);
+        drop(rx);
+        worker.join().unwrap();
     }
 
     #[test]

@@ -6,8 +6,10 @@
 #[cfg(all(test, target_os = "windows"))]
 mod windows_tests;
 
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+use crate::decode_stream::pair;
 #[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))]
-use crate::decode_stream::{Message, pair, spawn};
+use crate::decode_stream::{Message, spawn};
 #[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))]
 use crate::ffmpeg::decoder::{DecodeError, VideoDecoder};
 
@@ -15,7 +17,7 @@ use crate::ffmpeg::decoder::{DecodeError, VideoDecoder};
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 fn spawn_single_decoder_gpu(
     input: crate::stitch_job::InputPath,
-    label: &'static str,
+    label: String,
     buf: reco_core::interop::zero_copy::GpuBufInfo,
     slot_free_rx: std::sync::mpsc::Receiver<u8>,
     skip_frames: u64,
@@ -99,54 +101,38 @@ fn spawn_single_decoder_gpu(
     )
 }
 
-/// Spawn parallel GPU decode threads and a pairing thread.
-///
-/// Positive `sync_offset` skips right frames; negative skips left frames.
-/// The receiver emits paired slots, then explicit EOF or an error. Join all
-/// workers before dropping the shared textures.
+/// Spawn one worker per input and collect synchronized resident frame sets.
+/// Join all workers before dropping their shared textures.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub fn spawn_decode_threads_gpu(
-    left_input: crate::stitch_job::InputPath,
-    right_input: crate::stitch_job::InputPath,
-    left_buf: reco_core::interop::zero_copy::GpuBufInfo,
-    right_buf: reco_core::interop::zero_copy::GpuBufInfo,
-    left_slot_free_rx: std::sync::mpsc::Receiver<u8>,
-    right_slot_free_rx: std::sync::mpsc::Receiver<u8>,
+    decoders: Vec<(
+        crate::stitch_job::InputPath,
+        reco_core::interop::zero_copy::GpuBufInfo,
+        std::sync::mpsc::Receiver<u8>,
+    )>,
     sync_offset: i64,
     shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) -> reco_core::interop::zero_copy::GpuDecodeHandles {
-    use reco_core::interop::zero_copy::{GpuDecodeHandles, GpuFrameSignal};
-
-    let (left_skip, right_skip) = if sync_offset > 0 {
-        (0, sync_offset as u64)
-    } else {
-        (sync_offset.unsigned_abs(), 0)
-    };
-    let (left_rx, left_handle) = spawn_single_decoder_gpu(
-        left_input,
-        "left",
-        left_buf,
-        left_slot_free_rx,
-        left_skip,
-        shutdown.clone(),
-    );
-    let (right_rx, right_handle) = spawn_single_decoder_gpu(
-        right_input,
-        "right",
-        right_buf,
-        right_slot_free_rx,
-        right_skip,
-        shutdown,
-    );
-    let (rx, pair_handle) = pair(left_rx, right_rx, 0, 1, |(left_slot, right_slot)| {
-        GpuFrameSignal {
-            left_slot,
-            right_slot,
-        }
-    });
-    GpuDecodeHandles {
-        frame_rx: rx,
-        join_handles: vec![left_handle, right_handle, pair_handle],
+    let mut receivers = Vec::with_capacity(decoders.len());
+    let mut join_handles = Vec::with_capacity(decoders.len() + 1);
+    let stereo = decoders.len() == 2;
+    for (camera, (input, buf, free)) in decoders.into_iter().enumerate() {
+        let skip =
+            if stereo && ((camera == 0 && sync_offset < 0) || (camera == 1 && sync_offset > 0)) {
+                sync_offset.unsigned_abs()
+            } else {
+                0
+            };
+        let (rx, handle) =
+            spawn_single_decoder_gpu(input, camera.to_string(), buf, free, skip, shutdown.clone());
+        receivers.push(rx);
+        join_handles.push(handle);
+    }
+    let (frame_rx, collector) = crate::decode_stream::collect(receivers, 1);
+    join_handles.push(collector);
+    reco_core::interop::zero_copy::GpuDecodeHandles {
+        frame_rx,
+        join_handles,
     }
 }
 

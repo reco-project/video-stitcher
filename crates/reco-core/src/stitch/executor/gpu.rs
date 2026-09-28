@@ -137,51 +137,39 @@ impl GpuExecutor {
     /// GPU detection, and the decode backpressure channels.
     #[cfg(target_os = "linux")]
     pub(crate) fn configure_shared_textures(&mut self, shared: &crate::interop::SharedTextureSet) {
-        let t = &shared.textures;
-        let bind_groups = self.pipeline.configure_gpu_source(
-            [(&t[0], &t[1]), (&t[2], &t[3])],
-            [(&t[4], &t[5]), (&t[6], &t[7])],
+        self.residency.bind_groups = Some(self.pipeline.configure_gpu_source(shared));
+        self.residency.slot_free_tx = Some(
+            shared
+                .cameras
+                .iter()
+                .map(|c| c.slot_free_tx.clone())
+                .collect(),
         );
-        let desc = wgpu::TextureViewDescriptor::default();
-        self.residency.bind_groups = Some(bind_groups);
-        self.residency.slot_free_tx = Some((
-            shared.left_slot_free_tx.clone(),
-            shared.right_slot_free_tx.clone(),
-        ));
-        self.residency.cuda_buf_info = Some((shared.left_buf.clone(), shared.right_buf.clone()));
-        self.residency.shared_views = Some([
-            t[0].texture.create_view(&desc),
-            t[1].texture.create_view(&desc),
-            t[2].texture.create_view(&desc),
-            t[3].texture.create_view(&desc),
-            t[4].texture.create_view(&desc),
-            t[5].texture.create_view(&desc),
-            t[6].texture.create_view(&desc),
-            t[7].texture.create_view(&desc),
-        ]);
-        self.residency.shared_textures = Some([
-            t[0].texture.clone(),
-            t[1].texture.clone(),
-            t[2].texture.clone(),
-            t[3].texture.clone(),
-            t[4].texture.clone(),
-            t[5].texture.clone(),
-            t[6].texture.clone(),
-            t[7].texture.clone(),
-        ]);
+        self.residency.cuda_buf_info = Some(shared.cameras.iter().map(|c| c.buf.clone()).collect());
+        self.residency.shared_views = Some(
+            shared
+                .cameras
+                .iter()
+                .map(|c| {
+                    std::array::from_fn(|i| c.textures[i].texture.create_view(&Default::default()))
+                })
+                .collect(),
+        );
+        self.residency.shared_textures = Some(
+            shared
+                .cameras
+                .iter()
+                .map(|c| std::array::from_fn(|i| c.textures[i].texture.clone()))
+                .collect(),
+        );
         log::info!("GpuExecutor: shared zero-copy decode textures configured");
     }
 
     /// CUDA buffer info for GPU detection on the shared decode
     /// textures, cloned so callers can hold it across `&mut` engine
     /// calls. `None` until a zero-copy source is configured.
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    pub(crate) fn cuda_buf_info(
-        &self,
-    ) -> Option<(
-        crate::interop::zero_copy::GpuBufInfo,
-        crate::interop::zero_copy::GpuBufInfo,
-    )> {
+    #[cfg(target_os = "linux")]
+    pub(crate) fn cuda_buf_info(&self) -> Option<Vec<crate::interop::zero_copy::GpuBufInfo>> {
         self.residency.cuda_buf_info.clone()
     }
 
@@ -190,8 +178,7 @@ impl GpuExecutor {
     #[cfg(target_os = "linux")]
     pub(crate) fn render_shared_slots(
         &mut self,
-        left_slot: u8,
-        right_slot: u8,
+        slots: &[u8],
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, StitchError> {
         let bind_groups = self.residency.bind_groups.as_ref().ok_or_else(|| {
@@ -199,12 +186,11 @@ impl GpuExecutor {
                 "GPU bind groups not configured - call setup_gpu_source() before run()".into(),
             )
         })?;
-        Ok(self
-            .pipeline
-            .render_gpu_frame(bind_groups, left_slot, right_slot, pose)?)
+        Ok(self.pipeline.render_gpu_frame(bind_groups, slots, pose)?)
     }
 
     /// Render from a VRAM lookahead pool slot (buffered path).
+    #[cfg(target_os = "linux")]
     pub(crate) fn render_pool_slot(
         &mut self,
         slot: usize,
@@ -215,11 +201,9 @@ impl GpuExecutor {
             .pool
             .as_ref()
             .expect("render_pool_slot requires the lookahead pool");
-        Ok(self.pipeline.render_with_bind_groups(
-            pool.left_bind_group(slot),
-            pool.right_bind_group(slot),
-            pose,
-        )?)
+        Ok(self
+            .pipeline
+            .render_with_bind_groups(pool.bind_groups(slot), pose)?)
     }
 
     /// Copy the shared decode slots into a pool slot so the decode
@@ -230,8 +214,7 @@ impl GpuExecutor {
     #[cfg(target_os = "linux")]
     pub(crate) fn stage_shared_to_pool(
         &mut self,
-        left_slot: usize,
-        right_slot: usize,
+        slots: &[u8],
     ) -> Result<Option<usize>, StitchError> {
         let residency = &mut self.residency;
         let (Some(pool), Some(shared_tex)) =
@@ -247,23 +230,23 @@ impl GpuExecutor {
             ))
         })?;
         let gpu = self.pipeline.gpu();
-        pool.copy_from_textures(
-            gpu,
-            slot,
-            &shared_tex[left_slot * 2],
-            &shared_tex[left_slot * 2 + 1],
-            &shared_tex[4 + right_slot * 2],
-            &shared_tex[4 + right_slot * 2 + 1],
-        );
+        let sources: Vec<_> = shared_tex
+            .iter()
+            .zip(slots)
+            .map(|(textures, &s)| {
+                let s = usize::from(s);
+                (&textures[s * 2], &textures[s * 2 + 1])
+            })
+            .collect();
+        pool.copy_from_textures(gpu, slot, &sources);
         let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
         Ok(Some(slot))
     }
 
-    /// Copy four imported NV12 plane textures into a pool slot
-    /// (DMA-buf / CVPixelBuffer sources whose import caches live
-    /// outside the shared-texture set). The copy is awaited so the
+    /// Copy imported NVMM plane textures into a pool slot.
+    /// The copy is awaited so the
     /// source may recycle its buffer immediately after.
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "ios"))]
+    #[cfg(target_os = "linux")]
     pub(crate) fn stage_textures_to_pool(
         &mut self,
         left_y: &wgpu::Texture,
@@ -282,7 +265,7 @@ impl GpuExecutor {
             ))
         })?;
         let gpu = self.pipeline.gpu();
-        pool.copy_from_textures(gpu, slot, left_y, left_uv, right_y, right_uv);
+        pool.copy_from_textures(gpu, slot, &[(left_y, left_uv), (right_y, right_uv)]);
         let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
         Ok(Some(slot))
     }
@@ -456,17 +439,12 @@ impl GpuExecutor {
     /// detection has read the slot - releasing earlier lets the decode
     /// thread overwrite the shared memory mid-read.
     #[cfg(target_os = "linux")]
-    pub(crate) fn release_decode_slots(&self, left_slot: u8, right_slot: u8) {
-        if let Some((ref left_tx, ref right_tx)) = self.residency.slot_free_tx {
-            if left_tx.send(left_slot).is_err() {
-                log::error!(
-                    "failed to release left GPU decode slot {left_slot} - decode thread may have died"
-                );
-            }
-            if right_tx.send(right_slot).is_err() {
-                log::error!(
-                    "failed to release right GPU decode slot {right_slot} - decode thread may have died"
-                );
+    pub(crate) fn release_decode_slots(&self, slots: &[u8]) {
+        if let Some(senders) = &self.residency.slot_free_tx {
+            for (camera, (tx, &slot)) in senders.iter().zip(slots).enumerate() {
+                if tx.send(slot).is_err() {
+                    log::error!("failed to release camera {camera} GPU decode slot {slot}");
+                }
             }
         }
     }
@@ -487,9 +465,6 @@ impl GpuExecutor {
         needs_cuda: bool,
         pixel_format: crate::render::renderer::GpuPixelFormat,
     ) -> Result<(), String> {
-        if self.residency.d3d11_staging.is_some() {
-            return Ok(());
-        }
         // For lookahead, size slots to the max frames simultaneously
         // in flight (decoded but not yet rendered), x2 for left+right.
         // Peak occupancy is n + post_smooth_half + 1 (the buffer hits
@@ -501,12 +476,15 @@ impl GpuExecutor {
         // fit (the VramPool uses ref-counted acquire/release; this
         // path relies on the sizing margin instead). Without lookahead,
         // 4 slots (double-buffered stereo) suffice.
-        let n_slots = if lookahead_frames > 0 {
-            let post_smooth_half = (lookahead_frames / 2).max(1);
-            (lookahead_frames + post_smooth_half + 4) * 2
-        } else {
-            4
-        };
+        let n_slots = crate::lookahead::pool_slots(lookahead_frames)?
+            .checked_mul(2)
+            .ok_or("D3D11 staging capacity overflow")?;
+        if let Some(pool) = self.residency.d3d11_staging.as_ref() {
+            if pool.n_slots() != n_slots {
+                return Err("D3D11 staging size changed; create a new session".into());
+            }
+            return Ok(());
+        }
         let (w, h) = self.pipeline.source_dims();
         let pool = crate::interop::d3d11::D3d11StagingPool::new(
             self.pipeline.gpu(),
@@ -540,10 +518,11 @@ impl GpuExecutor {
             .d3d11_staging
             .as_mut()
             .ok_or_else(|| "D3D11 staging pool not created".to_string())?;
-        pool.stage_frame(left_texture, left_slice, left_slot)
-            .map_err(|e| e.to_string())?;
-        pool.stage_frame(right_texture, right_slice, right_slot)
-            .map_err(|e| e.to_string())
+        pool.stage_frames(&[
+            (left_texture, left_slice, left_slot),
+            (right_texture, right_slice, right_slot),
+        ])
+        .map_err(|e| format!("D3D11 staging: {e}"))
     }
 
     /// Staging slots for a buffered frame, assigned round-robin by
@@ -598,6 +577,7 @@ impl GpuExecutor {
     }
 
     /// Allocate the VRAM lookahead pool.
+    #[cfg(target_os = "linux")]
     pub(crate) fn create_lookahead_pool(
         &mut self,
         width: u32,
@@ -687,14 +667,6 @@ impl StitchExecutor for GpuExecutor {
         planes: &[Nv12Planes<'_>],
         pose: RenderPose,
     ) -> Result<Vec<u8>, StitchError> {
-        // The GPU upload path is stereo-shaped today; mono programs
-        // land with their own bind layout at the cylinder GPU step.
-        let [left, right] = planes else {
-            return Err(StitchError::InvalidConfig(format!(
-                "the GPU executor's synchronous stitch consumes exactly 2                  camera frames, got {}",
-                planes.len()
-            )));
-        };
         // The synchronous contract is NV12-specific; the underlying
         // upload only debug-asserts the format, so guard it here with
         // a typed error instead of corrupting textures in release.
@@ -713,7 +685,7 @@ impl StitchExecutor for GpuExecutor {
         }
         // Record the frame, submit it via the readback, then drain it
         // synchronously: one render in, this frame's RGBA out.
-        let cmd = self.pipeline.render_to_target_nv12(left, right, pose)?;
+        let cmd = self.pipeline.render_nv12(planes, pose)?;
         let tex = self.pipeline.render_target();
         let (ring, _) = self.sync_readback.as_mut().expect("created above");
         ring.readback(self.pipeline.gpu(), tex, cmd)?;

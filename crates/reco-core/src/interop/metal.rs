@@ -60,6 +60,7 @@ unsafe extern "C" {
     fn CVMetalTextureGetTexture(image: CVMetalTextureRef) -> *mut c_void;
 
     pub(crate) fn CVPixelBufferGetPixelFormatType(pixel_buffer: CVPixelBufferRef) -> u32;
+    fn CVPixelBufferGetDataSize(pixel_buffer: CVPixelBufferRef) -> usize;
     pub(crate) fn CVPixelBufferGetWidthOfPlane(
         pixel_buffer: CVPixelBufferRef,
         plane_index: u64,
@@ -174,6 +175,11 @@ impl RetainedCVPixelBuffer {
     /// Get the raw `CVPixelBufferRef` pointer for import.
     pub fn as_ptr(&self) -> CVPixelBufferRef {
         self.ptr
+    }
+
+    pub(crate) fn data_size(&self) -> usize {
+        // SAFETY: this wrapper retains a valid CVPixelBuffer for its lifetime.
+        unsafe { CVPixelBufferGetDataSize(self.ptr) }
     }
 
     /// Frame width in pixels (from Y plane / plane 0).

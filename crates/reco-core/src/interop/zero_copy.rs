@@ -30,19 +30,6 @@ pub struct GpuBufInfo {
     pub pixel_format: crate::render::renderer::GpuPixelFormat,
 }
 
-/// A pair of double-buffer slot indices from the decode threads.
-///
-/// Indicates which slots contain the latest decoded frames for left
-/// and right cameras. The render thread uses these to select the
-/// correct bind group.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-pub struct GpuFrameSignal {
-    /// Left camera double-buffer slot index (0 or 1).
-    pub left_slot: u8,
-    /// Right camera double-buffer slot index (0 or 1).
-    pub right_slot: u8,
-}
-
 /// Handles for GPU decode threads, used for lifecycle management.
 ///
 /// The session drives the frame loop by receiving signals from
@@ -51,10 +38,9 @@ pub struct GpuFrameSignal {
 /// shared textures (ordering prevents CUDA error 700).
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub struct GpuDecodeHandles {
-    /// Receives paired slots, then explicit EOF (`Ok(None)`) or failure.
-    pub frame_rx:
-        std::sync::mpsc::Receiver<Result<Option<GpuFrameSignal>, crate::source::SourceError>>,
-    /// Join handles for the 2 decode threads + 1 pairing thread.
+    /// Receives per-input slots, then explicit EOF (`Ok(None)`) or failure.
+    pub frame_rx: std::sync::mpsc::Receiver<Result<Option<Vec<u8>>, crate::source::SourceError>>,
+    /// Join handles for the decode workers and frame collection worker.
     /// Must be joined before dropping shared textures to ensure
     /// FFmpeg's CUDA context cleanup completes while shared memory
     /// is still valid.
