@@ -37,5 +37,12 @@ tracing-log = "0.2"
 strip = true
 lto = "thin"
 
+# Coverage integration tests exercise the full numerical workload.
+# Optimize the math without disabling debug assertions or overflow checks.
+[profile.test.package.reco-core]
+opt-level = 2
+debug-assertions = true
+overflow-checks = true
+
 # SPIKE: wgpu 28 interop with Slint. Fork removed; if wgpu 28 doesn't
 # have the shaderDrawParameters regression, no patch is needed.

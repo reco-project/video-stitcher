@@ -6,7 +6,7 @@
 #[cfg(all(test, target_os = "windows"))]
 mod windows_tests;
 
-#[cfg(any(target_os = "windows", target_os = "macos"))]
+#[cfg(target_os = "macos")]
 use crate::decode_stream::pair;
 #[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))]
 use crate::decode_stream::{Message, spawn};
