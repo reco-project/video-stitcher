@@ -293,7 +293,7 @@ impl SmartFileSource {
         let source =
             crate::adapters::FfmpegFileSource::open_inputs(inputs, sync_offset, software_decode)?;
         log::info!(
-            "SmartFileSource: CPU decode ({} camera(s), {}x{}, {pixel_format:?}{})",
+            "SmartFileSource: host-backed frames ({} camera(s), {}x{}, {pixel_format:?}{})",
             inputs.len(),
             info.width,
             info.height,
@@ -717,7 +717,7 @@ impl Drop for SmartFileSource {
             // 1. Set shutdown flag -> decode threads exit via recv_timeout check
             // 2. Drop frame_rx -> pairing thread's send() returns Err, exits
             // 3. Join all threads -> VideoDecoder::Drop completes CUDA cleanup
-            //    while shared CUDA VMM memory is still mapped
+            //    while shared Vulkan memory is still mapped into CUDA
             // 4. SharedTextureSet drops naturally -> CUDA memory unmapped
 
             // Step 1: Signal shutdown to decode threads (they check this

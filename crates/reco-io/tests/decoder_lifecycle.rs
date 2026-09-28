@@ -14,6 +14,38 @@ const HEIGHT: u32 = 96;
 
 #[cfg(target_os = "linux")]
 #[test]
+#[ignore = "requires NVDEC and a non-matching Vulkan adapter"]
+fn cuda_decode_uses_host_transfer_for_an_incompatible_renderer() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("reordered.mp4");
+    fixture(&path);
+    assert_eq!(
+        VideoDecoder::open(&path).unwrap().backend(),
+        DecodeBackend::Cuda
+    );
+    let gpu = reco_core::gpu::GpuContext::new_blocking().unwrap();
+    assert!(!gpu.supports_zero_copy());
+    let input = InputPath::Single(path);
+    for count in [1, 2] {
+        let mut source =
+            reco_io::SmartFileSource::open(&vec![input.clone(); count], &gpu, 0).unwrap();
+        assert!(!source.is_gpu_resident());
+        for index in 0..FRAMES {
+            let FrameSet::Yuv420p(cameras) = source.next_frame().unwrap().unwrap() else {
+                panic!("expected host-backed frames");
+            };
+            assert_eq!(cameras.len(), count);
+            for frame in cameras {
+                assert_pixels(&frame.y, &frame.u, &frame.v, index);
+            }
+        }
+        assert!(source.next_frame().unwrap().is_none());
+        assert!(source.is_exhausted());
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 #[ignore = "requires NVIDIA CUDA/NVDEC and Vulkan external-memory interop"]
 fn cuda_mono_session_preserves_pixels_order_and_buffered_tail() {
     use reco_core::calibration::{Calibration, Framing, Lens};

@@ -514,13 +514,19 @@ impl GpuContext {
 
     /// Whether this GPU context supports zero-copy decode.
     ///
-    /// Checks that the GPU backend matches a supported interop path
-    /// (Vulkan + CUDA on Linux, Metal on macOS) and that the necessary
-    /// runtime libraries are available.
+    /// On Linux, requires Vulkan to match both the current CUDA device and
+    /// the default decode device. Other platforms require their native backend.
+    /// Input formats and import capabilities are validated when opening a source.
     pub fn supports_zero_copy(&self) -> bool {
         #[cfg(target_os = "linux")]
         {
-            self.is_vulkan() && crate::interop::cuda::is_cuda_available()
+            match crate::interop::vulkan::require_matching_cuda_device(self) {
+                Ok(()) => true,
+                Err(error) => {
+                    log::info!("CUDA zero-copy unavailable: {error}");
+                    false
+                }
+            }
         }
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         {

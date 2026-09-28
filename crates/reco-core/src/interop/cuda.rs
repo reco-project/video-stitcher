@@ -1,25 +1,23 @@
-//! CUDA/Vulkan interop for zero-copy GPU frame sharing.
+//! CUDA memory, copies and external-resource interop.
 //!
 //! Enables NVDEC-decoded frames to reach wgpu textures without
-//! leaving the GPU. Uses CUDA's Virtual Memory Management (VMM) API
-//! to allocate shareable device memory, exports it as a POSIX file
-//! descriptor (Linux) or Win32 handle (Windows), and imports it into
-//! Vulkan via external memory extensions.
+//! leaving the GPU. Imports Vulkan-owned image memory on Linux and
+//! D3D11 staging resources on Windows into persistent CUDA mappings.
 //!
 //! ## Architecture (inspired by [Gyroflow](https://github.com/gyroflow/gyroflow)'s approach)
 //!
 //! ```text
 //! NVDEC decode → CUDA device memory (FFmpeg)
 //!        ↓  cuMemcpy2D (GPU-to-GPU, no CPU)
-//! Shared CUDA/Vulkan buffer (allocated via VMM, exported as fd)
-//!        ↓  Vulkan external memory import
+//! Vulkan-owned linear image (exported fd, imported by CUDA)
+//!        ↓  shared allocation
 //! wgpu texture (via HAL) → render pipeline
 //! ```
 //!
 //! ## Platform Support
 //!
 //! - **Linux**: POSIX file descriptor sharing (`VK_KHR_external_memory_fd`)
-//! - **Windows**: Win32 handle sharing (`VK_KHR_external_memory_win32`)
+//! - **Windows**: D3D11 resource sharing via NT handles.
 //! - CUDA is loaded dynamically — no compile-time CUDA SDK dependency.
 
 use std::ffi::c_void;
@@ -44,6 +42,10 @@ pub enum CudaInteropError {
     /// The wgpu backend is not Vulkan (interop requires Vulkan).
     #[error("CUDA interop requires the Vulkan backend")]
     NotVulkan,
+
+    /// CUDA allocation, decode and Vulkan rendering selected different devices.
+    #[error("CUDA interop requires the renderer and current CUDA device to match CUDA device 0")]
+    DeviceMismatch,
 }
 
 // ── CUDA types ──────────────────────────────────────────────────────
@@ -56,23 +58,6 @@ type CUresult = i32;
 
 const CUDA_SUCCESS: CUresult = 0;
 
-/// Memory allocation type: pinned (required for shareable allocations).
-const CU_MEM_ALLOCATION_TYPE_PINNED: u32 = 1;
-/// Memory location type: device.
-const CU_MEM_LOCATION_TYPE_DEVICE: u32 = 1;
-
-/// Shareable handle types.
-#[cfg(target_os = "linux")]
-const CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR: u32 = 1;
-#[cfg(target_os = "windows")]
-const CU_MEM_HANDLE_TYPE_WIN32: u32 = 2;
-
-/// Memory access flags.
-const CU_MEM_ACCESS_FLAGS_PROT_READWRITE: u32 = 3;
-
-/// Granularity query: minimum allocation size.
-const CU_MEM_ALLOC_GRANULARITY_MINIMUM: u32 = 0;
-
 /// Memory types for cuMemcpy2D.
 const CU_MEMORYTYPE_HOST: u32 = 1;
 const CU_MEMORYTYPE_DEVICE: u32 = 2;
@@ -82,33 +67,6 @@ const CU_MEMORYTYPE_DEVICE: u32 = 2;
 #[derive(Clone, Copy)]
 pub struct CUuuid {
     pub bytes: [u8; 16],
-}
-
-/// Allocation properties for CUDA VMM.
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct CUmemAllocationProp {
-    alloc_type: u32,
-    handle_type: u32,
-    location: CUmemLocation,
-    win32_handle_value: *mut c_void,
-    _reserved: [u64; 8],
-}
-
-/// Memory location descriptor.
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct CUmemLocation {
-    location_type: u32,
-    id: i32,
-}
-
-/// Memory access descriptor.
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct CUmemAccessDesc {
-    location: CUmemLocation,
-    flags: u32,
 }
 
 /// 2D memory copy descriptor.
@@ -133,10 +91,7 @@ struct CudaMemcpy2D {
     height: usize,
 }
 
-type CUmemGenericAllocationHandle = u64;
-
 /// Opaque external memory handle for cross-API sharing.
-#[cfg(target_os = "windows")]
 type CUexternalMemory = *mut c_void;
 
 /// External memory handle type: D3D11 resource shared via NT handle.
@@ -144,18 +99,16 @@ type CUexternalMemory = *mut c_void;
 const CU_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_RESOURCE: u32 = 4;
 
 /// Handle descriptor for importing external memory into CUDA.
-#[cfg(target_os = "windows")]
 #[repr(C)]
 struct CudaExternalMemoryHandleDesc {
     handle_type: u32,
-    handle: CudaExternalMemoryWin32Handle,
+    handle: CudaExternalMemoryHandle,
     size: u64,
     flags: u32,
     _reserved: [u32; 16],
 }
 
 /// Win32 handle union branch for external memory import.
-#[cfg(target_os = "windows")]
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct CudaExternalMemoryWin32Handle {
@@ -163,8 +116,13 @@ struct CudaExternalMemoryWin32Handle {
     name: *const c_void,
 }
 
+#[repr(C)]
+union CudaExternalMemoryHandle {
+    fd: i32,
+    win32: CudaExternalMemoryWin32Handle,
+}
+
 /// Buffer descriptor for mapping a region of external memory.
-#[cfg(target_os = "windows")]
 #[repr(C)]
 struct CudaExternalMemoryBufferDesc {
     offset: u64,
@@ -184,7 +142,7 @@ type CUstream = *mut c_void;
 /// Dynamically loaded CUDA functions.
 ///
 /// Loaded once from `libcuda.so.1` (Linux) or `nvcuda.dll` (Windows).
-/// Only the functions needed for VMM + interop are loaded.
+/// Only the functions needed for memory, kernels and interop are loaded.
 struct CudaFunctions {
     _lib_cuda: libloading::Library,
     _lib_cudart: Option<libloading::Library>,
@@ -200,32 +158,10 @@ struct CudaFunctions {
     cu_device_primary_ctx_retain: unsafe extern "C" fn(*mut CUcontext, CUdevice) -> CUresult,
     cu_ctx_get_current: unsafe extern "C" fn(*mut CUcontext) -> CUresult,
     cu_ctx_set_current: unsafe extern "C" fn(CUcontext) -> CUresult,
-
-    // VMM allocation
-    cu_mem_get_allocation_granularity:
-        unsafe extern "C" fn(*mut usize, *const CUmemAllocationProp, u32) -> CUresult,
-    cu_mem_address_reserve:
-        unsafe extern "C" fn(*mut CUdeviceptr, usize, usize, CUdeviceptr, u64) -> CUresult,
-    cu_mem_create: unsafe extern "C" fn(
-        *mut CUmemGenericAllocationHandle,
-        usize,
-        *const CUmemAllocationProp,
-        u64,
-    ) -> CUresult,
-    cu_mem_export_to_shareable_handle:
-        unsafe extern "C" fn(*mut c_void, CUmemGenericAllocationHandle, u32, u64) -> CUresult,
-    cu_mem_map: unsafe extern "C" fn(
-        CUdeviceptr,
-        usize,
-        usize,
-        CUmemGenericAllocationHandle,
-        u64,
-    ) -> CUresult,
-    cu_mem_set_access:
-        unsafe extern "C" fn(CUdeviceptr, usize, *const CUmemAccessDesc, usize) -> CUresult,
-    cu_mem_release: unsafe extern "C" fn(CUmemGenericAllocationHandle) -> CUresult,
-    cu_mem_unmap: unsafe extern "C" fn(CUdeviceptr, usize) -> CUresult,
-    cu_mem_address_free: unsafe extern "C" fn(CUdeviceptr, usize) -> CUresult,
+    #[cfg(target_os = "linux")]
+    cu_ctx_push_current: unsafe extern "C" fn(CUcontext) -> CUresult,
+    #[cfg(target_os = "linux")]
+    cu_ctx_pop_current: unsafe extern "C" fn(*mut CUcontext) -> CUresult,
 
     // 2D copy
     cu_memcpy_2d_v2: unsafe extern "C" fn(*const CudaMemcpy2D) -> CUresult,
@@ -237,19 +173,16 @@ struct CudaFunctions {
     cu_memset_d8_v2: unsafe extern "C" fn(CUdeviceptr, u8, usize) -> CUresult,
     cu_mem_get_info_v2: unsafe extern "C" fn(*mut usize, *mut usize) -> CUresult,
 
-    // External memory (D3D11 → CUDA sharing on Windows)
-    #[cfg(target_os = "windows")]
+    // External memory imported from the rendering API.
     cu_import_external_memory: unsafe extern "C" fn(
         *mut CUexternalMemory,
         *const CudaExternalMemoryHandleDesc,
     ) -> CUresult,
-    #[cfg(target_os = "windows")]
     cu_external_memory_get_mapped_buffer: unsafe extern "C" fn(
         *mut CUdeviceptr,
         CUexternalMemory,
         *const CudaExternalMemoryBufferDesc,
     ) -> CUresult,
-    #[cfg(target_os = "windows")]
     cu_destroy_external_memory: unsafe extern "C" fn(CUexternalMemory) -> CUresult,
 
     // Module / kernel launch
@@ -336,35 +269,21 @@ impl CudaFunctions {
                 cu_device_primary_ctx_retain: load_sym!(lib_cuda, "cuDevicePrimaryCtxRetain"),
                 cu_ctx_get_current: load_sym!(lib_cuda, "cuCtxGetCurrent"),
                 cu_ctx_set_current: load_sym!(lib_cuda, "cuCtxSetCurrent"),
-                cu_mem_get_allocation_granularity: load_sym!(
-                    lib_cuda,
-                    "cuMemGetAllocationGranularity"
-                ),
-                cu_mem_address_reserve: load_sym!(lib_cuda, "cuMemAddressReserve"),
-                cu_mem_create: load_sym!(lib_cuda, "cuMemCreate"),
-                cu_mem_export_to_shareable_handle: load_sym!(
-                    lib_cuda,
-                    "cuMemExportToShareableHandle"
-                ),
-                cu_mem_map: load_sym!(lib_cuda, "cuMemMap"),
-                cu_mem_set_access: load_sym!(lib_cuda, "cuMemSetAccess"),
-                cu_mem_release: load_sym!(lib_cuda, "cuMemRelease"),
-                cu_mem_unmap: load_sym!(lib_cuda, "cuMemUnmap"),
-                cu_mem_address_free: load_sym!(lib_cuda, "cuMemAddressFree"),
+                #[cfg(target_os = "linux")]
+                cu_ctx_push_current: load_sym!(lib_cuda, "cuCtxPushCurrent_v2"),
+                #[cfg(target_os = "linux")]
+                cu_ctx_pop_current: load_sym!(lib_cuda, "cuCtxPopCurrent_v2"),
                 cu_memcpy_2d_v2: load_sym!(lib_cuda, "cuMemcpy2D_v2"),
                 cu_mem_alloc_v2: load_sym!(lib_cuda, "cuMemAlloc_v2"),
                 cu_mem_free_v2: load_sym!(lib_cuda, "cuMemFree_v2"),
                 cu_mem_get_info_v2: load_sym!(lib_cuda, "cuMemGetInfo_v2"),
                 cu_memcpy_dtoh_v2: load_sym!(lib_cuda, "cuMemcpyDtoH_v2"),
                 cu_memset_d8_v2: load_sym!(lib_cuda, "cuMemsetD8_v2"),
-                #[cfg(target_os = "windows")]
                 cu_import_external_memory: load_sym!(lib_cuda, "cuImportExternalMemory"),
-                #[cfg(target_os = "windows")]
                 cu_external_memory_get_mapped_buffer: load_sym!(
                     lib_cuda,
                     "cuExternalMemoryGetMappedBuffer"
                 ),
-                #[cfg(target_os = "windows")]
                 cu_destroy_external_memory: load_sym!(lib_cuda, "cuDestroyExternalMemory"),
                 cu_module_load_data: load_sym!(lib_cuda, "cuModuleLoadData"),
                 cu_module_unload: load_sym!(lib_cuda, "cuModuleUnload"),
@@ -398,67 +317,111 @@ fn check_cuda(function: &'static str, result: CUresult) -> Result<(), CudaIntero
 
 // ── Public API ──────────────────────────────────────────────────────
 
-/// Shared CUDA/Vulkan memory allocation.
-///
-/// Holds both the CUDA device pointer and the metadata needed for cleanup.
-/// When dropped, unmaps and frees the CUDA VMM allocation.
-pub struct CudaSharedMemory {
-    /// CUDA device pointer to the shared allocation.
-    pub device_ptr: CUdeviceptr,
-    /// Size of the allocation in bytes (rounded up to granularity).
-    pub alloc_size: usize,
-    /// The shareable handle (POSIX fd on Linux, Win32 handle on Windows).
-    /// Only valid until imported by Vulkan — after that it is closed.
-    #[cfg(target_os = "linux")]
-    pub shared_handle: i32,
-    #[cfg(target_os = "windows")]
-    pub shared_handle: *mut c_void,
-}
-
-impl Drop for CudaSharedMemory {
-    fn drop(&mut self) {
-        if let Ok(cuda) = cuda() {
-            // This may drop on a thread without the CUDA context current (the
-            // session thread rather than the decode thread that allocated).
-            // Without a current context the cleanup calls below fail and the VMM
-            // allocation leaks. Ensure one first, as the other CUDA drops do.
-            if let Err(e) = cuda_ensure_context() {
-                log::warn!("CudaSharedMemory drop: no CUDA context, leaking allocation: {e}");
-                return;
-            }
-            unsafe {
-                let unmap_rc = (cuda.cu_mem_unmap)(self.device_ptr, self.alloc_size);
-                if unmap_rc != CUDA_SUCCESS {
-                    log::warn!(
-                        "cuMemUnmap(0x{:x}, {}) failed with error {}",
-                        self.device_ptr,
-                        self.alloc_size,
-                        unmap_rc,
-                    );
-                }
-                let free_rc = (cuda.cu_mem_address_free)(self.device_ptr, self.alloc_size);
-                if free_rc != CUDA_SUCCESS {
-                    log::warn!(
-                        "cuMemAddressFree(0x{:x}, {}) failed with error {}",
-                        self.device_ptr,
-                        self.alloc_size,
-                        free_rc,
-                    );
-                }
-            }
-        }
-        // Note: shared_handle (fd) is NOT closed here. Vulkan's vkAllocateMemory
-        // with VkImportMemoryFdInfoKHR takes ownership of the fd per the spec.
-        // It is closed when vkFreeMemory runs (via the SharedTexture drop_callback).
-    }
-}
-
 /// Check if CUDA is available on this system.
 ///
 /// Returns `true` if `libcuda.so.1` (or `nvcuda.dll`) can be loaded
-/// and all required VMM symbols are present.
+/// and the required driver symbols are present.
 pub fn is_cuda_available() -> bool {
     cuda().is_ok()
+}
+
+/// Persistent CUDA mapping of Vulkan-owned, dedicated linear image memory.
+#[cfg(target_os = "linux")]
+pub(crate) struct CudaImageMemory {
+    ext_mem: CUexternalMemory,
+    context: CUcontext,
+    pub device_ptr: CUdeviceptr,
+}
+
+#[cfg(target_os = "linux")]
+impl CudaImageMemory {
+    pub(crate) fn import(fd: std::os::fd::OwnedFd, size: u64) -> Result<Self, CudaInteropError> {
+        use std::os::fd::{AsRawFd, IntoRawFd};
+        let cuda = cuda()?;
+        cuda_ensure_context()?;
+        let mut context = std::ptr::null_mut();
+        unsafe {
+            check_cuda("cuCtxGetCurrent", (cuda.cu_ctx_get_current)(&mut context))?;
+        }
+        let desc = CudaExternalMemoryHandleDesc {
+            handle_type: 1, // CU_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD
+            handle: CudaExternalMemoryHandle { fd: fd.as_raw_fd() },
+            size,
+            flags: 1, // CUDA_EXTERNAL_MEMORY_DEDICATED
+            _reserved: [0; 16],
+        };
+        let mut ext_mem = std::ptr::null_mut();
+        unsafe {
+            check_cuda(
+                "cuImportExternalMemory",
+                (cuda.cu_import_external_memory)(&mut ext_mem, &desc),
+            )?;
+        }
+        // CUDA consumes the descriptor only on successful import.
+        let _ = fd.into_raw_fd();
+        let mut memory = Self {
+            ext_mem,
+            context,
+            device_ptr: 0,
+        };
+        let buffer = CudaExternalMemoryBufferDesc {
+            offset: 0,
+            size,
+            flags: 0,
+            _reserved: [0; 16],
+        };
+        unsafe {
+            check_cuda(
+                "cuExternalMemoryGetMappedBuffer",
+                (cuda.cu_external_memory_get_mapped_buffer)(
+                    &mut memory.device_ptr,
+                    memory.ext_mem,
+                    &buffer,
+                ),
+            )?;
+        }
+        Ok(memory)
+    }
+}
+
+// The mapping is persistent and handles are only mutated during exclusive drop.
+// Users synchronize CUDA and Vulkan before reuse; drop restores its own context.
+#[cfg(target_os = "linux")]
+unsafe impl Send for CudaImageMemory {}
+#[cfg(target_os = "linux")]
+unsafe impl Sync for CudaImageMemory {}
+
+#[cfg(target_os = "linux")]
+impl Drop for CudaImageMemory {
+    fn drop(&mut self) {
+        let Ok(cuda) = cuda() else {
+            return;
+        };
+        unsafe {
+            // wgpu can retire a texture on a different thread. Use the mapping's
+            // context without replacing that thread's current CUDA context.
+            let result = (cuda.cu_ctx_push_current)(self.context);
+            if result != CUDA_SUCCESS {
+                log::warn!("CUDA image mapping cleanup context failed: {result}");
+                return;
+            }
+            if self.device_ptr != 0 {
+                let result = (cuda.cu_mem_free_v2)(self.device_ptr);
+                if result != CUDA_SUCCESS {
+                    log::warn!("cuMemFree(image) failed: {result}");
+                }
+            }
+            let result = (cuda.cu_destroy_external_memory)(self.ext_mem);
+            if result != CUDA_SUCCESS {
+                log::warn!("cuDestroyExternalMemory(image) failed: {result}");
+            }
+            let mut context = std::ptr::null_mut();
+            let result = (cuda.cu_ctx_pop_current)(&mut context);
+            if result != CUDA_SUCCESS {
+                log::warn!("CUDA image mapping cleanup context restore failed: {result}");
+            }
+        }
+    }
 }
 
 /// Get the UUID of the current CUDA device.
@@ -466,6 +429,7 @@ pub fn is_cuda_available() -> bool {
 /// Used to match the CUDA device with the Vulkan physical device,
 /// ensuring the shared memory is on the correct GPU.
 pub fn get_cuda_device_uuid() -> Result<[u8; 16], CudaInteropError> {
+    cuda_ensure_context()?;
     let cuda = cuda()?;
     unsafe {
         let mut device: CUdevice = 0;
@@ -481,116 +445,20 @@ pub fn get_cuda_device_uuid() -> Result<[u8; 16], CudaInteropError> {
     }
 }
 
-/// Allocate CUDA device memory that can be shared with Vulkan.
-///
-/// Uses the CUDA Virtual Memory Management (VMM) API:
-/// 1. `cuMemCreate` with shareable handle type
-/// 2. `cuMemExportToShareableHandle` → POSIX fd (Linux) or Win32 handle (Windows)
-/// 3. `cuMemMap` + `cuMemSetAccess` to make it usable from CUDA
-///
-/// The returned `CudaSharedMemory` owns the allocation and will clean up on drop.
-pub fn allocate_shared_memory(size: usize) -> Result<CudaSharedMemory, CudaInteropError> {
+/// Device selected by decoders that request the default CUDA device.
+#[cfg(target_os = "linux")]
+pub(crate) fn default_cuda_device_uuid() -> Result<[u8; 16], CudaInteropError> {
     let cuda = cuda()?;
-
     unsafe {
-        // Get current device
-        let mut device: CUdevice = 0;
-        check_cuda("cudaGetDevice", (cuda.cuda_get_device)(&mut device))?;
-
-        #[cfg(target_os = "linux")]
-        let handle_type = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
-        #[cfg(target_os = "windows")]
-        let handle_type = CU_MEM_HANDLE_TYPE_WIN32;
-
-        let prop = CUmemAllocationProp {
-            alloc_type: CU_MEM_ALLOCATION_TYPE_PINNED,
-            handle_type,
-            location: CUmemLocation {
-                location_type: CU_MEM_LOCATION_TYPE_DEVICE,
-                id: device,
-            },
-            win32_handle_value: std::ptr::null_mut(),
-            _reserved: [0; 8],
-        };
-
-        // Get minimum allocation granularity
-        let mut granularity: usize = 0;
+        check_cuda("cuInit", (cuda.cu_init)(0))?;
+        let mut device = 0;
+        check_cuda("cuDeviceGet", (cuda.cu_device_get)(&mut device, 0))?;
+        let mut uuid = CUuuid { bytes: [0; 16] };
         check_cuda(
-            "cuMemGetAllocationGranularity",
-            (cuda.cu_mem_get_allocation_granularity)(
-                &mut granularity,
-                &prop,
-                CU_MEM_ALLOC_GRANULARITY_MINIMUM,
-            ),
+            "cuDeviceGetUuid",
+            (cuda.cu_device_get_uuid)(&mut uuid, device),
         )?;
-
-        // Round up to granularity
-        let alloc_size = size.div_ceil(granularity) * granularity;
-
-        // Reserve virtual address space
-        let mut device_ptr: CUdeviceptr = 0;
-        check_cuda(
-            "cuMemAddressReserve",
-            (cuda.cu_mem_address_reserve)(&mut device_ptr, alloc_size, granularity, 0, 0),
-        )?;
-
-        // Create the physical allocation
-        let mut alloc_handle: CUmemGenericAllocationHandle = 0;
-        check_cuda(
-            "cuMemCreate",
-            (cuda.cu_mem_create)(&mut alloc_handle, alloc_size, &prop, 0),
-        )?;
-
-        // Export shareable handle
-        #[cfg(target_os = "linux")]
-        let mut shared_handle: i32 = -1;
-        #[cfg(target_os = "windows")]
-        let mut shared_handle: *mut c_void = std::ptr::null_mut();
-
-        check_cuda(
-            "cuMemExportToShareableHandle",
-            (cuda.cu_mem_export_to_shareable_handle)(
-                &mut shared_handle as *mut _ as *mut c_void,
-                alloc_handle,
-                handle_type,
-                0,
-            ),
-        )?;
-
-        // Map the allocation into the virtual address space
-        check_cuda(
-            "cuMemMap",
-            (cuda.cu_mem_map)(device_ptr, alloc_size, 0, alloc_handle, 0),
-        )?;
-
-        // Release the handle (the mapping holds a reference)
-        check_cuda("cuMemRelease", (cuda.cu_mem_release)(alloc_handle))?;
-
-        // Set read/write access
-        let access_desc = CUmemAccessDesc {
-            location: CUmemLocation {
-                location_type: CU_MEM_LOCATION_TYPE_DEVICE,
-                id: device,
-            },
-            flags: CU_MEM_ACCESS_FLAGS_PROT_READWRITE,
-        };
-        check_cuda(
-            "cuMemSetAccess",
-            (cuda.cu_mem_set_access)(device_ptr, alloc_size, &access_desc, 1),
-        )?;
-
-        log::debug!(
-            "CUDA shared memory allocated: {} bytes at 0x{:x} (handle={:?})",
-            alloc_size,
-            device_ptr,
-            shared_handle,
-        );
-
-        Ok(CudaSharedMemory {
-            device_ptr,
-            alloc_size,
-            shared_handle,
-        })
+        Ok(uuid.bytes)
     }
 }
 
@@ -943,27 +811,6 @@ mod tests {
             println!("CUDA not available (expected on non-NVIDIA systems)");
         }
     }
-
-    #[test]
-    fn test_shared_memory_allocation() {
-        if !is_cuda_available() {
-            println!("Skipping: CUDA not available");
-            return;
-        }
-
-        let size = 1920 * 1080; // ~2MB
-        let mem = allocate_shared_memory(size).expect("should allocate shared memory");
-        assert!(mem.device_ptr != 0, "device_ptr should be non-null");
-        assert!(mem.alloc_size >= size, "alloc_size should be >= requested");
-        #[cfg(target_os = "linux")]
-        assert!(mem.shared_handle >= 0, "shared fd should be valid");
-
-        println!(
-            "Shared memory: {} bytes at 0x{:x}, handle={:?}",
-            mem.alloc_size, mem.device_ptr, mem.shared_handle
-        );
-        // Drop will clean up
-    }
 }
 
 // ── D3D11 → CUDA external memory import (Windows) ──────────────────
@@ -1049,9 +896,11 @@ pub fn cuda_import_d3d11_nv12(
     let mut ext_mem: CUexternalMemory = std::ptr::null_mut();
     let handle_desc = CudaExternalMemoryHandleDesc {
         handle_type: CU_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_RESOURCE,
-        handle: CudaExternalMemoryWin32Handle {
-            handle: nt_handle,
-            name: std::ptr::null(),
+        handle: CudaExternalMemoryHandle {
+            win32: CudaExternalMemoryWin32Handle {
+                handle: nt_handle,
+                name: std::ptr::null(),
+            },
         },
         size: alloc_size as u64,
         flags: 0,
