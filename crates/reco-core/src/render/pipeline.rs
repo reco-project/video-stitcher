@@ -462,22 +462,15 @@ impl StitchPipeline {
     /// stays on the GPU and is presented to the surface.
     pub fn render_to_view(
         &self,
-        left: &Yuv420pPlanes<'_>,
-        right: &Yuv420pPlanes<'_>,
+        frames: &crate::source::FrameSet,
         pose: RenderPose,
         target_view: &wgpu::TextureView,
     ) -> Result<(), PipelineError> {
-        let Some(scene) = &self.scene else {
-            return Err(PipelineError::NoPlaneScene);
-        };
-        self.renderer
-            .upload_left_yuv(&self.gpu, left.y, left.u, left.v)?;
-        self.renderer
-            .upload_right_yuv(&self.gpu, right.y, right.u, right.v)?;
+        self.upload_frame_set(frames)?;
 
         self.renderer.render_to_view(
             &self.gpu,
-            Some(scene),
+            self.scene.as_ref(),
             &self.calibration,
             pose,
             self.viewport_size.aspect_ratio(),

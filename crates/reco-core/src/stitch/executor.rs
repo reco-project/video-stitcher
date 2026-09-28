@@ -439,6 +439,142 @@ mod tests {
 
     #[test]
     #[cfg(feature = "gpu")]
+    fn preview_view_matches_batch_target_for_each_projection_and_format() {
+        use crate::gpu::rgba_readback::RgbaReadback;
+        use crate::source::{FrameSet, Nv12Data, Yuv420pData};
+
+        let Some(gpu) = gpu_or_skip() else { return };
+        let (w, h) = (192, 108);
+        let cylinder = Calibration::new(
+            vec![Lens::flat(w, h)],
+            crate::projection::Cylinder {
+                radius: 90.0,
+                arc_deg: 180.0,
+                surface_height: None,
+            },
+            Framing {
+                axis_offset: 0.0,
+                tilt: 0.2,
+                roll: -0.15,
+            },
+        );
+        for cal in [calib(w, h), cylinder] {
+            for format in [InputFormat::Nv12, InputFormat::Yuv420p] {
+                let count = cal.projection.camera_count();
+                let frames = if format == InputFormat::Nv12 {
+                    FrameSet::Nv12(
+                        (0..count)
+                            .map(|camera| {
+                                let (y, uv) = nv12(w, h, camera as u8 * 30);
+                                Nv12Data { y, uv }
+                            })
+                            .collect(),
+                    )
+                } else {
+                    FrameSet::Yuv420p(
+                        (0..count)
+                            .map(|camera| {
+                                let (y, uv) = nv12(w, h, camera as u8 * 30);
+                                Yuv420pData {
+                                    y,
+                                    u: uv.iter().step_by(2).copied().collect(),
+                                    v: uv.iter().skip(1).step_by(2).copied().collect(),
+                                }
+                            })
+                            .collect(),
+                    )
+                };
+                let mut executor = GpuExecutor::new(
+                    gpu.clone(),
+                    GpuExecutorConfig::new(cal.clone(), w, h, format),
+                )
+                .unwrap();
+                for (width, height) in [(80, 48), (48, 80)] {
+                    executor.pipeline.resize(width, height).unwrap();
+                    // Preview resize changes the caller's viewport, not the
+                    // separately owned offscreen target used by batch output.
+                    let batch_executor = GpuExecutor::new(
+                        gpu.clone(),
+                        GpuExecutorConfig {
+                            viewport_size: ViewportSize { width, height },
+                            ..GpuExecutorConfig::new(cal.clone(), w, h, format)
+                        },
+                    )
+                    .unwrap();
+                    let target = gpu.device.create_texture(&wgpu::TextureDescriptor {
+                        label: Some("preview oracle"),
+                        size: wgpu::Extent3d {
+                            width,
+                            height,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                            | wgpu::TextureUsages::COPY_SRC,
+                        view_formats: &[],
+                    });
+                    let view = target.create_view(&wgpu::TextureViewDescriptor::default());
+                    for yaw in [-0.4, 0.0, 0.5] {
+                        let pose = RenderPose {
+                            yaw,
+                            pitch: 0.1,
+                            fov_degrees: 55.0,
+                        };
+                        executor
+                            .pipeline
+                            .render_to_view(&frames, pose, &view)
+                            .unwrap();
+                        let empty = gpu
+                            .device
+                            .create_command_encoder(&Default::default())
+                            .finish();
+                        let mut readback = RgbaReadback::new(&gpu, width, height).unwrap();
+                        readback.readback(&gpu, &target, empty).unwrap();
+                        let preview = readback.flush_pending(&gpu).unwrap().unwrap().to_vec();
+                        let cmd = batch_executor
+                            .pipeline
+                            .render_frame_set(&frames, pose)
+                            .unwrap();
+                        readback
+                            .readback(&gpu, batch_executor.pipeline.render_target(), cmd)
+                            .unwrap();
+                        let batch = readback.flush_pending(&gpu).unwrap().unwrap();
+                        assert!(
+                            preview == batch,
+                            "cameras={count}, format={format:?}, {width}x{height}, yaw={yaw}"
+                        );
+                        assert!(preview.chunks_exact(4).any(|pixel| pixel[0] > 32));
+                    }
+                    assert!(
+                        executor
+                            .pipeline
+                            .render_to_view(&FrameSet::Nv12(vec![]), RenderPose::default(), &view)
+                            .is_err()
+                    );
+                    let short = FrameSet::Nv12(
+                        (0..count)
+                            .map(|_| Nv12Data {
+                                y: vec![0],
+                                uv: vec![0],
+                            })
+                            .collect(),
+                    );
+                    assert!(
+                        executor
+                            .pipeline
+                            .render_to_view(&short, RenderPose::default(), &view)
+                            .is_err()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "gpu")]
     fn cylinder_gpu_matches_cpu_mapping_and_rejects_invalid_frames() {
         let Some(gpu) = gpu_or_skip() else {
             return;

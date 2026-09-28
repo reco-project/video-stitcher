@@ -372,6 +372,7 @@ export component RecoApp inherits Window {
     in-out property <bool> files-loaded: false;
     in-out property <string> left-path: "";
     in-out property <string> right-path: "";
+    in-out property <bool> is-l-shape: true;
     in-out property <string> calibration-path: "";
     in-out property <string> status-text: "Load left + right videos and calibration JSON to begin";
     in-out property <float> progress: 0.0;
@@ -836,7 +837,7 @@ export component RecoApp inherits Window {
                         // Left video section
                         HorizontalLayout {
                             spacing: 6px;
-                            Text { text: "Left"; color: #8ae68a; font-size: 12px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
+                            Text { text: root.is-l-shape ? "Left" : "Panorama"; color: #8ae68a; font-size: 12px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
                             Button { text: "+"; clicked => { root.pick-left-video(); } }
                             Button { text: "Clear"; enabled: root.left-path != ""; clicked => { root.clear-left(); } }
                         }
@@ -857,20 +858,20 @@ export component RecoApp inherits Window {
                         Rectangle { height: 1px; background: root.border-subtle; }
 
                         // Right video section
-                        HorizontalLayout {
+                        if root.is-l-shape || !root.files-loaded: HorizontalLayout {
                             spacing: 6px;
                             Text { text: "Right"; color: #8ae68a; font-size: 12px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
                             Button { text: "+"; clicked => { root.pick-right-video(); } }
                             Button { text: "Clear"; enabled: root.right-path != ""; clicked => { root.clear-right(); } }
                         }
 
-                        if root.right-segments.length == 0: Text {
+                        if (root.is-l-shape || !root.files-loaded) && root.right-segments.length == 0: Text {
                             text: "No video selected";
                             color: #666;
                             font-size: 11px;
                         }
 
-                        SegmentList {
+                        if root.is-l-shape || !root.files-loaded: SegmentList {
                             segments: root.right-segments;
                             card-bg: root.bg-card;
                             remove(i) => { root.remove-right-segment(i); }
@@ -879,11 +880,11 @@ export component RecoApp inherits Window {
 
                         if root.has-both-videos || root.calibration-path != "": Rectangle { height: 1px; background: root.border-subtle; }
 
-                        if root.has-both-videos || root.calibration-path != "": Text { text: "Calibration"; color: #aaa; font-size: 12px; font-weight: 600; }
+                        Text { text: "Calibration"; color: #aaa; font-size: 12px; font-weight: 600; }
 
-                        if root.has-both-videos: HorizontalLayout {
+                        HorizontalLayout {
                             spacing: 4px;
-                            Button {
+                            if root.has-both-videos && (root.is-l-shape || !root.files-loaded): Button {
                                 text: root.calibrating
                                     ? "Calibrating..."
                                     : (root.files-loaded ? "Re-calibrate" : "Auto Calibrate");
@@ -897,7 +898,7 @@ export component RecoApp inherits Window {
                             }
                         }
 
-                        if root.has-both-videos: VerticalLayout {
+                        if root.has-both-videos && (root.is-l-shape || !root.files-loaded): VerticalLayout {
                             spacing: 6px;
 
                             cal-advanced := SectionHeader {
@@ -997,7 +998,7 @@ export component RecoApp inherits Window {
 
                         if root.files-loaded: Text { text: "Stitching"; color: #aaa; font-size: 12px; font-weight: 600; }
 
-                        if root.files-loaded: LabeledSlider {
+                        if root.files-loaded && root.is-l-shape: LabeledSlider {
                             label: "Seam blend";
                             minimum: 0;
                             maximum: 0.3;
@@ -1026,7 +1027,7 @@ export component RecoApp inherits Window {
                             changed(v) => { root.changed-rig-roll(v); }
                         }
 
-                        if root.files-loaded: HorizontalLayout {
+                        if root.files-loaded && root.is-l-shape: HorizontalLayout {
                             spacing: 4px;
                             Text { text: "Sync offset"; color: #aaa; font-size: 11px; vertical-alignment: center; }
                             sync-input := LineEdit {
@@ -1060,7 +1061,7 @@ export component RecoApp inherits Window {
 
                         if root.files-loaded: HorizontalLayout {
                             spacing: 4px;
-                            Button {
+                            if root.is-l-shape: Button {
                                 text: root.has-roi ? "Edit ROI..." : "Set ROI...";
                                 horizontal-stretch: 1;
                                 clicked => { root.launch-roi-editor(); }
@@ -1080,7 +1081,7 @@ export component RecoApp inherits Window {
                         }
 
                         if root.files-loaded && !root.has-roi: Text {
-                            text: "Draw in browser, Copy ROI, then Paste or type JSON above.";
+                            text: root.is-l-shape ? "Draw in browser, Copy ROI, then Paste or type JSON above." : "Paste ROI JSON for the panorama camera.";
                             color: root.text-dim;
                             font-size: 10px;
                             wrap: word-wrap;
@@ -1285,108 +1286,111 @@ export component RecoApp inherits Window {
                     if !root.lens-preview-active: Rectangle { height: 1px; background: root.border-subtle; }
 
                     // ── Lens (collapsible: info always, sliders on demand) ──
-                    lens-section := SectionHeader {
-                        title: root.lens-info-available
-                            ? "Lens - " + root.lens-left-camera
-                            : "Lens";
-                        expanded: false;
+                    if root.is-l-shape: VerticalLayout {
+                        spacing: 8px;
+                        lens-section := SectionHeader {
+                            title: root.lens-info-available
+                                ? "Lens - " + root.lens-left-camera
+                                : "Lens";
+                            expanded: false;
+                        }
+
+                        if lens-section.expanded && root.files-loaded: VerticalLayout {
+                            spacing: 6px;
+
+                            if root.lens-info-available: VerticalLayout {
+                                spacing: 4px;
+                                HorizontalLayout {
+                                    spacing: 4px;
+                                    Text { text: "L"; color: #8ae68a; font-size: 10px; font-weight: 600; vertical-alignment: center; width: 14px; }
+                                    Text { text: root.lens-left-source + " - " + root.lens-left-camera; color: #ccc; font-size: 10px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                                }
+                                HorizontalLayout {
+                                    spacing: 4px;
+                                    Text { text: "R"; color: #8ae68a; font-size: 10px; font-weight: 600; vertical-alignment: center; width: 14px; }
+                                    Text { text: root.lens-right-source + " - " + root.lens-right-camera; color: #ccc; font-size: 10px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                                }
+                            }
+
+                            if !root.lens-info-available: Text {
+                                text: "Auto-calibrate to detect lens.";
+                                color: #777; font-size: 11px;
+                            }
+
+                            Button {
+                                text: "Browse profiles...";
+                                clicked => { root.lens-picker-open = true; }
+                            }
+
+                            Rectangle { height: 4px; }
+
+                            CheckBox {
+                                text: "Lens correction";
+                                checked: root.lens-correction-amount > 0.5;
+                                toggled => {
+                                    root.lens-correction-amount = self.checked ? 1.0 : 0.0;
+                                    root.changed-lens-correction(root.lens-correction-amount);
+                                }
+                            }
+
+                            CheckBox {
+                                text: "Lens preview (single camera)";
+                                checked <=> root.lens-preview-active;
+                                toggled => { root.changed-lens-preview(); }
+                            }
+
+                            if root.lens-preview-active: HorizontalLayout {
+                                spacing: 4px;
+                                Button { text: "Left"; primary: root.lens-preview-side == "left"; clicked => { root.lens-preview-side = "left"; root.changed-lens-preview(); } }
+                                Button { text: "Right"; primary: root.lens-preview-side == "right"; clicked => { root.lens-preview-side = "right"; root.changed-lens-preview(); } }
+                            }
+
+                            // Fine-tune: auto-expands in lens preview mode
+                            lens-tune := SectionHeader {
+                                title: "Fine-tune";
+                                expanded: root.lens-preview-active;
+                            }
+
+                            if lens-tune.expanded: VerticalLayout {
+                                spacing: 4px;
+
+                                HorizontalLayout {
+                                    spacing: 4px;
+                                    Button { text: "Left"; primary: root.lens-selected-camera == "left"; clicked => { root.lens-selected-camera = "left"; } }
+                                    Button { text: "Right"; primary: root.lens-selected-camera == "right"; clicked => { root.lens-selected-camera = "right"; } }
+                                    Button { text: "Both"; primary: root.lens-selected-camera == "both"; clicked => { root.lens-selected-camera = "both"; } }
+                                }
+
+                                if root.lens-selected-camera == "left" || root.lens-selected-camera == "both": VerticalLayout {
+                                    spacing: 3px;
+                                    LabeledSlider { label: "fx"; minimum: root.lens-fx-min; maximum: root.lens-fx-max; value <=> root.lens-left-fx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "fy"; minimum: root.lens-fy-min; maximum: root.lens-fy-max; value <=> root.lens-left-fy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "cx"; minimum: root.lens-cx-min; maximum: root.lens-cx-max; value <=> root.lens-left-cx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "cy"; minimum: root.lens-cy-min; maximum: root.lens-cy-max; value <=> root.lens-left-cy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "k1"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k1; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "k2"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k2; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "k3"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k3; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "k4"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k4; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                }
+
+                                if root.lens-selected-camera == "right": VerticalLayout {
+                                    spacing: 3px;
+                                    LabeledSlider { label: "fx"; minimum: root.lens-fx-min; maximum: root.lens-fx-max; value <=> root.lens-right-fx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "fy"; minimum: root.lens-fy-min; maximum: root.lens-fy-max; value <=> root.lens-right-fy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "cx"; minimum: root.lens-cx-min; maximum: root.lens-cx-max; value <=> root.lens-right-cx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "cy"; minimum: root.lens-cy-min; maximum: root.lens-cy-max; value <=> root.lens-right-cy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "k1"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k1; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "k2"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k2; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "k3"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k3; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                    LabeledSlider { label: "k4"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k4; decimals: 2; changed(v) => { root.changed-lens-param(); } }
+                                }
+
+                                Button { text: "Reset Lens"; enabled: root.lens-dirty; clicked => { root.reset-lens(); } }
+                            }
+                        }
+
+                        if !lens-section.expanded: Rectangle { height: 1px; background: #2a2a2a; }
                     }
-
-                    if lens-section.expanded && root.files-loaded: VerticalLayout {
-                        spacing: 6px;
-
-                        if root.lens-info-available: VerticalLayout {
-                            spacing: 4px;
-                            HorizontalLayout {
-                                spacing: 4px;
-                                Text { text: "L"; color: #8ae68a; font-size: 10px; font-weight: 600; vertical-alignment: center; width: 14px; }
-                                Text { text: root.lens-left-source + " - " + root.lens-left-camera; color: #ccc; font-size: 10px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
-                            }
-                            HorizontalLayout {
-                                spacing: 4px;
-                                Text { text: "R"; color: #8ae68a; font-size: 10px; font-weight: 600; vertical-alignment: center; width: 14px; }
-                                Text { text: root.lens-right-source + " - " + root.lens-right-camera; color: #ccc; font-size: 10px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
-                            }
-                        }
-
-                        if !root.lens-info-available: Text {
-                            text: "Auto-calibrate to detect lens.";
-                            color: #777; font-size: 11px;
-                        }
-
-                        Button {
-                            text: "Browse profiles...";
-                            clicked => { root.lens-picker-open = true; }
-                        }
-
-                        Rectangle { height: 4px; }
-
-                        CheckBox {
-                            text: "Lens correction";
-                            checked: root.lens-correction-amount > 0.5;
-                            toggled => {
-                                root.lens-correction-amount = self.checked ? 1.0 : 0.0;
-                                root.changed-lens-correction(root.lens-correction-amount);
-                            }
-                        }
-
-                        CheckBox {
-                            text: "Lens preview (single camera)";
-                            checked <=> root.lens-preview-active;
-                            toggled => { root.changed-lens-preview(); }
-                        }
-
-                        if root.lens-preview-active: HorizontalLayout {
-                            spacing: 4px;
-                            Button { text: "Left"; primary: root.lens-preview-side == "left"; clicked => { root.lens-preview-side = "left"; root.changed-lens-preview(); } }
-                            Button { text: "Right"; primary: root.lens-preview-side == "right"; clicked => { root.lens-preview-side = "right"; root.changed-lens-preview(); } }
-                        }
-
-                        // Fine-tune: auto-expands in lens preview mode
-                        lens-tune := SectionHeader {
-                            title: "Fine-tune";
-                            expanded: root.lens-preview-active;
-                        }
-
-                        if lens-tune.expanded: VerticalLayout {
-                            spacing: 4px;
-
-                            HorizontalLayout {
-                                spacing: 4px;
-                                Button { text: "Left"; primary: root.lens-selected-camera == "left"; clicked => { root.lens-selected-camera = "left"; } }
-                                Button { text: "Right"; primary: root.lens-selected-camera == "right"; clicked => { root.lens-selected-camera = "right"; } }
-                                Button { text: "Both"; primary: root.lens-selected-camera == "both"; clicked => { root.lens-selected-camera = "both"; } }
-                            }
-
-                            if root.lens-selected-camera == "left" || root.lens-selected-camera == "both": VerticalLayout {
-                                spacing: 3px;
-                                LabeledSlider { label: "fx"; minimum: root.lens-fx-min; maximum: root.lens-fx-max; value <=> root.lens-left-fx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "fy"; minimum: root.lens-fy-min; maximum: root.lens-fy-max; value <=> root.lens-left-fy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "cx"; minimum: root.lens-cx-min; maximum: root.lens-cx-max; value <=> root.lens-left-cx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "cy"; minimum: root.lens-cy-min; maximum: root.lens-cy-max; value <=> root.lens-left-cy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "k1"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k1; decimals: 2; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "k2"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k2; decimals: 2; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "k3"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k3; decimals: 2; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "k4"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-left-k4; decimals: 2; changed(v) => { root.changed-lens-param(); } }
-                            }
-
-                            if root.lens-selected-camera == "right": VerticalLayout {
-                                spacing: 3px;
-                                LabeledSlider { label: "fx"; minimum: root.lens-fx-min; maximum: root.lens-fx-max; value <=> root.lens-right-fx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "fy"; minimum: root.lens-fy-min; maximum: root.lens-fy-max; value <=> root.lens-right-fy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "cx"; minimum: root.lens-cx-min; maximum: root.lens-cx-max; value <=> root.lens-right-cx; decimals: 0; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "cy"; minimum: root.lens-cy-min; maximum: root.lens-cy-max; value <=> root.lens-right-cy; decimals: 0; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "k1"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k1; decimals: 2; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "k2"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k2; decimals: 2; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "k3"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k3; decimals: 2; changed(v) => { root.changed-lens-param(); } }
-                                LabeledSlider { label: "k4"; minimum: -root.lens-k-range; maximum: root.lens-k-range; value <=> root.lens-right-k4; decimals: 2; changed(v) => { root.changed-lens-param(); } }
-                            }
-
-                            Button { text: "Reset Lens"; enabled: root.lens-dirty; clicked => { root.reset-lens(); } }
-                        }
-                    }
-
-                    if !lens-section.expanded: Rectangle { height: 1px; background: #2a2a2a; }
 
                     // ── Calibration (collapsible) ──
                     cal-section := SectionHeader {
@@ -1397,7 +1401,7 @@ export component RecoApp inherits Window {
                     if cal-section.expanded: VerticalLayout {
                         spacing: 8px;
 
-                        LabeledSlider {
+                        if root.is-l-shape: LabeledSlider {
                             label: "Intersect";
                             minimum: -1.0;
                             maximum: 1.0;
@@ -1415,7 +1419,7 @@ export component RecoApp inherits Window {
                             changed(v) => { root.changed-cal-camera-axis-offset(v); }
                         }
 
-                        LabeledSlider {
+                        if root.is-l-shape: LabeledSlider {
                             label: "x_ty";
                             minimum: -0.1;
                             maximum: 0.1;
@@ -2342,7 +2346,7 @@ export component RecoApp inherits Window {
                         font-size: 11px;
                     }
 
-                    CheckBox {
+                    if root.is-l-shape: CheckBox {
                         text: "Record replay (stacked raw input for re-stitching)";
                         checked <=> root.export-replay-enabled;
                     }

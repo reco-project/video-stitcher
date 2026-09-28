@@ -106,8 +106,7 @@ impl reco_core::telemetry::TelemetrySink for ExportTelemetrySink {
 /// Run a StitchJob on the worker thread.
 #[allow(clippy::too_many_arguments)]
 pub fn run_export(
-    left: reco_io::stitch_job::InputPath,
-    right: reco_io::stitch_job::InputPath,
+    inputs: Vec<reco_io::InputPath>,
     cal: Calibration,
     output: PathBuf,
     stream_url: Option<String>,
@@ -117,7 +116,6 @@ pub fn run_export(
     height: u32,
     codec_str: String,
     quality_str: String,
-    blend: f32,
     start_secs: f32,
     end_secs: f32,
     autocam: AutocamUiConfig,
@@ -148,11 +146,16 @@ pub fn run_export(
     post_status("Probing source...".into());
 
     use reco_core::source::FrameSource;
-    let fps = reco_io::adapters::FfmpegFileSource::frame_rate(left.first_path())
+    let Some(first) = inputs.first() else {
+        return ExportOutcome::Failed(reco_io::stitch_job::StitchError::Other(
+            "No export inputs".into(),
+        ));
+    };
+    let fps = reco_io::adapters::FfmpegFileSource::frame_rate(first.first_path())
         .map(|(n, d)| if d != 0 { n as f64 / d as f64 } else { 30.0 })
         .unwrap_or(30.0);
     if let Ok(source) =
-        reco_io::adapters::FfmpegFileSource::open_inputs(&[left.clone(), right.clone()], 0, false)
+        reco_io::adapters::FfmpegFileSource::open_inputs(&inputs, cal.sync_offset, false)
         && let Some(full_total) = source.total_frames()
     {
         let start_frames = if start_secs > 0.0 {
@@ -188,45 +191,42 @@ pub fn run_export(
         log::info!("Streaming to {}", effective_output.display());
     }
 
-    let mut job = reco_io::StitchJob::with_calibration(
-        [left.clone(), right.clone()],
-        cal,
-        effective_output.clone(),
-    )
-    .codec(codec)
-    .quality(quality)
-    .container(format)
-    .resolution(width, height)
-    .blend_width(blend)
-    .on_progress(move |p: &reco_core::session::types::FrameProgress| {
-        let frames = p.frames_completed;
-        let elapsed = progress_start.elapsed().as_secs_f64();
-        let fps = if elapsed > 0.0 {
-            frames as f64 / elapsed
-        } else {
-            0.0
-        };
+    let mut job = reco_io::StitchJob::with_calibration(inputs, cal, effective_output.clone())
+        .codec(codec)
+        .quality(quality)
+        .container(format)
+        .resolution(width, height)
+        .on_progress(move |p: &reco_core::session::types::FrameProgress| {
+            let frames = p.frames_completed;
+            let elapsed = progress_start.elapsed().as_secs_f64();
+            let fps = if elapsed > 0.0 {
+                frames as f64 / elapsed
+            } else {
+                0.0
+            };
 
-        let weak = progress_weak.clone();
-        let _ = slint::invoke_from_event_loop(move || {
-            if let Some(app) = weak.upgrade() {
-                app.set_export_frames_done(frames as i32);
-                let total = app.get_export_frames_total();
-                if total > 0 {
-                    app.set_export_progress(frames as f32 / total as f32);
+            let weak = progress_weak.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(app) = weak.upgrade() {
+                    app.set_export_frames_done(frames as i32);
+                    let total = app.get_export_frames_total();
+                    if total > 0 {
+                        app.set_export_progress(frames as f32 / total as f32);
+                    }
+                    let eta = if total > 0 && fps > 0.0 {
+                        let remaining = (total as f64 - frames as f64) / fps;
+                        let mins = remaining as u64 / 60;
+                        let secs = remaining as u64 % 60;
+                        format!(" - ~{mins}:{secs:02} remaining")
+                    } else {
+                        String::new()
+                    };
+                    app.set_export_status_text(
+                        format!("Frame {frames} ({fps:.0} fps){eta}").into(),
+                    );
                 }
-                let eta = if total > 0 && fps > 0.0 {
-                    let remaining = (total as f64 - frames as f64) / fps;
-                    let mins = remaining as u64 / 60;
-                    let secs = remaining as u64 % 60;
-                    format!(" - ~{mins}:{secs:02} remaining")
-                } else {
-                    String::new()
-                };
-                app.set_export_status_text(format!("Frame {frames} ({fps:.0} fps){eta}").into());
-            }
+            });
         });
-    });
 
     if start_secs > 0.0 {
         let skip_frames = (start_secs as f64 * fps) as u64;

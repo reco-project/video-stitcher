@@ -88,6 +88,33 @@ fn calibration() -> Calibration {
     )
 }
 
+#[test]
+fn inputs_follow_calibration_without_duplicating_mono_frames() {
+    let mut state = AppState::new(crate::settings::GuiSettings::default());
+    let mono = Calibration::new(
+        vec![Lens::flat(64, 36)],
+        reco_core::projection::Cylinder::default(),
+        Framing {
+            axis_offset: 0.0,
+            tilt: 0.0,
+            roll: 0.0,
+        },
+    );
+    assert!(state.selected_inputs(&mono).is_none());
+    let left = reco_io::InputPath::Chained(vec![
+        PathBuf::from("first.mp4"),
+        PathBuf::from("second.mp4"),
+    ]);
+    state.left_input = Some(left);
+    let inputs = state.selected_inputs(&mono).unwrap();
+    assert_eq!(inputs.len(), 1);
+    assert!(matches!(&inputs[0], reco_io::InputPath::Chained(paths) if paths.len() == 2));
+    assert!(state.selected_inputs(&calibration()).is_none());
+    state.right_input = Some(reco_io::InputPath::Single(PathBuf::from("right.mp4")));
+    assert_eq!(state.selected_inputs(&calibration()).unwrap().len(), 2);
+    assert_eq!(state.selected_inputs(&mono).unwrap().len(), 1);
+}
+
 fn exercise_editor(state: &mut AppState, app: &RecoApp) {
     let accepted = serde_json::to_value(state.calibration.as_ref().unwrap()).unwrap();
     app.set_cal_camera_axis_offset(0.0);
@@ -270,7 +297,22 @@ fn editor_rolls_back_invalid_controls_and_keeps_preview_and_document_together() 
     slint::platform::set_platform(Box::new(HeadlessPlatform)).unwrap();
     let app = RecoApp::new().unwrap();
     let mut state = AppState::new(crate::settings::GuiSettings::default());
+    state.calibration = Some(Calibration::new(
+        vec![Lens::flat(64, 36)],
+        reco_core::projection::Cylinder::default(),
+        Framing {
+            axis_offset: 0.0,
+            tilt: 0.0,
+            roll: 0.0,
+        },
+    ));
+    state.sync_calibration_controls(&app);
+    assert!(!app.get_is_l_shape());
+    assert!(state.edit_calibration(&app, |cal| cal.framing.roll = 0.1));
+    assert_eq!(state.calibration.as_ref().unwrap().lenses.len(), 1);
     state.calibration = Some(calibration());
+    state.sync_calibration_controls(&app);
+    assert!(app.get_is_l_shape());
     exercise_editor(&mut state, &app);
 
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {

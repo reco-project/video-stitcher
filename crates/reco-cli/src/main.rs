@@ -284,11 +284,10 @@ enum Commands {
 
     /// Open an interactive preview window to debug the stitch.
     Preview {
-        /// Path to the left camera video file.
-        left: String,
-
-        /// Path to the right camera video file.
-        right: String,
+        /// Input videos in calibration order (one panorama or two cameras).
+        /// Chain segments within an input with `;`, as for `stitch`.
+        #[arg(required = true, num_args = 1..)]
+        inputs: Vec<String>,
 
         /// Path to the calibration JSON file.
         #[arg(short, long)]
@@ -856,8 +855,7 @@ fn main() -> anyhow::Result<()> {
         ),
 
         Commands::Preview {
-            left,
-            right,
+            inputs,
             calibration,
             width,
             height,
@@ -874,8 +872,7 @@ fn main() -> anyhow::Result<()> {
             );
             preview::run_preview(
                 &preview::PreviewConfig {
-                    left_path: &left,
-                    right_path: &right,
+                    inputs: &inputs,
                     calibration_path: &calibration,
                     width,
                     height,
@@ -1216,6 +1213,27 @@ fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preview_accepts_calibrated_input_lists() {
+        assert!(Cli::try_parse_from(["reco", "preview", "-c", "cal.json"]).is_err());
+        for paths in [
+            vec!["panorama.mp4"],
+            vec!["left1.mp4;left2.mp4", "right.mp4"],
+        ] {
+            let parsed = Cli::try_parse_from(
+                ["reco", "preview"]
+                    .into_iter()
+                    .chain(paths.iter().copied())
+                    .chain(["-c", "cal.json"]),
+            )
+            .unwrap();
+            let Commands::Preview { inputs, .. } = parsed.command else {
+                panic!("wrong command")
+            };
+            assert_eq!(inputs, paths);
+        }
+    }
 
     #[test]
     fn encoder_device_requires_a_named_encoder() {

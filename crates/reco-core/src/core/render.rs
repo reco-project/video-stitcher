@@ -325,7 +325,7 @@ impl super::StitchCore {
     // Preview mode (engine renders straight to a caller-supplied view)
     // -----------------------------------------------------------------
 
-    /// Render a stereo YUV420P frame directly to a surface view - the
+    /// Render a CPU-resident YUV420P or NV12 frame set directly to a surface view - the
     /// interactive preview path (GUI/CLI). No detection, no panner, no
     /// readback; the caller supplies the (already oriented) pose.
     ///
@@ -334,18 +334,17 @@ impl super::StitchCore {
     #[cfg(feature = "gpu")]
     pub fn render_to_view(
         &mut self,
-        left: &Yuv420pPlanes<'_>,
-        right: &Yuv420pPlanes<'_>,
+        frames: &crate::source::FrameSet,
         pose: RenderPose,
         view: &wgpu::TextureView,
     ) -> Result<(), StitchCoreError> {
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
-        Ok(gpu.pipeline.render_to_view(left, right, pose, view)?)
+        Ok(gpu.pipeline.render_to_view(frames, pose, view)?)
     }
 
-    /// Render a stereo frame and read back NV12 bytes for encoding - the
+    /// Render a CPU-resident frame set and read back NV12 bytes for encoding - the
     /// preview-mode recording tap. Triple-buffered: `None` on the first
     /// two calls, then data from two frames ago. Drain the tail with
     /// [`Self::flush_nv12`] after the loop. The converter is created
@@ -353,14 +352,13 @@ impl super::StitchCore {
     #[cfg(feature = "gpu")]
     pub fn render_and_readback_nv12(
         &mut self,
-        left: &Yuv420pPlanes<'_>,
-        right: &Yuv420pPlanes<'_>,
+        frames: &crate::source::FrameSet,
         pose: RenderPose,
     ) -> Result<Option<&[u8]>, StitchCoreError> {
         let Executor::Gpu(gpu) = &mut self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
-        let cmd = gpu.pipeline.render_to_target(left, right, pose)?;
+        let cmd = gpu.pipeline.render_frame_set(frames, pose)?;
         gpu.convert_nv12(cmd)
             .map_err(|e| StitchCoreError::Config(format!("NV12 preview readback: {e}")))
     }

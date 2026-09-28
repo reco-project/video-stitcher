@@ -379,18 +379,6 @@ impl FrameSet {
         };
         bytes.ok_or_else(|| "retained image byte size overflow".into())
     }
-    /// Consume a two-camera YUV420P set into its per-camera payloads.
-    ///
-    /// `None` for any other shape - the interactive stereo consumers
-    /// (CLI preview, GUI playback) that retain decoded frames are
-    /// two-camera CPU paths by construction and use this instead of
-    /// re-deriving the downcast.
-    pub fn into_yuv_pair(self) -> Option<[Yuv420pData; 2]> {
-        match self {
-            Self::Yuv420p(cams) => <[Yuv420pData; 2]>::try_from(cams).ok(),
-            _ => None,
-        }
-    }
 }
 
 /// Metadata about the frame source.

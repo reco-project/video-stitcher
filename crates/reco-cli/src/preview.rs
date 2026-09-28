@@ -25,7 +25,7 @@ use reco_control::ControlIntent;
 use reco_core::core::StitchCore;
 use reco_core::render::viewport::ViewportSize;
 use reco_core::sink::{OutputFrame, OutputSink, PixelFormat};
-use reco_core::source::{FrameSource, Yuv420pData};
+use reco_core::source::{FrameSet, FrameSource};
 use reco_core::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -52,21 +52,9 @@ const FRAME_SKIP_COUNT: usize = 30;
 /// Number of seconds to seek on `[`/`]` key press.
 const SEEK_STEP_SECS: f64 = 5.0;
 
-/// Extract a [`Yuv420pData`] pair from a [`FrameSet`](reco_core::source::FrameSet).
-///
-/// Panics if the set is not two-camera `Yuv420p` (preview always uses
-/// CPU decode of a stereo pair; its GPU render path is two-camera).
-fn unwrap_yuv_pair(frame: reco_core::source::FrameSet) -> (Yuv420pData, Yuv420pData) {
-    let Some([left, right]) = frame.into_yuv_pair() else {
-        panic!("preview expects two-camera Yuv420p sets");
-    };
-    (left, right)
-}
-
 /// Configuration for the interactive preview window.
 pub struct PreviewConfig<'a> {
-    pub left_path: &'a str,
-    pub right_path: &'a str,
+    pub inputs: &'a [String],
     pub calibration_path: &'a str,
     pub width: u32,
     pub height: u32,
@@ -82,8 +70,7 @@ pub fn run_preview(
     interrupted: &Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     let PreviewConfig {
-        left_path,
-        right_path,
+        inputs,
         calibration_path,
         width,
         height,
@@ -96,18 +83,22 @@ pub fn run_preview(
     // Blend lives on the calibration document; --blend is an explicit
     // override, otherwise the saved value is used (and hotkey edits
     // mutate the document directly - no shadow copy).
-    let Some(l_shape) = cal.projection.l_shape() else {
-        anyhow::bail!(
-            "reco preview tunes the L-shape stereo rig; this calibration's projection has \
-             no seam parameters to tune"
-        );
-    };
+    anyhow::ensure!(
+        inputs.len() == cal.projection.camera_count(),
+        "calibration requires {} inputs, got {}",
+        cal.projection.camera_count(),
+        inputs.len()
+    );
     if let Some(b) = blend_width {
+        let l_shape = cal
+            .projection
+            .l_shape_mut()
+            .ok_or_else(|| anyhow::anyhow!("--blend requires a projection with a seam"))?;
         eprintln!(
             "Seam blend: --blend {b} overrides the calibration's {}",
             l_shape.blend_width
         );
-        cal.projection.l_shape_mut().unwrap().blend_width = b;
+        l_shape.blend_width = b;
     }
 
     // Use calibration's sync offset unless the user explicitly overrode it
@@ -125,11 +116,12 @@ pub fn run_preview(
     };
 
     let decoder_cleanup = reco_io::DecoderCleanup::default();
-    let mut source = reco_io::adapters::FfmpegFileSource::open_with_offset(
-        Path::new(left_path),
-        Path::new(right_path),
-        effective_sync,
-    )?;
+    let inputs: Vec<_> = inputs
+        .iter()
+        .map(|p| reco_io::InputPath::parse_segments(p))
+        .collect();
+    let mut source =
+        reco_io::adapters::FfmpegFileSource::open_inputs(&inputs, effective_sync, false)?;
     source.defer_cleanup(&decoder_cleanup);
     let info = source.info();
 
@@ -142,7 +134,6 @@ pub fn run_preview(
     let first = source
         .next_frame()?
         .ok_or_else(|| anyhow::anyhow!("videos have no frames"))?;
-    let (first_left, first_right) = unwrap_yuv_pair(first);
 
     let event_loop = EventLoop::new()?;
 
@@ -166,8 +157,7 @@ pub fn run_preview(
         input_height: info.height,
         width,
         height,
-        current_left: first_left,
-        current_right: first_right,
+        current_frame: first,
 
         pose: {
             use reco_control::pose_control::{PoseControl, PoseControlConfig};
@@ -230,8 +220,7 @@ struct App {
     input_height: u32,
     width: u32,
     height: u32,
-    current_left: Yuv420pData,
-    current_right: Yuv420pData,
+    current_frame: FrameSet,
     /// Requested and accepted render-space pose, with no temporal smoothing.
     pose: reco_control::pose_control::PoseControl,
     frame_count: u64,
@@ -383,9 +372,7 @@ impl App {
         };
         match source.try_next_frame() {
             Ok(Some(frame)) => {
-                let (left, right) = unwrap_yuv_pair(frame);
-                self.current_left = left;
-                self.current_right = right;
+                self.current_frame = frame;
                 self.frame_count += 1;
                 self.needs_redraw = true;
             }
@@ -409,9 +396,7 @@ impl App {
         };
         match source.next_frame() {
             Ok(Some(frame)) => {
-                let (left, right) = unwrap_yuv_pair(frame);
-                self.current_left = left;
-                self.current_right = right;
+                self.current_frame = frame;
                 self.frame_count += 1;
                 self.needs_redraw = true;
             }
@@ -529,9 +514,11 @@ impl ApplicationHandler for App {
         println!("Controls: Space = play/pause, N = next, P = skip 30, Q = quit");
         println!("          R = toggle recording, [/] = seek -/+ 5s, Home = restart");
         println!("          Arrows/drag = pan, +/-/scroll = zoom");
-        println!("          1/2 = intersect, 3/4 = axis offset, 5/6 = vertical align");
-        println!("          7/8 = focal length, 9/0 = k1 distortion (barrel/pincushion)");
-        println!("          B = cycle blend width, C = toggle clamping, S = save calibration");
+        println!("          3/4 = axis offset, C = toggle clamping, S = save calibration");
+        if self.cal.projection.l_shape().is_some() {
+            println!("          1/2 = intersect, 5/6 = vertical align, B = cycle blend width");
+            println!("          7/8 = focal length, 9/0 = k1 distortion (barrel/pincushion)");
+        }
 
         self.surface = Some(surface);
         self.renderer = Some(renderer);
@@ -631,8 +618,17 @@ impl ApplicationHandler for App {
                                 | KeyCode::KeyB),
                             ) => {
                                 self.edit_calibration(|cal| {
-                                    let layout =
-                                        cal.projection.l_shape_mut().expect("guarded at startup");
+                                    if key == KeyCode::Digit3 {
+                                        cal.framing.axis_offset += 0.005;
+                                        return;
+                                    }
+                                    if key == KeyCode::Digit4 {
+                                        cal.framing.axis_offset -= 0.005;
+                                        return;
+                                    }
+                                    let Some(layout) = cal.projection.l_shape_mut() else {
+                                        return;
+                                    };
                                     match key {
                                         KeyCode::Digit1 => {
                                             layout.intersect = (layout.intersect + 0.01).min(1.0)
@@ -640,8 +636,6 @@ impl ApplicationHandler for App {
                                         KeyCode::Digit2 => {
                                             layout.intersect = (layout.intersect - 0.01).max(0.0)
                                         }
-                                        KeyCode::Digit3 => cal.framing.axis_offset += 0.005,
-                                        KeyCode::Digit4 => cal.framing.axis_offset -= 0.005,
                                         KeyCode::Digit5 => layout.x_ty += 0.005,
                                         KeyCode::Digit6 => layout.x_ty -= 0.005,
                                         KeyCode::KeyB => {
@@ -672,18 +666,9 @@ impl ApplicationHandler for App {
                                         _ => unreachable!(),
                                     }
                                 });
-                                let layout =
-                                    self.cal.projection.l_shape().expect("guarded at startup");
                                 println!(
-                                    "intersect: {:.4}, camera_axis_offset: {:.4}, x_ty: {:.4}, blend_width: {:.2}, focal length: {:.1}/{:.1}, k1: {:.4}/{:.4}",
-                                    layout.intersect,
-                                    self.cal.framing.axis_offset,
-                                    layout.x_ty,
-                                    layout.blend_width,
-                                    self.cal.lenses[0].fx,
-                                    self.cal.lenses[1].fx,
-                                    self.cal.lenses[0].distortion[0],
-                                    self.cal.lenses[1].distortion[0]
+                                    "projection: {:?}, camera_axis_offset: {:.4}",
+                                    self.cal.projection, self.cal.framing.axis_offset,
                                 );
                             }
                             PhysicalKey::Code(KeyCode::KeyC) if !event.repeat => {
@@ -790,10 +775,8 @@ impl ApplicationHandler for App {
                         ..Default::default()
                     });
 
-                let left = self.current_left.as_planes();
-                let right = self.current_right.as_planes();
                 let render = self.pose.current_pose();
-                if let Err(e) = renderer.render_to_view(&left, &right, render, &view) {
+                if let Err(e) = renderer.render_to_view(&self.current_frame, render, &view) {
                     log::error!("Render failed: {e}");
                     return;
                 }
@@ -802,7 +785,7 @@ impl ApplicationHandler for App {
                 if self.recording.is_some() && self.record_frame {
                     self.record_frame = false;
                     let (width, height) = renderer.output_dims();
-                    match renderer.render_and_readback_nv12(&left, &right, render) {
+                    match renderer.render_and_readback_nv12(&self.current_frame, render) {
                         Ok(Some(nv12)) => {
                             let pts_us =
                                 (self.recording_frames as f64 / self.fps * 1_000_000.0) as i64;

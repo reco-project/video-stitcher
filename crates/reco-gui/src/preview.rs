@@ -109,12 +109,11 @@ impl PreviewBridge {
         })
     }
 
-    /// Render a YUV420P stereo pair, return a Slint image backed by a
+    /// Render a CPU-resident frame set, return a Slint image backed by a
     /// GPU texture on the shared device.
     pub fn render_frame(
         &mut self,
-        left: &Yuv420pPlanes<'_>,
-        right: &Yuv420pPlanes<'_>,
+        frames: &reco_core::source::FrameSet,
         pose: reco_core::geometry::RenderPose,
     ) -> Result<slint::Image, StitchCoreError> {
         let device = self.engine.gpu().device();
@@ -141,7 +140,7 @@ impl PreviewBridge {
 
         // Render into Slint's own device — commands submit on the shared
         // queue, no copies, no synchronization round-trip.
-        self.engine.render_to_view(left, right, pose, &view)?;
+        self.engine.render_to_view(frames, pose, &view)?;
 
         // Hand the texture to Slint. ownership transfers; Slint releases
         // it when the Image is no longer referenced by any UI property.

@@ -150,7 +150,7 @@ struct AutoExportSpec {
 impl AutoloadSpec {
     /// Parse `RECO_AUTOLOAD="left[;left2,...],right[;right2,...],cal.json"`
     /// (segments within a side separated by `;`). Returns `None` when unset or
-    /// malformed.
+    /// malformed. An empty right field selects mono input.
     fn from_env() -> Option<Self> {
         let raw = std::env::var("RECO_AUTOLOAD").ok()?;
         let parts: Vec<&str> = raw.split(',').collect();
@@ -163,7 +163,11 @@ impl AutoloadSpec {
         let to_paths =
             |s: &str| -> Vec<PathBuf> { s.split(';').map(|p| PathBuf::from(p.trim())).collect() };
         let left = to_paths(parts[0]);
-        let right = to_paths(parts[1]);
+        let right = if parts[1].trim().is_empty() {
+            Vec::new()
+        } else {
+            to_paths(parts[1])
+        };
         let cal = PathBuf::from(parts[2].trim());
         if left
             .iter()
@@ -288,12 +292,6 @@ struct AppState {
     /// debounce threshold below to avoid thrashing disk during a
     /// drag-resize (Slint reports a new size every pixel).
     last_window_size_save_at: Option<Instant>,
-    /// Baseline camera intrinsics from the last successful calibration.
-    /// The Lens fine-tune sliders in the Controls panel edit these; the
-    /// Reset Lens button restores them. `None` until auto-calibrate or a
-    /// manual match.json load populates them.
-    cal_baseline_left_params: Option<reco_core::calibration::Lens>,
-    cal_baseline_right_params: Option<reco_core::calibration::Lens>,
     /// Fit direct input through engine coverage. Disabling permits inspecting outside the stitched region during calibration. Bound to the Slint `use-constrained-look` checkbox.
     use_constrained_look: bool,
     /// When true, the preview shows a single camera through orthographic
@@ -524,8 +522,6 @@ impl AppState {
             user_settings,
             last_persisted_window_size: None,
             last_window_size_save_at: None,
-            cal_baseline_left_params: None,
-            cal_baseline_right_params: None,
             use_constrained_look: true,
             lens_preview_active: false,
             lens_preview_side: "left".into(),
@@ -691,9 +687,13 @@ impl AppState {
         app.set_blend_width(cal.projection.blend_width());
         app.set_lens_correction_amount(cal.lenses[0].correction);
         app.set_sync_offset(cal.sync_offset as i32);
-        if let [left, right] = cal.lenses.as_slice() {
-            set_lens_sliders(app, left, right);
+        app.set_is_l_shape(cal.projection.l_shape().is_some());
+        if cal.projection.camera_count() == 1 {
+            app.set_lens_selected_camera("left".into());
+            app.set_lens_preview_active(false);
+            app.set_export_replay_enabled(false);
         }
+        set_lens_sliders(app, &cal.lenses);
     }
 
     /// Write the current (edited) calibration back to disk.
@@ -707,50 +707,37 @@ impl AppState {
         Ok(())
     }
 
-    /// Check if all three files are selected and try to initialize.
+    /// Select only the inputs consumed by the calibration.
+    fn selected_inputs(&self, cal: &Calibration) -> Option<Vec<reco_io::InputPath>> {
+        match cal.projection.camera_count() {
+            1 => Some(vec![self.left_input.clone()?]),
+            2 => Some(vec![self.left_input.clone()?, self.right_input.clone()?]),
+            _ => None,
+        }
+    }
+
+    /// Initialize once the calibration and its camera inputs are selected.
     fn try_init(&mut self) -> Result<bool, String> {
-        // Open playback from the full InputPath (all concat segments) so the
-        // timeline duration spans every file, not just the first. left_path/
-        // right_path stay single (first segment) for lens/calibration.
-        let (left, right, cal_path) =
-            match (&self.left_input, &self.right_input, &self.calibration_path) {
-                (Some(l), Some(r), Some(c)) => (l.clone(), r.clone(), c.clone()),
-                _ => return Ok(false),
-            };
-
-        // Load calibration.
-        let cal = Calibration::from_file(&cal_path)
-            .map_err(|e| format!("Calibration load error: {e}"))?;
-
-        // Open video source.
-        let sync_offset = cal.sync_offset;
-        self.playback
-            .open(&left, &right, sync_offset, &self.decoder_cleanup)
-            .map_err(|e| format!("Video open error: {e}"))?;
-
-        let (input_w, input_h) = self
-            .playback
-            .input_dimensions()
-            .ok_or("No input dimensions")?;
-
-        let bridge = self.build_bridge(&cal, input_w, input_h)?;
-
-        self.calibration = Some(cal);
-        self.bridge = Some(bridge);
-        self.reset_view();
-        Ok(true)
+        let Some(cal_path) = &self.calibration_path else {
+            return Ok(false);
+        };
+        let cal =
+            Calibration::from_file(cal_path).map_err(|e| format!("Calibration load error: {e}"))?;
+        if self.selected_inputs(&cal).is_none() {
+            return Ok(false);
+        }
+        self.init_with_calibration(cal)
     }
 
     /// Initialize preview from a calibration result (no file needed).
     fn init_with_calibration(&mut self, cal: Calibration) -> Result<bool, String> {
-        let (left, right) = match (&self.left_input, &self.right_input) {
-            (Some(l), Some(r)) => (l.clone(), r.clone()),
-            _ => return Err("Both video inputs required".into()),
-        };
+        let inputs = self
+            .selected_inputs(&cal)
+            .ok_or("Select the calibration's video inputs")?;
 
         let sync_offset = cal.sync_offset;
         self.playback
-            .open(&left, &right, sync_offset, &self.decoder_cleanup)
+            .open(&inputs, sync_offset, &self.decoder_cleanup)
             .map_err(|e| format!("Video open error: {e}"))?;
 
         let (input_w, input_h) = self
@@ -760,6 +747,10 @@ impl AppState {
 
         let bridge = self.build_bridge(&cal, input_w, input_h)?;
 
+        if cal.projection.camera_count() == 1 {
+            self.lens_preview_active = false;
+            self.lens_preview_side = "left".into();
+        }
         self.calibration = Some(cal);
         self.bridge = Some(bridge);
         self.reset_view();
@@ -774,8 +765,6 @@ impl AppState {
         self.stop_recording();
         self.reset_pipeline();
         self.cal_baseline = None;
-        self.cal_baseline_left_params = None;
-        self.cal_baseline_right_params = None;
     }
 
     fn start_recording(&mut self, codec: &str, quality: &str) -> Result<PathBuf, String> {
@@ -871,20 +860,18 @@ impl AppState {
         }
         let frame = self.playback.current_frame()?;
 
-        let left = frame.left.as_planes();
-        let right = frame.right.as_planes();
-
         // Lens preview mode: render single camera flat
         if self.lens_preview_active {
             let bridge = self.bridge.as_mut()?;
             let cal = bridge.engine().calibration();
-            let (planes, params) = if self.lens_preview_side == "right" {
-                (&right, cal.lenses[1].clone())
-            } else {
-                (&left, cal.lenses[0].clone())
+            let camera = usize::from(self.lens_preview_side == "right");
+            let reco_core::source::FrameSet::Yuv420p(cameras) = frame else {
+                return None;
             };
+            let planes = cameras.get(camera)?.as_planes();
+            let params = cal.lenses.get(camera)?.clone();
             return match bridge.render_lens_preview(
-                planes,
+                &planes,
                 &params,
                 self.lens_correction_amount,
                 self.playback.is_full_range(),
@@ -906,10 +893,7 @@ impl AppState {
             let fps = self.playback.fps();
 
             // Encode the accepted interactive pose, also used by the display below.
-            match bridge
-                .engine_mut()
-                .render_and_readback_nv12(&left, &right, pose)
-            {
+            match bridge.engine_mut().render_and_readback_nv12(frame, pose) {
                 Ok(Some(nv12)) => {
                     if let Some(tx) = self.recording_tx.as_ref() {
                         let pts = (self.recording_frames as f64 / fps * 1_000_000.0) as i64;
@@ -933,14 +917,14 @@ impl AppState {
             // but we skip most frames to keep encoding smooth.
             if self.recording_frames.is_multiple_of(5) {
                 let bridge = self.bridge.as_mut().unwrap();
-                match bridge.render_frame(&left, &right, pose) {
+                match bridge.render_frame(frame, pose) {
                     Ok(img) => return Some(img),
                     Err(e) => log::error!("Preview render error: {e}"),
                 }
             }
             None
         } else {
-            match self.bridge.as_mut()?.render_frame(&left, &right, pose) {
+            match self.bridge.as_mut()?.render_frame(frame, pose) {
                 Ok(img) => Some(img),
                 Err(e) => {
                     log::error!("Render error: {e}");
@@ -1011,7 +995,11 @@ impl AppState {
         let mut playback = None;
         if let (Some(left), Some(right)) = (&self.left_input, &self.right_input) {
             let mut candidate = Playback::new();
-            if let Err(error) = candidate.open(left, right, offset, &self.decoder_cleanup) {
+            if let Err(error) = candidate.open(
+                &[left.clone(), right.clone()],
+                offset,
+                &self.decoder_cleanup,
+            ) {
                 self.sync_calibration_controls(app);
                 self.toasts
                     .push(Severity::Error, "Sync unchanged", error.to_string());
@@ -1045,13 +1033,12 @@ impl AppState {
             .as_ref()
             .map(|c| c.sync_offset)
             .unwrap_or(0);
-        if let (Some(left), Some(right)) = (&self.left_input, &self.right_input) {
-            let left = left.clone();
-            let right = right.clone();
-            if let Err(e) = self
-                .playback
-                .open(&left, &right, offset, &self.decoder_cleanup)
-            {
+        if let Some(inputs) = self
+            .calibration
+            .as_ref()
+            .and_then(|cal| self.selected_inputs(cal))
+        {
+            if let Err(e) = self.playback.open(&inputs, offset, &self.decoder_cleanup) {
                 log::error!("Failed to reopen playback after reorder: {e}");
                 // The list already contains the new order. Keeping the old
                 // preview would misrepresent what export will read.
@@ -1210,11 +1197,8 @@ fn file_handles_to_paths(handles: Vec<rfd::FileHandle>) -> Vec<PathBuf> {
 /// and on Reset Lens. Ranges are chosen wide enough for meaningful
 /// manual tuning (fx/fy: +/-15%, cx/cy: +/-10% of image dim) but tight
 /// enough that the slider granularity is useful.
-fn set_lens_sliders(
-    app: &RecoApp,
-    left: &reco_core::calibration::Lens,
-    right: &reco_core::calibration::Lens,
-) {
+fn set_lens_sliders(app: &RecoApp, lenses: &[reco_core::calibration::Lens]) {
+    let Some(left) = lenses.first() else { return };
     // Ranges are computed from the left camera's baseline. In stereo
     // rigs the two lenses are typically matched models, so a single
     // range keeps the UI simpler. If the cameras ever differ materially
@@ -1245,6 +1229,7 @@ fn set_lens_sliders(
     app.set_lens_left_k3(left.distortion[2] as f32);
     app.set_lens_left_k4(left.distortion[3] as f32);
 
+    let Some(right) = lenses.get(1) else { return };
     app.set_lens_right_fx(right.fx as f32);
     app.set_lens_right_fy(right.fy as f32);
     app.set_lens_right_cx(right.cx as f32);
@@ -2758,23 +2743,8 @@ fn main() -> anyhow::Result<()> {
         // only `self.calibration` retained before the picker wrote it.
         let (existing_left_params, existing_right_params) = {
             let s = state_ref.borrow();
-            match s.calibration.as_ref() {
-                Some(cal) => {
-                    log::info!(
-                        "Re-calibrate: preserving current lens (left fx={:.1} cx={:.1}, \
-                         right fx={:.1} cx={:.1})",
-                        cal.lenses[0].fx,
-                        cal.lenses[0].cx,
-                        cal.lenses[1].fx,
-                        cal.lenses[1].cx
-                    );
-                    (Some(cal.lenses[0].clone()), Some(cal.lenses[1].clone()))
-                }
-                None => (
-                    s.cal_baseline_left_params.clone(),
-                    s.cal_baseline_right_params.clone(),
-                ),
-            }
+            let lenses = s.calibration.as_ref().or(s.cal_baseline.as_ref()).map(|c| c.lenses.as_slice()).unwrap_or_default();
+            (lenses.first().cloned(), lenses.get(1).cloned())
         };
 
         {
@@ -3167,97 +3137,42 @@ fn main() -> anyhow::Result<()> {
         // lens (dims, correction strength) is preserved from the current
         // document lens - rebuilding via a constructor here used to reset
         // the user's lens-correction toggle to full.
-        let Some((left_base, right_base)) = s
-            .editor_calibration()
-            .map(|c| (c.lenses[0].clone(), c.lenses[1].clone()))
-            .or_else(|| {
-                s.bridge.as_ref().map(|b| {
-                    let c = b.engine().calibration();
-                    (c.lenses[0].clone(), c.lenses[1].clone())
-                })
-            })
-        else {
-            return;
-        };
-
-        let (left_params, right_params) = match selected.as_str() {
-            "right" => {
-                let p = reco_core::calibration::Lens {
-                    fx: app.get_lens_right_fx() as f64,
-                    fy: app.get_lens_right_fy() as f64,
-                    cx: app.get_lens_right_cx() as f64,
-                    cy: app.get_lens_right_cy() as f64,
-                    distortion: [
-                        app.get_lens_right_k1() as f64,
-                        app.get_lens_right_k2() as f64,
-                        app.get_lens_right_k3() as f64,
-                        app.get_lens_right_k4() as f64,
-                    ],
-                    ..right_base.clone()
-                };
-                (None, Some(p))
-            }
-            "both" => {
-                // Mirror the Left sliders to both cameras. The Both tab
-                // only shows the left sliders in the UI; the user's
-                // intent is "apply these values to both lenses in
-                // lockstep". We also push the mirrored values back into
-                // the right-* Slint properties so when the user toggles
-                // to Right later the sliders show what got applied.
-                app.set_lens_right_fx(app.get_lens_left_fx());
-                app.set_lens_right_fy(app.get_lens_left_fy());
-                app.set_lens_right_cx(app.get_lens_left_cx());
-                app.set_lens_right_cy(app.get_lens_left_cy());
-                app.set_lens_right_k1(app.get_lens_left_k1());
-                app.set_lens_right_k2(app.get_lens_left_k2());
-                app.set_lens_right_k3(app.get_lens_left_k3());
-                app.set_lens_right_k4(app.get_lens_left_k4());
-                let left = reco_core::calibration::Lens {
-                    fx: app.get_lens_left_fx() as f64,
-                    fy: app.get_lens_left_fy() as f64,
-                    cx: app.get_lens_left_cx() as f64,
-                    cy: app.get_lens_left_cy() as f64,
-                    distortion: [
-                        app.get_lens_left_k1() as f64,
-                        app.get_lens_left_k2() as f64,
-                        app.get_lens_left_k3() as f64,
-                        app.get_lens_left_k4() as f64,
-                    ],
-                    ..left_base.clone()
-                };
-                let right = reco_core::calibration::Lens {
-                    fx: left.fx,
-                    fy: left.fy,
-                    cx: left.cx,
-                    cy: left.cy,
-                    distortion: left.distortion,
-                    ..right_base.clone()
-                };
-                (Some(left), Some(right))
-            }
-            _ => {
-                let p = reco_core::calibration::Lens {
-                    fx: app.get_lens_left_fx() as f64,
-                    fy: app.get_lens_left_fy() as f64,
-                    cx: app.get_lens_left_cx() as f64,
-                    cy: app.get_lens_left_cy() as f64,
-                    distortion: [
-                        app.get_lens_left_k1() as f64,
-                        app.get_lens_left_k2() as f64,
-                        app.get_lens_left_k3() as f64,
-                        app.get_lens_left_k4() as f64,
-                    ],
-                    ..left_base.clone()
-                };
-                (Some(p), None)
-            }
+        let (fx, fy, cx, cy, distortion) = if selected == "right" {
+            (
+                app.get_lens_right_fx(),
+                app.get_lens_right_fy(),
+                app.get_lens_right_cx(),
+                app.get_lens_right_cy(),
+                [
+                    app.get_lens_right_k1(),
+                    app.get_lens_right_k2(),
+                    app.get_lens_right_k3(),
+                    app.get_lens_right_k4(),
+                ],
+            )
+        } else {
+            (
+                app.get_lens_left_fx(),
+                app.get_lens_left_fy(),
+                app.get_lens_left_cx(),
+                app.get_lens_left_cy(),
+                [
+                    app.get_lens_left_k1(),
+                    app.get_lens_left_k2(),
+                    app.get_lens_left_k3(),
+                    app.get_lens_left_k4(),
+                ],
+            )
         };
         if s.edit_calibration(&app, |cal| {
-            if let Some(left) = left_params {
-                cal.lenses[0] = left;
-            }
-            if let Some(right) = right_params {
-                cal.lenses[1] = right;
+            for (camera, lens) in cal.lenses.iter_mut().enumerate() {
+                if selected == "both" || camera == usize::from(selected == "right") {
+                    lens.fx = f64::from(fx);
+                    lens.fy = f64::from(fy);
+                    lens.cx = f64::from(cx);
+                    lens.cy = f64::from(cy);
+                    lens.distortion = distortion.map(f64::from);
+                }
             }
         }) {
             app.set_lens_dirty(true);
@@ -3271,17 +3186,8 @@ fn main() -> anyhow::Result<()> {
             return;
         };
         let mut s = state_ref.borrow_mut();
-        // Baseline lens params live on the calibration we snapshotted
-        // when auto-calibrate completed (see cal_baseline_*_params).
-        let (left_base, right_base) = (
-            s.cal_baseline_left_params.clone(),
-            s.cal_baseline_right_params.clone(),
-        );
-        if let (Some(left), Some(right)) = (left_base, right_base)
-            && s.edit_calibration(&app, |cal| {
-                cal.lenses[0] = left;
-                cal.lenses[1] = right;
-            })
+        if let Some(lenses) = s.cal_baseline.as_ref().map(|cal| cal.lenses.clone())
+            && s.edit_calibration(&app, |cal| cal.lenses = lenses)
         {
             s.sync_calibration_controls(&app);
             app.set_lens_dirty(false);
@@ -3638,22 +3544,14 @@ fn main() -> anyhow::Result<()> {
                 );
             }
         }
-        let (Some(left_path), Some(right_path), Some(cal)) = (
-            s.left_path.clone(),
-            s.right_path.clone(),
-            s.calibration.clone(),
-        ) else {
-            log::error!("Cannot start export without left/right/calibration");
+        let Some(cal) = s.calibration.clone() else {
+            log::error!("Cannot start export without calibration");
             return;
         };
-        let left = s
-            .left_input
-            .clone()
-            .unwrap_or(reco_io::stitch_job::InputPath::Single(left_path));
-        let right = s
-            .right_input
-            .clone()
-            .unwrap_or(reco_io::stitch_job::InputPath::Single(right_path));
+        let Some(inputs) = s.selected_inputs(&cal) else {
+            log::error!("Cannot start export without the calibrated inputs");
+            return;
+        };
 
         // Snapshot all export settings. Slint properties must not be
         // read from the worker thread — only the UI thread owns them.
@@ -3730,8 +3628,7 @@ fn main() -> anyhow::Result<()> {
         let output_for_thread = output.clone();
         let handle = std::thread::spawn(move || {
             let outcome = crate::export::run_export(
-                left,
-                right,
+                inputs,
                 cal,
                 output_for_thread,
                 None, // stream URL (Phase 6 GUI wiring)
@@ -3741,7 +3638,6 @@ fn main() -> anyhow::Result<()> {
                 height,
                 codec_str,
                 quality_str,
-                blend,
                 start_secs,
                 end_secs,
                 autocam,
@@ -4320,12 +4216,18 @@ fn run_autoload(
         let mut s = state.borrow_mut();
         s.left_input = Some(make_input(&spec.left));
         s.left_path = Some(spec.left[0].clone());
-        s.right_input = Some(make_input(&spec.right));
-        s.right_path = Some(spec.right[0].clone());
+        s.right_input = (!spec.right.is_empty()).then(|| make_input(&spec.right));
+        s.right_path = spec.right.first().cloned();
         s.calibration_path = Some(spec.cal.clone());
         if let Some(app) = app_weak.upgrade() {
             app.set_left_path(display_name(&spec.left[0]).into());
-            app.set_right_path(display_name(&spec.right[0]).into());
+            app.set_right_path(
+                spec.right
+                    .first()
+                    .map(|p| display_name(p))
+                    .unwrap_or_default()
+                    .into(),
+            );
             app.set_calibration_path(display_name(&spec.cal).into());
         }
     }
@@ -4385,17 +4287,6 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
 
             let (in_w, in_h) = s.playback.input_dimensions().unwrap_or((0, 0));
 
-            // Snapshot current lens params as the fine-tune baseline so
-            // Reset Lens can restore them. For manual match.json loads
-            // this comes from the loaded calibration directly.
-            let lens_baseline = s.bridge.as_ref().map(|b| {
-                let cal = b.engine().calibration();
-                (cal.lenses[0].clone(), cal.lenses[1].clone())
-            });
-            if let Some((l, r)) = lens_baseline.as_ref() {
-                s.cal_baseline_left_params = Some(l.clone());
-                s.cal_baseline_right_params = Some(r.clone());
-            }
             // Same for viewport-level settings (rig tilt, blend width).
             let rig_tilt_rad = s
                 .bridge
@@ -4478,10 +4369,8 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 // Lens fine-tune sliders are seeded from the loaded
                 // calibration's camera params either way; the Lens
                 // fine-tune section is gated on `files-loaded` in Slint.
-                if let Some((l, r)) = lens_baseline.as_ref() {
-                    set_lens_sliders(&app, l, r);
-                    app.set_lens_dirty(false);
-                }
+                s.sync_calibration_controls(&app);
+                app.set_lens_dirty(false);
                 // Seed export dialog output filename suggestion to
                 // sit next to the left-video file for convenience.
                 let left_path = s.left_path.clone();
@@ -4521,19 +4410,8 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
             }
         }
         Ok(false) => {
-            // Not all files selected yet - update status.
-            let s_ref = &*s;
-            let missing: Vec<&str> = [
-                s_ref.left_path.is_none().then_some("left video"),
-                s_ref.right_path.is_none().then_some("right video"),
-                s_ref.calibration_path.is_none().then_some("calibration"),
-            ]
-            .into_iter()
-            .flatten()
-            .collect();
-
             if let Some(app) = app_weak.upgrade() {
-                app.set_status_text(format!("Still need: {}", missing.join(", ")).into());
+                app.set_status_text("Select a calibration and its video inputs".into());
             }
         }
         Err(e) => {
@@ -4612,18 +4490,6 @@ fn handle_calibration_result(
                     let clamped_fov = state.pose.current_fov_deg();
                     let img = state.render_current();
                     let (in_w, in_h) = state.playback.input_dimensions().unwrap_or((0, 0));
-
-                    // Snapshot camera intrinsics as the Lens fine-tune
-                    // baseline so Reset Lens can restore them after
-                    // manual edits.
-                    let lens_baseline = state.bridge.as_ref().map(|b| {
-                        let cal = b.engine().calibration();
-                        (cal.lenses[0].clone(), cal.lenses[1].clone())
-                    });
-                    if let Some((l, r)) = lens_baseline.as_ref() {
-                        state.cal_baseline_left_params = Some(l.clone());
-                        state.cal_baseline_right_params = Some(r.clone());
-                    }
 
                     // Grab the layout baseline so the Calibration sliders
                     // (intersect, camera-axis offset, x_ty) show the
@@ -4737,10 +4603,8 @@ fn handle_calibration_result(
                         }
                         app.set_fov(clamped_fov);
                         set_lens_profile_props(&app, left_profile, right_profile, in_w, in_h);
-                        if let Some((l, r)) = lens_baseline.as_ref() {
-                            set_lens_sliders(&app, l, r);
-                            app.set_lens_dirty(false);
-                        }
+                        state.sync_calibration_controls(&app);
+                        app.set_lens_dirty(false);
 
                         if confidence < 0.5 {
                             log::warn!(

@@ -5,7 +5,7 @@
 
 use std::time::{Duration, Instant};
 
-use reco_core::source::{FrameSource, SourceError, SourceInfo, Yuv420pData};
+use reco_core::source::{FrameSet, FrameSource, SourceError, SourceInfo};
 use reco_io::adapters::FfmpegFileSource;
 use reco_io::stitch_job::InputPath;
 
@@ -22,12 +22,6 @@ pub enum PlayState {
     Finished,
 }
 
-/// Owned stereo YUV frame pair.
-pub struct StereoYuv {
-    pub left: Yuv420pData,
-    pub right: Yuv420pData,
-}
-
 /// Controls video file playback for the GUI.
 ///
 /// Uses drift-free scheduling: frame advance timing is computed from a
@@ -39,7 +33,7 @@ pub struct Playback {
     source: Option<FfmpegFileSource>,
     info: Option<SourceInfo>,
     state: PlayState,
-    current_frame: Option<StereoYuv>,
+    current_frame: Option<FrameSet>,
     frame_index: u64,
     total_frames: Option<u64>,
     frame_duration: Duration,
@@ -69,20 +63,18 @@ impl Playback {
         }
     }
 
-    /// Open a stereo video source.
+    /// Open the calibrated camera inputs.
     ///
     /// Takes [`InputPath`] so multi-segment (concat) inputs span every file
     /// in the timeline - total frames, seeking, and the duration range cover
     /// the whole chain, not just the first segment.
     pub fn open(
         &mut self,
-        left: &InputPath,
-        right: &InputPath,
+        inputs: &[InputPath],
         sync_offset: i64,
         cleanup: &reco_io::DecoderCleanup,
     ) -> Result<(), SourceError> {
-        let mut source =
-            FfmpegFileSource::open_inputs(&[left.clone(), right.clone()], sync_offset, false)?;
+        let mut source = FfmpegFileSource::open_inputs(inputs, sync_offset, false)?;
         source.defer_cleanup(cleanup);
         let info = source.info();
         let fps = info.fps;
@@ -100,7 +92,7 @@ impl Playback {
         // Keep the working source until the replacement can display a frame.
         if !candidate.step_forward()? {
             return Err(SourceError::Read {
-                reason: "no paired frames available at the requested sync offset".into(),
+                reason: "no frames available at the requested sync offset".into(),
             });
         }
         *self = candidate;
@@ -115,13 +107,8 @@ impl Playback {
         };
 
         match source.next_frame()? {
-            Some(stereo) => {
-                let Some([left, right]) = stereo.into_yuv_pair() else {
-                    return Err(SourceError::Read {
-                        reason: "GUI preview expects two-camera Yuv420p sets".into(),
-                    });
-                };
-                self.current_frame = Some(StereoYuv { left, right });
+            Some(frame) => {
+                self.current_frame = Some(frame);
                 self.frame_index += 1;
                 Ok(true)
             }
@@ -174,13 +161,8 @@ impl Playback {
 
         // Non-blocking: returns None if no frame decoded yet.
         match source.try_next_frame()? {
-            Some(stereo) => {
-                let Some([left, right]) = stereo.into_yuv_pair() else {
-                    return Err(SourceError::Read {
-                        reason: "GUI preview expects two-camera Yuv420p sets".into(),
-                    });
-                };
-                self.current_frame = Some(StereoYuv { left, right });
+            Some(frame) => {
+                self.current_frame = Some(frame);
                 self.frame_index += 1;
                 Ok(true)
             }
@@ -243,7 +225,7 @@ impl Playback {
         self.state
     }
 
-    pub fn current_frame(&self) -> Option<&StereoYuv> {
+    pub fn current_frame(&self) -> Option<&FrameSet> {
         self.current_frame.as_ref()
     }
 
@@ -299,13 +281,21 @@ mod tests {
     #[test]
     #[ignore = "requires RECO_PLAYBACK_TEST_VIDEO pointing to a short, multi-frame video"]
     fn file_replacement_preserves_playback_on_first_frame_failure() {
+        fn first_y(playback: &Playback) -> &[u8] {
+            let FrameSet::Yuv420p(cameras) = playback.current_frame().unwrap() else {
+                panic!("expected YUV420P")
+            };
+            &cameras[0].y
+        }
         let path = std::path::PathBuf::from(std::env::var("RECO_PLAYBACK_TEST_VIDEO").unwrap());
         let input = InputPath::Single(path.clone());
         let missing = path.with_file_name("missing-playback-test-input.mp4");
         assert!(!missing.exists());
         let cleanup = reco_io::DecoderCleanup::default();
         let mut playback = Playback::new();
-        playback.open(&input, &input, 0, &cleanup).unwrap();
+        playback
+            .open(&[input.clone(), input.clone()], 0, &cleanup)
+            .unwrap();
         if std::env::var_os("RECO_REQUIRE_CUDA").is_some() {
             assert_eq!(
                 playback.source.as_ref().unwrap().decode_backend(),
@@ -316,7 +306,7 @@ mod tests {
             playback.seek(fraction).unwrap();
             assert!(playback.current_frame().is_some());
         }
-        let before = playback.current_frame().unwrap().left.y.clone();
+        let before = first_y(&playback).to_vec();
         let index = playback.frame_index();
         let total = playback.total_frames();
         let past_end = (total.unwrap() * 2 + 1) as i64;
@@ -324,17 +314,30 @@ mod tests {
         // into a missing segment fails inside the decode worker.
         let broken = InputPath::Chained(vec![path, missing]);
         let error = playback
-            .open(&input, &broken, past_end, &cleanup)
+            .open(&[input.clone(), broken], past_end, &cleanup)
             .unwrap_err();
         assert!(matches!(error, SourceError::Read { .. }), "{error}");
         assert_eq!(playback.frame_index(), index);
         assert_eq!(playback.total_frames(), total);
-        assert_eq!(playback.current_frame().unwrap().left.y, before);
-        assert!(playback.open(&input, &input, past_end, &cleanup).is_err());
-        assert_eq!(playback.current_frame().unwrap().left.y, before);
+        assert_eq!(first_y(&playback), before);
+        assert!(
+            playback
+                .open(&[input.clone(), input.clone()], past_end, &cleanup)
+                .is_err()
+        );
+        assert_eq!(first_y(&playback), before);
         assert!(playback.step_forward().unwrap());
-        playback.open(&input, &input, 1, &cleanup).unwrap();
+        playback
+            .open(&[input.clone(), input.clone()], 1, &cleanup)
+            .unwrap();
         assert_eq!(playback.frame_index(), 1);
         assert_eq!(playback.state(), PlayState::Paused);
+        playback.open(&[input], 0, &cleanup).unwrap();
+        playback.seek(0.5).unwrap();
+        assert!(playback.step_forward().unwrap());
+        let FrameSet::Yuv420p(cameras) = playback.current_frame().unwrap() else {
+            panic!("expected YUV420P")
+        };
+        assert_eq!(cameras.len(), 1);
     }
 }

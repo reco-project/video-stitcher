@@ -40,6 +40,9 @@ cargo build --release -p reco-cli
 # Interactive preview with pan/zoom
 ./target/release/reco preview left.mp4 right.mp4 -c match.json
 
+# Preview a pre-stitched panorama using a cylinder calibration
+./target/release/reco preview panorama.mp4 -c cylinder.json
+
 # Live camera stitching (GStreamer, Jetson CSI)
 ./target/release/reco camera --left-device 0 --right-device 1 \
     -c match.json -o live.mkv --container mkv \
