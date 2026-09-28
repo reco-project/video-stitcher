@@ -11,16 +11,15 @@ readme = "README.md"
 
 [features]
 default = ["gpu"]
-# The wgpu render stack: GPU executor, engine, session, interop, GPU
-# lens tools. Disable (`--no-default-features`) for the wgpu-free
-# leaf on GPU-less targets (calibration, geometry, projection, CPU
-# stitch, source/detect/encoder traits).
+# GPU executor, interop, readback and lens tools. The engine, session,
+# CPU rendering and source/detection/sink traits remain available without it.
 gpu = [
     "dep:wgpu",
     "dep:pollster",
     "dep:bytemuck",
     "dep:ash",
     "dep:libc",
+    "dep:libloading",
     "dep:windows",
     "dep:metal",
     "dep:foreign-types",
@@ -48,7 +47,7 @@ ash = { version = "0.38", optional = true }
 libc = { version = "0.2", optional = true }
 
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
-libloading = "0.9"
+libloading = { version = "0.9", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62", optional = true, features = [

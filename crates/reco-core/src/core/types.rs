@@ -98,7 +98,7 @@ pub struct ReplayFrame {
 /// implementation in reco-io (under the `stacked-output` feature)
 /// can be plugged into [`super::StitchCore`] without pulling I/O types
 /// into core. Consumers who only care about the pull API and go
-/// through `StitchSession` (with the `gpu` feature) plus a
+/// through `StitchSession` plus a
 /// `reco_io::StitchJob::with_replay_recording(...)` builder never
 /// touch this trait directly.
 ///

@@ -158,9 +158,7 @@ impl AttachedSink {
     }
 }
 
-/// Reject sinks the GPU session cannot feed. The streaming session
-/// delivers NV12 CPU bytes only; RGBA delivery arrives with the CPU
-/// session loop.
+/// Both render backends deliver NV12 host bytes to session sinks.
 pub(crate) fn validate_sink_input(wants: SinkInput, name: &str) -> Result<(), String> {
     match wants {
         SinkInput::CpuBytes(PixelFormat::Nv12) => Ok(()),

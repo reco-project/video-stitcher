@@ -6,7 +6,7 @@
 
 use super::StitchSession;
 use crate::session::sinks::{AttachedSink, SinkOptions, validate_sink_input};
-use crate::session::types::{ErrorPolicy, SessionError};
+use crate::session::types::SessionError;
 use crate::sink::OutputSink;
 
 impl StitchSession {
@@ -17,8 +17,7 @@ impl StitchSession {
     /// thread vs inline on the render loop) and whether a sink error
     /// aborts the session or just detaches the sink.
     ///
-    /// Must be called before [`Self::submit_render_output`],
-    /// [`Self::render_frame`], or [`Self::run`].
+    /// Must be called before rendering or starting [`Self::run`].
     ///
     /// # Errors
     ///
@@ -165,6 +164,7 @@ impl StitchSession {
     /// [`Self::set_stacked_gpu_recorder`] to route the packed atlas
     /// to an encoder. The pack runs on every YUV submit and logs
     /// its path choice once at enable time.
+    #[cfg(feature = "gpu")]
     pub fn enable_gpu_stacked_replay(
         &mut self,
         layout: crate::gpu::yuv_stack_packer::StackGridLayout,
@@ -175,12 +175,14 @@ impl StitchSession {
 
     /// Disable the GPU-pack replay path. Also finalizes any
     /// attached GPU recorder.
+    #[cfg(feature = "gpu")]
     pub fn disable_gpu_stacked_replay(&mut self) {
         self.core.disable_gpu_stacked_replay();
     }
 
     /// Attach a GPU-pack atlas recorder. Call after
     /// [`Self::enable_gpu_stacked_replay`].
+    #[cfg(feature = "gpu")]
     pub fn set_stacked_gpu_recorder(
         &mut self,
         recorder: Box<dyn crate::core::types::StackedReplayGpuRecorder>,
@@ -190,12 +192,14 @@ impl StitchSession {
 
     /// Finalize and drop the GPU-pack atlas recorder. No-op if none
     /// is attached.
+    #[cfg(feature = "gpu")]
     pub fn clear_stacked_gpu_recorder(&mut self) {
         self.core.clear_stacked_gpu_recorder();
     }
 
     /// Flush the GPU-pack recorder's buffered bytes to disk. No-op
     /// if none is attached.
+    #[cfg(feature = "gpu")]
     pub fn flush_stacked_gpu_recorder(&mut self) {
         self.core.flush_stacked_gpu_recorder();
     }
@@ -203,13 +207,9 @@ impl StitchSession {
     /// Atlas dimensions the active GPU packer produces, or `None` if
     /// the GPU-pack path is not enabled. Consumers use this to open
     /// an encoder sized for the atlas.
+    #[cfg(feature = "gpu")]
     pub fn stacked_atlas_dims(&self) -> Option<(u32, u32)> {
         self.core.stacked_atlas_dims()
-    }
-
-    /// Set the error policy for the [`run()`](Self::run) batch loop.
-    pub fn set_error_policy(&mut self, policy: ErrorPolicy) {
-        self.error_policy = policy;
     }
 
     /// Update calibration parameters and recompute coverage boundary.

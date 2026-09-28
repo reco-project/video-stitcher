@@ -1,18 +1,26 @@
 //! Type definitions and builder for the stitching session.
 //!
-//! Extracted from `session/mod.rs` to keep the main module focused on
-//! the `StitchSession` implementation. Import types from
-//! `reco_core::session::types` (e.g. `reco_core::session::types::SessionConfig`).
+//! Shared run results, errors and progress types. GPU construction options
+//! and the auto-initializing builder are available with the `gpu` feature.
 
+#[cfg(feature = "gpu")]
 use crate::calibration::Calibration;
 use crate::core::types::StitchCoreError;
+#[cfg(feature = "gpu")]
 use crate::gpu::nv12_converter::Nv12Error;
+#[cfg(feature = "gpu")]
 use crate::gpu::{GpuContext, GpuError, OutputFormat};
+#[cfg(feature = "gpu")]
 use crate::render::pipeline::PipelineError;
+#[cfg(feature = "gpu")]
 use crate::render::renderer::InputFormat;
+#[cfg(feature = "gpu")]
 use crate::render::viewport::ViewportSize;
+#[cfg(feature = "gpu")]
 use crate::session::sinks::SinkOptions;
-use crate::sink::{OutputSink, SinkError};
+#[cfg(feature = "gpu")]
+use crate::sink::OutputSink;
+use crate::sink::SinkError;
 use crate::source::SourceError;
 
 use thiserror::Error;
@@ -50,8 +58,9 @@ pub fn compute_frame_limit(duration_secs: Option<f64>, max_frames: Option<u64>, 
     }
 }
 
-/// Configuration for creating a [`StitchSession`](super::StitchSession).
+/// GPU configuration for creating a [`StitchSession`](super::StitchSession).
 #[derive(Debug)]
+#[cfg(feature = "gpu")]
 pub struct SessionConfig {
     /// Camera calibration data.
     pub calibration: Calibration,
@@ -87,39 +96,6 @@ pub struct FrameProgress {
 /// Callback for progress reporting during [`StitchSession::run`](super::StitchSession::run).
 pub type ProgressCallback = Box<dyn FnMut(&FrameProgress) + Send>;
 
-/// Session performance metrics for health monitoring.
-///
-/// Read via [`StitchSession::metrics`](super::StitchSession::metrics). Updated per-frame.
-#[derive(Debug, Clone, Default)]
-pub struct SessionMetrics {
-    /// Frames processed so far.
-    pub frames_processed: u64,
-    /// Frames where errors were skipped (via ErrorPolicy::Skip).
-    pub frames_dropped: u64,
-    /// Total elapsed time since first frame.
-    pub elapsed: std::time::Duration,
-    /// Average fps over the session lifetime.
-    pub fps_average: f32,
-    /// Total frames in the source (if known).
-    pub total_frames: Option<u64>,
-}
-
-/// Error handling policy for [`StitchSession::run`](super::StitchSession::run).
-///
-/// Controls what happens when a frame fails to decode or render.
-#[derive(Default)]
-pub enum ErrorPolicy {
-    /// Stop processing on the first error (default).
-    #[default]
-    Abort,
-    /// Skip bad frames, up to `max_consecutive` in a row.
-    /// If `max_consecutive` consecutive frames fail, abort.
-    Skip {
-        /// Maximum consecutive frame errors before aborting.
-        max_consecutive: u64,
-    },
-}
-
 /// Pre-extracted state for the frame loop, cloned once before iterating.
 ///
 /// The borrow checker prevents reading `self.gpu_buf_info` immutably
@@ -133,7 +109,7 @@ pub(crate) struct FrameLoopContext {
     /// Output frame duration, independent of decode and processing time.
     pub(crate) frame_seconds: f32,
     /// CUDA buffer info for GPU detection (Linux zero-copy path).
-    #[cfg(target_os = "linux")]
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
     pub(crate) gpu_buf_info: Option<Vec<crate::interop::zero_copy::GpuBufInfo>>,
 }
 
@@ -145,10 +121,12 @@ pub(crate) struct FrameLoopContext {
 pub enum SessionError {
     /// GPU initialization error.
     #[error("GPU: {0}")]
+    #[cfg(feature = "gpu")]
     Gpu(#[from] GpuError),
 
     /// GPU pipeline error.
     #[error("pipeline: {0}")]
+    #[cfg(feature = "gpu")]
     Pipeline(#[from] PipelineError),
 
     /// `StitchCore` error (wraps pipeline / readback / config).
@@ -157,6 +135,7 @@ pub enum SessionError {
 
     /// NV12 conversion error (GPU converter).
     #[error("NV12 converter: {0}")]
+    #[cfg(feature = "gpu")]
     Nv12(#[from] Nv12Error),
 
     /// NV12 conversion error (CPU kernel).
@@ -172,7 +151,7 @@ pub enum SessionError {
     Source(#[from] SourceError),
 
     /// Metal interop error (macOS zero-copy).
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
     #[error("Metal interop: {0}")]
     MetalInterop(#[from] crate::interop::metal::MetalInteropError),
 
@@ -194,10 +173,7 @@ pub enum SessionError {
 const _: fn() = || {
     fn assert_clone_send_sync<T: Clone + Send + Sync + 'static>() {}
     assert_clone_send_sync::<SessionError>();
-    assert_clone_send_sync::<GpuError>();
-    assert_clone_send_sync::<PipelineError>();
     assert_clone_send_sync::<StitchCoreError>();
-    assert_clone_send_sync::<Nv12Error>();
     assert_clone_send_sync::<crate::render::nv12_cpu::Nv12CpuError>();
     assert_clone_send_sync::<SinkError>();
     assert_clone_send_sync::<SourceError>();
@@ -213,10 +189,11 @@ const _: fn() = || {
 /// let session = StitchSession::builder()
 ///     .calibration(cal)
 ///     .input_dimensions(1920, 1080)
-///     .viewport(viewport)
+///     .viewport_size(viewport)
 ///     .gpu(gpu)
 ///     .build()?;
 /// ```
+#[cfg(feature = "gpu")]
 pub struct StitchSessionBuilder {
     pub(super) calibration: Option<Calibration>,
     pub(super) viewport_size: Option<ViewportSize>,
@@ -230,6 +207,7 @@ pub struct StitchSessionBuilder {
     pub(super) detection_interval: u64,
 }
 
+#[cfg(feature = "gpu")]
 impl StitchSessionBuilder {
     /// Set the camera calibration (required).
     pub fn calibration(mut self, cal: Calibration) -> Self {

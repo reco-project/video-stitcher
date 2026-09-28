@@ -66,7 +66,7 @@ jobs:
         run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
       # -p isolates reco-core from workspace feature unification, so this
       # is the one lint lane where the gpu feature is genuinely OFF and
-      # the wgpu-free leaf (geometry, calibration, CPU stitch) is checked
+      # CPU geometry, rendering and session orchestration are checked
       # on its own.
       - name: Clippy (reco-core wgpu-free)
         run: cargo clippy -p reco-core --all-targets --no-default-features -- -D warnings
@@ -108,11 +108,16 @@ jobs:
       - name: GPU session completion and cancellation
         run: cargo test -p reco-core gpu_run_completion -- --ignored --test-threads=1
       # The wgpu-free build: -p bypasses workspace feature unification so
-      # reco-core really compiles without wgpu, proving the CPU stitch /
-      # geometry / calibration leaf stands alone (GPU-less targets).
+      # reco-core tests exercise the CPU engine and session without wgpu.
       # RECO_REQUIRE_GPU must not apply - there is no GPU path to require.
       - name: Run tests (reco-core wgpu-free)
-        run: cargo test -p reco-core --no-default-features
+        run: |
+          cargo test -p reco-core --no-default-features
+          core_graph="$(cargo tree -p reco-core --no-default-features -e normal --prefix none)"
+          if [[ "$core_graph" == *"wgpu v"* ]]; then
+            echo "CPU session unexpectedly enables wgpu" >&2
+            exit 1
+          fi
         env:
           RECO_REQUIRE_GPU: ""
       - name: Run tests (reco-control CPU-only)

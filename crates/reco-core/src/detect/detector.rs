@@ -213,7 +213,7 @@ pub enum DetectorFrame<'a> {
     },
 
     /// Metal / VideoToolbox `CVPixelBufferRef`. Local only.
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
     Metal {
         /// Opaque CVPixelBuffer pointer from VideoToolbox.
         cv_pixel_buffer: crate::interop::metal::CVPixelBufferRef,
@@ -258,7 +258,7 @@ impl DetectorFrame<'_> {
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "gpu"))]
             Self::CudaRgbaLetterboxed { .. } => "CudaRgbaLetterboxed",
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
             Self::Metal { .. } => "Metal",
             Self::PreprocessedChw { .. } => "PreprocessedChw",
             #[cfg(feature = "gpu")]

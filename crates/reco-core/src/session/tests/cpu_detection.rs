@@ -382,6 +382,7 @@ fn cpu_buffered_failures_and_prefill_cancellation_leave_no_render_state() {
             } else {
                 assert!(matches!(result, Err(SessionError::Source(_))));
             }
+            #[cfg(feature = "gpu")]
             assert!(session.current_vram_slot.is_none());
             session.finish().unwrap();
         }
@@ -455,6 +456,7 @@ fn cpu_buffered_propagates_sink_and_pose_failures_without_extra_output() {
         assert!(matches!(error, SessionError::Sink(_)));
         assert_eq!(count.load(Ordering::Relaxed), 2);
         assert_eq!(session.frame_count(), 2);
+        #[cfg(feature = "gpu")]
         assert!(session.current_vram_slot.is_none());
 
         let mut session = build_cpu_session();
@@ -467,6 +469,7 @@ fn cpu_buffered_propagates_sink_and_pose_failures_without_extra_output() {
         ));
         assert_eq!(session.frame_count(), 0);
         assert_eq!(session.core().frame_count(), 0);
+        #[cfg(feature = "gpu")]
         assert!(session.current_vram_slot.is_none());
     }
 }
@@ -563,6 +566,7 @@ impl Panner for FutureProbe {
 
 #[test]
 #[ignore] // requires a hardware GPU
+#[cfg(feature = "gpu")]
 fn cylinder_gpu_session_receives_future_states_and_drains_both_formats() {
     use crate::gpu::GpuContext;
     use crate::render::renderer::InputFormat;

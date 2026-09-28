@@ -17,7 +17,7 @@ src/
   stitch/      - Projection-agnostic CPU/GPU stitch backends + agreement oracle
   calibration.rs - Calibration (lenses, projection, framing)
   source.rs      - FrameSource trait, FrameSet enum
-  encoder.rs     - Encoder trait
+  sink.rs        - OutputSink trait
   telemetry.rs   - Per-frame timing collection
 ```
 
@@ -29,6 +29,9 @@ No file I/O, no FFmpeg, no GStreamer, no ONNX/TensorRT. Those live in `reco-io` 
 
 ```bash
 cargo build -p reco-core
+cargo test -p reco-core --no-default-features  # CPU engine, session and rendering
 cargo build -p reco-core --features profiling   # tracing-chrome instrumentation
 cargo doc --no-deps -p reco-core --open
 ```
+
+Without the default `gpu` feature, construct `StitchSession::with_executor` with `Executor::Cpu`. Detection/tracking, coverage, immediate and lookahead scheduling, and NV12 sink delivery use the same session implementation. GPU constructors, imports and readback methods require `gpu`. The isolated CPU test lane in `.github/workflows/rust.yml` exercises this configuration and checks that its dependency graph excludes wgpu.

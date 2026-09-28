@@ -331,7 +331,7 @@ pub enum FrameSet {
     /// macOS zero-copy: retained CVPixelBuffers from VideoToolbox
     /// decode, one per camera. The session imports these as Metal
     /// textures each frame.
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
     MetalResident([crate::interop::metal::RetainedCVPixelBuffer; 2]),
     /// Windows D3D11VA zero-copy: decoded frames still on D3D11 GPU
     /// memory, one per camera. The session stages these into shared
@@ -350,7 +350,6 @@ pub enum FrameSet {
 impl FrameSet {
     /// Owned image payload retained by this descriptor, excluding separately
     /// accounted staging pools and borrowed native handles.
-    #[cfg(feature = "gpu")]
     pub(crate) fn retained_image_bytes(&self) -> Result<usize, String> {
         let sum = |total: usize, bytes: usize| total.checked_add(bytes);
         let bytes = match self {
@@ -362,7 +361,7 @@ impl FrameSet {
                 .iter()
                 .flat_map(|f| [f.y.capacity(), f.uv.capacity()])
                 .try_fold(0, sum),
-            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
             Self::MetalResident(frames) => frames
                 .iter()
                 .try_fold(0usize, |total, frame| {

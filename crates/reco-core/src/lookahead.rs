@@ -1,6 +1,9 @@
 //! Checked storage accounting for lookahead scheduling.
 
-#[cfg(any(target_os = "linux", target_os = "windows", test))]
+#[cfg(any(
+    all(feature = "gpu", any(target_os = "linux", target_os = "windows")),
+    test
+))]
 pub(crate) fn pool_slots(frames: usize) -> Result<usize, String> {
     if frames == 0 {
         return Ok(2);
@@ -11,6 +14,7 @@ pub(crate) fn pool_slots(frames: usize) -> Result<usize, String> {
         .ok_or_else(|| "lookahead pool capacity overflow".into())
 }
 
+#[cfg(any(feature = "gpu", test))]
 pub(crate) fn image_bytes(
     width: u32,
     height: u32,
@@ -28,7 +32,10 @@ pub(crate) fn image_bytes(
         .ok_or_else(|| "lookahead image byte size overflow".into())
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows", test))]
+#[cfg(any(
+    all(feature = "gpu", any(target_os = "linux", target_os = "windows")),
+    test
+))]
 pub(crate) fn max_frames(per_slot: usize, budget: usize) -> usize {
     if per_slot == 0 {
         return 0;

@@ -1105,7 +1105,6 @@ mod tests {
             presented,
             core.calibration().world_to_render_pose(requested)
         );
-        #[cfg(feature = "gpu")]
         {
             let mut session =
                 crate::session::StitchSession::with_executor(cpu_engine(64, 36).executor).unwrap();

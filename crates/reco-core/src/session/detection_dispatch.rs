@@ -11,12 +11,13 @@
 use super::StitchSession;
 use crate::core::StitchCore;
 use crate::detect::detector::DetectorFrame;
+#[cfg(feature = "gpu")]
 use crate::geometry::CameraIndex;
 use crate::session::types::SessionError;
 use crate::source::FrameSet;
 
 /// Per-camera CUDA NV12 frames from the shared-texture slot pointers.
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "gpu", target_os = "linux"))]
 pub(super) fn cuda_nv12_frames(
     buffers: &[crate::interop::zero_copy::GpuBufInfo],
     slots: &[u8],
@@ -47,7 +48,7 @@ pub(super) fn cuda_nv12_frames(
 }
 
 /// Per-camera views selected from shared double-buffered textures.
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "gpu", target_os = "linux"))]
 pub(super) fn shared_nv12_frames<'a>(
     views: &'a [[wgpu::TextureView; 4]],
     slots: &[u8],
@@ -77,7 +78,7 @@ pub(super) fn shared_nv12_frames<'a>(
 
 /// Per-camera wgpu NV12 texture-view frames (shared decode textures /
 /// D3D11 staging views).
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "gpu", target_os = "windows"))]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn wgpu_nv12_frames<'a>(
     left_y: &'a wgpu::TextureView,
@@ -114,7 +115,7 @@ pub(super) fn wgpu_nv12_frames<'a>(
 }
 
 /// Per-camera Metal CVPixelBuffer frames (backends import natively).
-#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
 pub(super) fn metal_frames(
     left_cvpb: crate::interop::metal::CVPixelBufferRef,
     right_cvpb: crate::interop::metal::CVPixelBufferRef,
@@ -172,7 +173,7 @@ impl StitchSession {
     ) -> Result<crate::detect::tracker::WorldState, SessionError> {
         if self.core.detection_due(produce_index) {
             match frame {
-                #[cfg(target_os = "linux")]
+                #[cfg(all(feature = "gpu", target_os = "linux"))]
                 FrameSet::GpuResident { slots } => {
                     if self.core.detector_prefers_cuda_nv12() {
                         let bufs = self.core.executor.gpu().and_then(|g| g.cuda_buf_info());
@@ -198,7 +199,7 @@ impl StitchSession {
                         self.core.run_detection_frames(&frames);
                     }
                 }
-                #[cfg(target_os = "windows")]
+                #[cfg(all(feature = "gpu", target_os = "windows"))]
                 FrameSet::D3d11Resident(..) => {
                     let views = self
                         .gpu_exec_ref()
@@ -220,13 +221,13 @@ impl StitchSession {
                         self.core.run_detection_frames(&frames);
                     }
                 }
-                #[cfg(any(target_os = "macos", target_os = "ios"))]
+                #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
                 FrameSet::MetalResident([left, right]) => {
                     let frames =
                         metal_frames(left.as_ptr(), right.as_ptr(), left.width(), left.height());
                     self.core.run_detection_frames(&frames);
                 }
-                #[cfg(target_os = "linux")]
+                #[cfg(all(feature = "gpu", target_os = "linux"))]
                 FrameSet::NvmmResident([left, right]) => {
                     crate::profile_scope!("detect_preletterboxed_total");
                     if let Some(frames) = self.gpu_exec().nvmm_detector_frames(left, right) {
@@ -253,7 +254,7 @@ impl StitchSession {
     /// 1280); `src_width`/`src_height` are the capture resolution, used to
     /// compute the letterbox geometry. Without this the NVMM detection arm
     /// no-ops (the panner still advances, just without detections).
-    #[cfg(target_os = "linux")]
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
     pub fn setup_nvmm_detection(
         &mut self,
         model_size: u32,
@@ -313,7 +314,7 @@ impl StitchSession {
     }
 
     /// Run detection on CUDA-resident RGBA frames (Bayer zero-copy).
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
     #[allow(clippy::too_many_arguments)]
     pub fn detect_and_update_world_pose_cuda_rgba(
         &mut self,
@@ -350,7 +351,7 @@ impl StitchSession {
     }
 
     /// Detect on pre-letterboxed CUDA RGBA (NvBufSurfTransform output).
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
     pub fn detect_and_update_world_pose_cuda_rgba_letterboxed(
         &mut self,
         left_ptr: crate::interop::cuda::CUdeviceptr,
@@ -383,7 +384,7 @@ impl StitchSession {
     }
 
     /// Run GPU-resident detection from CUDA NV12 shared textures.
-    #[cfg(target_os = "linux")]
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
     pub(crate) fn detect_and_update_world_pose_cuda_nv12(
         &mut self,
         buffers: &[crate::interop::zero_copy::GpuBufInfo],
@@ -400,7 +401,7 @@ impl StitchSession {
     }
 
     /// Run Metal-resident detection from CVPixelBuffers.
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
     pub(crate) fn detect_and_update_world_pose_metal(
         &mut self,
         left_cvpb: crate::interop::metal::CVPixelBufferRef,

@@ -20,6 +20,7 @@ pub(crate) struct BufferedFrame {
     pub decode_time: std::time::Duration,
     /// VRAM pool slot index (Some when GPU-resident, None for CPU frames).
     /// The pool slot is released after rendering.
+    #[cfg(feature = "gpu")]
     pub vram_slot: Option<usize>,
     pub retained_bytes: usize,
 }
@@ -110,6 +111,7 @@ mod tests {
             detections: vec![],
             elapsed_ms: 0.0,
             decode_time: std::time::Duration::from_millis(3),
+            #[cfg(feature = "gpu")]
             vram_slot: None,
             retained_bytes: 0,
         }

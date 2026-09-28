@@ -41,19 +41,26 @@ mod tests;
 pub use sinks::{SinkDelivery, SinkErrorPolicy, SinkOptions};
 
 use crate::core::StitchCore;
+#[cfg(feature = "gpu")]
 use crate::core::types::StitchCoreError;
+#[cfg(feature = "gpu")]
 use crate::gpu::{GpuContext, OutputFormat};
+#[cfg(feature = "gpu")]
 use crate::render::renderer::InputFormat;
-use crate::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
+use crate::stitch::Executor;
+#[cfg(feature = "gpu")]
+use crate::stitch::{GpuExecutor, GpuExecutorConfig};
 
-use types::{ErrorPolicy, SessionConfig, SessionError, SessionMetrics, StitchSessionBuilder};
+use types::SessionError;
+#[cfg(feature = "gpu")]
+use types::{SessionConfig, StitchSessionBuilder};
 
 /// A high-level stitching session: a pull-loop orchestrator over the
 /// engine, adding frame buffering, sink fan-out, and telemetry.
 ///
 /// Created once per encoding job or application lifetime. Call
 /// [`add_sink`](Self::add_sink) to attach output sinks before
-/// rendering, then use [`submit_render_output`](Self::submit_render_output)
+/// rendering, then use [`render_frame`](Self::render_frame)
 /// for per-frame control or [`run`](Self::run) for batch processing.
 /// Call [`finish`](Self::finish) to flush the last frame and finalize
 /// every sink.
@@ -73,12 +80,6 @@ pub struct StitchSession {
     pub(crate) lookahead_frames: usize,
     pub(crate) lookahead_memory_bytes: usize,
     pub(crate) frame_count: u64,
-    /// Session start time for metrics computation.
-    session_start: Option<std::time::Instant>,
-    /// Error policy for the run() batch loop.
-    pub(crate) error_policy: ErrorPolicy,
-    /// Dropped frame counter (for metrics).
-    frames_dropped: u64,
     pub(crate) telemetry: crate::telemetry::TelemetryCollector,
     /// Sub-timing from the last `submit_render_output` call.
     /// Used by `process_frame_any` to split "stitch" into
@@ -88,24 +89,25 @@ pub struct StitchSession {
     /// VRAM pool slot for the frame currently being rendered
     /// (buffered lookahead path; the pool itself lives on the
     /// GPU executor).
+    #[cfg(feature = "gpu")]
     pub(crate) current_vram_slot: Option<usize>,
 
     /// Camera rotation from stream metadata, populated by
     /// [`configure_from_source`](Self::configure_from_source).
     /// Used to tell the GPU detector to flip frames during preprocessing.
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
     pub(crate) left_rotation: i32,
     /// Right camera rotation from stream metadata.
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
     pub(crate) right_rotation: i32,
     /// GPU pixel format (NV12 or P010) for D3D11VA staging pool creation.
+    #[cfg(feature = "gpu")]
     pub(crate) gpu_pixel_format: crate::render::renderer::GpuPixelFormat,
-    /// Full-range YUV (0-255) vs limited range (16-235).
-    pub(crate) is_full_range: bool,
 }
 
 impl StitchSession {
     /// Create a builder for configuring and constructing a session.
+    #[cfg(feature = "gpu")]
     pub fn builder() -> StitchSessionBuilder {
         StitchSessionBuilder {
             calibration: None,
@@ -122,6 +124,7 @@ impl StitchSession {
     }
 
     /// Create a new session, initializing the GPU automatically.
+    #[cfg(feature = "gpu")]
     pub async fn new(config: SessionConfig) -> Result<Self, SessionError> {
         let gpu = GpuContext::new().await?;
         Self::with_gpu(gpu, config)
@@ -131,6 +134,7 @@ impl StitchSession {
     ///
     /// Use this when the caller needs to control GPU selection (e.g.
     /// for zero-copy decode where the GPU must match the CUDA device).
+    #[cfg(feature = "gpu")]
     pub fn with_gpu(gpu: GpuContext, config: SessionConfig) -> Result<Self, SessionError> {
         // The executor owns the pipeline + projection + NV12 delivery;
         // the core layers readback + coverage on top. The session
@@ -164,13 +168,22 @@ impl StitchSession {
 
     /// Create a session over an already-configured executor.
     ///
-    /// The primitive constructor: [`Self::with_gpu`] is the GPU
-    /// convenience that builds the executor from a [`SessionConfig`].
-    /// With a [`CpuExecutor`](crate::stitch::CpuExecutor) arm the
-    /// session uses software rendering in the shared frame loop and
-    /// needs no GPU at all; the GPU-only entry points
-    /// (resident-frame submits, [`Self::submit_render_output`]) panic
-    /// on the CPU arm - batch consumers drive [`Self::run`].
+    /// A [`CpuExecutor`](crate::stitch::CpuExecutor) uses software rendering
+    /// in the shared frame loop without the `gpu` feature or a GPU context.
+    /// GPU constructors and resident-frame entry points require the `gpu`
+    /// feature; GPU-only methods panic on a CPU executor.
+    ///
+    /// ```
+    /// use reco_core::{calibration::Calibration, render::viewport::ViewportSize};
+    /// use reco_core::{session::StitchSession, stitch::{CpuExecutor, Executor}};
+    ///
+    /// fn cpu_session(calibration: Calibration) -> Result<StitchSession, Box<dyn std::error::Error>> {
+    ///     let executor = CpuExecutor::new(
+    ///         calibration, ViewportSize { width: 640, height: 360 }, 1920, 1080, false,
+    ///     )?;
+    ///     Ok(StitchSession::with_executor(Executor::Cpu(Box::new(executor)))?)
+    /// }
+    /// ```
     pub fn with_executor(executor: Executor) -> Result<Self, SessionError> {
         let core = StitchCore::new(executor)?;
 
@@ -181,19 +194,17 @@ impl StitchSession {
             lookahead_frames: 0,
             lookahead_memory_bytes: 0,
             frame_count: 0,
-            session_start: None,
-            error_policy: ErrorPolicy::default(),
-            frames_dropped: 0,
             telemetry: crate::telemetry::TelemetryCollector::new(),
             last_readback_time: std::time::Duration::ZERO,
             last_submit_time: std::time::Duration::ZERO,
+            #[cfg(feature = "gpu")]
             current_vram_slot: None,
-            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
             left_rotation: 0,
-            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
             right_rotation: 0,
+            #[cfg(feature = "gpu")]
             gpu_pixel_format: crate::render::renderer::GpuPixelFormat::Nv12,
-            is_full_range: false,
         })
     }
 
@@ -215,9 +226,9 @@ impl StitchSession {
         &mut self.core
     }
 
-    /// The engine's GPU executor - the resident-frame surface the
-    /// streaming session drives. The batch loop is a GPU-streaming
-    /// orchestrator, so its engine always runs the GPU arm.
+    /// GPU-only entry points use the executor's resident-frame surface.
+    /// The shared batch loop dispatches CPU frames without calling this.
+    #[cfg(feature = "gpu")]
     pub(crate) fn gpu_exec(&mut self) -> &mut GpuExecutor {
         self.core
             .executor
@@ -226,6 +237,7 @@ impl StitchSession {
     }
 
     /// Shared-reference sibling of [`Self::gpu_exec`].
+    #[cfg(feature = "gpu")]
     pub(crate) fn gpu_exec_ref(&self) -> &GpuExecutor {
         self.core
             .executor
@@ -238,6 +250,7 @@ impl StitchSession {
     /// preview textures). Panics on a CPU-executor session - use
     /// [`DetectionTarget::gpu`](crate::detect::DetectionTarget::gpu)
     /// for executor-agnostic access.
+    #[cfg(feature = "gpu")]
     pub fn gpu(&self) -> &GpuContext {
         self.gpu_exec_ref().pipeline.gpu()
     }
@@ -251,21 +264,9 @@ impl StitchSession {
     }
 
     /// The name of the GPU this session is running on.
+    #[cfg(feature = "gpu")]
     pub fn gpu_name(&self) -> &str {
         self.gpu().gpu_name()
-    }
-
-    /// Get current session performance metrics.
-    pub fn metrics(&self) -> SessionMetrics {
-        let elapsed = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
-        let secs = elapsed.as_secs_f32().max(0.001);
-        SessionMetrics {
-            frames_processed: self.frame_count,
-            frames_dropped: self.frames_dropped,
-            elapsed,
-            fps_average: self.frame_count as f32 / secs,
-            total_frames: None,
-        }
     }
 
     /// Snapshot of the session's telemetry collector.
@@ -308,7 +309,9 @@ impl StitchSession {
         // without its trailer: dropping a SinkThread disconnects its
         // channel and the worker runs the sink's own `finish` on exit,
         // and inline sinks finalize in their Drop impls.
+        #[cfg(feature = "gpu")]
         let (nv12_width, nv12_height) = self.nv12_delivery_dims();
+        #[cfg(feature = "gpu")]
         loop {
             let Some(exec) = self.core.executor.gpu_mut() else {
                 break;
@@ -351,6 +354,7 @@ impl crate::detect::DetectionTarget for StitchSession {
     fn source_dims(&self) -> (u32, u32) {
         self.core.source_dims()
     }
+    #[cfg(feature = "gpu")]
     fn gpu(&self) -> Option<&crate::gpu::GpuContext> {
         self.core.executor.gpu().map(|g| g.pipeline.gpu())
     }

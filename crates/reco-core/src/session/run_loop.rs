@@ -65,7 +65,7 @@ impl StitchSession {
         let cameras = match frame {
             FrameSet::Yuv420p(cameras) => cameras.len(),
             FrameSet::Nv12(cameras) => cameras.len(),
-            _ if self.core.executor.gpu().is_none() => {
+            _ if matches!(self.core.executor, crate::stitch::Executor::Cpu(_)) => {
                 return Err(SessionError::Config(
                     "native resident frames require a GPU executor".into(),
                 ));
@@ -92,9 +92,11 @@ impl StitchSession {
     /// Called at the start of [`run`](Self::run). Applies rotation from
     /// the source's metadata.
     fn configure_from_source(&mut self, source: &dyn FrameSource) {
-        self.gpu_pixel_format = source.gpu_pixel_format();
-        self.is_full_range = source.is_full_range();
-        self.core.set_full_range(self.is_full_range);
+        #[cfg(feature = "gpu")]
+        {
+            self.gpu_pixel_format = source.gpu_pixel_format();
+        }
+        self.core.set_full_range(source.is_full_range());
         // Apply rotation via shader UV flip ONLY for GPU-resident sources.
         // CPU sources handle rotation via buffer reversal in the decoder,
         // so applying the shader flip too would rotate 360 degrees (no-op but wrong).
@@ -108,7 +110,7 @@ impl StitchSession {
             log::info!("Rotation: UV flip left={}, right={}", lr == 180, rr == 180);
         }
         // Detector preprocessing consumes the same source orientation independently.
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
         {
             self.left_rotation = lr;
             self.right_rotation = rr;
@@ -123,7 +125,7 @@ impl StitchSession {
     /// [`run`](Self::run) when using a GPU-resident [`FrameSource`]
     /// like `SmartFileSource`.
     /// Requires a GPU executor and one shared surface per projection input.
-    #[cfg(target_os = "linux")]
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
     pub fn setup_gpu_source(
         &mut self,
         shared: &crate::interop::SharedTextureSet,
@@ -164,7 +166,8 @@ impl StitchSession {
         interrupted: &AtomicBool,
         mut on_progress: Option<ProgressCallback>,
     ) -> Result<super::types::RunResult, SessionError> {
-        if source.is_gpu_resident() && self.core.executor.gpu().is_none() {
+        if source.is_gpu_resident() && matches!(self.core.executor, crate::stitch::Executor::Cpu(_))
+        {
             return Err(SessionError::Config(
                 "native resident sources require a GPU executor".into(),
             ));
@@ -174,6 +177,7 @@ impl StitchSession {
 
         // A host-backed run cannot consume cached native staging images.
         // Release them before starting its retained-image allowance.
+        #[cfg(feature = "gpu")]
         if !source.is_gpu_resident()
             && let Some(exec) = self.core.executor.gpu_mut()
         {
@@ -201,7 +205,7 @@ impl StitchSession {
         // Drop GPU slot senders so decode threads can exit gracefully.
         // Without this, SmartFileSource::drop() deadlocks because the
         // executor's cloned senders keep the decode threads' recv() alive.
-        #[cfg(target_os = "linux")]
+        #[cfg(all(feature = "gpu", target_os = "linux"))]
         if let Some(exec) = self.core.executor.gpu_mut() {
             exec.drop_decode_channels();
         }
@@ -247,7 +251,10 @@ impl StitchSession {
         }
 
         self.core.set_requested_world_pose(smoothed_pose);
-        self.current_vram_slot = oldest.vram_slot;
+        #[cfg(feature = "gpu")]
+        {
+            self.current_vram_slot = oldest.vram_slot;
+        }
 
         let frame_t0 = std::time::Instant::now();
         let result = self.process_frame_any(
@@ -258,10 +265,13 @@ impl StitchSession {
             ctx,
         );
 
-        if let Some(slot) = oldest.vram_slot {
-            self.gpu_exec().release_pool_slot(slot);
+        #[cfg(feature = "gpu")]
+        {
+            if let Some(slot) = oldest.vram_slot {
+                self.gpu_exec().release_pool_slot(slot);
+            }
+            self.current_vram_slot = None;
         }
-        self.current_vram_slot = None;
         result?;
 
         if let Some(cb) = on_progress.as_mut() {
@@ -292,7 +302,7 @@ impl StitchSession {
         let ctx = crate::session::types::FrameLoopContext {
             tracking_complete: true,
             frame_seconds: frame_seconds(source.info().fps)?,
-            #[cfg(target_os = "linux")]
+            #[cfg(all(feature = "gpu", target_os = "linux"))]
             gpu_buf_info: self.core.executor.gpu().and_then(|g| g.cuda_buf_info()),
         };
         let n = self.lookahead_frames;
@@ -306,7 +316,7 @@ impl StitchSession {
 
         // Borrowed native surfaces need persistent staging. Metal frames own
         // retained CVPixelBuffers and render directly from those buffers.
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
         if source.is_gpu_resident() {
             let pool_size = crate::lookahead::pool_slots(n).map_err(SessionError::Config)?;
             let (w, h) = self.core.source_dims();
@@ -426,14 +436,17 @@ impl StitchSession {
 
             // Stage GPU frames to persistent slots BEFORE detection,
             // so detection can use the staged textures.
+            #[cfg(feature = "gpu")]
             let vram_slot = session.copy_to_vram_pool(&frame, *produce_count)?;
 
             let world_state = session.detect_and_track_only(&frame, elapsed, *produce_count);
             // Detection still reads the original decode surface after staging.
+            #[cfg(feature = "gpu")]
             session.release_gpu_decode_slot(&frame);
             let world_state = match world_state {
                 Ok(state) => state,
                 Err(error) => {
+                    #[cfg(feature = "gpu")]
                     if let Some(slot) = vram_slot {
                         session.gpu_exec().release_pool_slot(slot);
                     }
@@ -448,6 +461,7 @@ impl StitchSession {
                 detections,
                 elapsed_ms: elapsed.as_secs_f64() * 1000.0,
                 decode_time,
+                #[cfg(feature = "gpu")]
                 vram_slot,
                 retained_bytes,
             });
@@ -595,11 +609,13 @@ impl StitchSession {
                 completion,
             })
         })();
+        #[cfg(feature = "gpu")]
         while let Some(frame) = buffer.pop() {
             if let Some(slot) = frame.vram_slot {
                 self.gpu_exec().release_pool_slot(slot);
             }
         }
+        #[cfg(feature = "gpu")]
         for (frame, _) in pose_queue {
             if let Some(slot) = frame.vram_slot {
                 self.gpu_exec().release_pool_slot(slot);
@@ -623,7 +639,7 @@ impl StitchSession {
         let ctx = crate::session::types::FrameLoopContext {
             tracking_complete: false,
             frame_seconds: frame_seconds(source.info().fps)?,
-            #[cfg(target_os = "linux")]
+            #[cfg(all(feature = "gpu", target_os = "linux"))]
             gpu_buf_info: self.core.executor.gpu().and_then(|g| g.cuda_buf_info()),
         };
 

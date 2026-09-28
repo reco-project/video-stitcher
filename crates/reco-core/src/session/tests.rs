@@ -124,15 +124,16 @@ fn reused_session_applies_both_full_and_limited_source_ranges() {
                 None,
             )
             .unwrap();
-        let crate::stitch::Executor::Cpu(executor) = &session.core.executor else {
-            panic!("expected CPU")
-        };
-        assert_eq!(executor.full_range, full_range);
+        assert!(matches!(
+            &session.core.executor,
+            crate::stitch::Executor::Cpu(executor) if executor.full_range == full_range
+        ));
     }
 }
 
 #[test]
 #[ignore = "requires GPU readback"]
+#[cfg(feature = "gpu")]
 fn reused_session_replaces_source_rotation_without_double_flipping_host_frames() {
     struct EmptySource {
         native: bool,
@@ -237,6 +238,7 @@ impl Detector for MockDetector {
 
 /// Mock tracker that records how many detections it received each
 /// frame and returns a single "ball" entity.
+#[cfg(feature = "gpu")]
 struct MockTracker {
     log: Arc<Mutex<Vec<TrackerSnapshot>>>,
     class_id: u16,
@@ -244,18 +246,21 @@ struct MockTracker {
 
 /// Snapshot of what a tracker saw on a single `update()` call.
 #[derive(Debug, PartialEq)]
+#[cfg(feature = "gpu")]
 struct TrackerSnapshot {
     frame_index: u64,
     detection_count: usize,
     fresh: bool,
 }
 
+#[cfg(feature = "gpu")]
 impl MockTracker {
     fn new(class_id: u16, log: Arc<Mutex<Vec<TrackerSnapshot>>>) -> Self {
         Self { class_id, log }
     }
 }
 
+#[cfg(feature = "gpu")]
 impl Tracker for MockTracker {
     fn update(
         &mut self,
@@ -340,10 +345,12 @@ impl OutputSink for MockEncoder {
 /// previous-pose threading) and answers a deterministic pose per
 /// frame. Two entry points driving one AI stack must produce
 /// identical logs.
+#[cfg(feature = "gpu")]
 struct RecordingPanner {
     log: Arc<Mutex<Vec<(u64, WorldPose)>>>,
 }
 
+#[cfg(feature = "gpu")]
 impl Panner for RecordingPanner {
     fn decide(&mut self, _world: &WorldState, ctx: &PanContext<'_>) -> WorldPose {
         self.log
@@ -378,6 +385,7 @@ impl Panner for NanPanner {
 /// Build a session using the builder pattern with test defaults.
 /// Trackers and panners are attached post-build (they have their own
 /// setters and aren't part of the builder API).
+#[cfg(feature = "gpu")]
 fn build_test_session(
     encoder: Option<Box<dyn OutputSink>>,
     detector: Option<Box<dyn Detector>>,
@@ -404,6 +412,7 @@ fn build_test_session(
 
 #[test]
 #[ignore] // requires GPU
+#[cfg(feature = "gpu")]
 fn basic_frame_loop() {
     let submitted = Arc::new(AtomicU64::new(0));
     let encoder = MockEncoder::new(Arc::clone(&submitted));
@@ -436,6 +445,7 @@ fn basic_frame_loop() {
 #[cfg(target_os = "linux")]
 #[test]
 #[ignore = "requires GPU staging allocation"]
+#[cfg(feature = "gpu")]
 fn host_run_releases_native_history_before_budget_admission() {
     struct NativeEmptySource;
     impl FrameSource for NativeEmptySource {
@@ -496,6 +506,7 @@ fn host_run_releases_native_history_before_budget_admission() {
 
 #[test]
 #[ignore] // requires GPU
+#[cfg(feature = "gpu")]
 fn tracker_receives_detections() {
     let call_count = Arc::new(AtomicU64::new(0));
     let canned = vec![
@@ -563,6 +574,7 @@ fn tracker_receives_detections() {
 
 #[test]
 #[ignore] // requires GPU
+#[cfg(feature = "gpu")]
 fn tracker_freshness_matches_inference_with_and_without_lookahead() {
     for lookahead in [0, 2] {
         let calls = Arc::new(AtomicU64::new(0));
@@ -612,6 +624,7 @@ fn tracker_freshness_matches_inference_with_and_without_lookahead() {
 
 #[test]
 #[ignore] // requires GPU
+#[cfg(feature = "gpu")]
 fn detection_interval_respected() {
     let call_count = Arc::new(AtomicU64::new(0));
     let canned = vec![Detection {
@@ -656,6 +669,7 @@ fn detection_interval_respected() {
 
 #[test]
 #[ignore] // requires GPU
+#[cfg(feature = "gpu")]
 fn nan_panner_is_rejected_before_output() {
     let submitted = Arc::new(AtomicU64::new(0));
     let encoder = MockEncoder::new(Arc::clone(&submitted));
@@ -764,6 +778,7 @@ fn cancellation_does_not_hide_source_or_finalization_errors() {
 
 #[test]
 #[ignore] // requires GPU
+#[cfg(feature = "gpu")]
 fn gpu_run_completion_with_and_without_lookahead() {
     for lookahead in [0, 4] {
         for cancel_after in [None, Some(0), Some(2)] {
@@ -800,6 +815,7 @@ fn gpu_run_completion_with_and_without_lookahead() {
 
 #[test]
 #[ignore] // requires GPU; exercised by the GPU session completion CI step
+#[cfg(feature = "gpu")]
 fn gpu_run_completion_after_source_eof() {
     struct EofSource {
         source: MockSource,
@@ -918,6 +934,7 @@ fn compute_frame_limit_negative_fps_uses_fallback() {
 /// untouched.
 #[test]
 #[ignore] // requires GPU
+#[cfg(feature = "gpu")]
 fn push_and_pull_share_one_ai_brain() {
     const FRAMES: u64 = 6;
     let canned = vec![Detection {

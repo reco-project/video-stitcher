@@ -80,6 +80,14 @@ fn coverage_runs_once_after_immediate_or_lookahead_decisions() {
     };
     let config = MapConfig::default();
     for (gpu, lookahead) in [(false, 0), (false, 8), (true, 0), (true, 8)] {
+        let executor = Executor::Cpu(Box::new(
+            CpuExecutor::new(cal.clone(), size.clone(), W, H, false).unwrap(),
+        ));
+        #[cfg(not(feature = "gpu"))]
+        if gpu {
+            continue;
+        }
+        #[cfg(feature = "gpu")]
         let executor = if gpu {
             let Some(gpu) = crate::stitch::test_support::gpu_or_skip() else {
                 continue;
@@ -100,9 +108,7 @@ fn coverage_runs_once_after_immediate_or_lookahead_decisions() {
                 .unwrap(),
             ))
         } else {
-            Executor::Cpu(Box::new(
-                CpuExecutor::new(cal.clone(), size.clone(), W, H, false).unwrap(),
-            ))
+            executor
         };
         let mut session = StitchSession::with_executor(executor).unwrap();
         session.core_mut().prepare_coverage().unwrap();

@@ -74,11 +74,8 @@ macro_rules! profile_scope {
 #[cfg(feature = "gpu")]
 pub use wgpu;
 
-// The `gpu` feature (default-on) gates the wgpu render stack. What
-// remains without it is the wgpu-free leaf for GPU-less targets:
-// calibration, geometry, projection, the CPU stitch path, and the
-// pure value/trait modules (source, detect sans GPU frames, sink,
-// telemetry).
+// The `gpu` feature gates GPU rendering and platform interop. CPU rendering,
+// engine/session orchestration and source/detection/sink traits remain available.
 #[cfg(feature = "gpu")]
 pub mod bayer;
 pub mod calibration;
@@ -93,16 +90,13 @@ pub mod gpu;
 #[cfg(feature = "gpu")]
 pub mod interop;
 pub mod lens;
-#[cfg(any(feature = "gpu", test))]
 mod lookahead;
 #[cfg(all(target_os = "linux", feature = "gpu"))]
 pub mod nvbuf_transform;
 pub mod projection;
 pub mod render;
-#[cfg(feature = "gpu")]
 pub mod session;
 pub mod sink;
-#[cfg(feature = "gpu")]
 pub(crate) mod sink_thread;
 pub mod source;
 pub mod stitch;
