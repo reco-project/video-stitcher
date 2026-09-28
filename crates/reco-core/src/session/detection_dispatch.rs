@@ -15,72 +15,6 @@ use crate::geometry::CameraIndex;
 use crate::session::types::SessionError;
 use crate::source::FrameSet;
 
-/// Per-camera CPU frames for a CPU-resident two-camera set; `None` for
-/// GPU-resident variants (their arms build residency-specific frames)
-/// and for set shapes without a detection mapping (mono).
-fn cpu_frames<'a>(
-    frame: &'a FrameSet,
-    width: u32,
-    height: u32,
-) -> Option<[(CameraIndex, DetectorFrame<'a>); 2]> {
-    use crate::detect::detector::{ChromaPlanes, YuvView};
-    match frame {
-        FrameSet::Yuv420p(cams) => match cams.as_slice() {
-            [left, right] => Some([
-                (
-                    0,
-                    DetectorFrame::Yuv(YuvView {
-                        y: &left.y,
-                        chroma: ChromaPlanes::Yuv420p {
-                            u: &left.u,
-                            v: &left.v,
-                        },
-                        width,
-                        height,
-                    }),
-                ),
-                (
-                    1,
-                    DetectorFrame::Yuv(YuvView {
-                        y: &right.y,
-                        chroma: ChromaPlanes::Yuv420p {
-                            u: &right.u,
-                            v: &right.v,
-                        },
-                        width,
-                        height,
-                    }),
-                ),
-            ]),
-            _ => None,
-        },
-        FrameSet::Nv12(cams) => match cams.as_slice() {
-            [left, right] => Some([
-                (
-                    0,
-                    DetectorFrame::Yuv(YuvView {
-                        y: &left.y,
-                        chroma: ChromaPlanes::Nv12 { uv: &left.uv },
-                        width,
-                        height,
-                    }),
-                ),
-                (
-                    1,
-                    DetectorFrame::Yuv(YuvView {
-                        y: &right.y,
-                        chroma: ChromaPlanes::Nv12 { uv: &right.uv },
-                        width,
-                        height,
-                    }),
-                ),
-            ]),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
 /// Per-camera CUDA NV12 frames from the shared-texture slot pointers.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub(super) fn cuda_nv12_frames(
@@ -292,10 +226,7 @@ impl StitchSession {
                     }
                 }
                 _ => {
-                    let (w, h) = self.core.source_dims();
-                    if let Some(frames) = cpu_frames(frame, w, h) {
-                        self.core.run_detection_frames(&frames);
-                    }
+                    self.core.run_cpu_detection(frame);
                 }
             }
         }
@@ -332,11 +263,8 @@ impl StitchSession {
         frame: &FrameSet,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
-        let (w, h) = self.core.source_dims();
         self.detect_and_update_world_pose_with(elapsed, |core| {
-            if let Some(frames) = cpu_frames(frame, w, h) {
-                core.run_detection_frames(&frames);
-            }
+            core.run_cpu_detection(frame);
         })
     }
 

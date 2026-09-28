@@ -5,7 +5,6 @@ use crate::detect::mapped_detection::MappedDetection;
 use crate::detect::tracker::WorldState;
 use crate::geometry::CameraIndex;
 use crate::geometry::WorldPose;
-use crate::render::planes::Yuv420pPlanes;
 
 /// Tracking statistics from one [`super::StitchCore::dispatch_pose`] tick.
 #[cfg_attr(not(feature = "gpu"), allow(dead_code))] // session (gpu-gated) reads these
@@ -180,73 +179,47 @@ impl super::StitchCore {
         self.detections_fresh = fresh;
     }
 
-    /// Run detection on a stereo YUV420P frame pair - wraps each
-    /// camera's planes as [`YuvView`] + [`DetectorFrame::Yuv`] and
-    /// feeds [`Self::run_detection_frames`].
-    pub(super) fn run_yuv_detection(
-        &mut self,
-        left: &Yuv420pPlanes<'_>,
-        right: &Yuv420pPlanes<'_>,
-        source_width: u32,
-        source_height: u32,
-    ) {
-        self.run_detection_frames(&[
-            (
-                0,
-                DetectorFrame::Yuv(YuvView {
-                    y: left.y,
-                    chroma: ChromaPlanes::Yuv420p {
-                        u: left.u,
-                        v: left.v,
-                    },
-                    width: source_width,
-                    height: source_height,
-                }),
-            ),
-            (
-                1,
-                DetectorFrame::Yuv(YuvView {
-                    y: right.y,
-                    chroma: ChromaPlanes::Yuv420p {
-                        u: right.u,
-                        v: right.v,
-                    },
-                    width: source_width,
-                    height: source_height,
-                }),
-            ),
-        ]);
-    }
-
-    /// NV12 sibling of [`Self::run_yuv_detection`] - same dispatch,
-    /// interleaved-chroma frames (camera and X5 sources are NV12-native).
-    pub(super) fn run_nv12_detection(
-        &mut self,
-        left: &crate::render::planes::Nv12Planes<'_>,
-        right: &crate::render::planes::Nv12Planes<'_>,
-        source_width: u32,
-        source_height: u32,
-    ) {
-        self.run_detection_frames(&[
-            (
-                0,
-                DetectorFrame::Yuv(YuvView {
-                    y: left.y,
-                    chroma: ChromaPlanes::Nv12 { uv: left.uv },
-                    width: source_width,
-                    height: source_height,
-                }),
-            ),
-            (
-                1,
-                DetectorFrame::Yuv(YuvView {
-                    y: right.y,
-                    chroma: ChromaPlanes::Nv12 { uv: right.uv },
-                    width: source_width,
-                    height: source_height,
-                }),
-            ),
-        ]);
+    /// Wrap CPU-resident cameras in projection order for the shared detector.
+    pub(crate) fn run_cpu_detection(&mut self, frame: &crate::source::FrameSet) {
+        use crate::source::FrameSet;
+        let (width, height) = self.source_dims();
+        let frames: Vec<_> = match frame {
+            FrameSet::Yuv420p(cameras) => cameras
+                .iter()
+                .enumerate()
+                .map(|(camera, data)| {
+                    (
+                        camera,
+                        DetectorFrame::Yuv(YuvView {
+                            y: &data.y,
+                            chroma: ChromaPlanes::Yuv420p {
+                                u: &data.u,
+                                v: &data.v,
+                            },
+                            width,
+                            height,
+                        }),
+                    )
+                })
+                .collect(),
+            FrameSet::Nv12(cameras) => cameras
+                .iter()
+                .enumerate()
+                .map(|(camera, data)| {
+                    (
+                        camera,
+                        DetectorFrame::Yuv(YuvView {
+                            y: &data.y,
+                            chroma: ChromaPlanes::Nv12 { uv: &data.uv },
+                            width,
+                            height,
+                        }),
+                    )
+                })
+                .collect(),
+            _ => return,
+        };
+        self.run_detection_frames(&frames);
     }
 
     /// Enrich raw source-image detections with world-reference angular positions for tracking.

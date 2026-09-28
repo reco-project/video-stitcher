@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use super::StitchSession;
 mod coverage;
+mod cpu_detection;
 use super::types::*;
 use crate::calibration::{Calibration, Framing, Lens};
 use crate::detect::detector::{Detection, Detector, DetectorError, DetectorFrame};

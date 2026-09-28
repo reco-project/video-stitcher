@@ -34,7 +34,7 @@ pub struct MappedDetection {
     pub camera_size: (f32, f32),
 
     /// World-reference angular position (yaw/pitch, before rig tilt/roll orientation).
-    /// `None` if mapping is unsupported or the source point cannot be mapped.
+    /// `None` if the camera index or source point cannot be mapped.
     pub position: Option<YawPitch>,
 }
 

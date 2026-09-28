@@ -29,10 +29,8 @@ impl super::StitchCore {
     /// The set length is validated against the projection's camera
     /// count by the executor (`check_camera_count` on the CPU arm; the
     /// GPU render program is two-camera until the mono GPU pass lands,
-    /// so other lengths get a typed error there). Detection and the
-    /// stacked replay recorder consume two-camera sets only today -
-    /// other sets render without them (the detector warns once and
-    /// idles).
+    /// so other lengths get a typed error there). Detection consumes every camera; the stacked replay recorder
+    /// consumes two-camera sets only.
     ///
     /// GPU-resident variants (shared-texture slots, D3D11, NVMM,
     /// Metal) are session-managed zero-copy paths, not push submits;
@@ -58,7 +56,9 @@ impl super::StitchCore {
                     let (src_w, src_h) = self.executor.source_dims();
                     recorder.record_yuv(&left.as_planes(), &right.as_planes(), src_w, src_h);
                 }
-                self.detect_yuv_set(cams);
+                if self.detection_due(self.frame_count) {
+                    self.run_cpu_detection(frames);
+                }
                 let requested = self.request_current_pose();
                 let pose = self.advance_pose(requested, self.frame_count, frame_seconds)?;
                 match &self.executor {
@@ -80,7 +80,9 @@ impl super::StitchCore {
                 self.anchor_session_start();
                 // The stacked replay recorder is YUV420P-native and
                 // does not tap NV12 submits today.
-                self.detect_nv12_set(cams);
+                if self.detection_due(self.frame_count) {
+                    self.run_cpu_detection(frames);
+                }
                 let requested = self.request_current_pose();
                 let pose = self.advance_pose(requested, self.frame_count, frame_seconds)?;
                 match &self.executor {
@@ -103,48 +105,6 @@ impl super::StitchCore {
                  submit_frame takes CPU-resident sets (YUV420P / NV12)"
                     .into(),
             )),
-        }
-    }
-
-    /// Run scheduled detection on a YUV420P set. Detection mapping is
-    /// two-camera only today; other set lengths warn once and idle.
-    fn detect_yuv_set(&mut self, cams: &[crate::source::Yuv420pData]) {
-        if !self.detection_due(self.frame_count) {
-            return;
-        }
-        match cams {
-            [left, right] => {
-                let (src_w, src_h) = self.executor.source_dims();
-                self.run_yuv_detection(&left.as_planes(), &right.as_planes(), src_w, src_h);
-            }
-            _ => {
-                self.warn_detection_unmapped();
-            }
-        }
-    }
-
-    /// NV12 counterpart of [`Self::detect_yuv_set`].
-    fn detect_nv12_set(&mut self, cams: &[crate::source::Nv12Data]) {
-        if !self.detection_due(self.frame_count) {
-            return;
-        }
-        match cams {
-            [left, right] => {
-                let (src_w, src_h) = self.executor.source_dims();
-                self.run_nv12_detection(&left.as_planes(), &right.as_planes(), src_w, src_h);
-            }
-            _ => {
-                self.warn_detection_unmapped();
-            }
-        }
-    }
-
-    /// One-time warning when a detector is attached but the set shape
-    /// has no detection mapping (mono topologies).
-    fn warn_detection_unmapped(&mut self) {
-        if !self.mono_detection_warned {
-            self.mono_detection_warned = true;
-            log::warn!("detection is not supported on mono topologies yet; the detector idles");
         }
     }
 

@@ -93,12 +93,21 @@ impl ProjectionGeometry for Cylinder {
 
     fn map_source_point(
         &self,
-        _camera: CameraIndex,
-        _point: [f32; 2],
-        _lenses: &[Lens],
+        camera: CameraIndex,
+        point: [f32; 2],
+        lenses: &[Lens],
         _framing: &Framing,
     ) -> Result<crate::geometry::YawPitch, SourceMapError> {
-        Err(SourceMapError::Unsupported)
+        let lens = lenses.get(camera).ok_or(SourceMapError::InvalidCamera)?;
+        let height = self.surface_height.unwrap_or(f64::from(lens.height));
+        let theta = (f64::from(point[0]) - 0.5) * self.arc_deg.to_radians();
+        let y = (0.5 - f64::from(point[1])) * height;
+        // World-reference angles around the cylinder's origin. Rig tilt/roll
+        // belongs to world_to_render_pose, not the painted surface coordinates.
+        Ok(crate::geometry::YawPitch {
+            yaw: -theta as f32,
+            pitch: y.atan2(self.radius) as f32,
+        })
     }
 
     fn surface_maps(&self, ctx: &ProjectionContext) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {
@@ -345,6 +354,95 @@ impl SurfaceMap for CylinderMap {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::calibration::Calibration;
+    use crate::geometry::WorldPose;
+
+    #[test]
+    fn source_mapping_round_trips_through_framed_render_surfaces() {
+        for arc_deg in [1.0, 90.0, 180.0, 270.0, 360.0] {
+            for surface_height in [None, Some(80.0)] {
+                for (tilt, roll) in [(0.0, 0.0), (0.21, -0.15)] {
+                    let cal = Calibration::new(
+                        vec![Lens::flat(128, 32)],
+                        Cylinder {
+                            radius: 40.0,
+                            arc_deg,
+                            surface_height,
+                        },
+                        Framing {
+                            axis_offset: 0.7,
+                            tilt,
+                            roll,
+                        },
+                    );
+                    cal.validate().unwrap();
+                    for u in [0.001, 0.1, 0.5, 0.9, 0.999] {
+                        for v in [0.02, 0.3, 0.5, 0.98] {
+                            let angle = cal.map_source_point(0, [u, v]).unwrap();
+                            let pose = cal.world_to_render_pose(WorldPose {
+                                yaw: angle.yaw,
+                                pitch: angle.pitch,
+                                fov_degrees: 30.0,
+                            });
+                            let maps = cal.surface_maps(
+                                &ViewportSize {
+                                    width: 1,
+                                    height: 1,
+                                },
+                                pose,
+                            );
+                            let sample = maps[0].0.sample_uv([0.0, 0.0]).unwrap();
+                            assert!(
+                                (sample.u - f64::from(u)).abs() < 2e-5,
+                                "u={} expected={u} arc={arc_deg} tilt={tilt} roll={roll}",
+                                sample.u
+                            );
+                            assert!((sample.v - f64::from(v)).abs() < 2e-5);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn source_mapping_has_correct_scale_edges_and_full_circle_seam() {
+        let mut cal = Calibration::new(
+            vec![Lens::flat(128, 32)],
+            Cylinder {
+                radius: 16.0,
+                arc_deg: 180.0,
+                surface_height: None,
+            },
+            level(),
+        );
+        let left_top = cal.map_source_point(0, [0.0, 0.0]).unwrap();
+        let right_bottom = cal.map_source_point(0, [1.0, 1.0]).unwrap();
+        assert!((left_top.yaw - std::f32::consts::FRAC_PI_2).abs() < 1e-6);
+        assert!((left_top.pitch - std::f32::consts::FRAC_PI_4).abs() < 1e-6);
+        assert_eq!(left_top.yaw, -right_bottom.yaw);
+        assert_eq!(left_top.pitch, -right_bottom.pitch);
+        cal.projection = Cylinder {
+            radius: 16.0,
+            arc_deg: 360.0,
+            surface_height: Some(64.0),
+        }
+        .into();
+        let a = cal.map_source_point(0, [0.0, 0.5]).unwrap();
+        let b = cal.map_source_point(0, [1.0, 0.5]).unwrap();
+        assert!((a.yaw - std::f32::consts::PI).abs() < 1e-6);
+        assert!((b.yaw + std::f32::consts::PI).abs() < 1e-6);
+        assert!((a.yaw - b.yaw).sin().abs() < 1e-6);
+        assert!((cal.map_source_point(0, [0.5, 0.0]).unwrap().pitch - 2.0_f32.atan()).abs() < 1e-6);
+        assert_eq!(
+            cal.map_source_point(1, [0.5, 0.5]),
+            Err(SourceMapError::InvalidCamera)
+        );
+        assert_eq!(
+            cal.map_source_point(0, [f32::NAN, 0.5]),
+            Err(SourceMapError::InvalidPoint)
+        );
+    }
 
     /// 1080px source; the defaults (r=2400px, 180-degree arc) give a
     /// vertical band of atan(540/2400) = +-0.221 rad of pitch.
