@@ -1,0 +1,477 @@
+use super::*;
+use std::sync::Arc;
+
+fn config() -> Config {
+    Config {
+        wait_us: 20,
+        skew_us: 5,
+        max_age_us: 65,
+        capacity: 4,
+    }
+}
+fn selector(n: usize) -> Selector<Arc<i64>> {
+    Selector::new(n, config()).unwrap()
+}
+fn push(s: &mut Selector<Arc<i64>>, camera: usize, capture: i64, arrived: i64) {
+    s.push(
+        camera,
+        Capture {
+            time_us: capture,
+            image: Arc::new(capture),
+        },
+        arrived,
+    )
+    .unwrap();
+}
+fn seed(s: &mut Selector<Arc<i64>>, n: usize) {
+    for camera in 0..n {
+        push(s, camera, 0, 0);
+    }
+    assert!(s.poll(0, 0).unwrap().is_some());
+}
+fn captures(set: &Selection<Arc<i64>>) -> Vec<i64> {
+    set.captures.iter().map(|capture| capture.time_us).collect()
+}
+
+#[test]
+fn expired_owners_are_released_before_waiting_for_replacement() {
+    let mut s = selector(1);
+    push(&mut s, 0, 0, 0);
+    let first = s.poll(0, 0).unwrap().unwrap();
+    let weak = Arc::downgrade(&first.captures[0].image);
+    drop(first);
+    assert!(s.poll(100, 90).unwrap().is_none());
+    assert!(
+        weak.upgrade().is_none(),
+        "an expired image must not starve its producer's pool"
+    );
+    assert!(matches!(s.poll(100, 120), Err(Error::Expired(0))));
+    assert!(matches!(
+        s.push(
+            0,
+            Capture {
+                time_us: 0,
+                image: Arc::new(0)
+            },
+            120
+        ),
+        Err(Error::Clock)
+    ));
+    push(&mut s, 0, 102, 110);
+    assert_eq!(captures(&s.poll(100, 120).unwrap().unwrap()), vec![102]);
+}
+
+#[test]
+fn independent_receipt_queues_can_be_drained_after_a_poll() {
+    let mut s = selector(2);
+    seed(&mut s, 2);
+    push(&mut s, 0, 30, 38);
+    assert!(s.poll(30, 40).unwrap().is_none());
+    push(&mut s, 1, 30, 32);
+    assert_eq!(captures(&s.poll(30, 40).unwrap().unwrap()), vec![30, 30]);
+}
+
+#[test]
+fn future_receipts_cannot_be_selected_early() {
+    let mut s = selector(2);
+    push(&mut s, 0, 30, 45);
+    push(&mut s, 1, 30, 35);
+    assert!(s.poll(30, 40).unwrap().is_none());
+    assert_eq!(captures(&s.poll(30, 45).unwrap().unwrap()), vec![30, 30]);
+}
+
+#[test]
+fn one_two_three_inputs_recover_in_every_camera_position() {
+    for n in 1..=3 {
+        for missing in 0..n {
+            let mut s = selector(n);
+            seed(&mut s, n);
+            for camera in 0..n {
+                if camera != missing {
+                    push(&mut s, camera, 30, 30);
+                }
+            }
+            assert!(s.poll(30, 49).unwrap().is_none());
+            let set = s.poll(30, 50).unwrap().unwrap();
+            assert_eq!(set.at_us, 30);
+            for (camera, frame) in set.captures.iter().enumerate() {
+                assert_eq!(frame.time_us, if camera == missing { 0 } else { 30 });
+            }
+            for camera in 0..n {
+                push(&mut s, camera, 60, 60);
+            }
+            assert_eq!(captures(&s.poll(60, 60).unwrap().unwrap()), vec![60; n]);
+        }
+    }
+}
+
+#[test]
+fn future_of_slot_has_valid_media_assessment_time() {
+    let mut s = selector(3);
+    for camera in 0..3 {
+        push(&mut s, camera, camera as i64 * 2, 4);
+    }
+    let set = s.poll(0, 4).unwrap().unwrap();
+    assert_eq!(set.at_us, 4);
+    assert_eq!(captures(&set), vec![0, 2, 4]);
+    assert!(set.captures.iter().all(|frame| frame.time_us <= set.at_us));
+    assert!(matches!(s.poll(4, 5), Err(Error::Clock)));
+}
+
+#[test]
+fn a_retained_image_can_pair_better_than_its_newer_replacement() {
+    let mut s = Selector::new(
+        2,
+        Config {
+            wait_us: 20,
+            skew_us: 20,
+            max_age_us: 65,
+            capacity: 4,
+        },
+    )
+    .unwrap();
+    push(&mut s, 0, 12, 12);
+    push(&mut s, 1, 0, 12);
+    let first = s.poll(0, 12).unwrap().unwrap();
+    push(&mut s, 0, 45, 45);
+    push(&mut s, 1, 24, 45);
+    assert!(s.poll(30, 45).unwrap().is_none());
+    let held = s.poll(30, 50).unwrap().unwrap();
+    assert_eq!(captures(&held), vec![12, 24]);
+    assert!(Arc::ptr_eq(
+        &first.captures[0].image,
+        &held.captures[0].image
+    ));
+    push(&mut s, 1, 55, 55);
+    assert_eq!(captures(&s.poll(60, 60).unwrap().unwrap()), vec![45, 55]);
+}
+
+#[test]
+fn output_phase_does_not_discard_an_age_valid_new_pair() {
+    let mut s = selector(2);
+    push(&mut s, 0, 22, 24);
+    push(&mut s, 1, 24, 24);
+    assert_eq!(captures(&s.poll(30, 50).unwrap().unwrap()), vec![22, 24]);
+}
+
+#[test]
+fn max_individual_error_does_not_allow_double_pair_skew() {
+    let mut s = selector(2);
+    push(&mut s, 0, 0, 10);
+    push(&mut s, 1, 10, 10);
+    assert!(matches!(s.poll(5, 25), Err(Error::Skew)));
+}
+
+#[test]
+fn incompatible_new_images_hold_the_previous_set_without_weakening_skew() {
+    let mut s = selector(3);
+    seed(&mut s, 3);
+    push(&mut s, 0, 25, 35);
+    push(&mut s, 1, 35, 35);
+    assert_eq!(captures(&s.poll(30, 50).unwrap().unwrap()), vec![0; 3]);
+    assert!(matches!(s.poll(66, 86), Err(Error::Expired(_))));
+}
+
+#[test]
+fn partial_inputs_use_the_same_joint_search_as_a_complete_set() {
+    let mut s = selector(3);
+    seed(&mut s, 3);
+    push(&mut s, 0, 25, 35);
+    push(&mut s, 0, 35, 35);
+    push(&mut s, 1, 26, 35);
+    assert_eq!(captures(&s.poll(30, 50).unwrap().unwrap()), vec![25, 26, 0]);
+}
+
+#[test]
+fn joint_search_finds_a_set_that_independent_nearest_can_miss() {
+    let mut s = selector(3);
+    push(&mut s, 0, 1, 9);
+    push(&mut s, 0, 9, 9);
+    push(&mut s, 1, 8, 9);
+    push(&mut s, 2, 7, 9);
+    assert_eq!(captures(&s.poll(5, 9).unwrap().unwrap()), vec![9, 8, 7]);
+}
+
+#[test]
+fn deadline_is_absolute_even_if_poll_is_late() {
+    let mut s = selector(2);
+    seed(&mut s, 2);
+    push(&mut s, 0, 30, 30);
+    push(&mut s, 1, 30, 51);
+    let set = s.poll(30, 52).unwrap().unwrap();
+    assert_eq!(captures(&set), vec![30, 0]);
+    assert_eq!(set.at_us, 30);
+}
+
+#[test]
+fn exact_deadline_delivery_is_eligible() {
+    let mut s = selector(2);
+    push(&mut s, 0, 30, 30);
+    push(&mut s, 1, 30, 50);
+    assert_eq!(captures(&s.poll(30, 51).unwrap().unwrap()), vec![30; 2]);
+}
+
+#[test]
+fn waiting_does_not_reset_deadline_or_change_age() {
+    let mut s = selector(1);
+    seed(&mut s, 1);
+    for now in 30..50 {
+        assert!(s.poll(30, now).unwrap().is_none());
+    }
+    assert!(matches!(s.poll(31, 49), Err(Error::Clock)));
+    assert_eq!(s.poll(30, 50).unwrap().unwrap().at_us, 30);
+    assert_eq!(s.poll(60, 80).unwrap().unwrap().at_us, 60);
+    assert!(matches!(s.poll(90, 110), Err(Error::Expired(0))));
+}
+
+#[test]
+fn age_bound_includes_future_peer_shift_and_failure_is_atomic() {
+    let mut s = selector(2);
+    seed(&mut s, 2);
+    push(&mut s, 1, 66, 66);
+    assert!(matches!(s.poll(65, 85), Err(Error::Expired(0))));
+    assert_eq!(s.emitted, Some(0));
+    assert_eq!(s.queues[1][0].capture.time_us, 66);
+}
+
+#[test]
+fn inclusive_age_limit_then_both_frozen_expire() {
+    let mut s = selector(3);
+    seed(&mut s, 3);
+    assert_eq!(captures(&s.poll(65, 85).unwrap().unwrap()), vec![0; 3]);
+    assert!(matches!(s.poll(66, 86), Err(Error::Expired(0))));
+}
+
+#[test]
+fn missing_startup_does_not_invent_a_capture() {
+    let mut s = selector(2);
+    push(&mut s, 1, 0, 0);
+    assert!(matches!(s.poll(0, 20), Err(Error::Missing(0))));
+}
+
+#[test]
+fn owned_nonclone_payload_is_retained_and_queues_release_old_handles() {
+    struct Native;
+    let mut s = Selector::new(1, config()).unwrap();
+    let original = Arc::new(Native);
+    let weak = Arc::downgrade(&original);
+    s.push(
+        0,
+        Capture {
+            time_us: 0,
+            image: original.clone(),
+        },
+        0,
+    )
+    .unwrap();
+    let first = s.poll(0, 0).unwrap().unwrap();
+    assert!(Arc::ptr_eq(&original, &first.captures[0].image));
+    let held = s.poll(30, 50).unwrap().unwrap();
+    assert!(Arc::ptr_eq(&original, &held.captures[0].image));
+    drop(original);
+    drop(first);
+    drop(s);
+    assert!(weak.upgrade().is_some());
+    drop(held);
+    assert!(weak.upgrade().is_none());
+
+    let mut s = selector(3);
+    let old = Arc::new(1);
+    let weak = Arc::downgrade(&old);
+    s.push(
+        0,
+        Capture {
+            time_us: 1,
+            image: old,
+        },
+        1,
+    )
+    .unwrap();
+    for time in 2..100 {
+        for camera in 0..3 {
+            push(&mut s, camera, time, time);
+        }
+        assert!(s.queues.iter().all(|queue| queue.len() <= 4));
+    }
+    assert!(weak.upgrade().is_none());
+    assert_eq!(captures(&s.poll(99, 119).unwrap().unwrap()), vec![99; 3]);
+}
+
+#[test]
+fn invalid_time_input_does_not_poison_next_valid_delivery() {
+    let mut s = selector(2);
+    let frame = |time| Capture {
+        time_us: time,
+        image: Arc::new(time),
+    };
+    assert_eq!(s.push(2, frame(0), 0), Err(Error::Clock));
+    assert_eq!(s.push(0, frame(-1), 0), Err(Error::Clock));
+    assert_eq!(s.push(0, frame(1), 0), Err(Error::Clock));
+    push(&mut s, 0, 0, 0);
+    assert_eq!(s.push(0, frame(0), 1), Err(Error::Clock));
+    push(&mut s, 1, 0, 0);
+    assert!(s.poll(0, 0).unwrap().is_some());
+    assert!(matches!(s.poll(i64::MAX, i64::MAX), Err(Error::Clock)));
+    assert!(s.poll(1, 1).unwrap().is_none());
+    assert_eq!(s.push(0, frame(1), 0), Err(Error::Clock));
+}
+
+#[test]
+fn configuration_rejects_nonsensical_limits() {
+    assert!(Selector::<()>::new(0, config()).is_err());
+    for config in [
+        Config {
+            capacity: 0,
+            ..config()
+        },
+        Config {
+            wait_us: -1,
+            ..config()
+        },
+        Config {
+            skew_us: -1,
+            ..config()
+        },
+        Config {
+            max_age_us: 4,
+            ..config()
+        },
+    ] {
+        assert!(Selector::<()>::new(1, config).is_err());
+    }
+}
+
+// Exhaustive existence oracle, intentionally different from the N-way sweep.
+fn has_match(queues: &[Vec<i64>], selected: &mut Vec<i64>, camera: usize) -> bool {
+    if camera == queues.len() {
+        return selected.iter().max().unwrap() - selected.iter().min().unwrap() <= 5;
+    }
+    queues[camera].iter().any(|&time| {
+        selected.push(time);
+        let found = has_match(queues, selected, camera + 1);
+        selected.pop();
+        found
+    })
+}
+
+#[test]
+fn three_input_sweep_matches_brute_force_existence() {
+    let possibilities: Vec<Vec<i64>> = (1u32..16)
+        .map(|mask| {
+            [0, 3, 7, 10]
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, time)| (mask & (1 << i) != 0).then_some(time))
+                .collect()
+        })
+        .collect();
+    for a in &possibilities {
+        for b in &possibilities {
+            for c in &possibilities {
+                let queues = [a.clone(), b.clone(), c.clone()];
+                let expected = has_match(&queues, &mut Vec::new(), 0);
+                let mut s = selector(3);
+                for (camera, times) in queues.iter().enumerate() {
+                    for &time in times {
+                        push(&mut s, camera, time, 10);
+                    }
+                }
+                match s.poll(5, 25) {
+                    Ok(Some(set)) => {
+                        assert!(expected, "{queues:?}");
+                        let times = captures(&set);
+                        assert!(times.iter().max().unwrap() - times.iter().min().unwrap() <= 5);
+                    }
+                    Err(Error::Skew) => assert!(!expected, "{queues:?}"),
+                    other => panic!("unexpected result: {other:?}"),
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn retained_candidate_sweep_matches_exhaustive_latest_compatible_set() {
+    let possibilities: Vec<Vec<i64>> = (1u32..16)
+        .map(|mask| {
+            [6, 8, 12, 15]
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, time)| (mask & (1 << i) != 0).then_some(time))
+                .collect()
+        })
+        .collect();
+    for a in &possibilities {
+        for b in &possibilities {
+            for c in &possibilities {
+                let mut s = selector(3);
+                for (camera, time) in [0, 3, 5].into_iter().enumerate() {
+                    push(&mut s, camera, time, 5);
+                }
+                s.poll(5, 5).unwrap().unwrap();
+                let queues: Vec<Vec<i64>> = [a, b, c]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(camera, times)| {
+                        for &time in times {
+                            push(&mut s, camera, time, 15);
+                        }
+                        std::iter::once([0, 3, 5][camera])
+                            .chain(times.iter().copied())
+                            .collect()
+                    })
+                    .collect();
+                let mut expected = vec![0, 3, 5];
+                for &x in &queues[0] {
+                    for &y in &queues[1] {
+                        for &z in &queues[2] {
+                            if x.max(y).max(z) - x.min(y).min(z) <= 5 {
+                                for (best, value) in expected.iter_mut().zip([x, y, z]) {
+                                    *best = (*best).max(value);
+                                }
+                            }
+                        }
+                    }
+                }
+                let actual = s.poll(10, 30).unwrap().unwrap();
+                assert_eq!(captures(&actual), expected, "{queues:?}");
+                assert!(
+                    actual
+                        .captures
+                        .iter()
+                        .all(|capture| *capture.image == capture.time_us)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn long_loss_sweep_is_translation_invariant_and_bounded() {
+    fn run(origin: i64) -> Vec<Vec<i64>> {
+        let mut s = selector(3);
+        let mut output = Vec::new();
+        for slot in 0..10_000 {
+            let target = origin + slot * 30;
+            for camera in 0..3 {
+                if slot == 0 || (slot + camera as i64 * 3) % 17 != 0 {
+                    push(&mut s, camera, target, target);
+                }
+            }
+            let set = s.poll(target, target + 20).unwrap().unwrap();
+            assert!(
+                set.captures
+                    .iter()
+                    .all(|frame| set.at_us - frame.time_us <= 65)
+            );
+            assert!(
+                set.captures
+                    .iter()
+                    .all(|frame| *frame.image == frame.time_us)
+            );
+            output.push(captures(&set).iter().map(|time| time - origin).collect());
+        }
+        output
+    }
+    assert_eq!(run(0), run(9_000_000_000_000));
+}

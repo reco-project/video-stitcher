@@ -34,6 +34,7 @@ pub mod libcamera;
 pub mod v4l2;
 
 pub mod adapters;
+pub mod frame_sync;
 /// Default shipping [`reco_core::detect::pipeline_event::PipelineEventSink`]:
 /// writes each event as one JSON line. Wrap in `BackpressuredSink`
 /// to keep serialization off the render thread.
