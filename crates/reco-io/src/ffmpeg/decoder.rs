@@ -1542,7 +1542,8 @@ mod tests {
         )
         .unwrap();
         assert!(source.is_full_range());
-        let reco_core::source::FrameSet::Yuv420p(planes) = source.next_frame().unwrap().unwrap()
+        let reco_core::source::FrameSet::Yuv420p(planes) =
+            source.next_frame().unwrap().unwrap().images
         else {
             panic!("expected CPU planes")
         };
@@ -1565,7 +1566,9 @@ mod tests {
         };
         let mut encoder =
             crate::ffmpeg::encoder::VideoEncoder::new(&limited, 64, 64, R60, &config).unwrap();
-        encoder.write_nv12_frame(&[128; 64 * 64 * 3 / 2]).unwrap();
+        encoder
+            .write_nv12_frame(&[128; 64 * 64 * 3 / 2], None)
+            .unwrap();
         encoder.finish().unwrap();
         for paths in [[full.clone(), limited.clone()], [limited, full]] {
             let inputs = paths.map(crate::InputPath::Single);

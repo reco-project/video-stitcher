@@ -286,16 +286,22 @@ fn push_submissions_share_the_presentation_boundary() {
         let mut core = core();
         let cap = core.prepare_coverage().unwrap();
         let frames = if nv12 {
-            FrameSet::Nv12(vec![Nv12Data {
-                y: vec![128; 64 * 32],
-                uv: vec![128; 64 * 16],
-            }])
+            FrameSet::Nv12(vec![
+                Nv12Data {
+                    y: vec![128; 64 * 32],
+                    uv: vec![128; 64 * 16],
+                }
+                .into(),
+            ])
         } else {
-            FrameSet::Yuv420p(vec![Yuv420pData {
-                y: vec![128; 64 * 32],
-                u: vec![128; 32 * 16],
-                v: vec![128; 32 * 16],
-            }])
+            FrameSet::Yuv420p(vec![
+                Yuv420pData {
+                    y: vec![128; 64 * 32],
+                    u: vec![128; 32 * 16],
+                    v: vec![128; 32 * 16],
+                }
+                .into(),
+            ])
         };
         for _ in 0..3 {
             core.submit_frame(&frames, 1.0 / 30.0).unwrap();

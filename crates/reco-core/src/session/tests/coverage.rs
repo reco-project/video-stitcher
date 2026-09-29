@@ -28,7 +28,7 @@ fn source_rates_are_accepted_in_immediate_and_buffered_sessions() {
                 ..self.source.info()
             }
         }
-        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+        fn next_frame(&mut self) -> Result<Option<crate::source::SourceFrame>, SourceError> {
             self.source.next_frame()
         }
     }

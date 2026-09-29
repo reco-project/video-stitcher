@@ -943,6 +943,7 @@ fn main() -> anyhow::Result<()> {
                 fps: capture_fps,
                 left_device,
                 right_device,
+                synchronization: None,
             };
 
             if live_calibrate {

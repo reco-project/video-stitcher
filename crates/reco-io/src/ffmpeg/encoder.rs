@@ -405,7 +405,7 @@ type OpenedVideoEncoder = (
 ///
 /// let config = EncoderConfig::default();
 /// let mut enc = VideoEncoder::new(Path::new("out.mp4"), 1920, 1080, Rational(30, 1), &config).unwrap();
-/// // enc.write_frame(&rgba_data).unwrap();
+/// // enc.write_frame(&rgba_data, None).unwrap();
 /// enc.finish().unwrap();
 /// ```
 pub struct VideoEncoder {
@@ -415,7 +415,7 @@ pub struct VideoEncoder {
     stream_index: usize,
     encoder_time_base: Rational,
     output_time_base: Rational,
-    frame_count: i64,
+    timeline: super::encoder_timing::Timeline,
     width: u32,
     height: u32,
     finished: bool,
@@ -786,7 +786,7 @@ impl VideoEncoder {
                         stream_index,
                         encoder_time_base,
                         output_time_base,
-                        frame_count: 0,
+                        timeline: super::encoder_timing::Timeline::new(fps),
                         width,
                         height,
                         finished: false,
@@ -855,7 +855,7 @@ impl VideoEncoder {
             });
         }
         enc.set_frame_rate(Some(fps));
-        let encoder_time_base = Rational(fps.1, fps.0);
+        let encoder_time_base = super::encoder_timing::TIME_BASE;
         enc.set_time_base(encoder_time_base);
 
         // Optional GOP override for callers that need short keyframe
@@ -1259,28 +1259,39 @@ impl VideoEncoder {
         Ok(())
     }
 
-    fn send_current_yuv_frame(&mut self) -> Result<(), EncodeError> {
-        self.yuv_frame.set_pts(Some(self.frame_count));
+    fn send_current_yuv_frame(&mut self, pts_us: Option<i64>) -> Result<(), EncodeError> {
+        if self.finished {
+            return Err(EncodeError::InvalidConfig(
+                "output is already finalized".into(),
+            ));
+        }
+        let pts = self.timeline.next(pts_us)?;
+        self.yuv_frame.set_pts(Some(pts));
         if let Some(ref mut upload) = self.hardware_upload {
             let frame = upload.upload(&self.yuv_frame)?;
             self.encoder.send_frame(frame)?;
         } else {
             self.encoder.send_frame(&self.yuv_frame)?;
         }
+        self.timeline.accept(pts, pts_us.is_some());
         self.receive_and_write_packets()?;
-
-        self.frame_count += 1;
         Ok(())
     }
 
     /// Write an RGBA frame to the output file.
+    ///
+    /// `pts_us` follows [`reco_core::sink::OutputFrame::pts_us`]. The output uses a microsecond encoder clock; the container may quantize it further. No frame pacing or duplication is performed.
     ///
     /// `rgba_data` must be exactly `width * height * 4` bytes (tightly packed).
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "encode_frame")
     )]
-    pub fn write_frame(&mut self, rgba_data: &[u8]) -> Result<(), EncodeError> {
+    pub fn write_frame(
+        &mut self,
+        rgba_data: &[u8],
+        pts_us: Option<i64>,
+    ) -> Result<(), EncodeError> {
         let expected = self.width as usize * self.height as usize * 4;
         if rgba_data.len() != expected {
             return Err(EncodeError::FrameSizeMismatch {
@@ -1303,10 +1314,12 @@ impl VideoEncoder {
         }
 
         self.scaler.run(&self.rgba_frame, &mut self.yuv_frame)?;
-        self.send_current_yuv_frame()
+        self.send_current_yuv_frame(pts_us)
     }
 
     /// Write a pre-converted NV12 frame to the output file.
+    ///
+    /// `pts_us` follows [`Self::write_frame`].
     ///
     /// `nv12_data` must be exactly `width * height * 3 / 2` bytes:
     /// Y plane (`width * height`) followed by interleaved UV plane (`width * height / 2`).
@@ -1317,7 +1330,11 @@ impl VideoEncoder {
         feature = "profiling",
         tracing::instrument(skip_all, name = "encode_nv12_frame")
     )]
-    pub fn write_nv12_frame(&mut self, nv12_data: &[u8]) -> Result<(), EncodeError> {
+    pub fn write_nv12_frame(
+        &mut self,
+        nv12_data: &[u8],
+        pts_us: Option<i64>,
+    ) -> Result<(), EncodeError> {
         let expected = self.width as usize * self.height as usize * 3 / 2;
         if nv12_data.len() != expected {
             return Err(EncodeError::FrameSizeMismatch {
@@ -1374,10 +1391,12 @@ impl VideoEncoder {
             }
         }
 
-        self.send_current_yuv_frame()
+        self.send_current_yuv_frame(pts_us)
     }
 
     /// Write a pre-converted YUV420P planar frame.
+    ///
+    /// `pts_us` follows [`Self::write_frame`].
     ///
     /// Plane slices must be tightly packed (no padding between
     /// rows): Y is `width * height`, U and V are each
@@ -1400,6 +1419,7 @@ impl VideoEncoder {
         y: &[u8],
         u: &[u8],
         v: &[u8],
+        pts_us: Option<i64>,
     ) -> Result<(), EncodeError> {
         if !self.width.is_multiple_of(2) || !self.height.is_multiple_of(2) {
             return Err(EncodeError::FrameSizeMismatch {
@@ -1472,7 +1492,7 @@ impl VideoEncoder {
             }
         }
 
-        self.send_current_yuv_frame()
+        self.send_current_yuv_frame(pts_us)
     }
 
     /// Publish buffered muxer packets and bytes without finalizing the container.
@@ -1502,7 +1522,7 @@ impl VideoEncoder {
         }
         self.flush_and_finalize()?;
         self.finished = true;
-        log::info!("Encoder finished: {} frames written", self.frame_count);
+        log::info!("Encoder finished: {} frames written", self.timeline.frames);
         Ok(())
     }
 
@@ -1513,7 +1533,7 @@ impl VideoEncoder {
             filter.send(None)?;
             self.write_filtered_packets()?;
         }
-        if self.header_check.is_some() && self.frame_count > 0 {
+        if self.header_check.is_some() && self.timeline.frames > 0 {
             return Err(EncodeError::InvalidConfig(
                 "HEVC output has no readable picture header".into(),
             ));
@@ -1522,11 +1542,14 @@ impl VideoEncoder {
         // Forward audio packets trimmed to the video duration.
         if self.audio.is_some() {
             let audio_tb = self.audio.as_ref().unwrap().output_time_base;
-            let video_duration_pts = self.frame_count
-                * i64::from(self.encoder_time_base.numerator())
-                * i64::from(audio_tb.denominator())
-                / (i64::from(self.encoder_time_base.denominator())
-                    * i64::from(audio_tb.numerator()).max(1));
+            // SAFETY: pure rational rescaling into the copied audio stream's clock.
+            let video_duration_pts = unsafe {
+                ffmpeg::sys::av_rescale_q(
+                    self.timeline.end_us(),
+                    self.encoder_time_base.into(),
+                    audio_tb.into(),
+                )
+            };
             self.forward_audio_packets_until(video_duration_pts)?;
         }
 
@@ -1583,7 +1606,7 @@ impl VideoEncoder {
             // no lifetime concerns.
             let one_frame = unsafe {
                 ffmpeg::sys::av_rescale_q(
-                    1,
+                    self.timeline.duration_us(),
                     self.encoder_time_base.into(),
                     self.output_time_base.into(),
                 )

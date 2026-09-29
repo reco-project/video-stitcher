@@ -2,7 +2,7 @@
 //!
 //! Holds N decoded frames with their detection metadata so the
 //! panner can see future WorldStates when deciding the current
-//! frame's viewport position. Owned host planes and retained Metal buffers
+//! frame's viewport position. Shared host images and retained Metal buffers
 //! stay with the frame; borrowed native images use a persistent staging slot.
 
 use std::collections::VecDeque;
@@ -11,9 +11,23 @@ use crate::detect::mapped_detection::MappedDetection;
 use crate::detect::tracker::WorldState;
 use crate::source::FrameSet;
 
+#[cfg(all(feature = "gpu", target_os = "linux"))]
+pub(super) fn release_staged_nvmm(
+    frame: Option<FrameSet>,
+    slot: Option<usize>,
+) -> Option<FrameSet> {
+    if slot.is_some() && matches!(frame, Some(FrameSet::NvmmResident(_))) {
+        None
+    } else {
+        frame
+    }
+}
+
 /// A single buffered frame: decoded pixels + detection metadata.
 pub(crate) struct BufferedFrame {
-    pub frame: FrameSet,
+    /// None only when an NVMM input has been replaced by its owned VRAM copy.
+    pub frame: Option<FrameSet>,
+    pub pts_us: Option<i64>,
     pub world_state: WorldState,
     pub detections: Vec<MappedDetection>,
     pub elapsed_ms: f64,
@@ -83,18 +97,56 @@ mod tests {
     use super::*;
     use crate::detect::tracker::{TrackState, TrackedEntity, WorldState};
 
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
+    #[test]
+    fn nvmm_lookahead_releases_native_owner_after_staging() {
+        use crate::source::NvmmFrame;
+        use std::sync::Arc;
+        let mut lookahead = FrameBuffer::new(50);
+        for slot in 0..50 {
+            // A one-buffer capture pool could not produce another frame if
+            // the previous capture owner remained in the lookahead queue.
+            let owner = Arc::new(());
+            let weak = Arc::downgrade(&owner);
+            let frame = NvmmFrame::lifetime_test_frame(owner);
+            let mut buffered = make_frame(0.0);
+            buffered.frame = release_staged_nvmm(
+                Some(FrameSet::NvmmResident([frame.clone(), frame])),
+                Some(slot),
+            );
+            buffered.vram_slot = Some(slot);
+            lookahead.push(buffered);
+            assert!(weak.upgrade().is_none());
+        }
+        assert!(lookahead.is_full());
+        while let Some(frame) = lookahead.pop() {
+            assert!(frame.frame.is_none());
+            assert!(frame.vram_slot.is_some());
+        }
+        let owner = Arc::new(());
+        let weak = Arc::downgrade(&owner);
+        let frame = NvmmFrame::lifetime_test_frame(owner);
+        let unstaged =
+            release_staged_nvmm(Some(FrameSet::NvmmResident([frame.clone(), frame])), None);
+        assert!(weak.upgrade().is_some());
+        drop(unstaged);
+        assert!(weak.upgrade().is_none());
+    }
+
     fn make_frame(ball_yaw: f32) -> BufferedFrame {
         BufferedFrame {
-            frame: FrameSet::Nv12(vec![
+            frame: Some(FrameSet::Nv12(vec![
                 crate::source::Nv12Data {
                     y: vec![128; 4],
                     uv: vec![128; 2],
-                },
+                }
+                .into(),
                 crate::source::Nv12Data {
                     y: vec![128; 4],
                     uv: vec![128; 2],
-                },
-            ]),
+                }
+                .into(),
+            ])),
             world_state: WorldState {
                 ball: Some(TrackedEntity {
                     id: 0,
@@ -110,6 +162,7 @@ mod tests {
             },
             detections: vec![],
             elapsed_ms: 0.0,
+            pts_us: None,
             decode_time: std::time::Duration::from_millis(3),
             #[cfg(feature = "gpu")]
             vram_slot: None,

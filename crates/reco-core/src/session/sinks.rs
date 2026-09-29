@@ -136,7 +136,7 @@ impl AttachedSink {
         data: &[u8],
         width: u32,
         height: u32,
-        pts_us: i64,
+        pts_us: Option<i64>,
     ) -> Result<(), SinkError> {
         match &mut self.runner {
             SinkRunner::Threaded(t) => t.submit(data, pts_us),
@@ -171,15 +171,15 @@ pub(crate) fn validate_sink_input(wants: SinkInput, name: &str) -> Result<(), St
 
 /// Fan one NV12 frame out to every attached sink, in attach order.
 ///
-/// `pts_us` carries the session frame index (the file encoder tracks
-/// its own timestamps). A sink error either propagates (Abort) or
+/// `pts_us` belongs to this image, not the current render submission.
+/// A sink error either propagates (Abort) or
 /// detaches that sink with a warning and keeps going (Detach).
 pub(crate) fn deliver_frame(
     sinks: &mut Vec<AttachedSink>,
     data: &[u8],
     width: u32,
     height: u32,
-    pts_us: i64,
+    pts_us: Option<i64>,
 ) -> Result<(), SinkError> {
     let mut i = 0;
     while i < sinks.len() {
@@ -314,7 +314,7 @@ mod tests {
         ];
 
         for i in 0..5u8 {
-            deliver_frame(&mut sinks, &frame(i), 16, 16, i as i64).unwrap();
+            deliver_frame(&mut sinks, &frame(i), 16, 16, Some(i as i64)).unwrap();
         }
         finish_all(&mut sinks).unwrap();
 
@@ -342,7 +342,7 @@ mod tests {
         ];
 
         for i in 0..5u8 {
-            deliver_frame(&mut sinks, &frame(i), 16, 16, i as i64).unwrap();
+            deliver_frame(&mut sinks, &frame(i), 16, 16, Some(i as i64)).unwrap();
         }
 
         assert_eq!(sinks.len(), 1, "failing sink was detached");
@@ -365,7 +365,7 @@ mod tests {
             },
         )];
 
-        let err = deliver_frame(&mut sinks, &frame(0), 16, 16, 0);
+        let err = deliver_frame(&mut sinks, &frame(0), 16, 16, Some(0));
         assert!(err.is_err(), "abort-policy sink error must propagate");
     }
 

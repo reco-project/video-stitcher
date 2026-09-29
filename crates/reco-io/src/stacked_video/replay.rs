@@ -27,7 +27,9 @@ use reco_core::core::types::StackedReplayGpuRecorder as CoreStackedGpuRecorder;
 use reco_core::core::types::StackedReplayRecorder as CoreStackedReplayRecorder;
 use reco_core::gpu::yuv_stack_packer::StackedAtlas;
 use reco_core::render::pipeline::Yuv420pPlanes;
-use reco_core::source::{FrameSet, FrameSource, SourceError, SourceInfo, Yuv420pFrame};
+use reco_core::source::{
+    FrameSet, FrameSource, SourceError, SourceFrame, SourceInfo, Yuv420pFrame,
+};
 use std::path::Path;
 
 /// Decorator FrameSource that also writes source frames to a
@@ -159,18 +161,18 @@ impl FrameSource for ReplayRecordingSource {
         self.inner.info()
     }
 
-    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {
         let frame = self.inner.next_frame()?;
         if let Some(ref f) = frame {
-            self.record(f);
+            self.record(&f.images);
         }
         Ok(frame)
     }
 
-    fn try_next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+    fn try_next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {
         let frame = self.inner.try_next_frame()?;
         if let Some(ref f) = frame {
-            self.record(f);
+            self.record(&f.images);
         }
         Ok(frame)
     }
@@ -588,11 +590,11 @@ mod source_contract_tests {
             }
         }
 
-        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+        fn next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {
             self.try_next_frame()
         }
 
-        fn try_next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+        fn try_next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {
             self.polls += 1;
             Ok(None)
         }

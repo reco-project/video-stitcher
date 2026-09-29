@@ -1055,6 +1055,131 @@ mod tests {
     use super::*;
 
     #[test]
+    fn failed_camera_observations_stop_influencing_field_targets() {
+        use reco_core::core::StitchCore;
+        use reco_core::detect::detector::{
+            ChromaPlanes, Detection, Detector, DetectorError, DetectorFrame, YuvView,
+        };
+        use reco_core::render::viewport::ViewportSize;
+        use reco_core::stitch::{CpuExecutor, Executor};
+
+        struct Scripted;
+        impl Detector for Scripted {
+            fn name(&self) -> &'static str {
+                "scripted"
+            }
+            fn detect(
+                &mut self,
+                camera: usize,
+                frame: &DetectorFrame<'_>,
+            ) -> Result<Vec<Detection>, DetectorError> {
+                let DetectorFrame::Yuv(frame) = frame else {
+                    unreachable!()
+                };
+                match frame.y[0] {
+                    0 => Ok(vec![]),
+                    1 => Ok(vec![Detection {
+                        camera,
+                        class_id: 1,
+                        confidence: 0.9,
+                        center_x: 0.5,
+                        center_y: 0.5,
+                        width: 0.1,
+                        height: 0.1,
+                    }]),
+                    2 => Err(DetectorError::InferenceFailed("injected".into())),
+                    _ => Err(DetectorError::UnsupportedFrameKind),
+                }
+            }
+        }
+        let submit = |core: &mut StitchCore, values: [u8; 2]| {
+            let frames: Vec<_> = values
+                .iter()
+                .enumerate()
+                .map(|(camera, value)| {
+                    (
+                        camera,
+                        DetectorFrame::Yuv(YuvView {
+                            y: std::slice::from_ref(value),
+                            chroma: ChromaPlanes::Yuv420p {
+                                u: &[128],
+                                v: &[128],
+                            },
+                            width: 1,
+                            height: 1,
+                        }),
+                    )
+                })
+                .collect();
+            core.run_detection_frames(&frames, &[]).unwrap();
+        };
+        let panner = FieldPanner::with_config(
+            30.0,
+            FieldPannerConfig {
+                framing: FramingMode::FrameAll,
+                min_cluster: 1,
+                ..Default::default()
+            },
+        );
+        for failed in [0, 1] {
+            for failure in [2, 3] {
+                let executor = CpuExecutor::new(
+                    cal(),
+                    ViewportSize {
+                        width: 16,
+                        height: 16,
+                    },
+                    64,
+                    64,
+                    false,
+                )
+                .unwrap();
+                let mut core = StitchCore::new(Executor::Cpu(Box::new(executor))).unwrap();
+                core.set_detector(Box::new(Scripted));
+                core.set_player_tracker(Box::new(crate::trackers::ClassProvider::new(1)));
+                submit(&mut core, [1, 1]);
+                let measured = core.update_trackers(0, 0.0);
+                assert_eq!(measured.players.len(), 2);
+                let target = panner.raw_target(&measured);
+                assert!(target.is_some());
+                // No inference is not a failed inference: scheduled gaps retain context.
+                for tick in 1..=5 {
+                    let held = core.update_trackers(tick, tick as f64 * 33.3);
+                    assert!(held.players.iter().all(|p| p.state == TrackState::Coasting));
+                    assert_eq!(panner.raw_target(&held), target);
+                }
+                let mut values = [1, 1];
+                values[failed] = failure;
+                submit(&mut core, values);
+                let partial = core.update_trackers(6, 200.0);
+                assert_eq!(partial.players.len(), 1);
+                assert_eq!(partial.players[0].origin, 1 - failed);
+                assert_eq!(
+                    panner.raw_target(&partial),
+                    Some((partial.players[0].yaw, partial.players[0].pitch))
+                );
+                values[1 - failed] = 0;
+                for tick in 7..10_007 {
+                    submit(&mut core, values);
+                    let world = core.update_trackers(tick, tick as f64 * 33.3);
+                    assert!(world.players.is_empty());
+                    assert_eq!(panner.raw_target(&world), None);
+                }
+                submit(&mut core, [1, 1]);
+                let recovered = core.update_trackers(10_007, 333_566.0);
+                assert_eq!(recovered.players.len(), 2);
+                assert!(
+                    recovered
+                        .players
+                        .iter()
+                        .all(|p| p.state == TrackState::Tracking)
+                );
+                assert_eq!(panner.raw_target(&recovered), target);
+            }
+        }
+    }
+
+    #[test]
     fn sanitized_orders_inverted_fov_and_no_panic() {
         // An inverted FOV range used to panic f32::clamp in target_fov.
         let cfg = FieldPannerConfig {

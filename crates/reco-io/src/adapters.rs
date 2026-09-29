@@ -8,7 +8,7 @@
 #[cfg(feature = "ffmpeg")]
 use reco_core::sink::{OutputFrame, OutputSink, PixelFormat, SinkError, SinkInput};
 #[cfg(feature = "ffmpeg")]
-use reco_core::source::{FrameSet, SourceError, SourceInfo, Yuv420pData};
+use reco_core::source::{FrameSet, SourceError, SourceFrame, SourceInfo, Yuv420pData};
 
 #[cfg(feature = "ffmpeg")]
 use crate::ffmpeg;
@@ -659,7 +659,7 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         self.pixel_format
     }
 
-    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {
         if let Some(error) = &self.terminal_error {
             return Err(error.clone());
         }
@@ -672,10 +672,14 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
             .inspect_err(|error| self.terminal_error = Some(error.clone()))?;
         self.current_frame += u64::from(frames.is_some());
         self.exhausted = frames.is_none();
-        Ok(frames.map(FrameSet::Yuv420p))
+        Ok(frames.map(|images| {
+            SourceFrame::untimed(FrameSet::Yuv420p(
+                images.into_iter().map(std::sync::Arc::new).collect(),
+            ))
+        }))
     }
 
-    fn try_next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+    fn try_next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {
         if let Some(error) = &self.terminal_error {
             return Err(error.clone());
         }
@@ -688,7 +692,11 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
                     result.inspect_err(|error| self.terminal_error = Some(error.clone()))?;
                 self.current_frame += u64::from(frames.is_some());
                 self.exhausted = frames.is_none();
-                Ok(frames.map(FrameSet::Yuv420p))
+                Ok(frames.map(|images| {
+                    SourceFrame::untimed(FrameSet::Yuv420p(
+                        images.into_iter().map(std::sync::Arc::new).collect(),
+                    ))
+                }))
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => Ok(None),
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
@@ -819,22 +827,20 @@ impl OutputSink for FfmpegFileEncoder {
 
     fn consume(&mut self, frame: OutputFrame<'_>) -> Result<(), SinkError> {
         match frame.format {
-            PixelFormat::Nv12 => {
-                self.inner
-                    .write_nv12_frame(frame.data)
-                    .map_err(|e| SinkError::Consume {
-                        frame_index: None,
-                        reason: e.to_string(),
-                    })
-            }
-            PixelFormat::Rgba8 => {
-                self.inner
-                    .write_frame(frame.data)
-                    .map_err(|e| SinkError::Consume {
-                        frame_index: None,
-                        reason: e.to_string(),
-                    })
-            }
+            PixelFormat::Nv12 => self
+                .inner
+                .write_nv12_frame(frame.data, frame.pts_us)
+                .map_err(|e| SinkError::Consume {
+                    frame_index: None,
+                    reason: e.to_string(),
+                }),
+            PixelFormat::Rgba8 => self
+                .inner
+                .write_frame(frame.data, frame.pts_us)
+                .map_err(|e| SinkError::Consume {
+                    frame_index: None,
+                    reason: e.to_string(),
+                }),
         }
     }
 

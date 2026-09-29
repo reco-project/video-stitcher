@@ -447,7 +447,6 @@ struct RecordingFrame {
     data: Vec<u8>,
     width: u32,
     height: u32,
-    pts_us: i64,
 }
 
 fn preview_pose_control(engine: Option<&reco_core::core::StitchCore>) -> PoseControl {
@@ -821,7 +820,7 @@ impl AppState {
                     width: frame.width,
                     height: frame.height,
                     format: reco_core::sink::PixelFormat::Nv12,
-                    pts_us: frame.pts_us,
+                    pts_us: None,
                 });
             }
             let _ = encoder.finish();
@@ -890,18 +889,15 @@ impl AppState {
         if recording {
             let bridge = self.bridge.as_mut().unwrap();
             let (w, h) = bridge.viewport_size();
-            let fps = self.playback.fps();
 
             // Encode the accepted interactive pose, also used by the display below.
             match bridge.engine_mut().render_and_readback_nv12(frame, pose) {
                 Ok(Some(nv12)) => {
                     if let Some(tx) = self.recording_tx.as_ref() {
-                        let pts = (self.recording_frames as f64 / fps * 1_000_000.0) as i64;
                         let _ = tx.try_send(RecordingFrame {
                             data: nv12.to_vec(),
                             width: w & !3,
                             height: h & !1,
-                            pts_us: pts,
                         });
                     }
                     self.recording_frames += 1;

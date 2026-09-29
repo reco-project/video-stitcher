@@ -153,11 +153,11 @@ impl StitchSession {
     fn detect_and_update_world_pose_with(
         &mut self,
         elapsed: std::time::Duration,
-        detect_fn: impl FnOnce(&mut StitchCore),
+        detect_fn: impl FnOnce(&mut StitchCore) -> Result<(), crate::core::types::StitchCoreError>,
     ) -> Result<(), SessionError> {
         let due = self.core.detection_due(self.frame_count);
         if due {
-            detect_fn(&mut self.core);
+            detect_fn(&mut self.core)?;
         }
         self.update_world_pose(elapsed)
     }
@@ -170,7 +170,11 @@ impl StitchSession {
         frame: &FrameSet,
         elapsed: std::time::Duration,
         produce_index: u64,
+        capture: Option<&crate::source::CaptureTiming>,
+        frame_seconds: f32,
     ) -> Result<crate::detect::tracker::WorldState, SessionError> {
+        self.core.expire_observations(capture, frame_seconds)?;
+        let capture_times_us = capture.map_or(&[][..], |capture| capture.times_us.as_slice());
         if self.core.detection_due(produce_index) {
             match frame {
                 #[cfg(all(feature = "gpu", target_os = "linux"))]
@@ -184,7 +188,7 @@ impl StitchSession {
                                 slots,
                                 [self.left_rotation, self.right_rotation],
                             );
-                            self.core.run_detection_frames(&frames);
+                            self.core.run_detection_frames(&frames, capture_times_us)?;
                         }
                     } else if let Some(views) = self.shared_views() {
                         crate::profile_scope!("detect_wgpu_nv12");
@@ -196,7 +200,7 @@ impl StitchSession {
                             h,
                             [self.left_rotation, self.right_rotation],
                         );
-                        self.core.run_detection_frames(&frames);
+                        self.core.run_detection_frames(&frames, capture_times_us)?;
                     }
                 }
                 #[cfg(all(feature = "gpu", target_os = "windows"))]
@@ -218,24 +222,24 @@ impl StitchSession {
                             self.left_rotation,
                             self.right_rotation,
                         );
-                        self.core.run_detection_frames(&frames);
+                        self.core.run_detection_frames(&frames, capture_times_us)?;
                     }
                 }
                 #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
                 FrameSet::MetalResident([left, right]) => {
                     let frames =
                         metal_frames(left.as_ptr(), right.as_ptr(), left.width(), left.height());
-                    self.core.run_detection_frames(&frames);
+                    self.core.run_detection_frames(&frames, capture_times_us)?;
                 }
                 #[cfg(all(feature = "gpu", target_os = "linux"))]
                 FrameSet::NvmmResident([left, right]) => {
                     crate::profile_scope!("detect_preletterboxed_total");
                     if let Some(frames) = self.gpu_exec().nvmm_detector_frames(left, right) {
-                        self.core.run_detection_frames(&frames);
+                        self.core.run_detection_frames(&frames, capture_times_us)?;
                     }
                 }
                 _ => {
-                    self.core.run_cpu_detection(frame);
+                    self.core.run_cpu_detection(frame, capture_times_us)?;
                 }
             }
         }
@@ -267,13 +271,18 @@ impl StitchSession {
     }
 
     /// Run detection on a CPU-resident frame set (YUV420P / NV12).
+    /// Capture timing follows [`crate::source::SourceFrame::capture`]. `frame_seconds` is the nominal media frame duration, used to bridge scheduled detection gaps, not processing elapsed time.
     pub fn detect_and_update_world_pose(
         &mut self,
         frame: &FrameSet,
+        capture: Option<&crate::source::CaptureTiming>,
+        frame_seconds: f32,
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
+        self.core.expire_observations(capture, frame_seconds)?;
+        let capture_times_us = capture.map_or(&[][..], |capture| capture.times_us.as_slice());
         self.detect_and_update_world_pose_with(elapsed, |core| {
-            core.run_cpu_detection(frame);
+            core.run_cpu_detection(frame, capture_times_us)
         })
     }
 
@@ -292,24 +301,27 @@ impl StitchSession {
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
         self.detect_and_update_world_pose_with(elapsed, |core| {
-            core.run_detection_frames(&[
-                (
-                    0,
-                    DetectorFrame::Rgba {
-                        data: left_rgba,
-                        width,
-                        height,
-                    },
-                ),
-                (
-                    1,
-                    DetectorFrame::Rgba {
-                        data: right_rgba,
-                        width,
-                        height,
-                    },
-                ),
-            ])
+            core.run_detection_frames(
+                &[
+                    (
+                        0,
+                        DetectorFrame::Rgba {
+                            data: left_rgba,
+                            width,
+                            height,
+                        },
+                    ),
+                    (
+                        1,
+                        DetectorFrame::Rgba {
+                            data: right_rgba,
+                            width,
+                            height,
+                        },
+                    ),
+                ],
+                &[],
+            )
         })
     }
 
@@ -327,26 +339,29 @@ impl StitchSession {
         elapsed: std::time::Duration,
     ) -> Result<(), SessionError> {
         self.detect_and_update_world_pose_with(elapsed, |core| {
-            core.run_detection_frames(&[
-                (
-                    0,
-                    DetectorFrame::CudaRgba {
-                        ptr: left_ptr,
-                        pitch: left_pitch,
-                        width,
-                        height,
-                    },
-                ),
-                (
-                    1,
-                    DetectorFrame::CudaRgba {
-                        ptr: right_ptr,
-                        pitch: right_pitch,
-                        width,
-                        height,
-                    },
-                ),
-            ])
+            core.run_detection_frames(
+                &[
+                    (
+                        0,
+                        DetectorFrame::CudaRgba {
+                            ptr: left_ptr,
+                            pitch: left_pitch,
+                            width,
+                            height,
+                        },
+                    ),
+                    (
+                        1,
+                        DetectorFrame::CudaRgba {
+                            ptr: right_ptr,
+                            pitch: right_pitch,
+                            width,
+                            height,
+                        },
+                    ),
+                ],
+                &[],
+            )
         })
     }
 
@@ -362,24 +377,27 @@ impl StitchSession {
     ) -> Result<(), SessionError> {
         self.detect_and_update_world_pose_with(elapsed, |core| {
             crate::profile_scope!("detect_preletterboxed_total");
-            core.run_detection_frames(&[
-                (
-                    0,
-                    DetectorFrame::CudaRgbaLetterboxed {
-                        ptr: left_ptr,
-                        src_width,
-                        src_height,
-                    },
-                ),
-                (
-                    1,
-                    DetectorFrame::CudaRgbaLetterboxed {
-                        ptr: right_ptr,
-                        src_width,
-                        src_height,
-                    },
-                ),
-            ])
+            core.run_detection_frames(
+                &[
+                    (
+                        0,
+                        DetectorFrame::CudaRgbaLetterboxed {
+                            ptr: left_ptr,
+                            src_width,
+                            src_height,
+                        },
+                    ),
+                    (
+                        1,
+                        DetectorFrame::CudaRgbaLetterboxed {
+                            ptr: right_ptr,
+                            src_width,
+                            src_height,
+                        },
+                    ),
+                ],
+                &[],
+            )
         })
     }
 
@@ -390,29 +408,14 @@ impl StitchSession {
         buffers: &[crate::interop::zero_copy::GpuBufInfo],
         slots: &[u8],
         elapsed: std::time::Duration,
+        capture_times_us: &[i64],
     ) -> Result<(), SessionError> {
         let lr = self.left_rotation;
         let rr = self.right_rotation;
         self.detect_and_update_world_pose_with(elapsed, |core| {
             crate::profile_scope!("gpu_detect_total");
             let frames = cuda_nv12_frames(buffers, slots, [lr, rr]);
-            core.run_detection_frames(&frames);
-        })
-    }
-
-    /// Run Metal-resident detection from CVPixelBuffers.
-    #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
-    pub(crate) fn detect_and_update_world_pose_metal(
-        &mut self,
-        left_cvpb: crate::interop::metal::CVPixelBufferRef,
-        right_cvpb: crate::interop::metal::CVPixelBufferRef,
-        width: u32,
-        height: u32,
-        elapsed: std::time::Duration,
-    ) -> Result<(), SessionError> {
-        self.detect_and_update_world_pose_with(elapsed, |core| {
-            let frames = metal_frames(left_cvpb, right_cvpb, width, height);
-            core.run_detection_frames(&frames);
+            core.run_detection_frames(&frames, capture_times_us)
         })
     }
 

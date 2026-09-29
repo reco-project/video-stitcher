@@ -466,7 +466,7 @@ mod tests {
                         (0..count)
                             .map(|camera| {
                                 let (y, uv) = nv12(w, h, camera as u8 * 30);
-                                Nv12Data { y, uv }
+                                Nv12Data { y, uv }.into()
                             })
                             .collect(),
                     )
@@ -480,6 +480,7 @@ mod tests {
                                     u: uv.iter().step_by(2).copied().collect(),
                                     v: uv.iter().skip(1).step_by(2).copied().collect(),
                                 }
+                                .into()
                             })
                             .collect(),
                     )
@@ -556,9 +557,12 @@ mod tests {
                     );
                     let short = FrameSet::Nv12(
                         (0..count)
-                            .map(|_| Nv12Data {
-                                y: vec![0],
-                                uv: vec![0],
+                            .map(|_| {
+                                Nv12Data {
+                                    y: vec![0],
+                                    uv: vec![0],
+                                }
+                                .into()
                             })
                             .collect(),
                     );

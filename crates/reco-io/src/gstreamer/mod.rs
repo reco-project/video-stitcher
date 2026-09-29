@@ -12,5 +12,8 @@
 //! on Jetson for lower latency.
 
 pub mod camera;
+mod capture;
 #[cfg(target_os = "linux")]
-pub mod nvmm;
+mod nvmm;
+#[cfg(target_os = "linux")]
+mod nvmm_camera;

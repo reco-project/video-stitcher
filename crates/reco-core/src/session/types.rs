@@ -96,14 +96,15 @@ pub struct FrameProgress {
 /// Callback for progress reporting during [`StitchSession::run`](super::StitchSession::run).
 pub type ProgressCallback = Box<dyn FnMut(&FrameProgress) + Send>;
 
-/// Pre-extracted state for the frame loop, cloned once before iterating.
+/// Frame-loop configuration and the current input's capture identities.
 ///
 /// The borrow checker prevents reading `self.gpu_buf_info` immutably
 /// while calling `&mut self` methods (detect, render). Cloning the
-/// buffer info once and passing it through this struct sidesteps the
-/// conflict with trivial cost (~150 bytes of scalars).
+/// buffer info once and passing it through this struct avoids that conflict.
 #[derive(Default)]
 pub(crate) struct FrameLoopContext {
+    /// Capture identities of the input currently being processed.
+    pub(crate) capture: Option<crate::source::CaptureTiming>,
     /// The buffered producer already ran detection and tracking.
     pub(crate) tracking_complete: bool,
     /// Output frame duration, independent of decode and processing time.

@@ -10,8 +10,12 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use super::StitchSession;
+mod capture_identity;
 mod coverage;
 mod cpu_detection;
+#[cfg(all(feature = "gpu", target_os = "linux"))]
+mod nvmm;
+mod timing;
 use super::types::*;
 use crate::calibration::{Calibration, Framing, Lens};
 use crate::detect::detector::{Detection, Detector, DetectorError, DetectorFrame};
@@ -62,7 +66,7 @@ fn solid_frame() -> FrameSet {
         u: vec![128u8; uv_size],
         v: vec![128u8; uv_size],
     };
-    FrameSet::Yuv420p(vec![yuv.clone(), yuv])
+    FrameSet::Yuv420p(vec![Arc::new(yuv.clone()), Arc::new(yuv)])
 }
 
 // ─── MockSource ────────────────────────────────────────────────────────
@@ -91,12 +95,12 @@ impl FrameSource for MockSource {
         }
     }
 
-    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<crate::source::SourceFrame>, SourceError> {
         if self.remaining == 0 {
             return Ok(None);
         }
         self.remaining -= 1;
-        Ok(Some(solid_frame()))
+        Ok(Some(crate::source::SourceFrame::untimed(solid_frame())))
     }
 }
 
@@ -107,7 +111,7 @@ fn reused_session_applies_both_full_and_limited_source_ranges() {
         fn info(&self) -> SourceInfo {
             MockSource::new(0).info()
         }
-        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+        fn next_frame(&mut self) -> Result<Option<crate::source::SourceFrame>, SourceError> {
             Ok(None)
         }
         fn is_full_range(&self) -> bool {
@@ -143,7 +147,7 @@ fn reused_session_replaces_source_rotation_without_double_flipping_host_frames()
         fn info(&self) -> SourceInfo {
             MockSource::new(0).info()
         }
-        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+        fn next_frame(&mut self) -> Result<Option<crate::source::SourceFrame>, SourceError> {
             Ok(None)
         }
         fn is_gpu_resident(&self) -> bool {
@@ -162,7 +166,7 @@ fn reused_session_replaces_source_rotation_without_double_flipping_host_frames()
             unreachable!()
         };
         for camera in cameras {
-            for (i, y) in camera.y.iter_mut().enumerate() {
+            for (i, y) in Arc::make_mut(camera).y.iter_mut().enumerate() {
                 *y = 32 + (i % W as usize * 3) as u8;
             }
         }
@@ -265,9 +269,10 @@ impl Tracker for MockTracker {
     fn update(
         &mut self,
         detections: &[MappedDetection],
-        fresh: bool,
+        fresh_cameras: &[crate::geometry::CameraIndex],
         _timestamp_ms: f64,
     ) -> Vec<TrackedEntity> {
+        let fresh = !fresh_cameras.is_empty();
         // Session bumps frame_count after dispatch, so `log.len()` is
         // the per-call frame_index we see.
         let frame_index = self.log.lock().unwrap().len() as u64;
@@ -455,7 +460,7 @@ fn host_run_releases_native_history_before_budget_admission() {
         fn is_gpu_resident(&self) -> bool {
             true
         }
-        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+        fn next_frame(&mut self) -> Result<Option<crate::source::SourceFrame>, SourceError> {
             Ok(None)
         }
     }
@@ -728,13 +733,80 @@ fn run_completion_records_the_observed_stop_reason() {
 }
 
 #[test]
+fn cancellation_during_source_read_is_cancelled_without_extra_output() {
+    struct InterruptedRead {
+        source: MockSource,
+        flag: Arc<AtomicBool>,
+        output: Arc<AtomicU64>,
+        at_stop: Arc<AtomicU64>,
+        remaining: u64,
+    }
+    impl FrameSource for InterruptedRead {
+        fn info(&self) -> SourceInfo {
+            self.source.info()
+        }
+        fn next_frame(&mut self) -> Result<Option<crate::source::SourceFrame>, SourceError> {
+            if self.remaining == 0 {
+                self.at_stop
+                    .store(self.output.load(Ordering::Relaxed), Ordering::Relaxed);
+                self.flag.store(true, Ordering::Relaxed);
+                return Ok(None);
+            }
+            self.remaining -= 1;
+            self.source.next_frame()
+        }
+    }
+    for depth in [0, 1, 4] {
+        for frames in [0, 2, 4, 7] {
+            let mut session = build_cpu_session();
+            session.core_mut().set_constrained_look(false);
+            session.set_lookahead(depth, usize::MAX);
+            let flag = Arc::new(AtomicBool::new(false));
+            let output = Arc::new(AtomicU64::new(0));
+            let at_stop = Arc::new(AtomicU64::new(u64::MAX));
+            session
+                .add_sink(
+                    Box::new(MockEncoder::new(output.clone())),
+                    super::SinkOptions::inline_lossy(),
+                )
+                .unwrap();
+            let result = session
+                .run(
+                    &mut InterruptedRead {
+                        source: MockSource::new(frames),
+                        flag: flag.clone(),
+                        output: output.clone(),
+                        at_stop: at_stop.clone(),
+                        remaining: frames,
+                    },
+                    u64::MAX,
+                    &flag,
+                    None,
+                )
+                .unwrap();
+            assert_eq!(
+                result.completion,
+                RunCompletion::Cancelled,
+                "depth={depth}, frames={frames}"
+            );
+            session.finish().unwrap();
+            assert_eq!(result.frames_processed, at_stop.load(Ordering::Relaxed));
+            assert_eq!(
+                output.load(Ordering::Relaxed),
+                at_stop.load(Ordering::Relaxed)
+            );
+        }
+    }
+}
+
+#[test]
 fn cancellation_does_not_hide_source_or_finalization_errors() {
     struct FailingSource(Arc<AtomicBool>);
     impl FrameSource for FailingSource {
         fn info(&self) -> SourceInfo {
             MockSource::new(0).info()
         }
-        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+        fn next_frame(&mut self) -> Result<Option<crate::source::SourceFrame>, SourceError> {
             self.0.store(true, Ordering::Relaxed);
             Err(SourceError::Read {
                 reason: "source failure".into(),
@@ -742,11 +814,15 @@ fn cancellation_does_not_hide_source_or_finalization_errors() {
         }
     }
     let flag = Arc::new(AtomicBool::new(false));
-    let mut session = build_cpu_session();
-    assert!(matches!(
-        session.run(&mut FailingSource(flag.clone()), 10, &flag, None),
-        Err(SessionError::Source(_))
-    ));
+    for depth in [0, 4] {
+        flag.store(false, Ordering::Relaxed);
+        let mut session = build_cpu_session();
+        session.set_lookahead(depth, usize::MAX);
+        assert!(matches!(
+            session.run(&mut FailingSource(flag.clone()), 10, &flag, None),
+            Err(SessionError::Source(_))
+        ));
+    }
 
     struct FailingFinish;
     impl OutputSink for FailingFinish {
@@ -825,7 +901,7 @@ fn gpu_run_completion_after_source_eof() {
         fn info(&self) -> SourceInfo {
             self.source.info()
         }
-        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+        fn next_frame(&mut self) -> Result<Option<crate::source::SourceFrame>, SourceError> {
             let frame = self.source.next_frame()?;
             if frame.is_none() {
                 self.eof.store(true, Ordering::Relaxed);
@@ -1149,8 +1225,10 @@ fn cpu_session_rejects_gpu_resident_frames() {
                 total_frames: None,
             }
         }
-        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
-            Ok(Some(FrameSet::GpuResident { slots: vec![0, 0] }))
+        fn next_frame(&mut self) -> Result<Option<crate::source::SourceFrame>, SourceError> {
+            Ok(Some(crate::source::SourceFrame::untimed(
+                FrameSet::GpuResident { slots: vec![0, 0] },
+            )))
         }
     }
 
@@ -1185,18 +1263,23 @@ fn mono_cylinder_session_runs_end_to_end_without_gpu() {
                 total_frames: None,
             }
         }
-        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+        fn next_frame(&mut self) -> Result<Option<crate::source::SourceFrame>, SourceError> {
             if self.0 == 0 {
                 return Ok(None);
             }
             self.0 -= 1;
             let y_size = (W * H) as usize;
             let uv_size = ((W / 2) * (H / 2)) as usize;
-            Ok(Some(FrameSet::Yuv420p(vec![Yuv420pData {
-                y: vec![128u8; y_size],
-                u: vec![128u8; uv_size],
-                v: vec![128u8; uv_size],
-            }])))
+            Ok(Some(crate::source::SourceFrame::untimed(
+                FrameSet::Yuv420p(vec![
+                    Yuv420pData {
+                        y: vec![128u8; y_size],
+                        u: vec![128u8; uv_size],
+                        v: vec![128u8; uv_size],
+                    }
+                    .into(),
+                ]),
+            )))
         }
     }
 

@@ -31,7 +31,7 @@ fn cuda_decode_uses_host_transfer_for_an_incompatible_renderer() {
             reco_io::SmartFileSource::open(&vec![input.clone(); count], &gpu, 0).unwrap();
         assert!(!source.is_gpu_resident());
         for index in 0..FRAMES {
-            let FrameSet::Yuv420p(cameras) = source.next_frame().unwrap().unwrap() else {
+            let FrameSet::Yuv420p(cameras) = source.next_frame().unwrap().unwrap().images else {
                 panic!("expected host-backed frames");
             };
             assert_eq!(cameras.len(), count);
@@ -142,9 +142,14 @@ fn cuda_mono_session_preserves_pixels_order_and_buffered_tail() {
                     }
                     fn next_frame(
                         &mut self,
-                    ) -> Result<Option<FrameSet>, reco_core::source::SourceError>
-                    {
-                        Ok(self.frame.take())
+                    ) -> Result<
+                        Option<reco_core::source::SourceFrame>,
+                        reco_core::source::SourceError,
+                    > {
+                        Ok(self
+                            .frame
+                            .take()
+                            .map(reco_core::source::SourceFrame::untimed))
                     }
                 }
                 // Switch ownership after real decoded frames have been staged
@@ -157,7 +162,7 @@ fn cuda_mono_session_preserves_pixels_order_and_buffered_tail() {
                 session.set_lookahead(5, image.y.capacity() + image.uv.capacity());
                 let mut host = HostFrame {
                     info: source.info(),
-                    frame: Some(FrameSet::Nv12(vec![image])),
+                    frame: Some(FrameSet::Nv12(vec![image.into()])),
                 };
                 assert_eq!(
                     session
@@ -545,7 +550,7 @@ fn file_source_delivers_every_frame_and_persists_eof() {
         let mut source = FfmpegFileSource::open_inputs(&inputs, 0, true).unwrap();
         assert_eq!(source.decode_backend(), DecodeBackend::Software);
         for index in 0..FRAMES {
-            let FrameSet::Yuv420p(cameras) = source.next_frame().unwrap().unwrap() else {
+            let FrameSet::Yuv420p(cameras) = source.next_frame().unwrap().unwrap().images else {
                 panic!("expected CPU frames");
             };
             assert_eq!(cameras.len(), inputs.len());
@@ -603,7 +608,7 @@ fn assert_seek_replacements(software_decode: bool) {
             }
             let target = cycle % 3 * 6;
             source.seek(target as u64).unwrap();
-            let FrameSet::Yuv420p(cameras) = source.next_frame().unwrap().unwrap() else {
+            let FrameSet::Yuv420p(cameras) = source.next_frame().unwrap().unwrap().images else {
                 panic!("expected CPU frames");
             };
             assert_eq!(cameras.len(), count);

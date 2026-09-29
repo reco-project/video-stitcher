@@ -118,8 +118,7 @@ impl StitchCore {
             self.coverage_motion = Some(controller);
         }
         if !tracking_unchanged {
-            self.last_detections.clear();
-            self.detections_fresh = false;
+            self.clear_detection_cache();
         }
     }
 }
@@ -468,7 +467,12 @@ mod tests {
     struct NoopControl;
 
     impl Tracker for NoopControl {
-        fn update(&mut self, _: &[MappedDetection], _: bool, _: f64) -> Vec<TrackedEntity> {
+        fn update(
+            &mut self,
+            _: &[MappedDetection],
+            _: &[crate::geometry::CameraIndex],
+            _: f64,
+        ) -> Vec<TrackedEntity> {
             vec![]
         }
         fn class_id(&self) -> u16 {

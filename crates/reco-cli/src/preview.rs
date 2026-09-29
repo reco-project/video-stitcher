@@ -133,7 +133,8 @@ pub fn run_preview(
     // Get the first frame for initial display
     let first = source
         .next_frame()?
-        .ok_or_else(|| anyhow::anyhow!("videos have no frames"))?;
+        .ok_or_else(|| anyhow::anyhow!("videos have no frames"))?
+        .images;
 
     let event_loop = EventLoop::new()?;
 
@@ -318,7 +319,7 @@ impl App {
                         width: width & !3,
                         height: height & !1,
                         format: PixelFormat::Nv12,
-                        pts_us: (self.recording_frames as f64 / self.fps * 1_000_000.0) as i64,
+                        pts_us: None,
                     });
                     self.recording_frames += 1;
                 }
@@ -372,7 +373,7 @@ impl App {
         };
         match source.try_next_frame() {
             Ok(Some(frame)) => {
-                self.current_frame = frame;
+                self.current_frame = frame.images;
                 self.frame_count += 1;
                 self.needs_redraw = true;
             }
@@ -396,7 +397,7 @@ impl App {
         };
         match source.next_frame() {
             Ok(Some(frame)) => {
-                self.current_frame = frame;
+                self.current_frame = frame.images;
                 self.frame_count += 1;
                 self.needs_redraw = true;
             }
@@ -787,15 +788,13 @@ impl ApplicationHandler for App {
                     let (width, height) = renderer.output_dims();
                     match renderer.render_and_readback_nv12(&self.current_frame, render) {
                         Ok(Some(nv12)) => {
-                            let pts_us =
-                                (self.recording_frames as f64 / self.fps * 1_000_000.0) as i64;
                             if let Some(ref mut enc) = self.recording
                                 && let Err(e) = enc.consume(OutputFrame {
                                     data: nv12,
                                     width: width & !3,
                                     height: height & !1,
                                     format: PixelFormat::Nv12,
-                                    pts_us,
+                                    pts_us: None,
                                 })
                             {
                                 eprintln!("Recording encode error: {e}");

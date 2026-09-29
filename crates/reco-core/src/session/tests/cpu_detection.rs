@@ -9,6 +9,92 @@ use crate::stitch::{CpuExecutor, Executor};
 struct FutureProbe(Arc<Mutex<Vec<usize>>>);
 
 #[test]
+fn shared_host_images_survive_source_release_and_match_owned_delivery() {
+    struct QueuedSource(std::collections::VecDeque<crate::source::SourceFrame>);
+    impl FrameSource for QueuedSource {
+        fn info(&self) -> SourceInfo {
+            MockSource::new(0).info()
+        }
+        fn next_frame(&mut self) -> Result<Option<crate::source::SourceFrame>, SourceError> {
+            Ok(self.0.pop_front())
+        }
+    }
+
+    fn verify<T: Send + Sync + Clone + 'static>(
+        images: [T; 2],
+        wrap: impl Fn(Vec<Arc<T>>) -> FrameSet,
+    ) {
+        let [left, right] = images.map(Arc::new);
+        let weak = [Arc::downgrade(&left), Arc::downgrade(&right)];
+        let mut baseline = None;
+        for shared in [false, true] {
+            for depth in [0, 1, 8] {
+                let frames = (0..4)
+                    .map(|_| {
+                        let cameras = if shared {
+                            vec![left.clone(), right.clone()]
+                        } else {
+                            vec![Arc::new((*left).clone()), Arc::new((*right).clone())]
+                        };
+                        assert_eq!(Arc::ptr_eq(&cameras[0], &left), shared);
+                        assert_eq!(Arc::ptr_eq(&cameras[1], &right), shared);
+                        crate::source::SourceFrame::untimed(wrap(cameras))
+                    })
+                    .collect();
+                let mut source = QueuedSource(frames);
+                let mut session = build_cpu_session();
+                session.core_mut().set_constrained_look(false);
+                session.set_lookahead(depth, usize::MAX);
+                let output = Arc::new(Mutex::new(Vec::new()));
+                session
+                    .add_sink(
+                        Box::new(CapturedOutput(output.clone())),
+                        crate::session::SinkOptions::threaded(1),
+                    )
+                    .unwrap();
+                let result = session
+                    .run(&mut source, u64::MAX, &AtomicBool::new(false), None)
+                    .unwrap();
+                assert_eq!(result.frames_processed, 4);
+                assert!(source.0.is_empty());
+                drop(source);
+                session.finish().unwrap();
+                assert_eq!(Arc::strong_count(&left), 1);
+                assert_eq!(Arc::strong_count(&right), 1);
+                let output = output.lock().unwrap();
+                assert_eq!(output.len(), 4);
+                if let Some(expected) = &baseline {
+                    assert_eq!(&*output, expected);
+                } else {
+                    baseline = Some(output.clone());
+                }
+            }
+        }
+        // A queued frame, independently of its producer, owns both images.
+        let frame = wrap(vec![left, right]);
+        assert!(weak.iter().all(|image| image.upgrade().is_some()));
+        drop(frame);
+        assert!(weak.iter().all(|image| image.upgrade().is_none()));
+    }
+
+    verify(
+        [64, 192].map(|value| Nv12Data {
+            y: vec![value; (W * H) as usize],
+            uv: vec![128; (W * H / 2) as usize],
+        }),
+        FrameSet::Nv12,
+    );
+    verify(
+        [64, 192].map(|value| Yuv420pData {
+            y: vec![value; (W * H) as usize],
+            u: vec![128; (W * H / 4) as usize],
+            v: vec![128; (W * H / 4) as usize],
+        }),
+        FrameSet::Yuv420p,
+    );
+}
+
+#[test]
 fn full_circle_lookahead_follows_both_directions_across_the_yaw_seam() {
     struct SeamPanner(f32);
     impl Panner for SeamPanner {
@@ -149,7 +235,9 @@ fn lookahead_image_budget_counts_capacity_and_all_cameras() {
             .map(|p| p.y.capacity() + p.uv.capacity())
             .sum();
         assert_eq!(
-            FrameSet::Nv12(planes).retained_image_bytes().unwrap(),
+            FrameSet::Nv12(planes.into_iter().map(Arc::new).collect())
+                .retained_image_bytes()
+                .unwrap(),
             expected
         );
         assert!(expected >= cameras * 102);
@@ -170,10 +258,41 @@ fn lookahead_image_budget_counts_capacity_and_all_cameras() {
             .map(|p| p.y.capacity() + p.u.capacity() + p.v.capacity())
             .sum();
         assert_eq!(
-            FrameSet::Yuv420p(planes).retained_image_bytes().unwrap(),
+            FrameSet::Yuv420p(planes.into_iter().map(Arc::new).collect())
+                .retained_image_bytes()
+                .unwrap(),
             expected
         );
         assert!(expected >= cameras * 105);
+    }
+}
+
+#[test]
+fn shared_images_do_not_bypass_the_lookahead_budget() {
+    let nv12 = Arc::new(Nv12Data {
+        y: vec![0; 4],
+        uv: vec![0; 2],
+    });
+    let yuv = Arc::new(Yuv420pData {
+        y: vec![0; 4],
+        u: vec![0; 1],
+        v: vec![0; 1],
+    });
+    for count in [1, 2, 3] {
+        for _ in 0..2 {
+            assert_eq!(
+                FrameSet::Nv12(vec![nv12.clone(); count])
+                    .retained_image_bytes()
+                    .unwrap(),
+                count * (nv12.y.capacity() + nv12.uv.capacity())
+            );
+            assert_eq!(
+                FrameSet::Yuv420p(vec![yuv.clone(); count])
+                    .retained_image_bytes()
+                    .unwrap(),
+                count * (yuv.y.capacity() + yuv.u.capacity() + yuv.v.capacity())
+            );
+        }
     }
 }
 
@@ -246,17 +365,17 @@ impl FrameSource for LabelledSource {
     fn is_full_range(&self) -> bool {
         self.full_range
     }
-    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<crate::source::SourceFrame>, SourceError> {
         let mut frame = self.source.next_frame()?;
-        match frame.as_mut() {
+        match frame.as_mut().map(|frame| &mut frame.images) {
             Some(FrameSet::Yuv420p(cameras)) => {
                 for camera in cameras {
-                    camera.y.iter_mut().for_each(|v| *v += 32);
+                    Arc::make_mut(camera).y.iter_mut().for_each(|v| *v += 32);
                 }
             }
             Some(FrameSet::Nv12(cameras)) => {
                 for camera in cameras {
-                    camera.y.iter_mut().for_each(|v| *v += 32);
+                    Arc::make_mut(camera).y.iter_mut().for_each(|v| *v += 32);
                 }
             }
             _ => {}
@@ -348,18 +467,18 @@ fn cpu_buffered_failures_and_prefill_cancellation_leave_no_render_state() {
         fn info(&self) -> SourceInfo {
             MockSource::new(0).info()
         }
-        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+        fn next_frame(&mut self) -> Result<Option<crate::source::SourceFrame>, SourceError> {
             if self.remaining == 0 {
                 if let Some(flag) = &self.cancel {
                     flag.store(true, Ordering::Relaxed);
-                    return Ok(Some(solid_frame()));
+                    return Ok(Some(crate::source::SourceFrame::untimed(solid_frame())));
                 }
                 return Err(SourceError::Read {
                     reason: "injected source failure".into(),
                 });
             }
             self.remaining -= 1;
-            Ok(Some(solid_frame()))
+            Ok(Some(crate::source::SourceFrame::untimed(solid_frame())))
         }
     }
     for cancel in [false, true] {
@@ -710,9 +829,10 @@ impl Tracker for ProbeTracker {
     fn update(
         &mut self,
         detections: &[MappedDetection],
-        fresh: bool,
+        fresh_cameras: &[crate::geometry::CameraIndex],
         _: f64,
     ) -> Vec<TrackedEntity> {
+        let fresh = !fresh_cameras.is_empty();
         self.0.lock().unwrap().push((
             fresh,
             detections
@@ -759,20 +879,21 @@ impl FrameSource for Source {
             total_frames: Some(6),
         }
     }
-    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<crate::source::SourceFrame>, SourceError> {
         if self.index == 6 {
             return Ok(None);
         }
         let index = self.index;
         self.index += 1;
         let y = |camera| vec![index * 8 + camera as u8; (W * H) as usize];
-        Ok(Some(if self.nv12 {
+        Ok(Some(crate::source::SourceFrame::untimed(if self.nv12 {
             FrameSet::Nv12(
                 (0..self.cameras)
                     .map(|camera| Nv12Data {
                         y: y(camera),
                         uv: vec![128; (W * H / 2) as usize],
                     })
+                    .map(Arc::new)
                     .collect(),
             )
         } else {
@@ -783,9 +904,10 @@ impl FrameSource for Source {
                         u: vec![128; (W * H / 4) as usize],
                         v: vec![128; (W * H / 4) as usize],
                     })
+                    .map(Arc::new)
                     .collect(),
             )
-        }))
+        })))
     }
 }
 
@@ -852,7 +974,10 @@ fn cpu_detection_matches_push_and_session_for_both_projections() {
                         session.finish().unwrap();
                     } else {
                         while let Some(frame) = source.next_frame().unwrap() {
-                            session.core_mut().submit_frame(&frame, 1.0 / 30.0).unwrap();
+                            session
+                                .core_mut()
+                                .submit_frame(&frame.images, 1.0 / 30.0)
+                                .unwrap();
                         }
                     }
                     let calls = calls.lock().unwrap().clone();

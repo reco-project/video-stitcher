@@ -77,7 +77,7 @@ fn check_rendered_colors(name: &str, device: Option<String>, count: usize, conta
                     data: if is_rgba { &rgba } else { &nv12 },
                     width: 256,
                     height: 128,
-                    pts_us: index as i64 * 1_000_000 / 30,
+                    pts_us: Some(index as i64 * 1_000_000 / 30),
                     format: if is_rgba {
                         PixelFormat::Rgba8
                     } else {
@@ -236,7 +236,7 @@ fn session_sink_labels_rendered_pixels_but_generic_encoder_does_not() {
         width: 64,
         height: 64,
         format: PixelFormat::Nv12,
-        pts_us: 0,
+        pts_us: Some(0),
     })
     .unwrap();
     sink.finish().unwrap();
@@ -254,7 +254,9 @@ fn session_sink_labels_rendered_pixels_but_generic_encoder_does_not() {
     );
     let raw_path = dir.path().join("raw.mp4");
     let mut encoder = VideoEncoder::new(&raw_path, 64, 64, (30, 1).into(), &config).unwrap();
-    encoder.write_nv12_frame(&[128; 64 * 64 * 3 / 2]).unwrap();
+    encoder
+        .write_nv12_frame(&[128; 64 * 64 * 3 / 2], None)
+        .unwrap();
     encoder.finish().unwrap();
     drop(encoder);
     assert_matrix(&raw_path, false);

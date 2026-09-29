@@ -20,7 +20,7 @@
 //! ```
 
 use reco_core::render::renderer::GpuPixelFormat;
-use reco_core::source::{FrameSet, FrameSource, SourceError, SourceInfo};
+use reco_core::source::{FrameSet, FrameSource, SourceError, SourceFrame, SourceInfo};
 
 /// GPU-aware file source that auto-selects the optimal decode path.
 ///
@@ -528,7 +528,7 @@ impl FrameSource for SmartFileSource {
         self.info.clone()
     }
 
-    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {
         if let Some(error) = &self.terminal_error {
             return Err(error.clone());
         }
@@ -552,7 +552,9 @@ impl FrameSource for SmartFileSource {
                 match crate::decode_stream::receive(rx)
                     .inspect_err(|error| self.terminal_error = Some(error.clone()))?
                 {
-                    Some(signal) => Ok(Some(FrameSet::GpuResident { slots: signal })),
+                    Some(signal) => Ok(Some(SourceFrame::untimed(FrameSet::GpuResident {
+                        slots: signal,
+                    }))),
                     None => {
                         self.exhausted = true;
                         Ok(None)
@@ -563,7 +565,9 @@ impl FrameSource for SmartFileSource {
             SourceMode::MetalZeroCopy(rx) => match crate::decode_stream::receive(rx)
                 .inspect_err(|error| self.terminal_error = Some(error.clone()))?
             {
-                Some(pair) => Ok(Some(FrameSet::MetalResident([pair.left, pair.right]))),
+                Some(pair) => Ok(Some(SourceFrame::untimed(FrameSet::MetalResident([
+                    pair.left, pair.right,
+                ])))),
                 None => {
                     self.exhausted = true;
                     Ok(None)
@@ -595,7 +599,7 @@ impl FrameSource for SmartFileSource {
                         // which is safe because its staging copy already
                         // completed in the previous loop iteration.
                         state.live_frame_guard = Some((left, right));
-                        Ok(Some(frames))
+                        Ok(Some(SourceFrame::untimed(frames)))
                     }
                     None => {
                         self.exhausted = true;

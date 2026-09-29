@@ -80,6 +80,9 @@ pub struct StitchSession {
     pub(crate) lookahead_frames: usize,
     pub(crate) lookahead_memory_bytes: usize,
     pub(crate) frame_count: u64,
+    /// Timestamps in the same submission order as the GPU's readback ring.
+    #[cfg(feature = "gpu")]
+    pub(crate) pending_pts: std::collections::VecDeque<Option<i64>>,
     pub(crate) telemetry: crate::telemetry::TelemetryCollector,
     /// Sub-timing from the last `submit_render_output` call.
     /// Used by `process_frame_any` to split "stitch" into
@@ -194,6 +197,8 @@ impl StitchSession {
             lookahead_frames: 0,
             lookahead_memory_bytes: 0,
             frame_count: 0,
+            #[cfg(feature = "gpu")]
+            pending_pts: std::collections::VecDeque::with_capacity(3),
             telemetry: crate::telemetry::TelemetryCollector::new(),
             last_readback_time: std::time::Duration::ZERO,
             last_submit_time: std::time::Duration::ZERO,
@@ -302,6 +307,10 @@ impl StitchSession {
     /// [`OutputSink::finish`](crate::sink::OutputSink::finish) on each
     /// sink in attach order. Must be called after the frame loop ends.
     pub fn finish(&mut self) -> Result<(), SessionError> {
+        #[cfg(all(feature = "gpu", target_os = "linux"))]
+        if let Some(exec) = self.core.executor.gpu_mut() {
+            exec.finish_nvmm_reads().map_err(SessionError::ZeroCopy)?;
+        }
         // Field-path borrow: `nv12_data` borrows the executor inside
         // `core` while the fan-out feeds the session-owned sinks.
         //
@@ -324,9 +333,10 @@ impl StitchSession {
                 nv12_data,
                 nv12_width,
                 nv12_height,
-                self.frame_count as i64,
+                self.pending_pts.pop_front().ok_or_else(|| {
+                    SessionError::Config("readback has no originating timestamp".into())
+                })?,
             )?;
-            self.frame_count += 1;
         }
 
         sinks::finish_all(&mut self.sinks)?;

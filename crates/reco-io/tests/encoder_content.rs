@@ -28,7 +28,9 @@ fn explicit_container_overrides_the_destination_extension() {
             };
             let mut encoder = VideoEncoder::new(&path, 64, 64, (30, 1).into(), &config).unwrap();
             for _ in 0..3 {
-                encoder.write_nv12_frame(&[128; 64 * 64 * 3 / 2]).unwrap();
+                encoder
+                    .write_nv12_frame(&[128; 64 * 64 * 3 / 2], None)
+                    .unwrap();
             }
             encoder.finish().unwrap();
             drop(encoder);
@@ -94,7 +96,9 @@ fn software_selection(cases: &[(Codec, ffmpeg_next::codec::Id)]) {
         };
         let mut encoder = VideoEncoder::new(&path, 256, 128, (30, 1).into(), &config).unwrap();
         assert!(encoder.encoder_name().starts_with("lib"));
-        encoder.write_nv12_frame(&[128; 256 * 128 * 3 / 2]).unwrap();
+        encoder
+            .write_nv12_frame(&[128; 256 * 128 * 3 / 2], None)
+            .unwrap();
         encoder.finish().unwrap();
         drop(encoder);
         let input = ffmpeg_next::format::input(&path).unwrap();
@@ -122,7 +126,7 @@ fn hevc_dimensions_are_correct_or_explicitly_rejected() {
     let mut encoder = VideoEncoder::new(&path, 260, 130, (30, 1).into(), &config).unwrap();
     let result = (|| {
         for _ in 0..48 {
-            encoder.write_nv12_frame(&[128; 260 * 130 * 3 / 2])?;
+            encoder.write_nv12_frame(&[128; 260 * 130 * 3 / 2], None)?;
         }
         encoder.finish()
     })();
@@ -210,13 +214,13 @@ fn roundtrip(name: &str, count: usize, planar: bool) {
     for index in 0..count {
         let (y, u, v) = planes(index);
         if planar {
-            encoder.write_yuv420p_planes(&y, &u, &v).unwrap();
+            encoder.write_yuv420p_planes(&y, &u, &v, None).unwrap();
         } else {
             let mut nv12 = y;
             for (u, v) in u.into_iter().zip(v) {
                 nv12.extend_from_slice(&[u, v]);
             }
-            encoder.write_nv12_frame(&nv12).unwrap();
+            encoder.write_nv12_frame(&nv12, None).unwrap();
         }
     }
     encoder.finish().unwrap();

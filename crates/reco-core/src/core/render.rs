@@ -48,7 +48,7 @@ impl super::StitchCore {
         }
         self.anchor_session_start();
         if self.detection_due(self.frame_count) {
-            self.run_cpu_detection(frames);
+            self.run_cpu_detection(frames, &[])?;
         }
         let requested = self.request_current_pose();
         let pose = self.advance_pose(requested, self.frame_count, frame_seconds)?;

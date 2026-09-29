@@ -76,13 +76,14 @@ impl super::StitchCore {
             self.event_sink.as_deref_mut(),
             crate::detect::panner::DispatchContext {
                 detections: &self.last_detections,
-                fresh: std::mem::take(&mut self.detections_fresh),
+                fresh_cameras: &self.fresh_cameras,
                 calibration: self.executor.calibration(),
                 frame_index: index,
                 timestamp_ms,
                 caller,
             },
         );
+        self.fresh_cameras.clear();
         DispatchStats {
             detections: self.last_detections.len() as u32,
             active_tracks: result.as_ref().map_or(0, |r| r.active_tracks),
@@ -94,18 +95,20 @@ impl super::StitchCore {
     /// phase. Consumes measurement freshness once while retaining the cache; returns the assembled
     /// [`WorldState`] for buffering.
     pub fn update_trackers(&mut self, index: u64, timestamp_ms: f64) -> WorldState {
-        crate::detect::panner::run_trackers(
+        let world = crate::detect::panner::run_trackers(
             self.player_tracker.as_mut(),
             self.ball_tracker.as_mut(),
             crate::detect::panner::DispatchContext {
                 detections: &self.last_detections,
-                fresh: std::mem::take(&mut self.detections_fresh),
+                fresh_cameras: &self.fresh_cameras,
                 calibration: self.executor.calibration(),
                 frame_index: index,
                 timestamp_ms,
                 caller: "lookahead_produce",
             },
-        )
+        );
+        self.fresh_cameras.clear();
+        world
     }
 
     /// The buffered (lookahead) panner step: decide the pose for
@@ -151,36 +154,136 @@ impl super::StitchCore {
 
     /// Run the attached detector over prebuilt per-camera frames (any
     /// residency), map the raw detections to world-reference angles, and
-    /// cache them for tracking. No-op without a detector.
+    /// replace those cameras' cached observations for tracking. Successful empty
+    /// results clear that camera's observations. Omitted cameras retain their
+    /// observations. Failed inference clears older observations, but preserves a
+    /// successful measurement not yet consumed by tracking. No inference without a detector.
     ///
-    /// Errors are warned-and-dropped: a flaky inference call must not
+    /// Inference errors are warned-and-dropped: a flaky call must not
     /// crash the render loop. `UnsupportedFrameKind` logs at debug -
     /// it is the expected answer while a caller probes backends.
-    pub fn run_detection_frames(&mut self, frames: &[(CameraIndex, DetectorFrame<'_>)]) {
-        let Some(ref mut detector) = self.detector else {
-            return;
-        };
-        let mut out = Vec::new();
-        let mut fresh = false;
-        for (camera, frame) in frames {
-            match detector.detect(*camera, frame) {
-                Ok(v) => {
-                    fresh = true;
-                    out.extend(v);
-                }
-                Err(DetectorError::UnsupportedFrameKind) => log::debug!(
-                    "StitchCore detector '{}' does not support this frame residency ({camera:?})",
-                    detector.name()
-                ),
-                Err(e) => log::warn!("StitchCore detector '{}' {camera:?}: {e}", detector.name()),
+    ///
+    /// `capture_times_us` is empty for unidentified images, or contains one nonnegative capture time per calibration camera. An already successfully analysed image is not inferred again; failed inference can be retried. Replacing the detector or invalidating calibration clears this history.
+    ///
+    /// Invalid camera indices, timestamp shape or regressing capture times return an error before inference. See `capture_identity_handles_retry_empty_results_and_invalidation`.
+    pub fn run_detection_frames(
+        &mut self,
+        frames: &[(CameraIndex, DetectorFrame<'_>)],
+        capture_times_us: &[i64],
+    ) -> Result<(), super::StitchCoreError> {
+        let count = self.calibration().projection.camera_count();
+        if (!capture_times_us.is_empty() && capture_times_us.len() != count)
+            || capture_times_us.iter().any(|&time| time < 0)
+            || frames.iter().any(|(camera, _)| *camera >= count)
+        {
+            return Err(super::StitchCoreError::Config(
+                "detection cameras and capture times must match the calibration".into(),
+            ));
+        }
+        for (camera, _) in frames {
+            if let (Some(&time), Some(Some(last))) = (
+                capture_times_us.get(*camera),
+                self.detected_capture_times.get(*camera),
+            ) && time < *last
+            {
+                return Err(super::StitchCoreError::Config(
+                    "capture time precedes an already analysed image".into(),
+                ));
             }
         }
-        self.last_detections = self.map_detections(out);
-        self.detections_fresh = fresh;
+        let Some(ref mut detector) = self.detector else {
+            return Ok(());
+        };
+        self.detected_capture_times.resize(count, None);
+        let mut out = Vec::new();
+        for (camera, frame) in frames {
+            let capture_time = capture_times_us.get(*camera).copied();
+            if capture_time.is_some() && self.detected_capture_times[*camera] == capture_time {
+                continue;
+            }
+            match detector.detect(*camera, frame) {
+                Ok(v) => {
+                    self.detected_capture_times[*camera] = capture_time;
+                    if !self.fresh_cameras.contains(camera) {
+                        self.fresh_cameras.push(*camera);
+                    }
+                    self.last_detections
+                        .retain(|detection| detection.camera != *camera);
+                    out.retain(|detection: &Detection| detection.camera != *camera);
+                    out.extend(v);
+                }
+                Err(error) => {
+                    if !self.fresh_cameras.contains(camera) {
+                        self.last_detections
+                            .retain(|detection| detection.camera != *camera);
+                    }
+                    match error {
+                        DetectorError::UnsupportedFrameKind => log::debug!(
+                            "StitchCore detector '{}' does not support this frame residency ({camera:?})",
+                            detector.name()
+                        ),
+                        error => log::warn!(
+                            "StitchCore detector '{}' {camera:?}: {error}",
+                            detector.name()
+                        ),
+                    }
+                }
+            }
+        }
+        if !out.is_empty() {
+            let mapped = self.map_detections(out);
+            self.last_detections.extend(mapped);
+            self.last_detections
+                .sort_by_key(|detection| detection.camera);
+        }
+        Ok(())
+    }
+
+    /// Expire held measurements before a source-frame tracking tick, including skipped inference ticks.
+    pub(crate) fn expire_observations(
+        &mut self,
+        capture: Option<&crate::source::CaptureTiming>,
+        frame_seconds: f32,
+    ) -> Result<(), super::StitchCoreError> {
+        let Some(capture) = capture else {
+            return Ok(());
+        };
+        capture
+            .validate(self.calibration().projection.camera_count())
+            .map_err(super::StitchCoreError::Config)?;
+        let Some(max_age) = capture.max_age_us else {
+            return Ok(());
+        };
+        let interval_us =
+            (f64::from(frame_seconds) * 1_000_000.0 * self.detection_interval as f64).ceil();
+        if !interval_us.is_finite() || interval_us <= 0.0 || interval_us >= u64::MAX as f64 {
+            return Err(super::StitchCoreError::Config(
+                "invalid detection interval duration".into(),
+            ));
+        }
+        let limit = max_age.checked_add(interval_us as u64).ok_or_else(|| {
+            super::StitchCoreError::Config("observation retention duration overflow".into())
+        })?;
+        let retained = |camera: usize| {
+            self.detected_capture_times
+                .get(camera)
+                .copied()
+                .flatten()
+                .is_some_and(|time| time <= capture.at_us && (capture.at_us - time) as u64 <= limit)
+        };
+        self.last_detections
+            .retain(|detection| retained(detection.camera));
+        self.fresh_cameras.retain(|&camera| retained(camera));
+        // Identity survives expiry so re-presenting an old image cannot make it new evidence.
+        Ok(())
     }
 
     /// Wrap CPU-resident cameras in projection order for the shared detector.
-    pub(crate) fn run_cpu_detection(&mut self, frame: &crate::source::FrameSet) {
+    pub(crate) fn run_cpu_detection(
+        &mut self,
+        frame: &crate::source::FrameSet,
+        capture_times_us: &[i64],
+    ) -> Result<(), super::StitchCoreError> {
         use crate::source::FrameSet;
         let (width, height) = self.source_dims();
         let frames: Vec<_> = match frame {
@@ -217,9 +320,9 @@ impl super::StitchCore {
                     )
                 })
                 .collect(),
-            _ => return,
+            _ => return Ok(()),
         };
-        self.run_detection_frames(&frames);
+        self.run_detection_frames(&frames, capture_times_us)
     }
 
     /// Enrich raw source-image detections with world-reference angular positions for tracking.

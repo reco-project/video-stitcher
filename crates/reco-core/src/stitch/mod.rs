@@ -21,6 +21,8 @@
 
 mod cpu;
 mod executor;
+#[cfg(all(feature = "gpu", target_os = "linux"))]
+mod nvmm_completion;
 #[cfg(feature = "gpu")]
 pub(crate) mod residency;
 

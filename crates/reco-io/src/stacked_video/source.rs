@@ -14,7 +14,7 @@
 use super::{GridLayout, StackError, unpack_yuv420p};
 use crate::ffmpeg::decoder::{DecodeError, VideoDecoder};
 use reco_core::source::{
-    FrameSet, FrameSource, SourceError, SourceInfo, Yuv420pData, Yuv420pFrame,
+    FrameSet, FrameSource, SourceError, SourceFrame, SourceInfo, Yuv420pData, Yuv420pFrame,
 };
 use std::path::Path;
 use thiserror::Error;
@@ -127,7 +127,7 @@ impl FrameSource for StackedSource {
         }
     }
 
-    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+    fn next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {
         if self.layout.capacity() != 2 {
             return Err(SourceError::Read {
                 reason: format!(
@@ -151,17 +151,19 @@ impl FrameSource for StackedSource {
                     reason: format!("expected 2 tiles, got {}", v.len()),
                 })?;
         let [left, right] = tiles;
-        Ok(Some(FrameSet::Yuv420p(vec![
+        Ok(Some(SourceFrame::untimed(FrameSet::Yuv420p(vec![
             Yuv420pData {
                 y: left.y,
                 u: left.u,
                 v: left.v,
-            },
+            }
+            .into(),
             Yuv420pData {
                 y: right.y,
                 u: right.u,
                 v: right.v,
-            },
-        ])))
+            }
+            .into(),
+        ]))))
     }
 }

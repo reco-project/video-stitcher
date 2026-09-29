@@ -140,7 +140,7 @@ impl StackedEncoder {
     pub fn push(&mut self, tiles: &[Option<&Yuv420pFrame>]) -> Result<(), StackedEncodeError> {
         let packed = pack_yuv420p(&self.layout, tiles)?;
         self.encoder
-            .write_yuv420p_planes(&packed.y, &packed.u, &packed.v)?;
+            .write_yuv420p_planes(&packed.y, &packed.u, &packed.v, None)?;
         Ok(())
     }
 
@@ -178,7 +178,7 @@ impl StackedEncoder {
         u: &[u8],
         v: &[u8],
     ) -> Result<(), StackedEncodeError> {
-        self.encoder.write_yuv420p_planes(y, u, v)?;
+        self.encoder.write_yuv420p_planes(y, u, v, None)?;
         Ok(())
     }
 

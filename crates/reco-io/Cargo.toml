@@ -13,7 +13,7 @@ default = ["ffmpeg"]
 ffmpeg = ["dep:ffmpeg-next"]
 rpi = ["ffmpeg", "ffmpeg-next/rpi"]
 gstreamer = ["dep:gstreamer", "dep:gstreamer-app"]
-libcamera = []
+libcamera = ["dep:libc"]
 v4l2 = ["dep:libc"]
 profiling = ["tracing", "reco-core/profiling"]
 # Opt-in user-preference persistence for consumers. Serde +

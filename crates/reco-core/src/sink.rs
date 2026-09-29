@@ -72,8 +72,10 @@ pub struct OutputFrame<'a> {
     pub height: u32,
     /// Pixel format of the data.
     pub format: PixelFormat,
-    /// Presentation timestamp in microseconds.
-    pub pts_us: i64,
+    /// Presentation time in microseconds on the output timeline, or `None` for
+    /// consecutive frames at the sink's configured frame rate. Timed streams
+    /// must supply strictly increasing, nonnegative timestamps for every frame.
+    pub pts_us: Option<i64>,
 }
 
 /// Trait for stitched-output consumers (encoders, snapshots, streams).

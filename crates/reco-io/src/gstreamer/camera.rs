@@ -1,8 +1,8 @@
 //! Live stereo camera capture via GStreamer.
 //!
-//! Builds a GStreamer pipeline per camera, pulls frames from
-//! `appsink` in dedicated threads, and pairs them into stereo
-//! frame pairs via a bounded channel.
+//! Both cameras share a pipeline clock and base time, with separate bounded appsink queues.
+//! Host capture owns parallel extraction workers; NVMM retains samples in capture workers.
+//! Without a synchronization policy, presentation follows the left camera's segment-adjusted sample clock. With a policy, bounded timestamp matching and reuse follow the configured cadence. Both normalize presentation time to the first delivered pair while preserving original capture times. Missing/non-advancing timestamps, clock loss and exceeded reuse limits stop capture. Neither mode synchronizes camera exposures or independently recorded file timelines. The `capture::sync::tests` and `tests::pipeline::bounded_live_reuse_survives_inference_lookahead_and_encoding` regressions exercise matching, retention and downstream image identity.
 //!
 //! Supports two capture modes:
 //! - **I420** (YUV420P): three separate planes, works everywhere
@@ -10,13 +10,10 @@
 //!   format conversion on Jetson for lower latency
 
 use gstreamer as gst;
-use gstreamer::prelude::*;
-use gstreamer_app as gst_app;
-use reco_core::source::{FrameSet, Nv12Data, SourceError, SourceInfo, Yuv420pData};
+use reco_core::source::{FrameSet, Nv12Data, SourceError, SourceFrame, SourceInfo, Yuv420pData};
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
+use std::sync::atomic::AtomicBool;
 
 /// Camera capture configuration.
 #[derive(Debug, Clone)]
@@ -34,6 +31,8 @@ pub struct CameraConfig {
     pub left_device: String,
     /// Right camera device or sensor ID.
     pub right_device: String,
+    /// Optional bounded matching/reuse policy. None preserves arrival-order capture without an age guarantee.
+    pub synchronization: Option<crate::frame_sync::Config>,
 }
 
 /// Capture pixel format for the GStreamer pipeline.
@@ -57,7 +56,7 @@ pub enum CaptureFormat {
 /// Returns `Err` with a descriptive message if the device string does not
 /// match the expected pattern, preventing injection of arbitrary GStreamer
 /// elements or shell metacharacters into the pipeline description.
-fn validate_device_string(device: &str) -> Result<(), String> {
+pub(super) fn validate_device_string(device: &str) -> Result<(), String> {
     if is_tegra() || cfg!(target_os = "macos") || cfg!(target_os = "windows") {
         // Numeric index only (one or more digits, nothing else)
         if device.chars().all(|c| c.is_ascii_digit()) && !device.is_empty() {
@@ -198,705 +197,277 @@ fn extract_nv12(data: &[u8], width: u32, height: u32) -> Result<Nv12Data, Source
     })
 }
 
-/// Build and start a GStreamer pipeline, returning the pipeline and appsink.
-fn build_capture_pipeline(
-    device: &str,
-    label: &'static str,
-    width: u32,
-    height: u32,
-    fps: u32,
-    format: CaptureFormat,
-) -> Result<(gst::Pipeline, gst_app::AppSink), String> {
-    if let Err(e) = gst::init() {
-        return Err(format!("{label} GStreamer init failed: {e}"));
-    }
-
-    let pipeline_str = build_pipeline_string(device, width, height, fps, format)?;
-    log::info!("{label} pipeline: {pipeline_str}");
-
-    let pipeline = gst::parse::launch(&pipeline_str)
-        .map_err(|e| format!("{label} pipeline parse: {e}"))?
-        .downcast::<gst::Pipeline>()
-        .map_err(|_| format!("{label}: not a pipeline"))?;
-
-    let appsink = pipeline
-        .by_name("sink")
-        .ok_or_else(|| format!("{label}: appsink not found"))?
-        .downcast::<gst_app::AppSink>()
-        .map_err(|_| format!("{label}: element is not an AppSink"))?;
-
-    appsink.set_max_buffers(2);
-    appsink.set_drop(true);
-
-    pipeline
-        .set_state(gst::State::Playing)
-        .map_err(|e| format!("{label} set_state(Playing): {e}"))?;
-
-    Ok((pipeline, appsink))
-}
-
-/// Spawn a GStreamer capture thread for one camera (I420 output).
-fn spawn_capture_thread(
-    device: String,
-    label: &'static str,
-    width: u32,
-    height: u32,
-    fps: u32,
-) -> mpsc::Receiver<Yuv420pData> {
-    let (tx, rx) = mpsc::sync_channel::<Yuv420pData>(2);
-
-    std::thread::Builder::new()
-        .name(format!("capture_{label}"))
-        .spawn(move || {
-            let (pipeline, appsink) = match build_capture_pipeline(
-                &device,
-                label,
-                width,
-                height,
-                fps,
-                CaptureFormat::I420,
-            ) {
-                Ok(p) => p,
-                Err(e) => {
-                    log::error!("{e}");
-                    return;
-                }
-            };
-
-            loop {
-                let sample = match appsink.pull_sample() {
-                    Ok(s) => s,
-                    Err(_) => break,
-                };
-
-                let Some(buffer) = sample.buffer() else {
-                    log::error!("{label}: sample has no buffer");
-                    break;
-                };
-
-                let Ok(map) = buffer.map_readable() else {
-                    log::error!("{label}: buffer map failed");
-                    break;
-                };
-
-                match extract_i420(map.as_slice(), width, height) {
-                    Ok(yuv) => {
-                        if tx.send(yuv).is_err() {
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("{label}: {e}");
-                        break;
-                    }
-                }
-            }
-
-            let _ = pipeline.set_state(gst::State::Null);
-        })
-        .expect("spawn capture thread");
-
-    rx
-}
-
-/// Spawn a GStreamer capture thread for one camera (NV12 output).
-///
-/// The stop signal allows graceful shutdown: send EOS, wait for pipeline
-/// to reach Null state, then exit. This prevents Argus teardown crashes.
-fn spawn_nv12_capture_thread(
-    device: String,
-    label: &'static str,
-    width: u32,
-    height: u32,
-    fps: u32,
-    stop: Arc<AtomicBool>,
-) -> mpsc::Receiver<Nv12Data> {
-    let (tx, rx) = mpsc::sync_channel::<Nv12Data>(2);
-
-    std::thread::Builder::new()
-        .name(format!("capture_{label}"))
-        .spawn(move || {
-            let (pipeline, appsink) = match build_capture_pipeline(
-                &device,
-                label,
-                width,
-                height,
-                fps,
-                CaptureFormat::Nv12,
-            ) {
-                Ok(p) => p,
-                Err(e) => {
-                    log::error!("{e}");
-                    return;
-                }
-            };
-
-            loop {
-                if stop.load(Ordering::Relaxed) {
-                    break;
-                }
-
-                let sample = match appsink.pull_sample() {
-                    Ok(s) => s,
-                    Err(_) => break,
-                };
-
-                let Some(buffer) = sample.buffer() else {
-                    log::error!("{label}: sample has no buffer");
-                    break;
-                };
-
-                let Ok(map) = buffer.map_readable() else {
-                    log::error!("{label}: buffer map failed");
-                    break;
-                };
-
-                match extract_nv12(map.as_slice(), width, height) {
-                    Ok(nv12) => {
-                        if tx.send(nv12).is_err() {
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("{label}: {e}");
-                        break;
-                    }
-                }
-            }
-
-            // Graceful shutdown: send EOS, then transition to Null
-            log::info!("{label}: sending EOS for graceful shutdown");
-            pipeline.send_event(gst::event::Eos::new());
-            let _ = pipeline.set_state(gst::State::Null);
-            // Wait for state change to complete
-            let _ = pipeline.state(gst::ClockTime::from_seconds(2));
-            log::info!("{label}: pipeline stopped");
-        })
-        .expect("spawn capture thread");
-
-    rx
-}
-
-/// Stereo camera source using GStreamer (I420 output).
-///
-/// Each camera runs in its own thread pulling frames from appsink.
-/// A pairing thread zips left+right into a [`FrameSet`] and sends
-/// it through a bounded channel.
-pub struct GstreamerCameraSource {
-    rx: mpsc::Receiver<FrameSet>,
+struct HostCapture<T> {
+    pair: super::capture::CapturePair<Arc<T>>,
     info: SourceInfo,
+    interrupted: Arc<AtomicBool>,
 }
 
-impl GstreamerCameraSource {
-    /// Open a stereo camera source with threaded capture.
-    pub fn open(config: &CameraConfig) -> Result<Self, SourceError> {
-        gst::init().map_err(|e| SourceError::Init {
-            path: format!("{} + {}", config.left_device, config.right_device),
-            reason: format!("GStreamer init: {e}"),
-        })?;
-
-        let left_rx = spawn_capture_thread(
-            config.left_device.clone(),
-            "left",
-            config.width,
-            config.height,
-            config.fps,
-        );
-        let right_rx = spawn_capture_thread(
-            config.right_device.clone(),
-            "right",
-            config.width,
-            config.height,
-            config.fps,
-        );
-
-        let (tx, rx) = mpsc::sync_channel::<FrameSet>(2);
-
-        std::thread::Builder::new()
-            .name("capture_pair".into())
-            .spawn(move || {
-                while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
-                    if tx.send(FrameSet::Yuv420p(vec![left, right])).is_err() {
-                        break;
-                    }
-                }
-            })
-            .expect("spawn pairing thread");
-
-        let info = SourceInfo {
-            width: config.width,
-            height: config.height,
-            fps: config.fps as f64,
-            fps_rational: None,
-            total_frames: None,
-        };
-
-        log::info!(
-            "Camera source ready: {}x{} @ {} fps (I420, threaded)",
-            config.width,
-            config.height,
-            config.fps
-        );
-
-        Ok(Self { rx, info })
-    }
-}
-
-impl reco_core::source::FrameSource for GstreamerCameraSource {
-    fn info(&self) -> SourceInfo {
-        self.info.clone()
-    }
-
-    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
-        match self.rx.recv() {
-            Ok(frames) => Ok(Some(frames)),
-            Err(_) => Ok(None),
-        }
-    }
-}
-
-/// Stereo camera source using GStreamer (NV12 output).
-///
-/// Like `GstreamerCameraSource` but captures in NV12 format, which is
-/// the native output of NVIDIA's ISP. This avoids the NV12->I420
-/// conversion that nvvidconv would otherwise perform, saving CPU time
-/// and memory bandwidth on Jetson.
-///
-/// Implements graceful shutdown via `Drop` to avoid Argus teardown crashes.
-pub struct GstreamerNv12CameraSource {
-    rx: mpsc::Receiver<(Nv12Data, Nv12Data)>,
-    info: SourceInfo,
-    stop: Arc<AtomicBool>,
-}
-
-impl GstreamerNv12CameraSource {
-    /// Open a stereo NV12 camera source with threaded capture.
-    pub fn open(config: &CameraConfig) -> Result<Self, SourceError> {
-        gst::init().map_err(|e| SourceError::Init {
-            path: format!("{} + {}", config.left_device, config.right_device),
-            reason: format!("GStreamer init: {e}"),
-        })?;
-
-        let stop = Arc::new(AtomicBool::new(false));
-
-        let left_rx = spawn_nv12_capture_thread(
-            config.left_device.clone(),
-            "left",
-            config.width,
-            config.height,
-            config.fps,
-            stop.clone(),
-        );
-        let right_rx = spawn_nv12_capture_thread(
-            config.right_device.clone(),
-            "right",
-            config.width,
-            config.height,
-            config.fps,
-            stop.clone(),
-        );
-
-        let (tx, rx) = mpsc::sync_channel::<(Nv12Data, Nv12Data)>(2);
-
-        std::thread::Builder::new()
-            .name("capture_pair".into())
-            .spawn(move || {
-                while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
-                    if tx.send((left, right)).is_err() {
-                        break;
-                    }
-                }
-            })
-            .expect("spawn pairing thread");
-
-        let info = SourceInfo {
-            width: config.width,
-            height: config.height,
-            fps: config.fps as f64,
-            fps_rational: None,
-            total_frames: None,
-        };
-
-        log::info!(
-            "Camera source ready: {}x{} @ {} fps (NV12, threaded)",
-            config.width,
-            config.height,
-            config.fps
-        );
-
-        Ok(Self { rx, info, stop })
-    }
-
-    /// Signal capture threads to stop.
-    pub fn stop(&self) {
-        self.stop.store(true, Ordering::Relaxed);
-    }
-
-    /// Source metadata.
-    pub fn info(&self) -> SourceInfo {
-        self.info.clone()
-    }
-
-    /// Get the next `(left, right)` NV12 frame pair, or `None` if the
-    /// source is exhausted. The per-camera accessor for genuinely
-    /// pair-shaped consumers (stereo calibration); pipeline consumers
-    /// use [`FrameSource::next_frame`](reco_core::source::FrameSource).
-    pub fn next_pair(&mut self) -> Result<Option<(Nv12Data, Nv12Data)>, SourceError> {
-        match self.rx.recv() {
-            Ok(pair) => Ok(Some(pair)),
-            Err(_) => Ok(None),
-        }
-    }
-}
-
-impl reco_core::source::FrameSource for GstreamerNv12CameraSource {
-    fn info(&self) -> reco_core::source::SourceInfo {
-        self.info.clone()
-    }
-
-    fn next_frame(&mut self) -> Result<Option<FrameSet>, reco_core::source::SourceError> {
-        self.next_pair()
-            .map(|opt| opt.map(|(left, right)| FrameSet::Nv12(vec![left, right])))
-    }
-}
-
-impl Drop for GstreamerNv12CameraSource {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-        // Drain any pending frames to unblock capture threads
-        while self.rx.try_recv().is_ok() {}
-        // Give capture threads time to send EOS and reach Null state
-        std::thread::sleep(std::time::Duration::from_millis(500));
-    }
-}
-
-// ── NVMM zero-copy camera source (Jetson only) ─────────────────────
-
-#[cfg(target_os = "linux")]
-pub use nvmm_source::GstreamerNvmmCameraSource;
-#[cfg(target_os = "linux")]
-pub use nvmm_source::NvmmFramePair;
-
-#[cfg(target_os = "linux")]
-mod nvmm_source {
-    use super::*;
-    use crate::gstreamer::nvmm::{self, NvmmFrameInfo};
-
-    /// Stereo pair of NVMM frame metadata (DMA-buf fds + surface ptrs).
-    pub struct NvmmFramePair {
-        pub left: NvmmFrameInfo,
-        pub right: NvmmFrameInfo,
-    }
-
-    fn build_nvmm_pipeline_string(device: &str, config: &CameraConfig) -> Result<String, String> {
-        let width = config.width;
-        let height = config.height;
-        let fps = config.fps;
-
-        // Test override: RECO_NVMM_LEFT / RECO_NVMM_RIGHT env vars pipe a video
-        // file through nvv4l2decoder to produce identical NVMM NV12 output.
-        let env_key = if device == "0" {
-            "RECO_NVMM_LEFT"
-        } else {
-            "RECO_NVMM_RIGHT"
-        };
-        if let Ok(path) = std::env::var(env_key) {
-            log::info!("[nvmm] {env_key}={path} (file override, bypassing camera)");
-            return Ok(format!(
-                "filesrc location={path} ! qtdemux ! h264parse ! nvv4l2decoder ! \
-                 video/x-raw(memory:NVMM),format=NV12 ! \
-                 appsink name=sink emit-signals=false sync=false max-buffers=4 drop=true"
-            ));
-        }
-
-        validate_device_string(device)?;
-        // RECO_NVARGUS_OPTS injects extra source properties (e.g. aelock,
-        // exposuretimerange, gainrange, wbmode) for seam-matched capture.
-        let nvargus_opts = std::env::var("RECO_NVARGUS_OPTS").unwrap_or_default();
-        Ok(format!(
-            "nvarguscamerasrc sensor-id={device} {nvargus_opts} ! \
-             video/x-raw(memory:NVMM),width={width},height={height},format=NV12,framerate={fps}/1 ! \
-             appsink name=sink emit-signals=false sync=false max-buffers=4 drop=true"
-        ))
-    }
-
-    fn spawn_nvmm_capture_thread(
-        device: String,
-        label: &'static str,
-        config: CameraConfig,
-        stop: Arc<AtomicBool>,
-    ) -> (mpsc::Receiver<NvmmFrameInfo>, mpsc::SyncSender<()>) {
-        let (info_tx, info_rx) = mpsc::sync_channel::<NvmmFrameInfo>(2);
-        let (release_tx, release_rx) = mpsc::sync_channel::<()>(4);
-
-        std::thread::Builder::new()
-            .name(format!("nvmm_{label}"))
-            .spawn(move || {
-                let pipeline_str = match build_nvmm_pipeline_string(&device, &config) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        log::error!("[{label}] NVMM pipeline build: {e}");
-                        return;
-                    }
-                };
-
-                log::info!("[{label}] NVMM pipeline: {pipeline_str}");
-
-                let pipeline = gst::parse::launch(&pipeline_str)
-                    .expect("NVMM pipeline parse")
-                    .downcast::<gst::Pipeline>()
-                    .expect("not a pipeline");
-                let appsink = pipeline
-                    .by_name("sink")
-                    .expect("appsink not found")
-                    .downcast::<gst_app::AppSink>()
-                    .expect("not an AppSink");
-                appsink.set_max_buffers(4);
-                appsink.set_drop(true);
-                pipeline
-                    .set_state(gst::State::Playing)
-                    .expect("NVMM pipeline start");
-
-                log::info!("[{label}] NVMM capture started (sensor={device})");
-
-                let mut prev_sample: Option<gst::Sample> = None;
-
-                loop {
-                    if stop.load(Ordering::Relaxed) {
-                        break;
-                    }
-
-                    let sample = match appsink.pull_sample() {
-                        Ok(s) => s,
-                        Err(_) => break,
-                    };
-
-                    let buffer = match sample.buffer() {
-                        Some(b) => b,
-                        None => {
-                            log::error!("[{label}] NVMM sample has no buffer");
-                            break;
-                        }
-                    };
-
-                    let map = match buffer.map_readable() {
-                        Ok(m) => m,
-                        Err(e) => {
-                            log::error!("[{label}] NVMM buffer map failed: {e}");
-                            break;
-                        }
-                    };
-
-                    let frame_info =
-                        match unsafe { nvmm::extract_nvmm_frame_info(map.as_slice().as_ptr()) } {
-                            Ok(info) => info,
-                            Err(e) => {
-                                log::error!("[{label}] NVMM extract failed: {e}");
-                                break;
-                            }
-                        };
-
-                    drop(map);
-
-                    // Release the previous sample now that the render thread
-                    // has had a full frame to use the prior DMA-buf.
-                    if let Some(prev) = prev_sample.take() {
-                        drop(prev);
-                    }
-
-                    if info_tx.send(frame_info).is_err() {
-                        break;
-                    }
-
-                    prev_sample = Some(sample);
-
-                    // Wait for the render thread to signal it's done importing
-                    // this frame's DMA-buf before we let the next pull_sample
-                    // potentially recycle the buffer.
-                    let _ = release_rx.recv();
-                }
-
-                let _ = pipeline.set_state(gst::State::Null);
-                log::info!("[{label}] NVMM capture stopped");
-            })
-            .expect("spawn NVMM capture thread");
-
-        (info_rx, release_tx)
-    }
-
-    /// Stereo NVMM camera source for zero-copy Vulkan import + NvBufSurfTransform.
-    ///
-    /// Each call to `next_pair()` returns DMA-buf fds and NvBufSurface pointers
-    /// for both cameras. The caller must call `release_previous()` after GPU
-    /// work (rendering + detection) is submitted, before calling `next_pair()`
-    /// again - this signals the capture threads to release the old GstSample
-    /// and pull the next frame.
-    pub struct GstreamerNvmmCameraSource {
-        left_rx: mpsc::Receiver<NvmmFrameInfo>,
-        right_rx: mpsc::Receiver<NvmmFrameInfo>,
-        left_release: mpsc::SyncSender<()>,
-        right_release: mpsc::SyncSender<()>,
-        info: SourceInfo,
-        stop: Arc<AtomicBool>,
-        /// Whether a frame from the most recent `next_frame()` is still
-        /// holding its DMA-buf (must be released before pulling the next).
-        /// Drives the deferred release in the `FrameSource` impl.
-        outstanding: bool,
-    }
-
-    impl GstreamerNvmmCameraSource {
-        /// Open a stereo NVMM camera source.
-        pub fn open(config: &CameraConfig) -> Result<Self, SourceError> {
-            gst::init().map_err(|e| SourceError::Init {
-                path: format!("{} + {}", config.left_device, config.right_device),
-                reason: format!("GStreamer init: {e}"),
-            })?;
-
-            let stop = Arc::new(AtomicBool::new(false));
-
-            let (left_rx, left_release) = spawn_nvmm_capture_thread(
-                config.left_device.clone(),
-                "left",
-                config.clone(),
-                stop.clone(),
-            );
-            let (right_rx, right_release) = spawn_nvmm_capture_thread(
-                config.right_device.clone(),
-                "right",
-                config.clone(),
-                stop.clone(),
-            );
-
-            let info = SourceInfo {
+impl<T: Send + Sync + 'static> HostCapture<T> {
+    fn open(
+        config: &CameraConfig,
+        format: CaptureFormat,
+        interrupted: Arc<AtomicBool>,
+        extract: fn(&[u8], u32, u32) -> Result<T, SourceError>,
+    ) -> Result<Self, SourceError> {
+        let descriptions = [&config.left_device, &config.right_device].map(|device| {
+            build_pipeline_string(device, config.width, config.height, config.fps, format).map_err(
+                |reason| SourceError::Init {
+                    path: device.clone(),
+                    reason,
+                },
+            )
+        });
+        let [left, right] = descriptions;
+        let (width, height) = (config.width, config.height);
+        let pair = super::capture::CapturePair::start(
+            [&left?, &right?],
+            move |sample| extract_sample(sample, width, height, extract).map(Arc::new),
+            config.synchronization.map(|policy| (policy, config.fps)),
+        )?;
+        Ok(Self {
+            pair,
+            info: SourceInfo {
                 width: config.width,
                 height: config.height,
                 fps: config.fps as f64,
                 fps_rational: None,
                 total_frames: None,
-            };
-
-            log::info!(
-                "NVMM stereo source: {}x{} @ {}fps, zero-copy DMA-buf + NvBufSurfTransform",
-                config.width,
-                config.height,
-                config.fps,
-            );
-
-            Ok(Self {
-                left_rx,
-                right_rx,
-                left_release,
-                right_release,
-                info,
-                stop,
-                outstanding: false,
-            })
-        }
-
-        /// Get the next stereo NVMM frame pair.
-        ///
-        /// Blocks until both cameras deliver a frame. Returns `None` on EOS.
-        pub fn next_pair(&mut self) -> Result<Option<NvmmFramePair>, SourceError> {
-            let left = match self.left_rx.recv() {
-                Ok(info) => info,
-                Err(_) => return Ok(None),
-            };
-            let right = match self.right_rx.recv() {
-                Ok(info) => info,
-                Err(_) => return Ok(None),
-            };
-            Ok(Some(NvmmFramePair { left, right }))
-        }
-
-        /// Signal capture threads that GPU work on the current frame is done.
-        ///
-        /// Must be called after rendering + detection are submitted for the
-        /// frame returned by the most recent `next_pair()`.
-        pub fn release_previous(&self) {
-            let _ = self.left_release.send(());
-            let _ = self.right_release.send(());
-        }
-
-        /// Source metadata.
-        pub fn info(&self) -> SourceInfo {
-            self.info.clone()
-        }
-
-        /// Stop capture gracefully.
-        pub fn stop(&self) {
-            self.stop.store(true, Ordering::Relaxed);
-        }
+            },
+            interrupted,
+        })
     }
 
-    /// Convert reco-io's `NvmmFrameInfo` into reco-core's `NvmmPlaneInfo`.
-    fn to_plane_info(info: &NvmmFrameInfo) -> reco_core::source::NvmmPlaneInfo {
-        reco_core::source::NvmmPlaneInfo {
-            dmabuf_fd: info.dmabuf_fd,
-            width: info.width,
-            height: info.height,
-            y_offset: info.y_offset,
-            uv_offset: info.uv_offset,
-            total_size: info.total_size,
-            surface_ptr: info.surface_ptr,
-        }
-    }
-
-    impl reco_core::source::FrameSource for GstreamerNvmmCameraSource {
-        fn info(&self) -> SourceInfo {
-            self.info.clone()
-        }
-
-        /// Pull the next NVMM stereo frame as [`FrameSet::NvmmResident`].
-        ///
-        /// Releases the previous frame's DMA-buf first (deferred release):
-        /// the capture thread blocks until released, and the session has
-        /// finished importing + detecting the prior frame by the time this
-        /// is called again, so the buffer is safe to recycle. Exactly one
-        /// frame is ever unreleased.
-        fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
-            if self.outstanding {
-                self.release_previous();
-                self.outstanding = false;
-            }
-            match self.next_pair()? {
-                Some(pair) => {
-                    self.outstanding = true;
-                    Ok(Some(FrameSet::NvmmResident([
-                        to_plane_info(&pair.left),
-                        to_plane_info(&pair.right),
-                    ])))
-                }
-                None => Ok(None),
-            }
-        }
-
-        /// NVMM frames are GPU-resident (DMA-buf imported into Vulkan).
-        fn is_gpu_resident(&self) -> bool {
-            true
-        }
-
-        /// NVMM cameras deliver NV12 (NVIDIA ISP native format).
-        fn gpu_pixel_format(&self) -> reco_core::render::renderer::GpuPixelFormat {
-            reco_core::render::renderer::GpuPixelFormat::Nv12
-        }
-    }
-
-    impl Drop for GstreamerNvmmCameraSource {
-        fn drop(&mut self) {
-            self.stop.store(true, Ordering::Relaxed);
-            // Drain pending frames and send release signals to unblock threads
-            while self.left_rx.try_recv().is_ok() {}
-            while self.right_rx.try_recv().is_ok() {}
-            let _ = self.left_release.send(());
-            let _ = self.right_release.send(());
-            std::thread::sleep(std::time::Duration::from_millis(500));
-        }
+    fn next(&mut self) -> Result<Option<super::capture::CapturedPair<Arc<T>>>, SourceError> {
+        self.pair.next(&self.interrupted)
     }
 }
+
+fn extract_sample<T>(
+    sample: &gst::Sample,
+    width: u32,
+    height: u32,
+    extract: fn(&[u8], u32, u32) -> Result<T, SourceError>,
+) -> Result<T, SourceError> {
+    let buffer = sample.buffer().ok_or_else(|| SourceError::Read {
+        reason: "capture sample has no buffer".into(),
+    })?;
+    let map = buffer.map_readable().map_err(|e| SourceError::Read {
+        reason: format!("capture buffer map failed: {e}"),
+    })?;
+    extract(map.as_slice(), width, height)
+}
+
+/// Stereo I420 camera capture using GStreamer's bounded appsink queues.
+/// Pairing follows arrival order, not capture timestamps.
+pub struct GstreamerCameraSource {
+    capture: HostCapture<Yuv420pData>,
+}
+
+impl GstreamerCameraSource {
+    /// Start both cameras. Capture waits observe the supplied cancellation flag.
+    /// Pipeline initialization failures are returned directly.
+    pub fn open(config: &CameraConfig, interrupted: Arc<AtomicBool>) -> Result<Self, SourceError> {
+        Ok(Self {
+            capture: HostCapture::open(config, CaptureFormat::I420, interrupted, extract_i420)?,
+        })
+    }
+}
+
+impl reco_core::source::FrameSource for GstreamerCameraSource {
+    fn info(&self) -> SourceInfo {
+        self.capture.info.clone()
+    }
+
+    fn next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {
+        self.capture.next().map(|pair| {
+            pair.map(|pair| SourceFrame {
+                images: FrameSet::Yuv420p(pair.images.into_iter().collect()),
+                pts_us: Some(pair.pts_us),
+                capture: Some(pair.capture),
+            })
+        })
+    }
+
+    fn is_exhausted(&self) -> bool {
+        self.capture.pair.is_stopped()
+    }
+}
+
+/// Stereo host-memory NV12 capture using GStreamer's bounded appsink queues.
+/// NV12 avoids the ISP's NV12-to-I420 conversion on Jetson.
+/// Pairing follows arrival order, not capture timestamps.
+pub struct GstreamerNv12CameraSource {
+    capture: HostCapture<Nv12Data>,
+}
+
+impl GstreamerNv12CameraSource {
+    /// Start both cameras. Capture waits observe the supplied cancellation flag.
+    /// Pipeline initialization failures are returned directly.
+    pub fn open(config: &CameraConfig, interrupted: Arc<AtomicBool>) -> Result<Self, SourceError> {
+        Ok(Self {
+            capture: HostCapture::open(config, CaptureFormat::Nv12, interrupted, extract_nv12)?,
+        })
+    }
+
+    /// Stop the capture pipeline and join both extraction workers.
+    pub fn stop(&mut self) -> Result<(), SourceError> {
+        self.capture.pair.stop()
+    }
+
+    /// Source metadata.
+    pub fn info(&self) -> SourceInfo {
+        self.capture.info.clone()
+    }
+
+    /// Get the next pair, or `None` after EOS or cancellation.
+    /// For stereo calibration; pipeline consumers use `FrameSource::next_frame`.
+    pub fn next_pair(&mut self) -> Result<Option<[Arc<Nv12Data>; 2]>, SourceError> {
+        self.capture.next().map(|pair| pair.map(|pair| pair.images))
+    }
+}
+
+impl reco_core::source::FrameSource for GstreamerNv12CameraSource {
+    fn info(&self) -> SourceInfo {
+        self.capture.info.clone()
+    }
+
+    fn next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {
+        self.capture.next().map(|pair| {
+            pair.map(|pair| SourceFrame {
+                images: FrameSet::Nv12(pair.images.into_iter().collect()),
+                pts_us: Some(pair.pts_us),
+                capture: Some(pair.capture),
+            })
+        })
+    }
+
+    fn is_exhausted(&self) -> bool {
+        self.capture.pair.is_stopped()
+    }
+}
+
+// ── NVMM zero-copy camera source (Jetson only) ─────────────────────
+#[cfg(target_os = "linux")]
+pub use super::nvmm_camera::GstreamerNvmmCameraSource;
 
 #[cfg(test)]
 mod tests {
     use super::validate_device_string;
+
+    #[cfg(feature = "ffmpeg")]
+    mod pipeline;
+
+    fn synthetic_capture<T: Send + Sync + 'static>(
+        format: &str,
+        extract: fn(&[u8], u32, u32) -> Result<T, reco_core::source::SourceError>,
+    ) -> super::HostCapture<T> {
+        use super::*;
+        let description = format!(
+            "videotestsrc num-buffers=2 pattern=black ! video/x-raw,format={format},width=64,height=32,framerate=10/1 ! appsink name=sink sync=false"
+        );
+        HostCapture {
+            pair: super::super::capture::CapturePair::start(
+                [&description, &description],
+                move |sample| extract_sample(sample, 64, 32, extract).map(Arc::new),
+                None,
+            )
+            .unwrap(),
+            info: SourceInfo {
+                width: 64,
+                height: 32,
+                fps: 30.0,
+                fps_rational: None,
+                total_frames: None,
+            },
+            interrupted: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    #[test]
+    fn host_sources_deliver_both_formats_and_report_terminal_exhaustion() {
+        use super::*;
+        use reco_core::source::FrameSource;
+        let sources: [Box<dyn FrameSource>; 2] = [
+            Box::new(GstreamerCameraSource {
+                capture: synthetic_capture("I420", extract_i420),
+            }),
+            Box::new(GstreamerNv12CameraSource {
+                capture: synthetic_capture("NV12", extract_nv12),
+            }),
+        ];
+        for mut source in sources {
+            assert!(!source.is_exhausted());
+            for index in 0..2 {
+                let frame = source.next_frame().unwrap().unwrap();
+                assert_eq!(frame.pts_us, Some(index * 100_000));
+                match frame.images {
+                    FrameSet::Yuv420p(frames) => {
+                        assert_eq!(frames.len(), 2);
+                        for frame in frames {
+                            assert_eq!(frame.y, vec![16; 64 * 32]);
+                            assert_eq!(frame.u, vec![128; 32 * 16]);
+                            assert_eq!(frame.v, vec![128; 32 * 16]);
+                        }
+                    }
+                    FrameSet::Nv12(frames) => {
+                        assert_eq!(frames.len(), 2);
+                        for frame in frames {
+                            assert_eq!(frame.y, vec![16; 64 * 32]);
+                            assert_eq!(frame.uv, vec![128; 64 * 16]);
+                        }
+                    }
+                    _ => panic!("expected owned host planes"),
+                }
+            }
+            assert!(source.next_frame().unwrap().is_none());
+            assert!(source.is_exhausted());
+        }
+    }
+
+    #[test]
+    fn extraction_failure_stops_capture_and_explicit_stop_preserves_cancellation_flag() {
+        use super::*;
+        use reco_core::source::FrameSource;
+        use std::sync::atomic::Ordering;
+        let mut source = GstreamerNv12CameraSource {
+            capture: synthetic_capture("NV12", |data, width, height| {
+                extract_nv12(data, width * 2, height)
+            }),
+        };
+        // Force a truncated-plane error through the production extraction path.
+        assert!(source.next_frame().is_err());
+        assert!(source.is_exhausted());
+        source.stop().unwrap();
+        source.stop().unwrap();
+        assert!(!source.capture.interrupted.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn invalid_capture_input_is_error_not_eof() {
+        use super::*;
+        use reco_core::source::FrameSource;
+        let config = CameraConfig {
+            width: 64,
+            height: 32,
+            fps: 30,
+            left_device: "invalid-device".into(),
+            right_device: "invalid-device".into(),
+            synchronization: None,
+        };
+        let result = GstreamerCameraSource::open(&config, Arc::new(AtomicBool::new(false)))
+            .and_then(|mut source| source.next_frame());
+        assert!(
+            result.is_err(),
+            "capture failure must not be successful EOF"
+        );
+        let result = GstreamerNv12CameraSource::open(&config, Arc::new(AtomicBool::new(false)))
+            .and_then(|mut source| source.next_pair());
+        assert!(
+            result.is_err(),
+            "capture failure must not be successful EOF"
+        );
+    }
 
     // Helper: on non-Jetson Linux builds (the CI environment), V4L2 rules apply.
     // On macOS/Windows CI the numeric rules apply. We test the logic that is

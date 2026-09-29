@@ -92,8 +92,8 @@ pub trait Panner: Send {
 pub(crate) struct DispatchContext<'a> {
     /// Raw mapped detections the trackers should consume this frame.
     pub detections: &'a [MappedDetection],
-    /// Whether these observations were newly measured since the preceding tick.
-    pub fresh: bool,
+    /// Cameras measured since the preceding tick, including successful empty results.
+    pub fresh_cameras: &'a [crate::geometry::CameraIndex],
     /// Shared calibration handed to the panner via [`PanContext`].
     pub calibration: &'a Calibration,
     /// Current frame index (0-based, monotonically increasing).
@@ -124,11 +124,11 @@ pub(crate) fn run_trackers(
     // player-anchor gate can run against the current frame rather
     // than the previous one.
     if let Some(t) = player_tracker {
-        world.players = t.update(ctx.detections, ctx.fresh, ctx.timestamp_ms);
+        world.players = t.update(ctx.detections, ctx.fresh_cameras, ctx.timestamp_ms);
     }
     if let Some(t) = ball_tracker {
         t.observe_world(&world);
-        let ents = t.update(ctx.detections, ctx.fresh, ctx.timestamp_ms);
+        let ents = t.update(ctx.detections, ctx.fresh_cameras, ctx.timestamp_ms);
         if ents.len() > 1 {
             log::warn!(
                 "{}: ball_tracker returned {} entities (expected <=1); taking first",

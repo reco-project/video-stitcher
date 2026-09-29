@@ -25,7 +25,7 @@ env:
   APT_PACKAGES: >-
     libavcodec-dev libavformat-dev libavutil-dev
     libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev
-    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base
     libfontconfig1-dev libobs-dev
     pkg-config clang
 
@@ -55,11 +55,14 @@ jobs:
         run: cargo clippy --workspace --all-targets --features gstreamer -- -D warnings
       - name: Clippy (with load-dynamic)
         run: cargo clippy --workspace --all-targets --features load-dynamic -- -D warnings
-      # libcamera gates pure-Rust capture code (no native dependency),
-      # so only this lane compiles it - a break is invisible to every
-      # other job (a blend-mode enum change shipped broken this way).
+      # Subprocess capture needs no camera SDK or device for lifecycle tests.
       - name: Clippy (with libcamera)
         run: cargo clippy --workspace --all-targets --features libcamera -- -D warnings
+      - name: Libcamera subprocess lifecycle
+        run: cargo test -p reco-io --no-default-features --features libcamera --lib libcamera::
+      - name: GStreamer capture lifecycle, ownership and encoded delivery
+        timeout-minutes: 5
+        run: cargo test -p reco-io --no-default-features --features gstreamer,ffmpeg --lib gstreamer::
       - name: Clippy (reco-gui automation hook)
         run: cargo clippy -p reco-gui --all-targets --features automation -- -D warnings
       - name: Clippy (no default features)
@@ -107,6 +110,10 @@ jobs:
         run: cargo test --workspace --features profiling
       - name: GPU session completion and cancellation
         run: cargo test -p reco-core gpu_run_completion -- --ignored --test-threads=1
+      - name: GPU native input completion
+        run: cargo test -p reco-core nvmm_ -- --ignored --test-threads=1
+      - name: GPU output timestamp association
+        run: cargo test -p reco-core gpu_output_times_stay_with_images -- --ignored --test-threads=1
       # The wgpu-free build: -p bypasses workspace feature unification so
       # reco-core tests exercise the CPU engine and session without wgpu.
       # RECO_REQUIRE_GPU must not apply - there is no GPU path to require.

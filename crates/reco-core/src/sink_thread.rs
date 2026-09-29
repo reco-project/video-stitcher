@@ -25,7 +25,7 @@ struct SinkJob {
     /// NV12 pixel data (borrowed from the buffer pool).
     data: Vec<u8>,
     /// Presentation timestamp in microseconds.
-    pts_us: i64,
+    pts_us: Option<i64>,
 }
 
 /// Shared sink-thread counters. The worker records the true
@@ -104,8 +104,8 @@ impl SinkThread {
     ///
     /// Copies `nv12_data` into a pooled buffer and sends it to the
     /// sink thread. Blocks if the channel is full (backpressure).
-    /// `pts_us` is the presentation timestamp in microseconds.
-    pub fn submit(&mut self, nv12_data: &[u8], pts_us: i64) -> Result<(), SinkError> {
+    /// `pts_us` follows [`OutputFrame::pts_us`], including fixed-rate `None`.
+    pub fn submit(&mut self, nv12_data: &[u8], pts_us: Option<i64>) -> Result<(), SinkError> {
         profile_scope!("sink_thread_submit");
         if let Some(error) = &self.error {
             return Err(error.clone());
@@ -300,7 +300,7 @@ mod tests {
         let mut t = SinkThread::new(Box::new(NoopSink), 16, 16, 2);
         let data = vec![0u8; 16 * 16 * 3 / 2];
         for i in 0..8 {
-            t.submit(&data, i).unwrap();
+            t.submit(&data, Some(i)).unwrap();
         }
         t.finish().unwrap();
         let (frames, avg_ms, _bp, _bp_ms) = t.stats();
@@ -336,7 +336,7 @@ mod tests {
         // The first submits may succeed (queued before the worker
         // errors); keep going until the disconnect is observed.
         let err = (0..100)
-            .find_map(|i| t.submit(&data, i).err())
+            .find_map(|i| t.submit(&data, Some(i)).err())
             .expect("worker death must surface as a submit error");
         assert!(
             err.to_string().contains("codec rejected the frame"),
@@ -345,7 +345,7 @@ mod tests {
         assert_eq!(t.finish().unwrap_err().to_string(), err.to_string());
         assert_eq!(t.finish().unwrap_err().to_string(), err.to_string());
         assert_eq!(
-            t.submit(&data, 100).unwrap_err().to_string(),
+            t.submit(&data, Some(100)).unwrap_err().to_string(),
             err.to_string()
         );
     }
@@ -391,7 +391,7 @@ mod tests {
                 16,
                 1,
             );
-            thread.submit(&[0; 16 * 16 * 3 / 2], 0).unwrap();
+            thread.submit(&[0; 16 * 16 * 3 / 2], Some(0)).unwrap();
             let error = thread.finish().unwrap_err().to_string();
             assert!(error.contains(if fail_consume {
                 "consume failure"

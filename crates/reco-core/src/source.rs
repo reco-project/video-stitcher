@@ -23,6 +23,7 @@
 //! sources can write directly to shared GPU textures, avoiding
 //! CPU-GPU transfers entirely. See `interop::cuda` in `reco-core`.
 
+use std::sync::Arc;
 use thiserror::Error;
 
 /// Errors from frame sources.
@@ -257,44 +258,12 @@ pub struct D3d11CameraFrame {
     /// Array slice index within the D3D11VA decode pool.
     pub slice: usize,
 }
-
-/// Per-camera metadata for an NVMM zero-copy frame (Jetson).
-///
-/// Carries the DMA-buf fd (Vulkan render import) and the raw
-/// `NvBufSurface*` pointer (NvBufSurfTransform detection preprocessing)
-/// for one camera, plus the plane geometry needed for the Vulkan import.
-/// This is the reco-core mirror of reco-io's `NvmmFrameInfo` - reco-core
-/// has no I/O deps, so the I/O backend constructs this from its own type.
-///
-/// Both the fd and the surface pointer are only valid while the source
-/// holds the underlying GStreamer sample alive (until the session has
-/// copied the frame into the VRAM pool and run detection on it).
 #[cfg(target_os = "linux")]
-#[derive(Debug, Clone, Copy)]
-pub struct NvmmPlaneInfo {
-    /// DMA-buf file descriptor for Vulkan import (render path).
-    pub dmabuf_fd: i32,
-    /// Frame width in pixels.
-    pub width: u32,
-    /// Frame height in pixels.
-    pub height: u32,
-    /// Y plane byte offset within the DMA-buf.
-    pub y_offset: u32,
-    /// UV plane byte offset within the DMA-buf.
-    pub uv_offset: u32,
-    /// Total allocation size (Vulkan memory import).
-    pub total_size: u32,
-    /// Raw `NvBufSurface*` pointer for `NvBufSurfTransform` (detection path).
-    pub surface_ptr: *mut std::ffi::c_void,
-}
-
-// SAFETY: the surface pointer is a stable kernel-managed NVMM pool address;
-// the source's capture thread keeps the GstSample alive until release. The
-// session that consumes this never moves it across threads.
+mod nvmm;
 #[cfg(target_os = "linux")]
-unsafe impl Send for NvmmPlaneInfo {}
+pub use nvmm::{NvmmFrame, NvmmPlaneInfo};
 
-/// One time instant's frames from every camera, in projection order
+/// One image from every camera, in projection order
 /// (index `i` pairs with `calibration.lenses[i]`).
 ///
 /// Residency - where the pixel data lives - is a set-level property:
@@ -317,10 +286,12 @@ unsafe impl Send for NvmmPlaneInfo {}
 /// validated by the session. Metal, D3D11 and NVMM imports carry stereo pairs.
 #[non_exhaustive]
 pub enum FrameSet {
-    /// CPU-resident YUV420P planes (3 planes per camera).
-    Yuv420p(Vec<Yuv420pData>),
-    /// CPU-resident NV12 planes (2 planes per camera).
-    Nv12(Vec<Nv12Data>),
+    /// Shared CPU-resident YUV420P images (3 planes per camera).
+    /// Cloning a camera handle retains the image without copying its planes.
+    Yuv420p(Vec<Arc<Yuv420pData>>),
+    /// Shared CPU-resident NV12 images (2 planes per camera).
+    /// Cloning a camera handle retains the image without copying its planes.
+    Nv12(Vec<Arc<Nv12Data>>),
     /// GPU-resident: data already written to shared textures by the
     /// source. Values are double-buffer slot indices (0 or 1), one per
     /// camera, that the pipeline uses to select the correct bind group.
@@ -340,16 +311,17 @@ pub enum FrameSet {
     D3d11Resident([D3d11CameraFrame; 2]),
     /// Jetson NVMM zero-copy: NV12 frames in NvBufSurface DMA-buf
     /// memory, one per camera. The session imports the DMA-bufs as
-    /// Vulkan textures for rendering (copied into the VRAM pool) and
+    /// Vulkan textures for rendering (staged into the VRAM pool for lookahead) and
     /// runs `NvBufSurfTransform` on the surface pointers for detection.
-    /// Produced by the NVMM camera source.
+    /// Frames own their native buffers and mapped metadata.
     #[cfg(target_os = "linux")]
-    NvmmResident([NvmmPlaneInfo; 2]),
+    NvmmResident([NvmmFrame; 2]),
 }
 
 impl FrameSet {
-    /// Owned image payload retained by this descriptor, excluding separately
-    /// accounted staging pools and borrowed native handles.
+    /// Conservative image payload budget retained by this descriptor, excluding
+    /// separately accounted staging pools and borrowed native handles. Shared host
+    /// images are charged per reference, even if another frame retains the same allocation.
     pub(crate) fn retained_image_bytes(&self) -> Result<usize, String> {
         let sum = |total: usize, bytes: usize| total.checked_add(bytes);
         let bytes = match self {
@@ -377,6 +349,66 @@ impl FrameSet {
             _ => Some(0),
         };
         bytes.ok_or_else(|| "retained image byte size overflow".into())
+    }
+}
+
+/// Source images and their presentation time, independent of pixel residency.
+///
+/// A timestamp is relative to the source's output timeline, not wall-clock or
+/// arrival time. It must be nonnegative and strictly increasing within a run.
+/// `None` requests the configured fixed-rate cadence; a run cannot mix modes.
+/// Sources own clock normalization and camera alignment. A timestamp does not
+/// by itself assert that the images were captured simultaneously.
+pub struct SourceFrame {
+    /// Shared host images or retained native handles.
+    pub images: FrameSet,
+    /// Presentation time in microseconds, or an explicitly untimed frame.
+    pub pts_us: Option<i64>,
+    /// Capture identity and source-clock assessment, or unavailable acquisition timing.
+    pub capture: Option<CaptureTiming>,
+}
+
+/// Per-camera capture identity and age on one source clock, independent of output PTS.
+///
+/// Times are listed in projection order and must be nonnegative and nondecreasing for each camera across frames. An unchanged time identifies the same immutable image; new images require later times. For bounded reuse the assessment instant must advance with source media time even when all images repeat, not with processing elapsed time. A source run cannot change timing availability or its age policy.
+#[derive(Clone, Debug)]
+pub struct CaptureTiming {
+    /// Original capture times, one per calibration camera.
+    pub times_us: Vec<i64>,
+    /// Source-clock instant at which this set's capture ages are assessed.
+    pub at_us: i64,
+    /// The source's maximum permitted image age. None means the source declares no age bound, not that images are fresh.
+    ///
+    /// Tracking may retain a successful observation for this duration plus one scheduled detection interval. Repeated display or inference never renews its original capture time.
+    pub max_age_us: Option<u64>,
+}
+
+impl CaptureTiming {
+    pub(crate) fn validate(&self, cameras: usize) -> Result<(), String> {
+        if self.at_us < 0
+            || self.times_us.len() != cameras
+            || self.times_us.iter().any(|&time| {
+                time < 0
+                    || time > self.at_us
+                    || self
+                        .max_age_us
+                        .is_some_and(|age| (self.at_us - time) as u64 > age)
+            })
+        {
+            return Err("capture timing must cover all cameras with nonnegative times no later than assessment and within the declared age limit".into());
+        }
+        Ok(())
+    }
+}
+
+impl SourceFrame {
+    /// Deliver images at the consumer's configured fixed frame rate.
+    pub fn untimed(images: FrameSet) -> Self {
+        Self {
+            images,
+            pts_us: None,
+            capture: None,
+        }
     }
 }
 
@@ -420,11 +452,11 @@ pub trait FrameSource: Send {
     /// Source metadata (dimensions, frame rate).
     fn info(&self) -> SourceInfo;
 
-    /// Get the next frame set, or `None` if the source is exhausted.
+    /// Get the next images with their presentation time, or `None` if exhausted.
     ///
     /// For live sources (cameras), this blocks until a frame is available.
     /// For file sources, returns `None` at end of file.
-    fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError>;
+    fn next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError>;
 
     /// Non-blocking attempt to get the next frame.
     ///
@@ -433,7 +465,7 @@ pub trait FrameSource: Send {
     /// that need to poll without blocking the UI thread.
     ///
     /// Sources implementing this must also report final exhaustion through [`Self::is_exhausted`]. The default returns an error without reading a frame, so an unsupported source cannot block an interactive caller.
-    fn try_next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+    fn try_next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {
         Err(SourceError::Read {
             reason: "this source does not support non-blocking frame polling".into(),
         })
@@ -556,7 +588,7 @@ mod tests {
             fn info(&self) -> SourceInfo {
                 panic!("polling must not query metadata")
             }
-            fn next_frame(&mut self) -> Result<Option<FrameSet>, SourceError> {
+            fn next_frame(&mut self) -> Result<Option<crate::source::SourceFrame>, SourceError> {
                 panic!("polling must not invoke a blocking read")
             }
         }

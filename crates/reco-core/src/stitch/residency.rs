@@ -27,10 +27,12 @@ pub(crate) struct Residency {
     #[cfg(target_os = "linux")]
     pub(crate) shared_textures: Option<Vec<[wgpu::Texture; 4]>>,
     /// DMA-buf -> Vulkan texture cache for the NVMM zero-copy path
-    /// (Jetson). Keyed by DMA-buf fd; the ISP rotates a small fd pool
-    /// so each buffer is imported once.
+    /// (Jetson). Reuses matching allocation identities and plane layouts.
     #[cfg(target_os = "linux")]
     pub(crate) nvmm_cache: Option<crate::interop::dmabuf::DmaBufTextureCache>,
+    /// Keeps native inputs alive until their immediate GPU reads finish.
+    #[cfg(target_os = "linux")]
+    pub(crate) nvmm_completion: Option<super::nvmm_completion::NvmmCompletion>,
     /// NvBufSurfTransform letterbox surfaces for NVMM detection
     /// (left, right). Render and detection consume different handles
     /// of the same NVMM frame: the DMA-buf fd renders, the raw

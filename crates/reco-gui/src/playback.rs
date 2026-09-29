@@ -108,7 +108,7 @@ impl Playback {
 
         match source.next_frame()? {
             Some(frame) => {
-                self.current_frame = Some(frame);
+                self.current_frame = Some(frame.images);
                 self.frame_index += 1;
                 Ok(true)
             }
@@ -162,7 +162,7 @@ impl Playback {
         // Non-blocking: returns None if no frame decoded yet.
         match source.try_next_frame()? {
             Some(frame) => {
-                self.current_frame = Some(frame);
+                self.current_frame = Some(frame.images);
                 self.frame_index += 1;
                 Ok(true)
             }

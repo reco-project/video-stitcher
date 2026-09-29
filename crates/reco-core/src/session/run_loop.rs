@@ -8,7 +8,26 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::StitchSession;
 use crate::session::types::{FrameProgress, ProgressCallback, SessionError};
-use crate::source::FrameSource;
+use crate::source::{FrameSource, SourceError, SourceFrame};
+
+fn accept_source_time(
+    previous: &mut Option<Option<i64>>,
+    next: Option<i64>,
+) -> Result<(), SourceError> {
+    let valid = match (*previous, next) {
+        (None, Some(time)) => time >= 0,
+        (Some(Some(last)), Some(time)) => time > last,
+        (None | Some(None), None) => true,
+        _ => false,
+    };
+    if !valid {
+        return Err(SourceError::Read {
+            reason: "source presentation timestamps must be nonnegative, strictly increasing and consistently present or absent".into(),
+        });
+    }
+    *previous = Some(next);
+    Ok(())
+}
 
 fn frame_seconds(fps: f64) -> Result<f32, SessionError> {
     let seconds = (1.0 / fps) as f32;
@@ -19,6 +38,44 @@ fn frame_seconds(fps: f64) -> Result<f32, SessionError> {
             "source frame rate must be finite and positive, got {fps}"
         )))
     }
+}
+
+fn accept_capture_timing(
+    previous: &mut Option<Option<crate::source::CaptureTiming>>,
+    capture: Option<&crate::source::CaptureTiming>,
+    cameras: usize,
+) -> Result<(), SourceError> {
+    if let Some(capture) = capture {
+        capture
+            .validate(cameras)
+            .map_err(|reason| SourceError::Read { reason })?;
+    }
+    let valid = match (previous.as_ref(), capture) {
+        (None, _) | (Some(None), None) => true,
+        (Some(Some(last)), Some(next)) => {
+            last.max_age_us == next.max_age_us
+                && next.at_us >= last.at_us
+                && (next.max_age_us.is_none() || next.at_us > last.at_us)
+                && last
+                    .times_us
+                    .iter()
+                    .zip(&next.times_us)
+                    .all(|(last, next)| next >= last)
+        }
+        _ => false,
+    };
+    if !valid {
+        return Err(SourceError::Read {
+            reason: "capture timing must remain ordered, with consistent availability and age policy; bounded assessment time must advance".into(),
+        });
+    }
+    if let (Some(Some(last)), Some(next)) = (previous.as_mut(), capture) {
+        last.times_us.clone_from(&next.times_us);
+        last.at_us = next.at_us;
+    } else {
+        *previous = Some(capture.cloned());
+    }
+    Ok(())
 }
 
 /// Centered moving-average of a pose over the past + current + ahead
@@ -155,6 +212,7 @@ impl StitchSession {
     ///
     /// Does NOT call [`Self::finish`] - the caller must do that after this
     /// returns to flush the last frame and finalize encoding.
+    /// Each run clears cached detections and image identities because source capture clocks may have different origins. Tracker state is not reset.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "session_run")
@@ -174,6 +232,8 @@ impl StitchSession {
         }
 
         self.configure_from_source(source);
+        // A new source run owns its own capture-clock origin and observations.
+        self.core.clear_detection_cache();
 
         // A host-backed run cannot consume cached native staging images.
         // Release them before starting its retained-image allowance.
@@ -208,6 +268,12 @@ impl StitchSession {
         #[cfg(all(feature = "gpu", target_os = "linux"))]
         if let Some(exec) = self.core.executor.gpu_mut() {
             exec.drop_decode_channels();
+            if let Err(error) = exec.finish_nvmm_reads() {
+                if result.is_ok() {
+                    return Err(SessionError::ZeroCopy(error));
+                }
+                log::error!("{error}");
+            }
         }
 
         result
@@ -258,8 +324,9 @@ impl StitchSession {
 
         let frame_t0 = std::time::Instant::now();
         let result = self.process_frame_any(
-            &oldest.frame,
+            oldest.frame.as_ref(),
             start.elapsed(),
+            oldest.pts_us,
             oldest.decode_time,
             frame_t0,
             ctx,
@@ -301,6 +368,7 @@ impl StitchSession {
         let start = std::time::Instant::now();
         let ctx = crate::session::types::FrameLoopContext {
             tracking_complete: true,
+            capture: None,
             frame_seconds: frame_seconds(source.info().fps)?,
             #[cfg(all(feature = "gpu", target_os = "linux"))]
             gpu_buf_info: self.core.executor.gpu().and_then(|g| g.cuda_buf_info()),
@@ -314,8 +382,8 @@ impl StitchSession {
         let mut buffer = FrameBuffer::new(capacity);
         let mut produce_count: u64 = 0;
 
-        // Borrowed native surfaces need persistent staging. Metal frames own
-        // retained CVPixelBuffers and render directly from those buffers.
+        // Native decode/capture pools need persistent staging. Metal frames
+        // retain CVPixelBuffers and render directly from those buffers.
         #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
         if source.is_gpu_resident() {
             let pool_size = crate::lookahead::pool_slots(n).map_err(SessionError::Config)?;
@@ -413,21 +481,39 @@ impl StitchSession {
             }
         }
 
-        let produce_one = |session: &mut StitchSession,
-                           source: &mut dyn FrameSource,
-                           buffer: &mut FrameBuffer,
-                           image_budget: &mut crate::lookahead::ImageBudget,
-                           produce_count: &mut u64,
-                           start: std::time::Instant,
-                           _ctx: &crate::session::types::FrameLoopContext|
+        let mut previous_time = None;
+        let mut previous_capture_times = None;
+        let mut produce_one = |session: &mut StitchSession,
+                               source: &mut dyn FrameSource,
+                               buffer: &mut FrameBuffer,
+                               image_budget: &mut crate::lookahead::ImageBudget,
+                               produce_count: &mut u64,
+                               start: std::time::Instant,
+                               completion: &mut super::types::RunCompletion|
          -> Result<bool, SessionError> {
             let frame_t0 = std::time::Instant::now();
             let frame = match source.next_frame()? {
                 Some(f) => f,
-                None => return Ok(false),
+                None => {
+                    if interrupted.load(Ordering::Relaxed) {
+                        *completion = super::types::RunCompletion::Cancelled;
+                    }
+                    return Ok(false);
+                }
             };
             let decode_time = frame_t0.elapsed();
             let elapsed = start.elapsed();
+            let SourceFrame {
+                images: frame,
+                pts_us,
+                capture,
+            } = frame;
+            accept_source_time(&mut previous_time, pts_us)?;
+            accept_capture_timing(
+                &mut previous_capture_times,
+                capture.as_ref(),
+                session.core.calibration().projection.camera_count(),
+            )?;
             session.validate_source_frame(&frame)?;
             let retained_bytes = frame.retained_image_bytes().map_err(SessionError::Config)?;
             image_budget
@@ -439,7 +525,13 @@ impl StitchSession {
             #[cfg(feature = "gpu")]
             let vram_slot = session.copy_to_vram_pool(&frame, *produce_count)?;
 
-            let world_state = session.detect_and_track_only(&frame, elapsed, *produce_count);
+            let world_state = session.detect_and_track_only(
+                &frame,
+                elapsed,
+                *produce_count,
+                capture.as_ref(),
+                ctx.frame_seconds,
+            );
             // Detection still reads the original decode surface after staging.
             #[cfg(feature = "gpu")]
             session.release_gpu_decode_slot(&frame);
@@ -455,8 +547,15 @@ impl StitchSession {
             };
             let detections = session.core.last_detections().to_vec();
 
+            // Staging has completed and detection no longer uses the capture
+            // buffer. Keeping it in the lookahead queue would exhaust the ISP pool.
+            let frame = Some(frame);
+            #[cfg(all(feature = "gpu", target_os = "linux"))]
+            let frame = super::frame_buffer::release_staged_nvmm(frame, vram_slot);
+
             buffer.push(BufferedFrame {
                 frame,
+                pts_us,
                 world_state,
                 detections,
                 elapsed_ms: elapsed.as_secs_f64() * 1000.0,
@@ -485,7 +584,7 @@ impl StitchSession {
                     &mut image_budget,
                     &mut produce_count,
                     start,
-                    &ctx,
+                    &mut completion,
                 )? {
                     break;
                 }
@@ -547,10 +646,13 @@ impl StitchSession {
                         &mut image_budget,
                         &mut produce_count,
                         start,
-                        &ctx,
+                        &mut completion,
                     )?
                 {
                     eof = true;
+                }
+                if !continue_run(&mut completion, self.frame_count, frame_limit, interrupted) {
+                    break;
                 }
                 run_panner_once(self, &mut buffer, &mut pose_queue, &mut panner_frame_idx);
             }
@@ -569,13 +671,16 @@ impl StitchSession {
                         &mut image_budget,
                         &mut produce_count,
                         start,
-                        &ctx,
+                        &mut completion,
                     )?
                 {
                     eof = true;
                 }
 
                 // Run panner on next buffered frame (stays ahead of rendering)
+                if !continue_run(&mut completion, self.frame_count, frame_limit, interrupted) {
+                    break;
+                }
                 if !buffer.is_empty() {
                     run_panner_once(self, &mut buffer, &mut pose_queue, &mut panner_frame_idx);
                 }
@@ -635,9 +740,12 @@ impl StitchSession {
     ) -> Result<super::types::RunResult, SessionError> {
         let mut completion = super::types::RunCompletion::Completed;
         let start = std::time::Instant::now();
+        let mut previous_time = None;
 
-        let ctx = crate::session::types::FrameLoopContext {
+        let mut previous_capture_times = None;
+        let mut ctx = crate::session::types::FrameLoopContext {
             tracking_complete: false,
+            capture: None,
             frame_seconds: frame_seconds(source.info().fps)?,
             #[cfg(all(feature = "gpu", target_os = "linux"))]
             gpu_buf_info: self.core.executor.gpu().and_then(|g| g.cuda_buf_info()),
@@ -650,11 +758,28 @@ impl StitchSession {
                 crate::profile_scope!("wait_decode");
                 match source.next_frame()? {
                     Some(f) => f,
-                    None => break,
+                    None => {
+                        if interrupted.load(Ordering::Relaxed) {
+                            completion = super::types::RunCompletion::Cancelled;
+                        }
+                        break;
+                    }
                 }
             };
             let decode_time = frame_t0.elapsed();
 
+            let SourceFrame {
+                images: frame,
+                pts_us,
+                capture,
+            } = frame;
+            accept_source_time(&mut previous_time, pts_us)?;
+            accept_capture_timing(
+                &mut previous_capture_times,
+                capture.as_ref(),
+                self.core.calibration().projection.camera_count(),
+            )?;
+            ctx.capture = capture;
             self.validate_source_frame(&frame)?;
 
             if let Some(sink) = self.core.event_sink.as_deref_mut() {
@@ -664,7 +789,14 @@ impl StitchSession {
                 });
             }
 
-            self.process_frame_any(&frame, start.elapsed(), decode_time, frame_t0, &ctx)?;
+            self.process_frame_any(
+                Some(&frame),
+                start.elapsed(),
+                pts_us,
+                decode_time,
+                frame_t0,
+                &ctx,
+            )?;
 
             if let Some(cb) = on_progress.as_mut() {
                 cb(&FrameProgress {

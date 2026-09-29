@@ -120,11 +120,12 @@ pub struct StitchCore {
     /// skip frames. On skipped frames the panner still ticks with
     /// the previously tracked detections.
     pub(crate) detection_interval: u64,
-    /// World-mapped detections from the last detection frame.
-    /// Reused on skipped frames so the panner retains context.
+    /// Latest successful observations per camera, retained between measurements.
     pub(crate) last_detections: Vec<MappedDetection>,
-    /// A successful detection batch not yet consumed by a tracker tick.
-    pub(crate) detections_fresh: bool,
+    /// Cameras with successful measurements not yet consumed by a tracker tick.
+    pub(crate) fresh_cameras: Vec<crate::geometry::CameraIndex>,
+    /// Capture time of each camera's last successfully analysed image.
+    pub(crate) detected_capture_times: Vec<Option<i64>>,
 
     pub(crate) replay: Option<ReplayBuffer>,
 
@@ -206,7 +207,8 @@ impl StitchCore {
             detector: None,
             detection_interval: 1,
             last_detections: Vec::new(),
-            detections_fresh: false,
+            fresh_cameras: Vec::new(),
+            detected_capture_times: Vec::new(),
             replay: None,
             stacked_recorder: None,
             #[cfg(feature = "gpu")]
@@ -293,8 +295,7 @@ impl StitchCore {
     ///
     /// Frame loops schedule detection using [`Self::detection_due`]. Results carry world-reference angular positions for tracking and observation. Unsupported frame kinds are logged at debug level; other inference errors are warned without aborting rendering.
     pub fn set_detector(&mut self, detector: Box<dyn Detector>) {
-        self.last_detections.clear();
-        self.detections_fresh = false;
+        self.clear_detection_cache();
         self.detector = Some(detector);
     }
 
@@ -302,8 +303,13 @@ impl StitchCore {
     /// are cleared so the panner does not keep seeing stale data.
     pub fn clear_detector(&mut self) {
         self.detector = None;
+        self.clear_detection_cache();
+    }
+
+    pub(crate) fn clear_detection_cache(&mut self) {
         self.last_detections.clear();
-        self.detections_fresh = false;
+        self.fresh_cameras.clear();
+        self.detected_capture_times.clear();
     }
 
     /// Set how often detection runs.
@@ -808,7 +814,7 @@ mod tests {
             u: uv.clone(),
             v: uv,
         };
-        let frames = crate::source::FrameSet::Yuv420p(vec![cam.clone(), cam]);
+        let frames = crate::source::FrameSet::Yuv420p(vec![cam.clone().into(), cam.into()]);
         match core.submit_frame(&frames, 1.0 / 30.0) {
             Ok(crate::core::types::RenderOutcome::Rgba(bytes)) => {
                 assert_eq!(bytes.len(), 48 * 26 * 4);
@@ -861,7 +867,7 @@ mod tests {
             u: vec![128u8; (w * h / 4) as usize],
             v: vec![128u8; (w * h / 4) as usize],
         };
-        let mono_set = crate::source::FrameSet::Yuv420p(vec![cam]);
+        let mono_set = crate::source::FrameSet::Yuv420p(vec![cam.into()]);
         // RenderOutcome borrows the core and is not Debug; unwrap by match.
         let err = match core.submit_frame(&mono_set, 1.0 / 30.0) {
             Ok(_) => panic!("a 1-camera set on a 2-camera projection must be rejected"),
@@ -900,8 +906,8 @@ mod tests {
         let (ly, luv) = nv12(cam_w, cam_h, 0);
         let (ry, ruv) = nv12(cam_w, cam_h, 30);
         let frames = crate::source::FrameSet::Nv12(vec![
-            crate::source::Nv12Data { y: ly, uv: luv },
-            crate::source::Nv12Data { y: ry, uv: ruv },
+            crate::source::Nv12Data { y: ly, uv: luv }.into(),
+            crate::source::Nv12Data { y: ry, uv: ruv }.into(),
         ]);
 
         let cpu_exec = CpuExecutor::new(calib(cam_w, cam_h), config.clone(), cam_w, cam_h, false)
@@ -981,8 +987,8 @@ mod tests {
         let (ly, luv) = nv12(cam_w, cam_h, 0);
         let (ry, ruv) = nv12(cam_w, cam_h, 30);
         let frames = crate::source::FrameSet::Nv12(vec![
-            crate::source::Nv12Data { y: ly, uv: luv },
-            crate::source::Nv12Data { y: ry, uv: ruv },
+            crate::source::Nv12Data { y: ly, uv: luv }.into(),
+            crate::source::Nv12Data { y: ry, uv: ruv }.into(),
         ]);
 
         // Warm the ring at the original size, then resize.
@@ -1098,7 +1104,7 @@ mod tests {
             u: vec![128; 32 * 18],
             v: vec![128; 32 * 18],
         };
-        let frames = crate::source::FrameSet::Yuv420p(vec![image.clone(), image]);
+        let frames = crate::source::FrameSet::Yuv420p(vec![image.clone().into(), image.into()]);
         core.submit_frame(&frames, 1.0 / 30.0).unwrap();
         let presented = core.replay_buffer().unwrap().latest().unwrap().pose;
         assert_eq!(
@@ -1159,9 +1165,10 @@ mod tests {
             fn update(
                 &mut self,
                 detections: &[MappedDetection],
-                fresh: bool,
+                fresh_cameras: &[crate::geometry::CameraIndex],
                 _: f64,
             ) -> Vec<TrackedEntity> {
+                let fresh = !fresh_cameras.is_empty();
                 self.0.lock().unwrap().push((detections.len(), fresh));
                 vec![]
             }
@@ -1199,18 +1206,22 @@ mod tests {
         core.set_ball_tracker(Box::new(Probe(log.clone())));
         core.set_detector(Box::new(ScriptedDetector));
         let detect = |core: &mut StitchCore, value: u8| {
-            core.run_detection_frames(&[(
-                0,
-                DetectorFrame::Yuv(YuvView {
-                    y: &[value; 4],
-                    chroma: ChromaPlanes::Yuv420p {
-                        u: &[128],
-                        v: &[128],
-                    },
-                    width: 2,
-                    height: 2,
-                }),
-            )]);
+            core.run_detection_frames(
+                &[(
+                    0,
+                    DetectorFrame::Yuv(YuvView {
+                        y: &[value; 4],
+                        chroma: ChromaPlanes::Yuv420p {
+                            u: &[128],
+                            v: &[128],
+                        },
+                        width: 2,
+                        height: 2,
+                    }),
+                )],
+                &[],
+            )
+            .unwrap();
         };
         detect(&mut core, 1);
         core.update_trackers(0, 0.0);
@@ -1232,11 +1243,67 @@ mod tests {
                 (1, true),
                 (1, false),
                 (0, true),
-                (0, false),
+                (1, true),
                 (0, false),
                 (0, false)
             ]
         );
+        let detect_camera = |core: &mut StitchCore, camera, value| {
+            core.run_detection_frames(
+                &[(
+                    camera,
+                    DetectorFrame::Yuv(YuvView {
+                        y: &[value; 4],
+                        chroma: ChromaPlanes::Yuv420p {
+                            u: &[128],
+                            v: &[128],
+                        },
+                        width: 2,
+                        height: 2,
+                    }),
+                )],
+                &[],
+            )
+            .unwrap();
+        };
+        for camera in [0, 1] {
+            core.set_detector(Box::new(ScriptedDetector));
+            // Independent calls accumulate measurements until the tracking tick.
+            detect_camera(&mut core, 0, 1);
+            detect_camera(&mut core, 1, 1);
+            assert_eq!(core.fresh_cameras, [0, 1]);
+            core.update_trackers(6, 200.0);
+            assert!(core.fresh_cameras.is_empty());
+            assert_eq!(core.last_detections.len(), 2);
+
+            // Failure invalidates older observations without declaring a fresh empty scene.
+            detect_camera(&mut core, camera, 2);
+            assert!(core.fresh_cameras.is_empty());
+            assert_eq!(core.last_detections.len(), 1);
+            assert_eq!(core.last_detections[0].camera, 1 - camera);
+
+            // A successful empty result reports freshness only for this camera.
+            detect_camera(&mut core, camera, 0);
+            assert_eq!(core.fresh_cameras, [camera]);
+            assert_eq!(core.last_detections.len(), 1);
+            assert_eq!(core.last_detections[0].camera, 1 - camera);
+            core.update_trackers(7, 233.3);
+            assert!(core.fresh_cameras.is_empty());
+
+            // Replacing one camera never duplicates or removes its peer's cache.
+            detect_camera(&mut core, camera, 1);
+            detect_camera(&mut core, camera, 1);
+            assert_eq!(core.fresh_cameras, [camera]);
+            assert_eq!(
+                core.last_detections
+                    .iter()
+                    .map(|d| d.camera)
+                    .collect::<Vec<_>>(),
+                [0, 1]
+            );
+            core.update_trackers(8, 266.6);
+            assert!(core.fresh_cameras.is_empty());
+        }
     }
 
     #[test]
@@ -1287,7 +1354,8 @@ mod tests {
                 }),
             )
         };
-        core.run_detection_frames(&[frame(0), frame(1)]);
+        core.run_detection_frames(&[frame(0), frame(1)], &[])
+            .unwrap();
 
         let dets = core.last_detections();
         assert_eq!(dets.len(), 2);

@@ -20,6 +20,8 @@ pub enum DmaBufImportError {
     Vulkan(String),
     #[error("dup() failed: {0}")]
     DupFd(std::io::Error),
+    #[error("DMA-buf identity query failed: {0}")]
+    Identity(std::io::Error),
 }
 
 /// Y + UV textures imported from a single NV12 DMA-buf.
@@ -28,16 +30,35 @@ pub struct DmaBufNv12Textures {
     pub uv_texture: wgpu::Texture,
 }
 
-/// Caches Vulkan textures by DMA-buf fd to avoid per-frame Vulkan
-/// object creation. NVMM ISP uses a rotating pool of ~4 buffers per
-/// camera; each buffer has a stable DMA-buf fd. On first encounter we
-/// import (dup + vkAllocateMemory + vkCreateImage), on subsequent
-/// frames we reuse the cached wgpu::Texture. The ISP writes new pixel
-/// content to the same physical memory and the GPU sees it
-/// automatically (shared LPDDR5, no separate VRAM).
+/// Reuses imports while a descriptor still identifies the same allocation
+/// and plane layout. Recycled fd numbers replace the old cache entry.
 #[derive(Default)]
 pub struct DmaBufTextureCache {
-    cache: HashMap<i32, DmaBufNv12Textures>,
+    cache: HashMap<i32, (ImportIdentity, DmaBufNv12Textures)>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ImportIdentity {
+    allocation: (libc::dev_t, libc::ino_t),
+    layout: [u32; 5],
+    linear: bool,
+}
+
+impl ImportIdentity {
+    fn read(fd: i32, layout: [u32; 5], linear: bool) -> Result<Self, DmaBufImportError> {
+        let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+        // SAFETY: fstat writes the complete structure on success. The caller
+        // keeps the frame (and therefore this fd's allocation) alive throughout import.
+        if unsafe { libc::fstat(fd, stat.as_mut_ptr()) } != 0 {
+            return Err(DmaBufImportError::Identity(std::io::Error::last_os_error()));
+        }
+        let stat = unsafe { stat.assume_init() };
+        Ok(Self {
+            allocation: (stat.st_dev, stat.st_ino),
+            layout,
+            linear,
+        })
+    }
 }
 
 impl DmaBufTextureCache {
@@ -81,7 +102,13 @@ impl DmaBufTextureCache {
         total_size: u32,
         linear: bool,
     ) -> Result<(), DmaBufImportError> {
-        if !self.cache.contains_key(&fd) {
+        let identity =
+            ImportIdentity::read(fd, [width, height, y_offset, uv_offset, total_size], linear)?;
+        if self
+            .cache
+            .get(&fd)
+            .is_none_or(|(cached, _)| *cached != identity)
+        {
             crate::profile_scope!("dmabuf_cache_miss");
             let textures = import_dmabuf_nv12_tiling(
                 gpu, fd, width, height, y_offset, uv_offset, total_size, linear,
@@ -93,7 +120,7 @@ impl DmaBufTextureCache {
                 height,
                 self.cache.len() + 1,
             );
-            self.cache.insert(fd, textures);
+            self.cache.insert(fd, (identity, textures));
         }
         Ok(())
     }
@@ -102,9 +129,11 @@ impl DmaBufTextureCache {
     ///
     /// Panics if the fd was not previously imported via [`Self::ensure_imported`].
     pub fn get(&self, fd: i32) -> &DmaBufNv12Textures {
-        self.cache
+        &self
+            .cache
             .get(&fd)
             .expect("DmaBufTextureCache::get called before ensure_imported")
+            .1
     }
 
     pub fn len(&self) -> usize {
@@ -543,4 +572,41 @@ fn import_single_plane(
     };
 
     Ok(wgpu_texture)
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+    use std::os::fd::AsRawFd;
+
+    #[test]
+    fn nvmm_cache_identity_detects_fd_reuse_and_layout_changes() {
+        let first = tempfile::tempfile().unwrap();
+        let second = tempfile::tempfile().unwrap();
+        let replaced = first.try_clone().unwrap();
+        let layout = [64, 32, 0, 2048, 3072];
+        let original = ImportIdentity::read(replaced.as_raw_fd(), layout, false).unwrap();
+        assert_eq!(
+            original,
+            ImportIdentity::read(first.as_raw_fd(), layout, false).unwrap()
+        );
+        // Replace only our own live descriptor. The File still owns it.
+        assert_eq!(
+            unsafe { libc::dup2(second.as_raw_fd(), replaced.as_raw_fd()) },
+            replaced.as_raw_fd()
+        );
+        assert_ne!(
+            original,
+            ImportIdentity::read(replaced.as_raw_fd(), layout, false).unwrap()
+        );
+        assert_ne!(
+            original,
+            ImportIdentity::read(first.as_raw_fd(), [128, 32, 0, 4096, 6144], false).unwrap()
+        );
+        assert_ne!(
+            original,
+            ImportIdentity::read(first.as_raw_fd(), layout, true).unwrap()
+        );
+        assert!(ImportIdentity::read(-1, layout, false).is_err());
+    }
 }

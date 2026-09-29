@@ -266,7 +266,12 @@ impl GpuExecutor {
         })?;
         let gpu = self.pipeline.gpu();
         pool.copy_from_textures(gpu, slot, &[(left_y, left_uv), (right_y, right_uv)]);
-        let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
+        if let Err(error) = super::super::nvmm_completion::wait_for_reads(&gpu.device) {
+            pool.release(slot);
+            return Err(StitchError::InvalidConfig(format!(
+                "NVMM staging completion: {error}"
+            )));
+        }
         Ok(Some(slot))
     }
 
@@ -303,8 +308,8 @@ impl GpuExecutor {
     #[cfg(target_os = "linux")]
     pub(crate) fn nvmm_detector_frames(
         &mut self,
-        left: &crate::source::NvmmPlaneInfo,
-        right: &crate::source::NvmmPlaneInfo,
+        left: &crate::source::NvmmFrame,
+        right: &crate::source::NvmmFrame,
     ) -> Option<
         [(
             crate::geometry::CameraIndex,
@@ -312,6 +317,8 @@ impl GpuExecutor {
         ); 2],
     > {
         use crate::detect::detector::DetectorFrame;
+
+        let (left, right) = (left.info(), right.info());
 
         let (det_left, det_right) = self.residency.nvmm_det.as_mut()?;
         unsafe {
@@ -350,9 +357,10 @@ impl GpuExecutor {
     #[cfg(target_os = "linux")]
     pub(crate) fn import_nvmm(
         &mut self,
-        left: &crate::source::NvmmPlaneInfo,
-        right: &crate::source::NvmmPlaneInfo,
+        left: &crate::source::NvmmFrame,
+        right: &crate::source::NvmmFrame,
     ) -> Result<[wgpu::Texture; 4], String> {
+        let (left, right) = (left.info(), right.info());
         if self.residency.nvmm_cache.is_none() {
             self.residency.nvmm_cache = Some(crate::interop::dmabuf::DmaBufTextureCache::new());
         }
@@ -396,8 +404,8 @@ impl GpuExecutor {
     #[cfg(target_os = "linux")]
     pub(crate) fn stage_nvmm_to_pool(
         &mut self,
-        left: &crate::source::NvmmPlaneInfo,
-        right: &crate::source::NvmmPlaneInfo,
+        left: &crate::source::NvmmFrame,
+        right: &crate::source::NvmmFrame,
     ) -> Result<Option<usize>, String> {
         if self.residency.pool.is_none() {
             return Ok(None);
@@ -405,6 +413,36 @@ impl GpuExecutor {
         let [ly, lu, ry, ru] = self.import_nvmm(left, right)?;
         self.stage_textures_to_pool(&ly, &lu, &ry, &ru)
             .map_err(|e| e.to_string())
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn hold_nvmm_reads(
+        &mut self,
+        frames: [crate::source::NvmmFrame; 2],
+    ) -> Result<super::super::nvmm_completion::NvmmRead, String> {
+        if self.residency.nvmm_completion.is_none() {
+            self.residency.nvmm_completion = Some(
+                super::super::nvmm_completion::NvmmCompletion::new(self.pipeline.gpu())?,
+            );
+        }
+        Ok(self
+            .residency
+            .nvmm_completion
+            .as_ref()
+            .expect("created above")
+            .hold(frames))
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn finish_nvmm_reads(&mut self) -> Result<(), String> {
+        let result = self
+            .residency
+            .nvmm_completion
+            .take()
+            .map_or(Ok(()), |mut completion| completion.finish());
+        // Do not retain imports from a stopped source across later runs.
+        self.residency.nvmm_cache = None;
+        result
     }
 
     /// Import a stereo CVPixelBuffer pair as Y/UV plane textures

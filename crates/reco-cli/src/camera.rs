@@ -530,6 +530,7 @@ pub fn run_camera(
                     demosaic_left.output_texture(),
                     demosaic_right.output_texture(),
                     pos,
+                    None,
                 )?;
                 frame_count += 1;
                 progress.report(frame_count);
@@ -556,17 +557,12 @@ pub fn run_camera(
         // NVMM zero-copy path: DMA-buf Vulkan import for rendering,
         // NvBufSurfTransform for detection. No CPU copies at all.
         //
-        // Driven by the session's unified frame loop (`run` / `run_buffered`)
-        // through the `FrameSource` + `FrameSet::NvmmResident` path - the
-        // same machinery the file-stitch path uses. So lookahead, centered
-        // smoothing, and the VRAM pool all work here for free; the per-frame
-        // import + NvBufSurfTransform happen inside the session's produce
-        // step (see `copy_nvmm_to_vram_pool` / `nvmm_run_detection`).
+        // The shared session loop owns rendering, detection and lookahead.
         #[cfg(target_os = "linux")]
         {
             use reco_io::gstreamer::camera::GstreamerNvmmCameraSource;
 
-            let mut source = GstreamerNvmmCameraSource::open(&cam_config)?;
+            let mut source = GstreamerNvmmCameraSource::open(&cam_config, interrupted.clone())?;
 
             // Allocate the NvBufSurfTransform detection surfaces. The
             // model input is square, but the size here ASSUMES a
@@ -593,7 +589,7 @@ pub fn run_camera(
                 .run(&mut source, frame_limit, interrupted, Some(on_progress))?
                 .frames_processed;
 
-            source.stop();
+            source.stop()?;
             #[cfg(feature = "replay")]
             session.clear_stacked_gpu_recorder();
             session.finish()?;
@@ -611,14 +607,22 @@ pub fn run_camera(
     } else if use_nv12_capture {
         // NV12 path: skip nvvidconv format conversion, upload 2 planes
         use reco_core::source::FrameSource;
-        let mut source = reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(&cam_config)?;
+        let mut source = reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(
+            &cam_config,
+            interrupted.clone(),
+        )?;
 
         // Warm up: render the first frame outside the progress loop so
         // camera ISP + GPU pipeline init don't skew the reported rate.
         if let Some(frames) = source.next_frame()? {
-            session.detect_and_update_world_pose(&frames, start.elapsed())?;
+            session.detect_and_update_world_pose(
+                &frames.images,
+                frames.capture.as_ref(),
+                1.0 / capture_fps as f32,
+                start.elapsed(),
+            )?;
             let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
-            session.render_frame(&frames, pos)?;
+            session.render_frame(&frames.images, pos, frames.pts_us)?;
             println!("Warmup complete, starting capture...");
         }
 
@@ -633,27 +637,32 @@ pub fn run_camera(
                 }
             };
 
-            session.detect_and_update_world_pose(&frames, start.elapsed())?;
+            session.detect_and_update_world_pose(
+                &frames.images,
+                frames.capture.as_ref(),
+                1.0 / capture_fps as f32,
+                start.elapsed(),
+            )?;
             let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
-            session.render_frame(&frames, pos)?;
+            session.render_frame(&frames.images, pos, frames.pts_us)?;
             frame_count += 1;
             progress.report(frame_count);
         }
 
-        // Stop cameras gracefully before finishing encoder
-        source.stop();
+        // Stop cameras before finishing the encoder.
+        source.stop()?;
         #[cfg(feature = "replay")]
         session.clear_stacked_gpu_recorder();
         session.finish()?;
 
         progress.finish(frame_count, output);
-
-        // Drop source explicitly to allow graceful GStreamer/Argus teardown
-        drop(source);
     } else {
         // I420 path: standard YUV420P upload with 3 planes
         use reco_core::source::FrameSource;
-        let mut source = reco_io::gstreamer::camera::GstreamerCameraSource::open(&cam_config)?;
+        let mut source = reco_io::gstreamer::camera::GstreamerCameraSource::open(
+            &cam_config,
+            interrupted.clone(),
+        )?;
 
         let progress = helpers::ProgressReporter::new(30);
 
@@ -666,9 +675,14 @@ pub fn run_camera(
                 }
             };
 
-            session.detect_and_update_world_pose(&frame, start.elapsed())?;
+            session.detect_and_update_world_pose(
+                &frame.images,
+                frame.capture.as_ref(),
+                1.0 / capture_fps as f32,
+                start.elapsed(),
+            )?;
             let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
-            session.render_frame(&frame, pos)?;
+            session.render_frame(&frame.images, pos, frame.pts_us)?;
             frame_count += 1;
             progress.report(frame_count);
         }
@@ -726,7 +740,7 @@ impl reco_calibrate::live::LiveFramePairSource for Nv12CameraCalibSource {
                 return None;
             }
             match self.source.next_pair() {
-                Ok(Some((left, right))) => {
+                Ok(Some([left, right])) => {
                     self.frame_count += 1;
                     if self.frame_count < self.fps && self.frame_count > 1 {
                         continue;
@@ -806,7 +820,10 @@ pub fn run_live_calibrate(
     let gpu = reco_core::gpu::GpuContext::new_blocking()?;
     eprintln!("GPU: {}", gpu.gpu_name());
 
-    let source = reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(&cam_config)?;
+    let source = reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(
+        &cam_config,
+        interrupted.clone(),
+    )?;
     eprintln!("Cameras open, warming up ISP...");
 
     let mut calib_source = Nv12CameraCalibSource {
@@ -835,7 +852,7 @@ pub fn run_live_calibrate(
         interrupted,
     )?;
 
-    calib_source.source.stop();
+    calib_source.source.stop()?;
 
     let confidence_pct = result.confidence * 100.0;
     eprintln!(
