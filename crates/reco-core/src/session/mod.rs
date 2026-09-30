@@ -84,6 +84,9 @@ pub struct StitchSession {
     #[cfg(feature = "gpu")]
     pub(crate) pending_pts: std::collections::VecDeque<Option<i64>>,
     pub(crate) telemetry: crate::telemetry::TelemetryCollector,
+    telemetry_sink: Option<(Box<dyn crate::telemetry::TelemetrySink>, u64)>,
+    /// Final worker average maximum, backpressure count and milliseconds after sink release.
+    finished_sink_stats: (f32, u64, f32),
     /// Sub-timing from the last `submit_render_output` call.
     /// Used by `process_frame_any` to split "stitch" into
     /// render / readback / encode for accurate telemetry.
@@ -200,6 +203,8 @@ impl StitchSession {
             #[cfg(feature = "gpu")]
             pending_pts: std::collections::VecDeque::with_capacity(3),
             telemetry: crate::telemetry::TelemetryCollector::new(),
+            telemetry_sink: None,
+            finished_sink_stats: (0.0, 0, 0.0),
             last_readback_time: std::time::Duration::ZERO,
             last_submit_time: std::time::Duration::ZERO,
             #[cfg(feature = "gpu")]
@@ -279,11 +284,14 @@ impl StitchSession {
     /// Merges the sink threads' overlapped consume cost and
     /// backpressure into the snapshot (the collector only sees the
     /// per-frame submit cost). With several threaded sinks the worker
-    /// cost is the slowest sink's (the pipeline bottleneck) and the
+    /// cost is the largest sink average and the
     /// backpressure stalls are summed - the render loop delivers
     /// serially, so every sink's stall delays it.
     pub fn telemetry_snapshot(&self) -> crate::telemetry::TelemetrySnapshot {
         let mut snap = self.telemetry.snapshot();
+        snap.avg_encode_worker_ms = self.finished_sink_stats.0;
+        snap.backpressure_stalls = self.finished_sink_stats.1;
+        snap.backpressure_ms = self.finished_sink_stats.2;
         for stats in self.sinks.iter().filter_map(|s| s.thread_stats()) {
             let (_frames, avg_consume_ms, bp_stalls, bp_ms) = stats;
             snap.avg_encode_worker_ms = snap.avg_encode_worker_ms.max(avg_consume_ms);
@@ -296,6 +304,25 @@ impl StitchSession {
     /// Mutable reference to the telemetry collector.
     pub fn telemetry_mut(&mut self) -> &mut crate::telemetry::TelemetryCollector {
         &mut self.telemetry
+    }
+
+    /// Deliver the same enriched snapshot as polling every `interval_frames` submitted frames and after sink finalization.
+    pub fn set_telemetry_sink(
+        &mut self,
+        sink: Box<dyn crate::telemetry::TelemetrySink>,
+        interval_frames: u64,
+    ) {
+        self.telemetry_sink = Some((sink, interval_frames.max(1)));
+    }
+
+    fn publish_telemetry(&mut self, final_snapshot: bool) {
+        if self.telemetry_sink.as_ref().is_some_and(|(_, interval)| {
+            final_snapshot || self.frame_count.is_multiple_of(*interval)
+        }) && let Some((mut sink, interval)) = self.telemetry_sink.take()
+        {
+            sink.on_snapshot(&self.telemetry_snapshot());
+            self.telemetry_sink = Some((sink, interval));
+        }
     }
 
     /// Flush any pending delivery frames and finalize every sink.
@@ -339,7 +366,14 @@ impl StitchSession {
             )?;
         }
 
-        sinks::finish_all(&mut self.sinks)?;
+        let stats = &mut self.finished_sink_stats;
+        let result = sinks::finish_all(&mut self.sinks, |(_, avg_ms, stalls, ms)| {
+            stats.0 = stats.0.max(avg_ms);
+            stats.1 += stalls;
+            stats.2 += ms;
+        });
+        self.publish_telemetry(true);
+        result?;
 
         Ok(())
     }

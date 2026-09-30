@@ -15,6 +15,7 @@ mod coverage;
 mod cpu_detection;
 #[cfg(all(feature = "gpu", target_os = "linux"))]
 mod nvmm;
+mod telemetry;
 mod timing;
 use super::types::*;
 use crate::calibration::{Calibration, Framing, Lens};

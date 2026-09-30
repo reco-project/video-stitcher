@@ -27,8 +27,8 @@ impl StitchSession {
     /// the dispatch inside each stage takes platform shortcuts (CUDA
     /// shared textures, Metal IOSurface import, D3D11 staging, etc.).
     ///
-    /// `decode_time` and `frame_t0` are measured by the caller so that
-    /// telemetry captures the full frame timing including source decode.
+    /// `timing` carries prior producer work; `frame_t0` starts this processing segment.
+    /// Queue residence is excluded from the accumulated host processing total.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "session_process_frame_any")
@@ -38,7 +38,7 @@ impl StitchSession {
         frame: Option<&FrameSet>,
         elapsed: std::time::Duration,
         pts_us: Option<i64>,
-        decode_time: std::time::Duration,
+        mut timing: crate::telemetry::FrameTiming,
         frame_t0: std::time::Instant,
         ctx: &FrameLoopContext,
     ) -> Result<(), SessionError> {
@@ -60,13 +60,15 @@ impl StitchSession {
             upload_time = staging_t0.elapsed();
         }
 
+        timing.upload = Some(timing.upload.unwrap_or_default() + upload_time);
+
         // In the buffered lookahead path, detection already ran during
         // the produce phase. Skip it here and go straight to pose.
-        let (ran_detection, detect_time) = if ctx.tracking_complete {
-            (false, std::time::Duration::ZERO)
-        } else {
+        if !ctx.tracking_complete {
+            let expiry_t0 = std::time::Instant::now();
             self.core
                 .expire_observations(ctx.capture.as_ref(), ctx.frame_seconds)?;
+            let expiry_time = expiry_t0.elapsed();
             let capture_times_us = ctx
                 .capture
                 .as_ref()
@@ -83,12 +85,15 @@ impl StitchSession {
                             log::info!("GpuResident detection: CUDA path (TensorRT/ORT-CUDA)");
                         }
                         if let Some(buffers) = &ctx.gpu_buf_info {
-                            self.detect_and_update_world_pose_cuda_nv12(
-                                buffers,
-                                slots,
-                                elapsed,
-                                capture_times_us,
-                            )?;
+                            if due {
+                                crate::profile_scope!("gpu_detect_total");
+                                let frames = super::detection_dispatch::cuda_nv12_frames(
+                                    buffers,
+                                    slots,
+                                    [self.left_rotation, self.right_rotation],
+                                );
+                                self.core.run_detection_frames(&frames, capture_times_us)?;
+                            }
                             due
                         } else {
                             if self.frame_count == 0 {
@@ -97,7 +102,6 @@ impl StitchSession {
                                  panner advancing without detections"
                                 );
                             }
-                            self.update_world_pose(elapsed)?;
                             false
                         }
                     } else if let Some(views) = self.shared_views() {
@@ -118,7 +122,6 @@ impl StitchSession {
                             );
                             self.core.run_detection_frames(&frames, capture_times_us)?;
                         }
-                        self.update_world_pose(elapsed)?;
                         due
                     } else {
                         if self.frame_count == 0 {
@@ -126,7 +129,6 @@ impl StitchSession {
                                 "GpuResident frame but no shared views - detection disabled"
                             );
                         }
-                        self.update_world_pose(elapsed)?;
                         false
                     }
                 }
@@ -141,7 +143,6 @@ impl StitchSession {
                             self.core.run_detection_frames(&frames, capture_times_us)?;
                         }
                     }
-                    self.update_world_pose(elapsed)?;
                     due
                 }
                 #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
@@ -155,7 +156,6 @@ impl StitchSession {
                         );
                         self.core.run_detection_frames(&frames, capture_times_us)?;
                     }
-                    self.update_world_pose(elapsed)?;
                     due
                 }
                 #[cfg(all(feature = "gpu", target_os = "windows"))]
@@ -178,10 +178,8 @@ impl StitchSession {
                             );
                             self.core.run_detection_frames(&frames, capture_times_us)?;
                         }
-                        self.update_world_pose(elapsed)?;
                         due
                     } else {
-                        self.update_world_pose(elapsed)?;
                         false
                     }
                 }
@@ -189,16 +187,23 @@ impl StitchSession {
                     if due {
                         self.core.run_cpu_detection(frame, capture_times_us)?;
                     }
-                    self.update_world_pose(elapsed)?;
                     due
                 }
             };
-            let detect_time = detect_t0.elapsed();
-            (ran_detection, detect_time)
-        };
+            timing.detection = Some(if ran_detection {
+                detect_t0.elapsed()
+            } else {
+                std::time::Duration::ZERO
+            });
+            let tracking_t0 = std::time::Instant::now();
+            self.update_world_pose(elapsed)?;
+            timing.tracking = Some(expiry_time + tracking_t0.elapsed());
+        }
 
         // Resolve the presented render-space pose.
+        let pose_t0 = std::time::Instant::now();
         let pos = self.advance_render_pose(ctx.frame_seconds)?;
+        timing.tracking = Some(timing.tracking.unwrap_or_default() + pose_t0.elapsed());
 
         // ── 3. Render + replay ─────────────────────────────────────
         let render_t0 = std::time::Instant::now();
@@ -240,20 +245,12 @@ impl StitchSession {
         let stitch_time = render_time
             .saturating_sub(self.last_readback_time)
             .saturating_sub(self.last_submit_time);
-        self.telemetry.record_frame(crate::telemetry::FrameTiming {
-            decode: Some(decode_time),
-            upload: Some(upload_time),
-            detection: if ran_detection {
-                Some(detect_time)
-            } else {
-                None
-            },
-            stitch: Some(stitch_time),
-            readback: Some(self.last_readback_time),
-            submit: Some(self.last_submit_time),
-            total: Some(frame_t0.elapsed()),
-            ..Default::default()
-        });
+        timing.stitch = Some(stitch_time);
+        timing.readback = Some(self.last_readback_time);
+        timing.submit = Some(self.last_submit_time);
+        timing.total = Some(timing.total.unwrap_or_default() + frame_t0.elapsed());
+        self.telemetry.record_frame(timing);
+        self.publish_telemetry(false);
 
         Ok(())
     }

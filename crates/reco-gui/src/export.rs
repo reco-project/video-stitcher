@@ -81,23 +81,20 @@ impl reco_core::telemetry::TelemetrySink for ExportTelemetrySink {
             if let Some(app) = weak.upgrade() {
                 app.set_telem_fps_avg(snap.fps_average);
                 app.set_telem_fps_recent(snap.fps_recent);
-                app.set_telem_decode_ms(snap.avg_decode_ms);
+                app.set_telem_decode_ms(snap.avg_decode_ms + snap.avg_upload_ms);
                 app.set_telem_stitch_ms(snap.avg_stitch_ms);
                 app.set_telem_readback_ms(snap.avg_readback_ms);
                 app.set_telem_submit_ms(snap.avg_submit_ms);
                 app.set_telem_total_ms(snap.avg_total_ms);
                 app.set_telem_p99_ms(snap.p99_total_ms);
                 app.set_telem_detection_ms(snap.avg_detection_ms);
+                app.set_telem_tracking_ms(snap.avg_tracking_ms);
+                app.set_telem_encode_ms(snap.avg_encode_worker_ms);
+                app.set_telem_backpressure_ms(snap.backpressure_ms);
                 app.set_telem_active_tracks(snap.active_tracks as i32);
                 app.set_telem_ball_pct(snap.ball_presence_pct);
                 app.set_telem_det_per_frame(snap.detections_per_frame);
                 app.set_telem_gpu_name(snap.gpu_name.clone().into());
-                app.set_telem_bottleneck(
-                    snap.bottleneck
-                        .map(|s| s.to_string())
-                        .unwrap_or_default()
-                        .into(),
-                );
             }
         });
     }
@@ -263,7 +260,7 @@ pub fn run_export(
     let telem_weak = app_weak.clone();
     job = job.on_session(move |session, _source| {
         let sink = ExportTelemetrySink { window: telem_weak };
-        session.telemetry_mut().set_sink(Box::new(sink), 30);
+        session.set_telemetry_sink(Box::new(sink), 30);
         Ok(())
     });
 

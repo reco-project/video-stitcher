@@ -113,7 +113,7 @@ fn nvmm_staged_pixels_survive_capture_reuse() {
                         None,
                         std::time::Duration::ZERO,
                         pts_us,
-                        std::time::Duration::ZERO,
+                        crate::telemetry::FrameTiming::default(),
                         std::time::Instant::now(),
                         &ctx,
                     )

@@ -31,7 +31,7 @@ pub(crate) struct BufferedFrame {
     pub world_state: WorldState,
     pub detections: Vec<MappedDetection>,
     pub elapsed_ms: f64,
-    pub decode_time: std::time::Duration,
+    pub timing: crate::telemetry::FrameTiming,
     /// VRAM pool slot index (Some when GPU-resident, None for CPU frames).
     /// The pool slot is released after rendering.
     #[cfg(feature = "gpu")]
@@ -163,7 +163,10 @@ mod tests {
             detections: vec![],
             elapsed_ms: 0.0,
             pts_us: None,
-            decode_time: std::time::Duration::from_millis(3),
+            timing: crate::telemetry::FrameTiming {
+                decode: Some(std::time::Duration::from_millis(3)),
+                ..Default::default()
+            },
             #[cfg(feature = "gpu")]
             vram_slot: None,
             retained_bytes: 0,

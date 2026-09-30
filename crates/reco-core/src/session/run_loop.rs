@@ -231,6 +231,7 @@ impl StitchSession {
             ));
         }
 
+        self.telemetry.start();
         self.configure_from_source(source);
         // A new source run owns its own capture-clock origin and observations.
         self.core.clear_detection_cache();
@@ -293,6 +294,16 @@ impl StitchSession {
         ctx: &crate::session::types::FrameLoopContext,
         on_progress: &mut Option<ProgressCallback>,
     ) -> Result<(), SessionError> {
+        let frame_t0 = std::time::Instant::now();
+        self.telemetry.record_detections(
+            oldest.detections.len() as u32,
+            oldest.world_state.players.len() as u32,
+            oldest
+                .world_state
+                .ball
+                .as_ref()
+                .is_some_and(|ball| ball.state != crate::detect::tracker::TrackState::Lost),
+        );
         if let Some(sink) = self.core.event_sink.as_deref_mut() {
             sink.emit(crate::detect::pipeline_event::PipelineEvent::FrameStart {
                 frame_index: self.frame_count,
@@ -322,12 +333,11 @@ impl StitchSession {
             self.current_vram_slot = oldest.vram_slot;
         }
 
-        let frame_t0 = std::time::Instant::now();
         let result = self.process_frame_any(
             oldest.frame.as_ref(),
             start.elapsed(),
             oldest.pts_us,
-            oldest.decode_time,
+            oldest.timing,
             frame_t0,
             ctx,
         );
@@ -523,7 +533,13 @@ impl StitchSession {
             // Stage GPU frames to persistent slots BEFORE detection,
             // so detection can use the staged textures.
             #[cfg(feature = "gpu")]
-            let vram_slot = session.copy_to_vram_pool(&frame, *produce_count)?;
+            let (vram_slot, staging_time) = {
+                let start = std::time::Instant::now();
+                let slot = session.copy_to_vram_pool(&frame, *produce_count)?;
+                (slot, start.elapsed())
+            };
+            #[cfg(not(feature = "gpu"))]
+            let staging_time = std::time::Duration::ZERO;
 
             let world_state = session.detect_and_track_only(
                 &frame,
@@ -535,7 +551,7 @@ impl StitchSession {
             // Detection still reads the original decode surface after staging.
             #[cfg(feature = "gpu")]
             session.release_gpu_decode_slot(&frame);
-            let world_state = match world_state {
+            let (world_state, mut timing) = match world_state {
                 Ok(state) => state,
                 Err(error) => {
                     #[cfg(feature = "gpu")]
@@ -553,13 +569,16 @@ impl StitchSession {
             #[cfg(all(feature = "gpu", target_os = "linux"))]
             let frame = super::frame_buffer::release_staged_nvmm(frame, vram_slot);
 
+            timing.decode = Some(decode_time);
+            timing.upload = Some(staging_time);
+            timing.total = Some(frame_t0.elapsed());
             buffer.push(BufferedFrame {
                 frame,
                 pts_us,
                 world_state,
                 detections,
                 elapsed_ms: elapsed.as_secs_f64() * 1000.0,
-                decode_time,
+                timing,
                 #[cfg(feature = "gpu")]
                 vram_slot,
                 retained_bytes,
@@ -613,7 +632,8 @@ impl StitchSession {
                 crate::geometry::WorldPose,
             )>,
                                    panner_frame_idx: &mut u64| {
-                if let Some(frame) = buffer.pop() {
+                if let Some(mut frame) = buffer.pop() {
+                    let panner_t0 = std::time::Instant::now();
                     let futures = buffer.future_world_states();
                     let pose = session.core.decide_pose_with_lookahead(
                         &frame.world_state,
@@ -622,6 +642,10 @@ impl StitchSession {
                         frame.elapsed_ms,
                     );
                     *panner_frame_idx += 1;
+                    let panner_time = panner_t0.elapsed();
+                    frame.timing.tracking =
+                        Some(frame.timing.tracking.unwrap_or_default() + panner_time);
+                    frame.timing.total = Some(frame.timing.total.unwrap_or_default() + panner_time);
                     pose_queue.push_back((frame, pose));
                     true
                 } else {
@@ -687,7 +711,8 @@ impl StitchSession {
 
                 // Render: consume from pose queue when we have enough context
                 if pose_queue.len() > post_smooth_half || (eof && !pose_queue.is_empty()) {
-                    let (oldest, raw_pose) = pose_queue.pop_front().unwrap();
+                    let (mut oldest, raw_pose) = pose_queue.pop_front().unwrap();
+                    let smooth_t0 = std::time::Instant::now();
 
                     // Centered post-smooth: average past + current + future
                     // poses (yaw/pitch/fov) so zoom is smoothed like the angles.
@@ -701,6 +726,11 @@ impl StitchSession {
                         past_poses.pop_front();
                     }
 
+                    let smooth_time = smooth_t0.elapsed();
+                    oldest.timing.tracking =
+                        Some(oldest.timing.tracking.unwrap_or_default() + smooth_time);
+                    oldest.timing.total =
+                        Some(oldest.timing.total.unwrap_or_default() + smooth_time);
                     let retained_bytes = oldest.retained_bytes;
                     let rendered =
                         self.render_buffered_frame(oldest, smoothed_pose, start, &ctx, on_progress);
@@ -793,7 +823,10 @@ impl StitchSession {
                 Some(&frame),
                 start.elapsed(),
                 pts_us,
-                decode_time,
+                crate::telemetry::FrameTiming {
+                    decode: Some(decode_time),
+                    ..Default::default()
+                },
                 frame_t0,
                 &ctx,
             )?;

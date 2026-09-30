@@ -172,10 +172,20 @@ impl StitchSession {
         produce_index: u64,
         capture: Option<&crate::source::CaptureTiming>,
         frame_seconds: f32,
-    ) -> Result<crate::detect::tracker::WorldState, SessionError> {
+    ) -> Result<
+        (
+            crate::detect::tracker::WorldState,
+            crate::telemetry::FrameTiming,
+        ),
+        SessionError,
+    > {
+        let expiry_t0 = std::time::Instant::now();
         self.core.expire_observations(capture, frame_seconds)?;
+        let expiry_time = expiry_t0.elapsed();
         let capture_times_us = capture.map_or(&[][..], |capture| capture.times_us.as_slice());
-        if self.core.detection_due(produce_index) {
+        let due = self.core.detection_due(produce_index);
+        let detect_t0 = std::time::Instant::now();
+        if due {
             match frame {
                 #[cfg(all(feature = "gpu", target_os = "linux"))]
                 FrameSet::GpuResident { slots } => {
@@ -244,9 +254,23 @@ impl StitchSession {
             }
         }
 
-        Ok(self
+        let detection = if due {
+            detect_t0.elapsed()
+        } else {
+            std::time::Duration::ZERO
+        };
+        let tracking_t0 = std::time::Instant::now();
+        let world = self
             .core
-            .update_trackers(produce_index, elapsed.as_secs_f64() * 1000.0))
+            .update_trackers(produce_index, elapsed.as_secs_f64() * 1000.0);
+        Ok((
+            world,
+            crate::telemetry::FrameTiming {
+                detection: Some(detection),
+                tracking: Some(expiry_time + tracking_t0.elapsed()),
+                ..Default::default()
+            },
+        ))
     }
 
     /// Allocate the NVMM detection surfaces for the Jetson zero-copy path.
@@ -398,24 +422,6 @@ impl StitchSession {
                 ],
                 &[],
             )
-        })
-    }
-
-    /// Run GPU-resident detection from CUDA NV12 shared textures.
-    #[cfg(all(feature = "gpu", target_os = "linux"))]
-    pub(crate) fn detect_and_update_world_pose_cuda_nv12(
-        &mut self,
-        buffers: &[crate::interop::zero_copy::GpuBufInfo],
-        slots: &[u8],
-        elapsed: std::time::Duration,
-        capture_times_us: &[i64],
-    ) -> Result<(), SessionError> {
-        let lr = self.left_rotation;
-        let rr = self.right_rotation;
-        self.detect_and_update_world_pose_with(elapsed, |core| {
-            crate::profile_scope!("gpu_detect_total");
-            let frames = cuda_nv12_frames(buffers, slots, [lr, rr]);
-            core.run_detection_frames(&frames, capture_times_us)
         })
     }
 

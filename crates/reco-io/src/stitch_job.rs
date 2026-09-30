@@ -1082,8 +1082,8 @@ impl StitchJob {
         // No-op when the GPU path wasn't selected.
         #[cfg(feature = "stacked-output")]
         session.clear_stacked_gpu_recorder();
-        let telemetry_snap = session.telemetry_snapshot();
         session.finish()?;
+        let telemetry_snap = session.telemetry_snapshot();
 
         #[cfg(feature = "stacked-output")]
         if let Some(mut replay) = replay_src.take()

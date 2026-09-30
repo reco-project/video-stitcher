@@ -191,6 +191,9 @@ fn check_reused_images(build: impl Fn(bool) -> StitchSession) {
                     .run(&mut Images(frames), u64::MAX, &AtomicBool::new(false), None)
                     .unwrap();
                 assert_eq!(result.frames_processed, 9);
+                let snapshot = session.telemetry_snapshot();
+                assert_eq!(snapshot.frames_processed, 9);
+                assert_eq!(snapshot.total_detections, 18);
                 let expected = if reverse {
                     vec![
                         (0, 20),

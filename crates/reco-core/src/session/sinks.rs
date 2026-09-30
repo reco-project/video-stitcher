@@ -206,7 +206,10 @@ pub(crate) fn deliver_frame(
 /// All sinks get their `finish` call even when an earlier one fails,
 /// so every output file is finalized; the first Abort-policy error is
 /// returned afterwards, Detach-policy errors are logged.
-pub(crate) fn finish_all(sinks: &mut Vec<AttachedSink>) -> Result<(), SinkError> {
+pub(crate) fn finish_all(
+    sinks: &mut Vec<AttachedSink>,
+    mut record_stats: impl FnMut((u64, f32, u64, f32)),
+) -> Result<(), SinkError> {
     let mut first_abort: Option<SinkError> = None;
     for sink in sinks.iter_mut() {
         if let Err(e) = sink.finish() {
@@ -223,6 +226,9 @@ pub(crate) fn finish_all(sinks: &mut Vec<AttachedSink>) -> Result<(), SinkError>
                 }
             }
         }
+    }
+    for stats in sinks.iter().filter_map(AttachedSink::thread_stats) {
+        record_stats(stats);
     }
     sinks.clear();
     match first_abort {
@@ -316,7 +322,7 @@ mod tests {
         for i in 0..5u8 {
             deliver_frame(&mut sinks, &frame(i), 16, 16, Some(i as i64)).unwrap();
         }
-        finish_all(&mut sinks).unwrap();
+        finish_all(&mut sinks, |_| {}).unwrap();
 
         let (f1, f2) = (f1.lock().unwrap(), f2.lock().unwrap());
         assert_eq!(f1.len(), 5);
@@ -348,7 +354,7 @@ mod tests {
         assert_eq!(sinks.len(), 1, "failing sink was detached");
         assert_eq!(f1.lock().unwrap().len(), 2, "flaky sink kept its 2 frames");
         assert_eq!(f2.lock().unwrap().len(), 5, "stable sink saw every frame");
-        finish_all(&mut sinks).unwrap();
+        finish_all(&mut sinks, |_| {}).unwrap();
     }
 
     #[test]
@@ -407,7 +413,7 @@ mod tests {
             ),
         ];
 
-        let result = finish_all(&mut sinks);
+        let result = finish_all(&mut sinks, |_| {});
         assert!(result.is_err(), "abort-policy finish error propagates");
         assert_eq!(
             done.load(Ordering::SeqCst),

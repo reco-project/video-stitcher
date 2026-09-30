@@ -374,16 +374,12 @@ fn build_bug_report(state: &AppState, app_weak: &slint::Weak<RecoApp>) -> String
         let fps_avg = app.get_telem_fps_avg();
         let fps_recent = app.get_telem_fps_recent();
         let total_ms = app.get_telem_total_ms();
-        let bottleneck = app.get_telem_bottleneck().to_string();
         if fps_avg > 0.0 || total_ms > 0.0 {
             report.push_str(&format!(
                 "\n## Performance\n\
                  - FPS: {fps_avg:.0} avg / {fps_recent:.0} recent\n\
                  - Frame time: {total_ms:.1} ms\n"
             ));
-            if !bottleneck.is_empty() {
-                report.push_str(&format!("- Bottleneck: {bottleneck}\n"));
-            }
         }
 
         let cal_confidence = app.get_telem_cal_confidence();
