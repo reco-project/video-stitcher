@@ -803,8 +803,14 @@ impl FfmpegFileEncoder {
         let fps_rational = ffmpeg_next::Rational(fps.0, fps.1);
         let inner =
             ffmpeg::encoder::VideoEncoder::new_rendered(path, width, height, fps_rational, config)
-                .map_err(|e| SinkError::Init {
-                    reason: e.to_string(),
+                .map_err(|e| {
+                    if matches!(e, ffmpeg::encoder::EncodeError::Cancelled) {
+                        SinkError::Cancelled
+                    } else {
+                        SinkError::Init {
+                            reason: e.to_string(),
+                        }
+                    }
                 })?;
         Ok(Self { inner })
     }
@@ -826,27 +832,28 @@ impl OutputSink for FfmpegFileEncoder {
     }
 
     fn consume(&mut self, frame: OutputFrame<'_>) -> Result<(), SinkError> {
-        match frame.format {
-            PixelFormat::Nv12 => self
-                .inner
-                .write_nv12_frame(frame.data, frame.pts_us)
-                .map_err(|e| SinkError::Consume {
-                    frame_index: None,
-                    reason: e.to_string(),
-                }),
-            PixelFormat::Rgba8 => self
-                .inner
-                .write_frame(frame.data, frame.pts_us)
-                .map_err(|e| SinkError::Consume {
-                    frame_index: None,
-                    reason: e.to_string(),
-                }),
-        }
+        let result = match frame.format {
+            PixelFormat::Nv12 => self.inner.write_nv12_frame(frame.data, frame.pts_us),
+            PixelFormat::Rgba8 => self.inner.write_frame(frame.data, frame.pts_us),
+        };
+        result.map_err(|e| match e {
+            ffmpeg::encoder::EncodeError::Cancelled => SinkError::Cancelled,
+            _ => SinkError::Consume {
+                frame_index: None,
+                reason: e.to_string(),
+            },
+        })
     }
 
     fn finish(&mut self) -> Result<(), SinkError> {
-        self.inner.finish().map_err(|e| SinkError::Finish {
-            reason: e.to_string(),
+        self.inner.finish().map_err(|e| {
+            if matches!(e, ffmpeg::encoder::EncodeError::Cancelled) {
+                SinkError::Cancelled
+            } else {
+                SinkError::Finish {
+                    reason: e.to_string(),
+                }
+            }
         })
     }
 }

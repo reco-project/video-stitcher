@@ -7,6 +7,12 @@
 use std::fmt;
 use std::str::FromStr;
 
+#[cfg(feature = "ffmpeg")]
+pub(crate) fn is_network_destination(path: &std::path::Path) -> bool {
+    path.to_str()
+        .is_some_and(|value| value.contains("://") && !value.starts_with("file://"))
+}
+
 /// Video codec for the output stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]

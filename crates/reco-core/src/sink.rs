@@ -12,6 +12,9 @@ use thiserror::Error;
 /// channel without forcing the consumer to stringify.
 #[derive(Debug, Clone, Error)]
 pub enum SinkError {
+    /// Output I/O was interrupted by the caller.
+    #[error("output cancelled")]
+    Cancelled,
     /// The sink failed to initialize.
     #[error("sink initialization failed: {reason}")]
     Init {

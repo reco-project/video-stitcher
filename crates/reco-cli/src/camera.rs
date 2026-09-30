@@ -365,6 +365,7 @@ pub fn run_camera(
         container: out_format,
         gop_size: Some(60),
         stream_url: stream_url.map(|s| s.to_string()),
+        interrupted: Some(interrupted.clone()),
         ..Default::default()
     };
 

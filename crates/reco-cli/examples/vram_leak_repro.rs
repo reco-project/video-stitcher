@@ -53,7 +53,7 @@ fn main() {
     let model = args.get(6).cloned();
     let lookahead: f64 = args.get(7).and_then(|s| s.parse().ok()).unwrap_or(1.0);
 
-    let interrupted = AtomicBool::new(false);
+    let interrupted = std::sync::Arc::new(AtomicBool::new(false));
     println!(
         "baseline   {}   (mode: {})",
         vram(),

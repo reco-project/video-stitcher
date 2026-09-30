@@ -3606,7 +3606,7 @@ fn main() -> anyhow::Result<()> {
                 inputs,
                 cal,
                 output_for_thread,
-                None, // stream URL (Phase 6 GUI wiring)
+                None, // Interactive export writes to a local file.
                 replay_enabled,
                 events_path,
                 width,

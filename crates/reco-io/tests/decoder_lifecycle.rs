@@ -268,7 +268,7 @@ fn job_setup_and_completion_are_explicit() {
     let error = job()
         .on_session(|_, _| Err(StitchError::Other("setup failure".into())))
         .on_session(|_, _| panic!("must not run after failure"))
-        .run(&AtomicBool::new(false))
+        .run(&std::sync::Arc::new(AtomicBool::new(false)))
         .unwrap_err();
     assert_eq!(error.to_string(), "setup failure");
     assert!(!output.exists(), "failed setup must not create an output");
@@ -528,7 +528,9 @@ fn missing_later_segment_is_a_read_error_not_successful_eof() {
     .resolution(64, 64)
     .audio(reco_io::output::AudioMode::Disabled)
     .encoder_name("libx264")
-    .run(&std::sync::atomic::AtomicBool::new(false));
+    .run(&std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
+        false,
+    )));
     assert!(
         matches!(
             result,

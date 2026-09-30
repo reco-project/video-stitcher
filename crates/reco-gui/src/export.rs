@@ -4,6 +4,7 @@
 //! pumping progress back to the Slint UI via `invoke_from_event_loop`.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
@@ -117,7 +118,7 @@ pub fn run_export(
     end_secs: f32,
     autocam: AutocamUiConfig,
     app_weak: slint::Weak<RecoApp>,
-    interrupted: &AtomicBool,
+    interrupted: &Arc<AtomicBool>,
 ) -> ExportOutcome {
     use reco_io::output::{Codec, Quality};
 
@@ -185,7 +186,7 @@ pub fn run_export(
         .unwrap_or_else(|| output.clone());
     let format = reco_io::output::Container::for_output(&effective_output.to_string_lossy());
     if format.is_streaming() {
-        log::info!("Streaming to {}", effective_output.display());
+        log::info!("Streaming to network output");
     }
 
     let mut job = reco_io::StitchJob::with_calibration(inputs, cal, effective_output.clone())
@@ -385,6 +386,14 @@ pub fn run_export(
             }
             reco_core::session::types::RunCompletion::Cancelled => ExportOutcome::Cancelled,
         },
+        Err(
+            reco_io::stitch_job::StitchError::Encoder(reco_core::sink::SinkError::Cancelled)
+            | reco_io::stitch_job::StitchError::Session(
+                reco_core::session::types::SessionError::Sink(
+                    reco_core::sink::SinkError::Cancelled,
+                ),
+            ),
+        ) => ExportOutcome::Cancelled,
         Err(e) => ExportOutcome::Failed(e),
     }
 }
@@ -405,6 +414,102 @@ pub fn poll_export(rx: &std::sync::mpsc::Receiver<ExportOutcome>) -> Option<Expo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires a GPU and RECO_EXPORT_TEST_VIDEO pointing to a readable video"]
+    fn export_worker_cancels_an_unanswered_network_handshake() {
+        use reco_core::calibration::{Framing, Lens};
+        use reco_core::projection::Cylinder;
+        use std::io::Read;
+        use std::net::TcpListener;
+        use std::sync::atomic::Ordering;
+        use std::time::Duration;
+
+        let input = PathBuf::from(std::env::var("RECO_EXPORT_TEST_VIDEO").unwrap());
+        let source = reco_io::ffmpeg::decoder::VideoDecoder::open_software(&input).unwrap();
+        let cal = Calibration::new(
+            vec![Lens::flat(source.width(), source.height())],
+            Cylinder::default(),
+            Framing {
+                axis_offset: 0.0,
+                tilt: 0.0,
+                roll: 0.0,
+            },
+        );
+        drop(source);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let url = format!("rtmp://{}/test/cancel", listener.local_addr().unwrap());
+        let flag = Arc::new(AtomicBool::new(false));
+        let cancel = flag.clone();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let peer = std::thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(30);
+            let mut socket = loop {
+                match listener.accept() {
+                    Ok((socket, _)) => break socket,
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        if !matches!(
+                            release_rx.try_recv(),
+                            Err(std::sync::mpsc::TryRecvError::Empty)
+                        ) {
+                            return Duration::MAX;
+                        }
+                        assert!(Instant::now() < deadline, "export never connected");
+                        std::thread::sleep(Duration::from_millis(2));
+                    }
+                    Err(e) => panic!("accept: {e}"),
+                }
+            };
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            assert!(socket.read(&mut [0; 4096]).unwrap() > 0);
+            let cancelled_at = Instant::now();
+            cancel.store(true, Ordering::Relaxed);
+            // Keep the unanswered connection open until the export reports cancellation.
+            release_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+            cancelled_at.elapsed()
+        });
+        let outcome = run_export(
+            vec![reco_io::InputPath::Single(input)],
+            cal,
+            PathBuf::new(),
+            Some(url),
+            false,
+            None,
+            64,
+            36,
+            "h264".into(),
+            "fast".into(),
+            0.0,
+            0.1,
+            AutocamUiConfig {
+                enabled: false,
+                model_path: String::new(),
+                tracking_mode: "field".into(),
+                detection_interval: 1,
+                lookahead_secs: 0.0,
+                preset: String::new(),
+                framing: "action".into(),
+                lock_pitch: false,
+                cluster_mode: "density".into(),
+                cluster_bandwidth_rad: 0.0,
+                dead_zone_rad: 0.0,
+                ball_weight: 0.0,
+                fov_tight: 30.0,
+                fov_wide: 90.0,
+                fov_default: 60.0,
+                frame_all_margin_deg: 0.0,
+            },
+            slint::Weak::default(),
+            &flag,
+        );
+        let _ = release_tx.send(());
+        let cancel_latency = peer.join().unwrap();
+        assert!(matches!(outcome, ExportOutcome::Cancelled), "{outcome:?}");
+        assert!(cancel_latency < Duration::from_secs(2));
+    }
 
     #[test]
     fn worker_poll_distinguishes_pending_result_and_disconnection() {

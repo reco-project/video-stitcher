@@ -14,11 +14,15 @@ use thiserror::Error;
 
 use super::hevc_color::HevcColor;
 use super::hw_upload::{HardwareUpload, staging_pixel_format};
+use super::output_io::OutputIo;
 use crate::output::{Codec, Container, Quality, QualityPreset};
 
 /// Errors from the video encoder.
 #[derive(Debug, Error)]
 pub enum EncodeError {
+    /// The caller interrupted network output.
+    #[error("output cancelled")]
+    Cancelled,
     /// Invalid or unsupported encoder configuration.
     #[error("invalid encoder configuration: {0}")]
     InvalidConfig(String),
@@ -379,10 +383,14 @@ pub struct EncoderConfig {
     pub gop_size: Option<u32>,
     /// Optional RTMP stream URL for simultaneous file + stream output.
     ///
-    /// When set, the encoder writes encoded packets to both the primary
-    /// output file AND this RTMP endpoint. Single encode pass, zero
-    /// extra CPU. Stream failures are non-fatal (recording continues).
+    /// Shares the primary encoded packets through a bounded 60-packet FIFO.
+    /// Overflow skips to a keyframe; failures disable streaming without reconnecting or dropping recording frames.
     pub stream_url: Option<String>,
+    /// Existing application cancellation signal. Interrupts network output, not local recording finalization.
+    pub interrupted: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    /// Network open, synchronous I/O and final-drain deadline. `None` selects ten seconds.
+    /// Cooperative FFmpeg interruption does not bound native DNS resolution. Optional FIFO writes are isolated, not timed by producer activity.
+    pub network_timeout: Option<std::time::Duration>,
 }
 
 type OpenedVideoEncoder = (
@@ -409,7 +417,7 @@ type OpenedVideoEncoder = (
 /// enc.finish().unwrap();
 /// ```
 pub struct VideoEncoder {
-    octx: format::context::Output,
+    octx: OutputIo,
     encoder: ffmpeg::encoder::video::Encoder,
     scaler: ScalingContext,
     stream_index: usize,
@@ -435,7 +443,7 @@ pub struct VideoEncoder {
 /// State for a secondary RTMP stream output that receives cloned packets
 /// from the primary encode pass.
 struct StreamOutput {
-    octx: format::context::Output,
+    octx: OutputIo,
     video_index: usize,
     video_time_base: Rational,
     audio: Option<SilentAudio>,
@@ -657,7 +665,7 @@ impl VideoEncoder {
             }
 
             // The selected container is authoritative, even without a matching extension.
-            let mut octx = format::output_as(path, config.container.muxer_name())?;
+            let mut octx = OutputIo::open(path, config.container.muxer_name(), config, false)?;
 
             match Self::try_open(
                 &mut octx, codec, *pixel_fmt, *is_hw, width, height, fps, config, name, color,
@@ -738,9 +746,9 @@ impl VideoEncoder {
                     if !movflags.is_empty() {
                         let mut opts = ffmpeg::Dictionary::new();
                         opts.set("movflags", &movflags.join("+"));
-                        let _ = octx.write_header_with(opts)?;
+                        octx.write_header(opts)?;
                     } else {
-                        octx.write_header()?;
+                        octx.write_header(ffmpeg::Dictionary::new())?;
                     }
 
                     let output_time_base = octx
@@ -758,9 +766,9 @@ impl VideoEncoder {
                     });
 
                     let stream = if let Some(ref url) = config.stream_url {
-                        match Self::open_stream_output(url, &octx, stream_index, fps) {
+                        match Self::open_stream_output(url, &octx, stream_index, fps, config) {
                             Ok(s) => {
-                                log::info!("Stream output opened: {url}");
+                                log::info!("Optional stream output queued");
                                 Some(s)
                             }
                             Err(e) => {
@@ -1105,14 +1113,25 @@ impl VideoEncoder {
         primary_octx: &format::context::Output,
         primary_video_index: usize,
         fps: Rational,
+        config: &EncoderConfig,
     ) -> Result<StreamOutput, EncodeError> {
-        let mut octx = format::output_as(url, "flv")?;
+        if !url.starts_with("rtmp://") && !url.starts_with("rtmps://") {
+            return Err(EncodeError::InvalidConfig(
+                "secondary output requires RTMP or RTMPS".into(),
+            ));
+        }
+        let mut octx = OutputIo::open(Path::new(url), "flv", config, true)?;
 
         let primary_video = primary_octx
             .stream(primary_video_index)
             .ok_or_else(|| EncodeError::CodecNotFound("primary video stream missing".into()))?;
 
         let params = primary_video.parameters();
+        if params.id() != codec::Id::H264 {
+            return Err(EncodeError::InvalidConfig(
+                "secondary FLV streaming requires H.264".into(),
+            ));
+        }
         let extradata_len = unsafe { (*params.as_ptr()).extradata_size };
         log::info!("Stream output: copying H.264 params (extradata={extradata_len} bytes)");
         if extradata_len == 0 {
@@ -1131,7 +1150,7 @@ impl VideoEncoder {
 
         let silent_audio = SilentAudio::new(&mut octx)?;
 
-        octx.write_header()?;
+        octx.write_header(ffmpeg::Dictionary::new())?;
 
         let video_time_base = octx
             .stream(video_index)
@@ -1157,7 +1176,7 @@ impl VideoEncoder {
             log::warn!("Stream audio preroll failed: {e}");
         }
 
-        log::info!("Stream output ready: {url} (video tb={video_time_base}, fps={fps})");
+        log::info!("Optional stream configured (video tb={video_time_base}, fps={fps})");
 
         Ok(StreamOutput {
             octx,
@@ -1244,7 +1263,7 @@ impl VideoEncoder {
                         break;
                     }
 
-                    packet.write_interleaved(&mut self.octx)?;
+                    self.octx.write_packet(&mut packet)?;
                 }
                 Err(ffmpeg::Error::Eof) => {
                     // Current segment done; continue with the next chained one.
@@ -1502,9 +1521,9 @@ impl VideoEncoder {
         if self.finished {
             return Ok(());
         }
-        flush_muxer(&mut self.octx)?;
+        self.octx.flush()?;
         if let Some(ref mut stream) = self.stream
-            && let Err(error) = flush_muxer(&mut stream.octx)
+            && let Err(error) = stream.octx.flush()
         {
             log::warn!("RTMP stream flush failed ({error}), disabling stream");
             self.stream = None;
@@ -1553,16 +1572,17 @@ impl VideoEncoder {
             self.forward_audio_packets_until(video_duration_pts)?;
         }
 
+        // Publish the recording trailer before waiting for optional transport drain.
+        let primary_result = self.octx.finish();
         // Finalize stream output (non-fatal).
         if let Some(ref mut stream) = self.stream
-            && let Err(e) = stream.octx.write_trailer()
+            && let Err(e) = stream.octx.finish()
         {
             log::warn!("RTMP stream finalization failed: {e}");
         }
         self.stream = None;
 
-        self.octx.write_trailer()?;
-        Ok(())
+        primary_result
     }
 
     fn receive_and_write_packets(&mut self) -> Result<(), EncodeError> {
@@ -1622,7 +1642,7 @@ impl VideoEncoder {
             // Save PTS before write_interleaved blanks the packet
             // (av_interleaved_write_frame resets all fields to defaults).
             let video_pts = clone.pts().unwrap_or(0);
-            if let Err(e) = clone.write_interleaved(&mut stream.octx) {
+            if let Err(e) = stream.octx.write_packet(&mut clone) {
                 log::warn!("RTMP stream write failed ({e}), disabling stream");
                 self.stream = None;
             } else if let Some(ref mut sa) = stream.audio {
@@ -1635,7 +1655,7 @@ impl VideoEncoder {
             }
         }
 
-        packet.write_interleaved(&mut self.octx)?;
+        self.octx.write_packet(packet)?;
         Ok(())
     }
 }
@@ -1646,29 +1666,6 @@ fn sanitize_audio_start_time(secs: f64) -> f64 {
     } else {
         0.0
     }
-}
-
-fn flush_muxer(output: &mut format::context::Output) -> Result<(), EncodeError> {
-    // SAFETY: the output is open and uniquely borrowed. Null packets flush queues, not the trailer.
-    unsafe {
-        let context = output.as_mut_ptr();
-        let result = ffmpeg::sys::av_interleaved_write_frame(context, std::ptr::null_mut());
-        if result < 0 {
-            return Err(ffmpeg::Error::from(result).into());
-        }
-        let result = ffmpeg::sys::av_write_frame(context, std::ptr::null_mut());
-        if result < 0 {
-            return Err(ffmpeg::Error::from(result).into());
-        }
-        let io = (*context).pb;
-        if !io.is_null() {
-            ffmpeg::sys::avio_flush(io);
-            if (*io).error < 0 {
-                return Err(ffmpeg::Error::from((*io).error).into());
-            }
-        }
-    }
-    Ok(())
 }
 
 struct HevcHeaderCheck {
@@ -1861,7 +1858,10 @@ impl SilentAudio {
         );
         frame.set_rate(sample_rate);
 
-        // Zero-fill (silence). Audio frames default to zero.
+        // Native frame allocation does not initialize samples.
+        for plane in 0..frame.planes() {
+            frame.data_mut(plane).fill(0);
+        }
         let output_time_base = Rational(0, 0); // updated after write_header
 
         Ok(Self {
@@ -1878,7 +1878,7 @@ impl SilentAudio {
     /// Write enough silent audio frames to stay ahead of the given video PTS.
     fn write_up_to(
         &mut self,
-        octx: &mut format::context::Output,
+        octx: &mut OutputIo,
         video_pts: i64,
         video_time_base: Rational,
     ) -> Result<(), EncodeError> {
@@ -1900,7 +1900,7 @@ impl SilentAudio {
             while receive_encoded_packet(&mut self.encoder, &mut packet)? {
                 packet.set_stream(self.stream_index);
                 packet.rescale_ts(Rational(1, self.sample_rate as i32), self.output_time_base);
-                packet.write_interleaved(octx)?;
+                octx.write_packet(&mut packet)?;
             }
         }
         Ok(())
@@ -2191,6 +2191,18 @@ fn build_encoder_opts(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn streaming_audio_samples_are_initialized_to_silence() {
+        crate::init();
+        let dir = tempfile::tempdir().unwrap();
+        let mut output = format::output_as(&dir.path().join("audio.flv"), "flv").unwrap();
+        let silent = SilentAudio::new(&mut output).unwrap();
+        assert_eq!(silent.frame.planes(), 2);
+        for plane in 0..silent.frame.planes() {
+            assert!(silent.frame.data(plane).iter().all(|sample| *sample == 0));
+        }
+    }
 
     #[test]
     fn hevc_header_check_accepts_separate_parameter_sets_and_rejects_wrong_dimensions() {

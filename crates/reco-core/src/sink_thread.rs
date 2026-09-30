@@ -351,6 +351,72 @@ mod tests {
     }
 
     #[test]
+    fn cancelled_sink_releases_a_full_submit_queue_and_retains_its_error() {
+        struct BlockedSink {
+            entered: mpsc::Sender<()>,
+            release: mpsc::Receiver<()>,
+            finishes: Arc<AtomicU64>,
+        }
+        impl OutputSink for BlockedSink {
+            fn name(&self) -> &str {
+                "blocked"
+            }
+            fn wants(&self) -> SinkInput {
+                SinkInput::CpuBytes(PixelFormat::Nv12)
+            }
+            fn consume(&mut self, _: OutputFrame<'_>) -> Result<(), SinkError> {
+                self.entered.send(()).unwrap();
+                self.release.recv().unwrap();
+                Err(SinkError::Cancelled)
+            }
+            fn finish(&mut self) -> Result<(), SinkError> {
+                self.finishes.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            }
+        }
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let finishes = Arc::new(AtomicU64::new(0));
+        let mut sink = SinkThread::new(
+            Box::new(BlockedSink {
+                entered: entered_tx,
+                release: release_rx,
+                finishes: finishes.clone(),
+            }),
+            16,
+            16,
+            1,
+        );
+        let frame = [128; 16 * 16 * 3 / 2];
+        sink.submit(&frame, None).unwrap();
+        entered_rx.recv().unwrap();
+        sink.submit(&frame, None).unwrap();
+        // The worker holds frame one and frame two fills the only queue slot.
+        let (done_tx, done_rx) = mpsc::channel();
+        let submitter = thread::spawn(move || {
+            let result = sink.submit(&frame, None);
+            assert!(done_tx.send((sink, result)).is_ok());
+        });
+        assert!(matches!(
+            done_rx.recv_timeout(std::time::Duration::from_millis(50)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        release_tx.send(()).unwrap();
+        let (mut sink, result) = done_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        assert!(matches!(result, Err(SinkError::Cancelled)));
+        assert!(matches!(sink.finish(), Err(SinkError::Cancelled)));
+        assert!(matches!(sink.finish(), Err(SinkError::Cancelled)));
+        assert!(matches!(
+            sink.submit(&frame, None),
+            Err(SinkError::Cancelled)
+        ));
+        submitter.join().unwrap();
+        assert_eq!(finishes.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
     fn failures_finalize_once_and_remain_visible_on_repeated_finish() {
         struct ProbeSink {
             fail_consume: bool,

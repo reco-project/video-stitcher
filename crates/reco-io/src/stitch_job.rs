@@ -20,6 +20,7 @@
 //! ```
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
@@ -598,7 +599,7 @@ impl StitchJob {
     ///
     /// This is a blocking call that processes all frames (or until the
     /// interrupt flag is set). Returns a [`StitchResult`] with statistics.
-    pub fn run(mut self, interrupted: &AtomicBool) -> Result<StitchResult, StitchError> {
+    pub fn run(mut self, interrupted: &Arc<AtomicBool>) -> Result<StitchResult, StitchError> {
         let container = self.resolved_container();
         if self.encoder_device.is_some() && self.encoder_name.is_none() {
             return Err(StitchError::Other(
@@ -818,6 +819,8 @@ impl StitchJob {
             container,
             gop_size: None,
             stream_url: None,
+            interrupted: Some(interrupted.clone()),
+            network_timeout: None,
         };
         let encoder = crate::adapters::FfmpegFileEncoder::new(
             &self.output,
@@ -1103,7 +1106,7 @@ impl StitchJob {
         // Skipped when the caller asked for 0 frames (max_frames=0 or
         // duration=0 short-circuit) because an empty output is the
         // requested outcome.
-        if frame_count > 0 {
+        if frame_count > 0 && !crate::output::is_network_destination(&self.output) {
             let output_path = self.output.clone();
             match crate::ffmpeg::decoder::VideoDecoder::open_software(&output_path) {
                 Ok(d) => {
@@ -1159,9 +1162,7 @@ mod tests {
     fn device_without_encoder_is_rejected_before_loading_calibration() {
         let job = StitchJob::new(["missing.mp4"], "missing.json", "out.mp4")
             .encoder_device("/dev/dri/renderD129");
-        let error = job
-            .run(&std::sync::atomic::AtomicBool::new(false))
-            .unwrap_err();
+        let error = job.run(&Arc::new(AtomicBool::new(false))).unwrap_err();
         assert!(error.to_string().contains("encoder"), "{error}");
         assert!(!matches!(error, StitchError::Calibration(_)));
     }
@@ -1202,7 +1203,7 @@ mod tests {
         );
         let job =
             StitchJob::with_calibration(["does-not-exist.mp4"], cal, "arity-mismatch-out.mp4");
-        let interrupted = std::sync::atomic::AtomicBool::new(false);
+        let interrupted = Arc::new(AtomicBool::new(false));
         let err = job.run(&interrupted).expect_err("1 input vs 2 cameras");
         let msg = err.to_string();
         assert!(
