@@ -59,13 +59,20 @@ impl CpuYoloDetector {
     ///
     /// If `labels` is empty, labels are auto-detected from the model's `names`
     /// metadata field (Ultralytics convention).
+    /// Runs one warmup inference so model execution failures propagate at initialization.
     pub fn with_config(
         path: impl AsRef<Path>,
         confidence_threshold: f32,
         labels: Vec<String>,
     ) -> Result<Self, crate::ort_session::SessionError> {
-        let (session, input_size, labels) =
+        let (mut session, input_size, labels) =
             crate::ort_session::create_ort_session(path.as_ref(), labels)?;
+
+        let sz = input_size as usize;
+        let rgb_chw_buf = vec![114.0 / 255.0_f32; 3 * sz * sz];
+        // Provider registration and model loading do not prove its kernels can execute.
+        let input = TensorRef::from_array_view(([1, 3, sz, sz], rgb_chw_buf.as_slice()))?;
+        session.run(ort::inputs![input])?;
 
         log::info!(
             "CpuYoloDetector loaded: input={}x{}, {} classes, conf_thresh={}",
@@ -74,9 +81,6 @@ impl CpuYoloDetector {
             labels.len(),
             confidence_threshold,
         );
-
-        let sz = input_size as usize;
-        let rgb_chw_buf = vec![114.0 / 255.0_f32; 3 * sz * sz];
 
         Ok(Self {
             session,

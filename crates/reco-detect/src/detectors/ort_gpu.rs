@@ -39,8 +39,7 @@ use super::postprocess;
 /// reuses them across frames. The ORT session runs with TensorRT or CUDA EP
 /// for GPU-side inference.
 ///
-/// Created via [`OrtGpuDetector::try_new`], which returns `None` if NPP
-/// is not available on the system.
+/// Created via [`OrtGpuDetector::try_new`], which requires a registered CUDA-compatible inference provider.
 pub struct OrtGpuDetector {
     session: Session,
     input_size: u32,
@@ -77,9 +76,8 @@ pub struct OrtGpuDetector {
 impl OrtGpuDetector {
     /// Try to create a GPU YOLO detector.
     ///
-    /// Returns `Ok(None)` if NPP libraries are not available (e.g. on systems
-    /// without NVIDIA GPU or without CUDA toolkit). Returns `Err` for real
-    /// failures like missing model file or ORT initialization errors.
+    /// Returns `Ok(None)` if no CUDA-compatible ORT provider is compiled in.
+    /// Returns `Err` if runtime provider registration, CUDA initialization or model loading fails.
     ///
     /// `frame_width`/`frame_height` are the raw camera frame dimensions
     /// (e.g. 3840x2160 for 4K). These must match what the decode pipeline
@@ -109,7 +107,7 @@ impl OrtGpuDetector {
         cuda_ensure_context()?;
 
         let (session, input_size, labels) =
-            crate::ort_session::create_ort_session(model_path.as_ref(), labels)?;
+            crate::ort_session::create_cuda_ort_session(model_path.as_ref(), labels)?;
 
         // Pre-compute letterbox parameters.
         let (fw, fh) = (frame_width as f32, frame_height as f32);

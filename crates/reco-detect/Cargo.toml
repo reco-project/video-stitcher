@@ -68,3 +68,6 @@ objc2-core-ml = { version = "0.3", features = [
 
 [build-dependencies]
 cc = "1"
+
+[dev-dependencies]
+tempfile = "3"

@@ -336,10 +336,12 @@ pub fn setup_autocam(
                 log::info!("Autocam: GPU YOLO ball tracking enabled (model: {model_path})");
             }
             Ok(None) => {
-                log::warn!("Autocam: NPP not available, ball tracking disabled in zero-copy mode");
+                log::warn!(
+                    "Autocam: no CUDA inference provider compiled in, trying host-input inference"
+                );
             }
             Err(e) => {
-                log::warn!("Autocam: GPU detector init failed ({e}), ball tracking disabled");
+                log::warn!("Autocam: CUDA detector init failed ({e}), trying host-input inference");
             }
         }
     }
@@ -400,10 +402,8 @@ pub fn setup_autocam(
         }
     }
 
-    // wgpu preprocessing path: when GPU detection backends failed but we
-    // have wgpu texture views from D3D11VA staging. Uses the compute shader
-    // preprocessor (NV12 → float32 CHW) + CpuYoloDetector with DirectML EP.
-    // Works on any DX12 GPU including Pascal, AMD, and Intel.
+    // Fall back through wgpu preprocessing to host-memory model input.
+    // Inference can still use a GPU provider if one registered successfully.
     #[cfg(feature = "ort")]
     if !detection_active
         && use_zero_copy
@@ -431,7 +431,9 @@ pub fn setup_autocam(
             };
         target.set_detector(detector);
         detection_active = true;
-        log::info!("Autocam: wgpu preprocessing + DirectML tracking enabled (model: {model_path})");
+        log::info!(
+            "Autocam: wgpu preprocessing + host-input ORT tracking enabled (model: {model_path})"
+        );
     }
 
     // ORT CPU fallback for .onnx files.

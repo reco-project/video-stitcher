@@ -9,8 +9,10 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use ort::session::Session;
+use ort::session::builder::SessionBuilder;
 
 use crate::detectors::cpu::parse_onnx_names;
+use crate::probe::AiProbeResult;
 
 /// Errors from ORT session creation.
 ///
@@ -174,11 +176,9 @@ pub fn reco_cache_dir(subdir: &str) -> PathBuf {
     dir
 }
 
-/// Create an ORT session with common settings and platform-specific EPs.
+/// Create an ORT session for host-memory input with platform-specific providers and CPU fallback.
 ///
-/// Shared by [`CpuYoloDetector`](crate::CpuYoloDetector) and
-/// [`OrtGpuDetector`](crate::OrtGpuDetector) to avoid duplicating
-/// the builder + EP setup + model metadata extraction logic.
+/// CUDA-memory detectors use a separate checked entry point into the same builder.
 ///
 /// Returns `(session, input_size, labels)` where `input_size` is extracted
 /// from the model's BCHW input shape and `labels` are auto-detected from
@@ -187,6 +187,21 @@ pub fn create_ort_session(
     model_path: &Path,
     fallback_labels: Vec<String>,
 ) -> Result<(Session, u32, Vec<String>), SessionError> {
+    create_session(model_path, fallback_labels, false)
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub(crate) fn create_cuda_ort_session(
+    model_path: &Path,
+    fallback_labels: Vec<String>,
+) -> Result<(Session, u32, Vec<String>), SessionError> {
+    create_session(model_path, fallback_labels, true)
+}
+
+/// Register providers with explicit failures, before any model or device input is used.
+pub(crate) fn session_builder(
+    cuda_input: bool,
+) -> Result<(SessionBuilder, AiProbeResult), SessionError> {
     // Session::builder() must not run when the runtime cannot load: ort's
     // failing init self-deadlocks building its own error (#446), so the
     // gate's cached verdict is the only safe way to learn availability.
@@ -195,89 +210,78 @@ pub fn create_ort_session(
     if let Err(reason) = ort_runtime_available() {
         return Err(SessionError::RuntimeUnavailable(reason));
     }
-    #[allow(unused_mut)]
     let mut builder = Session::builder()?
         .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)
         .map_err(ort::Error::from)?;
 
-    // Try TensorRT EP first (JIT-compiles for any GPU arch including Blackwell),
-    // then CUDA EP, then fall back to CPU.
-    #[cfg(feature = "tensorrt")]
-    let mut builder = {
-        let trt_cache = reco_cache_dir("trt-cache");
-        let trt_cache_str = trt_cache.to_string_lossy().into_owned();
-        match builder.with_execution_providers([ort::ep::TensorRT::default()
-            .with_fp16(true)
-            .with_engine_cache(true)
-            .with_engine_cache_path(&trt_cache_str)
-            .with_timing_cache(true)
-            .with_timing_cache_path(&trt_cache_str)
-            .with_builder_optimization_level(3)
-            .build()])
-        {
-            Ok(b) => {
-                log::info!("ORT: TensorRT execution provider enabled");
-                b
-            }
-            Err(e) => {
-                log::warn!("ORT: TensorRT EP failed ({e}), falling back");
-                e.recover()
-            }
-        }
+    let mut report = AiProbeResult {
+        providers: Vec::new(),
+        errors: Vec::new(),
     };
-
-    // Try CUDA execution provider (works on any NVIDIA GPU including Pascal).
-    // Also tried after TensorRT as a fallback when TRT engine build fails.
-    #[cfg(feature = "cuda")]
-    let mut builder = {
-        match builder.with_execution_providers([ort::ep::CUDA::default().build()]) {
-            Ok(b) => {
-                log::info!("ORT: CUDA execution provider enabled");
-                b
-            }
-            Err(e) => {
-                log::warn!("ORT: CUDA EP failed ({e}), falling back to CPU");
-                e.recover()
-            }
+    for (name, supports_cuda, provider) in configured_providers() {
+        if cuda_input && !supports_cuda {
+            continue;
         }
-    };
+        builder = match builder.with_execution_providers([provider.error_on_failure()]) {
+            Ok(builder) => {
+                log::info!("ORT: {name} execution provider registered");
+                report.providers.push(name.into());
+                builder
+            }
+            Err(error) => {
+                log::warn!("ORT: {name} registration failed: {error}");
+                report.errors.push(format!("{name}: {error}"));
+                error.recover()
+            }
+        };
+    }
+    if cuda_input && report.providers.is_empty() {
+        return Err(SessionError::RuntimeUnavailable(format!(
+            "CUDA input requires a registered TensorRT or CUDA execution provider. {}",
+            report.errors.join("; ")
+        )));
+    }
+    // ORT supplies CPU fallback for host inputs and unsupported graph partitions.
+    report.providers.push("CPU".into());
+    Ok((builder, report))
+}
 
-    // CoreML EP for macOS.
-    #[cfg(feature = "coreml")]
-    let mut builder = {
-        let coreml_cache = reco_cache_dir("coreml-cache");
-        let coreml_cache_str = coreml_cache.to_string_lossy().into_owned();
-        match builder.with_execution_providers([ort::ep::CoreML::default()
-            .with_compute_units(ort::ep::coreml::ComputeUnits::All)
-            .with_model_cache_dir(&coreml_cache_str)
-            .build()])
-        {
-            Ok(b) => {
-                log::info!("ORT: CoreML execution provider enabled");
-                b
-            }
-            Err(e) => {
-                log::warn!("ORT: CoreML EP failed ({e}), falling back to CPU");
-                e.recover()
-            }
-        }
-    };
+fn configured_providers() -> Vec<(&'static str, bool, ort::ep::ExecutionProviderDispatch)> {
+    vec![
+        #[cfg(feature = "tensorrt")]
+        ("TensorRT", true, {
+            let cache = reco_cache_dir("trt-cache");
+            let path = cache.to_string_lossy();
+            ort::ep::TensorRT::default()
+                .with_fp16(true)
+                .with_engine_cache(true)
+                .with_engine_cache_path(&path)
+                .with_timing_cache(true)
+                .with_timing_cache_path(&path)
+                .with_builder_optimization_level(3)
+                .build()
+        }),
+        #[cfg(feature = "cuda")]
+        ("CUDA", true, ort::ep::CUDA::default().build()),
+        #[cfg(feature = "coreml")]
+        ("CoreML", false, {
+            let cache = reco_cache_dir("coreml-cache");
+            ort::ep::CoreML::default()
+                .with_compute_units(ort::ep::coreml::ComputeUnits::All)
+                .with_model_cache_dir(cache.to_string_lossy())
+                .build()
+        }),
+        #[cfg(target_os = "windows")]
+        ("DirectML", false, ort::ep::DirectML::default().build()),
+    ]
+}
 
-    // DirectML EP for Windows (AMD/Intel/NVIDIA via DX12).
-    #[cfg(target_os = "windows")]
-    let mut builder = {
-        match builder.with_execution_providers([ort::ep::DirectML::default().build()]) {
-            Ok(b) => {
-                log::info!("ORT: DirectML execution provider enabled");
-                b
-            }
-            Err(e) => {
-                log::warn!("ORT: DirectML EP failed ({e}), falling back to CPU");
-                e.recover()
-            }
-        }
-    };
-
+fn create_session(
+    model_path: &Path,
+    fallback_labels: Vec<String>,
+    cuda_input: bool,
+) -> Result<(Session, u32, Vec<String>), SessionError> {
+    let (mut builder, _) = session_builder(cuda_input)?;
     let session = builder.commit_from_file(model_path)?;
 
     // Extract input size from model metadata (BCHW layout).
@@ -309,6 +313,9 @@ pub fn create_ort_session(
 
     Ok((session, input_size, labels))
 }
+
+#[cfg(test)]
+mod provider_tests;
 
 #[cfg(test)]
 mod tests {

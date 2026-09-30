@@ -307,11 +307,7 @@ struct AppState {
 
 /// Runtime AI capability summary.
 ///
-/// Calls `reco_detect::probe_execution_providers()` to discover which
-/// ONNX Runtime execution providers actually load on this machine,
-/// not just which were compiled in. Replaces the old compile-time
-/// `cfg!()` summary that lied when a feature was baked in but the
-/// runtime libraries were missing.
+/// Report registered ORT providers before model-specific initialization.
 ///
 /// Returns `(status_text, any_detector_available)`.
 fn ai_capability_summary() -> (String, bool) {
@@ -334,23 +330,10 @@ fn ai_capability_summary() -> (String, bool) {
                 false,
             );
         }
-        if probe.can_run_on_gpu_frames {
-            (
-                format!(
-                    "AI: {} (hardware decode + inference)",
-                    probe.providers.join(", ")
-                ),
-                true,
-            )
-        } else {
-            (
-                format!(
-                    "AI: {} (CPU path - works for file export, not live GPU decode)",
-                    probe.best_provider()
-                ),
-                true,
-            )
-        }
+        (
+            format!("AI providers: {}", probe.providers.join(", ")),
+            true,
+        )
     }
 }
 

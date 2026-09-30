@@ -5607,6 +5607,7 @@ dependencies = [
  "objc2-metal 0.3.2",
  "ort",
  "reco-core",
+ "tempfile",
  "thiserror 2.0.18",
  "tracing",
  "wgpu",
