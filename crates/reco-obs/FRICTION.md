@@ -11,12 +11,9 @@ Rendered frames must roundtrip through CPU (~8 MB/frame at 1080p).
 Platform-specific solutions (DMA-BUF on Linux, shared D3D11 on Windows)
 need new interop code. Known limit, not actionable without a specific target.
 
-### A5. No temporal frame pairing helper
+### A5. OBS capture is not integrated with bounded frame selection
 
-**Impact**: Medium. Two independent OBS sources return frames with
-mismatched timestamps. A reusable ring-buffer pairing helper in
-reco-io would emit closest-timestamp pairs and surface drift warnings.
-Same helper reused by future WebRTC/V4L2 consumers.
+**Impact**: Medium. Two independent OBS sources can return frames with mismatched timestamps. `reco_io::frame_sync::Selector` already supplies transport-independent bounded wait/reuse and capture-age checks, covered by its module tests. OBS still needs explicit timestamp-domain mapping, polling and retained-frame ownership to use it. The helper does not infer clock alignment or own OBS frame lifetimes.
 
 ### A6. No source filtering by OBS_SOURCE_ASYNC_VIDEO
 
@@ -62,8 +59,7 @@ better but requires Qt bindings.
 
 ### A16. No built-in replay mode
 
-**Impact**: Low-Medium. Users want scene-switch to replay. Needs an
-opt-in rolling buffer on StitchCore (~7 GB at 1080p/30fps/30s).
+**Impact**: Low-Medium. Users want scene-switch to replay. `StitchCore::enable_replay_buffer` already supplies opt-in RGBA replay storage, covered by the core replay-buffer tests. The OBS plugin does not wire replay selection and timed delivery; enabling storage alone does not provide a replay mode.
 
 ### A17. No AI auto-pan in the OBS plugin
 

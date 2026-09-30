@@ -1,12 +1,7 @@
 //! Float CPU gather and composite.
 //!
-//! Two-axis-agnostic: the gather loop ([`stitch_l_shape_with`]) is independent
-//! of both the projection (it queries [`SurfaceMap`]s from [`super::geometry`])
-//! and the pixel format (it works through a `sample(u, v) -> rgb` closure). It
-//! mirrors `fisheye.wgsl`'s fragment stage per output pixel - float bilinear,
-//! BT.709 YUV->RGB, and a smoothstep seam - agreeing with the GPU render target
-//! to ~1 LSB (the GPU blends through an 8-bit intermediate and uses
-//! implementation-defined unorm rounding), so it doubles as the agreement oracle.
+//! The gather loop ([`stitch_with`]) uses calibrated [`SurfaceMap`](super::SurfaceMap)s and pixel-format sampling closures. Geometry and compositing are shared by L-shape and cylinder inputs; only plane validation and sampling differ between NV12 and YUV420P.
+//! CPU/GPU agreement is exercised in the executor tests, and `tests/calibrated_mapping.rs` compares external compositing with this path for both projections.
 
 use crate::calibration::Calibration;
 use crate::geometry::RenderPose;
@@ -38,24 +33,10 @@ fn check_plane(plane: &[u8], expected: usize) -> Result<(), StitchError> {
     Ok(())
 }
 
-/// Stitch two NV12 camera frames into an RGBA panorama on the CPU.
+/// Render one tightly packed NV12 frame per calibrated camera into opaque RGBA on the CPU.
 ///
-/// The float reference / oracle for the L-shape projection. Output is
-/// `config.width * config.height * 4` bytes in `(R, G, B, A)` order, opaque.
-///
-/// * `left`, `right` - tightly packed NV12 source frames.
-/// * `cam` - source frame dimensions `(width, height)`.
-/// * `calib` - stereo calibration (intrinsics + plane layout).
-/// * `viewport_size` - output dimensions.
-/// * `pose` - per-frame virtual-camera pan (radians) + fov zoom (degrees).
-/// * `full_range` - `true` for full-range (0-255) YUV, `false` for limited
-///   (16-235) BT.709, matching the source decoder.
-///
-/// Returns [`StitchError::InvalidConfig`] for degenerate source dimensions and
-/// [`StitchError::FrameSizeMismatch`] if a plane is shorter than `cam` requires,
-/// rather than panicking - this is the GPU-less render path, so callers (e.g.
-/// the X5) get a typed error instead of an out-of-bounds panic.
-#[allow(clippy::too_many_arguments)]
+/// All inputs use `cam` dimensions and the same BT.709 `full_range` interpretation. Output dimensions come from `viewport_size`; `pose` supplies render-space yaw/pitch in radians and vertical FOV in degrees.
+/// Returns an error for invalid dimensions, a camera-count mismatch or undersized planes.
 pub(crate) fn stitch_rgba(
     planes: &[Nv12Planes<'_>],
     cam: (u32, u32),
@@ -79,12 +60,9 @@ pub(crate) fn stitch_rgba(
     Ok(stitch_with(calib, viewport_size, pose, &samplers))
 }
 
-/// Stitch two YUV420p (planar) camera frames into an RGBA panorama on the CPU.
+/// Render one tightly packed YUV420P frame per calibrated camera into opaque RGBA on the CPU.
 ///
-/// Identical to [`stitch_rgba`] but for the software-decode planar
-/// format (separate Y, U, V planes). Useful as the GPU-less rendering path on
-/// desktop/cloud where FFmpeg software decode yields YUV420p.
-#[allow(clippy::too_many_arguments)]
+/// Identical to [`stitch_rgba`] except for separate Y, U and V planes.
 pub(crate) fn stitch_rgba_yuv420p(
     planes: &[Yuv420pPlanes<'_>],
     cam: (u32, u32),
@@ -341,13 +319,11 @@ mod tests {
     }
 
     #[test]
-    fn nv12_and_yuv420p_agree_on_grey() {
-        // Limited-range Y=128, chroma 128 -> the two formats must agree, since
-        // they carry the same samples in different layouts.
-        let y = vec![128u8; 8 * 8];
-        let nv12_uv = vec![128u8; 8 * 4]; // interleaved, (w) * (h/2)
-        let u = vec![128u8; 4 * 4]; // (w/2)*(h/2)
-        let v = vec![128u8; 4 * 4];
+    fn nv12_and_yuv420p_agree_on_coloured_gradients() {
+        let y: Vec<u8> = (0..8 * 8).map(|i| 16 + i * 3).collect();
+        let u: Vec<u8> = (0..4 * 4).map(|i| 20 + i * 10).collect();
+        let v: Vec<u8> = (0..4 * 4).map(|i| 230 - i * 9).collect();
+        let nv12_uv: Vec<u8> = u.iter().zip(&v).flat_map(|(&u, &v)| [u, v]).collect();
         let nv = Nv12Planes {
             y: &y,
             uv: &nv12_uv,
@@ -357,15 +333,21 @@ mod tests {
             u: &u,
             v: &v,
         };
-        let a = sample_nv12(&nv, 8, 8, 0.5, 0.5, false);
-        let b = sample_yuv420p(&yuv, 8, 8, 0.5, 0.5, false);
-        for k in 0..3 {
-            assert!(
-                (a[k] - b[k]).abs() < 1e-9,
-                "channel {k}: {} vs {}",
-                a[k],
-                b[k]
-            );
+        for full_range in [false, true] {
+            for x in [0.0, 0.13, 0.5, 0.81, 1.0] {
+                for y in [0.0, 0.19, 0.5, 0.93, 1.0] {
+                    let a = sample_nv12(&nv, 8, 8, x, y, full_range);
+                    let b = sample_yuv420p(&yuv, 8, 8, x, y, full_range);
+                    for k in 0..3 {
+                        assert!(
+                            (a[k] - b[k]).abs() < 1e-9,
+                            "full_range={full_range} ({x}, {y}) channel {k}: {} vs {}",
+                            a[k],
+                            b[k]
+                        );
+                    }
+                }
+            }
         }
     }
 }
