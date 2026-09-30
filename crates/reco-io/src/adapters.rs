@@ -15,39 +15,55 @@ use crate::ffmpeg;
 
 // -- FFmpeg File Source --
 
-/// Compute total duration in seconds for an input (single or chained segments).
+/// Estimate complete frame sets after chaining and two-camera alignment. An unknown segment makes the total unknown; partial counts are not totals.
 #[cfg(feature = "ffmpeg")]
-fn input_duration_secs(input: &crate::stitch_job::InputPath) -> Option<f64> {
-    match input {
-        crate::stitch_job::InputPath::Single(p) => ffmpeg::decoder::VideoDecoder::open_software(p)
-            .ok()
-            .and_then(|d| d.duration_secs()),
-        crate::stitch_job::InputPath::Chained(paths) => {
-            let mut total = 0.0f64;
-            let mut any = false;
-            for p in paths {
-                match ffmpeg::decoder::VideoDecoder::open_software(p) {
-                    Ok(d) => {
-                        if let Some(dur) = d.duration_secs() {
-                            total += dur;
-                            any = true;
-                        }
-                    }
-                    Err(e) => log::warn!("Could not probe segment {}: {e}", p.display()),
-                }
-            }
-            if any {
-                log::info!(
-                    "Chained source: {:.1}s total across {} segments",
-                    total,
-                    paths.len()
-                );
-                Some(total)
-            } else {
-                None
+pub(crate) fn input_frame_count(
+    inputs: &[crate::stitch_job::InputPath],
+    sync_offset: i64,
+) -> Option<u64> {
+    let mut shortest = None;
+    for (camera, input) in inputs.iter().enumerate() {
+        let mut total = 0u64;
+        for path in input.all_paths() {
+            total = total.checked_add(ffmpeg::decoder::probe_frame_count(&path).ok()??)?;
+        }
+        if inputs.len() == 2
+            && ((sync_offset > 0 && camera == 1) || (sync_offset < 0 && camera == 0))
+        {
+            total = total.saturating_sub(sync_offset.unsigned_abs());
+        }
+        shortest = Some(shortest.map_or(total, |previous: u64| previous.min(total)));
+    }
+    shortest
+}
+
+/// Keep a common source clock only when every camera has usable, compatible timing.
+#[cfg(feature = "ffmpeg")]
+pub(crate) fn merge_frame_rate(
+    info: &mut SourceInfo,
+    rate: Option<ffmpeg_next::Rational>,
+    path: &std::path::Path,
+) -> Result<(), SourceError> {
+    match (info.fps_rational, rate) {
+        (Some(_), Some(rate)) => {
+            let fps = rate.0 as f64 / rate.1 as f64;
+            // Permit nominal-rate rounding (30000/1001 vs 30), not camera drift (25 vs 30).
+            if (fps - info.fps).abs() > 0.5 {
+                return Err(SourceError::Init {
+                    path: path.display().to_string(),
+                    reason: format!(
+                        "frame rate mismatch: this input is {fps:.2} fps but the first input is {:.2} fps; record all cameras at the same frame rate",
+                        info.fps
+                    ),
+                });
             }
         }
+        _ => {
+            info.fps = 0.0;
+            info.fps_rational = None;
+        }
     }
+    Ok(())
 }
 
 /// File source backed by one FFmpeg decoder per camera.
@@ -81,8 +97,6 @@ pub struct FfmpegFileSource {
     sync_offset: i64,
     /// Software decode forced at open; seek respawns must reuse it.
     software_decode: bool,
-    /// Total frame count (estimated from duration * fps).
-    total_frame_count: Option<u64>,
     /// Current frame position (incremented on each next_frame).
     current_frame: u64,
     /// True once the decode pipeline has signaled end-of-stream.
@@ -150,66 +164,33 @@ impl FfmpegFileSource {
         })?;
         let fps_r = probe.frame_rate();
         let full_range = probe.is_full_range();
-        let fps = probe.fps();
-        let durations: Vec<Option<f64>> = inputs.iter().map(input_duration_secs).collect();
-        let effective_dur = durations.iter().flatten().copied().reduce(f64::min);
-        if let (Some(min), Some(max)) = (
-            effective_dur,
-            durations.iter().flatten().copied().reduce(f64::max),
-        ) && max - min > 1.0
-        {
-            log::info!("Duration mismatch across inputs: {min:.1}s..{max:.1}s, using shortest");
-        }
-        let total_frame_count = effective_dur.map(|dur| (dur * fps) as u64);
-        let info = SourceInfo {
+        let fps = probe.fps().unwrap_or(0.0);
+        let mut info = SourceInfo {
             width: probe.width(),
             height: probe.height(),
             fps,
-            fps_rational: Some((fps_r.0, fps_r.1)),
-            total_frames: total_frame_count,
+            fps_rational: fps_r.map(|r| (r.0, r.1)),
+            total_frames: input_frame_count(inputs, sync_offset),
         };
         let decode_backend = probe.backend();
         let pixel_format = probe.pixel_format();
         let first_rotation = probe.rotation();
         drop(probe);
 
-        // All inputs must share one frame rate: the session clock, trim
-        // math, and encoder run on the first input's rate, so a mismatched
-        // camera would silently drift out of sync over the match (#315).
-        // 0.5 fps tolerance absorbs probe rounding (30000/1001 vs 30/1)
-        // without letting 25-vs-30 or 30-vs-60 setups through.
         let mut rotations = vec![first_rotation];
         for input in &inputs[1..] {
-            match open_probe(input.first_path()) {
-                Ok(d) => {
-                    if d.is_full_range() != full_range {
-                        return Err(SourceError::Init {
-                            path: input.first_path().display().to_string(),
-                            reason: "camera color ranges differ; mixed full-range and limited-range inputs are not supported".into(),
-                        });
-                    }
-                    let r = d.frame_rate();
-                    let input_fps = r.0 as f64 / r.1 as f64;
-                    if (input_fps - fps).abs() > 0.5 {
-                        return Err(SourceError::Init {
-                            path: input.first_path().display().to_string(),
-                            reason: format!(
-                                "frame rate mismatch: this input is {input_fps:.2} fps but the \
-                                 first input is {fps:.2} fps; record all cameras at the same \
-                                 frame rate (mixed rates are not supported yet)"
-                            ),
-                        });
-                    }
-                    rotations.push(d.rotation());
-                }
-                Err(e) => {
-                    log::warn!(
-                        "Failed to probe {} for rotation/frame rate ({e}), assuming 0 degrees",
-                        input.first_path().display()
-                    );
-                    rotations.push(0);
-                }
+            let d = open_probe(input.first_path()).map_err(|e| SourceError::Init {
+                path: input.first_path().display().to_string(),
+                reason: e.to_string(),
+            })?;
+            if d.is_full_range() != full_range {
+                return Err(SourceError::Init {
+                    path: input.first_path().display().to_string(),
+                    reason: "camera color ranges differ; mixed full-range and limited-range inputs are not supported".into(),
+                });
             }
+            merge_frame_rate(&mut info, d.frame_rate(), input.first_path())?;
+            rotations.push(d.rotation());
         }
 
         let inputs = inputs.to_vec();
@@ -229,7 +210,6 @@ impl FfmpegFileSource {
             inputs,
             sync_offset,
             software_decode,
-            total_frame_count,
             current_frame: 0,
             exhausted: false,
             terminal_error: None,
@@ -282,20 +262,6 @@ impl FfmpegFileSource {
         {
             false
         }
-    }
-
-    /// Returns the frame rate as `(numerator, denominator)` for encoder setup.
-    ///
-    /// Re-probes the left file. Call once during setup, not per-frame.
-    pub fn frame_rate(left_path: &std::path::Path) -> Result<(i32, i32), SourceError> {
-        let dec = ffmpeg::decoder::VideoDecoder::open_software(left_path).map_err(|e| {
-            SourceError::Init {
-                path: left_path.display().to_string(),
-                reason: format!("{e}"),
-            }
-        })?;
-        let r = dec.frame_rate();
-        Ok((r.0, r.1))
     }
 
     fn spawn_single_decoder_at(
@@ -468,7 +434,6 @@ mod decode_tests {
             inputs: vec![],
             sync_offset: 0,
             software_decode: true,
-            total_frame_count: None,
             current_frame: 0,
             exhausted: false,
             terminal_error: None,
@@ -708,6 +673,11 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
     }
 
     fn seek(&mut self, frame: u64) -> Result<(), SourceError> {
+        if self.info.fps_rational.is_none() {
+            return Err(SourceError::Read {
+                reason: "video frame rate is unknown; cannot seek by frame index".into(),
+            });
+        }
         // Two strategies depending on seek direction and distance:
         //
         // 1. **Forward ≤ 10s**: drain frames from the existing decode
@@ -752,7 +722,7 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
     }
 
     fn total_frames(&self) -> Option<u64> {
-        self.total_frame_count
+        self.info.total_frames
     }
 
     fn is_exhausted(&self) -> bool {

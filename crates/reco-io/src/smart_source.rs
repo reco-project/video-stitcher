@@ -157,11 +157,11 @@ impl SmartFileSource {
         })?;
 
         let fps_r = probe.frame_rate();
-        let info = SourceInfo {
+        let mut info = SourceInfo {
             width: probe.width(),
             height: probe.height(),
-            fps: probe.fps(),
-            fps_rational: Some((fps_r.0, fps_r.1)),
+            fps: probe.fps().unwrap_or(0.0),
+            fps_rational: fps_r.map(|r| (r.0, r.1)),
             total_frames: None,
         };
         let pixel_format = probe.pixel_format();
@@ -183,6 +183,7 @@ impl SmartFileSource {
             if probe.is_full_range() != full_range {
                 return Err(SourceError::Init { path: input.first_path().display().to_string(), reason: "camera color ranges differ; mixed full-range and limited-range inputs are not supported".into() });
             }
+            crate::adapters::merge_frame_rate(&mut info, probe.frame_rate(), input.first_path())?;
             matching_layout &= probe.width() == info.width
                 && probe.height() == info.height
                 && probe.pixel_format() == pixel_format
@@ -220,6 +221,7 @@ impl SmartFileSource {
         }
 
         if use_zero_copy {
+            info.total_frames = crate::adapters::input_frame_count(inputs, sync_offset);
             Self::open_zero_copy(
                 inputs,
                 gpu,
@@ -231,7 +233,7 @@ impl SmartFileSource {
                 right_rotation,
             )
         } else {
-            Self::open_cpu(inputs, sync_offset, false, info, pixel_format, full_range)
+            Self::open_cpu_only(inputs, sync_offset, false)
         }
     }
 
@@ -243,55 +245,11 @@ impl SmartFileSource {
         sync_offset: i64,
         software_decode: bool,
     ) -> Result<Self, SourceError> {
-        let [first, ..] = inputs else {
-            return Err(SourceError::Init {
-                path: "(none)".into(),
-                reason: "at least one input video is required".into(),
-            });
-        };
-        let probe_path = first.first_path();
-
-        let open_probe = if software_decode {
-            crate::ffmpeg::decoder::VideoDecoder::open_software
-        } else {
-            crate::ffmpeg::decoder::VideoDecoder::open
-        };
-        let probe = open_probe(probe_path).map_err(|e| SourceError::Init {
-            path: probe_path.display().to_string(),
-            reason: format!("{e}"),
-        })?;
-        let fps_r = probe.frame_rate();
-        let info = SourceInfo {
-            width: probe.width(),
-            height: probe.height(),
-            fps: probe.fps(),
-            fps_rational: Some((fps_r.0, fps_r.1)),
-            total_frames: None,
-        };
-        let pixel_format = probe.pixel_format();
-        let full_range = probe.is_full_range();
-        drop(probe);
-
-        Self::open_cpu(
-            inputs,
-            sync_offset,
-            software_decode,
-            info,
-            pixel_format,
-            full_range,
-        )
-    }
-
-    fn open_cpu(
-        inputs: &[crate::stitch_job::InputPath],
-        sync_offset: i64,
-        software_decode: bool,
-        info: SourceInfo,
-        pixel_format: GpuPixelFormat,
-        full_range: bool,
-    ) -> Result<Self, SourceError> {
         let source =
             crate::adapters::FfmpegFileSource::open_inputs(inputs, sync_offset, software_decode)?;
+        let info = source.info();
+        let pixel_format = source.pixel_format();
+        let full_range = source.is_full_range();
         log::info!(
             "SmartFileSource: host-backed frames ({} camera(s), {}x{}, {pixel_format:?}{})",
             inputs.len(),
@@ -495,14 +453,14 @@ impl SmartFileSource {
         inputs: &[crate::stitch_job::InputPath],
         _gpu: &reco_core::gpu::GpuContext,
         sync_offset: i64,
-        info: SourceInfo,
-        pixel_format: GpuPixelFormat,
-        full_range: bool,
+        _info: SourceInfo,
+        _pixel_format: GpuPixelFormat,
+        _full_range: bool,
         _left_rotation: i32,
         _right_rotation: i32,
     ) -> Result<Self, SourceError> {
         log::info!("SmartFileSource: zero-copy not yet implemented for this platform, using CPU");
-        Self::open_cpu(inputs, sync_offset, false, info, pixel_format, full_range)
+        Self::open_cpu_only(inputs, sync_offset, false)
     }
 
     /// Human-readable description of the active decode path.
@@ -526,6 +484,10 @@ impl SmartFileSource {
 impl FrameSource for SmartFileSource {
     fn info(&self) -> SourceInfo {
         self.info.clone()
+    }
+
+    fn total_frames(&self) -> Option<u64> {
+        self.info.total_frames
     }
 
     fn next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {

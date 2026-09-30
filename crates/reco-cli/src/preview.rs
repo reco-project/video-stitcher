@@ -124,6 +124,9 @@ pub fn run_preview(
         reco_io::adapters::FfmpegFileSource::open_inputs(&inputs, effective_sync, false)?;
     source.defer_cleanup(&decoder_cleanup);
     let info = source.info();
+    let fps_rational = info.fps_rational.ok_or_else(|| {
+        anyhow::anyhow!("video frame rate is unknown; timed preview is unavailable")
+    })?;
 
     println!(
         "Preview: {}x{} input, {}x{} window",
@@ -142,7 +145,6 @@ pub fn run_preview(
 
     let initial_fov = FOV_DEFAULT;
 
-    let fps_rational = info.fps_rational.unwrap_or((30, 1));
     let total_frames = source.total_frames();
     let rig_roll = cal.framing.roll as f32;
 

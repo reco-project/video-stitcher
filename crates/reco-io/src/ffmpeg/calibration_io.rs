@@ -21,6 +21,9 @@ use super::decoder::{DecodeError, VideoDecoder};
 /// so they can cross the calibration-worker-thread boundary.
 #[derive(Debug, Clone, Error)]
 pub enum CalibrationIoError {
+    /// Frame-index selection requires usable video timing.
+    #[error("video frame rate is unknown; cannot select calibration frames by time")]
+    UnknownFrameRate,
     /// Video decode error.
     #[error("decode: {0}")]
     Decode(#[from] DecodeError),
@@ -58,7 +61,7 @@ pub struct VideoProbe {
 /// reading width/height/fps/duration, and immediately dropping it.
 pub fn probe_video(path: &Path) -> Result<VideoProbe, CalibrationIoError> {
     let decoder = VideoDecoder::open(path)?;
-    let fps = decoder.fps();
+    let fps = decoder.fps().ok_or(CalibrationIoError::UnknownFrameRate)?;
     let total_frames = decoder
         .duration_secs()
         .map(|d| (d * fps) as u64)
@@ -85,7 +88,7 @@ pub fn extract_frames(
     frame_indices: &[u64],
 ) -> Result<Vec<Yuv420pFrame>, CalibrationIoError> {
     let mut decoder = VideoDecoder::open(video_path)?;
-    let fps = decoder.fps();
+    let fps = decoder.fps().ok_or(CalibrationIoError::UnknownFrameRate)?;
     let mut frames = Vec::with_capacity(frame_indices.len());
 
     for &target_idx in frame_indices {

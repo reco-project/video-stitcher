@@ -11,11 +11,6 @@ reco-core and reco-io.
 (AKAZE on dense scenes, optimizer on 100+ pairs, audio PCM extraction).
 A consumer can't distinguish "making progress" from "hung."
 
-### N7. FfmpegFileSource opens full container just to read total_frames
-
-**Impact**: Low. Two muxer opens per export (probe + real read).
-A lightweight `reco_io::probe_duration(path)` would remove one.
-
 ### N8. Slint wgpu 28 rendering notifier does not expose AdapterInfo
 
 **Impact**: Low. Blocked on Slint upstream exposing the adapter reference.
@@ -38,13 +33,3 @@ without reading raw JSON.
 
 **Impact**: Low. Likely a Slint bug. Workaround: move critical sliders
 outside the ScrollView.
-
-### N19. fps-probe fallback is indistinguishable from a real 30fps source
-
-**Impact**: Medium. When `VideoDecoder::frame_rate()` exhausts every
-probe (container and codec context) it logs an error and returns
-`Rational(30, 1)` - the same value a genuinely 30fps file produces.
-The GUI cannot tell the difference, so it can't warn the user that
-export timing is a guess (wrong speed, wrong trim). Surfacing it needs
-the probe result to carry provenance (e.g. an
-`fps_is_estimated` flag on `SourceInfo`).

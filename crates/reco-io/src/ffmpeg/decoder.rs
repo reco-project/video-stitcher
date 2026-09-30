@@ -273,6 +273,34 @@ fn container_duration_secs(path: &Path) -> Result<Option<f64>, DecodeError> {
     }
 }
 
+/// Read a frame-count estimate through demuxer probing, without starting a Reco decoder pipeline.
+pub(crate) fn probe_frame_count(path: &Path) -> Result<Option<u64>, DecodeError> {
+    ffmpeg::init()?;
+    let context = input(path)?;
+    let stream = context
+        .streams()
+        .best(Type::Video)
+        .ok_or(DecodeError::NoVideoStream)?;
+    Ok(video_frame_count(&stream, context.duration()))
+}
+
+fn video_frame_count(stream: &ffmpeg::Stream<'_>, container_duration: i64) -> Option<u64> {
+    if stream.frames() > 0 {
+        return Some(stream.frames() as u64);
+    }
+    let rate = pick_frame_rate(Some(stream.rate()), Some(stream.avg_frame_rate()), None)?;
+    let time_base = stream.time_base();
+    let seconds = if stream.duration() > 0 && time_base.0 > 0 && time_base.1 > 0 {
+        stream.duration() as f64 * time_base.0 as f64 / time_base.1 as f64
+    } else if container_duration > 0 {
+        container_duration as f64 / f64::from(ffi::AV_TIME_BASE)
+    } else {
+        return None;
+    };
+    let frames = (seconds * rate.0 as f64 / rate.1 as f64).round();
+    (frames.is_finite() && frames > 0.0 && frames < u64::MAX as f64).then_some(frames as u64)
+}
+
 fn concat_seek_durations(paths: &[std::path::PathBuf]) -> Option<Vec<f64>> {
     let mut durations = Vec::with_capacity(paths.len());
     for path in paths {
@@ -655,44 +683,30 @@ impl VideoDecoder {
         self.rotation
     }
 
-    /// Frame rate as an FFmpeg rational (numerator/denominator).
+    /// Frame rate as an FFmpeg rational (numerator/denominator), or `None` if unavailable.
     ///
-    /// Probes the container stream first (`r_frame_rate`, then
-    /// `avg_frame_rate`): the codec context only knows the rate when the
-    /// bitstream carries VUI timing, which camera-original HEVC often
-    /// omits. Falls back to 30fps with an error log if all three are unset.
-    pub fn frame_rate(&self) -> ffmpeg::Rational {
+    /// Probes the container stream first (`r_frame_rate`, then `avg_frame_rate`), then codec timing. Missing or unusable timing is not replaced by an assumed rate.
+    pub fn frame_rate(&self) -> Option<ffmpeg::Rational> {
         let stream = self.input.stream(self.video_stream_index);
         let codec_rate = self.decoder.frame_rate();
-        let picked = pick_frame_rate(
+        let rate = pick_frame_rate(
             stream.as_ref().map(|s| s.rate()),
             stream.as_ref().map(|s| s.avg_frame_rate()),
             codec_rate,
-        );
-        match picked {
-            Some(rate) => {
-                if !codec_rate.as_ref().is_some_and(is_plausible_rate) {
-                    log::debug!(
-                        "Bitstream carries no timing info (no VUI); using container frame rate {}/{}",
-                        rate.0,
-                        rate.1
-                    );
-                }
-                rate
-            }
-            None => {
-                log::error!(
-                    "Could not determine frame rate, defaulting to 30fps; exported timing may be wrong"
-                );
-                ffmpeg::Rational(30, 1)
-            }
+        )?;
+        if !codec_rate.as_ref().is_some_and(is_plausible_rate) {
+            log::debug!(
+                "Bitstream carries no timing info (no VUI); using container frame rate {}/{}",
+                rate.0,
+                rate.1
+            );
         }
+        Some(rate)
     }
 
-    /// Frame rate as frames per second.
-    pub fn fps(&self) -> f64 {
-        let r = self.frame_rate();
-        r.0 as f64 / r.1 as f64
+    /// Frame rate as frames per second, or `None` if unavailable.
+    pub fn fps(&self) -> Option<f64> {
+        self.frame_rate().map(|r| r.0 as f64 / r.1 as f64)
     }
 
     /// Video duration in seconds, or `None` if unknown.
@@ -1518,7 +1532,61 @@ mod tests {
         write_mjpeg_60fps(&path);
 
         let dec = super::VideoDecoder::open(&path).unwrap();
-        assert_eq!(dec.frame_rate(), R60);
+        assert_eq!(dec.frame_rate(), Some(R60));
+    }
+
+    #[test]
+    fn missing_timing_does_not_invent_a_rate_or_prevent_decoding() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mjpeg60.mov");
+        write_mjpeg_60fps(&path);
+        let mut decoder = super::VideoDecoder::open_software(&path).unwrap();
+        let mut stream = decoder
+            .input
+            .stream_mut(decoder.video_stream_index)
+            .unwrap();
+        stream.set_rate(UNSET);
+        stream.set_avg_frame_rate(UNSET);
+        decoder.decoder.set_frame_rate(None::<ffmpeg::Rational>);
+        assert_eq!(decoder.frame_rate(), None);
+        assert_eq!(decoder.fps(), None);
+        assert!(decoder.next_frame().unwrap().is_some());
+    }
+
+    #[test]
+    fn frame_count_prefers_video_metadata_and_preserves_unknowns() {
+        use super::{ffi, input, video_frame_count};
+        ffmpeg::init().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mjpeg60.mov");
+        write_mjpeg_60fps(&path);
+        let mut context = input(&path).unwrap();
+        let mut stream = context.stream_mut(0).unwrap();
+        stream.set_rate(NTSC);
+        stream.set_avg_frame_rate(NTSC);
+        stream.set_time_base((1, 30000));
+        // SAFETY: this test exclusively owns the demuxer and its stream.
+        unsafe {
+            (*stream.as_mut_ptr()).nb_frames = 48;
+            (*stream.as_mut_ptr()).duration = 300300;
+        }
+        let longer_audio_duration = 100 * i64::from(ffi::AV_TIME_BASE);
+        assert_eq!(video_frame_count(&stream, longer_audio_duration), Some(48));
+        unsafe {
+            (*stream.as_mut_ptr()).nb_frames = 0;
+        }
+        assert_eq!(video_frame_count(&stream, longer_audio_duration), Some(300));
+        unsafe {
+            (*stream.as_mut_ptr()).duration = ffi::AV_NOPTS_VALUE;
+        }
+        assert_eq!(
+            video_frame_count(&stream, 10 * i64::from(ffi::AV_TIME_BASE)),
+            Some(300)
+        );
+        assert_eq!(video_frame_count(&stream, ffi::AV_NOPTS_VALUE), None);
+        stream.set_rate(UNSET);
+        stream.set_avg_frame_rate(UNSET);
+        assert_eq!(video_frame_count(&stream, longer_audio_duration), None);
     }
 
     #[test]

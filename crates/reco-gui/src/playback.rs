@@ -78,13 +78,15 @@ impl Playback {
         source.defer_cleanup(cleanup);
         let info = source.info();
         let fps = info.fps;
+        if info.fps_rational.is_none() {
+            return Err(SourceError::Init {
+                path: inputs[0].first_path().display().to_string(),
+                reason: "video frame rate is unknown; timed playback is unavailable".into(),
+            });
+        }
         let mut candidate = Self::new();
         candidate.total_frames = source.total_frames();
-        candidate.frame_duration = if fps > 0.0 {
-            Duration::from_secs_f64(1.0 / fps)
-        } else {
-            Duration::from_millis(33)
-        };
+        candidate.frame_duration = Duration::from_secs_f64(1.0 / fps);
         candidate.info = Some(info);
         candidate.source = Some(source);
         candidate.state = PlayState::Paused;

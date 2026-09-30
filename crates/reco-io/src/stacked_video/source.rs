@@ -84,8 +84,8 @@ impl StackedSource {
         &self.layout
     }
 
-    /// Frame rate of the underlying file (frames per second).
-    pub fn fps(&self) -> f64 {
+    /// Frame rate of the underlying file (frames per second), or `None` if unavailable.
+    pub fn fps(&self) -> Option<f64> {
         self.decoder.fps()
     }
 
@@ -114,15 +114,11 @@ impl FrameSource for StackedSource {
     fn info(&self) -> SourceInfo {
         let tw = self.layout.tile_width();
         let th = self.layout.tile_height();
-        let (num, den) = {
-            let r = self.decoder.frame_rate();
-            (r.0, r.1)
-        };
         SourceInfo {
             width: tw,
             height: th,
-            fps: self.fps(),
-            fps_rational: Some((num, den)),
+            fps: self.fps().unwrap_or(0.0),
+            fps_rational: self.decoder.frame_rate().map(|r| (r.0, r.1)),
             total_frames: None,
         }
     }

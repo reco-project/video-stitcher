@@ -141,40 +141,6 @@ pub fn run_export(
         });
     };
 
-    post_status("Probing source...".into());
-
-    use reco_core::source::FrameSource;
-    let Some(first) = inputs.first() else {
-        return ExportOutcome::Failed(reco_io::stitch_job::StitchError::Other(
-            "No export inputs".into(),
-        ));
-    };
-    let fps = reco_io::adapters::FfmpegFileSource::frame_rate(first.first_path())
-        .map(|(n, d)| if d != 0 { n as f64 / d as f64 } else { 30.0 })
-        .unwrap_or(30.0);
-    if let Ok(source) =
-        reco_io::adapters::FfmpegFileSource::open_inputs(&inputs, cal.sync_offset, false)
-        && let Some(full_total) = source.total_frames()
-    {
-        let start_frames = if start_secs > 0.0 {
-            (start_secs as f64 * fps) as u64
-        } else {
-            0
-        };
-        let end_frames = if end_secs > 0.0 {
-            (end_secs as f64 * fps) as u64
-        } else {
-            full_total
-        };
-        let range_total = end_frames.saturating_sub(start_frames);
-        let weak = app_weak.clone();
-        let _ = slint::invoke_from_event_loop(move || {
-            if let Some(app) = weak.upgrade() {
-                app.set_export_frames_total(range_total as i32);
-            }
-        });
-    }
-
     post_status("Opening encoder and decoders...".into());
 
     let progress_weak = app_weak.clone();
@@ -209,7 +175,7 @@ pub fn run_export(
                     app.set_export_frames_done(frames as i32);
                     let total = app.get_export_frames_total();
                     if total > 0 {
-                        app.set_export_progress(frames as f32 / total as f32);
+                        app.set_export_progress((frames as f32 / total as f32).min(1.0));
                     }
                     let eta = if total > 0 && fps > 0.0 {
                         let remaining = (total as f64 - frames as f64) / fps;
@@ -227,10 +193,7 @@ pub fn run_export(
         });
 
     if start_secs > 0.0 {
-        let skip_frames = (start_secs as f64 * fps) as u64;
-        post_status(format!(
-            "Seeking to {start_secs:.0}s (skipping ~{skip_frames} frames)..."
-        ));
+        post_status(format!("Seeking to {start_secs:.0}s..."));
         job = job.start_time(start_secs as f64);
     }
     if end_secs > 0.0 {
@@ -259,7 +222,14 @@ pub fn run_export(
     });
 
     let telem_weak = app_weak.clone();
-    job = job.on_session(move |session, _source| {
+    job = job.on_session(move |session, source| {
+        let total = estimated_export_frames(&source.info(), start_secs.into(), end_secs.into());
+        let weak = telem_weak.clone();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(app) = weak.upgrade() {
+                app.set_export_frames_total(total.unwrap_or(0).min(i32::MAX as u64) as i32);
+            }
+        });
         let sink = ExportTelemetrySink { window: telem_weak };
         session.set_telemetry_sink(Box::new(sink), 30);
         Ok(())
@@ -398,6 +368,30 @@ pub fn run_export(
     }
 }
 
+// Follow StitchJob's nearest-frame rounding for seek and duration independently.
+fn estimated_export_frames(
+    info: &reco_core::source::SourceInfo,
+    start: f64,
+    end: f64,
+) -> Option<u64> {
+    if !info.fps.is_finite() || info.fps <= 0.0 {
+        return None;
+    }
+    let start = if start.is_finite() && start > 0.0 {
+        start
+    } else {
+        0.0
+    };
+    let remaining = info
+        .total_frames?
+        .saturating_sub((start * info.fps).round() as u64);
+    Some(if end.is_finite() && end > 0.0 {
+        remaining.min(((end - start) * info.fps).round() as u64)
+    } else {
+        remaining
+    })
+}
+
 /// Poll a worker without confusing a missing result with ongoing work.
 pub fn poll_export(rx: &std::sync::mpsc::Receiver<ExportOutcome>) -> Option<ExportOutcome> {
     match rx.try_recv() {
@@ -414,6 +408,32 @@ pub fn poll_export(rx: &std::sync::mpsc::Receiver<ExportOutcome>) -> Option<Expo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn export_estimate_uses_aligned_source_count_and_rounded_trim() {
+        let mut info = reco_core::source::SourceInfo {
+            width: 128,
+            height: 96,
+            fps: 30000.0 / 1001.0,
+            fps_rational: Some((30000, 1001)),
+            total_frames: Some(48),
+        };
+        for (start, end, expected) in [
+            (0.0, 0.0, 48),
+            (0.051, 0.149, 3),
+            (0.051, 99.0, 46),
+            (0.051, 0.0, 46),
+            (99.0, 0.0, 0),
+            (0.2, 0.1, 0),
+        ] {
+            assert_eq!(estimated_export_frames(&info, start, end), Some(expected));
+        }
+        info.total_frames = None;
+        assert_eq!(estimated_export_frames(&info, 0.0, 1.0), None);
+        info.total_frames = Some(48);
+        info.fps = f64::NAN;
+        assert_eq!(estimated_export_frames(&info, 0.0, 1.0), None);
+    }
 
     #[test]
     #[ignore = "requires a GPU and RECO_EXPORT_TEST_VIDEO pointing to a readable video"]

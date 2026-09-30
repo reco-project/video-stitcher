@@ -649,6 +649,10 @@ impl StitchJob {
             (Some(gpu), source)
         };
         let info = source.info();
+        let fps_rational = info.fps_rational.ok_or_else(|| StitchError::Other(
+            "video frame rate is unknown for one or more inputs; cannot export with reliable timing".into()
+        ))?;
+        let fps = info.fps;
         let (out_w, out_h) = self.resolution.unwrap_or((1920, 1080));
         if self.resolution.is_none() {
             log::info!("Output resolution not specified, defaulting to {out_w}x{out_h}");
@@ -755,37 +759,7 @@ impl StitchJob {
             }
         }
 
-        // All inputs must share one frame rate: the session clock, trim
-        // math, and encoder run on the first input's rate, so a mismatched
-        // camera silently drifts out of sync over a match (#315). 0.5 fps
-        // tolerance absorbs probe rounding (30000/1001 vs 30/1) without
-        // letting 25-vs-30 or 30-vs-60 setups through.
-        if info.fps > 0.0 {
-            for input in &self.inputs[1..] {
-                if let Ok((n, d)) =
-                    crate::adapters::FfmpegFileSource::frame_rate(input.first_path())
-                    && d != 0
-                {
-                    let input_fps = n as f64 / d as f64;
-                    if (input_fps - info.fps).abs() > 0.5 {
-                        return Err(StitchError::Other(format!(
-                            "frame rate mismatch: {} is {input_fps:.2} fps but the first input \
-                             is {:.2} fps; record all cameras at the same frame rate (mixed \
-                             rates are not supported yet)",
-                            input.first_path().display(),
-                            info.fps,
-                        )));
-                    }
-                }
-            }
-        }
-
         // Create encoder with optional audio passthrough.
-        let fps_rational = info.fps_rational.unwrap_or_else(|| {
-            log::warn!("FPS not available from source metadata, defaulting to 30fps");
-            (30, 1)
-        });
-        let fps = if info.fps > 0.0 { info.fps } else { 30.0 };
         let start_secs = self
             .start_time
             .filter(|secs| secs.is_finite() && *secs > 0.0)
@@ -873,16 +847,6 @@ impl StitchJob {
                     "end_time ({end:.2}s) must be greater than start_time ({start_secs:.2}s)"
                 )));
             }
-        }
-
-        use reco_core::source::FrameSource as _;
-        if let Some(total) = source.total_frames()
-            && skip_frames >= total
-        {
-            return Err(StitchError::Other(format!(
-                "start_time ({start_secs:.2}s = frame {skip_frames}) \
-                 is past the end of the source ({total} frames)"
-            )));
         }
 
         // Skip frames to reach start position.
@@ -1093,6 +1057,16 @@ impl StitchJob {
             && let Err(e) = replay.finish()
         {
             log::warn!("replay recording finalize failed ({e}); stitch output still valid");
+        }
+
+        if frame_count == 0
+            && skip_frames > 0
+            && frame_limit > 0
+            && completion == reco_core::session::types::RunCompletion::Completed
+        {
+            return Err(StitchError::Other(format!(
+                "no video frames remain at start_time ({start_secs:.2}s)"
+            )));
         }
 
         // Post-run sanity check: re-open the output file and verify it

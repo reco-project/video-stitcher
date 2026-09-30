@@ -419,14 +419,14 @@ pub struct SourceInfo {
     pub width: u32,
     /// Frame height in pixels.
     pub height: u32,
-    /// Frames per second (may be approximate for live sources).
+    /// Frames per second (may be approximate for live sources), or zero if unknown.
     pub fps: f64,
     /// Exact frame rate as a rational number (numerator, denominator).
     /// For example, 29.97fps is `(30000, 1001)`. Used by encoders for
     /// precise timing. `None` if the source cannot determine exact timing.
     pub fps_rational: Option<(i32, i32)>,
-    /// Total number of frames in the source (from container metadata).
-    /// `None` for live sources or when the count is unknown.
+    /// Estimated total number of frame sets, after source alignment.
+    /// `None` for live sources or when the count is unknown. Container metadata may be approximate; use end-of-stream, not this count, to stop processing.
     pub total_frames: Option<u64>,
 }
 
@@ -538,10 +538,9 @@ pub trait FrameSource: Send {
         })
     }
 
-    /// Total number of frames in the source, if known.
+    /// Estimated total number of frame sets in the source, if known.
     ///
-    /// File-based sources should return the frame count from container metadata.
-    /// Live sources return `None`.
+    /// File-based sources should return [`SourceInfo::total_frames`]. Live sources return `None`. This is not an end-of-stream boundary.
     fn total_frames(&self) -> Option<u64> {
         None
     }

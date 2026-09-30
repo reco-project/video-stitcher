@@ -223,6 +223,209 @@ fn fixture(path: &std::path::Path) {
 }
 
 #[test]
+fn file_counts_follow_chains_and_alignment_without_limiting_decode() {
+    assert_file_counts(false);
+}
+
+#[test]
+fn unusable_rate_is_unknown_not_thirty_fps() {
+    assert_source_rates(false);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires NVIDIA CUDA/NVDEC and Vulkan external-memory interop"]
+fn native_sources_preserve_unknown_rates_and_reject_mismatches() {
+    assert_source_rates(true);
+}
+
+fn assert_source_rates(native: bool) {
+    use reco_core::calibration::{Calibration, Framing, Lens};
+    use reco_core::projection::{Cylinder, LShape};
+    use std::sync::{Arc, atomic::AtomicBool};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("unusable-rate.mp4");
+    fixture_rate(&path, "libx264", WIDTH, HEIGHT, (2000, 1));
+    let normal = dir.path().join("normal.mp4");
+    fixture(&normal);
+    let gpu = native.then(|| reco_core::gpu::GpuContext::new_blocking().unwrap());
+    let open = |inputs: &[InputPath]| match &gpu {
+        Some(gpu) => reco_io::SmartFileSource::open(inputs, gpu, 0),
+        None => reco_io::SmartFileSource::open_cpu_only(inputs, 0, true),
+    };
+    for paths in [
+        vec![path.clone()],
+        vec![path.clone(), normal.clone()],
+        vec![normal.clone(), path.clone()],
+    ] {
+        let inputs: Vec<_> = paths.into_iter().map(InputPath::Single).collect();
+        let mut source = open(&inputs).unwrap();
+        assert_eq!(source.is_gpu_resident(), native);
+        assert_eq!(source.info().fps_rational, None);
+        assert_eq!(source.info().fps, 0.0);
+        if !native {
+            let error = source.skip_frames(1).unwrap_err();
+            assert!(
+                error.to_string().contains("frame rate is unknown"),
+                "{error}"
+            );
+        }
+        source.start_decoding();
+        assert!(
+            source.next_frame().unwrap().is_some(),
+            "missing timing must not prevent raw decoding"
+        );
+        drop(source);
+
+        let lenses = vec![Lens::flat(WIDTH, HEIGHT); inputs.len()];
+        let framing = Framing {
+            axis_offset: 0.25,
+            tilt: 0.0,
+            roll: 0.0,
+        };
+        let cal = if inputs.len() == 1 {
+            Calibration::new(lenses, Cylinder::default(), framing)
+        } else {
+            Calibration::new(
+                lenses,
+                LShape {
+                    intersect: 0.5,
+                    x_ty: 0.0,
+                    x_rz: 0.0,
+                    z_rx: 0.0,
+                    x_rx: 0.0,
+                    z_rz: 0.0,
+                    blend_width: 0.05,
+                },
+                framing,
+            )
+        };
+        let output = dir.path().join("output.mp4");
+        let job = || {
+            let job = reco_io::StitchJob::with_calibration(inputs.clone(), cal.clone(), &output)
+                .on_session(|_, _| panic!("invalid timing must fail before session setup"));
+            if native { job } else { job.cpu() }
+        };
+        for existing in [false, true] {
+            if existing {
+                std::fs::write(&output, b"existing output").unwrap();
+            }
+            let error = job().run(&Arc::new(AtomicBool::new(false))).unwrap_err();
+            assert!(
+                error.to_string().contains("frame rate is unknown"),
+                "{error}"
+            );
+            if existing {
+                assert_eq!(std::fs::read(&output).unwrap(), b"existing output");
+                std::fs::remove_file(&output).unwrap();
+            } else {
+                assert!(!output.exists());
+            }
+        }
+    }
+    assert!(matches!(
+        reco_io::ffmpeg::calibration_io::probe_video(&path),
+        Err(reco_io::ffmpeg::calibration_io::CalibrationIoError::UnknownFrameRate)
+    ));
+    assert!(matches!(
+        reco_io::ffmpeg::calibration_io::extract_frames(&path, &[0]),
+        Err(reco_io::ffmpeg::calibration_io::CalibrationIoError::UnknownFrameRate)
+    ));
+    #[cfg(feature = "stacked-output")]
+    {
+        let layout = reco_io::stacked_video::GridLayout::vstack(WIDTH, HEIGHT / 2, 2).unwrap();
+        let mut source =
+            reco_io::stacked_video::source::StackedSource::open(layout, &path).unwrap();
+        assert_eq!(source.info().fps_rational, None);
+        assert_eq!(source.info().fps, 0.0);
+        assert!(source.next_tuple().unwrap().is_some());
+    }
+
+    let different = dir.path().join("different.mp4");
+    fixture_rate(&different, "libx264", WIDTH, HEIGHT, (60, 1));
+    for paths in [
+        [normal.clone(), different.clone()],
+        [different, normal.clone()],
+    ] {
+        let error = open(&paths.map(InputPath::Single))
+            .err()
+            .expect("mismatched input rates must fail at source setup");
+        assert!(error.to_string().contains("frame rate mismatch"), "{error}");
+    }
+    let fractional = dir.path().join("fractional.mp4");
+    fixture_rate(&fractional, "libx264", WIDTH, HEIGHT, (30000, 1001));
+    let inputs = [InputPath::Single(fractional), InputPath::Single(normal)];
+    let source = open(&inputs).unwrap();
+    assert_eq!(source.info().fps_rational, Some((30000, 1001)));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires NVIDIA CUDA/NVDEC and Vulkan external-memory interop"]
+fn native_file_counts_match_host_sources() {
+    assert_file_counts(true);
+}
+
+fn assert_file_counts(native: bool) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("input.mp4");
+    fixture(&path);
+    let single = InputPath::Single(path.clone());
+    let chain = InputPath::Chained(vec![path.clone(), path]);
+    let gpu = native.then(|| reco_core::gpu::GpuContext::new_blocking().unwrap());
+    for (inputs, offset, expected) in [
+        (vec![single.clone()], 7, FRAMES),
+        (vec![chain.clone()], 0, 2 * FRAMES),
+        (vec![single.clone(), chain.clone()], 7, FRAMES),
+        (vec![single.clone(), chain.clone()], -7, FRAMES - 7),
+        (vec![chain.clone(), single.clone()], 7, FRAMES - 7),
+        (vec![chain, single.clone()], -7, FRAMES),
+        (vec![single.clone(), single.clone()], i64::MIN, 0),
+    ] {
+        let mut source = match &gpu {
+            Some(gpu) => reco_io::SmartFileSource::open(&inputs, gpu, offset).unwrap(),
+            None => reco_io::SmartFileSource::open_cpu_only(&inputs, offset, true).unwrap(),
+        };
+        assert_eq!(source.is_gpu_resident(), native);
+        assert_eq!(source.info().total_frames, Some(expected as u64));
+        assert_eq!(source.total_frames(), Some(expected as u64));
+        source.start_decoding();
+        let mut decoded = 0;
+        while let Some(frame) = source.next_frame().unwrap() {
+            #[cfg(target_os = "linux")]
+            if let FrameSet::GpuResident { slots } = frame.images {
+                for (camera, slot) in source
+                    .shared_texture_set()
+                    .unwrap()
+                    .cameras
+                    .iter()
+                    .zip(slots)
+                {
+                    let _ = camera.slot_free_tx.send(slot);
+                }
+            }
+            #[cfg(not(target_os = "linux"))]
+            drop(frame);
+            decoded += 1;
+        }
+        assert_eq!(decoded, expected);
+    }
+
+    let incomplete = InputPath::Chained(vec![
+        single.first_path().to_path_buf(),
+        dir.path().join("missing.mp4"),
+    ]);
+    for inputs in [vec![incomplete.clone()], vec![single.clone(), incomplete]] {
+        let source = reco_io::SmartFileSource::open_cpu_only(&inputs, 0, true).unwrap();
+        assert_eq!(source.info().total_frames, None);
+        assert_eq!(source.total_frames(), None);
+    }
+    let source = reco_io::SmartFileSource::open_cpu_only(&vec![single; 3], 7, true).unwrap();
+    assert_eq!(source.total_frames(), Some(FRAMES as u64));
+}
+
+#[test]
 fn job_setup_and_completion_are_explicit() {
     use reco_core::session::types::RunCompletion;
     use reco_io::stitch_job::StitchError;
@@ -272,6 +475,25 @@ fn job_setup_and_completion_are_explicit() {
         .unwrap_err();
     assert_eq!(error.to_string(), "setup failure");
     assert!(!output.exists(), "failed setup must not create an output");
+
+    let flag = Arc::new(AtomicBool::new(false));
+    let result = job()
+        .start_time(0.051)
+        .end_time(0.149)
+        .on_session(|_, source| {
+            assert_eq!(source.info().total_frames, Some(FRAMES as u64));
+            Ok(())
+        })
+        .run(&flag)
+        .unwrap();
+    assert_eq!(result.frames_processed, 3);
+    for start in [2.0, 20.0] {
+        let error = job().start_time(start).run(&flag).unwrap_err();
+        assert!(
+            error.to_string().contains("no video frames remain"),
+            "{error}"
+        );
+    }
 
     for cancel_during_frames in [true, false] {
         let flag = Arc::new(AtomicBool::new(false));
@@ -349,6 +571,16 @@ fn fixture_encoding(path: &std::path::Path, codec_name: &str) {
 }
 
 fn fixture_size(path: &std::path::Path, codec_name: &str, width: u32, height: u32) {
+    fixture_rate(path, codec_name, width, height, (30, 1));
+}
+
+fn fixture_rate(
+    path: &std::path::Path,
+    codec_name: &str,
+    width: u32,
+    height: u32,
+    rate: (i32, i32),
+) {
     ffmpeg::init().unwrap();
     let codec = ffmpeg::encoder::find_by_name(codec_name).expect("test encoder");
     let mut output = ffmpeg::format::output(path).unwrap();
@@ -360,8 +592,8 @@ fn fixture_size(path: &std::path::Path, codec_name: &str, width: u32, height: u3
     encoder.set_width(width);
     encoder.set_height(height);
     encoder.set_format(ffmpeg::format::Pixel::YUV420P);
-    encoder.set_time_base((1, 30));
-    encoder.set_frame_rate(Some((30, 1)));
+    encoder.set_time_base((rate.1, rate.0));
+    encoder.set_frame_rate(Some(rate));
     encoder.set_gop(48);
     encoder.set_max_b_frames(if codec_name == "libx264" { 3 } else { 0 });
     encoder.set_flags(ffmpeg::codec::Flags::GLOBAL_HEADER);
@@ -384,7 +616,7 @@ fn fixture_size(path: &std::path::Path, codec_name: &str, width: u32, height: u3
                 Ok(()) => {
                     packet.set_stream(0);
                     packet.set_duration(1);
-                    packet.rescale_ts((1, 30), time_base);
+                    packet.rescale_ts((rate.1, rate.0), time_base);
                     packet.write_interleaved(output).unwrap();
                 }
                 Err(ffmpeg::Error::Eof) => break,
