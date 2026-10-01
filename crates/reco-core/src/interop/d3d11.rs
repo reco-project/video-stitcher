@@ -84,14 +84,12 @@ struct StagingState {
     y_views: Vec<wgpu::TextureView>,
     uv_views: Vec<wgpu::TextureView>,
     event_query: ID3D11Query,
-    cuda_nv12: Option<Vec<crate::interop::cuda::CudaImportedNv12>>,
 }
 
-/// Double-buffered NV12 staging pool for D3D11VA -> wgpu zero-copy.
+/// NV12/P010 staging pool for D3D11VA -> wgpu zero-copy.
 ///
-/// Allocates 4 staging textures (2 per camera, ping-pong) with shared
-/// handles. Each staging texture is imported into wgpu as an NV12 texture
-/// with pre-built Y and UV plane views.
+/// Allocates the requested number of staging textures with shared handles.
+/// Each texture is imported into wgpu with pre-built Y and UV plane views.
 ///
 /// The pool is constructed lightweight; the D3D11 device and staging
 /// textures are created lazily on the first `stage_frames` call by
@@ -107,8 +105,6 @@ pub struct D3d11StagingPool {
     n_slots: usize,
     /// Pixel format (NV12 8-bit or P010 10-bit).
     pixel_format: crate::render::renderer::GpuPixelFormat,
-    /// Import D3D11 textures into CUDA for GPU-resident detection.
-    enable_cuda: bool,
     /// Lazily initialized on first `stage_frames` call.
     state: Option<StagingState>,
 }
@@ -124,7 +120,6 @@ impl D3d11StagingPool {
         width: u32,
         height: u32,
         n_slots: usize,
-        enable_cuda: bool,
         pixel_format: crate::render::renderer::GpuPixelFormat,
     ) -> Result<Self, D3d11InteropError> {
         if !gpu.is_dx12() {
@@ -137,7 +132,6 @@ impl D3d11StagingPool {
             height,
             n_slots,
             pixel_format,
-            enable_cuda,
             state: None,
         })
     }
@@ -186,7 +180,7 @@ impl D3d11StagingPool {
             query.ok_or_else(|| D3d11InteropError::D3d11("CreateQuery returned None".into()))?
         };
 
-        // Create 4 staging textures with shared handles on FFmpeg's device.
+        // Create staging textures with shared handles on FFmpeg's device.
         let dxgi_format = match self.pixel_format {
             crate::render::renderer::GpuPixelFormat::P010 => DXGI_FORMAT_P010,
             _ => DXGI_FORMAT_NV12,
@@ -213,8 +207,6 @@ impl D3d11StagingPool {
         let mut wgpu_textures: Vec<wgpu::Texture> = Vec::with_capacity(n);
         let mut y_views: Vec<wgpu::TextureView> = Vec::with_capacity(n);
         let mut uv_views: Vec<wgpu::TextureView> = Vec::with_capacity(n);
-        let mut cuda_imports: Vec<Option<crate::interop::cuda::CudaImportedNv12>> =
-            Vec::with_capacity(n);
 
         // VRAM sizing for descriptive OOM errors (mirrors VramPool::new).
         // Each slot is one NV12/P010 texture: Y (full res) + UV (half res).
@@ -274,34 +266,6 @@ impl D3d11StagingPool {
                 }
             };
 
-            // Import into CUDA for AI detection (NVIDIA only, non-fatal).
-            // Only when a CUDA-resident detector will actually read these
-            // pointers. Importing otherwise is pure waste: ~1 ms/slot of setup
-            // and an external-memory object per slot that must be torn down
-            // again on pool drop (the storage below is discarded when
-            // `enable_cuda` is false).
-            let cuda_import = if self.enable_cuda {
-                let nv12_pitch = self.width as usize;
-                let imported = crate::interop::cuda::cuda_import_d3d11_nv12(
-                    handle.0,
-                    self.width,
-                    self.height,
-                    nv12_pitch,
-                );
-                match &imported {
-                    Ok(m) => log::debug!(
-                        "CUDA imported staging slot {i}: Y=0x{:x} UV=0x{:x}",
-                        m.y_ptr,
-                        m.uv_ptr
-                    ),
-                    Err(e) => log::debug!("CUDA import for slot {i} skipped: {e}"),
-                }
-                imported.ok()
-            } else {
-                None
-            };
-            cuda_imports.push(cuda_import);
-
             unsafe {
                 let _ = CloseHandle(handle);
             }
@@ -343,19 +307,6 @@ impl D3d11StagingPool {
             self.pixel_format
         );
 
-        let cuda_nv12 = if !self.enable_cuda {
-            // No CUDA-resident detector requested it; imports were skipped above.
-            log::info!("CUDA detection not requested; D3D11VA staging stays DX12-only");
-            None
-        } else if cuda_imports.iter().all(|c| c.is_some()) {
-            let v: Vec<_> = cuda_imports.into_iter().map(|c| c.unwrap()).collect();
-            log::info!("CUDA detection enabled on D3D11VA staging textures");
-            Some(v)
-        } else {
-            log::info!("CUDA detection requested but import failed (non-NVIDIA or CUDA not found)");
-            None
-        };
-
         self.state = Some(StagingState {
             device,
             context,
@@ -363,7 +314,6 @@ impl D3d11StagingPool {
             _wgpu_textures: wgpu_textures,
             y_views,
             uv_views,
-            cuda_nv12,
             event_query,
         });
 
@@ -487,24 +437,6 @@ impl D3d11StagingPool {
     /// Number of staging slots.
     pub fn n_slots(&self) -> usize {
         self.n_slots
-    }
-
-    /// CUDA NV12 pointers for the given slot, if CUDA import succeeded.
-    ///
-    /// Returns `(y_ptr, uv_ptr, pitch)` for feeding to the GPU detection
-    /// pipeline. None on non-NVIDIA hardware or if CUDA is unavailable.
-    pub fn cuda_nv12_ptrs(
-        &self,
-        slot: usize,
-    ) -> Option<(
-        crate::interop::cuda::CUdeviceptr,
-        crate::interop::cuda::CUdeviceptr,
-        usize,
-    )> {
-        let state = self.state.as_ref()?;
-        let imports = state.cuda_nv12.as_ref()?;
-        let m = &imports[slot];
-        Some((m.y_ptr, m.uv_ptr, m.pitch))
     }
 
     /// Staging texture width.

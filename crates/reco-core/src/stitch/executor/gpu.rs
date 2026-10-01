@@ -500,7 +500,6 @@ impl GpuExecutor {
     pub(crate) fn ensure_d3d11_staging(
         &mut self,
         lookahead_frames: usize,
-        needs_cuda: bool,
         pixel_format: crate::render::renderer::GpuPixelFormat,
     ) -> Result<(), String> {
         // For lookahead, size slots to the max frames simultaneously
@@ -529,7 +528,6 @@ impl GpuExecutor {
             w,
             h,
             n_slots,
-            needs_cuda,
             pixel_format,
         )
         .map_err(|e| format!("D3D11 staging pool: {e}"))?;

@@ -498,12 +498,10 @@ impl StitchSession {
         right_texture: *mut std::ffi::c_void,
         right_slice: usize,
     ) -> Result<(), SessionError> {
-        // D3D11 detection consumes wgpu views, not CUDA imports.
-        let needs_cuda = false;
         let lookahead_frames = self.lookahead_frames;
         let pixel_format = self.gpu_pixel_format;
         self.gpu_exec()
-            .ensure_d3d11_staging(lookahead_frames, needs_cuda, pixel_format)
+            .ensure_d3d11_staging(lookahead_frames, pixel_format)
             .map_err(SessionError::ZeroCopy)?;
         let left_pool_slot = self.frame_count as usize % 2;
         let right_pool_slot = left_pool_slot + 2;
@@ -691,11 +689,10 @@ impl StitchSession {
         produce_index: u64,
     ) -> Result<Option<usize>, SessionError> {
         if let FrameSet::D3d11Resident([left, right]) = frame {
-            let needs_cuda = false;
             let lookahead_frames = self.lookahead_frames;
             let pixel_format = self.gpu_pixel_format;
             self.gpu_exec()
-                .ensure_d3d11_staging(lookahead_frames, needs_cuda, pixel_format)
+                .ensure_d3d11_staging(lookahead_frames, pixel_format)
                 .map_err(SessionError::ZeroCopy)?;
             let (left_slot, right_slot) = self
                 .gpu_exec_ref()

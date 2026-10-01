@@ -1,8 +1,8 @@
 //! CUDA memory, copies and external-resource interop.
 //!
 //! Enables NVDEC-decoded frames to reach wgpu textures without
-//! leaving the GPU. Imports Vulkan-owned image memory on Linux and
-//! D3D11 staging resources on Windows into persistent CUDA mappings.
+//! leaving the GPU. Imports Vulkan-owned image memory on Linux into
+//! persistent CUDA mappings.
 //!
 //! ## Architecture (inspired by [Gyroflow](https://github.com/gyroflow/gyroflow)'s approach)
 //!
@@ -17,7 +17,7 @@
 //! ## Platform Support
 //!
 //! - **Linux**: POSIX file descriptor sharing (`VK_KHR_external_memory_fd`)
-//! - **Windows**: D3D11 resource sharing via NT handles.
+//! - **Windows**: CUDA memory and kernel operations, without graphics imports.
 //! - CUDA is loaded dynamically — no compile-time CUDA SDK dependency.
 
 use std::ffi::c_void;
@@ -92,13 +92,11 @@ struct CudaMemcpy2D {
 }
 
 /// Opaque external memory handle for cross-API sharing.
+#[cfg(target_os = "linux")]
 type CUexternalMemory = *mut c_void;
 
-/// External memory handle type: D3D11 resource shared via NT handle.
-#[cfg(target_os = "windows")]
-const CU_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_RESOURCE: u32 = 4;
-
 /// Handle descriptor for importing external memory into CUDA.
+#[cfg(target_os = "linux")]
 #[repr(C)]
 struct CudaExternalMemoryHandleDesc {
     handle_type: u32,
@@ -108,7 +106,8 @@ struct CudaExternalMemoryHandleDesc {
     _reserved: [u32; 16],
 }
 
-/// Win32 handle union branch for external memory import.
+/// Retains the CUDA handle union's C layout, including on Linux.
+#[cfg(target_os = "linux")]
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct CudaExternalMemoryWin32Handle {
@@ -116,6 +115,7 @@ struct CudaExternalMemoryWin32Handle {
     name: *const c_void,
 }
 
+#[cfg(target_os = "linux")]
 #[repr(C)]
 union CudaExternalMemoryHandle {
     fd: i32,
@@ -123,6 +123,7 @@ union CudaExternalMemoryHandle {
 }
 
 /// Buffer descriptor for mapping a region of external memory.
+#[cfg(target_os = "linux")]
 #[repr(C)]
 struct CudaExternalMemoryBufferDesc {
     offset: u64,
@@ -174,15 +175,18 @@ struct CudaFunctions {
     cu_mem_get_info_v2: unsafe extern "C" fn(*mut usize, *mut usize) -> CUresult,
 
     // External memory imported from the rendering API.
+    #[cfg(target_os = "linux")]
     cu_import_external_memory: unsafe extern "C" fn(
         *mut CUexternalMemory,
         *const CudaExternalMemoryHandleDesc,
     ) -> CUresult,
+    #[cfg(target_os = "linux")]
     cu_external_memory_get_mapped_buffer: unsafe extern "C" fn(
         *mut CUdeviceptr,
         CUexternalMemory,
         *const CudaExternalMemoryBufferDesc,
     ) -> CUresult,
+    #[cfg(target_os = "linux")]
     cu_destroy_external_memory: unsafe extern "C" fn(CUexternalMemory) -> CUresult,
 
     // Module / kernel launch
@@ -279,11 +283,14 @@ impl CudaFunctions {
                 cu_mem_get_info_v2: load_sym!(lib_cuda, "cuMemGetInfo_v2"),
                 cu_memcpy_dtoh_v2: load_sym!(lib_cuda, "cuMemcpyDtoH_v2"),
                 cu_memset_d8_v2: load_sym!(lib_cuda, "cuMemsetD8_v2"),
+                #[cfg(target_os = "linux")]
                 cu_import_external_memory: load_sym!(lib_cuda, "cuImportExternalMemory"),
+                #[cfg(target_os = "linux")]
                 cu_external_memory_get_mapped_buffer: load_sym!(
                     lib_cuda,
                     "cuExternalMemoryGetMappedBuffer"
                 ),
+                #[cfg(target_os = "linux")]
                 cu_destroy_external_memory: load_sym!(lib_cuda, "cuDestroyExternalMemory"),
                 cu_module_load_data: load_sym!(lib_cuda, "cuModuleLoadData"),
                 cu_module_unload: load_sym!(lib_cuda, "cuModuleUnload"),
@@ -811,152 +818,4 @@ mod tests {
             println!("CUDA not available (expected on non-NVIDIA systems)");
         }
     }
-}
-
-// ── D3D11 → CUDA external memory import (Windows) ──────────────────
-
-/// CUDA-mapped NV12 plane pointers from a D3D11 shared staging texture.
-///
-/// Created once per staging slot. The device pointers are persistent
-/// for the lifetime of this struct (no per-frame Map/Unmap needed).
-#[cfg(target_os = "windows")]
-#[derive(Debug)]
-pub struct CudaImportedNv12 {
-    ext_mem: CUexternalMemory,
-    /// Y plane device pointer (full resolution, pitch = `y_pitch`).
-    pub y_ptr: CUdeviceptr,
-    /// UV plane device pointer (half height, pitch = `uv_pitch`).
-    pub uv_ptr: CUdeviceptr,
-    /// Row pitch in bytes for both planes.
-    pub pitch: usize,
-}
-
-#[cfg(target_os = "windows")]
-impl Drop for CudaImportedNv12 {
-    fn drop(&mut self) {
-        if let Ok(cuda) = cuda() {
-            // The staging pool drops on the session thread, not the decode
-            // thread that established the CUDA context, so a context may not be
-            // current here. Without one, the cleanup calls below fail and the
-            // import - which pins the D3D11 staging texture's VRAM - is never
-            // released (a permanent per-export leak on NVIDIA). Mirror
-            // `CudaKernel::drop` and ensure a context first.
-            if let Err(e) = cuda_ensure_context() {
-                log::warn!("CudaImportedNv12 drop: no CUDA context, leaking import: {e}");
-                return;
-            }
-            unsafe {
-                // The mapped buffers from cuExternalMemoryGetMappedBuffer must
-                // be freed with cuMemFree *before* the external memory object is
-                // destroyed (CUDA driver API contract). Skipping this leaves the
-                // mappings live, so cuDestroyExternalMemory cannot release CUDA's
-                // reference to the shared texture and its VRAM never returns.
-                let y_rc = (cuda.cu_mem_free_v2)(self.y_ptr);
-                if y_rc != CUDA_SUCCESS {
-                    log::warn!("cuMemFree(Y 0x{:x}) failed: {y_rc}", self.y_ptr);
-                }
-                let uv_rc = (cuda.cu_mem_free_v2)(self.uv_ptr);
-                if uv_rc != CUDA_SUCCESS {
-                    log::warn!("cuMemFree(UV 0x{:x}) failed: {uv_rc}", self.uv_ptr);
-                }
-                let rc = (cuda.cu_destroy_external_memory)(self.ext_mem);
-                if rc != CUDA_SUCCESS {
-                    log::warn!("cuDestroyExternalMemory failed: {rc}");
-                }
-            }
-        }
-    }
-}
-
-/// Import a D3D11 shared NV12 staging texture into CUDA.
-///
-/// Takes the NT handle from `IDXGIResource1::CreateSharedHandle` and
-/// maps the Y and UV planes as persistent CUDA device pointers. The
-/// handle is NOT consumed (caller keeps it for DX12 import too).
-///
-/// `pitch` is the row stride in bytes (may be > width due to alignment).
-/// For a 1920-wide NV12 texture, NVIDIA typically uses pitch=1920 or 2048.
-#[cfg(target_os = "windows")]
-pub fn cuda_import_d3d11_nv12(
-    nt_handle: *mut c_void,
-    width: u32,
-    height: u32,
-    pitch: usize,
-) -> Result<CudaImportedNv12, CudaInteropError> {
-    let cuda = cuda()?;
-    cuda_ensure_context()?;
-
-    let y_size = pitch * height as usize;
-    let uv_size = pitch * (height as usize / 2);
-    let total_size = y_size + uv_size;
-
-    // Round up to 64KB page boundary (NVIDIA allocation granularity).
-    let alloc_size = (total_size + 0xFFFF) & !0xFFFF;
-
-    let mut ext_mem: CUexternalMemory = std::ptr::null_mut();
-    let handle_desc = CudaExternalMemoryHandleDesc {
-        handle_type: CU_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_RESOURCE,
-        handle: CudaExternalMemoryHandle {
-            win32: CudaExternalMemoryWin32Handle {
-                handle: nt_handle,
-                name: std::ptr::null(),
-            },
-        },
-        size: alloc_size as u64,
-        flags: 0,
-        _reserved: [0; 16],
-    };
-
-    unsafe {
-        check_cuda(
-            "cuImportExternalMemory",
-            (cuda.cu_import_external_memory)(&mut ext_mem, &handle_desc),
-        )?;
-    }
-
-    // Map Y plane at offset 0.
-    let mut y_ptr: CUdeviceptr = 0;
-    let y_desc = CudaExternalMemoryBufferDesc {
-        offset: 0,
-        size: y_size as u64,
-        flags: 0,
-        _reserved: [0; 16],
-    };
-    unsafe {
-        check_cuda(
-            "cuExternalMemoryGetMappedBuffer(Y)",
-            (cuda.cu_external_memory_get_mapped_buffer)(&mut y_ptr, ext_mem, &y_desc),
-        )?;
-    }
-
-    // Map UV plane right after Y.
-    let mut uv_ptr: CUdeviceptr = 0;
-    let uv_desc = CudaExternalMemoryBufferDesc {
-        offset: y_size as u64,
-        size: uv_size as u64,
-        flags: 0,
-        _reserved: [0; 16],
-    };
-    unsafe {
-        check_cuda(
-            "cuExternalMemoryGetMappedBuffer(UV)",
-            (cuda.cu_external_memory_get_mapped_buffer)(&mut uv_ptr, ext_mem, &uv_desc),
-        )?;
-    }
-
-    log::debug!(
-        "CUDA imported D3D11 NV12: {}x{}, pitch={}, Y=0x{:x}, UV=0x{:x}",
-        width,
-        height,
-        pitch,
-        y_ptr,
-        uv_ptr
-    );
-
-    Ok(CudaImportedNv12 {
-        ext_mem,
-        y_ptr,
-        uv_ptr,
-        pitch,
-    })
 }
