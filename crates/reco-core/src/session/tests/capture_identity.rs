@@ -66,13 +66,24 @@ impl Tracker for FreshnessProbe {
     }
 }
 
-struct Images(std::collections::VecDeque<SourceFrame>);
+struct Image {
+    markers: [u8; 2],
+    nv12: bool,
+    pts_us: Option<i64>,
+    capture: Option<crate::source::CaptureTiming>,
+}
+
+struct Images(std::collections::VecDeque<Image>);
 impl FrameSource for Images {
     fn info(&self) -> SourceInfo {
         MockSource::new(0).info()
     }
     fn next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {
-        Ok(self.0.pop_front())
+        Ok(self.0.pop_front().map(|frame| SourceFrame {
+            images: image(frame.markers, frame.nv12),
+            pts_us: frame.pts_us,
+            capture: frame.capture,
+        }))
     }
 }
 
@@ -180,8 +191,9 @@ fn check_reused_images(build: impl Fn(bool) -> StitchSession) {
                         if reverse {
                             markers.reverse();
                         }
-                        SourceFrame {
-                            images: image(markers, nv12),
+                        Image {
+                            markers,
+                            nv12,
                             pts_us: Some(index as i64 * 33_333),
                             capture: timing(markers.map(|v| i64::from(v) * 1000).to_vec()),
                         }
@@ -315,8 +327,9 @@ fn invalid_capture_metadata_fails_even_on_skipped_detection_ticks() {
             let frames = [vec![100, 100], times]
                 .into_iter()
                 .enumerate()
-                .map(|(index, capture_times_us)| SourceFrame {
-                    images: image([10, 20], false),
+                .map(|(index, capture_times_us)| Image {
+                    markers: [10, 20],
+                    nv12: false,
                     pts_us: Some(index as i64 * 33_333),
                     capture: timing(capture_times_us),
                 })
@@ -340,8 +353,9 @@ fn new_source_run_does_not_reuse_previous_source_image_identity() {
             .core_mut()
             .set_detector(Box::new(DetectorProbe(calls.clone())));
         for capture_time in [100, 100, 0] {
-            let frames = [SourceFrame {
-                images: image([10, 20], false),
+            let frames = [Image {
+                markers: [10, 20],
+                nv12: false,
                 pts_us: Some(0),
                 capture: timing(vec![capture_time; 2]),
             }]
@@ -403,8 +417,9 @@ fn observation_expiry_uses_source_age_before_immediate_and_lookahead_tracking() 
                         if reverse {
                             times_us.reverse();
                         }
-                        SourceFrame {
-                            images: image([10 + index as u8, 20 + index as u8], false),
+                        Image {
+                            markers: [10 + index as u8, 20 + index as u8],
+                            nv12: false,
                             pts_us: Some(at_us - 100_000),
                             capture: Some(crate::source::CaptureTiming {
                                 times_us,
@@ -565,8 +580,9 @@ fn bounded_capture_timing_rejects_stale_future_and_nonadvancing_sets_before_infe
             let frames = [valid.clone(), invalid]
                 .into_iter()
                 .enumerate()
-                .map(|(i, capture)| SourceFrame {
-                    images: image([10, 20], false),
+                .map(|(i, capture)| Image {
+                    markers: [10, 20],
+                    nv12: false,
                     pts_us: Some(i as i64),
                     capture: Some(capture),
                 })

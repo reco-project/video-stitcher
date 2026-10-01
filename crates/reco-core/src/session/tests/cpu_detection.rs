@@ -10,20 +10,23 @@ struct FutureProbe(Arc<Mutex<Vec<usize>>>);
 
 #[test]
 fn shared_host_images_survive_source_release_and_match_owned_delivery() {
-    struct QueuedSource(std::collections::VecDeque<crate::source::SourceFrame>);
-    impl FrameSource for QueuedSource {
+    struct QueuedSource<T> {
+        frames: std::collections::VecDeque<Vec<Arc<T>>>,
+        wrap: fn(Vec<Arc<T>>) -> FrameSet,
+    }
+    impl<T: Send + Sync> FrameSource for QueuedSource<T> {
         fn info(&self) -> SourceInfo {
             MockSource::new(0).info()
         }
         fn next_frame(&mut self) -> Result<Option<crate::source::SourceFrame>, SourceError> {
-            Ok(self.0.pop_front())
+            Ok(self
+                .frames
+                .pop_front()
+                .map(|images| crate::source::SourceFrame::untimed((self.wrap)(images))))
         }
     }
 
-    fn verify<T: Send + Sync + Clone + 'static>(
-        images: [T; 2],
-        wrap: impl Fn(Vec<Arc<T>>) -> FrameSet,
-    ) {
+    fn verify<T: Send + Sync + Clone + 'static>(images: [T; 2], wrap: fn(Vec<Arc<T>>) -> FrameSet) {
         let [left, right] = images.map(Arc::new);
         let weak = [Arc::downgrade(&left), Arc::downgrade(&right)];
         let mut baseline = None;
@@ -38,10 +41,10 @@ fn shared_host_images_survive_source_release_and_match_owned_delivery() {
                         };
                         assert_eq!(Arc::ptr_eq(&cameras[0], &left), shared);
                         assert_eq!(Arc::ptr_eq(&cameras[1], &right), shared);
-                        crate::source::SourceFrame::untimed(wrap(cameras))
+                        cameras
                     })
                     .collect();
-                let mut source = QueuedSource(frames);
+                let mut source = QueuedSource { frames, wrap };
                 let mut session = build_cpu_session();
                 session.core_mut().set_constrained_look(false);
                 session.set_lookahead(depth, usize::MAX);
@@ -56,7 +59,7 @@ fn shared_host_images_survive_source_release_and_match_owned_delivery() {
                     .run(&mut source, u64::MAX, &AtomicBool::new(false), None)
                     .unwrap();
                 assert_eq!(result.frames_processed, 4);
-                assert!(source.0.is_empty());
+                assert!(source.frames.is_empty());
                 drop(source);
                 session.finish().unwrap();
                 assert_eq!(Arc::strong_count(&left), 1);
