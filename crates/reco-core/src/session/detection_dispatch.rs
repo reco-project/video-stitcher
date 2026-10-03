@@ -52,8 +52,7 @@ pub(super) fn cuda_nv12_frames(
 pub(super) fn shared_nv12_frames<'a>(
     views: &'a [[wgpu::TextureView; 4]],
     slots: &[u8],
-    width: u32,
-    height: u32,
+    sizes: &[(u32, u32)],
     rotations: [i32; 2],
 ) -> Vec<(CameraIndex, DetectorFrame<'a>)> {
     views
@@ -67,8 +66,8 @@ pub(super) fn shared_nv12_frames<'a>(
                 DetectorFrame::WgpuNv12 {
                     y_view: &views[slot * 2],
                     uv_view: &views[slot * 2 + 1],
-                    width,
-                    height,
+                    width: sizes[camera].0,
+                    height: sizes[camera].1,
                     rotation: rotations[camera],
                 },
             )
@@ -119,24 +118,23 @@ pub(super) fn wgpu_nv12_frames<'a>(
 pub(super) fn metal_frames(
     left_cvpb: crate::interop::metal::CVPixelBufferRef,
     right_cvpb: crate::interop::metal::CVPixelBufferRef,
-    width: u32,
-    height: u32,
+    sizes: [(u32, u32); 2],
 ) -> [(CameraIndex, DetectorFrame<'static>); 2] {
     [
         (
             0,
             DetectorFrame::Metal {
                 cv_pixel_buffer: left_cvpb,
-                width,
-                height,
+                width: sizes[0].0,
+                height: sizes[0].1,
             },
         ),
         (
             1,
             DetectorFrame::Metal {
                 cv_pixel_buffer: right_cvpb,
-                width,
-                height,
+                width: sizes[1].0,
+                height: sizes[1].1,
             },
         ),
     ]
@@ -202,12 +200,10 @@ impl StitchSession {
                         }
                     } else if let Some(views) = self.shared_views() {
                         crate::profile_scope!("detect_wgpu_nv12");
-                        let (w, h) = self.core.source_dims();
                         let frames = shared_nv12_frames(
                             &views,
                             slots,
-                            w,
-                            h,
+                            self.core.source_sizes(),
                             [self.left_rotation, self.right_rotation],
                         );
                         self.core.run_detection_frames(&frames, capture_times_us)?;
@@ -221,7 +217,7 @@ impl StitchSession {
                         .and_then(|(ls, rs)| self.gpu_exec_ref().d3d11_views(ls, rs));
                     if let Some(views) = views {
                         crate::profile_scope!("detect_wgpu_nv12");
-                        let (w, h) = self.core.source_dims();
+                        let (w, h) = self.core.source_sizes()[0];
                         let frames = wgpu_nv12_frames(
                             &views[0],
                             &views[1],
@@ -237,8 +233,14 @@ impl StitchSession {
                 }
                 #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
                 FrameSet::MetalResident([left, right]) => {
-                    let frames =
-                        metal_frames(left.as_ptr(), right.as_ptr(), left.width(), left.height());
+                    let frames = metal_frames(
+                        left.as_ptr(),
+                        right.as_ptr(),
+                        [
+                            (left.width(), left.height()),
+                            (right.width(), right.height()),
+                        ],
+                    );
                     self.core.run_detection_frames(&frames, capture_times_us)?;
                 }
                 #[cfg(all(feature = "gpu", target_os = "linux"))]

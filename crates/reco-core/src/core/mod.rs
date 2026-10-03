@@ -534,8 +534,8 @@ impl StitchCore {
     }
 
     /// Source frame dimensions `(width, height)` per camera.
-    pub fn source_dims(&self) -> (u32, u32) {
-        self.executor.source_dims()
+    pub fn source_sizes(&self) -> &[(u32, u32)] {
+        self.executor.source_sizes()
     }
 
     /// Number of frames submitted so far.
@@ -574,8 +574,8 @@ impl crate::detect::DetectionTarget for StitchCore {
     fn set_panner(&mut self, panner: Box<dyn crate::detect::panner::Panner>) {
         self.set_panner(panner);
     }
-    fn source_dims(&self) -> (u32, u32) {
-        self.source_dims()
+    fn source_sizes(&self) -> &[(u32, u32)] {
+        self.source_sizes()
     }
     #[cfg(feature = "gpu")]
     fn gpu(&self) -> Option<&crate::gpu::GpuContext> {
@@ -614,8 +614,7 @@ mod tests {
                 width: 64,
                 height: 32,
             },
-            64,
-            32,
+            vec![(64, 32); 2],
             false,
         )
         .unwrap();
@@ -768,8 +767,7 @@ mod tests {
                 width: w,
                 height: h,
             },
-            w,
-            h,
+            vec![(w, h); 2],
             false,
         )
         .expect("cpu executor");
@@ -810,6 +808,7 @@ mod tests {
         let y = vec![0u8; (w * h) as usize];
         let uv = vec![128u8; (w * h / 4) as usize];
         let cam = crate::source::Yuv420pData {
+            size: (w, h),
             y,
             u: uv.clone(),
             v: uv,
@@ -855,14 +854,14 @@ mod tests {
                 width: w,
                 height: h,
             },
-            w,
-            h,
+            vec![(w, h); 2],
             false,
         )
         .expect("cpu executor");
         let mut core = StitchCore::new(Executor::Cpu(Box::new(executor))).expect("cpu engine");
 
         let cam = crate::source::Yuv420pData {
+            size: (w, h),
             y: vec![0u8; (w * h) as usize],
             u: vec![128u8; (w * h / 4) as usize],
             v: vec![128u8; (w * h / 4) as usize],
@@ -906,19 +905,38 @@ mod tests {
         let (ly, luv) = nv12(cam_w, cam_h, 0);
         let (ry, ruv) = nv12(cam_w, cam_h, 30);
         let frames = crate::source::FrameSet::Nv12(vec![
-            crate::source::Nv12Data { y: ly, uv: luv }.into(),
-            crate::source::Nv12Data { y: ry, uv: ruv }.into(),
+            crate::source::Nv12Data {
+                size: (cam_w, cam_h),
+                y: ly,
+                uv: luv,
+            }
+            .into(),
+            crate::source::Nv12Data {
+                size: (cam_w, cam_h),
+                y: ry,
+                uv: ruv,
+            }
+            .into(),
         ]);
 
-        let cpu_exec = CpuExecutor::new(calib(cam_w, cam_h), config.clone(), cam_w, cam_h, false)
-            .expect("cpu executor");
+        let cpu_exec = CpuExecutor::new(
+            calib(cam_w, cam_h),
+            config.clone(),
+            vec![(cam_w, cam_h); 2],
+            false,
+        )
+        .expect("cpu executor");
         let mut cpu_core = StitchCore::new(Executor::Cpu(Box::new(cpu_exec))).expect("cpu engine");
 
         let gpu_exec = GpuExecutor::new(
             gpu,
             GpuExecutorConfig {
                 viewport_size: config,
-                ..GpuExecutorConfig::new(calib(cam_w, cam_h), cam_w, cam_h, InputFormat::Nv12)
+                ..GpuExecutorConfig::new(
+                    calib(cam_w, cam_h),
+                    vec![(cam_w, cam_h); 2],
+                    InputFormat::Nv12,
+                )
             },
         )
         .expect("gpu executor");
@@ -978,7 +996,11 @@ mod tests {
                     width: 160,
                     height: 90,
                 },
-                ..GpuExecutorConfig::new(calib(cam_w, cam_h), cam_w, cam_h, InputFormat::Nv12)
+                ..GpuExecutorConfig::new(
+                    calib(cam_w, cam_h),
+                    vec![(cam_w, cam_h); 2],
+                    InputFormat::Nv12,
+                )
             },
         )
         .expect("gpu executor");
@@ -987,8 +1009,18 @@ mod tests {
         let (ly, luv) = nv12(cam_w, cam_h, 0);
         let (ry, ruv) = nv12(cam_w, cam_h, 30);
         let frames = crate::source::FrameSet::Nv12(vec![
-            crate::source::Nv12Data { y: ly, uv: luv }.into(),
-            crate::source::Nv12Data { y: ry, uv: ruv }.into(),
+            crate::source::Nv12Data {
+                size: (cam_w, cam_h),
+                y: ly,
+                uv: luv,
+            }
+            .into(),
+            crate::source::Nv12Data {
+                size: (cam_w, cam_h),
+                y: ry,
+                uv: ruv,
+            }
+            .into(),
         ]);
 
         // Warm the ring at the original size, then resize.
@@ -1060,8 +1092,7 @@ mod tests {
                 width: w,
                 height: h,
             },
-            w,
-            h,
+            vec![(w, h); 2],
             false,
         )
         .expect("cpu executor");
@@ -1100,6 +1131,7 @@ mod tests {
         core.set_constrained_look(false);
         core.enable_replay_buffer(Some(std::time::Duration::from_secs(1)));
         let image = crate::source::Yuv420pData {
+            size: (64, 36),
             y: vec![128; 64 * 36],
             u: vec![128; 32 * 18],
             v: vec![128; 32 * 18],

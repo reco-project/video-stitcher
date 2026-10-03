@@ -529,8 +529,7 @@ impl AppState {
     fn build_bridge(
         &mut self,
         cal: &Calibration,
-        input_w: u32,
-        input_h: u32,
+        source_sizes: Vec<(u32, u32)>,
     ) -> Result<PreviewBridge, String> {
         let gpu = self
             .shared_gpu
@@ -544,8 +543,7 @@ impl AppState {
             gpu.queue,
             gpu.adapter_info,
             cal.clone(),
-            input_w,
-            input_h,
+            source_sizes,
             PREVIEW_WIDTH_DEFAULT,
             PREVIEW_HEIGHT_DEFAULT,
         )
@@ -718,12 +716,13 @@ impl AppState {
             .open(&inputs, sync_offset, &self.decoder_cleanup)
             .map_err(|e| format!("Video open error: {e}"))?;
 
-        let (input_w, input_h) = self
+        let source_sizes = self
             .playback
-            .input_dimensions()
-            .ok_or("No input dimensions")?;
+            .source_sizes()
+            .ok_or("No input dimensions")?
+            .to_vec();
 
-        let bridge = self.build_bridge(&cal, input_w, input_h)?;
+        let bridge = self.build_bridge(&cal, source_sizes)?;
 
         if cal.projection.camera_count() == 1 {
             self.lens_preview_active = false;
@@ -850,6 +849,7 @@ impl AppState {
             let params = cal.lenses.get(camera)?.clone();
             return match bridge.render_lens_preview(
                 &planes,
+                cameras[camera].size,
                 &params,
                 self.lens_correction_amount,
                 self.playback.is_full_range(),

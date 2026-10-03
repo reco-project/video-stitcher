@@ -1129,8 +1129,7 @@ mod tests {
                         width: 16,
                         height: 16,
                     },
-                    64,
-                    64,
+                    vec![(64, 64); 2],
                     false,
                 )
                 .unwrap();

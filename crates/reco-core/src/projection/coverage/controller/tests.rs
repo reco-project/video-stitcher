@@ -102,16 +102,18 @@ fn rolled_stereo_retains_useful_fov_and_bounded_cross_field_motion() {
         cal.framing.tilt = 0.3;
         cal.framing.roll = roll.to_radians();
         let mut controller = Controller::new(&cal, &size, MapConfig::default()).unwrap();
-        let render = CpuExecutor::new(
-            cal.clone(),
-            ViewportSize {
-                width: 160,
-                height: 90,
-            },
-            64,
-            32,
-            false,
-        )
+        let render = {
+            let source_sizes = vec![(64, 32); cal.projection.camera_count()];
+            CpuExecutor::new(
+                cal.clone(),
+                ViewportSize {
+                    width: 160,
+                    height: 90,
+                },
+                source_sizes,
+                false,
+            )
+        }
         .unwrap();
         let mut renderers: Vec<Box<dyn StitchExecutor>> = vec![Box::new(render)];
         #[cfg(feature = "gpu")]
@@ -128,7 +130,10 @@ fn rolled_stereo_retains_useful_fov_and_bounded_cross_field_motion() {
                             width: 160,
                             height: 90,
                         },
-                        ..GpuExecutorConfig::new(cal.clone(), 64, 32, InputFormat::Nv12)
+                        ..{
+                            let source_sizes = vec![(64, 32); cal.projection.camera_count()];
+                            GpuExecutorConfig::new(cal.clone(), source_sizes, InputFormat::Nv12)
+                        }
                     },
                 )
                 .unwrap(),
@@ -215,16 +220,18 @@ fn roll_edits_do_not_accumulate_artificial_zoom() {
     };
     let mut cal = stereo();
     cal.framing.tilt = 0.3;
-    let render = CpuExecutor::new(
-        cal.clone(),
-        ViewportSize {
-            width: 160,
-            height: 90,
-        },
-        64,
-        32,
-        false,
-    )
+    let render = {
+        let source_sizes = vec![(64, 32); cal.projection.camera_count()];
+        CpuExecutor::new(
+            cal.clone(),
+            ViewportSize {
+                width: 160,
+                height: 90,
+            },
+            source_sizes,
+            false,
+        )
+    }
     .unwrap();
     let mut core = StitchCore::new(Executor::Cpu(Box::new(render))).unwrap();
     core.prepare_coverage().unwrap();

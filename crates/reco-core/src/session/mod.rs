@@ -118,8 +118,7 @@ impl StitchSession {
         StitchSessionBuilder {
             calibration: None,
             viewport_size: None,
-            input_width: None,
-            input_height: None,
+            source_sizes: None,
             output_format: OutputFormat::Rgba8Unorm,
             input_format: InputFormat::Yuv420p,
             gpu: None,
@@ -157,8 +156,7 @@ impl StitchSession {
             GpuExecutorConfig {
                 calibration: config.calibration,
                 viewport_size: config.viewport_size,
-                input_width: config.input_width,
-                input_height: config.input_height,
+                source_sizes: config.source_sizes,
                 input_format: config.input_format,
                 // `OutputFormat` -> `wgpu::TextureFormat` via the
                 // `From` impl in `crate::gpu`; covers all three
@@ -184,8 +182,9 @@ impl StitchSession {
     /// use reco_core::{session::StitchSession, stitch::{CpuExecutor, Executor}};
     ///
     /// fn cpu_session(calibration: Calibration) -> Result<StitchSession, Box<dyn std::error::Error>> {
+    ///     let source_sizes = vec![(1920, 1080); calibration.projection.camera_count()];
     ///     let executor = CpuExecutor::new(
-    ///         calibration, ViewportSize { width: 640, height: 360 }, 1920, 1080, false,
+    ///         calibration, ViewportSize { width: 640, height: 360 }, source_sizes, false,
     ///     )?;
     ///     Ok(StitchSession::with_executor(Executor::Cpu(Box::new(executor)))?)
     /// }
@@ -395,8 +394,8 @@ impl crate::detect::DetectionTarget for StitchSession {
     fn set_panner(&mut self, panner: Box<dyn crate::detect::panner::Panner>) {
         self.set_panner(panner);
     }
-    fn source_dims(&self) -> (u32, u32) {
-        self.core.source_dims()
+    fn source_sizes(&self) -> &[(u32, u32)] {
+        self.core.source_sizes()
     }
     #[cfg(feature = "gpu")]
     fn gpu(&self) -> Option<&crate::gpu::GpuContext> {

@@ -39,7 +39,11 @@ fn source_rates_are_accepted_in_immediate_and_buffered_sessions() {
                 width: W,
                 height: H,
             };
-            let executor = CpuExecutor::new(cal.clone(), size.clone(), W, H, false).unwrap();
+            let executor = {
+                let source_sizes = vec![(W, H); cal.projection.camera_count()];
+                CpuExecutor::new(cal.clone(), size.clone(), source_sizes, false)
+            }
+            .unwrap();
             let mut session =
                 StitchSession::with_executor(Executor::Cpu(Box::new(executor))).unwrap();
             session.set_lookahead(lookahead, usize::MAX);
@@ -81,7 +85,11 @@ fn coverage_runs_once_after_immediate_or_lookahead_decisions() {
     let config = MapConfig::default();
     for (gpu, lookahead) in [(false, 0), (false, 8), (true, 0), (true, 8)] {
         let executor = Executor::Cpu(Box::new(
-            CpuExecutor::new(cal.clone(), size.clone(), W, H, false).unwrap(),
+            {
+                let source_sizes = vec![(W, H); cal.projection.camera_count()];
+                CpuExecutor::new(cal.clone(), size.clone(), source_sizes, false)
+            }
+            .unwrap(),
         ));
         #[cfg(not(feature = "gpu"))]
         if gpu {
@@ -97,12 +105,14 @@ fn coverage_runs_once_after_immediate_or_lookahead_decisions() {
                     gpu,
                     crate::stitch::GpuExecutorConfig {
                         viewport_size: size.clone(),
-                        ..crate::stitch::GpuExecutorConfig::new(
-                            cal.clone(),
-                            W,
-                            H,
-                            crate::render::renderer::InputFormat::Yuv420p,
-                        )
+                        ..{
+                            let source_sizes = vec![(W, H); cal.projection.camera_count()];
+                            crate::stitch::GpuExecutorConfig::new(
+                                cal.clone(),
+                                source_sizes,
+                                crate::render::renderer::InputFormat::Yuv420p,
+                            )
+                        }
                     },
                 )
                 .unwrap(),

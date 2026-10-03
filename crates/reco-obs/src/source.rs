@@ -366,8 +366,7 @@ impl RecoSource {
             GpuExecutorConfig {
                 calibration,
                 viewport_size,
-                input_width: self.input_width,
-                input_height: self.input_height,
+                source_sizes: vec![(self.input_width, self.input_height); 2],
                 input_format: self.input_format,
                 output_format: reco_core::wgpu::TextureFormat::Rgba8Unorm,
                 full_range: false,
@@ -478,13 +477,16 @@ impl RecoSource {
                 self.input_height,
             ) {
                 Ok(recorder) => {
+                    if let Err(error) = core.set_stacked_recorder(recorder) {
+                        log::warn!("reco-obs: replay recorder rejected: {error}");
+                        return;
+                    }
                     log::info!(
                         "reco-obs: replay recording ENABLED -> {} ({}x{} per tile)",
                         self.replay_path,
                         self.input_width,
                         self.input_height,
                     );
-                    core.set_stacked_recorder(recorder);
                     self.replay_recorder_attached = true;
                 }
                 Err(e) => {

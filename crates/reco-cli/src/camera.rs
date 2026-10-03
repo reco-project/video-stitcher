@@ -165,8 +165,7 @@ pub fn run_camera(
     let session_config = reco_core::session::types::SessionConfig {
         calibration: cal,
         viewport_size,
-        input_width: capture_width,
-        input_height: capture_height,
+        source_sizes: vec![(capture_width, capture_height); 2],
         output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
         input_format,
         left_rotation: 0,

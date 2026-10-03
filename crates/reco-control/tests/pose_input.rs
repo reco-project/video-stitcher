@@ -263,16 +263,18 @@ fn cpu_core(arc_deg: f64) -> reco_core::core::StitchCore {
         },
     );
     reco_core::core::StitchCore::new(Executor::Cpu(Box::new(
-        CpuExecutor::new(
-            cal,
-            ViewportSize {
-                width: 64,
-                height: 32,
-            },
-            64,
-            32,
-            false,
-        )
+        {
+            let source_sizes = vec![(64, 32); cal.projection.camera_count()];
+            CpuExecutor::new(
+                cal,
+                ViewportSize {
+                    width: 64,
+                    height: 32,
+                },
+                source_sizes,
+                false,
+            )
+        }
         .unwrap(),
     )))
     .unwrap()

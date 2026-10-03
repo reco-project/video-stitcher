@@ -131,16 +131,16 @@ impl StitchSession {
     /// let recorder = reco_io::stacked_video::replay::session_recorder(
     ///     "replay.mkv",
     ///     reco_io::stacked_video::encoder::StackedEncoderConfig::default(),
-    ///     info.width,
-    ///     info.height,
+    ///     info.camera_sizes[0].0,
+    ///     info.camera_sizes[0].1,
     /// )?;
-    /// session.set_stacked_recorder(recorder);
+    /// session.set_stacked_recorder(recorder)?;
     /// ```
     pub fn set_stacked_recorder(
         &mut self,
         recorder: Box<dyn crate::core::types::StackedReplayRecorder>,
-    ) {
-        self.core.set_stacked_recorder(recorder);
+    ) -> Result<(), crate::core::types::StitchCoreError> {
+        self.core.set_stacked_recorder(recorder)
     }
 
     /// Finalize and drop the currently attached replay recorder.

@@ -698,8 +698,7 @@ impl StitchJob {
                 let session_config = reco_core::session::types::SessionConfig {
                     calibration: cal,
                     viewport_size,
-                    input_width: info.width,
-                    input_height: info.height,
+                    source_sizes: info.camera_sizes.clone(),
                     output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
                     input_format,
                     left_rotation: source.left_rotation(),
@@ -712,8 +711,7 @@ impl StitchJob {
                 let executor = reco_core::stitch::CpuExecutor::new(
                     cal,
                     viewport_size,
-                    info.width,
-                    info.height,
+                    info.camera_sizes.clone(),
                     false,
                 )
                 .map_err(|e| StitchError::Other(format!("CPU executor: {e}")))?;
@@ -913,6 +911,11 @@ impl StitchJob {
 
         #[cfg(feature = "stacked-output")]
         if let Some(cfg) = replay_cfg {
+            if info.camera_sizes.windows(2).any(|pair| pair[0] != pair[1]) {
+                return Err(StitchError::Other(
+                    "stacked replay requires equal camera dimensions".into(),
+                ));
+            }
             // Pack-path selection. GPU-resident sources (NVDEC
             // zero-copy, future Metal / Jetson ISP) send frames
             // through `submit_render_output`; the session's
@@ -929,7 +932,9 @@ impl StitchJob {
                 // per-tile dims after downscale; the layout stays
                 // sized by the source tile dims (layout.capacity
                 // is N, atlas h = output.height * rows).
-                let (out_w, out_h) = cfg.scale.unwrap_or((info.width, info.height));
+                let (out_w, out_h) = cfg
+                    .scale
+                    .unwrap_or((info.camera_sizes[0].0, info.camera_sizes[0].1));
                 let layout = reco_core::gpu::yuv_stack_packer::StackGridLayout::vstack(
                     out_w, out_h, 2,
                 )
@@ -937,7 +942,7 @@ impl StitchJob {
                     StitchError::Other(format!(
                         "GPU stacked replay: replay tile dims {out_w}x{out_h} are not YUV420P-aligned \
                          (width must be divisible by 4, height must be even). Source: {}x{}",
-                        info.width, info.height,
+                        info.camera_sizes[0].0, info.camera_sizes[0].1,
                     ))
                 })?;
                 let output_size = if cfg.scale.is_some() {
@@ -964,7 +969,7 @@ impl StitchJob {
                 let scale_note = if cfg.scale.is_some() {
                     format!(
                         " [A19 downscale: source {}x{} -> tile {}x{}]",
-                        info.width, info.height, out_w, out_h
+                        info.camera_sizes[0].0, info.camera_sizes[0].1, out_w, out_h
                     )
                 } else {
                     String::new()
@@ -991,14 +996,14 @@ impl StitchJob {
                          CPU ReplayRecordingSource decorator doesn't support downscale today. \
                          Recording at source dims {}x{} instead. Use a GPU-resident source \
                          (zero-copy NVDEC) or disable --replay-scale.",
-                        info.width,
-                        info.height,
+                        info.camera_sizes[0].0,
+                        info.camera_sizes[0].1,
                     );
                 }
                 log::info!(
                     "reco-io: replay pack path = CPU (source CPU-resident; ReplayRecordingSource decorator, tile {}x{}, N=2) -> {}",
-                    info.width,
-                    info.height,
+                    info.camera_sizes[0].0,
+                    info.camera_sizes[0].1,
                     cfg.path.display(),
                 );
                 let inner: Box<dyn FrameSource> = Box::new(source);

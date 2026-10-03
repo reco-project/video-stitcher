@@ -12,6 +12,243 @@ const FRAMES: usize = 48;
 const WIDTH: u32 = 128;
 const HEIGHT: u32 = 96;
 
+#[test]
+fn independent_input_dimensions_survive_decode_and_cpu_render() {
+    use reco_core::calibration::{Calibration, Framing, Lens};
+    use reco_core::geometry::RenderPose;
+    use reco_core::projection::LShape;
+    use reco_core::render::viewport::ViewportSize;
+    use reco_core::stitch::CpuExecutor;
+    let dir = tempfile::tempdir().unwrap();
+    let sizes = [(128, 96), (256, 192), (192, 64)];
+    let paths = sizes.map(|(w, h)| {
+        let path = dir.path().join(format!("{w}x{h}.mp4"));
+        fixture_size(&path, "libx264", w, h);
+        path
+    });
+    for order in [[0, 1], [1, 0], [0, 2], [2, 0]] {
+        let inputs = order.map(|i| InputPath::Single(paths[i].clone()));
+        let expected = order.map(|i| sizes[i]);
+        let mut source = FfmpegFileSource::open_inputs(&inputs, 0, true).unwrap();
+        assert_eq!(source.info().camera_sizes, expected);
+        let cal = Calibration::new(
+            vec![Lens::flat(128, 96); 2],
+            LShape {
+                intersect: 0.5,
+                x_ty: 0.0,
+                x_rz: 0.0,
+                z_rx: 0.0,
+                x_rx: 0.0,
+                z_rz: 0.0,
+                blend_width: 0.05,
+            },
+            Framing {
+                axis_offset: 0.25,
+                tilt: 0.0,
+                roll: 0.0,
+            },
+        );
+        let cpu = CpuExecutor::new(
+            cal,
+            ViewportSize {
+                width: 64,
+                height: 36,
+            },
+            expected.to_vec(),
+            false,
+        )
+        .unwrap();
+        for _ in 0..FRAMES {
+            let FrameSet::Yuv420p(images) = source.next_frame().unwrap().unwrap().images else {
+                panic!("expected host frames")
+            };
+            assert_eq!(images.iter().map(|i| i.size).collect::<Vec<_>>(), expected);
+            let rendered = cpu
+                .stitch_yuv(
+                    &images.iter().map(|i| i.as_planes()).collect::<Vec<_>>(),
+                    RenderPose::default(),
+                )
+                .unwrap();
+            assert_eq!(rendered.len(), 64 * 36 * 4);
+        }
+        assert!(source.next_frame().unwrap().is_none());
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires NVIDIA CUDA/NVDEC and Vulkan external-memory interop"]
+fn mixed_native_inputs_preserve_pixels_detection_order_and_lookahead() {
+    use reco_core::calibration::{Calibration, Framing, Lens};
+    use reco_core::detect::detector::{Detection, Detector, DetectorError, DetectorFrame};
+    use reco_core::projection::LShape;
+    use reco_core::render::{renderer::InputFormat, viewport::ViewportSize};
+    use reco_core::session::{SinkOptions, StitchSession};
+    use reco_core::sink::{OutputFrame, OutputSink, SinkError, SinkInput};
+    use reco_core::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
+    use std::sync::{Arc, Mutex, atomic::AtomicBool};
+
+    struct Capture(Arc<Mutex<Vec<Vec<u8>>>>);
+    impl OutputSink for Capture {
+        fn name(&self) -> &str {
+            "capture"
+        }
+        fn wants(&self) -> SinkInput {
+            SinkInput::CpuBytes(reco_core::sink::PixelFormat::Nv12)
+        }
+        fn consume(&mut self, frame: OutputFrame<'_>) -> Result<(), SinkError> {
+            self.0.lock().unwrap().push(frame.data.to_vec());
+            Ok(())
+        }
+        fn finish(&mut self) -> Result<(), SinkError> {
+            Ok(())
+        }
+    }
+    struct CheckInputs {
+        sizes: Vec<(u32, u32)>,
+        counts: Arc<Mutex<[usize; 2]>>,
+    }
+    impl Detector for CheckInputs {
+        fn name(&self) -> &'static str {
+            "native-pixel-oracle"
+        }
+        fn prefers_cuda_nv12(&self) -> bool {
+            true
+        }
+        fn detect(
+            &mut self,
+            camera: usize,
+            frame: &DetectorFrame<'_>,
+        ) -> Result<Vec<Detection>, DetectorError> {
+            let DetectorFrame::CudaNv12(frame) = frame else {
+                panic!("native delivery required")
+            };
+            assert_eq!((frame.width, frame.height), self.sizes[camera]);
+            let mut counts = self.counts.lock().unwrap();
+            let mut sample = [0u8; 1];
+            let offset = frame.y_pitch * (frame.height as usize - 1) + frame.width as usize - 1;
+            // SAFETY: this is one byte inside the live decoded Y allocation.
+            unsafe {
+                reco_core::interop::cuda::cuda_memcpy_dtoh(
+                    sample.as_mut_ptr().cast(),
+                    frame.y_ptr + offset as u64,
+                    1,
+                )
+                .unwrap();
+            }
+            assert!(sample[0].abs_diff(32 + counts[camera] as u8 * 4) <= 2);
+            counts[camera] += 1;
+            Ok(Vec::new())
+        }
+    }
+    let gpu = reco_core::gpu::GpuContext::new_blocking().unwrap();
+    assert!(
+        gpu.supports_zero_copy(),
+        "NVIDIA renderer required: {}",
+        gpu.gpu_name()
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let sizes = [(128, 96), (256, 192), (192, 64)];
+    let paths = sizes.map(|(w, h)| {
+        let path = dir.path().join(format!("{w}x{h}.mp4"));
+        fixture_size(&path, "libx264", w, h);
+        path
+    });
+    for order in [[0, 1], [1, 0], [0, 2], [2, 0]] {
+        let inputs = order.map(|i| InputPath::Single(paths[i].clone()));
+        let source_sizes: Vec<_> = order.iter().map(|&i| sizes[i]).collect();
+        let run = |native: bool, depth: usize| {
+            let mut source = if native {
+                reco_io::SmartFileSource::open(&inputs, &gpu, 0).unwrap()
+            } else {
+                reco_io::SmartFileSource::open_cpu_only(&inputs, 0, true).unwrap()
+            };
+            assert_eq!(source.is_gpu_resident(), native);
+            assert_eq!(source.info().camera_sizes, source_sizes);
+            let cal = Calibration::new(
+                vec![Lens::flat(128, 96); 2],
+                LShape {
+                    intersect: 0.5,
+                    x_ty: 0.0,
+                    x_rz: 0.0,
+                    z_rx: 0.0,
+                    x_rx: 0.0,
+                    z_rz: 0.0,
+                    blend_width: 0.05,
+                },
+                Framing {
+                    axis_offset: 0.25,
+                    tilt: 0.0,
+                    roll: 0.0,
+                },
+            );
+            let mut config = GpuExecutorConfig::new(
+                cal,
+                source_sizes.clone(),
+                if native {
+                    InputFormat::Nv12
+                } else {
+                    InputFormat::Yuv420p
+                },
+            );
+            config.viewport_size = ViewportSize {
+                width: 64,
+                height: 36,
+            };
+            let executor = GpuExecutor::new(gpu.clone(), config).unwrap();
+            let mut session =
+                StitchSession::with_executor(Executor::Gpu(Box::new(executor))).unwrap();
+            session.core_mut().set_constrained_look(false);
+            session.set_lookahead(depth, usize::MAX);
+            let counts = Arc::new(Mutex::new([0; 2]));
+            if native {
+                session
+                    .setup_gpu_source(source.shared_texture_set().unwrap())
+                    .unwrap();
+                session.set_detector(Box::new(CheckInputs {
+                    sizes: source_sizes.clone(),
+                    counts: counts.clone(),
+                }));
+                session.set_detection_interval(1);
+            }
+            let output = Arc::new(Mutex::new(Vec::new()));
+            session
+                .add_sink(
+                    Box::new(Capture(output.clone())),
+                    SinkOptions::inline_lossy(),
+                )
+                .unwrap();
+            assert_eq!(
+                session
+                    .run(&mut source, u64::MAX, &AtomicBool::new(false), None)
+                    .unwrap()
+                    .frames_processed,
+                FRAMES as u64
+            );
+            session.finish().unwrap();
+            if native {
+                assert_eq!(*counts.lock().unwrap(), [FRAMES; 2]);
+            }
+            let frames = output.lock().unwrap().clone();
+            assert_eq!(frames.len(), FRAMES);
+            frames
+        };
+        let reference = run(false, 0);
+        for depth in [0, 3] {
+            let actual = run(true, depth);
+            for (expected, actual) in reference.iter().zip(actual) {
+                assert_eq!(expected.len(), actual.len());
+                assert!(
+                    expected
+                        .iter()
+                        .zip(actual)
+                        .all(|(&a, b)| a.abs_diff(b) <= 2)
+                );
+            }
+        }
+    }
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 #[ignore = "requires NVDEC and a non-matching Vulkan adapter"]
@@ -85,7 +322,14 @@ fn cuda_mono_session_preserves_pixels_order_and_buffered_tail() {
                 reco_io::SmartFileSource::open_cpu_only(std::slice::from_ref(&input), 0, true)
                     .unwrap()
             };
-            assert_eq!(source.is_gpu_resident(), native);
+            assert_eq!(
+                source.is_gpu_resident(),
+                native,
+                "adapter={}, zero_copy={}, mode={}, size={width}x{height}",
+                gpu.gpu_name(),
+                gpu.supports_zero_copy(),
+                source.decode_mode()
+            );
             let cal = Calibration::new(
                 vec![Lens::flat(width, height)],
                 Cylinder {
@@ -98,16 +342,18 @@ fn cuda_mono_session_preserves_pixels_order_and_buffered_tail() {
                     roll: 0.0,
                 },
             );
-            let mut config = GpuExecutorConfig::new(
-                cal,
-                width,
-                height,
-                if native {
-                    InputFormat::Nv12
-                } else {
-                    InputFormat::Yuv420p
-                },
-            );
+            let mut config = {
+                let source_sizes = vec![(width, height); cal.projection.camera_count()];
+                GpuExecutorConfig::new(
+                    cal,
+                    source_sizes,
+                    if native {
+                        InputFormat::Nv12
+                    } else {
+                        InputFormat::Yuv420p
+                    },
+                )
+            };
             config.viewport_size = reco_core::render::viewport::ViewportSize {
                 width: 64,
                 height: 48,
@@ -156,6 +402,7 @@ fn cuda_mono_session_preserves_pixels_order_and_buffered_tail() {
                 // and rendered. The one-frame host allowance is smaller than
                 // the native pool; rendering must sample the new upload.
                 let image = reco_core::source::Nv12Data {
+                    size: (width, height),
                     y: vec![128; width as usize * height as usize],
                     uv: vec![128; width as usize * height as usize / 2],
                 };

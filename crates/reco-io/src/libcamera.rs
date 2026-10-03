@@ -47,7 +47,7 @@ struct Camera {
 }
 
 impl Camera {
-    fn start(mut command: Command, label: String, y_size: usize) -> Result<Self, SourceError> {
+    fn start(mut command: Command, label: String, size: (u32, u32)) -> Result<Self, SourceError> {
         let child = command
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -76,7 +76,7 @@ impl Camera {
         camera.reader = Some(
             std::thread::Builder::new()
                 .name(format!("libcam_{}", camera.label))
-                .spawn(move || read_frames(stdout, y_size, tx))
+                .spawn(move || read_frames(stdout, size, tx))
                 .map_err(|e| SourceError::Init {
                     path: camera.label.clone(),
                     reason: format!("start capture reader: {e}"),
@@ -137,9 +137,10 @@ impl Drop for Camera {
 
 fn read_frames(
     stdout: impl Read,
-    y_size: usize,
+    size: (u32, u32),
     tx: mpsc::SyncSender<Yuv420pData>,
 ) -> io::Result<()> {
+    let y_size = size.0 as usize * size.1 as usize;
     let uv_size = y_size / 4;
     let frame_size = y_size + 2 * uv_size;
     let mut reader = io::BufReader::with_capacity(frame_size * 2, stdout);
@@ -162,6 +163,7 @@ fn read_frames(
             }
         }
         let frame = Yuv420pData {
+            size,
             y: buf[..y_size].to_vec(),
             u: buf[y_size..y_size + uv_size].to_vec(),
             v: buf[y_size + uv_size..].to_vec(),
@@ -258,8 +260,7 @@ impl LibcameraCameraSource {
         let mut source = Self {
             cameras: Vec::with_capacity(2),
             info: SourceInfo {
-                width: config.width,
-                height: config.height,
+                camera_sizes: vec![(config.width, config.height); 2],
                 fps: config.fps as f64,
                 fps_rational: None,
                 total_frames: None,
@@ -271,7 +272,7 @@ impl LibcameraCameraSource {
             source.cameras.push(Camera::start(
                 command(id),
                 format!("camera {id}"),
-                y_size.unwrap(),
+                (config.width, config.height),
             )?);
             if config.left_camera == config.right_camera {
                 break;
@@ -673,7 +674,8 @@ mod tests {
             }
             let (tx, rx) = mpsc::sync_channel(2);
             let (full, ready) = mpsc::channel();
-            let reader = std::thread::spawn(move || read_frames(Frames { count: 0, full }, 8, tx));
+            let reader =
+                std::thread::spawn(move || read_frames(Frames { count: 0, full }, (4, 2), tx));
             ready.recv_timeout(Duration::from_secs(2)).unwrap();
             drop(rx);
             reader.join().unwrap().unwrap();
@@ -739,7 +741,7 @@ mod tests {
                 };
                 let mut command = shell(script);
                 command.arg("test").arg(&ready);
-                let mut camera = Camera::start(command, "test".into(), 8).unwrap();
+                let mut camera = Camera::start(command, "test".into(), (4, 2)).unwrap();
                 wait_file(&ready);
                 camera.stop().unwrap();
                 assert_eq!(camera.child.wait().unwrap().success(), !stubborn);
@@ -789,7 +791,9 @@ mod tests {
         }
         let (tx, _rx) = mpsc::sync_channel(2);
         assert_eq!(
-            read_frames(Interrupted(false), 8, tx).unwrap_err().kind(),
+            read_frames(Interrupted(false), (4, 2), tx)
+                .unwrap_err()
+                .kind(),
             io::ErrorKind::BrokenPipe
         );
     }

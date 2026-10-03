@@ -285,7 +285,9 @@ impl super::StitchCore {
         capture_times_us: &[i64],
     ) -> Result<(), super::StitchCoreError> {
         use crate::source::FrameSet;
-        let (width, height) = self.source_dims();
+        frame
+            .validate_host_images(self.source_sizes())
+            .map_err(super::StitchCoreError::Config)?;
         let frames: Vec<_> = match frame {
             FrameSet::Yuv420p(cameras) => cameras
                 .iter()
@@ -299,8 +301,8 @@ impl super::StitchCore {
                                 u: &data.u,
                                 v: &data.v,
                             },
-                            width,
-                            height,
+                            width: data.size.0,
+                            height: data.size.1,
                         }),
                     )
                 })
@@ -314,8 +316,8 @@ impl super::StitchCore {
                         DetectorFrame::Yuv(YuvView {
                             y: &data.y,
                             chroma: ChromaPlanes::Nv12 { uv: &data.uv },
-                            width,
-                            height,
+                            width: data.size.0,
+                            height: data.size.1,
                         }),
                     )
                 })

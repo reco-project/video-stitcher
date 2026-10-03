@@ -192,16 +192,18 @@ mod tests {
     }
 
     fn cpu(calibration: Calibration) -> StitchCore {
-        let executor = CpuExecutor::new(
-            calibration,
-            ViewportSize {
-                width: WIDTH,
-                height: HEIGHT,
-            },
-            WIDTH,
-            HEIGHT,
-            false,
-        )
+        let executor = {
+            let source_sizes = vec![(WIDTH, HEIGHT); calibration.projection.camera_count()];
+            CpuExecutor::new(
+                calibration,
+                ViewportSize {
+                    width: WIDTH,
+                    height: HEIGHT,
+                },
+                source_sizes,
+                false,
+            )
+        }
         .unwrap();
         StitchCore::new(Executor::Cpu(Box::new(executor))).unwrap()
     }
@@ -430,7 +432,7 @@ mod tests {
         let Some(gpu) = crate::stitch::test_support::gpu_or_skip() else {
             return;
         };
-        let make = |calibration| {
+        let make = |calibration: Calibration| {
             let executor = GpuExecutor::new(
                 gpu.clone(),
                 GpuExecutorConfig {
@@ -438,7 +440,11 @@ mod tests {
                         width: WIDTH,
                         height: HEIGHT,
                     },
-                    ..GpuExecutorConfig::new(calibration, WIDTH, HEIGHT, InputFormat::Nv12)
+                    ..{
+                        let source_sizes =
+                            vec![(WIDTH, HEIGHT); calibration.projection.camera_count()];
+                        GpuExecutorConfig::new(calibration, source_sizes, InputFormat::Nv12)
+                    }
                 },
             )
             .unwrap();

@@ -137,11 +137,13 @@ mod tests {
         BufferedFrame {
             frame: Some(FrameSet::Nv12(vec![
                 crate::source::Nv12Data {
+                    size: (2, 2),
                     y: vec![128; 4],
                     uv: vec![128; 2],
                 }
                 .into(),
                 crate::source::Nv12Data {
+                    size: (2, 2),
                     y: vec![128; 4],
                     uv: vec![128; 2],
                 }

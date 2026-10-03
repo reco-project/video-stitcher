@@ -115,8 +115,7 @@ impl FrameSource for StackedSource {
         let tw = self.layout.tile_width();
         let th = self.layout.tile_height();
         SourceInfo {
-            width: tw,
-            height: th,
+            camera_sizes: vec![(tw, th); 2],
             fps: self.fps().unwrap_or(0.0),
             fps_rational: self.decoder.frame_rate().map(|r| (r.0, r.1)),
             total_frames: None,
@@ -149,12 +148,14 @@ impl FrameSource for StackedSource {
         let [left, right] = tiles;
         Ok(Some(SourceFrame::untimed(FrameSet::Yuv420p(vec![
             Yuv420pData {
+                size: (left.width, left.height),
                 y: left.y,
                 u: left.u,
                 v: left.v,
             }
             .into(),
             Yuv420pData {
+                size: (right.width, right.height),
                 y: right.y,
                 u: right.u,
                 v: right.v,

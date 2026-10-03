@@ -412,8 +412,7 @@ mod tests {
     #[test]
     fn export_estimate_uses_aligned_source_count_and_rounded_trim() {
         let mut info = reco_core::source::SourceInfo {
-            width: 128,
-            height: 96,
+            camera_sizes: vec![(128, 96); 2],
             fps: 30000.0 / 1001.0,
             fps_rational: Some((30000, 1001)),
             total_frames: Some(48),

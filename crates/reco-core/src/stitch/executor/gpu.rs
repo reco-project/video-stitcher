@@ -21,10 +21,8 @@ pub struct GpuExecutorConfig {
     pub calibration: Calibration,
     /// Output viewport dimensions.
     pub viewport_size: ViewportSize,
-    /// Input frame width in pixels (per camera).
-    pub input_width: u32,
-    /// Input frame height in pixels (per camera).
-    pub input_height: u32,
+    /// Fixed decoded `(width, height)` for each camera in projection order.
+    pub source_sizes: Vec<(u32, u32)>,
     /// Input pixel format.
     pub input_format: InputFormat,
     /// GPU render-target format. `Rgba8Unorm` suits every compositor
@@ -41,8 +39,7 @@ impl GpuExecutorConfig {
     /// (1080p viewport, `Rgba8Unorm` output, limited-range YUV).
     pub fn new(
         calibration: Calibration,
-        input_width: u32,
-        input_height: u32,
+        source_sizes: Vec<(u32, u32)>,
         input_format: InputFormat,
     ) -> Self {
         Self {
@@ -51,8 +48,7 @@ impl GpuExecutorConfig {
                 width: 1920,
                 height: 1080,
             },
-            input_width,
-            input_height,
+            source_sizes,
             input_format,
             output_format: wgpu::TextureFormat::Rgba8Unorm,
             full_range: false,
@@ -113,8 +109,7 @@ impl GpuExecutor {
             &program,
             config.calibration,
             config.viewport_size,
-            config.input_width,
-            config.input_height,
+            config.source_sizes,
             config.output_format,
             config.input_format,
         )?;
@@ -288,6 +283,11 @@ impl GpuExecutor {
         src_width: u32,
         src_height: u32,
     ) -> Result<(), String> {
+        if self.pipeline.source_sizes() != [(src_width, src_height); 2] {
+            return Err(
+                "NVMM detection surface dimensions must match both configured cameras".into(),
+            );
+        }
         let left =
             crate::nvbuf_transform::NvBufDetectionSurface::new(model_size, src_width, src_height)
                 .map_err(|e| format!("NVMM left detection surface: {e}"))?;
@@ -502,6 +502,14 @@ impl GpuExecutor {
         lookahead_frames: usize,
         pixel_format: crate::render::renderer::GpuPixelFormat,
     ) -> Result<(), String> {
+        if self
+            .pipeline
+            .source_sizes()
+            .windows(2)
+            .any(|pair| pair[0] != pair[1])
+        {
+            return Err("D3D11 staging requires equal camera dimensions".into());
+        }
         // For lookahead, size slots to the max frames simultaneously
         // in flight (decoded but not yet rendered), x2 for left+right.
         // Peak occupancy is n + post_smooth_half + 1 (the buffer hits
@@ -522,7 +530,7 @@ impl GpuExecutor {
             }
             return Ok(());
         }
-        let (w, h) = self.pipeline.source_dims();
+        let (w, h) = self.pipeline.source_sizes()[0];
         let pool = crate::interop::d3d11::D3d11StagingPool::new(
             self.pipeline.gpu(),
             w,
@@ -616,16 +624,12 @@ impl GpuExecutor {
     #[cfg(target_os = "linux")]
     pub(crate) fn create_lookahead_pool(
         &mut self,
-        width: u32,
-        height: u32,
         slots: usize,
         pixel_format: crate::render::renderer::GpuPixelFormat,
     ) -> Result<(), String> {
         let pool = crate::gpu::vram_pool::VramPool::new(
             self.pipeline.gpu(),
             &self.pipeline,
-            width,
-            height,
             slots,
             pixel_format,
         )?;

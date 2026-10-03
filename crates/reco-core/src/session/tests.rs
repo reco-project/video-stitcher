@@ -63,6 +63,7 @@ fn solid_frame() -> FrameSet {
     let y_size = (W * H) as usize;
     let uv_size = ((W / 2) * (H / 2)) as usize;
     let yuv = Yuv420pData {
+        size: (W, H),
         y: vec![128u8; y_size],
         u: vec![128u8; uv_size],
         v: vec![128u8; uv_size],
@@ -88,8 +89,7 @@ impl MockSource {
 impl FrameSource for MockSource {
     fn info(&self) -> SourceInfo {
         SourceInfo {
-            width: W,
-            height: H,
+            camera_sizes: vec![(W, H); 2],
             fps: 30.0,
             fps_rational: Some((30, 1)),
             total_frames: None,
@@ -399,7 +399,7 @@ fn build_test_session(
 ) -> Result<StitchSession, SessionError> {
     let mut builder = StitchSession::builder()
         .calibration(test_calibration())
-        .input_dimensions(W, H)
+        .source_sizes(vec![(W, H); 2])
         .viewport_size(ViewportSize {
             width: 64,
             height: 64,
@@ -1066,12 +1066,14 @@ fn push_and_pull_share_one_ai_brain() {
                 width: 64,
                 height: 64,
             },
-            ..crate::stitch::GpuExecutorConfig::new(
-                test_calibration(),
-                W,
-                H,
-                crate::render::renderer::InputFormat::Yuv420p,
-            )
+            ..{
+                let source_sizes = vec![(W, H); 2];
+                crate::stitch::GpuExecutorConfig::new(
+                    test_calibration(),
+                    source_sizes,
+                    crate::render::renderer::InputFormat::Yuv420p,
+                )
+            }
         },
     )
     .expect("gpu executor");
@@ -1114,16 +1116,18 @@ fn push_and_pull_share_one_ai_brain() {
 
 /// Build a session over the CPU executor - no GPU anywhere.
 fn build_cpu_session() -> StitchSession {
-    let executor = crate::stitch::CpuExecutor::new(
-        test_calibration(),
-        ViewportSize {
-            width: 64,
-            height: 64,
-        },
-        W,
-        H,
-        false,
-    )
+    let executor = {
+        let source_sizes = vec![(W, H); 2];
+        crate::stitch::CpuExecutor::new(
+            test_calibration(),
+            ViewportSize {
+                width: 64,
+                height: 64,
+            },
+            source_sizes,
+            false,
+        )
+    }
     .expect("cpu executor");
     StitchSession::with_executor(crate::stitch::Executor::Cpu(Box::new(executor)))
         .expect("cpu session")
@@ -1219,8 +1223,7 @@ fn cpu_session_rejects_gpu_resident_frames() {
     impl FrameSource for ResidentSource {
         fn info(&self) -> SourceInfo {
             SourceInfo {
-                width: W,
-                height: H,
+                camera_sizes: vec![(W, H); 2],
                 fps: 30.0,
                 fps_rational: Some((30, 1)),
                 total_frames: None,
@@ -1257,8 +1260,7 @@ fn mono_cylinder_session_runs_end_to_end_without_gpu() {
     impl FrameSource for MonoSource {
         fn info(&self) -> SourceInfo {
             SourceInfo {
-                width: W,
-                height: H,
+                camera_sizes: vec![(W, H)],
                 fps: 30.0,
                 fps_rational: Some((30, 1)),
                 total_frames: None,
@@ -1274,6 +1276,7 @@ fn mono_cylinder_session_runs_end_to_end_without_gpu() {
             Ok(Some(crate::source::SourceFrame::untimed(
                 FrameSet::Yuv420p(vec![
                     Yuv420pData {
+                        size: (W, H),
                         y: vec![128u8; y_size],
                         u: vec![128u8; uv_size],
                         v: vec![128u8; uv_size],
@@ -1297,16 +1300,18 @@ fn mono_cylinder_session_runs_end_to_end_without_gpu() {
             roll: 0.0,
         },
     );
-    let executor = crate::stitch::CpuExecutor::new(
-        cal,
-        ViewportSize {
-            width: 64,
-            height: 64,
-        },
-        W,
-        H,
-        false,
-    )
+    let executor = {
+        let source_sizes = vec![(W, H); cal.projection.camera_count()];
+        crate::stitch::CpuExecutor::new(
+            cal,
+            ViewportSize {
+                width: 64,
+                height: 64,
+            },
+            source_sizes,
+            false,
+        )
+    }
     .expect("mono cpu executor");
     let mut session =
         StitchSession::with_executor(crate::stitch::Executor::Cpu(Box::new(executor)))

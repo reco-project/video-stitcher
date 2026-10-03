@@ -37,6 +37,30 @@ fn attach(core: &mut StitchCore) {
 }
 
 #[test]
+fn malformed_host_layout_does_not_advance_panner() {
+    let executor = CpuExecutor::new(
+        calib(64, 64),
+        ViewportSize {
+            width: 64,
+            height: 64,
+        },
+        vec![(64, 64); 2],
+        false,
+    )
+    .unwrap();
+    let mut core = StitchCore::new(Executor::Cpu(Box::new(executor))).unwrap();
+    core.set_panner(Box::new(UnexpectedPanner));
+    let image = crate::source::Nv12Data {
+        size: (128, 32),
+        y: vec![128; 4096],
+        uv: vec![128; 2048],
+    };
+    let frames = crate::source::FrameSet::Nv12(vec![image.clone().into(), image.into()]);
+    assert!(core.submit_frame(&frames, 1.0 / 30.0).is_err());
+    assert_eq!(core.frame_count(), 0);
+}
+
+#[test]
 fn explicit_cpu_yuv_does_not_run_ai() {
     let executor = CpuExecutor::new(
         calib(64, 64),
@@ -44,8 +68,7 @@ fn explicit_cpu_yuv_does_not_run_ai() {
             width: 64,
             height: 64,
         },
-        64,
-        64,
+        vec![(64, 64); 2],
         false,
     )
     .unwrap();
@@ -80,7 +103,7 @@ fn explicit_gpu_formats_do_not_run_ai() {
                 width: 64,
                 height: 64,
             },
-            ..GpuExecutorConfig::new(calib(64, 64), 64, 64, format)
+            ..GpuExecutorConfig::new(calib(64, 64), vec![(64, 64); 2], format)
         };
         let mut core = StitchCore::new(Executor::Gpu(Box::new(
             GpuExecutor::new(gpu.clone(), config).unwrap(),

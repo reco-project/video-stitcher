@@ -1,7 +1,7 @@
 //! GPU-resident YOLO detector for the zero-copy pipeline.
 //!
-//! Runs the entire detection pipeline on GPU: NV12 color conversion (NPP),
-//! resize with letterbox padding (NPP), normalize + CHW transpose (CUDA kernel),
+//! Runs the entire detection pipeline on GPU: NV12 conversion, letterboxing
+//! and CHW normalization in one CUDA kernel,
 //! and inference (ORT TensorRT/CUDA EP). Only the small detection output
 //! (~7KB for `[1, 300, 6]`) is read back to CPU.
 
@@ -28,10 +28,45 @@ use reco_core::detect::detector::{
 };
 use reco_core::geometry::CameraIndex;
 use reco_core::interop::cuda::{
-    CUdeviceptr, cuda_ensure_context, cuda_mem_alloc, cuda_mem_free, cuda_memset_d8,
+    CUdeviceptr, CudaInteropError, cuda_ensure_context, cuda_mem_alloc, cuda_mem_free,
 };
 
 use super::postprocess;
+
+struct Allocation(CUdeviceptr);
+
+impl Allocation {
+    fn new(bytes: usize) -> Result<Self, CudaInteropError> {
+        cuda_mem_alloc(bytes).map(Self)
+    }
+}
+
+impl Drop for Allocation {
+    fn drop(&mut self) {
+        if let Err(error) = cuda_ensure_context().and_then(|()| cuda_mem_free(self.0)) {
+            log::warn!("Failed to free detector CUDA allocation: {error}");
+        }
+    }
+}
+
+struct InputLayout {
+    size: (u32, u32),
+    scale: f32,
+    pad_x: u32,
+    pad_y: u32,
+}
+
+impl InputLayout {
+    fn new(size: (u32, u32), input_size: u32) -> Self {
+        let scale = (input_size as f32 / size.0 as f32).min(input_size as f32 / size.1 as f32);
+        Self {
+            size,
+            scale,
+            pad_x: (input_size - (size.0 as f32 * scale).round() as u32) / 2,
+            pad_y: (input_size - (size.1 as f32 * scale).round() as u32) / 2,
+        }
+    }
+}
 
 /// YOLO detector that operates on GPU-resident NV12 frames via ORT.
 ///
@@ -45,28 +80,10 @@ pub struct OrtGpuDetector {
     input_size: u32,
     confidence_threshold: f32,
     labels: Vec<String>,
-    // Pre-computed letterbox parameters (constant for fixed frame dimensions).
-    scale: f32,
-    #[allow(dead_code)]
-    new_w: u32,
-    #[allow(dead_code)]
-    new_h: u32,
-    pad_x: f32,
-    pad_y: f32,
-    // Pre-allocated GPU scratch buffers.
-    rgb_u8: CUdeviceptr,
-    /// Separate destination for the 180-degree mirror step. NPP's
-    /// `nppiMirror_8u_C3R` with `NPPI_AXIS_BOTH` is *not* safe in-place
-    /// (the top half gets overwritten before the bottom half is read),
-    /// so a distinct scratch is required. Same size as `rgb_u8`.
-    rgb_scratch: CUdeviceptr,
-    resized_u8: CUdeviceptr,
-    tensor_f32: CUdeviceptr,
-    // P010 (10-bit NV12) conversion scratch buffers.
-    // Allocated only when the source produces P010 frames.
-    // Y plane: width * height bytes, UV plane: width * height/2 bytes.
-    nv12_8bit_y: CUdeviceptr,
-    nv12_8bit_uv: CUdeviceptr,
+    inputs: Vec<InputLayout>,
+    tensor_f32: Allocation,
+    // One conversion allocation sized for the largest declared input. The offset locates UV.
+    p010_scratch: Option<(Allocation, usize)>,
     // Cached CUDA device MemoryInfo. Constant for the detector's
     // lifetime; constructing one per inference is measurable
     // per-frame allocation churn.
@@ -79,21 +96,31 @@ impl OrtGpuDetector {
     /// Returns `Ok(None)` if no CUDA-compatible ORT provider is compiled in.
     /// Returns `Err` if runtime provider registration, CUDA initialization or model loading fails.
     ///
-    /// `frame_width`/`frame_height` are the raw camera frame dimensions
-    /// (e.g. 3840x2160 for 4K). These must match what the decode pipeline
-    /// produces. Letterbox parameters are pre-computed from these dimensions.
+    /// `source_sizes` declares each camera's decoded dimensions in camera-index order. Each frame must match its camera's declared size. One inference session and tensor are reused across cameras.
     ///
-    /// When `is_10bit` is true, additional scratch buffers are allocated for
-    /// converting P010 (10-bit NV12) frames to 8-bit before NPP color
-    /// conversion.
+    /// When `is_10bit` is true, one reusable allocation covers P010-to-NV12 conversion for the largest declared input.
     pub fn try_new(
         model_path: impl AsRef<Path>,
-        frame_width: u32,
-        frame_height: u32,
+        source_sizes: &[(u32, u32)],
         confidence_threshold: f32,
         labels: Vec<String>,
         is_10bit: bool,
     ) -> Result<Option<Self>, Box<dyn std::error::Error>> {
+        if source_sizes.is_empty() {
+            return Err(ort::Error::new("at least one source size is required").into());
+        }
+        let mut max_pixels = 0;
+        for &(width, height) in source_sizes {
+            if width == 0 || height == 0 || !width.is_multiple_of(2) || !height.is_multiple_of(2) {
+                return Err(
+                    ort::Error::new("NV12 frame dimensions must be positive and even").into(),
+                );
+            }
+            let pixels = (width as usize)
+                .checked_mul(height as usize)
+                .ok_or_else(|| ort::Error::new("frame dimensions overflow"))?;
+            max_pixels = max_pixels.max(pixels);
+        }
         // GPU detection needs a CUDA-capable EP (TensorRT or CUDA) to
         // process device pointers. Without one, ORT falls back to CPU EP
         // which segfaults on CUDA memory.
@@ -109,64 +136,37 @@ impl OrtGpuDetector {
         let (session, input_size, labels) =
             crate::ort_session::create_cuda_ort_session(model_path.as_ref(), labels)?;
 
-        // Pre-compute letterbox parameters.
-        let (fw, fh) = (frame_width as f32, frame_height as f32);
-        let is = input_size as f32;
-        let scale = (is / fw).min(is / fh);
-        let new_w = (fw * scale).round() as u32;
-        let new_h = (fh * scale).round() as u32;
-        let pad_x = (input_size - new_w) as f32 / 2.0;
-        let pad_y = (input_size - new_h) as f32 / 2.0;
+        let inputs = source_sizes
+            .iter()
+            .map(|&size| InputLayout::new(size, input_size))
+            .collect();
 
         // Allocate GPU scratch buffers (checked arithmetic to prevent overflow).
-        let rgb_size = (frame_width as usize)
-            .checked_mul(frame_height as usize)
-            .and_then(|v| v.checked_mul(3))
-            .ok_or_else(|| ort::Error::new("frame dimensions overflow for rgb_size"))?;
-        let resized_size = (input_size as usize)
-            .checked_mul(input_size as usize)
-            .and_then(|v| v.checked_mul(3))
-            .ok_or_else(|| ort::Error::new("input dimensions overflow for resized_size"))?;
         let tensor_size = (input_size as usize)
             .checked_mul(input_size as usize)
             .and_then(|v| v.checked_mul(3))
             .and_then(|v| v.checked_mul(4))
             .ok_or_else(|| ort::Error::new("input dimensions overflow for tensor_size"))?;
 
-        let rgb_u8 = cuda_mem_alloc(rgb_size)?;
-        let rgb_scratch = cuda_mem_alloc(rgb_size)?;
-        let resized_u8 = cuda_mem_alloc(resized_size)?;
-        let tensor_f32 = cuda_mem_alloc(tensor_size)?;
+        let tensor_f32 = Allocation::new(tensor_size)?;
 
         // Allocate P010 conversion scratch buffers if needed.
-        let (nv12_8bit_y, nv12_8bit_uv) = if is_10bit {
-            let y_size = frame_width as usize * frame_height as usize;
-            let uv_size = frame_width as usize * (frame_height as usize / 2);
-            let y = cuda_mem_alloc(y_size)?;
-            let uv = cuda_mem_alloc(uv_size)?;
-            log::info!(
-                "OrtGpuDetector: allocated P010 conversion buffers ({:.1}MB)",
-                (y_size + uv_size) as f64 / 1024.0 / 1024.0,
-            );
-            (y, uv)
+        let p010_scratch = if is_10bit {
+            let bytes = max_pixels
+                .checked_add(max_pixels / 2)
+                .ok_or_else(|| ort::Error::new("P010 scratch dimensions overflow"))?;
+            Some((Allocation::new(bytes)?, max_pixels))
         } else {
-            (0, 0)
+            None
         };
 
-        // Fill resized buffer with grey (114) for letterbox padding.
-        cuda_memset_d8(resized_u8, 114, resized_size)?;
-
         log::info!(
-            "OrtGpuDetector ready: input={}x{}, frame={}x{}, scale={:.3}, pad=({:.1},{:.1}), \
-             GPU scratch={:.1}MB, 10bit={}",
+            "OrtGpuDetector ready: input={}x{}, cameras={}, \
+             tensor={:.1}MB, 10bit={}",
             input_size,
             input_size,
-            frame_width,
-            frame_height,
-            scale,
-            pad_x,
-            pad_y,
-            (rgb_size + resized_size + tensor_size) as f64 / 1024.0 / 1024.0,
+            source_sizes.len(),
+            tensor_size as f64 / 1024.0 / 1024.0,
             is_10bit,
         );
 
@@ -185,17 +185,9 @@ impl OrtGpuDetector {
             input_size,
             confidence_threshold,
             labels,
-            scale,
-            new_w,
-            new_h,
-            pad_x,
-            pad_y,
-            rgb_u8,
-            rgb_scratch,
-            resized_u8,
+            inputs,
             tensor_f32,
-            nv12_8bit_y,
-            nv12_8bit_uv,
+            p010_scratch,
             cuda_memory_info,
         };
 
@@ -215,7 +207,7 @@ impl OrtGpuDetector {
 }
 
 impl OrtGpuDetector {
-    /// CUDA NV12/P010 preprocessing and inference. Errors retain their CUDA, NPP or ORT stage context.
+    /// CUDA NV12/P010 preprocessing and inference with stage-specific errors.
     fn detect_gpu_raw(
         &mut self,
         camera: CameraIndex,
@@ -233,6 +225,34 @@ impl OrtGpuDetector {
         } = *frame;
         reco_core::profile_scope!("gpu_yolo_detect");
 
+        let input = self.inputs.get(camera).ok_or_else(|| {
+            DetectorError::InferenceFailed(format!("undeclared camera index {camera}"))
+        })?;
+        if input.size != (width, height) {
+            return Err(DetectorError::InferenceFailed(format!(
+                "camera {camera} dimensions changed: expected {:?}, got {width}x{height}",
+                input.size
+            )));
+        }
+        let row_bytes = width as usize * if is_10bit { 2 } else { 1 };
+        if y_ptr == 0
+            || uv_ptr == 0
+            || y_pitch < row_bytes
+            || uv_pitch < row_bytes
+            || y_pitch > u32::MAX as usize
+            || uv_pitch > u32::MAX as usize
+            || y_pitch
+                .checked_mul(height as usize)
+                .is_none_or(|n| n > u32::MAX as usize)
+            || uv_pitch
+                .checked_mul(height as usize / 2)
+                .is_none_or(|n| n > u32::MAX as usize)
+        {
+            return Err(DetectorError::InferenceFailed(
+                "invalid CUDA NV12 pointers or strides".into(),
+            ));
+        }
+
         // Ensure a CUDA context is current on this thread. The zero-copy
         // frame loop may not have one after NVDEC decode pushes/pops its
         // own context.
@@ -240,30 +260,27 @@ impl OrtGpuDetector {
             .map_err(|e| DetectorError::InferenceFailed(format!("cuda_ensure_context: {e}")))?;
 
         // Step 0: Convert P010 (10-bit) to 8-bit NV12 if needed.
-        // NPP's NV12->RGB expects 8-bit samples, so we must down-convert
-        // first by extracting the high byte of each u16 sample.
-        let (nv12_y, nv12_y_pitch, nv12_uv, _nv12_uv_pitch) = if is_10bit {
+        // The fused conversion reads 8-bit samples, so extract the high byte first.
+        let (nv12_y, nv12_y_pitch, nv12_uv, nv12_uv_pitch) = if is_10bit {
             reco_core::profile_scope!("p010_to_nv12");
-            if self.nv12_8bit_y == 0 || self.nv12_8bit_uv == 0 {
-                return Err(DetectorError::InferenceFailed(
+            let (scratch, uv_offset) = self.p010_scratch.as_ref().ok_or_else(|| {
+                DetectorError::InferenceFailed(
                     "P010 frame received but no conversion buffers allocated".into(),
-                ));
-            }
+                )
+            })?;
+            let nv12_8bit_y = scratch.0;
+            let nv12_8bit_uv = scratch.0 + *uv_offset as u64;
             // Convert Y plane: width * height samples.
-            crate::cuda_kernels::p010_plane_to_nv12(
-                y_ptr,
-                y_pitch,
-                self.nv12_8bit_y,
-                width,
-                height,
-            )
-            .map_err(|e| DetectorError::InferenceFailed(format!("P010->NV12 Y conversion: {e}")))?;
+            crate::cuda_kernels::p010_plane_to_nv12(y_ptr, y_pitch, nv12_8bit_y, width, height)
+                .map_err(|e| {
+                    DetectorError::InferenceFailed(format!("P010->NV12 Y conversion: {e}"))
+                })?;
             // Convert UV plane: width * (height/2) samples.
             // UV plane has width/2 pixel pairs, each 2 u16 values = width u16 samples per row.
             crate::cuda_kernels::p010_plane_to_nv12(
                 uv_ptr,
                 uv_pitch,
-                self.nv12_8bit_uv,
+                nv12_8bit_uv,
                 width,
                 height / 2,
             )
@@ -271,12 +288,7 @@ impl OrtGpuDetector {
                 DetectorError::InferenceFailed(format!("P010->NV12 UV conversion: {e}"))
             })?;
             // The 8-bit buffers are tightly packed (no pitch padding).
-            (
-                self.nv12_8bit_y,
-                width as usize,
-                self.nv12_8bit_uv,
-                width as usize,
-            )
+            (nv12_8bit_y, width as usize, nv12_8bit_uv, width as usize)
         } else {
             (y_ptr, y_pitch, uv_ptr, uv_pitch)
         };
@@ -291,15 +303,16 @@ impl OrtGpuDetector {
             crate::cuda_kernels::nv12_to_rgb_chw_fullrange(
                 nv12_y,
                 nv12_uv,
-                self.tensor_f32,
+                self.tensor_f32.0,
                 nv12_y_pitch as u32,
+                nv12_uv_pitch as u32,
                 width,
                 height,
                 self.input_size,
                 self.input_size,
-                self.pad_x as u32,
-                self.pad_y as u32,
-                self.scale,
+                input.pad_x,
+                input.pad_y,
+                input.scale,
                 rotation,
             )
             .map_err(|e| DetectorError::InferenceFailed(format!("NV12->RGB CHW: {e}")))?;
@@ -313,7 +326,7 @@ impl OrtGpuDetector {
             let tensor: TensorRefMut<'_, f32> = unsafe {
                 TensorRefMut::from_raw(
                     self.cuda_memory_info.0.clone(),
-                    self.tensor_f32 as *mut c_void,
+                    self.tensor_f32.0 as *mut c_void,
                     Shape::new([1i64, 3, sz, sz]),
                 )
             }
@@ -338,9 +351,9 @@ impl OrtGpuDetector {
             n,
             camera,
             self.confidence_threshold,
-            self.scale,
-            self.pad_x,
-            self.pad_y,
+            input.scale,
+            input.pad_x as f32,
+            input.pad_y as f32,
             width,
             height,
         );
@@ -407,28 +420,5 @@ impl Detector for OrtGpuDetector {
     }
 }
 
-impl Drop for OrtGpuDetector {
-    fn drop(&mut self) {
-        // Ensure a CUDA context is current before freeing GPU memory.
-        // Drop may run on a different thread than the one that allocated.
-        if let Err(e) = cuda_ensure_context() {
-            log::warn!("OrtGpuDetector drop: failed to set CUDA context: {e}");
-            return;
-        }
-        // Free GPU scratch buffers. Log errors but don't panic in Drop.
-        for (name, ptr) in [
-            ("rgb_u8", self.rgb_u8),
-            ("rgb_scratch", self.rgb_scratch),
-            ("resized_u8", self.resized_u8),
-            ("tensor_f32", self.tensor_f32),
-            ("nv12_8bit_y", self.nv12_8bit_y),
-            ("nv12_8bit_uv", self.nv12_8bit_uv),
-        ] {
-            if ptr != 0
-                && let Err(e) = cuda_mem_free(ptr)
-            {
-                log::warn!("Failed to free GPU buffer {name}: {e}");
-            }
-        }
-    }
-}
+#[cfg(test)]
+mod tests;

@@ -286,12 +286,8 @@ done:
 /// CHW float32 directly. Replaces the NPP NV12-to-RGB (which uses
 /// BT.601 video-range) + separate normalize kernel pipeline.
 ///
-/// Parameters: y_ptr, uv_ptr, dst, y_pitch, width, height, dst_w, dst_h,
-///             pad_x, pad_y, scale
-///
-/// The kernel handles letterbox placement: each output pixel at (ox, oy)
-/// maps back to source (sx, sy) via bilinear interpolation, with pixels
-/// outside the content region left at the pre-filled grey value.
+/// Each output pixel maps back to a nearest source sample; pixels outside
+/// the rounded content extent are written grey on every invocation.
 const NV12_TO_RGB_CHW_PTX: &[u8] = b"
 .version 7.0
 .target sm_50
@@ -302,17 +298,20 @@ const NV12_TO_RGB_CHW_PTX: &[u8] = b"
     .param .u64 uv_ptr,
     .param .u64 dst,
     .param .u32 y_pitch,
+    .param .u32 uv_pitch,
     .param .u32 src_w,
     .param .u32 src_h,
     .param .u32 dst_w,
     .param .u32 dst_h,
     .param .u32 pad_x,
     .param .u32 pad_y,
+    .param .u32 content_w,
+    .param .u32 content_h,
     .param .f32 scale,
     .param .u32 flip180
 )
 {
-    .reg .u32 %ox, %oy, %dw, %dh, %px, %py, %sw, %sh, %ypitch;
+    .reg .u32 %ox, %oy, %dw, %dh, %px, %py, %sw, %sh, %ypitch, %uvpitch;
     .reg .u32 %sx0, %sy0, %sx1, %sy1;
     .reg .u32 %tmp, %tmp2, %plane, %didx;
     .reg .u64 %yp, %uvp, %dp, %addr;
@@ -350,19 +349,25 @@ const NV12_TO_RGB_CHW_PTX: &[u8] = b"
     ld.param.u32 %sh, [src_h];
     ld.param.f32 %inv_scale, [scale];
 
+    mov.f32 %r, 0f3EE4E4E5;  // 114.0/255.0
+    mov.f32 %g, %r;
+    mov.f32 %b, %r;
+
     // check if this pixel is in the content region
     setp.lt.u32 %p, %ox, %px;
-    @%p bra done;
+    @%p bra write_pixel;
     setp.lt.u32 %p, %oy, %py;
-    @%p bra done;
-    sub.u32 %tmp, %dw, %px;
+    @%p bra write_pixel;
+    ld.param.u32 %tmp, [content_w];
+    add.u32 %tmp, %tmp, %px;
     setp.ge.u32 %p, %ox, %tmp;
-    @%p bra done;
-    sub.u32 %tmp, %dh, %py;
+    @%p bra write_pixel;
+    ld.param.u32 %tmp, [content_h];
+    add.u32 %tmp, %tmp, %py;
     setp.ge.u32 %p, %oy, %tmp;
-    @%p bra done;
+    @%p bra write_pixel;
 
-    // map to source coords (nearest for now, bilinear TODO)
+    // map to source coordinates using nearest sampling
     sub.u32 %tmp, %ox, %px;
     cvt.rn.f32.u32 %srcx, %tmp;
     div.rn.f32 %srcx, %srcx, %inv_scale;
@@ -397,8 +402,9 @@ const NV12_TO_RGB_CHW_PTX: &[u8] = b"
 
     // read UV sample (NV12: interleaved UV at half resolution)
     ld.param.u64 %uvp, [uv_ptr];
+    ld.param.u32 %uvpitch, [uv_pitch];
     shr.u32 %tmp, %sy0, 1;  // cy = sy / 2
-    mul.lo.u32 %tmp, %tmp, %ypitch;  // cy * pitch
+    mul.lo.u32 %tmp, %tmp, %uvpitch;
     shr.u32 %tmp2, %sx0, 1;  // cx = sx / 2
     shl.b32 %tmp2, %tmp2, 1;  // cx * 2 (interleaved UV)
     add.u32 %tmp, %tmp, %tmp2;
@@ -446,6 +452,7 @@ const NV12_TO_RGB_CHW_PTX: &[u8] = b"
     mul.f32 %g, %g, %t1;
     mul.f32 %b, %b, %t1;
 
+write_pixel:
     // write CHW planar output
     mul.lo.u32 %plane, %dw, %dh;
     mul.lo.u32 %didx, %oy, %dw;
@@ -500,17 +507,18 @@ fn get_nv12_kernel() -> Result<&'static CudaKernel, CudaInteropError> {
 /// normalize pipeline with a single kernel using BT.709 full-range
 /// coefficients matching GoPro/action-cam `yuvj420p` output.
 ///
-/// Reads NV12 Y + UV planes at `(y_ptr, uv_ptr)` with `y_pitch`,
+/// Reads NV12 Y + UV planes at `(y_ptr, uv_ptr)` with independent byte strides,
 /// source dimensions `(src_w, src_h)`. Writes float32 CHW into `dst`
 /// with dimensions `(dst_w, dst_h)` and content region offset
-/// `(pad_x, pad_y)` at scale factor `scale`. Padding pixels must be
-/// pre-filled (grey 114/255 = 0.447) by the caller at init time.
+/// `(pad_x, pad_y)` at scale factor `scale`. The rounded content extent uses
+/// nearest sampling. Every padding pixel is written grey (114/255).
 #[allow(clippy::too_many_arguments)]
 pub fn nv12_to_rgb_chw_fullrange(
     y_ptr: CUdeviceptr,
     uv_ptr: CUdeviceptr,
     dst: CUdeviceptr,
     y_pitch: u32,
+    uv_pitch: u32,
     src_w: u32,
     src_h: u32,
     dst_w: u32,
@@ -530,26 +538,32 @@ pub fn nv12_to_rgb_chw_fullrange(
     let mut uv_val = uv_ptr;
     let mut dst_val = dst;
     let mut yp_val = y_pitch;
+    let mut uvp_val = uv_pitch;
     let mut sw_val = src_w;
     let mut sh_val = src_h;
     let mut dw_val = dst_w;
     let mut dh_val = dst_h;
     let mut px_val = pad_x;
     let mut py_val = pad_y;
+    let mut cw_val = (src_w as f32 * scale).round() as u32;
+    let mut ch_val = (src_h as f32 * scale).round() as u32;
     let mut sc_val = scale;
     let mut flip_val: u32 = if rotation == 180 { 1 } else { 0 };
 
-    let mut args: [*mut c_void; 12] = [
+    let mut args: [*mut c_void; 15] = [
         (&mut y_val as *mut u64).cast(),
         (&mut uv_val as *mut u64).cast(),
         (&mut dst_val as *mut u64).cast(),
         (&mut yp_val as *mut u32).cast(),
+        (&mut uvp_val as *mut u32).cast(),
         (&mut sw_val as *mut u32).cast(),
         (&mut sh_val as *mut u32).cast(),
         (&mut dw_val as *mut u32).cast(),
         (&mut dh_val as *mut u32).cast(),
         (&mut px_val as *mut u32).cast(),
         (&mut py_val as *mut u32).cast(),
+        (&mut cw_val as *mut u32).cast(),
+        (&mut ch_val as *mut u32).cast(),
         (&mut sc_val as *mut f32).cast(),
         (&mut flip_val as *mut u32).cast(),
     ];
@@ -770,4 +784,151 @@ pub fn normalize_rgba_to_chw(
 
     reco_core::interop::cuda::cuda_synchronize()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reco_core::interop::cuda::{
+        cuda_mem_alloc, cuda_mem_free, cuda_memcpy_dtoh, cuda_memcpy_htod_2d,
+    };
+
+    struct Buffer(CUdeviceptr);
+
+    impl Buffer {
+        fn bytes(data: &[u8]) -> Self {
+            let buffer = Self(cuda_mem_alloc(data.len()).unwrap());
+            cuda_memcpy_htod_2d(
+                buffer.0,
+                data.len(),
+                data.as_ptr(),
+                data.len(),
+                data.len(),
+                1,
+            )
+            .unwrap();
+            buffer
+        }
+
+        fn floats(&self, len: usize) -> Vec<f32> {
+            let mut data = vec![0.0f32; len];
+            // SAFETY: the allocation and destination contain `len` f32 values.
+            unsafe {
+                cuda_memcpy_dtoh(data.as_mut_ptr().cast(), self.0, len * 4).unwrap();
+            }
+            data
+        }
+    }
+
+    impl Drop for Buffer {
+        fn drop(&mut self) {
+            cuda_mem_free(self.0).unwrap();
+        }
+    }
+
+    fn check_tensor(sizes: &[(u32, u32)], y_pitch: u32, uv_pitch: u32, p010: bool) {
+        reco_core::interop::cuda::cuda_ensure_context().unwrap();
+        const DST: u32 = 16;
+        let poison = vec![-99.0f32; (DST * DST * 3) as usize];
+        let tensor = Buffer::bytes(bytemuck::cast_slice(&poison));
+        for &(width, height) in sizes {
+            let mut y = vec![0; (y_pitch * height) as usize];
+            let mut uv = vec![0; (uv_pitch * height / 2) as usize];
+            for row in 0..height {
+                for col in 0..width {
+                    y[(row * y_pitch + col) as usize] = (50 + row * 7 + col * 3) as u8;
+                }
+            }
+            for row in 0..height / 2 {
+                for col in 0..width / 2 {
+                    uv[(row * uv_pitch + col * 2) as usize] = (100 + row * 7) as u8;
+                    uv[(row * uv_pitch + col * 2 + 1) as usize] = (140 + col * 5) as u8;
+                }
+            }
+            let (y, uv, y_stride, uv_stride) = if p010 {
+                let y16: Vec<u16> = y.iter().map(|&v| u16::from(v) << 8).collect();
+                let uv16: Vec<u16> = uv.iter().map(|&v| u16::from(v) << 8).collect();
+                let y16 = Buffer::bytes(bytemuck::cast_slice(&y16));
+                let uv16 = Buffer::bytes(bytemuck::cast_slice(&uv16));
+                let y = Buffer::bytes(&vec![0; (width * height) as usize]);
+                let uv = Buffer::bytes(&vec![0; (width * height / 2) as usize]);
+                p010_plane_to_nv12(y16.0, (y_pitch * 2) as usize, y.0, width, height).unwrap();
+                p010_plane_to_nv12(uv16.0, (uv_pitch * 2) as usize, uv.0, width, height / 2)
+                    .unwrap();
+                (y, uv, width, width)
+            } else {
+                (Buffer::bytes(&y), Buffer::bytes(&uv), y_pitch, uv_pitch)
+            };
+            let scale = (DST as f32 / width as f32).min(DST as f32 / height as f32);
+            let content_w = (width as f32 * scale).round() as u32;
+            let content_h = (height as f32 * scale).round() as u32;
+            let pad_x = (DST - content_w) / 2;
+            let pad_y = (DST - content_h) / 2;
+            for rotation in [0, 180] {
+                nv12_to_rgb_chw_fullrange(
+                    y.0, uv.0, tensor.0, y_stride, uv_stride, width, height, DST, DST, pad_x,
+                    pad_y, scale, rotation,
+                )
+                .unwrap();
+                let result = tensor.floats(poison.len());
+                for channel in 0..3 {
+                    for oy in 0..DST {
+                        for ox in 0..DST {
+                            let expected = if ox < pad_x
+                                || ox >= pad_x + content_w
+                                || oy < pad_y
+                                || oy >= pad_y + content_h
+                            {
+                                114.0 / 255.0
+                            } else {
+                                let mut x = (((ox - pad_x) as f32 / scale) as u32).min(width - 1);
+                                let mut y = (((oy - pad_y) as f32 / scale) as u32).min(height - 1);
+                                if rotation == 180 {
+                                    x = width - 1 - x;
+                                    y = height - 1 - y;
+                                }
+                                let luma = (50 + y * 7 + x * 3) as f32;
+                                let u = (100 + y / 2 * 7) as f32 - 128.0;
+                                let v = (140 + x / 2 * 5) as f32 - 128.0;
+                                let rgb = [
+                                    luma + 1.5748 * v,
+                                    luma - 0.1873 * u - 0.4681 * v,
+                                    luma + 1.8556 * u,
+                                ];
+                                rgb[channel as usize].clamp(0.0, 255.0) / 255.0
+                            };
+                            let actual = result[(channel * DST * DST + oy * DST + ox) as usize];
+                            assert!(
+                                (actual - expected).abs() < 1e-6,
+                                "{width}x{height}, rotation {rotation}, channel {channel}, ({ox},{oy}): {actual} != {expected}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "requires NVIDIA CUDA"]
+    fn nv12_letterbox_overwrites_padding_when_shape_changes() {
+        check_tensor(
+            &[(8, 4), (4, 8), (8, 8), (6, 4), (4, 6), (8, 4)],
+            16,
+            16,
+            false,
+        );
+    }
+
+    #[test]
+    #[ignore = "requires NVIDIA CUDA"]
+    fn nv12_planes_have_independent_strides() {
+        check_tensor(&[(8, 8)], 16, 24, false);
+    }
+
+    #[test]
+    #[ignore = "requires NVIDIA CUDA"]
+    fn p010_strides_and_shape_changes_preserve_tensor_pixels() {
+        check_tensor(&[(8, 4), (4, 8), (8, 8), (6, 4), (4, 6)], 16, 24, true);
+    }
 }

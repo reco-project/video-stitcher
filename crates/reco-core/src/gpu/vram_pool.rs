@@ -20,8 +20,6 @@ struct VramSlot {
 pub(crate) struct VramPool {
     slots: Vec<VramSlot>,
     free: VecDeque<usize>,
-    width: u32,
-    height: u32,
 }
 
 impl VramPool {
@@ -40,16 +38,11 @@ impl VramPool {
     pub fn new(
         gpu: &crate::gpu::GpuContext,
         pipeline: &crate::render::pipeline::StitchPipeline,
-        width: u32,
-        height: u32,
         n_slots: usize,
         pixel_format: crate::render::renderer::GpuPixelFormat,
     ) -> Result<Self, String> {
-        let camera_count = pipeline.calibration.projection.camera_count();
         let vram_bytes = crate::lookahead::image_bytes(
-            width,
-            height,
-            camera_count,
+            pipeline.source_sizes(),
             pixel_format.bytes_per_sample(),
         )?
         .checked_mul(n_slots)
@@ -83,8 +76,10 @@ impl VramPool {
                         view_formats: &[],
                     })
                 };
-                let textures: Vec<_> = (0..camera_count)
-                    .map(|_| {
+                let textures: Vec<_> = pipeline
+                    .source_sizes()
+                    .iter()
+                    .map(|&(width, height)| {
                         [
                             create_tex("vram_Y", y_format, width, height),
                             create_tex("vram_UV", uv_format, width / 2, height / 2),
@@ -115,16 +110,9 @@ impl VramPool {
             }
         }
 
-        log::info!(
-            "VramPool: {n_slots} per-input NV12 slots at {width}x{height}, ~{vram_mb:.0} MB VRAM"
-        );
+        log::info!("VramPool: {n_slots} per-input NV12 slots, ~{vram_mb:.0} MB VRAM");
 
-        Ok(Self {
-            slots,
-            free,
-            width,
-            height,
-        })
+        Ok(Self { slots, free })
     }
 
     /// Take a free slot. Returns None if the pool is exhausted.
@@ -180,14 +168,11 @@ impl VramPool {
         };
 
         for ((y, uv), textures) in sources.iter().zip(&dst.textures) {
-            copy_tex(&mut encoder, y, &textures[0], self.width, self.height);
-            copy_tex(
-                &mut encoder,
-                uv,
-                &textures[1],
-                self.width / 2,
-                self.height / 2,
-            );
+            let (width, height) = (textures[0].width(), textures[0].height());
+            assert_eq!((y.width(), y.height()), (width, height));
+            assert_eq!((uv.width(), uv.height()), (width / 2, height / 2));
+            copy_tex(&mut encoder, y, &textures[0], width, height);
+            copy_tex(&mut encoder, uv, &textures[1], width / 2, height / 2);
         }
 
         gpu.queue.submit(std::iter::once(encoder.finish()));

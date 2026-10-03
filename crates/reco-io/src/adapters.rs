@@ -166,8 +166,7 @@ impl FfmpegFileSource {
         let full_range = probe.is_full_range();
         let fps = probe.fps().unwrap_or(0.0);
         let mut info = SourceInfo {
-            width: probe.width(),
-            height: probe.height(),
+            camera_sizes: vec![(probe.width(), probe.height())],
             fps,
             fps_rational: fps_r.map(|r| (r.0, r.1)),
             total_frames: input_frame_count(inputs, sync_offset),
@@ -190,6 +189,7 @@ impl FfmpegFileSource {
                 });
             }
             merge_frame_rate(&mut info, d.frame_rate(), input.first_path())?;
+            info.camera_sizes.push((d.width(), d.height()));
             rotations.push(d.rotation());
         }
 
@@ -310,6 +310,7 @@ impl FfmpegFileSource {
                     }
                     target_us = None;
                     let buf = Yuv420pData {
+                        size: (f.width, f.height),
                         y: f.y,
                         u: f.u,
                         v: f.v,
@@ -421,8 +422,7 @@ mod decode_tests {
             cleanup: Default::default(),
             stream,
             info: SourceInfo {
-                width: 2,
-                height: 2,
+                camera_sizes: vec![(2, 2); 2],
                 fps: 30.0,
                 fps_rational: Some((30, 1)),
                 total_frames: None,
@@ -545,6 +545,7 @@ mod decode_tests {
             move |tx| -> Result<(), SourceError> {
                 while tx
                     .send(Ok(Some(Yuv420pData {
+                        size: (2, 2),
                         y: vec![],
                         u: vec![],
                         v: vec![],

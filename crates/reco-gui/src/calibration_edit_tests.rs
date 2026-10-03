@@ -15,16 +15,18 @@ fn preview_rest_and_reset_keep_the_world_direction_on_tilted_rigs() {
         let mut cal = calibration();
         cal.framing.tilt = tilt;
         cal.framing.roll = roll;
-        let executor = CpuExecutor::new(
-            cal,
-            ViewportSize {
-                width: 64,
-                height: 36,
-            },
-            64,
-            36,
-            false,
-        )
+        let executor = {
+            let source_sizes = vec![(64, 36); cal.projection.camera_count()];
+            CpuExecutor::new(
+                cal,
+                ViewportSize {
+                    width: 64,
+                    height: 36,
+                },
+                source_sizes,
+                false,
+            )
+        }
         .unwrap();
         let mut core = StitchCore::new(Executor::Cpu(Box::new(executor))).unwrap();
         core.set_constrained_look(false);
@@ -344,8 +346,7 @@ fn editor_rolls_back_invalid_controls_and_keeps_preview_and_document_together() 
             queue,
             adapter.get_info(),
             calibration(),
-            64,
-            36,
+            vec![(64, 36); 2],
             64,
             36,
         )

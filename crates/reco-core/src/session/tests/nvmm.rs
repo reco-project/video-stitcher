@@ -28,7 +28,7 @@ fn nvmm_staged_pixels_survive_capture_reuse() {
     let pixels = Arc::new(Mutex::new(Vec::new()));
     let mut session = StitchSession::builder()
         .calibration(test_calibration())
-        .input_dimensions(W, H)
+        .source_sizes(vec![(W, H); 2])
         .input_format(crate::render::renderer::InputFormat::Nv12)
         .viewport_size(ViewportSize {
             width: W,
@@ -81,7 +81,7 @@ fn nvmm_staged_pixels_survive_capture_reuse() {
     };
     session
         .gpu_exec()
-        .create_lookahead_pool(W, H, 1, crate::render::renderer::GpuPixelFormat::Nv12)
+        .create_lookahead_pool(1, crate::render::renderer::GpuPixelFormat::Nv12)
         .unwrap();
     for staged in [false, true] {
         session

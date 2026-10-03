@@ -26,7 +26,7 @@ pub trait DetectionTarget {
     /// Attach a panner that resolves viewport pose from tracked state.
     fn set_panner(&mut self, panner: Box<dyn panner::Panner>);
     /// Source frame dimensions `(width, height)` per camera.
-    fn source_dims(&self) -> (u32, u32);
+    fn source_sizes(&self) -> &[(u32, u32)];
     /// The GPU context, when the target renders on a GPU executor.
     /// `None` on CPU engines; GPU-dependent detector setups (zero-copy
     /// imports, wgpu preprocessing) skip themselves so the caller falls

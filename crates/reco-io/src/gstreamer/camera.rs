@@ -168,6 +168,7 @@ fn extract_i420(data: &[u8], width: u32, height: u32) -> Result<Yuv420pData, Sou
     }
 
     Ok(Yuv420pData {
+        size: (width, height),
         y: data[..y_size].to_vec(),
         u: data[y_size..y_size + uv_size].to_vec(),
         v: data[y_size + uv_size..y_size + 2 * uv_size].to_vec(),
@@ -192,6 +193,7 @@ fn extract_nv12(data: &[u8], width: u32, height: u32) -> Result<Nv12Data, Source
     }
 
     Ok(Nv12Data {
+        size: (width, height),
         y: data[..y_size].to_vec(),
         uv: data[y_size..y_size + uv_size].to_vec(),
     })
@@ -228,8 +230,7 @@ impl<T: Send + Sync + 'static> HostCapture<T> {
         Ok(Self {
             pair,
             info: SourceInfo {
-                width: config.width,
-                height: config.height,
+                camera_sizes: vec![(config.width, config.height); 2],
                 fps: config.fps as f64,
                 fps_rational: None,
                 total_frames: None,
@@ -374,8 +375,7 @@ mod tests {
             )
             .unwrap(),
             info: SourceInfo {
-                width: 64,
-                height: 32,
+                camera_sizes: vec![(64, 32); 2],
                 fps: 30.0,
                 fps_rational: None,
                 total_frames: None,

@@ -130,7 +130,7 @@ pub fn run_preview(
 
     println!(
         "Preview: {}x{} input, {}x{} window",
-        info.width, info.height, width, height
+        info.camera_sizes[0].0, info.camera_sizes[0].1, width, height
     );
 
     // Get the first frame for initial display
@@ -156,8 +156,7 @@ pub fn run_preview(
         alpha_mode: reco_core::wgpu::CompositeAlphaMode::Auto,          // overwritten in resumed()
         renderer: None,
         cal,
-        input_width: info.width,
-        input_height: info.height,
+        source_sizes: info.camera_sizes.clone(),
         width,
         height,
         current_frame: first,
@@ -219,8 +218,7 @@ struct App {
     alpha_mode: reco_core::wgpu::CompositeAlphaMode,
     renderer: Option<StitchCore>,
     cal: reco_core::calibration::Calibration,
-    input_width: u32,
-    input_height: u32,
+    source_sizes: Vec<(u32, u32)>,
     width: u32,
     height: u32,
     current_frame: FrameSet,
@@ -493,8 +491,7 @@ impl ApplicationHandler for App {
             GpuExecutorConfig {
                 calibration: self.cal.clone(),
                 viewport_size,
-                input_width: self.input_width,
-                input_height: self.input_height,
+                source_sizes: self.source_sizes.clone(),
                 input_format: reco_core::render::renderer::InputFormat::Yuv420p,
                 output_format: reco_core::render::strip_srgb(surface_format),
                 full_range: false,

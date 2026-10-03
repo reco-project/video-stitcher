@@ -46,6 +46,9 @@ impl super::StitchCore {
                 "submit_frame requires CPU-resident YUV420P or NV12 frames".into(),
             ));
         }
+        frames
+            .validate_host_images(self.source_sizes())
+            .map_err(StitchCoreError::Config)?;
         self.anchor_session_start();
         if self.detection_due(self.frame_count) {
             self.run_cpu_detection(frames, &[])?;
@@ -62,6 +65,9 @@ impl super::StitchCore {
         pose: RenderPose,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         use crate::source::FrameSet;
+        frames
+            .validate_host_images(self.source_sizes())
+            .map_err(StitchCoreError::Config)?;
         match frames {
             FrameSet::Yuv420p(cams) => {
                 self.anchor_session_start();
@@ -74,7 +80,7 @@ impl super::StitchCore {
                 if let [left, right] = cams.as_slice()
                     && let Some(ref mut recorder) = self.stacked_recorder
                 {
-                    let (src_w, src_h) = self.executor.source_dims();
+                    let (src_w, src_h) = left.size;
                     recorder.record_yuv(&left.as_planes(), &right.as_planes(), src_w, src_h);
                 }
                 match &self.executor {
@@ -238,7 +244,7 @@ impl super::StitchCore {
         // rationale (record-before-render so the file exactly
         // matches what the pipeline consumed).
         if let Some(ref mut recorder) = self.stacked_recorder {
-            let (src_w, src_h) = self.executor.source_dims();
+            let (src_w, src_h) = self.executor.source_sizes()[0];
             recorder.record_yuv(left, right, src_w, src_h);
         }
 

@@ -66,10 +66,8 @@ pub struct SessionConfig {
     pub calibration: Calibration,
     /// Output viewport dimensions.
     pub viewport_size: ViewportSize,
-    /// Input frame width in pixels.
-    pub input_width: u32,
-    /// Input frame height in pixels.
-    pub input_height: u32,
+    /// Fixed decoded `(width, height)` for each camera in projection order.
+    pub source_sizes: Vec<(u32, u32)>,
     /// GPU render target format (typically [`OutputFormat::Rgba8Unorm`] for encoding).
     pub output_format: OutputFormat,
     /// Input pixel format (YUV420P or NV12).
@@ -189,7 +187,7 @@ const _: fn() = || {
 /// ```rust,ignore
 /// let session = StitchSession::builder()
 ///     .calibration(cal)
-///     .input_dimensions(1920, 1080)
+///     .source_sizes(vec![(1920, 1080); 2])
 ///     .viewport_size(viewport)
 ///     .gpu(gpu)
 ///     .build()?;
@@ -198,8 +196,7 @@ const _: fn() = || {
 pub struct StitchSessionBuilder {
     pub(super) calibration: Option<Calibration>,
     pub(super) viewport_size: Option<ViewportSize>,
-    pub(super) input_width: Option<u32>,
-    pub(super) input_height: Option<u32>,
+    pub(super) source_sizes: Option<Vec<(u32, u32)>>,
     pub(super) output_format: OutputFormat,
     pub(super) input_format: InputFormat,
     pub(super) gpu: Option<GpuContext>,
@@ -222,10 +219,9 @@ impl StitchSessionBuilder {
         self
     }
 
-    /// Set the input frame dimensions (required).
-    pub fn input_dimensions(mut self, width: u32, height: u32) -> Self {
-        self.input_width = Some(width);
-        self.input_height = Some(height);
+    /// Set fixed decoded sizes in projection order (required).
+    pub fn source_sizes(mut self, sizes: Vec<(u32, u32)>) -> Self {
+        self.source_sizes = Some(sizes);
         self
     }
 
@@ -287,11 +283,8 @@ impl StitchSessionBuilder {
         let calibration = self.calibration.ok_or_else(|| {
             SessionError::Config("StitchSessionBuilder: calibration is required".into())
         })?;
-        let input_width = self.input_width.ok_or_else(|| {
-            SessionError::Config("StitchSessionBuilder: input_dimensions is required".into())
-        })?;
-        let input_height = self.input_height.ok_or_else(|| {
-            SessionError::Config("StitchSessionBuilder: input_dimensions is required".into())
+        let source_sizes = self.source_sizes.ok_or_else(|| {
+            SessionError::Config("StitchSessionBuilder: source_sizes is required".into())
         })?;
 
         let viewport_size = self.viewport_size.unwrap_or(ViewportSize {
@@ -307,8 +300,7 @@ impl StitchSessionBuilder {
         let config = SessionConfig {
             calibration,
             viewport_size,
-            input_width,
-            input_height,
+            source_sizes,
             output_format: self.output_format,
             input_format: self.input_format,
             left_rotation: 0,

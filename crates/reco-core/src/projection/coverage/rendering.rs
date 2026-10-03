@@ -27,7 +27,11 @@ fn normalized_coordinates_preserve_the_recorded_pixel_output() {
         width: 320,
         height: 180,
     };
-    let render = CpuExecutor::new(cal, size, 320, 180, false).unwrap();
+    let render = {
+        let source_sizes = vec![(320, 180); cal.projection.camera_count()];
+        CpuExecutor::new(cal, size, source_sizes, false)
+    }
+    .unwrap();
     let y = gradient_y();
     let left: Vec<_> = (0..320 * 90)
         .map(|i| if i % 2 == 0 { 110 } else { 150 })
@@ -125,7 +129,10 @@ fn fitted_random_lenses_and_placements_render_without_gpu_holes() {
             gpu.clone(),
             GpuExecutorConfig {
                 viewport_size: size.clone(),
-                ..GpuExecutorConfig::new(cal.clone(), 320, 180, InputFormat::Nv12)
+                ..{
+                    let source_sizes = vec![(320, 180); cal.projection.camera_count()];
+                    GpuExecutorConfig::new(cal.clone(), source_sizes, InputFormat::Nv12)
+                }
             },
         )
         .unwrap();
@@ -191,7 +198,10 @@ fn fitted_viewports_render_white_across_lens_correction_and_aspects() {
                     gpu.clone(),
                     GpuExecutorConfig {
                         viewport_size: size.clone(),
-                        ..GpuExecutorConfig::new(cal.clone(), 320, 180, InputFormat::Nv12)
+                        ..{
+                            let source_sizes = vec![(320, 180); cal.projection.camera_count()];
+                            GpuExecutorConfig::new(cal.clone(), source_sizes, InputFormat::Nv12)
+                        }
                     },
                 )
                 .unwrap();

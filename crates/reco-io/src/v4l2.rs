@@ -458,8 +458,7 @@ impl V4l2StereoCameraSource {
             .expect("spawn v4l2 pairing thread");
 
         let info = reco_core::source::SourceInfo {
-            width: left_config.width,
-            height: left_config.height,
+            camera_sizes: vec![(left_config.width, left_config.height); 2],
             fps: left_config.fps as f64,
             fps_rational: None,
             total_frames: None,

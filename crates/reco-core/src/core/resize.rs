@@ -156,7 +156,11 @@ mod tests {
             height: 32,
         };
         StitchCore::new(Executor::Cpu(Box::new(
-            CpuExecutor::new(cal, size, 64, 32, false).unwrap(),
+            {
+                let source_sizes = vec![(64, 32); cal.projection.camera_count()];
+                CpuExecutor::new(cal, size, source_sizes, false)
+            }
+            .unwrap(),
         )))
         .unwrap()
     }

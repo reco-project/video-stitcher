@@ -118,6 +118,9 @@ fn centered_smooth(
 
 impl StitchSession {
     fn validate_source_frame(&self, frame: &crate::source::FrameSet) -> Result<(), SessionError> {
+        frame
+            .validate_host_images(self.core.source_sizes())
+            .map_err(SessionError::Config)?;
         use crate::source::FrameSet;
         let cameras = match frame {
             FrameSet::Yuv420p(cameras) => cameras.len(),
@@ -133,7 +136,31 @@ impl StitchSession {
                 }
                 slots.len()
             }
-            _ => 2,
+            #[cfg(target_os = "linux")]
+            FrameSet::NvmmResident(images) => {
+                for (camera, image) in images.iter().enumerate() {
+                    let info = image.info();
+                    if self.core.source_sizes().get(camera) != Some(&(info.width, info.height)) {
+                        return Err(SessionError::Config("NVMM image dimensions changed".into()));
+                    }
+                }
+                images.len()
+            }
+            #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
+            FrameSet::MetalResident(images) => {
+                for (camera, image) in images.iter().enumerate() {
+                    if self.core.source_sizes().get(camera)
+                        != Some(&(image.width(), image.height()))
+                    {
+                        return Err(SessionError::Config(
+                            "Metal image dimensions changed".into(),
+                        ));
+                    }
+                }
+                images.len()
+            }
+            #[cfg(target_os = "windows")]
+            FrameSet::D3d11Resident(images) => images.len(),
         };
         let expected = self.core.calibration().projection.camera_count();
         if cameras != expected {
@@ -194,6 +221,20 @@ impl StitchSession {
                 "shared decode textures must match the GPU executor camera count".into(),
             ));
         }
+        for (camera, &(width, height)) in shared.cameras.iter().zip(self.core.source_sizes()) {
+            if camera.buf.width != width
+                || camera.buf.height != height
+                || camera.textures.iter().enumerate().any(|(plane, texture)| {
+                    let divisor = if plane % 2 == 0 { 1 } else { 2 };
+                    (texture.texture.width(), texture.texture.height())
+                        != (width / divisor, height / divisor)
+                })
+            {
+                return Err(SessionError::Config(
+                    "shared decode texture dimensions do not match the executor".into(),
+                ));
+            }
+        }
         self.gpu_exec().configure_shared_textures(shared);
         log::info!("Session configured for GPU-resident source");
         Ok(())
@@ -224,6 +265,11 @@ impl StitchSession {
         interrupted: &AtomicBool,
         mut on_progress: Option<ProgressCallback>,
     ) -> Result<super::types::RunResult, SessionError> {
+        if source.info().camera_sizes != self.core.source_sizes() {
+            return Err(SessionError::Config(
+                "source camera dimensions do not match the executor".into(),
+            ));
+        }
         if source.is_gpu_resident() && matches!(self.core.executor, crate::stitch::Executor::Cpu(_))
         {
             return Err(SessionError::Config(
@@ -397,11 +443,8 @@ impl StitchSession {
         #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
         if source.is_gpu_resident() {
             let pool_size = crate::lookahead::pool_slots(n).map_err(SessionError::Config)?;
-            let (w, h) = self.core.source_dims();
             let per_slot = crate::lookahead::image_bytes(
-                w,
-                h,
-                self.core.calibration().projection.camera_count(),
+                self.core.source_sizes(),
                 self.gpu_pixel_format.bytes_per_sample(),
             )
             .map_err(SessionError::Config)?;
@@ -441,7 +484,7 @@ impl StitchSession {
                         let budget = crate::gpu::vram_pool::lookahead_budget_bytes(free, total);
                         log::info!(
                             "VRAM budget: {:.2} GB usable of {:.2} GB total ({:.2} GB reported free); \
-                         lookahead pool needs {:.2} GB ({pool_size} slots @ {w}x{h})",
+                         lookahead pool needs {:.2} GB ({pool_size} slots)",
                             budget as f64 / 1e9,
                             total as f64 / 1e9,
                             free as f64 / 1e9,
@@ -456,7 +499,7 @@ impl StitchSession {
                                 "not enough VRAM for a {req_secs:.1}s lookahead: reduce the lookahead \
                              to <= {max_secs:.1}s, use lower-resolution source footage, or free \
                              GPU memory. The frame pool needs ~{:.1} GB ({pool_size} slots @ \
-                             {w}x{h}); usable budget is ~{:.1} GB of {:.1} GB total.",
+                             configured camera sizes); usable budget is ~{:.1} GB of {:.1} GB total.",
                                 required as f64 / 1e9,
                                 budget as f64 / 1e9,
                                 total as f64 / 1e9,
@@ -467,7 +510,7 @@ impl StitchSession {
                         log::info!(
                             "VRAM budget query unavailable on this backend; relying on \
                          allocation-time OOM handling for the {pool_size}-slot lookahead pool \
-                         (~{:.2} GB @ {w}x{h})",
+                         (~{:.2} GB)",
                             required as f64 / 1e9,
                         );
                     }
@@ -486,7 +529,7 @@ impl StitchSession {
             if self.gpu_exec_ref().residency.pool.is_none() {
                 let pixel_format = self.gpu_pixel_format;
                 self.gpu_exec()
-                    .create_lookahead_pool(w, h, pool_size, pixel_format)
+                    .create_lookahead_pool(pool_size, pixel_format)
                     .map_err(SessionError::Config)?;
             }
         }

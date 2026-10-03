@@ -130,7 +130,10 @@ fn probe_high_resolution_motion() {
                 width: 1920,
                 height: 1080,
             },
-            ..GpuExecutorConfig::new(cal, 640, 360, InputFormat::Nv12)
+            ..{
+                let source_sizes = vec![(640, 360); cal.projection.camera_count()];
+                GpuExecutorConfig::new(cal, source_sizes, InputFormat::Nv12)
+            }
         },
     )
     .unwrap();
@@ -280,25 +283,24 @@ fn render_fixed_fov_calibrated_motion() {
                     gpu.clone(),
                     GpuExecutorConfig {
                         viewport_size: size.clone(),
-                        ..GpuExecutorConfig::new(
-                            calibration,
-                            width as u32,
-                            height as u32,
-                            InputFormat::Nv12,
-                        )
+                        ..{
+                            let source_sizes = vec![
+                                (width as u32, height as u32);
+                                calibration.projection.camera_count()
+                            ];
+                            GpuExecutorConfig::new(calibration, source_sizes, InputFormat::Nv12)
+                        }
                     },
                 )
                 .unwrap(),
             )
         } else {
             Box::new(
-                CpuExecutor::new(
-                    calibration,
-                    size.clone(),
-                    width as u32,
-                    height as u32,
-                    false,
-                )
+                {
+                    let source_sizes =
+                        vec![(width as u32, height as u32); calibration.projection.camera_count()];
+                    CpuExecutor::new(calibration, size.clone(), source_sizes, false)
+                }
                 .unwrap(),
             )
         }

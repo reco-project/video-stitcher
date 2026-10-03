@@ -54,23 +54,42 @@ impl ReplayRecordingSource {
     ) -> Result<Self, StackedEncodeError> {
         config.full_range = inner.is_full_range();
         let info = inner.info();
-        let layout = GridLayout::vstack(info.width, info.height, 2).ok_or_else(|| {
+        let [first, _] = info.camera_sizes.as_slice() else {
+            return Err(StackedEncodeError::Encode(
+                crate::ffmpeg::encoder::EncodeError::InvalidConfig(
+                    "stacked replay requires two cameras".into(),
+                ),
+            ));
+        };
+        let first = *first;
+        for (index, &(got_w, got_h)) in info.camera_sizes.iter().enumerate() {
+            if (got_w, got_h) != first {
+                return Err(StackError::TileDimensionMismatch {
+                    index,
+                    got_w,
+                    got_h,
+                    expected_w: first.0,
+                    expected_h: first.1,
+                }
+                .into());
+            }
+        }
+        let layout = GridLayout::vstack(first.0, first.1, 2).ok_or_else(|| {
             StackedEncodeError::Pack(StackError::TileDimensionMismatch {
                 index: 0,
-                got_w: info.width,
-                got_h: info.height,
-                expected_w: (info.width / 2) * 2,
-                expected_h: (info.height / 2) * 2,
+                got_w: first.0,
+                got_h: first.1,
+                expected_w: (first.0 / 2) * 2,
+                expected_h: (first.1 / 2) * 2,
             })
         })?;
         let encoder = StackedEncoder::new(layout, path, config)?;
         log::info!(
             "Replay recording: {}x{} -> {} (stacked vertical, 2 tiles)",
-            info.width,
-            info.height,
+            first.0,
+            first.1,
             path.display(),
         );
-        let _ = layout;
         Ok(Self {
             inner,
             encoder: Some(encoder),
@@ -107,21 +126,20 @@ impl ReplayRecordingSource {
         };
         match frame {
             FrameSet::Yuv420p(cams) if cams.len() == 2 => {
-                let info = self.inner.info();
                 let left = Yuv420pFrame {
                     y: cams[0].y.clone(),
                     u: cams[0].u.clone(),
                     v: cams[0].v.clone(),
-                    width: info.width,
-                    height: info.height,
+                    width: cams[0].size.0,
+                    height: cams[0].size.1,
                     timestamp_us: 0,
                 };
                 let right = Yuv420pFrame {
                     y: cams[1].y.clone(),
                     u: cams[1].u.clone(),
                     v: cams[1].v.clone(),
-                    width: info.width,
-                    height: info.height,
+                    width: cams[1].size.0,
+                    height: cams[1].size.1,
                     timestamp_us: 0,
                 };
                 if let Err(e) = encoder.push(&[Some(&left), Some(&right)]) {
@@ -577,13 +595,13 @@ mod source_contract_tests {
     struct PollingSource {
         polls: usize,
         full_range: bool,
+        camera_sizes: Vec<(u32, u32)>,
     }
 
     impl FrameSource for PollingSource {
         fn info(&self) -> SourceInfo {
             SourceInfo {
-                width: 2,
-                height: 2,
+                camera_sizes: self.camera_sizes.clone(),
                 fps: 30.0,
                 fps_rational: Some((30, 1)),
                 total_frames: None,
@@ -615,6 +633,7 @@ mod source_contract_tests {
                 inner: Box::new(PollingSource {
                     polls: 0,
                     full_range,
+                    camera_sizes: vec![(2, 2); 2],
                 }),
                 encoder: None,
                 warned_non_yuv420p: false,
@@ -629,5 +648,50 @@ mod source_contract_tests {
             assert!(source.is_exhausted());
             assert_eq!(source.is_full_range(), full_range);
         }
+    }
+
+    #[test]
+    fn wrong_camera_count_fails_before_creating_replay_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("replay.mkv");
+        for count in [0, 1, 3] {
+            let source = PollingSource {
+                polls: 0,
+                full_range: false,
+                camera_sizes: vec![(128, 96); count],
+            };
+            let result = ReplayRecordingSource::wrap(
+                Box::new(source),
+                &path,
+                StackedEncoderConfig::default(),
+            );
+            assert!(matches!(
+                result,
+                Err(StackedEncodeError::Encode(
+                    crate::ffmpeg::encoder::EncodeError::InvalidConfig(_)
+                ))
+            ));
+            assert!(!path.exists());
+        }
+    }
+
+    #[test]
+    fn unequal_camera_sizes_fail_before_creating_replay_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("replay.mkv");
+        let source = PollingSource {
+            polls: 0,
+            full_range: false,
+            camera_sizes: vec![(128, 96), (256, 192)],
+        };
+        let result =
+            ReplayRecordingSource::wrap(Box::new(source), &path, StackedEncoderConfig::default());
+        assert!(matches!(
+            result,
+            Err(StackedEncodeError::Pack(
+                StackError::TileDimensionMismatch { index: 1, .. }
+            ))
+        ));
+        assert!(!path.exists());
     }
 }

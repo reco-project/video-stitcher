@@ -94,6 +94,7 @@ fn image(markers: [u8; 2], nv12: bool) -> FrameSet {
                 .into_iter()
                 .map(|marker| {
                     Arc::new(Nv12Data {
+                        size: (W, H),
                         y: vec![marker; (W * H) as usize],
                         uv: vec![128; (W * H / 2) as usize],
                     })
@@ -106,6 +107,7 @@ fn image(markers: [u8; 2], nv12: bool) -> FrameSet {
                 .into_iter()
                 .map(|marker| {
                     Arc::new(Yuv420pData {
+                        size: (W, H),
                         y: vec![marker; (W * H) as usize],
                         u: vec![128; (W * H / 4) as usize],
                         v: vec![128; (W * H / 4) as usize],
@@ -138,8 +140,7 @@ fn gpu_reused_camera_images_are_inferred_once() {
                 },
                 ..GpuExecutorConfig::new(
                     test_calibration(),
-                    W,
-                    H,
+                    vec![(W, H); 2],
                     if nv12 {
                         InputFormat::Nv12
                     } else {

@@ -46,9 +46,7 @@ pub struct PreviewBridge {
     viewport_width: u32,
     viewport_height: u32,
     texture_format: wgpu::TextureFormat,
-    lens_preview: Option<LensPreviewRenderer>,
-    input_width: u32,
-    input_height: u32,
+    lens_preview: Option<((u32, u32), LensPreviewRenderer)>,
 }
 
 impl PreviewBridge {
@@ -62,8 +60,7 @@ impl PreviewBridge {
         queue: wgpu::Queue,
         adapter_info: wgpu::AdapterInfo,
         calibration: Calibration,
-        input_width: u32,
-        input_height: u32,
+        source_sizes: Vec<(u32, u32)>,
         viewport_width: u32,
         viewport_height: u32,
     ) -> Result<Self, StitchCoreError> {
@@ -89,8 +86,7 @@ impl PreviewBridge {
             GpuExecutorConfig {
                 calibration,
                 viewport_size,
-                input_width,
-                input_height,
+                source_sizes,
                 input_format: reco_core::render::renderer::InputFormat::Yuv420p,
                 output_format: texture_format,
                 full_range: false,
@@ -104,8 +100,6 @@ impl PreviewBridge {
             viewport_height,
             texture_format,
             lens_preview: None,
-            input_width,
-            input_height,
         })
     }
 
@@ -179,20 +173,29 @@ impl PreviewBridge {
     pub fn render_lens_preview(
         &mut self,
         planes: &Yuv420pPlanes<'_>,
+        size: (u32, u32),
         params: &Lens,
         correction_amount: f32,
         full_range: bool,
     ) -> Result<slint::Image, PipelineError> {
-        let lp = self.lens_preview.get_or_insert_with(|| {
-            let aspect = self.input_width as f32 / self.input_height as f32;
-            LensPreviewRenderer::new(
-                self.engine.gpu(),
-                self.input_width,
-                self.input_height,
-                aspect,
-                self.texture_format,
-            )
-        });
+        if self
+            .lens_preview
+            .as_ref()
+            .is_none_or(|(cached, _)| *cached != size)
+        {
+            let aspect = size.0 as f32 / size.1 as f32;
+            self.lens_preview = Some((
+                size,
+                LensPreviewRenderer::new(
+                    self.engine.gpu(),
+                    size.0,
+                    size.1,
+                    aspect,
+                    self.texture_format,
+                ),
+            ));
+        }
+        let (_, lp) = self.lens_preview.as_ref().expect("prepared lens preview");
 
         let texture = lp.render_yuv(
             self.engine.gpu(),

@@ -73,9 +73,8 @@ pub(crate) struct StitchPipeline {
     pub(crate) viewport_size: ViewportSize,
     /// GPU renderer (textures, pipelines, bind groups).
     renderer: Renderer,
-    /// Input frame dimensions.
-    input_width: u32,
-    input_height: u32,
+    /// Input frame dimensions, in projection order.
+    source_sizes: Vec<(u32, u32)>,
 }
 
 /// Pre-built bind groups for GPU-resident zero-copy sources.
@@ -107,8 +106,7 @@ impl StitchPipeline {
         program: &crate::render::GpuProgram,
         calibration: Calibration,
         viewport_size: ViewportSize,
-        input_width: u32,
-        input_height: u32,
+        source_sizes: Vec<(u32, u32)>,
         output_format: impl Into<wgpu::TextureFormat>,
         input_format: InputFormat,
     ) -> Result<Self, PipelineError> {
@@ -122,19 +120,12 @@ impl StitchPipeline {
         if let Err(e) = viewport_size.validate() {
             return Err(PipelineError::InvalidConfig { reason: e });
         }
-        if input_width == 0 || input_height == 0 {
-            return Err(PipelineError::InvalidConfig {
-                reason: format!("input dimensions must be > 0, got {input_width}x{input_height}"),
-            });
-        }
-        if input_width > crate::calibration::MAX_DIM || input_height > crate::calibration::MAX_DIM {
-            return Err(PipelineError::InvalidConfig {
-                reason: format!(
-                    "input dimensions {input_width}x{input_height} exceed MAX_DIM ({})",
-                    crate::calibration::MAX_DIM
-                ),
-            });
-        }
+        crate::source::validate_camera_sizes(
+            &source_sizes,
+            calibration.lenses.len(),
+            input_format != InputFormat::Rgba,
+        )
+        .map_err(|reason| PipelineError::InvalidConfig { reason })?;
 
         let output_format = output_format.into();
         let scene = Self::derive_plane_scene(&calibration);
@@ -143,8 +134,7 @@ impl StitchPipeline {
             program,
             viewport_size.width,
             viewport_size.height,
-            input_width,
-            input_height,
+            &source_sizes,
             output_format,
             input_format,
             // Quad geometry: the source aspect, independent of whether
@@ -165,8 +155,7 @@ impl StitchPipeline {
             calibration,
             viewport_size,
             renderer,
-            input_width,
-            input_height,
+            source_sizes,
         })
     }
 
@@ -193,9 +182,9 @@ impl StitchPipeline {
         &self.viewport_size
     }
 
-    /// Input frame dimensions as `(width, height)`.
-    pub fn source_dims(&self) -> (u32, u32) {
-        (self.input_width, self.input_height)
+    /// Input `(width, height)` for each camera, in projection order.
+    pub fn source_sizes(&self) -> &[(u32, u32)] {
+        &self.source_sizes
     }
 
     /// Input pixel format the pipeline was built for. Needed by the
@@ -407,6 +396,9 @@ impl StitchPipeline {
     }
 
     fn upload_frame_set(&self, frames: &crate::source::FrameSet) -> Result<(), PipelineError> {
+        frames
+            .validate_host_images(self.source_sizes())
+            .map_err(|reason| PipelineError::InvalidConfig { reason })?;
         use crate::source::FrameSet;
         match frames {
             FrameSet::Yuv420p(cams) => {

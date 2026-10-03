@@ -244,7 +244,11 @@ impl Playback {
     }
 
     pub fn input_dimensions(&self) -> Option<(u32, u32)> {
-        self.info.as_ref().map(|i| (i.width, i.height))
+        self.source_sizes()?.first().copied()
+    }
+
+    pub fn source_sizes(&self) -> Option<&[(u32, u32)]> {
+        self.info.as_ref().map(|i| i.camera_sizes.as_slice())
     }
 }
 

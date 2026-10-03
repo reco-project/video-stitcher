@@ -140,7 +140,10 @@ fn d3d11_detection_reads_current_frame_with_and_without_lookahead() {
                     width: 64,
                     height: 64,
                 },
-                ..GpuExecutorConfig::new(calibration, w, h, InputFormat::Nv12)
+                ..{
+                    let source_sizes = vec![(w, h); calibration.projection.camera_count()];
+                    GpuExecutorConfig::new(calibration, source_sizes, InputFormat::Nv12)
+                }
             };
             let mut session = reco_core::session::StitchSession::with_executor(Executor::Gpu(
                 Box::new(GpuExecutor::new(gpu.clone(), config).unwrap()),

@@ -12,20 +12,19 @@ use crate::stitch::cpu::stitch_rgba;
 pub struct CpuExecutor {
     pub(crate) calib: Calibration,
     pub(crate) viewport_size: ViewportSize,
-    pub(crate) cam: (u32, u32),
+    pub(crate) source_sizes: Vec<(u32, u32)>,
     pub(crate) full_range: bool,
 }
 
 impl CpuExecutor {
-    /// Configure a CPU executor for a fixed source size and output
+    /// Configure a CPU executor for fixed per-camera source sizes and output
     /// viewport. The projection is the calibration document's projection
     /// (zero-copy: the document is the engine), so a document edit
     /// switches the projection automatically.
     pub fn new(
         calib: Calibration,
         viewport_size: ViewportSize,
-        cam_w: u32,
-        cam_h: u32,
+        source_sizes: Vec<(u32, u32)>,
         full_range: bool,
     ) -> Result<Self, StitchError> {
         calib
@@ -34,11 +33,8 @@ impl CpuExecutor {
         viewport_size
             .validate()
             .map_err(StitchError::InvalidConfig)?;
-        if cam_w < 2 || cam_h < 2 {
-            return Err(StitchError::InvalidConfig(format!(
-                "source dimensions must be >= 2, got {cam_w}x{cam_h}"
-            )));
-        }
+        crate::source::validate_camera_sizes(&source_sizes, calib.lenses.len(), true)
+            .map_err(StitchError::InvalidConfig)?;
         log::debug!(
             "CpuExecutor: projection '{}' from the calibration projection",
             calib.projection.geometry().name()
@@ -47,7 +43,7 @@ impl CpuExecutor {
         Ok(Self {
             calib,
             viewport_size,
-            cam: (cam_w, cam_h),
+            source_sizes,
             full_range,
         })
     }
@@ -68,7 +64,7 @@ impl CpuExecutor {
     ) -> Result<Vec<u8>, StitchError> {
         stitch_rgba(
             planes,
-            self.cam,
+            &self.source_sizes,
             &self.calib,
             &self.viewport_size,
             pose,
@@ -88,7 +84,7 @@ impl CpuExecutor {
     ) -> Result<Vec<u8>, StitchError> {
         crate::stitch::cpu::stitch_rgba_yuv420p(
             planes,
-            self.cam,
+            &self.source_sizes,
             &self.calib,
             &self.viewport_size,
             pose,

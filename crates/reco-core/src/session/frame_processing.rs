@@ -112,12 +112,10 @@ impl StitchSession {
                         }
                         if due {
                             crate::profile_scope!("detect_wgpu_nv12");
-                            let (w, h) = self.core.source_dims();
                             let frames = super::detection_dispatch::shared_nv12_frames(
                                 &views,
                                 slots,
-                                w,
-                                h,
+                                self.core.source_sizes(),
                                 [self.left_rotation, self.right_rotation],
                             );
                             self.core.run_detection_frames(&frames, capture_times_us)?;
@@ -151,8 +149,10 @@ impl StitchSession {
                         let frames = super::detection_dispatch::metal_frames(
                             left.as_ptr(),
                             right.as_ptr(),
-                            left.width(),
-                            left.height(),
+                            [
+                                (left.width(), left.height()),
+                                (right.width(), right.height()),
+                            ],
                         );
                         self.core.run_detection_frames(&frames, capture_times_us)?;
                     }
@@ -165,7 +165,7 @@ impl StitchSession {
                     if let Some(views) = self.gpu_exec_ref().d3d11_views(left_slot, right_slot) {
                         if due {
                             crate::profile_scope!("detect_wgpu_nv12");
-                            let (w, h) = self.core.source_dims();
+                            let (w, h) = self.core.source_sizes()[0];
                             let frames = super::detection_dispatch::wgpu_nv12_frames(
                                 &views[0],
                                 &views[1],

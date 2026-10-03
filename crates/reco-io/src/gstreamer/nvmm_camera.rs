@@ -60,8 +60,7 @@ impl GstreamerNvmmCameraSource {
         Ok(Self {
             capture,
             info: SourceInfo {
-                width: config.width,
-                height: config.height,
+                camera_sizes: vec![(config.width, config.height); 2],
                 fps: f64::from(config.fps),
                 fps_rational: None,
                 total_frames: None,
@@ -139,8 +138,7 @@ mod tests {
                 capture,
                 interrupted: Arc::new(AtomicBool::new(false)),
                 info: SourceInfo {
-                    width: 64,
-                    height: 32,
+                    camera_sizes: vec![(64, 32); 2],
                     fps: 30.0,
                     fps_rational: None,
                     total_frames: None,
@@ -164,8 +162,7 @@ mod tests {
             capture,
             interrupted: interrupted.clone(),
             info: SourceInfo {
-                width: 64,
-                height: 32,
+                camera_sizes: vec![(64, 32); 2],
                 fps: 30.0,
                 fps_rational: None,
                 total_frames: None,

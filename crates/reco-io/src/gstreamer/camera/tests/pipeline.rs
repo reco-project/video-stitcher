@@ -40,8 +40,7 @@ fn capture<T: Send + Sync + 'static>(
         HostCapture {
             pair,
             info: SourceInfo {
-                width: W,
-                height: H,
+                camera_sizes: vec![(W, H); 2],
                 fps: 30.0,
                 fps_rational: Some((30, 1)),
                 total_frames: None,
@@ -163,16 +162,18 @@ fn session() -> StitchSession {
             roll: 0.0,
         },
     );
-    let executor = CpuExecutor::new(
-        calibration,
-        ViewportSize {
-            width: W,
-            height: H,
-        },
-        W,
-        H,
-        false,
-    )
+    let executor = {
+        let source_sizes = vec![(W, H); calibration.projection.camera_count()];
+        CpuExecutor::new(
+            calibration,
+            ViewportSize {
+                width: W,
+                height: H,
+            },
+            source_sizes,
+            false,
+        )
+    }
     .unwrap();
     let mut session = StitchSession::with_executor(Executor::Cpu(Box::new(executor))).unwrap();
     session.core_mut().set_constrained_look(false);

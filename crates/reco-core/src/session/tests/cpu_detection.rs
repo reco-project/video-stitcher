@@ -82,6 +82,7 @@ fn shared_host_images_survive_source_release_and_match_owned_delivery() {
 
     verify(
         [64, 192].map(|value| Nv12Data {
+            size: (W, H),
             y: vec![value; (W * H) as usize],
             uv: vec![128; (W * H / 2) as usize],
         }),
@@ -89,6 +90,7 @@ fn shared_host_images_survive_source_release_and_match_owned_delivery() {
     );
     verify(
         [64, 192].map(|value| Yuv420pData {
+            size: (W, H),
             y: vec![value; (W * H) as usize],
             u: vec![128; (W * H / 4) as usize],
             v: vec![128; (W * H / 4) as usize],
@@ -130,16 +132,18 @@ fn full_circle_lookahead_follows_both_directions_across_the_yaw_seam() {
                     roll: 0.0,
                 },
             );
-            let executor = CpuExecutor::new(
-                cal,
-                ViewportSize {
-                    width: 16,
-                    height: 16,
-                },
-                W,
-                H,
-                false,
-            )
+            let executor = {
+                let source_sizes = vec![(W, H); cal.projection.camera_count()];
+                CpuExecutor::new(
+                    cal,
+                    ViewportSize {
+                        width: 16,
+                        height: 16,
+                    },
+                    source_sizes,
+                    false,
+                )
+            }
             .unwrap();
             let mut session =
                 StitchSession::with_executor(Executor::Cpu(Box::new(executor))).unwrap();
@@ -230,7 +234,11 @@ fn lookahead_image_budget_counts_capacity_and_all_cameras() {
             .map(|_| {
                 let mut y = Vec::with_capacity(100);
                 y.resize(4, 0);
-                Nv12Data { y, uv: vec![0; 2] }
+                Nv12Data {
+                    size: (2, 2),
+                    y,
+                    uv: vec![0; 2],
+                }
             })
             .collect();
         let expected: usize = planes
@@ -250,6 +258,7 @@ fn lookahead_image_budget_counts_capacity_and_all_cameras() {
                 let mut v = Vec::with_capacity(100);
                 v.resize(1, 128);
                 Yuv420pData {
+                    size: (W, H),
                     y: vec![0; 4],
                     u: vec![128],
                     v,
@@ -273,10 +282,12 @@ fn lookahead_image_budget_counts_capacity_and_all_cameras() {
 #[test]
 fn shared_images_do_not_bypass_the_lookahead_budget() {
     let nv12 = Arc::new(Nv12Data {
+        size: (2, 2),
         y: vec![0; 4],
         uv: vec![0; 2],
     });
     let yuv = Arc::new(Yuv420pData {
+        size: (2, 2),
         y: vec![0; 4],
         u: vec![0; 1],
         v: vec![0; 1],
@@ -407,7 +418,9 @@ fn cpu_buffered_output_preserves_order_manual_pose_replay_and_limits() {
                             .enable_replay_buffer(Some(std::time::Duration::from_secs(60)));
                         session.set_lookahead(depth, usize::MAX);
                         let raw_frames = Arc::new(AtomicU64::new(0));
-                        session.set_stacked_recorder(Box::new(RawRecorder(raw_frames.clone())));
+                        session
+                            .set_stacked_recorder(Box::new(RawRecorder(raw_frames.clone())))
+                            .unwrap();
                         let images = Arc::new(Mutex::new(Vec::new()));
                         session
                             .add_sink(
@@ -614,16 +627,18 @@ fn cpu_session_receives_future_states_for_both_projections_and_formats() {
                 } else {
                     test_calibration()
                 };
-                let executor = CpuExecutor::new(
-                    cal,
-                    ViewportSize {
-                        width: 16,
-                        height: 16,
-                    },
-                    W,
-                    H,
-                    false,
-                )
+                let executor = {
+                    let source_sizes = vec![(W, H); cal.projection.camera_count()];
+                    CpuExecutor::new(
+                        cal,
+                        ViewportSize {
+                            width: 16,
+                            height: 16,
+                        },
+                        source_sizes,
+                        false,
+                    )
+                }
                 .unwrap();
                 let mut session =
                     StitchSession::with_executor(Executor::Cpu(Box::new(executor))).unwrap();
@@ -715,16 +730,18 @@ fn cylinder_gpu_session_receives_future_states_and_drains_both_formats() {
                         width: 16,
                         height: 16,
                     },
-                    ..GpuExecutorConfig::new(
-                        cal,
-                        W,
-                        H,
-                        if nv12 {
-                            InputFormat::Nv12
-                        } else {
-                            InputFormat::Yuv420p
-                        },
-                    )
+                    ..{
+                        let source_sizes = vec![(W, H); cal.projection.camera_count()];
+                        GpuExecutorConfig::new(
+                            cal,
+                            source_sizes,
+                            if nv12 {
+                                InputFormat::Nv12
+                            } else {
+                                InputFormat::Yuv420p
+                            },
+                        )
+                    }
                 },
             )
             .unwrap();
@@ -875,8 +892,7 @@ struct Source {
 impl FrameSource for Source {
     fn info(&self) -> SourceInfo {
         SourceInfo {
-            width: W,
-            height: H,
+            camera_sizes: vec![(W, H); self.cameras],
             fps: 30.0,
             fps_rational: Some((30, 1)),
             total_frames: Some(6),
@@ -893,6 +909,7 @@ impl FrameSource for Source {
             FrameSet::Nv12(
                 (0..self.cameras)
                     .map(|camera| Nv12Data {
+                        size: (W, H),
                         y: y(camera),
                         uv: vec![128; (W * H / 2) as usize],
                     })
@@ -903,6 +920,7 @@ impl FrameSource for Source {
             FrameSet::Yuv420p(
                 (0..self.cameras)
                     .map(|camera| Yuv420pData {
+                        size: (W, H),
                         y: y(camera),
                         u: vec![128; (W * H / 4) as usize],
                         v: vec![128; (W * H / 4) as usize],
@@ -938,16 +956,18 @@ fn cpu_detection_matches_push_and_session_for_both_projections() {
                 let mut baseline = None;
                 // None is direct push; Some is the requested session lookahead depth.
                 for lookahead in [None, Some(0), Some(2)] {
-                    let executor = CpuExecutor::new(
-                        cal.clone(),
-                        ViewportSize {
-                            width: 16,
-                            height: 16,
-                        },
-                        W,
-                        H,
-                        false,
-                    )
+                    let executor = {
+                        let source_sizes = vec![(W, H); cal.projection.camera_count()];
+                        CpuExecutor::new(
+                            cal.clone(),
+                            ViewportSize {
+                                width: 16,
+                                height: 16,
+                            },
+                            source_sizes,
+                            false,
+                        )
+                    }
                     .unwrap();
                     let mut session =
                         StitchSession::with_executor(Executor::Cpu(Box::new(executor))).unwrap();

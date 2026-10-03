@@ -166,11 +166,11 @@ impl Executor {
     }
 
     /// Source frame dimensions `(width, height)` per camera.
-    pub fn source_dims(&self) -> (u32, u32) {
+    pub fn source_sizes(&self) -> &[(u32, u32)] {
         match self {
-            Executor::Cpu(c) => c.cam,
+            Executor::Cpu(c) => &c.source_sizes,
             #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.pipeline.source_dims(),
+            Executor::Gpu(g) => g.pipeline.source_sizes(),
         }
     }
 
@@ -309,10 +309,17 @@ mod tests {
                 width: out_w,
                 height: out_h,
             };
-            let mut backend =
-                CpuExecutor::new(cal.clone(), config.clone(), cam_w, cam_h, false).expect("cpu");
+            let mut backend = {
+                let source_sizes = vec![(cam_w, cam_h); cal.projection.camera_count()];
+                CpuExecutor::new(cal.clone(), config.clone(), source_sizes, false)
+            }
+            .expect("cpu");
             let mut core = StitchCore::new(Executor::Cpu(Box::new(
-                CpuExecutor::new(cal.clone(), config, cam_w, cam_h, false).unwrap(),
+                {
+                    let source_sizes = vec![(cam_w, cam_h); cal.projection.camera_count()];
+                    CpuExecutor::new(cal.clone(), config, source_sizes, false)
+                }
+                .unwrap(),
             )))
             .unwrap();
             let fov = (core.prepare_coverage().unwrap() * fov_factor).min(60.0);
@@ -354,8 +361,7 @@ mod tests {
                 width: w,
                 height: h,
             },
-            w,
-            h,
+            vec![(w, h); 2],
             false,
         )
         .expect("cpu backend");
@@ -372,8 +378,7 @@ mod tests {
                 width: w,
                 height: h,
             },
-            w,
-            h,
+            vec![(w, h); 2],
             false,
         )
         .expect("cpu backend");
@@ -413,13 +418,19 @@ mod tests {
             ..Default::default()
         };
 
-        let mut cpu = CpuExecutor::new(calib.clone(), config.clone(), cam_w, cam_h, false)
-            .expect("cpu backend");
+        let mut cpu = {
+            let source_sizes = vec![(cam_w, cam_h); calib.projection.camera_count()];
+            CpuExecutor::new(calib.clone(), config.clone(), source_sizes, false)
+        }
+        .expect("cpu backend");
         let mut gpu = GpuExecutor::new(
             gpu,
             GpuExecutorConfig {
                 viewport_size: config,
-                ..GpuExecutorConfig::new(calib, cam_w, cam_h, InputFormat::Nv12)
+                ..{
+                    let source_sizes = vec![(cam_w, cam_h); calib.projection.camera_count()];
+                    GpuExecutorConfig::new(calib, source_sizes, InputFormat::Nv12)
+                }
             },
         )
         .expect("gpu backend");
@@ -466,7 +477,12 @@ mod tests {
                         (0..count)
                             .map(|camera| {
                                 let (y, uv) = nv12(w, h, camera as u8 * 30);
-                                Nv12Data { y, uv }.into()
+                                Nv12Data {
+                                    size: (w, h),
+                                    y,
+                                    uv,
+                                }
+                                .into()
                             })
                             .collect(),
                     )
@@ -476,6 +492,7 @@ mod tests {
                             .map(|camera| {
                                 let (y, uv) = nv12(w, h, camera as u8 * 30);
                                 Yuv420pData {
+                                    size: (w, h),
                                     y,
                                     u: uv.iter().step_by(2).copied().collect(),
                                     v: uv.iter().skip(1).step_by(2).copied().collect(),
@@ -485,10 +502,10 @@ mod tests {
                             .collect(),
                     )
                 };
-                let mut executor = GpuExecutor::new(
-                    gpu.clone(),
-                    GpuExecutorConfig::new(cal.clone(), w, h, format),
-                )
+                let mut executor = GpuExecutor::new(gpu.clone(), {
+                    let source_sizes = vec![(w, h); cal.projection.camera_count()];
+                    GpuExecutorConfig::new(cal.clone(), source_sizes, format)
+                })
                 .unwrap();
                 for (width, height) in [(80, 48), (48, 80)] {
                     executor.pipeline.resize(width, height).unwrap();
@@ -498,7 +515,10 @@ mod tests {
                         gpu.clone(),
                         GpuExecutorConfig {
                             viewport_size: ViewportSize { width, height },
-                            ..GpuExecutorConfig::new(cal.clone(), w, h, format)
+                            ..{
+                                let source_sizes = vec![(w, h); cal.projection.camera_count()];
+                                GpuExecutorConfig::new(cal.clone(), source_sizes, format)
+                            }
                         },
                     )
                     .unwrap();
@@ -559,6 +579,7 @@ mod tests {
                         (0..count)
                             .map(|_| {
                                 Nv12Data {
+                                    size: (w, h),
                                     y: vec![0],
                                     uv: vec![0],
                                 }
@@ -613,14 +634,20 @@ mod tests {
                         width: out_w,
                         height: out_h,
                     };
-                    let mut cpu =
-                        CpuExecutor::new(cal.clone(), viewport.clone(), w, h, full_range).unwrap();
+                    let mut cpu = {
+                        let source_sizes = vec![(w, h); cal.projection.camera_count()];
+                        CpuExecutor::new(cal.clone(), viewport.clone(), source_sizes, full_range)
+                    }
+                    .unwrap();
                     let mut render = GpuExecutor::new(
                         gpu.clone(),
                         GpuExecutorConfig {
                             viewport_size: viewport,
                             full_range,
-                            ..GpuExecutorConfig::new(cal, w, h, InputFormat::Nv12)
+                            ..{
+                                let source_sizes = vec![(w, h); cal.projection.camera_count()];
+                                GpuExecutorConfig::new(cal, source_sizes, InputFormat::Nv12)
+                            }
                         },
                     )
                     .unwrap();

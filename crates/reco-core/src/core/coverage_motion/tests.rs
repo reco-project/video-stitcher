@@ -69,16 +69,18 @@ fn core() -> StitchCore {
             roll: 0.0,
         },
     );
-    let executor = CpuExecutor::new(
-        cal,
-        ViewportSize {
-            width: 160,
-            height: 90,
-        },
-        64,
-        32,
-        false,
-    )
+    let executor = {
+        let source_sizes = vec![(64, 32); cal.projection.camera_count()];
+        CpuExecutor::new(
+            cal,
+            ViewportSize {
+                width: 160,
+                height: 90,
+            },
+            source_sizes,
+            false,
+        )
+    }
     .unwrap();
     StitchCore::new(Executor::Cpu(Box::new(executor))).unwrap()
 }
@@ -288,6 +290,7 @@ fn push_submissions_share_the_presentation_boundary() {
         let frames = if nv12 {
             FrameSet::Nv12(vec![
                 Nv12Data {
+                    size: (64, 32),
                     y: vec![128; 64 * 32],
                     uv: vec![128; 64 * 16],
                 }
@@ -296,6 +299,7 @@ fn push_submissions_share_the_presentation_boundary() {
         } else {
             FrameSet::Yuv420p(vec![
                 Yuv420pData {
+                    size: (64, 32),
                     y: vec![128; 64 * 32],
                     u: vec![128; 32 * 16],
                     v: vec![128; 32 * 16],

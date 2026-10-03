@@ -158,8 +158,7 @@ impl SmartFileSource {
 
         let fps_r = probe.frame_rate();
         let mut info = SourceInfo {
-            width: probe.width(),
-            height: probe.height(),
+            camera_sizes: vec![(probe.width(), probe.height())],
             fps: probe.fps().unwrap_or(0.0),
             fps_rational: fps_r.map(|r| (r.0, r.1)),
             total_frames: None,
@@ -184,10 +183,12 @@ impl SmartFileSource {
                 return Err(SourceError::Init { path: input.first_path().display().to_string(), reason: "camera color ranges differ; mixed full-range and limited-range inputs are not supported".into() });
             }
             crate::adapters::merge_frame_rate(&mut info, probe.frame_rate(), input.first_path())?;
-            matching_layout &= probe.width() == info.width
-                && probe.height() == info.height
+            matching_layout &= (cfg!(target_os = "linux")
+                || (probe.width() == info.camera_sizes[0].0
+                    && probe.height() == info.camera_sizes[0].1))
                 && probe.pixel_format() == pixel_format
                 && is_backend_zero_copy_capable(probe.backend());
+            info.camera_sizes.push((probe.width(), probe.height()));
             if camera == 1 {
                 right_rotation = probe.rotation();
             }
@@ -253,8 +254,8 @@ impl SmartFileSource {
         log::info!(
             "SmartFileSource: host-backed frames ({} camera(s), {}x{}, {pixel_format:?}{})",
             inputs.len(),
-            info.width,
-            info.height,
+            info.camera_sizes[0].0,
+            info.camera_sizes[0].1,
             if full_range { ", full-range" } else { "" }
         );
         let left_rotation = source.rotation(0);
@@ -293,9 +294,6 @@ impl SmartFileSource {
             reason: msg,
         };
 
-        let input_width = info.width;
-        let input_height = info.height;
-
         // NVIDIA driver workaround for R16Unorm: see issue #134
         let _warmup = if pixel_format == GpuPixelFormat::P010 {
             let y = create_nv12_shared_texture(gpu, 16, 16, Nv12Plane::Y, pixel_format)
@@ -308,7 +306,7 @@ impl SmartFileSource {
         };
 
         // Create double-buffered shared textures
-        let create_pair = |label: &str| -> Result<_, SourceError> {
+        let create_pair = |label: &str, (input_width, input_height)| -> Result<_, SourceError> {
             let y = create_nv12_shared_texture(
                 gpu,
                 input_width,
@@ -330,16 +328,16 @@ impl SmartFileSource {
 
         let mut cameras = Vec::with_capacity(inputs.len());
         let mut decoders = Vec::with_capacity(inputs.len());
-        for input in inputs {
-            let (y0, uv0) = create_pair("slot0")?;
-            let (y1, uv1) = create_pair("slot1")?;
+        for (input, &size) in inputs.iter().zip(&info.camera_sizes) {
+            let (y0, uv0) = create_pair("slot0", size)?;
+            let (y1, uv1) = create_pair("slot1", size)?;
             let buf = GpuBufInfo {
                 y_ptr: [y0.cuda_ptr, y1.cuda_ptr],
                 uv_ptr: [uv0.cuda_ptr, uv1.cuda_ptr],
                 y_pitch: [y0.pitch, y1.pitch],
                 uv_pitch: [uv0.pitch, uv1.pitch],
-                width: input_width,
-                height: input_height,
+                width: size.0,
+                height: size.1,
                 pixel_format,
             };
             let (tx, rx) = std::sync::mpsc::sync_channel(2);
@@ -357,8 +355,8 @@ impl SmartFileSource {
             crate::zero_copy::spawn_decode_threads_gpu(decoders, sync_offset, shutdown.clone());
         let shared = SharedTextureSet { cameras };
         log::info!(
-            "SmartFileSource: GPU zero-copy ({} camera(s), {input_width}x{input_height}, {pixel_format:?})",
-            inputs.len()
+            "SmartFileSource: GPU zero-copy ({:?}, {pixel_format:?})",
+            info.camera_sizes
         );
 
         Ok(Self {
@@ -395,8 +393,8 @@ impl SmartFileSource {
 
         log::info!(
             "SmartFileSource: Metal zero-copy ({}x{}, VideoToolbox decode{})",
-            info.width,
-            info.height,
+            info.camera_sizes[0].0,
+            info.camera_sizes[0].1,
             if full_range { ", full-range" } else { "" }
         );
 

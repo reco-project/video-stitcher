@@ -5,9 +5,9 @@
 //! GPU-pack path ([`YuvStackPacker`](crate::gpu::yuv_stack_packer::YuvStackPacker)
 //! + [`StackedReplayGpuRecorder`](super::types::StackedReplayGpuRecorder)).
 
-use super::types::StackedReplayRecorder;
 #[cfg(feature = "gpu")]
-use super::types::{StackedReplayGpuRecorder, StitchCoreError};
+use super::types::StackedReplayGpuRecorder;
+use super::types::{StackedReplayRecorder, StitchCoreError};
 #[cfg(feature = "gpu")]
 use crate::gpu::yuv_stack_packer::{
     OutputTileSize, SourceFormat, StackGridLayout, StackedPackSource, YuvStackPacker,
@@ -28,7 +28,17 @@ impl super::StitchCore {
     /// Dropping an existing recorder via [`Self::clear_stacked_recorder`]
     /// is required before attaching a new one; otherwise the old
     /// recording is quietly abandoned.
-    pub fn set_stacked_recorder(&mut self, recorder: Box<dyn StackedReplayRecorder>) {
+    ///
+    /// Requires two cameras with equal decoded dimensions.
+    pub fn set_stacked_recorder(
+        &mut self,
+        recorder: Box<dyn StackedReplayRecorder>,
+    ) -> Result<(), StitchCoreError> {
+        if !matches!(self.source_sizes(), [left, right] if left == right) {
+            return Err(StitchCoreError::Config(
+                "stacked replay requires two cameras with equal dimensions".into(),
+            ));
+        }
         if self.stacked_recorder.is_some() {
             log::warn!(
                 "StitchCore::set_stacked_recorder replacing an existing recorder; \
@@ -37,6 +47,7 @@ impl super::StitchCore {
         }
         log::info!("StitchCore: stacked-video replay recorder attached");
         self.stacked_recorder = Some(recorder);
+        Ok(())
     }
 
     /// Drop the current replay recorder, calling `finish` first so
@@ -91,6 +102,16 @@ impl super::StitchCore {
         if gpu.pipeline.calibration().projection.camera_count() != 2 {
             return Err(StitchCoreError::Config(
                 "GPU stacked replay requires two cameras".into(),
+            ));
+        }
+        if gpu
+            .pipeline
+            .source_sizes()
+            .windows(2)
+            .any(|pair| pair[0] != pair[1])
+        {
+            return Err(StitchCoreError::Config(
+                "GPU stacked replay requires equal camera dimensions".into(),
             ));
         }
         let source_format = match gpu.pipeline.input_format() {

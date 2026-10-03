@@ -195,13 +195,19 @@ pub fn setup_autocam(
         return Ok(false);
     }
 
-    let (input_width, input_height) = target.source_dims();
+    let sizes = target.source_sizes();
+    let &(input_width, input_height) = sizes.first().ok_or("autocam requires input dimensions")?;
+    let mixed_sizes = sizes
+        .iter()
+        .any(|&size| size != (input_width, input_height));
+    if source_is_gpu_resident && mixed_sizes && !cfg!(target_os = "linux") {
+        return Err("native autocam preprocessing requires equal camera dimensions".into());
+    }
     let use_zero_copy = source_is_gpu_resident;
     let model_path = config.model_path.to_str().unwrap_or("");
     let detection_interval = config.detection_interval;
     let tracking_mode = config.tracking_mode;
     let field_roi = config.field_roi.as_ref();
-    let is_10bit = config.is_10bit;
 
     let mut detection_active = false;
 
@@ -267,6 +273,9 @@ pub fn setup_autocam(
     // is enabled, use TrtGpuDetector directly (no ORT dependency).
     #[cfg(feature = "tensorrt-native")]
     if use_zero_copy && model_path.ends_with(".engine") {
+        if mixed_sizes {
+            return Err("native TensorRT preprocessing requires equal camera dimensions".into());
+        }
         // Read labels from sidecar file (e.g. model.engine -> model.labels).
         let labels_path = std::path::Path::new(model_path).with_extension("labels");
         let trt_labels = reco_detect::read_labels_file(&labels_path);
@@ -288,7 +297,7 @@ pub fn setup_autocam(
             input_height,
             config.confidence_threshold.unwrap_or(0.10),
             trt_labels,
-            is_10bit,
+            config.is_10bit,
         ) {
             Ok(Some(trt_det)) => {
                 let detector: Box<dyn reco_core::detect::detector::Detector> =
@@ -318,11 +327,10 @@ pub fn setup_autocam(
     if !detection_active && use_zero_copy {
         match OrtGpuDetector::try_new(
             model_path,
-            input_width,
-            input_height,
+            target.source_sizes(),
             config.confidence_threshold.unwrap_or(0.10),
             Vec::new(),
-            is_10bit,
+            config.is_10bit,
         ) {
             Ok(Some(gpu_det)) => {
                 let detector: Box<dyn reco_core::detect::detector::Detector> =
@@ -377,6 +385,9 @@ pub fn setup_autocam(
     // Fastest CPU inference on ARM (RPi5: ~67ms vs ORT ~130ms).
     #[cfg(feature = "ncnn")]
     if !detection_active && std::path::Path::new(model_path).is_dir() {
+        if mixed_sizes {
+            return Err("NCNN preprocessing requires equal camera dimensions".into());
+        }
         match reco_detect::NcnnYoloDetector::new(
             model_path,
             640, // default NCNN input size
@@ -409,6 +420,9 @@ pub fn setup_autocam(
         && use_zero_copy
         && let Some(gpu) = target.gpu()
     {
+        if mixed_sizes {
+            return Err("mixed-size native inputs require CUDA ORT detection; wgpu preprocessing requires equal camera dimensions".into());
+        }
         let yolo = CpuYoloDetector::with_config(
             model_path,
             config.confidence_threshold.unwrap_or(0.10),

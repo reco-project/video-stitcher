@@ -288,7 +288,7 @@ mod tests {
 
         let out = stitch_rgba(
             &[left, right],
-            (w, h),
+            &[(w, h); 2],
             &calib,
             &cfg,
             RenderPose::default(),
@@ -315,7 +315,7 @@ mod tests {
 
         let a = stitch_rgba(
             &[left, right],
-            (w, h),
+            &[(w, h); 2],
             &calib,
             &cfg,
             RenderPose::default(),
@@ -324,7 +324,7 @@ mod tests {
         .unwrap();
         let b = stitch_rgba(
             &[left, right],
-            (w, h),
+            &[(w, h); 2],
             &calib,
             &cfg,
             RenderPose::default(),
@@ -385,8 +385,7 @@ mod tests {
                 .expect("L-shape supplies a GPU program"),
             calib.clone(),
             viewport_size.clone(),
-            cam_w,
-            cam_h,
+            vec![(cam_w, cam_h); 2],
             wgpu::TextureFormat::Rgba8Unorm,
             InputFormat::Nv12,
         )
@@ -410,7 +409,7 @@ mod tests {
         // CPU reference on the same inputs (limited range, matching the GPU default).
         let cpu_rgba = stitch_rgba(
             &[left, right],
-            (cam_w, cam_h),
+            &[(cam_w, cam_h); 2],
             &calib,
             &viewport_size,
             pose,
@@ -483,8 +482,7 @@ mod tests {
                 .expect("L-shape supplies a GPU program"),
             calib.clone(),
             viewport_size.clone(),
-            cam_w,
-            cam_h,
+            vec![(cam_w, cam_h); 2],
             wgpu::TextureFormat::Rgba8Unorm,
             InputFormat::Yuv420p,
         )
@@ -509,7 +507,7 @@ mod tests {
 
         let cpu_rgba = stitch_rgba_yuv420p(
             &[left, right],
-            (cam_w, cam_h),
+            &[(cam_w, cam_h); 2],
             &calib,
             &viewport_size,
             pose,
@@ -590,8 +588,7 @@ mod tests {
                 .expect("L-shape supplies a GPU program"),
             calib.clone(),
             viewport_size.clone(),
-            cam_w,
-            cam_h,
+            vec![(cam_w, cam_h); 2],
             wgpu::TextureFormat::Rgba8Unorm,
             InputFormat::Nv12,
         )
@@ -619,7 +616,7 @@ mod tests {
         let gpu_rgba = gpu_rgba.expect("gpu frame");
         let cpu_rgba = stitch_rgba(
             &[*left, *right],
-            cam,
+            &[cam; 2],
             calib,
             viewport_size,
             pose,
@@ -944,7 +941,7 @@ mod tests {
         // ~1px of output (fov 75 over 192px ~= 0.007 rad/px); 0.01 rad is decisive.
         let perturbed = stitch_rgba(
             &[left, right],
-            (cam_w, cam_h),
+            &[(cam_w, cam_h); 2],
             &cal,
             &viewport_size,
             RenderPose {

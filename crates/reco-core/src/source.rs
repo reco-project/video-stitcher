@@ -196,12 +196,11 @@ impl Yuv420pFrame {
     }
 }
 
-/// Owned YUV420P plane data (without dimensions).
-///
-/// Used when dimensions are tracked separately - all cameras in a
-/// [`FrameSet`] share the dimensions carried by [`SourceInfo`].
+/// Owned tightly packed YUV420P image in decoded pixel coordinates.
 #[derive(Debug, Clone)]
 pub struct Yuv420pData {
+    /// Decoded `(width, height)`, independent of calibration resolution.
+    pub size: (u32, u32),
     /// Y (luma) plane, full resolution.
     pub y: Vec<u8>,
     /// U (Cb) plane, half resolution.
@@ -228,6 +227,8 @@ impl Yuv420pData {
 /// - UV: `width × (height/2)` bytes (interleaved U,V at half resolution)
 #[derive(Debug, Clone)]
 pub struct Nv12Data {
+    /// Decoded `(width, height)`, independent of calibration resolution.
+    pub size: (u32, u32),
     /// Y (luma) plane, full resolution.
     pub y: Vec<u8>,
     /// Interleaved UV (CbCr) plane, half resolution in each dimension.
@@ -319,6 +320,58 @@ pub enum FrameSet {
 }
 
 impl FrameSet {
+    /// Check host image shapes and plane lengths before inference or rendering.
+    pub(crate) fn validate_host_images(&self, sizes: &[(u32, u32)]) -> Result<(), String> {
+        let check = |camera: usize, size: (u32, u32), lengths: &[usize], expected: &[usize]| {
+            if sizes.get(camera) != Some(&size) || lengths != expected {
+                return Err(format!(
+                    "camera {camera} image layout does not match its configured dimensions"
+                ));
+            }
+            Ok(())
+        };
+        let count = match self {
+            Self::Yuv420p(images) => {
+                for (camera, image) in images.iter().enumerate() {
+                    let (w, h) = image.size;
+                    let pixels = (w as usize)
+                        .checked_mul(h as usize)
+                        .ok_or("image size overflow")?;
+                    check(
+                        camera,
+                        image.size,
+                        &[image.y.len(), image.u.len(), image.v.len()],
+                        &[pixels, pixels / 4, pixels / 4],
+                    )?;
+                }
+                images.len()
+            }
+            Self::Nv12(images) => {
+                for (camera, image) in images.iter().enumerate() {
+                    let (w, h) = image.size;
+                    let pixels = (w as usize)
+                        .checked_mul(h as usize)
+                        .ok_or("image size overflow")?;
+                    check(
+                        camera,
+                        image.size,
+                        &[image.y.len(), image.uv.len()],
+                        &[pixels, pixels / 2],
+                    )?;
+                }
+                images.len()
+            }
+            _ => return Ok(()),
+        };
+        if count != sizes.len() {
+            return Err(format!(
+                "expected {} camera(s) but {count} frame(s) were supplied",
+                sizes.len()
+            ));
+        }
+        Ok(())
+    }
+
     /// Conservative image payload budget retained by this descriptor, excluding
     /// separately accounted staging pools and borrowed native handles. Shared host
     /// images are charged per reference, even if another frame retains the same allocation.
@@ -415,10 +468,8 @@ impl SourceFrame {
 /// Metadata about the frame source.
 #[derive(Debug, Clone)]
 pub struct SourceInfo {
-    /// Frame width in pixels.
-    pub width: u32,
-    /// Frame height in pixels.
-    pub height: u32,
+    /// Fixed decoded `(width, height)` for each camera, in projection order.
+    pub camera_sizes: Vec<(u32, u32)>,
     /// Frames per second (may be approximate for live sources), or zero if unknown.
     pub fps: f64,
     /// Exact frame rate as a rational number (numerator, denominator).
@@ -428,6 +479,33 @@ pub struct SourceInfo {
     /// Estimated total number of frame sets, after source alignment.
     /// `None` for live sources or when the count is unknown. Container metadata may be approximate; use end-of-stream, not this count, to stop processing.
     pub total_frames: Option<u64>,
+}
+
+/// Validate fixed input extents against a projection's camera count and subsampling.
+pub(crate) fn validate_camera_sizes(
+    sizes: &[(u32, u32)],
+    cameras: usize,
+    subsampled: bool,
+) -> Result<(), String> {
+    if sizes.len() != cameras || sizes.is_empty() {
+        return Err(format!(
+            "expected {cameras} input sizes, got {}",
+            sizes.len()
+        ));
+    }
+    for &(width, height) in sizes {
+        if width == 0
+            || height == 0
+            || (subsampled && (!width.is_multiple_of(2) || !height.is_multiple_of(2)))
+            || width > crate::calibration::MAX_DIM
+            || height > crate::calibration::MAX_DIM
+        {
+            return Err(format!(
+                "invalid input dimensions {width}x{height} (subsampled={subsampled})"
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Trait for frame sources.

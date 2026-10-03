@@ -13,18 +13,17 @@ use super::{BlendRule, SurfaceMap};
 
 /// Reject degenerate source dimensions that would underflow chroma indexing.
 fn check_source_dims(cw: u32, ch: u32) -> Result<(), StitchError> {
-    if cw < 2 || ch < 2 {
+    if cw < 2 || ch < 2 || !cw.is_multiple_of(2) || !ch.is_multiple_of(2) {
         return Err(StitchError::InvalidConfig(format!(
-            "source dimensions must be >= 2, got {cw}x{ch}"
+            "source dimensions must be positive and even, got {cw}x{ch}"
         )));
     }
     Ok(())
 }
 
-/// Reject a plane shorter than the configured frame requires (would otherwise
-/// index out of bounds in the gather and panic).
+/// Reject a plane whose length differs from the configured tightly packed image.
 fn check_plane(plane: &[u8], expected: usize) -> Result<(), StitchError> {
-    if plane.len() < expected {
+    if plane.len() != expected {
         return Err(StitchError::FrameSizeMismatch {
             expected,
             actual: plane.len(),
@@ -35,27 +34,28 @@ fn check_plane(plane: &[u8], expected: usize) -> Result<(), StitchError> {
 
 /// Render one tightly packed NV12 frame per calibrated camera into opaque RGBA on the CPU.
 ///
-/// All inputs use `cam` dimensions and the same BT.709 `full_range` interpretation. Output dimensions come from `viewport_size`; `pose` supplies render-space yaw/pitch in radians and vertical FOV in degrees.
-/// Returns an error for invalid dimensions, a camera-count mismatch or undersized planes.
+/// Inputs use their own `sizes` and the same BT.709 `full_range` interpretation. Output dimensions come from `viewport_size`; `pose` supplies render-space yaw/pitch in radians and vertical FOV in degrees.
+/// Returns an error for invalid dimensions, a camera-count mismatch or incorrectly sized planes.
 pub(crate) fn stitch_rgba(
     planes: &[Nv12Planes<'_>],
-    cam: (u32, u32),
+    sizes: &[(u32, u32)],
     calib: &Calibration,
     viewport_size: &ViewportSize,
     pose: RenderPose,
     full_range: bool,
 ) -> Result<Vec<u8>, StitchError> {
-    let (cw, ch) = cam;
-    check_source_dims(cw, ch)?;
     check_camera_count(calib, planes.len())?;
-    let (w, h) = (cw as usize, ch as usize);
-    for p in planes {
+    check_camera_count(calib, sizes.len())?;
+    for (p, &(cw, ch)) in planes.iter().zip(sizes) {
+        check_source_dims(cw, ch)?;
+        let (w, h) = (cw as usize, ch as usize);
         check_plane(p.y, w * h)?;
         check_plane(p.uv, w * (h / 2))?;
     }
     let samplers: Vec<_> = planes
         .iter()
-        .map(|p| move |u, v| sample_nv12(p, cw, ch, u, v, full_range))
+        .zip(sizes)
+        .map(|(p, &(cw, ch))| move |u, v| sample_nv12(p, cw, ch, u, v, full_range))
         .collect();
     Ok(stitch_with(calib, viewport_size, pose, &samplers))
 }
@@ -65,25 +65,26 @@ pub(crate) fn stitch_rgba(
 /// Identical to [`stitch_rgba`] except for separate Y, U and V planes.
 pub(crate) fn stitch_rgba_yuv420p(
     planes: &[Yuv420pPlanes<'_>],
-    cam: (u32, u32),
+    sizes: &[(u32, u32)],
     calib: &Calibration,
     viewport_size: &ViewportSize,
     pose: RenderPose,
     full_range: bool,
 ) -> Result<Vec<u8>, StitchError> {
-    let (cw, ch) = cam;
-    check_source_dims(cw, ch)?;
     check_camera_count(calib, planes.len())?;
-    let (w, h) = (cw as usize, ch as usize);
-    let chroma = (w / 2) * (h / 2);
-    for p in planes {
+    check_camera_count(calib, sizes.len())?;
+    for (p, &(cw, ch)) in planes.iter().zip(sizes) {
+        check_source_dims(cw, ch)?;
+        let (w, h) = (cw as usize, ch as usize);
+        let chroma = (w / 2) * (h / 2);
         check_plane(p.y, w * h)?;
         check_plane(p.u, chroma)?;
         check_plane(p.v, chroma)?;
     }
     let samplers: Vec<_> = planes
         .iter()
-        .map(|p| move |u, v| sample_yuv420p(p, cw, ch, u, v, full_range))
+        .zip(sizes)
+        .map(|(p, &(cw, ch))| move |u, v| sample_yuv420p(p, cw, ch, u, v, full_range))
         .collect();
     Ok(stitch_with(calib, viewport_size, pose, &samplers))
 }

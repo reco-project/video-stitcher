@@ -71,7 +71,11 @@ fn external_compositor_matches_cpu_for_both_projections() {
     for cal in calibrations() {
         cal.validate().unwrap();
         let count = cal.projection.camera_count();
-        let executor = CpuExecutor::new(cal.clone(), size.clone(), 64, 32, false).unwrap();
+        let executor = {
+            let source_sizes = vec![(64, 32); cal.projection.camera_count()];
+            CpuExecutor::new(cal.clone(), size.clone(), source_sizes, false)
+        }
+        .unwrap();
         let mut seen = vec![false; count];
         let mut saw_blend = false;
         let mut saw_uncovered = false;

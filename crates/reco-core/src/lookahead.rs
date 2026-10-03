@@ -15,21 +15,18 @@ pub(crate) fn pool_slots(frames: usize) -> Result<usize, String> {
 }
 
 #[cfg(any(feature = "gpu", test))]
-pub(crate) fn image_bytes(
-    width: u32,
-    height: u32,
-    cameras: usize,
-    bytes_per_sample: usize,
-) -> Result<usize, String> {
-    let y = (width as usize).checked_mul(height as usize);
-    let chroma = (width as usize / 2)
-        .checked_mul(height as usize / 2)
-        .and_then(|n| n.checked_mul(2));
-    y.zip(chroma)
-        .and_then(|(y, uv)| y.checked_add(uv))
-        .and_then(|n| n.checked_mul(cameras))
-        .and_then(|n| n.checked_mul(bytes_per_sample))
-        .ok_or_else(|| "lookahead image byte size overflow".into())
+pub(crate) fn image_bytes(sizes: &[(u32, u32)], bytes_per_sample: usize) -> Result<usize, String> {
+    sizes.iter().try_fold(0usize, |total, &(width, height)| {
+        let y = (width as usize).checked_mul(height as usize);
+        let chroma = (width as usize / 2)
+            .checked_mul(height as usize / 2)
+            .and_then(|n| n.checked_mul(2));
+        y.zip(chroma)
+            .and_then(|(y, uv)| y.checked_add(uv))
+            .and_then(|n| n.checked_mul(bytes_per_sample))
+            .and_then(|n| total.checked_add(n))
+            .ok_or_else(|| "lookahead image byte size overflow".into())
+    })
 }
 
 #[cfg(any(
@@ -99,10 +96,18 @@ mod tests {
         assert_eq!(pool_slots(0).unwrap(), 2);
         assert_eq!(pool_slots(1).unwrap(), 6);
         assert!(pool_slots(usize::MAX).is_err());
-        assert!(image_bytes(u32::MAX, u32::MAX, usize::MAX, 2).is_err());
+        assert!(image_bytes(&[(u32::MAX, u32::MAX)], 2).is_err());
+        assert_eq!(
+            image_bytes(&[(128, 96), (256, 192)], 1).unwrap(),
+            (128 * 96 + 256 * 192) * 3 / 2
+        );
+        assert_eq!(
+            image_bytes(&[(128, 96), (256, 192)], 2).unwrap(),
+            (128 * 96 + 256 * 192) * 3
+        );
         for cameras in [1, 2, 3] {
             assert_eq!(
-                image_bytes(128, 96, cameras, 2).unwrap(),
+                image_bytes(&vec![(128, 96); cameras], 2).unwrap(),
                 128 * 96 * 3 * cameras
             );
         }
