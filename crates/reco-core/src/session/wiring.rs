@@ -38,11 +38,7 @@ impl StitchSession {
     /// Attach a [`Detector`](crate::detect::detector::Detector)
     /// for object detection on raw camera frames.
     ///
-    /// The backend declares which [`DetectorFrame`](crate::detect::detector::DetectorFrame)
-    /// residencies it accepts. Session dispatches CPU frames (YUV /
-    /// NV12) and CUDA frames (shared textures) through the same
-    /// detector; backends return `UnsupportedFrameKind` for residencies
-    /// they cannot handle and session logs+drops those at the boundary.
+    /// Unsupported input residencies return a configuration error from the detection step. Temporary inference failures retain the recovery behavior of [`StitchCore::run_detection_frames`](crate::core::StitchCore::run_detection_frames).
     pub fn set_detector(&mut self, detector: Box<dyn crate::detect::detector::Detector>) {
         self.core.set_detector(detector);
     }

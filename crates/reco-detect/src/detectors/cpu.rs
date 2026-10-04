@@ -364,13 +364,6 @@ impl Detector for CpuYoloDetector {
         camera: CameraIndex,
         frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
-        // `DetectorFrame` is `#[non_exhaustive]`, so we pattern-match
-        // the variants we can handle and catch everything else (today:
-        // CUDA on Linux/Windows, Metal on macOS/iOS; tomorrow: any
-        // new residency variant) with a single wildcard arm that
-        // returns a typed "not my frame" error. A future `StitchCore`
-        // dispatch layer routes the frame to a GPU backend instead of
-        // silently producing zero detections.
         match frame {
             DetectorFrame::Yuv(raw) => self.detect_raw(camera, raw),
             DetectorFrame::PreprocessedChw {

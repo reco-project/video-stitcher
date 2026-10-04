@@ -1111,7 +1111,15 @@ mod tests {
                     )
                 })
                 .collect();
-            core.run_detection_frames(&frames, &[]).unwrap();
+            let result = core.run_detection_frames(&frames, &[]);
+            if values.contains(&3) {
+                assert!(matches!(
+                    result,
+                    Err(reco_core::core::types::StitchCoreError::Config(_))
+                ));
+            } else {
+                result.unwrap();
+            }
         };
         let panner = FieldPanner::with_config(
             30.0,

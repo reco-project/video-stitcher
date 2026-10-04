@@ -1233,6 +1233,93 @@ fn cuda_drains_reordered_frames_and_seeks() {
 #[cfg(all(feature = "gpu", target_os = "linux"))]
 #[test]
 #[ignore = "requires NVIDIA CUDA/NVDEC and Vulkan external-memory interop"]
+fn incompatible_detector_releases_native_decode_workers() {
+    use reco_core::calibration::{Calibration, Framing, Lens};
+    use reco_core::detect::detector::{Detection, Detector, DetectorError, DetectorFrame};
+    use reco_core::projection::Cylinder;
+    use reco_core::render::{renderer::InputFormat, viewport::ViewportSize};
+    use reco_core::session::StitchSession;
+    use std::sync::atomic::AtomicBool;
+
+    struct RejectInput(bool);
+    impl Detector for RejectInput {
+        fn name(&self) -> &'static str {
+            "incompatible"
+        }
+        fn prefers_cuda_nv12(&self) -> bool {
+            self.0
+        }
+        fn detect(
+            &mut self,
+            _: usize,
+            frame: &DetectorFrame<'_>,
+        ) -> Result<Vec<Detection>, DetectorError> {
+            assert_eq!(
+                frame.variant_name(),
+                if self.0 { "CudaNv12" } else { "WgpuNv12" }
+            );
+            Err(DetectorError::UnsupportedFrameKind)
+        }
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("reordered.mp4");
+    fixture(&path);
+    let gpu = reco_core::gpu::GpuContext::new_blocking().unwrap();
+    let input = InputPath::Single(path);
+    for depth in [0, 3] {
+        for cuda in [false, true] {
+            let mut source =
+                reco_io::SmartFileSource::open(std::slice::from_ref(&input), &gpu, 0).unwrap();
+            assert!(source.is_gpu_resident());
+            let calibration = Calibration::new(
+                vec![Lens::flat(WIDTH, HEIGHT)],
+                Cylinder {
+                    radius: 1.0,
+                    arc_deg: 180.0,
+                    surface_height: Some(1.5),
+                },
+                Framing {
+                    axis_offset: 0.0,
+                    tilt: 0.0,
+                    roll: 0.0,
+                },
+            );
+            let mut session = StitchSession::builder()
+                .gpu(gpu.clone())
+                .calibration(calibration)
+                .source_sizes(vec![(WIDTH, HEIGHT)])
+                .input_format(InputFormat::Nv12)
+                .viewport_size(ViewportSize {
+                    width: 64,
+                    height: 36,
+                })
+                .detector(Box::new(RejectInput(cuda)))
+                .build()
+                .unwrap();
+            session.core_mut().set_constrained_look(false);
+            session.set_lookahead(depth, usize::MAX);
+            session
+                .setup_gpu_source(source.shared_texture_set().unwrap())
+                .unwrap();
+            let error = session
+                .run(&mut source, u64::MAX, &AtomicBool::new(false), None)
+                .unwrap_err();
+            assert!(
+                error.to_string().contains("detector 'incompatible'"),
+                "{error}"
+            );
+            assert_eq!(session.telemetry_snapshot().frames_processed, 0);
+            // The session remains alive while the producer joins its decode worker.
+            drop(source);
+            session.finish().unwrap();
+        }
+    }
+}
+
+#[cfg(all(feature = "gpu", target_os = "linux"))]
+#[test]
+#[ignore = "requires NVIDIA CUDA/NVDEC and Vulkan external-memory interop"]
 fn cuda_workers_preserve_completion_failure_and_cancellation() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("reordered.mp4");

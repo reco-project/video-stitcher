@@ -403,11 +403,6 @@ impl Detector for OrtGpuDetector {
         camera: CameraIndex,
         frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
-        // CUDA-residency backend: accept `Cuda(CudaNv12Frame)` and
-        // route everything else to `UnsupportedFrameKind` so the
-        // dispatcher can fall back to a CPU backend for `Cpu(_)`.
-        // The wildcard arm keeps this stable against future
-        // `#[non_exhaustive]` additions to `DetectorFrame`.
         match frame {
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             DetectorFrame::CudaNv12(gpu_frame) => self.detect_gpu_raw(camera, gpu_frame),

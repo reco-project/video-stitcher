@@ -159,9 +159,7 @@ impl super::StitchCore {
     /// observations. Failed inference clears older observations, but preserves a
     /// successful measurement not yet consumed by tracking. No inference without a detector.
     ///
-    /// Inference errors are warned-and-dropped: a flaky call must not
-    /// crash the render loop. `UnsupportedFrameKind` logs at debug -
-    /// it is the expected answer while a caller probes backends.
+    /// Temporary inference errors are warned-and-dropped. Unsupported frame kinds return a configuration error identifying the detector, camera and supplied input. Successful measurements from other cameras are retained, including when this call returns an error. See `unsupported_detector_input_is_reported_in_immediate_and_lookahead_sessions`.
     ///
     /// `capture_times_us` is empty for unidentified images, or contains one nonnegative capture time per calibration camera. An already successfully analysed image is not inferred again; failed inference can be retried. Replacing the detector or invalidating calibration clears this history.
     ///
@@ -196,6 +194,7 @@ impl super::StitchCore {
         };
         self.detected_capture_times.resize(count, None);
         let mut out = Vec::new();
+        let mut unsupported_input = None;
         for (camera, frame) in frames {
             let capture_time = capture_times_us.get(*camera).copied();
             if capture_time.is_some() && self.detected_capture_times[*camera] == capture_time {
@@ -218,10 +217,15 @@ impl super::StitchCore {
                             .retain(|detection| detection.camera != *camera);
                     }
                     match error {
-                        DetectorError::UnsupportedFrameKind => log::debug!(
-                            "StitchCore detector '{}' does not support this frame residency ({camera:?})",
-                            detector.name()
-                        ),
+                        DetectorError::UnsupportedFrameKind => {
+                            unsupported_input.get_or_insert_with(|| {
+                                super::StitchCoreError::Config(format!(
+                                    "detector '{}' does not support {} input for camera {camera}",
+                                    detector.name(),
+                                    frame.variant_name()
+                                ))
+                            });
+                        }
                         error => log::warn!(
                             "StitchCore detector '{}' {camera:?}: {error}",
                             detector.name()
@@ -236,7 +240,7 @@ impl super::StitchCore {
             self.last_detections
                 .sort_by_key(|detection| detection.camera);
         }
-        Ok(())
+        unsupported_input.map_or(Ok(()), Err)
     }
 
     /// Expire held measurements before a source-frame tracking tick, including skipped inference ticks.

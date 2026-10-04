@@ -1229,7 +1229,7 @@ mod tests {
                         width: 0.1,
                         height: 0.1,
                     }]),
-                    _ => Err(DetectorError::UnsupportedFrameKind),
+                    _ => Err(DetectorError::InferenceFailed("injected".into())),
                 }
             }
         }
@@ -1335,6 +1335,88 @@ mod tests {
             );
             core.update_trackers(8, 266.6);
             assert!(core.fresh_cameras.is_empty());
+        }
+    }
+
+    #[test]
+    fn unsupported_input_preserves_peer_measurements_and_retry_identity() {
+        use crate::detect::detector::{
+            ChromaPlanes, Detection, Detector, DetectorError, DetectorFrame, YuvView,
+        };
+        use std::sync::{Arc, Mutex};
+
+        struct RejectOnce {
+            camera: usize,
+            calls: Arc<Mutex<Vec<usize>>>,
+        }
+        impl Detector for RejectOnce {
+            fn name(&self) -> &'static str {
+                "reject-once"
+            }
+            fn detect(
+                &mut self,
+                camera: usize,
+                _: &DetectorFrame<'_>,
+            ) -> Result<Vec<Detection>, DetectorError> {
+                self.calls.lock().unwrap().push(camera);
+                if camera == self.camera {
+                    self.camera = usize::MAX;
+                    return Err(DetectorError::UnsupportedFrameKind);
+                }
+                Ok(vec![Detection {
+                    camera,
+                    class_id: 0,
+                    confidence: 0.9,
+                    center_x: 0.5,
+                    center_y: 0.5,
+                    width: 0.1,
+                    height: 0.1,
+                }])
+            }
+        }
+        for rejected in [0, 1] {
+            let mut core = cpu_engine(64, 36);
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            core.set_detector(Box::new(RejectOnce {
+                camera: rejected,
+                calls: calls.clone(),
+            }));
+            let frames = [0, 1].map(|camera| {
+                (
+                    camera,
+                    DetectorFrame::Yuv(YuvView {
+                        y: &[128; 4],
+                        chroma: ChromaPlanes::Yuv420p {
+                            u: &[128],
+                            v: &[128],
+                        },
+                        width: 2,
+                        height: 2,
+                    }),
+                )
+            });
+            let error = core.run_detection_frames(&frames, &[10, 20]).unwrap_err();
+            assert!(error.to_string().contains(&format!("camera {rejected}")));
+            assert_eq!(*calls.lock().unwrap(), [0, 1]);
+            assert_eq!(core.last_detections.len(), 1);
+            assert_eq!(core.last_detections[0].camera, 1 - rejected);
+            assert_eq!(core.fresh_cameras, [1 - rejected]);
+            assert_eq!(core.detected_capture_times[rejected], None);
+            assert_eq!(
+                core.detected_capture_times[1 - rejected],
+                Some([10, 20][1 - rejected])
+            );
+
+            core.run_detection_frames(&frames, &[10, 20]).unwrap();
+            assert_eq!(*calls.lock().unwrap(), [0, 1, rejected]);
+            assert_eq!(
+                core.last_detections
+                    .iter()
+                    .map(|d| d.camera)
+                    .collect::<Vec<_>>(),
+                [0, 1]
+            );
+            assert_eq!(core.detected_capture_times, [Some(10), Some(20)]);
         }
     }
 

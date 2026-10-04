@@ -9,6 +9,47 @@ use crate::stitch::{CpuExecutor, Executor};
 struct FutureProbe(Arc<Mutex<Vec<usize>>>);
 
 #[test]
+fn unsupported_detector_input_is_reported_in_immediate_and_lookahead_sessions() {
+    struct UnsupportedDetector;
+    impl Detector for UnsupportedDetector {
+        fn name(&self) -> &'static str {
+            "unsupported-input"
+        }
+        fn detect(
+            &mut self,
+            _: CameraIndex,
+            _: &DetectorFrame<'_>,
+        ) -> Result<Vec<Detection>, DetectorError> {
+            Err(DetectorError::UnsupportedFrameKind)
+        }
+    }
+
+    for depth in [0, 1, 4] {
+        let mut session = build_cpu_session();
+        session.core_mut().set_constrained_look(false);
+        session.set_detector(Box::new(UnsupportedDetector));
+        session.set_lookahead(depth, usize::MAX);
+        let error = session
+            .run(
+                &mut MockSource::new(8),
+                u64::MAX,
+                &AtomicBool::new(false),
+                None,
+            )
+            .expect_err("incompatible detector input must not silently disable tracking");
+        assert!(matches!(
+            error,
+            SessionError::Core(crate::core::types::StitchCoreError::Config(_))
+        ));
+        let message = error.to_string();
+        assert!(message.contains("unsupported-input"), "{message}");
+        assert!(message.contains("Yuv"), "{message}");
+        assert!(message.contains("camera 0"), "{message}");
+        assert_eq!(session.telemetry_snapshot().frames_processed, 0);
+    }
+}
+
+#[test]
 fn shared_host_images_survive_source_release_and_match_owned_delivery() {
     struct QueuedSource<T> {
         frames: std::collections::VecDeque<Vec<Arc<T>>>,

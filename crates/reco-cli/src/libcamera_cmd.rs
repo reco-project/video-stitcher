@@ -172,14 +172,12 @@ pub fn run_libcamera(
 
     // Warm up: discard first frame (camera ISP init)
     if let Some(frame) = source.next_frame()? {
-        if let Err(e) = session.detect_and_update_world_pose(
+        session.detect_and_update_world_pose(
             &frame.images,
             frame.capture.as_ref(),
             1.0 / capture_fps as f32,
             start.elapsed(),
-        ) {
-            log::warn!("detection failed on this frame: {e}");
-        }
+        )?;
         let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
         session.render_frame(&frame.images, pos, frame.pts_us)?;
         println!("Warmup complete, starting capture...");
@@ -196,14 +194,12 @@ pub fn run_libcamera(
             }
         };
 
-        if let Err(e) = session.detect_and_update_world_pose(
+        session.detect_and_update_world_pose(
             &frame.images,
             frame.capture.as_ref(),
             1.0 / capture_fps as f32,
             start.elapsed(),
-        ) {
-            log::warn!("detection failed on this frame: {e}");
-        }
+        )?;
         let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
         session.render_frame(&frame.images, pos, frame.pts_us)?;
         frame_count += 1;
