@@ -59,10 +59,10 @@ jobs:
       - name: Clippy (with libcamera)
         run: cargo clippy --workspace --all-targets --features libcamera -- -D warnings
       - name: Libcamera subprocess lifecycle
-        run: cargo test -p reco-io --no-default-features --features libcamera --lib libcamera::
+        run: cargo test -p reco-io --no-default-features --features libcamera --lib 'libcamera::'
       - name: GStreamer capture lifecycle, ownership and encoded delivery
         timeout-minutes: 5
-        run: cargo test -p reco-io --no-default-features --features gstreamer,ffmpeg --lib gstreamer::
+        run: cargo test -p reco-io --no-default-features --features gstreamer,ffmpeg --lib 'gstreamer::'
       - name: Clippy (reco-gui automation hook)
         run: cargo clippy -p reco-gui --all-targets --features automation -- -D warnings
       - name: Clippy (no default features)
@@ -217,12 +217,7 @@ jobs:
         run: cargo check --workspace
 
   # ===========================================================================
-  # GPU execution provider compile-check jobs.
-  #
-  # deep-review-2026-04-18 Agent 4 F1 (Critical): CI never builds any of
-  # `cuda / tensorrt / coreml / ncnn / tensorrt-native`, leaving their
-  # Rust + build.rs code with zero compile signal. This block closes
-  # that gap with compile-only jobs (no test-run, no GPU hardware).
+  # Backend feature checks and hardware-independent NCNN runtime tests.
   #
   # - CUDA / TensorRT / CoreML are exercised via `--features XYZ,load-dynamic`
   #   which keeps ORT from linking at build time, so the host doesn't
@@ -232,21 +227,38 @@ jobs:
   #   Any actual C++ compile errors still appear in the log for humans.
   # ===========================================================================
   gpu-backends:
-    name: GPU backend compile-check
+    name: Inference backends
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
         with:
-          packages: ${{ env.APT_PACKAGES }}
+          packages: ${{ env.APT_PACKAGES }} valgrind
       - name: Check reco-detect (cuda + load-dynamic)
         run: cargo check -p reco-detect --features cuda,load-dynamic
       - name: Check reco-detect (tensorrt + load-dynamic)
         run: cargo check -p reco-detect --features tensorrt,load-dynamic
-      - name: Check reco-detect (ncnn)
-        run: cargo check -p reco-detect --features ncnn
+      - name: Build NCNN CPU runtime
+        shell: bash
+        run: |
+          curl --fail --location --retry 3 https://github.com/Tencent/ncnn/archive/e54f7b1f88434e1d844ea0551b880a1cfb079ce1.tar.gz --output "$RUNNER_TEMP/ncnn.tar.gz"
+          echo "999e904d1631f46381728c68c3255af67d2cf4dbfbab8e3a7f2343e7a6dffc3d  $RUNNER_TEMP/ncnn.tar.gz" | sha256sum --check
+          mkdir "$RUNNER_TEMP/ncnn-src"
+          tar -xzf "$RUNNER_TEMP/ncnn.tar.gz" --strip-components=1 -C "$RUNNER_TEMP/ncnn-src"
+          cmake -S "$RUNNER_TEMP/ncnn-src" -B "$RUNNER_TEMP/ncnn-build" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/ncnn" -DNCNN_C_API=ON -DNCNN_VULKAN=OFF -DNCNN_BUILD_TOOLS=OFF -DNCNN_BUILD_EXAMPLES=OFF -DNCNN_BUILD_BENCHMARK=OFF -DNCNN_BUILD_TESTS=OFF -DNCNN_AVX512=OFF
+          cmake --build "$RUNNER_TEMP/ncnn-build" --parallel 2
+          cmake --install "$RUNNER_TEMP/ncnn-build"
+      - name: Test and lint NCNN without ORT
+        env:
+          NCNN_DIR: ${{ runner.temp }}/ncnn
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: valgrind --leak-check=full --errors-for-leak-kinds=definite --error-exitcode=1
+        run: |
+          cargo test -p reco-detect -p reco-autocam --no-default-features --features ncnn --lib ncnn -- --test-threads=1
+          cargo clippy -p reco-detect -p reco-autocam --all-targets --no-default-features --features ncnn -- -D warnings
       - name: Check reco-detect (tensorrt-native, best-effort)
         # Requires NvInfer.h which no hosted GH runner has. Kept in CI
         # to catch Rust-side regressions in trt/engine.rs even when the

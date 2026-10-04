@@ -44,6 +44,8 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(all(test, feature = "ncnn"))]
+mod ncnn_tests;
 pub mod panners;
 mod roi_filter;
 pub mod trackers;
@@ -198,7 +200,6 @@ pub fn setup_autocam(
     if source_is_gpu_resident && mixed_sizes && !cfg!(target_os = "linux") {
         return Err("native autocam preprocessing requires equal camera dimensions".into());
     }
-    let use_zero_copy = source_is_gpu_resident;
     let model_path = config.model_path.to_str().unwrap_or("");
     let detection_interval = config.detection_interval;
     let tracking_mode = config.tracking_mode;
@@ -237,7 +238,7 @@ pub fn setup_autocam(
     // Native TensorRT path: if the model is a .engine file and the feature
     // is enabled, use TrtGpuDetector directly (no ORT dependency).
     #[cfg(feature = "tensorrt-native")]
-    if use_zero_copy && model_path.ends_with(".engine") {
+    if source_is_gpu_resident && model_path.ends_with(".engine") {
         // `confidence_threshold` is an override: when the caller sets
         // it (e.g. 0.25 for ball-only models) it wins on every backend,
         // not just the CPU fallback; otherwise each backend keeps its
@@ -273,7 +274,7 @@ pub fn setup_autocam(
     // On Windows, D3D11VA zero-copy produces WgpuNv12 frames instead — use the wgpu preprocessing
     // path below which wraps CpuYoloDetector (still gets TensorRT EP for inference).
     #[cfg(all(feature = "ort", target_os = "linux"))]
-    if !detection_active && use_zero_copy {
+    if !detection_active && source_is_gpu_resident {
         match OrtGpuDetector::try_new(
             model_path,
             target.source_sizes(),
@@ -304,7 +305,7 @@ pub fn setup_autocam(
     }
 
     #[cfg(all(feature = "ort", target_os = "macos"))]
-    if use_zero_copy && let Some(gpu) = target.gpu() {
+    if source_is_gpu_resident && let Some(gpu) = target.gpu() {
         match MetalYoloDetector::try_new(
             model_path,
             gpu,
@@ -330,19 +331,16 @@ pub fn setup_autocam(
     }
 
     // NCNN backend: use for _ncnn_model directories (Ultralytics NCNN export).
-    // Fastest CPU inference on ARM (RPi5: ~67ms vs ORT ~130ms).
     #[cfg(feature = "ncnn")]
     if !detection_active && std::path::Path::new(model_path).is_dir() {
-        if mixed_sizes {
-            return Err("NCNN preprocessing requires equal camera dimensions".into());
+        if source_is_gpu_resident {
+            return Err("NCNN requires host YUV frames; select host-memory decoding".into());
         }
         match reco_detect::NcnnYoloDetector::new(
             model_path,
             640, // default NCNN input size
-            input_width,
-            input_height,
             config.confidence_threshold.unwrap_or(0.25),
-            Vec::new(), // labels loaded from sidecar if needed
+            Vec::new(),
         ) {
             Ok(ncnn_det) => {
                 let detector: Box<dyn reco_core::detect::detector::Detector> =
@@ -365,7 +363,7 @@ pub fn setup_autocam(
     // Inference can still use a GPU provider if one registered successfully.
     #[cfg(feature = "ort")]
     if !detection_active
-        && use_zero_copy
+        && source_is_gpu_resident
         && let Some(gpu) = target.gpu()
     {
         let yolo = CpuYoloDetector::with_config(
@@ -396,7 +394,7 @@ pub fn setup_autocam(
 
     // ORT CPU fallback for .onnx files.
     #[cfg(feature = "ort")]
-    if !detection_active && !use_zero_copy {
+    if !detection_active && !source_is_gpu_resident {
         let conf = config.confidence_threshold.unwrap_or(0.10);
         let yolo = CpuYoloDetector::with_config(model_path, conf, Vec::new())?;
         let detector: Box<dyn reco_core::detect::detector::Detector> =
