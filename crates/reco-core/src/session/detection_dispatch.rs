@@ -359,42 +359,6 @@ impl StitchSession {
         })
     }
 
-    /// Detect on pre-letterboxed CUDA RGBA (NvBufSurfTransform output).
-    #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
-    pub fn detect_and_update_world_pose_cuda_rgba_letterboxed(
-        &mut self,
-        left_ptr: crate::interop::cuda::CUdeviceptr,
-        right_ptr: crate::interop::cuda::CUdeviceptr,
-        src_width: u32,
-        src_height: u32,
-        elapsed: std::time::Duration,
-    ) -> Result<(), SessionError> {
-        self.detect_and_update_world_pose_with(elapsed, |core| {
-            crate::profile_scope!("detect_preletterboxed_total");
-            core.run_detection_frames(
-                &[
-                    (
-                        0,
-                        DetectorFrame::CudaRgbaLetterboxed {
-                            ptr: left_ptr,
-                            src_width,
-                            src_height,
-                        },
-                    ),
-                    (
-                        1,
-                        DetectorFrame::CudaRgbaLetterboxed {
-                            ptr: right_ptr,
-                            src_width,
-                            src_height,
-                        },
-                    ),
-                ],
-                &[],
-            )
-        })
-    }
-
     /// Update the requested world pose from cached detections and record tracking telemetry.
     ///
     /// With a panner attached, runs trackers and asks it for a pose. Without one, neither tracking nor the stored request advances. Does not run inference, resolve coverage or render a frame.
