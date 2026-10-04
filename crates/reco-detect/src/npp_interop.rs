@@ -24,6 +24,10 @@ pub enum NppError {
     #[error("NPP not available: {0}")]
     NotAvailable(String),
 
+    /// Input layout cannot be represented by the NPP operation.
+    #[error("invalid NPP input: {0}")]
+    InvalidInput(&'static str),
+
     /// NPP function returned an error status.
     #[error("NPP error {code} in {function}")]
     NppCall { function: &'static str, code: i32 },
@@ -55,8 +59,8 @@ pub struct NppiRect {
     pub height: i32,
 }
 
-/// NPP interpolation mode: bilinear.
-const NPPI_INTER_LINEAR: i32 = 1;
+/// NPP interpolation mode: nearest neighbour.
+const NPPI_INTER_NN: i32 = 1;
 
 /// NPP mirror axis: flip both horizontally and vertically (180-degree rotation).
 const NPPI_AXIS_BOTH: i32 = 2;
@@ -404,6 +408,12 @@ fn npp() -> Result<&'static NppFunctions, NppError> {
         .map_err(|e| NppError::NotAvailable(e.clone()))
 }
 
+/// Stream used by NPP operations, for ordering native detector padding and normalization.
+#[cfg(feature = "tensorrt-native")]
+pub(crate) fn stream() -> Result<*mut std::ffi::c_void, NppError> {
+    Ok(npp()?.stream_ctx.h_stream)
+}
+
 fn check_npp(function: &'static str, status: i32) -> Result<(), NppError> {
     if status >= 0 {
         // NPP: 0 = success, positive = warning (acceptable).
@@ -433,9 +443,7 @@ pub fn is_npp_available() -> bool {
 /// shared textures). `dst` must be pre-allocated with at least
 /// `width * height * 3` bytes.
 ///
-/// Note: the `_Ctx` variant expects both planes to share the same pitch.
-/// If `y_pitch != uv_pitch`, this will use `y_pitch` for both (correct for
-/// NVDEC-style shared textures where both planes have the same alignment).
+/// Requires equal plane pitches because the NPP operation accepts one source stride.
 pub fn npp_nv12_to_rgb(
     src_y: CUdeviceptr,
     y_pitch: usize,
@@ -445,15 +453,10 @@ pub fn npp_nv12_to_rgb(
     width: u32,
     height: u32,
 ) -> Result<(), NppError> {
-    // NPP's NV12ToRGB _Ctx variant takes a single nSrcStep for both planes.
-    // NVDEC and shared textures always produce matching pitches, but if they
-    // ever diverge the UV plane would be read with the wrong stride, producing
-    // color corruption that's hard to diagnose. Warn loudly if this happens.
     if y_pitch != uv_pitch {
-        log::warn!(
-            "npp_nv12_to_rgb: Y pitch ({y_pitch}) != UV pitch ({uv_pitch}). \
-             NPP uses a single stride for both planes; UV data may be read incorrectly."
-        );
+        return Err(NppError::InvalidInput(
+            "NV12 conversion requires equal Y and UV pitches",
+        ));
     }
 
     let npp = npp()?;
@@ -483,7 +486,7 @@ pub fn npp_nv12_to_rgb(
     Ok(())
 }
 
-/// Resize a 3-channel (RGB) u8 image on the GPU with bilinear interpolation.
+/// Resize a 3-channel (RGB) u8 image on the GPU with nearest-neighbour sampling.
 ///
 /// Both `src` and `dst` are CUDA device pointers. The source is resized
 /// into the destination ROI region, allowing letterbox placement.
@@ -526,7 +529,7 @@ pub fn npp_resize_c3(
                 dst_step,
                 dst_size,
                 dst_roi,
-                NPPI_INTER_LINEAR,
+                NPPI_INTER_NN,
                 npp.stream_ctx,
             ),
         )?;
@@ -535,21 +538,14 @@ pub fn npp_resize_c3(
     Ok(())
 }
 
-/// Mirror (flip) a 3-channel RGB u8 image on the GPU along both axes.
-///
-/// This performs a 180-degree rotation by flipping both horizontally and
-/// vertically. Used to correct upside-down frames from cameras with
-/// rotation=180 metadata (e.g. DJI) in the GPU zero-copy detection path.
-///
-/// Operates in-place: `src` and `dst` may be the same CUDA device pointer.
-/// Resize a 4-channel (RGBA) u8 image on the GPU with bilinear interpolation.
+/// Resize a 4-channel (RGBA) u8 image on the GPU with nearest-neighbour sampling.
 ///
 /// Same as [`npp_resize_c3`] but for RGBA data. Used by the Bayer
 /// detection path to letterbox-resize RGBA before normalize_rgba_to_chw.
 pub fn npp_resize_c4(
     src: CUdeviceptr,
-    src_w: u32,
-    src_h: u32,
+    src_pitch: usize,
+    (src_w, src_h): (u32, u32),
     dst: CUdeviceptr,
     dst_w: u32,
     dst_h: u32,
@@ -575,14 +571,14 @@ pub fn npp_resize_c4(
             "nppiResize_8u_C4R_Ctx",
             (npp.nppi_resize_c4)(
                 src as *const u8,
-                src_w as i32 * 4,
+                src_pitch as i32,
                 src_size,
                 src_roi,
                 dst as *mut u8,
                 dst_w as i32 * 4,
                 dst_size,
                 dst_roi,
-                NPPI_INTER_LINEAR,
+                NPPI_INTER_NN,
                 npp.stream_ctx,
             ),
         )?;
@@ -590,6 +586,7 @@ pub fn npp_resize_c4(
     Ok(())
 }
 
+/// Mirror a packed RGB image by 180 degrees into a separate GPU buffer.
 pub fn npp_mirror_c3(
     src: CUdeviceptr,
     dst: CUdeviceptr,

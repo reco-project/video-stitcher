@@ -5492,6 +5492,7 @@ dependencies = [
  "reco-core",
  "reco-detect",
  "serde",
+ "tempfile",
  "tracing",
  "wgpu",
 ]

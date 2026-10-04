@@ -27,14 +27,10 @@ public:
 
 extern "C" {
 
-void* trt_create_logger(int severity) {
-    auto sev = static_cast<nvinfer1::ILogger::Severity>(severity);
-    return new SimpleLogger(sev);
-}
-
-void* trt_create_runtime(void* logger) {
-    auto* l = static_cast<nvinfer1::ILogger*>(logger);
-    return nvinfer1::createInferRuntime(*l);
+void* trt_create_runtime(void) {
+    // TensorRT shares its logger between runtimes; it must outlive all of them.
+    static SimpleLogger logger(nvinfer1::ILogger::Severity::kWARNING);
+    return nvinfer1::createInferRuntime(logger);
 }
 
 void* trt_deserialize_engine(void* runtime, const void* data, size_t size) {
@@ -79,7 +75,7 @@ int trt_binding_is_input(void* engine, int index) {
 #endif
 }
 
-void trt_get_binding_dims(void* engine, int index, int* nb_dims, int* dims) {
+int trt_get_binding_dims(void* engine, int index, int64_t* dims, int capacity) {
     auto* e = static_cast<nvinfer1::ICudaEngine*>(engine);
 #if NV_TENSORRT_MAJOR >= 10
     const char* name = e->getIOTensorName(index);
@@ -87,10 +83,23 @@ void trt_get_binding_dims(void* engine, int index, int* nb_dims, int* dims) {
 #else
     nvinfer1::Dims d = e->getBindingDimensions(index);
 #endif
-    *nb_dims = d.nbDims;
+    if (d.nbDims < 0 || d.nbDims > capacity) return -1;
     for (int i = 0; i < d.nbDims; i++) {
         dims[i] = d.d[i];
     }
+    return d.nbDims;
+}
+
+int trt_binding_is_linear_device(void* engine, int index) {
+    auto* e = static_cast<nvinfer1::ICudaEngine*>(engine);
+#if NV_TENSORRT_MAJOR >= 10
+    const char* name = e->getIOTensorName(index);
+    return e->getTensorFormat(name) == nvinfer1::TensorFormat::kLINEAR
+        && e->getTensorLocation(name) == nvinfer1::TensorLocation::kDEVICE;
+#else
+    return e->getBindingFormat(index) == nvinfer1::TensorFormat::kLINEAR
+        && e->getLocation(index) == nvinfer1::TensorLocation::kDEVICE;
+#endif
 }
 
 int trt_get_binding_data_type(void* engine, int index) {
@@ -131,9 +140,8 @@ void trt_cuda_free(void* ptr) {
     cudaFree(ptr);
 }
 
-int trt_cuda_memcpy_h2d(void* dst, const void* src, size_t size, void* stream) {
-    cudaError_t err = cudaMemcpyAsync(dst, src, size, cudaMemcpyHostToDevice,
-                                       static_cast<cudaStream_t>(stream));
+int trt_cuda_memset(void* ptr, int value, size_t size, void* stream) {
+    cudaError_t err = cudaMemsetAsync(ptr, value, size, static_cast<cudaStream_t>(stream));
     return (err == cudaSuccess) ? 0 : static_cast<int>(err);
 }
 
@@ -144,7 +152,7 @@ int trt_cuda_memcpy_d2h(void* dst, const void* src, size_t size, void* stream) {
 }
 
 int trt_cuda_stream_create(void** stream) {
-    cudaStream_t s;
+    cudaStream_t s = nullptr;
     cudaError_t err = cudaStreamCreate(&s);
     *stream = static_cast<void*>(s);
     return (err == cudaSuccess) ? 0 : static_cast<int>(err);
@@ -184,11 +192,6 @@ void trt_destroy_runtime(void* runtime) {
 #else
     r->destroy();
 #endif
-}
-
-void trt_destroy_logger(void* logger) {
-    auto* l = static_cast<SimpleLogger*>(logger);
-    delete l;
 }
 
 } // extern "C"

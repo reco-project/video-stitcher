@@ -14,6 +14,13 @@ pub mod ort_gpu;
 #[cfg(feature = "tensorrt-native")]
 pub mod trt;
 
+#[cfg(all(
+    test,
+    any(target_os = "linux", target_os = "windows"),
+    any(feature = "ort", feature = "tensorrt-native")
+))]
+mod tensor_probe;
+
 use std::path::Path;
 
 use reco_core::detect::detector::Detection;

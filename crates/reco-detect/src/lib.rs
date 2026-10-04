@@ -2,8 +2,8 @@
 //!
 //! This crate owns all object detection implementations:
 //!
-//! - [`CpuYoloDetector`] - ONNX-based YOLO on CPU (all platforms)
-//! - [`OrtGpuDetector`] - ONNX Runtime + TensorRT/CUDA EP on GPU-resident NV12 frames
+//! - `CpuYoloDetector` - ONNX-based YOLO on CPU (all platforms)
+//! - `OrtGpuDetector` - ONNX Runtime + TensorRT/CUDA EP on GPU-resident NV12 frames
 //! - `MetalYoloDetector` - Metal compute + CoreML/ORT on macOS zero-copy frames (cfg macos)
 //! - `TrtGpuDetector` - Native TensorRT inference, no ORT dependency (feature `tensorrt-native`)
 //! - `NcnnYoloDetector` - NCNN inference optimized for ARM/RPi5 (feature `ncnn`)

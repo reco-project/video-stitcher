@@ -1,277 +1,177 @@
-//! Safe wrappers for TensorRT engine, context, and binding metadata.
-//!
-//! Load a pre-built `.engine` file, query its input/output bindings,
-//! and run inference with GPU device pointers.
+//! TensorRT ownership and the static end-to-end detector binding contract.
 
 use std::ffi::{CStr, c_void};
 use std::path::Path;
 
-use super::sys;
+use super::{Result, cuda::CudaStream, sys};
 
-/// TensorRT data type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TrtDataType {
-    /// 32-bit floating point.
-    Float,
-    /// 16-bit floating point (FP16).
-    Half,
-    /// 8-bit integer (INT8).
-    Int8,
-    /// 32-bit integer.
-    Int32,
-}
-
-impl TrtDataType {
-    /// Parse from TensorRT's raw enum value.
-    pub fn from_raw(value: i32) -> Result<Self, TrtError> {
-        match value {
-            0 => Ok(Self::Float),
-            1 => Ok(Self::Half),
-            2 => Ok(Self::Int8),
-            3 => Ok(Self::Int32),
-            _ => Err(TrtError::Runtime(format!(
-                "unknown TensorRT data type: {value}"
-            ))),
-        }
-    }
-
-    /// Byte size of a single element.
-    pub fn byte_size(&self) -> usize {
-        match self {
-            Self::Float | Self::Int32 => 4,
-            Self::Half => 2,
-            Self::Int8 => 1,
-        }
-    }
-}
-
-/// Metadata for a single engine binding (input or output tensor).
-#[derive(Debug, Clone)]
-pub struct BindingInfo {
-    /// Tensor name.
+pub(super) struct BindingInfo {
     pub name: String,
-    /// Whether this is an input binding.
     pub is_input: bool,
-    /// Tensor dimensions (e.g. `[1, 3, 640, 640]` for input).
-    pub dims: Vec<i32>,
-    /// Element data type.
-    pub data_type: TrtDataType,
-    /// Total byte size of the tensor (product of dims * element size).
-    pub byte_size: usize,
+    pub dims: Vec<i64>,
+    pub data_type: i32,
+    pub linear_device: bool,
 }
 
-/// Errors from TensorRT operations.
-#[derive(Debug)]
-pub enum TrtError {
-    /// Runtime error from TensorRT or CUDA.
-    Runtime(String),
-    /// I/O error (e.g. engine file not found).
-    Io(std::io::Error),
+pub(super) struct ModelLayout {
+    pub input_index: usize,
+    pub size: u32,
+    pub input_bytes: usize,
+    pub output_elements: usize,
 }
 
-impl std::fmt::Display for TrtError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Runtime(msg) => write!(f, "TensorRT: {msg}"),
-            Self::Io(err) => write!(f, "TensorRT I/O: {err}"),
+impl ModelLayout {
+    pub fn new(bindings: &[BindingInfo]) -> Result<Self> {
+        if bindings.len() != 2 || bindings.iter().filter(|b| b.is_input).count() != 1 {
+            return Err("TensorRT detector requires exactly one input and one output".into());
         }
+        for binding in bindings {
+            if binding.data_type != 0 || !binding.linear_device {
+                return Err(format!(
+                    "TensorRT binding '{}' must be linear device FP32",
+                    binding.name
+                )
+                .into());
+            }
+        }
+        let input_index = usize::from(!bindings[0].is_input);
+        let size = match bindings[input_index].dims.as_slice() {
+            [1, 3, h, w] if h == w && *h > 0 && *h <= reco_core::calibration::MAX_DIM as i64 => {
+                *h as u32
+            }
+            dims => {
+                return Err(
+                    format!("TensorRT input must be static [1, 3, S, S], got {dims:?}").into(),
+                );
+            }
+        };
+        let output_elements = match bindings[1 - input_index].dims.as_slice() {
+            [1, count, 6] if *count > 0 => {
+                usize::try_from(*count).ok().and_then(|n| n.checked_mul(6))
+            }
+            _ => None,
+        }
+        .filter(|n| *n <= i32::MAX as usize)
+        .ok_or("TensorRT output must be static [1, N, 6] with a supported element count")?;
+        output_elements
+            .checked_mul(size_of::<f32>())
+            .ok_or("TensorRT output size overflow")?;
+        let input_bytes = (size as usize)
+            .checked_mul(size as usize)
+            .and_then(|n| n.checked_mul(3 * size_of::<f32>()))
+            .ok_or("TensorRT input size overflow")?;
+        Ok(Self {
+            input_index,
+            size,
+            input_bytes,
+            output_elements,
+        })
     }
 }
 
-impl std::error::Error for TrtError {}
-
-impl From<std::io::Error> for TrtError {
-    fn from(err: std::io::Error) -> Self {
-        Self::Io(err)
-    }
-}
-
-/// A deserialized TensorRT engine.
-///
-/// Created from a pre-built `.engine` file via [`from_file`](Self::from_file).
-/// The engine owns the TRT runtime and logger - they are destroyed on drop.
-///
-/// # Drop order
-///
-/// When stored in a struct alongside [`TrtContext`], declare `TrtContext`
-/// BEFORE `TrtEngine` so the context is dropped first (Rust drops fields
-/// in declaration order).
-pub struct TrtEngine {
+pub(super) struct TrtEngine {
     engine: *mut c_void,
     runtime: *mut c_void,
-    logger: *mut c_void,
 }
 
-/// SAFETY: TrtEngine is a GPU resource handle. It can be sent to another
-/// thread as long as CUDA context management is done properly (which we
-/// handle via cuda_ensure_context). It is NOT Sync (concurrent access
-/// from multiple threads is unsafe).
+// SAFETY: Exclusive ownership; callers make the CUDA context current before use.
 unsafe impl Send for TrtEngine {}
 
 impl TrtEngine {
-    /// Load a serialized TensorRT engine from a file.
-    ///
-    /// The `.engine` file must be built for the exact GPU architecture
-    /// and TensorRT version of the target device. Use `trtexec` or
-    /// Ultralytics `model.export(format="engine")` to create one.
-    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, TrtError> {
-        let path = path.as_ref();
+    pub fn from_file(path: &Path) -> Result<Self> {
         let data = std::fs::read(path)?;
-
-        // Severity 2 = WARNING (suppress INFO/VERBOSE during load)
-        let logger = unsafe { sys::trt_create_logger(2) };
-        if logger.is_null() {
-            return Err(TrtError::Runtime("failed to create TRT logger".into()));
-        }
-
-        let runtime = unsafe { sys::trt_create_runtime(logger) };
+        let runtime = unsafe { sys::trt_create_runtime() };
         if runtime.is_null() {
-            unsafe { sys::trt_destroy_logger(logger) };
-            return Err(TrtError::Runtime("failed to create TRT runtime".into()));
+            return Err("failed to create TensorRT runtime".into());
         }
-
-        let engine = unsafe {
-            sys::trt_deserialize_engine(runtime, data.as_ptr() as *const c_void, data.len())
-        };
+        let engine =
+            unsafe { sys::trt_deserialize_engine(runtime, data.as_ptr().cast(), data.len()) };
         if engine.is_null() {
-            unsafe {
-                sys::trt_destroy_runtime(runtime);
-                sys::trt_destroy_logger(logger);
-            }
-            return Err(TrtError::Runtime(format!(
-                "failed to deserialize engine from {}",
+            unsafe { sys::trt_destroy_runtime(runtime) };
+            return Err(format!(
+                "failed to deserialize TensorRT engine from {}",
                 path.display()
-            )));
+            )
+            .into());
         }
-
-        Ok(Self {
-            engine,
-            runtime,
-            logger,
-        })
+        Ok(Self { engine, runtime })
     }
 
-    /// Query all input/output bindings of the engine.
-    pub fn bindings(&self) -> Result<Vec<BindingInfo>, TrtError> {
-        let nb = unsafe { sys::trt_get_nb_bindings(self.engine) };
-        let mut bindings = Vec::with_capacity(nb as usize);
-
-        for i in 0..nb {
-            let name_ptr = unsafe { sys::trt_get_binding_name(self.engine, i) };
-            let name = if name_ptr.is_null() {
-                format!("binding_{i}")
-            } else {
-                unsafe { CStr::from_ptr(name_ptr) }
+    pub fn bindings(&self) -> Result<Vec<BindingInfo>> {
+        let count = unsafe { sys::trt_get_nb_bindings(self.engine) };
+        if count != 2 {
+            return Err("TensorRT detector requires exactly two bindings".into());
+        }
+        (0..count)
+            .map(|index| {
+                let name = unsafe { sys::trt_get_binding_name(self.engine, index) };
+                if name.is_null() {
+                    return Err("TensorRT binding has no name".into());
+                }
+                let name = unsafe { CStr::from_ptr(name) }
                     .to_string_lossy()
-                    .into_owned()
-            };
-
-            let is_input = unsafe { sys::trt_binding_is_input(self.engine, i) } != 0;
-
-            let mut nb_dims: i32 = 0;
-            let mut dims = [0i32; 8]; // TRT max dims is 8
-            unsafe {
-                sys::trt_get_binding_dims(self.engine, i, &mut nb_dims, dims.as_mut_ptr());
-            }
-            let dims = dims[..nb_dims as usize].to_vec();
-
-            let raw_dtype = unsafe { sys::trt_get_binding_data_type(self.engine, i) };
-            let data_type = TrtDataType::from_raw(raw_dtype)?;
-
-            // TRT binding dims come from
-            // a loaded engine file; a crafted or corrupt engine could
-            // carry dims whose `product()` overflows usize. Silent wrap
-            // would yield a tiny `byte_size`, then a too-small GPU
-            // buffer allocation, then out-of-bounds GPU reads/writes
-            // when the inference context writes according to the real
-            // tensor size. Use checked_mul and error out explicitly.
-            let num_elements = dims
-                .iter()
-                .try_fold(1usize, |acc, &d| acc.checked_mul(d.max(1) as usize))
-                .ok_or_else(|| {
-                    TrtError::Runtime(format!(
-                        "TRT binding {i} ('{name}') dims {dims:?} overflow usize \
-                         when computing element count (possibly malicious engine)"
-                    ))
-                })?;
-            let byte_size = num_elements
-                .checked_mul(data_type.byte_size())
-                .ok_or_else(|| {
-                    TrtError::Runtime(format!(
-                        "TRT binding {i} ('{name}') byte_size overflow: \
-                         {num_elements} elements * {} bytes per element",
-                        data_type.byte_size()
-                    ))
-                })?;
-
-            bindings.push(BindingInfo {
-                name,
-                is_input,
-                dims,
-                data_type,
-                byte_size,
-            });
-        }
-
-        Ok(bindings)
+                    .into_owned();
+                let mut dims = [0i64; 8];
+                let count = unsafe {
+                    sys::trt_get_binding_dims(
+                        self.engine,
+                        index,
+                        dims.as_mut_ptr(),
+                        dims.len() as i32,
+                    )
+                };
+                if !(0..=dims.len() as i32).contains(&count) {
+                    return Err(format!("invalid TensorRT dimensions for '{name}'").into());
+                }
+                Ok(BindingInfo {
+                    name,
+                    is_input: unsafe { sys::trt_binding_is_input(self.engine, index) } != 0,
+                    dims: dims[..count as usize].to_vec(),
+                    data_type: unsafe { sys::trt_get_binding_data_type(self.engine, index) },
+                    linear_device: unsafe { sys::trt_binding_is_linear_device(self.engine, index) }
+                        != 0,
+                })
+            })
+            .collect()
     }
 
-    /// Create an execution context for running inference.
-    ///
-    /// The context borrows from the engine internally. The engine MUST
-    /// outlive the context. When stored together, declare the context
-    /// field before the engine field.
-    pub fn create_context(&self) -> Result<TrtContext, TrtError> {
-        let ctx = unsafe { sys::trt_create_execution_context(self.engine) };
-        if ctx.is_null() {
-            return Err(TrtError::Runtime(
-                "failed to create execution context".into(),
-            ));
+    pub fn into_context(self) -> Result<TrtContext> {
+        let ptr = unsafe { sys::trt_create_execution_context(self.engine) };
+        if ptr.is_null() {
+            return Err("failed to create TensorRT execution context".into());
         }
-        Ok(TrtContext { ptr: ctx })
+        Ok(TrtContext { ptr, _engine: self })
     }
 }
 
 impl Drop for TrtEngine {
     fn drop(&mut self) {
-        unsafe {
-            sys::trt_destroy_engine(self.engine);
-            sys::trt_destroy_runtime(self.runtime);
-            sys::trt_destroy_logger(self.logger);
+        if super::cuda::context_for_drop() {
+            unsafe {
+                sys::trt_destroy_engine(self.engine);
+                sys::trt_destroy_runtime(self.runtime);
+            }
         }
     }
 }
 
-/// A TensorRT execution context for running inference.
-///
-/// Created from [`TrtEngine::create_context`]. The engine must outlive
-/// the context.
-pub struct TrtContext {
+pub(super) struct TrtContext {
     ptr: *mut c_void,
+    _engine: TrtEngine,
 }
 
-/// SAFETY: Same rationale as TrtEngine.
+// SAFETY: Context and its engine have exclusive ownership and are never used concurrently.
 unsafe impl Send for TrtContext {}
 
 impl TrtContext {
-    /// Run async inference on the given bindings.
-    ///
-    /// `bindings` must contain one device pointer per engine binding,
-    /// in the order returned by [`TrtEngine::bindings`]. Each pointer
-    /// must point to GPU memory of at least `BindingInfo::byte_size` bytes.
-    ///
-    /// Inference is enqueued on `stream` and may not be complete when
-    /// this returns. Call [`CudaStream::synchronize`](super::cuda::CudaStream::synchronize)
-    /// before reading output data.
-    pub fn enqueue(
-        &self,
-        bindings: &mut [*mut c_void],
-        stream: &super::cuda::CudaStream,
-    ) -> Result<(), TrtError> {
-        let result =
-            unsafe { sys::trt_enqueue_v2(self.ptr, bindings.as_mut_ptr(), stream.as_ptr()) };
-        if result != 0 {
-            return Err(TrtError::Runtime("enqueue inference failed".into()));
+    // Both buffers must match the validated bindings and outlive the queued inference.
+    pub unsafe fn enqueue(
+        &mut self,
+        bindings: &mut [*mut c_void; 2],
+        stream: &CudaStream,
+    ) -> Result<()> {
+        if unsafe { sys::trt_enqueue_v2(self.ptr, bindings.as_mut_ptr(), stream.as_ptr()) } != 0 {
+            return Err("TensorRT enqueue failed".into());
         }
         Ok(())
     }
@@ -279,30 +179,8 @@ impl TrtContext {
 
 impl Drop for TrtContext {
     fn drop(&mut self) {
-        unsafe {
-            sys::trt_destroy_context(self.ptr);
+        if super::cuda::context_for_drop() {
+            unsafe { sys::trt_destroy_context(self.ptr) };
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn data_type_from_raw() {
-        assert_eq!(TrtDataType::from_raw(0).unwrap(), TrtDataType::Float);
-        assert_eq!(TrtDataType::from_raw(1).unwrap(), TrtDataType::Half);
-        assert_eq!(TrtDataType::from_raw(2).unwrap(), TrtDataType::Int8);
-        assert_eq!(TrtDataType::from_raw(3).unwrap(), TrtDataType::Int32);
-        assert!(TrtDataType::from_raw(99).is_err());
-    }
-
-    #[test]
-    fn data_type_byte_size() {
-        assert_eq!(TrtDataType::Float.byte_size(), 4);
-        assert_eq!(TrtDataType::Half.byte_size(), 2);
-        assert_eq!(TrtDataType::Int8.byte_size(), 1);
-        assert_eq!(TrtDataType::Int32.byte_size(), 4);
     }
 }

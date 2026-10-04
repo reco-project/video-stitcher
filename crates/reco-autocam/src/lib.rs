@@ -72,11 +72,6 @@ pub use wgpu_detector::WgpuPreprocessingDetector;
 // because it wraps `Box<dyn Detector>`.
 pub use tracking_mode::TrackingMode;
 
-// Path is only used in the ort-backed class-name lookup
-// (reco_detect::create_ort_session) and the CpuYoloDetector
-// fallback. Both are cfg'd behind `feature = "ort"`, so this
-// import follows the same gate.
-#[cfg(feature = "ort")]
 use std::path::Path;
 
 /// Set up automatic camera control on any [`DetectionTarget`](reco_core::detect::DetectionTarget).
@@ -211,36 +206,7 @@ pub fn setup_autocam(
 
     let mut detection_active = false;
 
-    // Load class names from the model to resolve labels to tracker class IDs.
-    // Skip ORT session creation for non-ONNX models (.engine files,
-    // NCNN model directories). ORT can only parse .onnx files.
-    // Without ORT, use defaults or a sidecar labels file.
-    let is_onnx = model_path.ends_with(".onnx");
-    #[cfg(feature = "ort")]
-    let class_names = if is_onnx {
-        match reco_detect::create_ort_session(Path::new(model_path), Vec::new()) {
-            Ok((_, _, names)) => names,
-            Err(e) => {
-                log::warn!("Could not read model labels: {e}, using COCO defaults");
-                Vec::new()
-            }
-        }
-    } else {
-        Vec::new() // Labels from sidecar file or defaults
-    };
-    #[cfg(not(feature = "ort"))]
-    let class_names: Vec<String> = {
-        // Without ort, we can't parse .onnx metadata. Log once, use
-        // defaults. TrtGpuDetector pulls labels from a sidecar
-        // .labels file (handled in its init path below).
-        if is_onnx {
-            log::warn!(
-                "Autocam: ort feature disabled; can't parse ONNX class names from {model_path}. \
-                 Using COCO defaults. For .engine models, place a <name>.labels sidecar."
-            );
-        }
-        Vec::new()
-    };
+    let class_names = load_model_labels(model_path);
 
     // Check if ROI filtering should be applied.
     // A FieldRoi is only meaningful if at least one polygon has >= 3 vertices.
@@ -252,52 +218,35 @@ pub fn setup_autocam(
         log::info!("Autocam: field ROI filtering enabled");
     }
 
-    // Resolved once up front so each RoiFilteredDetector wrap below
-    // can install the Step 7c per-class anchor policy (player = Bottom
-    // so feet + 75th-pctile must both lie inside the ROI; ball stays
-    // on the Center default).
-    let person_id_for_roi = resolve_or(&class_names, &["person"], 0);
+    // Only players get the bottom-anchor policy. Known ball-only models keep
+    // the center anchor; unlabeled models retain the COCO class fallback.
+    let person_id_for_roi = roi_player_class(&class_names);
 
     // Tiny helper so each backend's "wrap the detector in
     // RoiFilteredDetector if ROI is present" site stays one line.
     let wrap_with_roi = |inner: Box<dyn reco_core::detect::detector::Detector>,
                          roi: reco_core::calibration::FieldRoi|
      -> Box<dyn reco_core::detect::detector::Detector> {
-        Box::new(
-            RoiFilteredDetector::new(inner, roi)
-                .with_class_anchor(person_id_for_roi, RoiAnchor::Bottom),
-        )
+        let filtered = RoiFilteredDetector::new(inner, roi);
+        Box::new(match person_id_for_roi {
+            Some(person) => filtered.with_class_anchor(person, RoiAnchor::Bottom),
+            None => filtered,
+        })
     };
 
     // Native TensorRT path: if the model is a .engine file and the feature
     // is enabled, use TrtGpuDetector directly (no ORT dependency).
     #[cfg(feature = "tensorrt-native")]
     if use_zero_copy && model_path.ends_with(".engine") {
-        if mixed_sizes {
-            return Err("native TensorRT preprocessing requires equal camera dimensions".into());
-        }
-        // Read labels from sidecar file (e.g. model.engine -> model.labels).
-        let labels_path = std::path::Path::new(model_path).with_extension("labels");
-        let trt_labels = reco_detect::read_labels_file(&labels_path);
-        if !trt_labels.is_empty() {
-            log::info!(
-                "Autocam: loaded {} class labels from {}",
-                trt_labels.len(),
-                labels_path.display()
-            );
-        }
-
         // `confidence_threshold` is an override: when the caller sets
         // it (e.g. 0.25 for ball-only models) it wins on every backend,
         // not just the CPU fallback; otherwise each backend keeps its
         // own sensible default.
         match reco_detect::TrtGpuDetector::try_new(
             model_path,
-            input_width,
-            input_height,
+            target.source_sizes(),
             config.confidence_threshold.unwrap_or(0.10),
-            trt_labels,
-            config.is_10bit,
+            class_names.clone(),
         ) {
             Ok(Some(trt_det)) => {
                 let detector: Box<dyn reco_core::detect::detector::Detector> =
@@ -599,9 +548,7 @@ fn resolve_class_id(class_names: &[String], candidates: &[&str]) -> Option<u16> 
     })
 }
 
-/// [`resolve_class_id`] with a COCO-index fallback, for callers that
-/// always need an id (the ball tracker, the ROI anchor). Logs when the
-/// fallback is used so a mislabeled or label-less model is visible.
+/// [`resolve_class_id`] with a COCO-index fallback for the ball tracker. Logs when the fallback is used so a mislabeled or label-less model is visible.
 fn resolve_or(class_names: &[String], candidates: &[&str], default_id: u16) -> u16 {
     resolve_class_id(class_names, candidates).unwrap_or_else(|| {
         log::warn!(
@@ -610,4 +557,70 @@ fn resolve_or(class_names: &[String], candidates: &[&str], default_id: u16) -> u
         );
         default_id
     })
+}
+
+fn load_model_labels(model_path: &str) -> Vec<String> {
+    let is_onnx = model_path.ends_with(".onnx");
+    if model_path.ends_with(".engine") {
+        reco_detect::read_labels_file(Path::new(model_path).with_extension("labels"))
+    } else {
+        #[cfg(feature = "ort")]
+        {
+            if is_onnx {
+                match reco_detect::create_ort_session(Path::new(model_path), Vec::new()) {
+                    Ok((_, _, names)) => names,
+                    Err(e) => {
+                        log::warn!("Could not read model labels: {e}, using COCO defaults");
+                        Vec::new()
+                    }
+                }
+            } else {
+                Vec::new()
+            }
+        }
+        #[cfg(not(feature = "ort"))]
+        {
+            if is_onnx {
+                log::warn!(
+                    "Autocam: ort feature disabled; can't parse ONNX class names from {model_path}. Using COCO defaults."
+                );
+            }
+            Vec::new()
+        }
+    }
+}
+
+fn roi_player_class(class_names: &[String]) -> Option<u16> {
+    resolve_class_id(class_names, &["person"]).or_else(|| class_names.is_empty().then_some(0))
+}
+
+#[cfg(test)]
+mod setup_tests {
+    use super::*;
+
+    #[test]
+    fn engine_sidecar_drives_tracker_and_roi_class_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = dir.path().join("detector.engine");
+        let labels_path = engine.with_extension("labels");
+        std::fs::write(&labels_path, "ball\n").unwrap();
+        let labels = load_model_labels(engine.to_str().unwrap());
+        assert_eq!(labels, ["ball"]);
+        assert_eq!(resolve_or(&labels, &["ball", "sports ball"], 32), 0);
+        assert_eq!(roi_player_class(&labels), None);
+        std::fs::write(&labels_path, "ball\nperson\n").unwrap();
+        let labels = load_model_labels(engine.to_str().unwrap());
+        assert_eq!(resolve_or(&labels, &["ball", "sports ball"], 32), 0);
+        assert_eq!(roi_player_class(&labels), Some(1));
+    }
+
+    #[test]
+    fn missing_labels_keep_coco_fallback_without_inventing_known_classes() {
+        let dir = tempfile::tempdir().unwrap();
+        let labels = load_model_labels(dir.path().join("missing.engine").to_str().unwrap());
+        assert!(labels.is_empty());
+        assert_eq!(resolve_or(&labels, &["ball", "sports ball"], 32), 32);
+        assert_eq!(roi_player_class(&labels), Some(0));
+        assert_eq!(roi_player_class(&["ball".into(), "other".into()]), None);
+    }
 }
