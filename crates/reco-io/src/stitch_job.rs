@@ -1015,7 +1015,7 @@ impl StitchJob {
                         frame_limit,
                         interrupted,
                         self.on_progress.take(),
-                    )?;
+                    );
                 }
                 _ => {
                     if cfg.scale.is_some() {
@@ -1046,7 +1046,7 @@ impl StitchJob {
                         frame_limit,
                         interrupted,
                         self.on_progress.take(),
-                    )?;
+                    );
                     replay_src = Some(replay);
                 }
             }
@@ -1056,7 +1056,7 @@ impl StitchJob {
                 frame_limit,
                 interrupted,
                 self.on_progress.take(),
-            )?;
+            );
         }
         #[cfg(not(feature = "stacked-output"))]
         {
@@ -1068,11 +1068,9 @@ impl StitchJob {
                 frame_limit,
                 interrupted,
                 self.on_progress.take(),
-            )?;
+            );
         }
 
-        let completion = run_result.completion;
-        let frame_count = run_result.frames_processed;
         if let Some(cb) = self.on_finalizing.take() {
             cb();
         }
@@ -1083,7 +1081,7 @@ impl StitchJob {
         // No-op when the GPU path wasn't selected.
         #[cfg(all(feature = "stacked-output", feature = "gpu"))]
         session.clear_stacked_gpu_recorder();
-        session.finish()?;
+        let finish_result = session.finish();
         let telemetry_snap = session.telemetry_snapshot();
 
         #[cfg(feature = "stacked-output")]
@@ -1092,6 +1090,18 @@ impl StitchJob {
         {
             log::warn!("replay recording finalize failed ({e}); stitch output still valid");
         }
+
+        // A failed run can still have rendered frames awaiting delivery. Finalize
+        // them before returning, retaining the run failure as the primary error.
+        if run_result.is_err()
+            && let Err(error) = &finish_result
+        {
+            log::warn!("output finalization also failed: {error}");
+        }
+        let run_result = run_result?;
+        finish_result?;
+        let completion = run_result.completion;
+        let frame_count = run_result.frames_processed;
 
         if frame_count == 0
             && skip_frames > 0

@@ -894,6 +894,157 @@ fn host_file_job_preserves_pixels_timing_and_lookahead_tail() {
     }
 }
 
+fn failed_job_finalizes_its_rendered_prefix(software: bool) {
+    use reco_core::calibration::{Calibration, Framing, Lens};
+    use reco_core::detect::detector::{Detection, Detector, DetectorError, DetectorFrame};
+    use reco_core::projection::Cylinder;
+    use reco_core::session::{SinkDelivery, SinkErrorPolicy, SinkOptions};
+    use reco_core::sink::{OutputFrame, OutputSink, PixelFormat, SinkError, SinkInput};
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    };
+
+    struct FailAfter(usize);
+    impl Detector for FailAfter {
+        fn name(&self) -> &'static str {
+            "injected-midstream-failure"
+        }
+        fn detect(
+            &mut self,
+            _: usize,
+            _: &DetectorFrame<'_>,
+        ) -> Result<Vec<Detection>, DetectorError> {
+            if self.0 == 0 {
+                return Err(DetectorError::UnsupportedFrameKind);
+            }
+            self.0 -= 1;
+            Ok(vec![])
+        }
+    }
+    struct Prefix {
+        pts: Arc<Mutex<Vec<Option<i64>>>>,
+        finishes: Arc<AtomicU64>,
+        fail_finish: bool,
+    }
+    impl OutputSink for Prefix {
+        fn name(&self) -> &'static str {
+            "prefix"
+        }
+        fn wants(&self) -> SinkInput {
+            SinkInput::CpuBytes(PixelFormat::Nv12)
+        }
+        fn consume(&mut self, frame: OutputFrame<'_>) -> Result<(), SinkError> {
+            self.pts.lock().unwrap().push(frame.pts_us);
+            Ok(())
+        }
+        fn finish(&mut self) -> Result<(), SinkError> {
+            self.finishes.fetch_add(1, Ordering::Relaxed);
+            if self.fail_finish {
+                return Err(SinkError::Finish {
+                    reason: "secondary finish failure".into(),
+                });
+            }
+            Ok(())
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("input.mp4");
+    fixture(&input);
+    for lookahead in [0.0, 0.1] {
+        for fail_finish in [false, true] {
+            let output = dir
+                .path()
+                .join(format!("prefix-{lookahead}-{fail_finish}.mp4"));
+            let calibration = Calibration::new(
+                vec![Lens::flat(WIDTH, HEIGHT)],
+                Cylinder {
+                    radius: 32.0,
+                    ..Default::default()
+                },
+                Framing {
+                    axis_offset: 0.0,
+                    tilt: 0.0,
+                    roll: 0.0,
+                },
+            );
+            let processed = Arc::new(AtomicU64::new(0));
+            let progress = processed.clone();
+            let finalized = Arc::new(AtomicBool::new(false));
+            let notify = finalized.clone();
+            let pts = Arc::new(Mutex::new(vec![]));
+            let finishes = Arc::new(AtomicU64::new(0));
+            let observer = Prefix {
+                pts: pts.clone(),
+                finishes: finishes.clone(),
+                fail_finish,
+            };
+            let mut job =
+                reco_io::StitchJob::with_calibration([input.clone()], calibration, &output)
+                    .resolution(64, 32)
+                    .audio(reco_io::output::AudioMode::Disabled)
+                    .encoder_name("libx264")
+                    .lookahead(lookahead)
+                    .on_session(move |session, _| {
+                        session.core_mut().set_constrained_look(false);
+                        session.set_detector(Box::new(FailAfter(12)));
+                        session.add_sink(
+                            Box::new(observer),
+                            SinkOptions {
+                                delivery: SinkDelivery::Inline,
+                                on_error: SinkErrorPolicy::Abort,
+                            },
+                        )?;
+                        Ok(())
+                    })
+                    .on_progress(move |frame| {
+                        progress.store(frame.frames_completed, Ordering::Relaxed);
+                    })
+                    .on_finalizing(move || {
+                        notify.store(true, Ordering::Relaxed);
+                    });
+            if software {
+                job = job.cpu();
+            }
+            let error = job.run(&Arc::new(AtomicBool::new(false))).unwrap_err();
+            assert!(
+                error.to_string().contains("injected-midstream-failure"),
+                "{error}"
+            );
+            let expected = processed.load(Ordering::Relaxed) as usize;
+            assert!(expected > 0);
+            assert_eq!(
+                pts.lock().unwrap().len(),
+                expected,
+                "submitted images were lost on failure"
+            );
+            assert_eq!(finishes.load(Ordering::Relaxed), 1);
+            assert!(finalized.load(Ordering::Relaxed));
+            let mut decoded = VideoDecoder::open_software(&output).unwrap();
+            let mut count = 0;
+            while let Some(frame) = decoded.next_frame().unwrap() {
+                let expected_pts =
+                    pts.lock().unwrap()[count].unwrap_or(count as i64 * 1_000_000 / 30);
+                assert!(frame.timestamp_us.abs_diff(expected_pts) <= 1);
+                count += 1;
+            }
+            assert_eq!(count, expected, "recording must retain the rendered prefix");
+        }
+    }
+}
+
+#[test]
+fn failed_cpu_job_finalizes_its_rendered_prefix() {
+    failed_job_finalizes_its_rendered_prefix(true);
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+#[ignore = "requires a Vulkan adapter and runtime encoding support"]
+fn failed_gpu_job_finalizes_its_rendered_prefix() {
+    failed_job_finalizes_its_rendered_prefix(false);
+}
+
 fn fixture_encoding(path: &std::path::Path, codec_name: &str) {
     fixture_size(path, codec_name, WIDTH, HEIGHT);
 }
