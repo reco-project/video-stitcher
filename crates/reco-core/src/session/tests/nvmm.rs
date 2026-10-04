@@ -3,6 +3,97 @@
 use super::*;
 
 #[test]
+fn native_detection_dispatch_preserves_ownership_camera_order_and_capture_retries() {
+    struct Probe {
+        calls: Arc<Mutex<Vec<usize>>>,
+        owners: [std::sync::Weak<()>; 2],
+    }
+    impl Detector for Probe {
+        fn name(&self) -> &'static str {
+            "nvmm-lifetime-probe"
+        }
+        fn detect(
+            &mut self,
+            camera: usize,
+            frame: &DetectorFrame<'_>,
+        ) -> Result<Vec<Detection>, DetectorError> {
+            let DetectorFrame::Nvmm(image) = frame else {
+                panic!("expected native image");
+            };
+            assert_eq!((image.info().width, image.info().height), (4, 2));
+            assert!(self.owners[camera].upgrade().is_some());
+            let mut calls = self.calls.lock().unwrap();
+            calls.push(camera);
+            if calls.len() == 1 {
+                return Err(DetectorError::InferenceFailed(
+                    "temporary transform failure".into(),
+                ));
+            }
+            Ok(Vec::new())
+        }
+    }
+    for buffered in [false, true] {
+        let owners = [Arc::new(()), Arc::new(())];
+        let weak = owners.each_ref().map(Arc::downgrade);
+        let frame =
+            FrameSet::NvmmResident(owners.map(crate::source::NvmmFrame::lifetime_test_frame));
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let mut session = build_cpu_session();
+        session.set_detector(Box::new(Probe {
+            calls: calls.clone(),
+            owners: weak.clone(),
+        }));
+        for (index, times_us) in [[10, 10], [10, 10], [10, 10], [20, 20]]
+            .into_iter()
+            .enumerate()
+        {
+            let capture = crate::source::CaptureTiming {
+                at_us: times_us[0],
+                times_us: times_us.to_vec(),
+                max_age_us: None,
+            };
+            if buffered {
+                session
+                    .detect_and_track_only(
+                        &frame,
+                        std::time::Duration::ZERO,
+                        index as u64,
+                        Some(&capture),
+                        1.0 / 30.0,
+                    )
+                    .unwrap();
+            } else {
+                // Stop at pose validation after real immediate detection, before native rendering.
+                let error = session
+                    .process_frame_any(
+                        Some(&frame),
+                        std::time::Duration::ZERO,
+                        None,
+                        crate::telemetry::FrameTiming::default(),
+                        std::time::Instant::now(),
+                        &FrameLoopContext {
+                            capture: Some(capture),
+                            frame_seconds: 0.0,
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap_err();
+                assert!(
+                    error
+                        .to_string()
+                        .contains("invalid presentation pose or frame duration"),
+                    "{error}"
+                );
+            }
+        }
+        assert_eq!(*calls.lock().unwrap(), [0, 1, 0, 0, 1]);
+        assert!(weak.iter().all(|owner| owner.upgrade().is_some()));
+        drop(frame);
+        assert!(weak.iter().all(|owner| owner.upgrade().is_none()));
+    }
+}
+
+#[test]
 #[ignore = "requires GPU staging and readback, no native NVMM import"]
 fn nvmm_staged_pixels_survive_capture_reuse() {
     type ImageWithTime = (Vec<u8>, Option<i64>);

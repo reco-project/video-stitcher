@@ -564,19 +564,6 @@ pub fn run_camera(
 
             let mut source = GstreamerNvmmCameraSource::open(&cam_config, interrupted.clone())?;
 
-            // Allocate the NvBufSurfTransform detection surfaces. The
-            // model input is square, but the size here ASSUMES a
-            // 1280x1280 engine: 640 builds ship too and get a
-            // mismatched letterbox from this constant. The size
-            // belongs to engine introspection (the ORT and Metal
-            // backends already read it from the model), not here.
-            if ai_tracking {
-                let model_size = 1280u32;
-                session
-                    .setup_nvmm_detection(model_size, capture_width, capture_height)
-                    .map_err(|e| anyhow::anyhow!("NVMM detection setup: {e}"))?;
-            }
-
             // Periodic "Processed N frames (… fps)" lines (parsed by gameday.py).
             let reporter = helpers::ProgressReporter::new(30);
             let on_progress: reco_core::session::types::ProgressCallback =

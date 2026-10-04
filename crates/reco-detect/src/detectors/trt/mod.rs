@@ -6,6 +6,8 @@
 
 mod cuda;
 mod engine;
+#[cfg(target_os = "linux")]
+mod nvmm;
 mod sys;
 #[cfg(test)]
 mod tests;
@@ -66,7 +68,7 @@ struct Nv12Scratch {
 /// Native TensorRT detector with per-camera geometry and shared inference buffers.
 ///
 /// Scratch storage is allocated lazily for the largest declared source and reused
-/// across cameras. Pre-letterboxed RGBA skips source-sized preprocessing storage.
+/// across cameras. NVMM inputs use one model-sized surface without source-sized scratch.
 pub struct TrtGpuDetector {
     // Drain inference before releasing any referenced allocations or context.
     stream: CudaStream,
@@ -82,6 +84,8 @@ pub struct TrtGpuDetector {
     upload_nv12: Option<CudaBuffer>,
     upload_rgba: Option<CudaBuffer>,
     resized_rgba: Option<CudaBuffer>,
+    #[cfg(target_os = "linux")]
+    nvmm: Option<nvmm::NvmmPreprocessor>,
     confidence_threshold: f32,
     labels: Vec<String>,
 }
@@ -173,6 +177,8 @@ impl TrtGpuDetector {
             upload_nv12: None,
             upload_rgba: None,
             resized_rgba: None,
+            #[cfg(target_os = "linux")]
+            nvmm: None,
             confidence_threshold,
             labels,
         };
@@ -313,9 +319,14 @@ impl TrtGpuDetector {
             )?;
             Ok(())
         })?;
+        self.normalize_letterboxed(resized.ptr(), self.model.size as usize * 4)
+    }
+
+    fn normalize_letterboxed(&self, ptr: CUdeviceptr, pitch: usize) -> Result<()> {
+        validate_plane(ptr, pitch, self.model.size as usize * 4, self.model.size)?;
         cuda_kernels::normalize_rgba_to_chw(
-            resized.ptr(),
-            self.model.size as usize * 4,
+            ptr,
+            pitch,
             self.tensor.ptr(),
             self.model.size,
             self.model.size,
@@ -390,28 +401,23 @@ impl TrtGpuDetector {
             DetectorFrame::CudaRgba { ptr, pitch, .. } => {
                 self.preprocess_rgba(layout, *ptr, *pitch)
             }
-            DetectorFrame::CudaRgbaLetterboxed {
-                ptr,
-                input_size,
-                pitch,
-                ..
-            } => {
-                if *input_size != self.model.size {
-                    return Err(format!(
-                        "TensorRT letterboxed input size {input_size} does not match model size {}",
-                        self.model.size
-                    )
-                    .into());
+            #[cfg(target_os = "linux")]
+            DetectorFrame::Nvmm(frame) => {
+                // The NVMM capture path uses equal-sized camera images.
+                if self.inputs.iter().any(|input| input.size != layout.size) {
+                    return Err("NVMM detection requires equal camera dimensions".into());
                 }
-                validate_plane(*ptr, *pitch, *input_size as usize * 4, *input_size)?;
-                cuda_kernels::normalize_rgba_to_chw(
-                    *ptr,
-                    *pitch,
-                    self.tensor.ptr(),
-                    self.model.size,
-                    self.model.size,
-                )?;
-                Ok(())
+                validate_nv12(layout.size)?;
+                if self.nvmm.is_none() {
+                    self.nvmm = Some(nvmm::NvmmPreprocessor::new(self.model.size)?);
+                }
+                let prepared = self.nvmm.as_mut().unwrap();
+                // SAFETY: the borrowed frame retains its mapped native surface through this synchronous call.
+                unsafe {
+                    prepared.transform(frame.info().surface_ptr, layout)?;
+                }
+                let (ptr, pitch) = (prepared.data_ptr, prepared.pitch);
+                self.normalize_letterboxed(ptr, pitch)
             }
             _ => unreachable!("checked by detect"),
         }
@@ -440,11 +446,13 @@ impl Detector for TrtGpuDetector {
             DetectorFrame::CudaNv12(raw) => (raw.width, raw.height),
             DetectorFrame::Rgba { width, height, .. }
             | DetectorFrame::CudaRgba { width, height, .. } => (*width, *height),
-            DetectorFrame::CudaRgbaLetterboxed {
-                src_width,
-                src_height,
-                ..
-            } => (*src_width, *src_height),
+            #[cfg(target_os = "linux")]
+            DetectorFrame::Nvmm(frame) => {
+                if self.nvmm.is_none() && !nvmm::is_available() {
+                    return Err(DetectorError::UnsupportedFrameKind);
+                }
+                (frame.info().width, frame.info().height)
+            }
             _ => return Err(DetectorError::UnsupportedFrameKind),
         };
         let mut run = || -> Result<Vec<Detection>> {

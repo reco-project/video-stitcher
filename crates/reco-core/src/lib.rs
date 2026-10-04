@@ -91,8 +91,6 @@ pub mod gpu;
 pub mod interop;
 pub mod lens;
 mod lookahead;
-#[cfg(all(target_os = "linux", feature = "gpu"))]
-pub mod nvbuf_transform;
 pub mod projection;
 pub mod render;
 pub mod session;

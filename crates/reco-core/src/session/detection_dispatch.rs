@@ -16,6 +16,17 @@ use crate::geometry::CameraIndex;
 use crate::session::types::SessionError;
 use crate::source::FrameSet;
 
+/// Borrow native images without preparing model-specific pixels in the session.
+#[cfg(all(feature = "gpu", target_os = "linux"))]
+pub(super) fn nvmm_frames(
+    cameras: &[crate::source::NvmmFrame; 2],
+) -> [(CameraIndex, DetectorFrame<'_>); 2] {
+    [
+        (0, DetectorFrame::Nvmm(&cameras[0])),
+        (1, DetectorFrame::Nvmm(&cameras[1])),
+    ]
+}
+
 /// Per-camera CUDA NV12 frames from the shared-texture slot pointers.
 #[cfg(all(feature = "gpu", target_os = "linux"))]
 pub(super) fn cuda_nv12_frames(
@@ -212,11 +223,9 @@ impl StitchSession {
                     self.core.run_detection_frames(&frames, capture_times_us)?;
                 }
                 #[cfg(all(feature = "gpu", target_os = "linux"))]
-                FrameSet::NvmmResident([left, right]) => {
-                    crate::profile_scope!("detect_preletterboxed_total");
-                    if let Some(frames) = self.gpu_exec().nvmm_detector_frames(left, right) {
-                        self.core.run_detection_frames(&frames, capture_times_us)?;
-                    }
+                FrameSet::NvmmResident(cameras) => {
+                    let frames = nvmm_frames(cameras);
+                    self.core.run_detection_frames(&frames, capture_times_us)?;
                 }
                 _ => {
                     self.core.run_cpu_detection(frame, capture_times_us)?;
@@ -241,27 +250,6 @@ impl StitchSession {
                 ..Default::default()
             },
         ))
-    }
-
-    /// Allocate the NVMM detection surfaces for the Jetson zero-copy path.
-    ///
-    /// Call once before [`run`](Self::run) when feeding a
-    /// `FrameSet::NvmmResident` source (mirrors
-    /// [`setup_gpu_source`](Self::setup_gpu_source) for the desktop GPU
-    /// path). `model_size` is the detector's square input dimension (e.g.
-    /// 1280); `src_width`/`src_height` are the capture resolution, used to
-    /// compute the letterbox geometry. Without this the NVMM detection arm
-    /// no-ops (the panner still advances, just without detections).
-    #[cfg(all(feature = "gpu", target_os = "linux"))]
-    pub fn setup_nvmm_detection(
-        &mut self,
-        model_size: u32,
-        src_width: u32,
-        src_height: u32,
-    ) -> Result<(), SessionError> {
-        self.gpu_exec()
-            .setup_nvmm_detection(model_size, src_width, src_height)
-            .map_err(SessionError::ZeroCopy)
     }
 
     /// Run detection on a CPU-resident frame set (YUV420P / NV12).

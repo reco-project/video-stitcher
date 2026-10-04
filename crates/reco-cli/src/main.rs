@@ -990,16 +990,7 @@ fn main() -> anyhow::Result<()> {
                     replay_path: replay.as_deref(),
                     replay_scale,
                     stream_url: stream_url.as_deref(),
-                    use_nvmm: !v4l2_direct && helpers::is_tegra() && {
-                        #[cfg(target_os = "linux")]
-                        {
-                            reco_core::nvbuf_transform::is_available()
-                        }
-                        #[cfg(not(target_os = "linux"))]
-                        {
-                            false
-                        }
-                    },
+                    use_nvmm: !v4l2_direct && helpers::is_tegra(),
                     v4l2_direct,
                     exposure,
                     sensor_gain,

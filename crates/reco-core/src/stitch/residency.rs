@@ -33,15 +33,6 @@ pub(crate) struct Residency {
     /// Keeps native inputs alive until their immediate GPU reads finish.
     #[cfg(target_os = "linux")]
     pub(crate) nvmm_completion: Option<super::nvmm_completion::NvmmCompletion>,
-    /// NvBufSurfTransform letterbox surfaces for NVMM detection
-    /// (left, right). Render and detection consume different handles
-    /// of the same NVMM frame: the DMA-buf fd renders, the raw
-    /// NvBufSurface pointer letterboxes here for the detector.
-    #[cfg(target_os = "linux")]
-    pub(crate) nvmm_det: Option<(
-        crate::nvbuf_transform::NvBufDetectionSurface,
-        crate::nvbuf_transform::NvBufDetectionSurface,
-    )>,
     /// CVPixelBuffer -> Metal texture import cache for the
     /// VideoToolbox zero-copy path.
     #[cfg(any(target_os = "macos", target_os = "ios"))]

@@ -196,25 +196,10 @@ pub enum DetectorFrame<'a> {
         height: u32,
     },
 
-    /// Pre-letterboxed CUDA RGBA at model input resolution.
-    ///
-    /// Produced by NvBufSurfTransform on Jetson: the resize, format
-    /// conversion, and letterbox padding are done in a single hardware-
-    /// accelerated operation. The detector skips NPP resize and only
-    /// runs the normalize kernel + inference.
-    #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "gpu"))]
-    CudaRgbaLetterboxed {
-        /// CUDA device pointer to letterboxed RGBA data at model size.
-        ptr: crate::interop::cuda::CUdeviceptr,
-        /// Model input size (square dimension).
-        input_size: u32,
-        /// Row pitch in bytes, including allocation padding.
-        pitch: usize,
-        /// Original source frame width (for detection coordinate mapping).
-        src_width: u32,
-        /// Original source frame height (for detection coordinate mapping).
-        src_height: u32,
-    },
+    /// Retained Jetson NVMM NV12 image. The backend owns model-specific preprocessing.
+    /// Native reads must complete before returning from detection or retain a frame clone until completion.
+    #[cfg(all(target_os = "linux", feature = "gpu"))]
+    Nvmm(&'a crate::source::NvmmFrame),
 
     /// Metal / VideoToolbox `CVPixelBufferRef`. Local only.
     #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
@@ -260,8 +245,8 @@ impl DetectorFrame<'_> {
             #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "gpu"))]
             Self::CudaRgba { .. } => "CudaRgba",
             #[cfg(any(target_os = "linux", target_os = "windows"))]
-            #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "gpu"))]
-            Self::CudaRgbaLetterboxed { .. } => "CudaRgbaLetterboxed",
+            #[cfg(all(target_os = "linux", feature = "gpu"))]
+            Self::Nvmm(_) => "Nvmm",
             #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
             Self::Metal { .. } => "Metal",
             Self::PreprocessedChw { .. } => "PreprocessedChw",

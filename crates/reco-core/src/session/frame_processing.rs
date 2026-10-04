@@ -131,15 +131,10 @@ impl StitchSession {
                     }
                 }
                 #[cfg(all(feature = "gpu", target_os = "linux"))]
-                FrameSet::NvmmResident([left, right]) => {
-                    // Immediate (non-lookahead) NVMM detection: letterbox via
-                    // NvBufSurfTransform, then detect. (The buffered path runs
-                    // detection during produce and skips this whole step.)
+                FrameSet::NvmmResident(cameras) => {
                     if due {
-                        crate::profile_scope!("detect_preletterboxed_total");
-                        if let Some(frames) = self.gpu_exec().nvmm_detector_frames(left, right) {
-                            self.core.run_detection_frames(&frames, capture_times_us)?;
-                        }
+                        let frames = super::detection_dispatch::nvmm_frames(cameras);
+                        self.core.run_detection_frames(&frames, capture_times_us)?;
                     }
                     due
                 }

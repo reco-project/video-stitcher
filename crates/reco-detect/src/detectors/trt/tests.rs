@@ -236,18 +236,12 @@ fn letterboxed_rgba_honors_allocation_pitch() {
         }
     }
     let source = upload(&rgba);
-    let actual = check_output(
-        &mut detector,
-        0,
-        &DetectorFrame::CudaRgbaLetterboxed {
-            ptr: source.ptr(),
-            input_size: 16,
-            pitch,
-            src_width: 8,
-            src_height: 4,
-        },
-    );
+    detector.normalize_letterboxed(source.ptr(), pitch).unwrap();
+    detector.infer().unwrap();
+    let actual = tensor(&detector);
     close(&actual, &expected);
+    let mean = expected.iter().sum::<f32>() / expected.len() as f32;
+    assert!((detector.output_host[4] - mean).abs() < 1e-5);
 }
 
 #[test]
@@ -455,18 +449,12 @@ fn native_inference_preserves_layout_pixels_and_storage_across_cameras() {
         .unwrap();
     drop(detector);
     let square = upload(&vec![200; 16 * 16 * 4]);
-    for camera in [0, 1, 5, 6] {
-        let data = check_output(
-            &mut letterboxed,
-            camera,
-            &DetectorFrame::CudaRgbaLetterboxed {
-                ptr: square.ptr(),
-                input_size: 16,
-                pitch: 16 * 4,
-                src_width: sizes[camera].0,
-                src_height: sizes[camera].1,
-            },
-        );
+    for _ in 0..4 {
+        letterboxed
+            .normalize_letterboxed(square.ptr(), 16 * 4)
+            .unwrap();
+        letterboxed.infer().unwrap();
+        let data = tensor(&letterboxed);
         close(&data, &vec![200.0 / 255.0; 3 * 16 * 16]);
         assert!(
             letterboxed.nv12.is_none()
@@ -511,27 +499,6 @@ fn native_inference_preserves_layout_pixels_and_storage_across_cameras() {
             width: 8,
             height: 4,
         },
-        DetectorFrame::CudaRgbaLetterboxed {
-            ptr: 0,
-            input_size: 16,
-            pitch: 16 * 4,
-            src_width: 8,
-            src_height: 4,
-        },
-        DetectorFrame::CudaRgbaLetterboxed {
-            ptr: 1,
-            input_size: 8,
-            pitch: 8 * 4,
-            src_width: 8,
-            src_height: 4,
-        },
-        DetectorFrame::CudaRgbaLetterboxed {
-            ptr: 1,
-            input_size: 16,
-            pitch: 16 * 4 - 1,
-            src_width: 8,
-            src_height: 4,
-        },
         DetectorFrame::Yuv(YuvView {
             y: &[],
             chroma: ChromaPlanes::Nv12 { uv: &[] },
@@ -565,16 +532,18 @@ fn native_inference_preserves_layout_pixels_and_storage_across_cameras() {
         letterboxed
             .detect(
                 99,
-                &DetectorFrame::CudaRgbaLetterboxed {
+                &DetectorFrame::CudaRgba {
                     ptr: 1,
-                    input_size: 16,
-                    pitch: 16 * 4,
-                    src_width: 8,
-                    src_height: 4
+                    pitch: 8 * 4,
+                    width: 8,
+                    height: 4
                 }
             )
             .is_err()
     );
+    for (ptr, pitch) in [(0, 64), (1, 63)] {
+        assert!(letterboxed.normalize_letterboxed(ptr, pitch).is_err());
+    }
     assert!(matches!(
         letterboxed.detect(
             0,
