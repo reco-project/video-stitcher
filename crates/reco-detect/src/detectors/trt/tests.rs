@@ -217,6 +217,41 @@ fn engine(dir: &Path, output_format: &str) -> std::path::PathBuf {
 
 #[test]
 #[ignore = "requires NVIDIA CUDA, NPP, TensorRT and trtexec (or RECO_TRTEXEC)"]
+fn letterboxed_rgba_honors_allocation_pitch() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = engine(dir.path(), "fp32");
+    let mut detector = TrtGpuDetector::try_new(&engine, &[(8, 4)], 0.0, vec![])
+        .unwrap()
+        .unwrap();
+    let pitch = 16 * 4 + 32;
+    let mut rgba = vec![0xA5; pitch * 16];
+    let mut expected = vec![0.0; 3 * 16 * 16];
+    for y in 0..16 {
+        for x in 0..16 {
+            for channel in 0..3 {
+                let value = (y * 7 + x * 3 + channel * 20) as u8;
+                rgba[y * pitch + x * 4 + channel] = value;
+                expected[channel * 256 + y * 16 + x] = value as f32 / 255.0;
+            }
+        }
+    }
+    let source = upload(&rgba);
+    let actual = check_output(
+        &mut detector,
+        0,
+        &DetectorFrame::CudaRgbaLetterboxed {
+            ptr: source.ptr(),
+            input_size: 16,
+            pitch,
+            src_width: 8,
+            src_height: 4,
+        },
+    );
+    close(&actual, &expected);
+}
+
+#[test]
+#[ignore = "requires NVIDIA CUDA, NPP, TensorRT and trtexec (or RECO_TRTEXEC)"]
 fn native_inference_preserves_layout_pixels_and_storage_across_cameras() {
     let dir = tempfile::tempdir().unwrap();
     let incompatible = engine(dir.path(), "fp16");
@@ -426,6 +461,8 @@ fn native_inference_preserves_layout_pixels_and_storage_across_cameras() {
             camera,
             &DetectorFrame::CudaRgbaLetterboxed {
                 ptr: square.ptr(),
+                input_size: 16,
+                pitch: 16 * 4,
                 src_width: sizes[camera].0,
                 src_height: sizes[camera].1,
             },
@@ -476,6 +513,22 @@ fn native_inference_preserves_layout_pixels_and_storage_across_cameras() {
         },
         DetectorFrame::CudaRgbaLetterboxed {
             ptr: 0,
+            input_size: 16,
+            pitch: 16 * 4,
+            src_width: 8,
+            src_height: 4,
+        },
+        DetectorFrame::CudaRgbaLetterboxed {
+            ptr: 1,
+            input_size: 8,
+            pitch: 8 * 4,
+            src_width: 8,
+            src_height: 4,
+        },
+        DetectorFrame::CudaRgbaLetterboxed {
+            ptr: 1,
+            input_size: 16,
+            pitch: 16 * 4 - 1,
             src_width: 8,
             src_height: 4,
         },
@@ -514,6 +567,8 @@ fn native_inference_preserves_layout_pixels_and_storage_across_cameras() {
                 99,
                 &DetectorFrame::CudaRgbaLetterboxed {
                     ptr: 1,
+                    input_size: 16,
+                    pitch: 16 * 4,
                     src_width: 8,
                     src_height: 4
                 }

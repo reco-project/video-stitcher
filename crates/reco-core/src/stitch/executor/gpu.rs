@@ -336,6 +336,8 @@ impl GpuExecutor {
                 0,
                 DetectorFrame::CudaRgbaLetterboxed {
                     ptr: det_left.data_ptr,
+                    input_size: det_left.size,
+                    pitch: det_left.pitch as usize,
                     src_width: left.width,
                     src_height: left.height,
                 },
@@ -344,6 +346,8 @@ impl GpuExecutor {
                 1,
                 DetectorFrame::CudaRgbaLetterboxed {
                     ptr: det_right.data_ptr,
+                    input_size: det_right.size,
+                    pitch: det_right.pitch as usize,
                     src_width: right.width,
                     src_height: right.height,
                 },

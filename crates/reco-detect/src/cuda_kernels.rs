@@ -618,12 +618,13 @@ const NORMALIZE_RGBA_TO_CHW_PTX: &[u8] = b"
 .visible .entry normalize_rgba_to_chw(
     .param .u64 src,
     .param .u64 dst,
+    .param .u32 pitch,
     .param .u32 width,
     .param .u32 height
 )
 {
-    .reg .u32 %x, %y, %w, %h, %hw, %src_idx, %dst_idx;
-    .reg .u64 %src_ptr, %dst_ptr, %addr;
+    .reg .u32 %x, %y, %w, %h, %hw, %pitch, %dst_idx;
+    .reg .u64 %src_ptr, %dst_ptr, %addr, %src_idx, %column;
     .reg .u32 %tmp, %tmp2;
     .reg .u16 %pixel;
     .reg .f32 %val, %scale;
@@ -649,10 +650,10 @@ const NORMALIZE_RGBA_TO_CHW_PTX: &[u8] = b"
 
     mul.lo.u32 %hw, %w, %h;
 
-    // src_idx = (y * width + x) * 4 (RGBA stride)
-    mul.lo.u32 %src_idx, %y, %w;
-    add.u32 %src_idx, %src_idx, %x;
-    shl.b32 %src_idx, %src_idx, 2;
+    ld.param.u32 %pitch, [pitch];
+    mul.wide.u32 %src_idx, %y, %pitch;
+    mul.wide.u32 %column, %x, 4;
+    add.u64 %src_idx, %src_idx, %column;
 
     mul.lo.u32 %dst_idx, %y, %w;
     add.u32 %dst_idx, %dst_idx, %x;
@@ -662,7 +663,7 @@ const NORMALIZE_RGBA_TO_CHW_PTX: &[u8] = b"
     mov.f32 %scale, 0f3B808081;
 
     // R -> plane 0
-    cvt.u64.u32 %addr, %src_idx;
+    mov.u64 %addr, %src_idx;
     add.u64 %addr, %src_ptr, %addr;
     ld.global.u8 %pixel, [%addr];
     cvt.rn.f32.u16 %val, %pixel;
@@ -673,7 +674,7 @@ const NORMALIZE_RGBA_TO_CHW_PTX: &[u8] = b"
     st.global.f32 [%addr], %val;
 
     // G -> plane 1
-    cvt.u64.u32 %addr, %src_idx;
+    mov.u64 %addr, %src_idx;
     add.u64 %addr, %src_ptr, %addr;
     add.u64 %addr, %addr, 1;
     ld.global.u8 %pixel, [%addr];
@@ -686,7 +687,7 @@ const NORMALIZE_RGBA_TO_CHW_PTX: &[u8] = b"
     st.global.f32 [%addr], %val;
 
     // B -> plane 2 (alpha at +3 ignored)
-    cvt.u64.u32 %addr, %src_idx;
+    mov.u64 %addr, %src_idx;
     add.u64 %addr, %src_ptr, %addr;
     add.u64 %addr, %addr, 2;
     ld.global.u8 %pixel, [%addr];
@@ -719,18 +720,41 @@ fn get_rgba_kernel() -> Result<&'static CudaKernel, CudaInteropError> {
         })
 }
 
-/// Convert packed RGBA u8 (4-channel HWC) to float32 RGB (3-channel CHW).
+/// Convert pitched RGBA u8 (4-channel HWC) to float32 RGB (3-channel CHW).
 ///
 /// Alpha channel is ignored. No intermediate RGB buffer needed -
 /// single kernel replaces the NPP RGBA->RGB copy + normalize pipeline.
-/// - `src`: packed RGBA u8, `width * height * 4` bytes
+/// - `src`: RGBA u8, at least `src_pitch * (height - 1) + width * 4` bytes
+/// - `src_pitch`: row stride in bytes, at least `width * 4` and at most `u32::MAX`
 /// - `dst`: float32 CHW, `3 * width * height * 4` bytes
+///
+/// Dimensions must be positive and within [`reco_core::calibration::MAX_DIM`]. Source and destination must refer to separate valid device allocations. Conversion completes before returning.
 pub fn normalize_rgba_to_chw(
     src: CUdeviceptr,
+    src_pitch: usize,
     dst: CUdeviceptr,
     width: u32,
     height: u32,
 ) -> Result<(), CudaInteropError> {
+    if width == 0
+        || height == 0
+        || width > reco_core::calibration::MAX_DIM
+        || height > reco_core::calibration::MAX_DIM
+        || src == 0
+        || dst == 0
+        || !dst.is_multiple_of(4)
+        || src_pitch > u32::MAX as usize
+        || src_pitch < width as usize * 4
+        || src
+            .checked_add(src_pitch as u64 * (height - 1) as u64 + width as u64 * 4)
+            .is_none()
+        || dst.checked_add(width as u64 * height as u64 * 12).is_none()
+    {
+        return Err(CudaInteropError::CudaError {
+            function: "normalize_rgba_to_chw",
+            code: 1,
+        });
+    }
     reco_core::interop::cuda::cuda_ensure_context()?;
     let kernel = get_rgba_kernel()?;
 
@@ -739,12 +763,14 @@ pub fn normalize_rgba_to_chw(
 
     let mut src_val = src;
     let mut dst_val = dst;
+    let mut pitch_val = src_pitch as u32;
     let mut w_val = width;
     let mut h_val = height;
 
-    let mut args: [*mut c_void; 4] = [
+    let mut args: [*mut c_void; 5] = [
         (&mut src_val as *mut u64).cast(),
         (&mut dst_val as *mut u64).cast(),
+        (&mut pitch_val as *mut u32).cast(),
         (&mut w_val as *mut u32).cast(),
         (&mut h_val as *mut u32).cast(),
     ];

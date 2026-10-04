@@ -6,6 +6,83 @@ use reco_core::interop::cuda::{
 };
 
 #[test]
+fn invalid_rgba_layouts_fail_before_cuda_initialization() {
+    for (src, pitch, dst, width, height) in [
+        (1, 4, 4, 0, 1),
+        (1, 4, 4, 1, 0),
+        (0, 4, 4, 1, 1),
+        (1, 4, 0, 1, 1),
+        (1, 4, 1, 1, 1),
+        (1, 3, 4, 1, 1),
+        (1, usize::MAX, 4, 1, 1),
+        (1, 4, 4, u32::MAX, 1),
+        (1, 4, 4, 1, u32::MAX),
+        (u64::MAX - 1, 4, 4, 1, 1),
+        (1, 4, u64::MAX - 3, 1, 1),
+    ] {
+        assert!(matches!(
+            normalize_rgba_to_chw(src, pitch, dst, width, height),
+            Err(CudaInteropError::CudaError {
+                function: "normalize_rgba_to_chw",
+                code: 1
+            })
+        ));
+    }
+}
+
+#[test]
+#[ignore = "requires NVIDIA CUDA"]
+fn rgba_normalization_preserves_channels_stride_and_guards() {
+    reco_core::interop::cuda::cuda_ensure_context().unwrap();
+    const GUARD: usize = 8;
+    for (width, height) in [(1, 1), (17, 9), (31, 33), (640, 640), (1280, 1280)] {
+        for padding in [0, 1, 32, 256] {
+            let pitch = width as usize * 4 + padding;
+            let count = (width * height) as usize;
+            let mut rgba = vec![0xA5; pitch * height as usize + 1];
+            let mut expected = vec![0.0; 3 * count];
+            for y in 0..height as usize {
+                for x in 0..width as usize {
+                    for channel in 0..3 {
+                        let value = (y * 7 + x * 3 + channel * 20) as u8;
+                        rgba[1 + y * pitch + x * 4 + channel] = value;
+                        expected[channel * count + y * width as usize + x] = value as f32 / 255.0;
+                    }
+                }
+            }
+            let source = Buffer::bytes(&rgba);
+            let output =
+                Buffer::bytes(bytemuck::cast_slice(&vec![-99.0f32; 3 * count + 2 * GUARD]));
+            normalize_rgba_to_chw(
+                source.0 + 1,
+                pitch,
+                output.0 + (GUARD * 4) as u64,
+                width,
+                height,
+            )
+            .unwrap();
+            let actual = output.floats(3 * count + 2 * GUARD);
+            assert!(actual[..GUARD].iter().all(|&value| value == -99.0));
+            assert!(
+                actual[GUARD + 3 * count..]
+                    .iter()
+                    .all(|&value| value == -99.0)
+            );
+            for (index, (&actual, expected)) in actual[GUARD..GUARD + 3 * count]
+                .iter()
+                .zip(expected)
+                .enumerate()
+            {
+                assert!(
+                    (actual - expected).abs() < 1e-6,
+                    "{width}x{height}, pitch {pitch}, tensor[{index}]: {actual} != {expected}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn invalid_p010_layouts_fail_before_cuda_initialization() {
     for (src, pitch, dst, width, height) in [
         (2, 2, 1, 0, 1),

@@ -315,6 +315,7 @@ impl TrtGpuDetector {
         })?;
         cuda_kernels::normalize_rgba_to_chw(
             resized.ptr(),
+            self.model.size as usize * 4,
             self.tensor.ptr(),
             self.model.size,
             self.model.size,
@@ -389,12 +390,23 @@ impl TrtGpuDetector {
             DetectorFrame::CudaRgba { ptr, pitch, .. } => {
                 self.preprocess_rgba(layout, *ptr, *pitch)
             }
-            DetectorFrame::CudaRgbaLetterboxed { ptr, .. } => {
-                if *ptr == 0 {
-                    return Err("TensorRT letterboxed input pointer is null".into());
+            DetectorFrame::CudaRgbaLetterboxed {
+                ptr,
+                input_size,
+                pitch,
+                ..
+            } => {
+                if *input_size != self.model.size {
+                    return Err(format!(
+                        "TensorRT letterboxed input size {input_size} does not match model size {}",
+                        self.model.size
+                    )
+                    .into());
                 }
+                validate_plane(*ptr, *pitch, *input_size as usize * 4, *input_size)?;
                 cuda_kernels::normalize_rgba_to_chw(
                     *ptr,
+                    *pitch,
                     self.tensor.ptr(),
                     self.model.size,
                     self.model.size,

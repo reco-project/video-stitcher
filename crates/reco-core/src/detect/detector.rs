@@ -206,6 +206,10 @@ pub enum DetectorFrame<'a> {
     CudaRgbaLetterboxed {
         /// CUDA device pointer to letterboxed RGBA data at model size.
         ptr: crate::interop::cuda::CUdeviceptr,
+        /// Model input size (square dimension).
+        input_size: u32,
+        /// Row pitch in bytes, including allocation padding.
+        pitch: usize,
         /// Original source frame width (for detection coordinate mapping).
         src_width: u32,
         /// Original source frame height (for detection coordinate mapping).
