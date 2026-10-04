@@ -369,9 +369,6 @@ pub fn setup_autocam(
         && use_zero_copy
         && let Some(gpu) = target.gpu()
     {
-        if mixed_sizes {
-            return Err("mixed-size native inputs require CUDA ORT detection; wgpu preprocessing requires equal camera dimensions".into());
-        }
         let yolo = CpuYoloDetector::with_config(
             model_path,
             config.confidence_threshold.unwrap_or(0.10),
@@ -383,9 +380,8 @@ pub fn setup_autocam(
             gpu.device().clone(),
             gpu.queue().clone(),
             input_size,
-            input_width,
-            input_height,
-        );
+            target.source_sizes().to_vec(),
+        )?;
         let detector: Box<dyn reco_core::detect::detector::Detector> =
             if let Some(roi) = effective_roi.clone() {
                 wrap_with_roi(Box::new(wrapper), roi)

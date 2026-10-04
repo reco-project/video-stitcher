@@ -161,7 +161,7 @@ pub enum DetectorFrame<'a> {
     ///
     /// Produced by `WgpuPreprocessor`: the NV12→RGB conversion, resize,
     /// letterbox, and normalize are done on the GPU. The detector skips
-    /// all preprocessing and runs inference directly on this data.
+    /// all preprocessing and runs inference directly on this data. Content dimensions are rounded after scaling to fit; top/left padding is half the remaining space rounded down, with the extra pixel on the bottom/right.
     PreprocessedChw {
         /// Float32 CHW data, `3 * input_size * input_size` elements.
         data: &'a [f32],

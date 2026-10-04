@@ -112,16 +112,14 @@ impl CpuYoloDetector {
     ///
     /// Returns `(scale, pad_x, pad_y)` for mapping detection coordinates
     /// back to the original frame.
-    fn preprocess(&mut self, frame: &YuvView<'_>) -> (f32, f32, f32) {
-        let (fw, fh) = (frame.width as f32, frame.height as f32);
-        let is = self.input_size as f32;
-
-        // Letterbox: scale to fit, then pad.
-        let scale = (is / fw).min(is / fh);
-        let new_w = (fw * scale).round() as u32;
-        let new_h = (fh * scale).round() as u32;
-        let pad_x = (self.input_size - new_w) as f32 / 2.0;
-        let pad_y = (self.input_size - new_h) as f32 / 2.0;
+    fn preprocess(&mut self, frame: &YuvView<'_>) -> Result<(f32, f32, f32), DetectorError> {
+        let crate::letterbox::Letterbox {
+            scale,
+            width: new_w,
+            height: new_h,
+            pad_x,
+            pad_y,
+        } = crate::letterbox::Letterbox::new((frame.width, frame.height), self.input_size)?;
 
         let sz = self.input_size as usize;
 
@@ -132,8 +130,6 @@ impl CpuYoloDetector {
         let grey = 114.0 / 255.0_f32;
         self.rgb_chw_buf.fill(grey);
 
-        let pad_x_i = pad_x as u32;
-        let pad_y_i = pad_y as u32;
         let plane = sz * sz;
 
         let w_max = frame.width - 1;
@@ -179,8 +175,8 @@ impl CpuYoloDetector {
                 let g = lerp(g00, g10, g01, g11);
                 let b = lerp(b00, b10, b01, b11);
 
-                let ox = (pad_x_i + dx) as usize;
-                let oy = (pad_y_i + dy) as usize;
+                let ox = (pad_x + dx) as usize;
+                let oy = (pad_y + dy) as usize;
 
                 self.rgb_chw_buf[oy * sz + ox] = r / 255.0;
                 self.rgb_chw_buf[plane + oy * sz + ox] = g / 255.0;
@@ -188,7 +184,7 @@ impl CpuYoloDetector {
             }
         }
 
-        (scale, pad_x, pad_y)
+        Ok((scale, pad_x as f32, pad_y as f32))
     }
 }
 
@@ -222,7 +218,7 @@ impl CpuYoloDetector {
 
         let (scale, pad_x, pad_y) = {
             reco_core::profile_scope!("yolo_preprocess");
-            self.preprocess(frame)
+            self.preprocess(frame)?
         };
 
         let sz = self.input_size as usize;
@@ -306,8 +302,14 @@ impl CpuYoloDetector {
     ) -> Result<Vec<Detection>, DetectorError> {
         reco_core::profile_scope!("yolo_detect_preprocessed");
 
+        if input_size != self.input_size {
+            return Err(DetectorError::InferenceFailed(
+                "preprocessed tensor dimensions do not match the model".into(),
+            ));
+        }
+        let layout = crate::letterbox::Letterbox::new((src_width, src_height), input_size)?;
         let sz = input_size as usize;
-        let expected = 3 * sz * sz;
+        let expected = self.rgb_chw_buf.len();
         if data.len() != expected {
             return Err(DetectorError::InferenceFailed(format!(
                 "PreprocessedChw: expected {expected} floats, got {}",
@@ -335,22 +337,14 @@ impl CpuYoloDetector {
             .map_err(|e| DetectorError::InferenceFailed(format!("output extract: {e}")))?;
         let n = shape[1] as usize;
 
-        // Recompute letterbox params to match the preprocessor's layout
-        let fw = src_width as f32;
-        let fh = src_height as f32;
-        let is = input_size as f32;
-        let scale = (is / fw).min(is / fh);
-        let pad_x = (is - (fw * scale).round()) / 2.0;
-        let pad_y = (is - (fh * scale).round()) / 2.0;
-
         let detections = postproc(
             slice,
             n,
             camera,
             self.confidence_threshold,
-            scale,
-            pad_x,
-            pad_y,
+            layout.scale,
+            layout.pad_x as f32,
+            layout.pad_y as f32,
             src_width,
             src_height,
         );
@@ -544,5 +538,48 @@ mod tests {
     fn cpu_yolo_detector_is_unified_detector_send() {
         fn assert_unified_send<T: Detector + Send + 'static>() {}
         assert_unified_send::<CpuYoloDetector>();
+    }
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[test]
+    fn preprocessed_coordinates_match_integer_padding_when_shapes_alternate() {
+        let dir = tempfile::tempdir().unwrap();
+        let model = dir.path().join("tensor-probe.onnx");
+        std::fs::write(&model, super::super::tensor_probe::MODEL).unwrap();
+        let mut detector = CpuYoloDetector::with_config(&model, 0.1, Vec::new()).unwrap();
+        // Exactly representable by both FP16 providers and the CPU provider.
+        let tensor = vec![0.75; 3 * 16 * 16];
+        for (camera, size, expected) in [
+            (0, (6, 4), (0.46875, 0.609375)),
+            (1, (4, 6), (0.515625, 0.53125)),
+            (0, (6, 4), (0.46875, 0.609375)),
+        ] {
+            let detections = detector
+                .detect_preprocessed(camera, &tensor, 16, size.0, size.1)
+                .unwrap();
+            assert_eq!(detections.len(), 1);
+            assert_eq!(detections[0].camera, camera);
+            assert!((detections[0].center_x - expected.0).abs() < 1e-6);
+            assert!((detections[0].center_y - expected.1).abs() < 1e-6);
+            assert!((detections[0].confidence - 0.75).abs() < 1e-5);
+            let y = vec![200; (size.0 * size.1) as usize];
+            let uv = vec![128; (size.0 * size.1 / 2) as usize];
+            let raw = YuvView {
+                y: &y,
+                chroma: ChromaPlanes::Nv12 { uv: &uv },
+                width: size.0,
+                height: size.1,
+            };
+            let raw_detections = detector.detect_raw(camera, &raw).unwrap();
+            assert_eq!(raw_detections.len(), 1);
+            assert!((raw_detections[0].center_x - expected.0).abs() < 1e-6);
+            assert!((raw_detections[0].center_y - expected.1).abs() < 1e-6);
+        }
+        assert!(detector.detect_preprocessed(0, &tensor, 8, 6, 4).is_err());
+        assert!(detector.detect_preprocessed(0, &tensor, 16, 0, 4).is_err());
+        assert!(
+            detector
+                .detect_preprocessed(0, &tensor[..10], 16, 6, 4)
+                .is_err()
+        );
     }
 }

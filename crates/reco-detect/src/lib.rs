@@ -13,6 +13,7 @@
 //! The NCNN backend is gated behind `ncnn`.
 
 pub mod detectors;
+mod letterbox;
 #[cfg(feature = "ort")]
 pub mod ort_session;
 #[cfg(feature = "ort")]
