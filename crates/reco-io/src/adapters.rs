@@ -89,6 +89,7 @@ pub struct FfmpegFileSource {
     decode_backend: ffmpeg::decoder::DecodeBackend,
     full_range: bool,
     /// GPU pixel format (NV12 8-bit or P010 10-bit).
+    #[cfg(feature = "gpu")]
     pixel_format: reco_core::render::renderer::GpuPixelFormat,
     /// Per-camera rotation from stream metadata (0, 90, 180, 270),
     /// in projection order.
@@ -172,6 +173,7 @@ impl FfmpegFileSource {
             total_frames: input_frame_count(inputs, sync_offset),
         };
         let decode_backend = probe.backend();
+        #[cfg(feature = "gpu")]
         let pixel_format = probe.pixel_format();
         let first_rotation = probe.rotation();
         drop(probe);
@@ -205,6 +207,7 @@ impl FfmpegFileSource {
             full_range,
             info,
             decode_backend,
+            #[cfg(feature = "gpu")]
             pixel_format,
             rotations,
             inputs,
@@ -235,6 +238,7 @@ impl FfmpegFileSource {
     ///
     /// Returns `GpuPixelFormat::P010` for 10-bit sources or
     /// `GpuPixelFormat::Nv12` for 8-bit.
+    #[cfg(feature = "gpu")]
     pub fn pixel_format(&self) -> reco_core::render::renderer::GpuPixelFormat {
         self.pixel_format
     }
@@ -429,6 +433,7 @@ mod decode_tests {
             },
             decode_backend: ffmpeg::decoder::DecodeBackend::Software,
             full_range: false,
+            #[cfg(feature = "gpu")]
             pixel_format: reco_core::render::renderer::GpuPixelFormat::Nv12,
             rotations: vec![0],
             inputs: vec![],
@@ -621,6 +626,7 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         self.rotation(1)
     }
 
+    #[cfg(feature = "gpu")]
     fn gpu_pixel_format(&self) -> reco_core::render::renderer::GpuPixelFormat {
         self.pixel_format
     }
@@ -741,7 +747,7 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
 /// 3. The GPU context supports zero-copy interop (Vulkan+CUDA on Linux, Metal on macOS)
 ///
 /// Returns `true` only if all three conditions are met.
-#[cfg(feature = "ffmpeg")]
+#[cfg(all(feature = "ffmpeg", feature = "gpu"))]
 pub fn detect_zero_copy(source: &FfmpegFileSource, gpu: &reco_core::gpu::GpuContext) -> bool {
     std::env::var("RECO_NO_HWACCEL").is_err()
         && source.supports_zero_copy()

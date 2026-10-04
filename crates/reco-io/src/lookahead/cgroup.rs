@@ -139,7 +139,7 @@ mod tests {
     fn live_systemd_memory_limit() {
         const LIMIT: usize = 256 * 1024 * 1024;
         if std::env::var_os("RECO_CGROUP_PROBE_CHILD").is_some() {
-            let allowance = super::super::image_budget(None, None).unwrap();
+            let allowance = super::super::image_budget(None).unwrap();
             println!("256 MiB cgroup: lookahead allowance {allowance} bytes");
             assert!(allowance > 0 && allowance <= LIMIT / 2);
             return;

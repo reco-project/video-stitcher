@@ -349,7 +349,7 @@ impl reco_core::source::FrameSource for GstreamerNv12CameraSource {
 }
 
 // ── NVMM zero-copy camera source (Jetson only) ─────────────────────
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "gpu", target_os = "linux"))]
 pub use super::nvmm_camera::GstreamerNvmmCameraSource;
 
 #[cfg(test)]

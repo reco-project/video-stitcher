@@ -8,25 +8,16 @@
 //! frame is passed through to the stitch pipeline unmodified while a
 //! copy is packed into the replay encoder on the same thread.
 //!
-//! Only two-camera CPU `FrameSet::Yuv420p` sets are recorded today:
-//!
-//! - `Nv12` (Jetson ISP / NVDEC on Linux): not yet supported;
-//!   would need an NV12 pack variant or a one-off Nv12->Yuv420p
-//!   conversion on the hot path.
-//! - `GpuResident` / `MetalResident`: can't record without a
-//!   GPU->CPU readback per frame, which we don't pay until a
-//!   consumer explicitly asks.
-//!
-//! A non-Yuv420p frame logs a `warn!` on first encounter and is
-//! passed through unrecorded. The replay file will contain only the
-//! Yuv420p-path frames.
+//! `ReplayRecordingSource` records two-camera host YUV420P sets. Other frame formats are passed through unrecorded, with a warning on first encounter. With `gpu`, `GpuAtlasRecorder` accepts the core executor's packed GPU atlases; `StitchJob` chooses the recorder based on source residency.
 
 use super::encoder::{StackedEncodeError, StackedEncoder, StackedEncoderConfig};
 use super::{GridLayout, StackError};
+#[cfg(feature = "gpu")]
 use reco_core::core::types::StackedReplayGpuRecorder as CoreStackedGpuRecorder;
 use reco_core::core::types::StackedReplayRecorder as CoreStackedReplayRecorder;
+#[cfg(feature = "gpu")]
 use reco_core::gpu::yuv_stack_packer::StackedAtlas;
-use reco_core::render::pipeline::Yuv420pPlanes;
+use reco_core::render::planes::Yuv420pPlanes;
 use reco_core::source::{
     FrameSet, FrameSource, SourceError, SourceFrame, SourceInfo, Yuv420pFrame,
 };
@@ -207,6 +198,7 @@ impl FrameSource for ReplayRecordingSource {
         self.inner.is_full_range()
     }
 
+    #[cfg(feature = "gpu")]
     fn gpu_pixel_format(&self) -> reco_core::render::renderer::GpuPixelFormat {
         self.inner.gpu_pixel_format()
     }
@@ -448,6 +440,7 @@ pub fn session_recorder(
 /// [`reco_core::session::StitchSession::stacked_atlas_dims`].
 /// Attach via
 /// [`reco_core::session::StitchSession::set_stacked_gpu_recorder`].
+#[cfg(feature = "gpu")]
 pub struct GpuAtlasRecorder {
     encoder: Option<StackedEncoder>,
     atlas_width: u32,
@@ -460,6 +453,7 @@ pub struct GpuAtlasRecorder {
     flush_interval: u64,
 }
 
+#[cfg(feature = "gpu")]
 impl GpuAtlasRecorder {
     /// Open a GPU-pack atlas recorder. `atlas_width / atlas_height`
     /// are the full atlas dims the packer produces - for an N=2
@@ -502,6 +496,7 @@ impl GpuAtlasRecorder {
     }
 }
 
+#[cfg(feature = "gpu")]
 impl CoreStackedGpuRecorder for GpuAtlasRecorder {
     fn record_atlas(&mut self, atlas: &StackedAtlas) {
         // Dimension drift: the packer was opened for a fixed
@@ -566,6 +561,7 @@ impl CoreStackedGpuRecorder for GpuAtlasRecorder {
     }
 }
 
+#[cfg(feature = "gpu")]
 impl Drop for GpuAtlasRecorder {
     fn drop(&mut self) {
         if self.encoder.is_some() {
@@ -579,6 +575,7 @@ impl Drop for GpuAtlasRecorder {
 /// exposed to consumers; they receive a boxed trait object ready
 /// for
 /// [`reco_core::session::StitchSession::set_stacked_gpu_recorder`].
+#[cfg(feature = "gpu")]
 pub fn session_gpu_recorder(
     path: &std::path::Path,
     config: StackedEncoderConfig,

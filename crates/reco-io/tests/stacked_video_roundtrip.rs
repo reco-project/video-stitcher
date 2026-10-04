@@ -267,7 +267,7 @@ fn reader_sees_partial_writes(container: Container, filename: &str) {
 /// pushed frames recoverable.
 #[test]
 fn session_recorder_records_planes() {
-    use reco_core::render::pipeline::Yuv420pPlanes;
+    use reco_core::render::planes::Yuv420pPlanes;
 
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("session_replay.mkv");

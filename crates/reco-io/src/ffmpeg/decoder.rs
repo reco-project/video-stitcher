@@ -90,6 +90,7 @@ impl From<ffmpeg::Error> for DecodeError {
 /// Contains CUDA device pointers and strides for the Y and UV planes.
 /// These pointers are only valid until the next decode call — the caller
 /// must copy the data (via `cuMemcpy2D`) before calling `next_frame_gpu()` again.
+#[cfg(feature = "gpu")]
 pub struct GpuFrame {
     /// CUDA device pointer to the Y (luma) plane.
     pub y_ptr: u64,
@@ -119,6 +120,7 @@ pub struct GpuFrame {
 /// `next_frame_vt()` call. The caller must import it into Metal textures
 /// (or retain it) before decoding the next frame.
 #[cfg(target_os = "macos")]
+#[cfg(feature = "gpu")]
 pub struct VtFrame {
     /// Opaque `CVPixelBufferRef` pointer from the decoded AVFrame.
     /// Cast from `frame->data[3]` per FFmpeg's hwaccel convention.
@@ -142,6 +144,7 @@ pub struct VtFrame {
 /// the slice and the decoder writes new frame data into it before the
 /// staging copy reads the original.
 #[cfg(target_os = "windows")]
+#[cfg(feature = "gpu")]
 pub struct D3d11Frame {
     /// Pointer to the D3D11VA decode pool texture (`ID3D11Texture2D*`).
     pub texture: *mut std::ffi::c_void,
@@ -158,6 +161,7 @@ pub struct D3d11Frame {
 }
 
 #[cfg(target_os = "windows")]
+#[cfg(feature = "gpu")]
 impl Drop for D3d11Frame {
     fn drop(&mut self) {
         if !self._frame_ref.is_null() {
@@ -171,6 +175,7 @@ impl Drop for D3d11Frame {
 // SAFETY: The AVFrame and its texture slice are refcounted. The D3d11Frame
 // owns an independent reference that keeps the slice alive across threads.
 #[cfg(target_os = "windows")]
+#[cfg(feature = "gpu")]
 unsafe impl Send for D3d11Frame {}
 
 /// Re-export the canonical YUV frame type from reco-core.
@@ -233,6 +238,7 @@ pub struct VideoDecoder {
     eof_sent: bool,
     backend: DecodeBackend,
     rotation: i32,
+    #[cfg(feature = "gpu")]
     is_10bit: bool,
     is_full_range: bool,
     decoded_frame: VideoFrame,
@@ -482,6 +488,7 @@ impl VideoDecoder {
         // NVDEC reports Pixel::CUDA as its format, but the underlying surface is
         // P010 when the source is 10-bit HEVC (e.g. DJI Action 4). We check the
         // original stream parameters before hwaccel overrides the format.
+        #[cfg(feature = "gpu")]
         let is_10bit = {
             let raw_codecpar = unsafe { &*stream.parameters().as_ptr() };
             let format_i32 = raw_codecpar.format;
@@ -546,6 +553,7 @@ impl VideoDecoder {
             eof_sent: false,
             backend,
             rotation,
+            #[cfg(feature = "gpu")]
             is_10bit,
             is_full_range,
             decoded_frame: VideoFrame::empty(),
@@ -667,6 +675,7 @@ impl VideoDecoder {
     ///
     /// Returns `GpuPixelFormat::P010` for 10-bit sources (R16Unorm/Rg16Unorm)
     /// or `GpuPixelFormat::Nv12` for 8-bit (R8Unorm/Rg8Unorm).
+    #[cfg(feature = "gpu")]
     pub fn pixel_format(&self) -> reco_core::render::renderer::GpuPixelFormat {
         if self.is_10bit {
             reco_core::render::renderer::GpuPixelFormat::P010
@@ -807,6 +816,7 @@ impl VideoDecoder {
         }
     }
 
+    #[cfg(feature = "gpu")]
     fn require_backend(&self, expected: DecodeBackend) -> Result<(), DecodeError> {
         if self.backend != expected {
             return Err(DecodeError::BackendMismatch {
@@ -817,6 +827,7 @@ impl VideoDecoder {
         Ok(())
     }
 
+    #[cfg(feature = "gpu")]
     fn require_format(&self, expected: Pixel) -> Result<(), DecodeError> {
         let actual = self.decoded_frame.format();
         if actual != expected {
@@ -848,6 +859,7 @@ impl VideoDecoder {
         feature = "profiling",
         tracing::instrument(skip_all, name = "decode_frame_gpu")
     )]
+    #[cfg(feature = "gpu")]
     pub fn next_frame_gpu(&mut self) -> Result<Option<GpuFrame>, DecodeError> {
         self.require_backend(DecodeBackend::Cuda)?;
         if !self.receive_frame()? {
@@ -868,6 +880,7 @@ impl VideoDecoder {
         feature = "profiling",
         tracing::instrument(skip_all, name = "decode_frame_d3d11")
     )]
+    #[cfg(feature = "gpu")]
     pub fn next_frame_d3d11(&mut self) -> Result<Option<D3d11Frame>, DecodeError> {
         self.require_backend(DecodeBackend::D3d11va)?;
         if !self.receive_frame()? {
@@ -884,6 +897,7 @@ impl VideoDecoder {
     /// Returns `None` once the decoder is drained. Retain or import the buffer
     /// before decoding again, as the decoder may reuse it.
     #[cfg(target_os = "macos")]
+    #[cfg(feature = "gpu")]
     pub fn next_frame_vt(&mut self) -> Result<Option<VtFrame>, DecodeError> {
         self.require_backend(DecodeBackend::VideoToolbox)?;
         if !self.receive_frame()? {
@@ -915,6 +929,7 @@ impl VideoDecoder {
     /// Per FFmpeg's hwaccel convention, `frame->data[3]` holds the surface
     /// pointer (CVPixelBufferRef for VideoToolbox).
     #[cfg(target_os = "macos")]
+    #[cfg(feature = "gpu")]
     fn extract_vt_frame(&self) -> VtFrame {
         let raw = unsafe { &*self.decoded_frame.as_ptr() };
         let timestamp_us = self.pts_to_us(raw.pts);
@@ -932,6 +947,7 @@ impl VideoDecoder {
     /// Clones the AVFrame so the texture slice stays pinned in the decode
     /// pool until the `D3d11Frame` is dropped (after staging).
     #[cfg(target_os = "windows")]
+    #[cfg(feature = "gpu")]
     fn extract_d3d11_frame(&self) -> D3d11Frame {
         let raw = unsafe { &*self.decoded_frame.as_ptr() };
         let timestamp_us = self.pts_to_us(raw.pts);
@@ -953,6 +969,7 @@ impl VideoDecoder {
     /// The frame's `data[0]` is the Y plane device pointer, `data[1]` is
     /// the UV plane device pointer. `linesize[0]` and `linesize[1]` are
     /// the respective pitches.
+    #[cfg(feature = "gpu")]
     fn extract_gpu_frame(&self) -> Result<GpuFrame, DecodeError> {
         let raw = unsafe { &*self.decoded_frame.as_ptr() };
         let timestamp_us = self.pts_to_us(raw.pts);
@@ -1242,11 +1259,16 @@ fn attach_shared_hw_device(
 
 /// Platform-preferred hwaccel candidates.
 fn hwaccel_candidates() -> Vec<(ffi::AVHWDeviceType, DecodeBackend)> {
-    let mut candidates = vec![
+    vec![
         #[cfg(target_os = "windows")]
         (
             ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_D3D11VA,
             DecodeBackend::D3d11va,
+        ),
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        (
+            ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA,
+            DecodeBackend::Cuda,
         ),
         #[cfg(target_os = "linux")]
         (
@@ -1258,22 +1280,7 @@ fn hwaccel_candidates() -> Vec<(ffi::AVHWDeviceType, DecodeBackend)> {
             ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VIDEOTOOLBOX,
             DecodeBackend::VideoToolbox,
         ),
-    ];
-
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    if reco_core::interop::cuda::is_cuda_available() {
-        let cuda = (
-            ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA,
-            DecodeBackend::Cuda,
-        );
-
-        #[cfg(target_os = "windows")]
-        candidates.insert(1, cuda);
-        #[cfg(target_os = "linux")]
-        candidates.insert(0, cuda);
-    }
-
-    candidates
+    ]
 }
 
 /// Try to enable hardware-accelerated decoding on the codec context.
@@ -1500,6 +1507,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "gpu")]
     fn software_frame_on_hardware_accessor_is_an_error_not_eof() {
         ffmpeg::init().unwrap();
         let dir = tempfile::tempdir().unwrap();

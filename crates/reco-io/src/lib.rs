@@ -7,6 +7,7 @@
 //!
 //! Enable backends via feature flags:
 //! - `ffmpeg` (default): file decode/encode, RTMP/SRT/RTSP
+//! - `gpu` (default): native texture sources and GPU stitching. FFmpeg hardware codecs remain available without this feature.
 //! - `gstreamer`: live camera capture (Jetson ISP, V4L2, etc.)
 //! - `libcamera`: RPi CSI camera capture via rpicam-vid
 //! - `config`: opt-in user-preference persistence (via the `settings`
@@ -49,21 +50,13 @@ pub mod smart_source;
 #[cfg(feature = "ffmpeg")]
 pub mod stitch_job;
 
-#[cfg(feature = "ffmpeg")]
+#[cfg(all(feature = "ffmpeg", feature = "gpu"))]
 pub mod zero_copy;
 
 #[cfg(feature = "config")]
 pub mod settings;
 
-/// Stacked-video pack / unpack. Maps N YUV420P tiles into one
-/// grid-layout frame (see `GridLayout`) and back, for single-file replay
-/// recording, web panorama input, and cloud deployment. FFmpeg-backed
-/// encoder/source stubs are gated behind the `stacked-output`
-/// feature; the pure CPU pack/unpack primitives have no feature gate.
-///
-/// A GPU-accelerated pack/unpack path (wgpu compute shader that
-/// blits N source textures into one render target) is a natural
-/// follow-up — noted as a future-work item in the module docs.
+/// Pack N YUV420P camera tiles into one grid-layout frame and unpack them again. CPU primitives are unconditional; FFmpeg replay requires `stacked-output`, and native GPU recording additionally requires `gpu`.
 pub mod stacked_video;
 
 #[cfg(feature = "ffmpeg")]

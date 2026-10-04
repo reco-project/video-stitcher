@@ -5,6 +5,7 @@
 //! initialization (or the all-software path via [`StitchJob::cpu`]),
 //! zero-copy detection, encoder creation, decode thread management,
 //! and audio passthrough.
+//! Without the `gpu` feature, rendering uses the CPU executor; FFmpeg can still use hardware decode and encode. [`StitchJob::cpu`] explicitly forces software codecs as well.
 //!
 //! # Example
 //!
@@ -245,6 +246,7 @@ pub enum StitchError {
     Source(#[from] reco_core::source::SourceError),
     /// GPU initialization failed.
     #[error("GPU: {0}")]
+    #[cfg(feature = "gpu")]
     Gpu(#[from] reco_core::gpu::GpuError),
     /// Session/pipeline error during stitching.
     #[error("session: {0}")]
@@ -633,6 +635,7 @@ impl StitchJob {
                 self.inputs.len()
             )));
         }
+        #[cfg(feature = "gpu")]
         let (gpu, mut source) = if self.cpu_stitch {
             log::info!("CPU stitch: software render + software decode");
             (
@@ -648,6 +651,9 @@ impl StitchJob {
             };
             (Some(gpu), source)
         };
+        #[cfg(not(feature = "gpu"))]
+        let mut source =
+            crate::SmartFileSource::open_cpu_only(&self.inputs, effective_sync, self.cpu_stitch)?;
         let info = source.info();
         let fps_rational = info.fps_rational.ok_or_else(|| StitchError::Other(
             "video frame rate is unknown for one or more inputs; cannot export with reliable timing".into()
@@ -684,7 +690,20 @@ impl StitchJob {
             width: out_w,
             height: out_h,
         };
+        let cpu_session = |cal| -> Result<_, StitchError> {
+            let executor = reco_core::stitch::CpuExecutor::new(
+                cal,
+                viewport_size.clone(),
+                info.camera_sizes.clone(),
+                false,
+            )
+            .map_err(|e| StitchError::Other(format!("CPU executor: {e}")))?;
+            Ok(StitchSession::with_executor(
+                reco_core::stitch::Executor::Cpu(Box::new(executor)),
+            )?)
+        };
         let gpu_name;
+        #[cfg(feature = "gpu")]
         let mut session = match gpu {
             Some(gpu) => {
                 gpu_name = gpu.gpu_name().to_string();
@@ -708,24 +727,21 @@ impl StitchJob {
             }
             None => {
                 gpu_name = "software (CPU)".to_string();
-                let executor = reco_core::stitch::CpuExecutor::new(
-                    cal,
-                    viewport_size,
-                    info.camera_sizes.clone(),
-                    false,
-                )
-                .map_err(|e| StitchError::Other(format!("CPU executor: {e}")))?;
-                reco_core::session::StitchSession::with_executor(reco_core::stitch::Executor::Cpu(
-                    Box::new(executor),
-                ))?
+                cpu_session(cal)?
             }
+        };
+
+        #[cfg(not(feature = "gpu"))]
+        let mut session = {
+            gpu_name = "software (CPU)".to_string();
+            cpu_session(cal)?
         };
 
         session.telemetry_mut().set_gpu_name(gpu_name.clone());
         session.telemetry_mut().set_decode_mode(decode_mode.clone());
 
         // Configure GPU bind groups if source is GPU-resident
-        #[cfg(target_os = "linux")]
+        #[cfg(all(feature = "gpu", target_os = "linux"))]
         if let Some(shared) = source.shared_texture_set() {
             session.setup_gpu_source(shared)?;
         }
@@ -811,9 +827,15 @@ impl StitchJob {
         // Sample the allowance after inference and output resources are initialized.
         if self.lookahead_secs > 0.0 {
             let frames = (self.lookahead_secs * info.fps).round() as usize;
-            let native_gpu = source.is_gpu_resident().then(|| session.core().gpu());
-            let budget = crate::lookahead::image_budget(native_gpu, self.lookahead_memory_bytes)
-                .map_err(StitchError::Other)?;
+            let budget = match source.is_gpu_resident() {
+                #[cfg(feature = "gpu")]
+                true => crate::lookahead::native_image_budget(
+                    session.core().gpu(),
+                    self.lookahead_memory_bytes,
+                ),
+                _ => crate::lookahead::image_budget(self.lookahead_memory_bytes),
+            }
+            .map_err(StitchError::Other)?;
             session.set_lookahead(frames, budget);
         }
 
@@ -927,15 +949,17 @@ impl StitchJob {
             //
             // Both arms log the decision explicitly so the pack
             // path is never a silent choice.
-            if source.is_gpu_resident() {
-                // Resolve the output tile size. `scale` is the
-                // per-tile dims after downscale; the layout stays
-                // sized by the source tile dims (layout.capacity
-                // is N, atlas h = output.height * rows).
-                let (out_w, out_h) = cfg
-                    .scale
-                    .unwrap_or((info.camera_sizes[0].0, info.camera_sizes[0].1));
-                let layout = reco_core::gpu::yuv_stack_packer::StackGridLayout::vstack(
+            match source.is_gpu_resident() {
+                #[cfg(feature = "gpu")]
+                true => {
+                    // Resolve the output tile size. `scale` is the
+                    // per-tile dims after downscale; the layout stays
+                    // sized by the source tile dims (layout.capacity
+                    // is N, atlas h = output.height * rows).
+                    let (out_w, out_h) = cfg
+                        .scale
+                        .unwrap_or((info.camera_sizes[0].0, info.camera_sizes[0].1));
+                    let layout = reco_core::gpu::yuv_stack_packer::StackGridLayout::vstack(
                     out_w, out_h, 2,
                 )
                 .ok_or_else(|| {
@@ -945,81 +969,86 @@ impl StitchJob {
                         info.camera_sizes[0].0, info.camera_sizes[0].1,
                     ))
                 })?;
-                let output_size = if cfg.scale.is_some() {
-                    reco_core::gpu::yuv_stack_packer::OutputTileSize::scaled(out_w, out_h)
-                } else {
-                    reco_core::gpu::yuv_stack_packer::OutputTileSize::unscaled(out_w, out_h)
-                };
-                session
-                    .enable_gpu_stacked_replay(layout, output_size)
-                    .map_err(|e| StitchError::Other(format!("enable GPU stacked replay: {e}")))?;
-                let (atlas_w, atlas_h) = session.stacked_atlas_dims().ok_or_else(|| {
-                    StitchError::Other(
-                        "stacked_atlas_dims returned None right after enable; internal bug".into(),
+                    let output_size = if cfg.scale.is_some() {
+                        reco_core::gpu::yuv_stack_packer::OutputTileSize::scaled(out_w, out_h)
+                    } else {
+                        reco_core::gpu::yuv_stack_packer::OutputTileSize::unscaled(out_w, out_h)
+                    };
+                    session
+                        .enable_gpu_stacked_replay(layout, output_size)
+                        .map_err(|e| {
+                            StitchError::Other(format!("enable GPU stacked replay: {e}"))
+                        })?;
+                    let (atlas_w, atlas_h) = session.stacked_atlas_dims().ok_or_else(|| {
+                        StitchError::Other(
+                            "stacked_atlas_dims returned None right after enable; internal bug"
+                                .into(),
+                        )
+                    })?;
+                    let recorder = crate::stacked_video::replay::session_gpu_recorder(
+                        &cfg.path,
+                        *cfg.encoder_config,
+                        atlas_w,
+                        atlas_h,
                     )
-                })?;
-                let recorder = crate::stacked_video::replay::session_gpu_recorder(
-                    &cfg.path,
-                    *cfg.encoder_config,
-                    atlas_w,
-                    atlas_h,
-                )
-                .map_err(|e| StitchError::Other(format!("open GPU replay recorder: {e}")))?;
-                session.set_stacked_gpu_recorder(recorder);
-                let scale_note = if cfg.scale.is_some() {
-                    format!(
-                        " [A19 downscale: source {}x{} -> tile {}x{}]",
-                        info.camera_sizes[0].0, info.camera_sizes[0].1, out_w, out_h
-                    )
-                } else {
-                    String::new()
-                };
-                log::info!(
-                    "reco-io: replay pack path = GPU (source GPU-resident; tile {}x{}, N=2, atlas {}x{}){} -> {}",
-                    out_w,
-                    out_h,
-                    atlas_w,
-                    atlas_h,
-                    scale_note,
-                    cfg.path.display(),
-                );
-                run_result = session.run(
-                    &mut source,
-                    frame_limit,
-                    interrupted,
-                    self.on_progress.take(),
-                )?;
-            } else {
-                if cfg.scale.is_some() {
-                    log::warn!(
-                        "reco-io: --replay-scale requested on a CPU-resident source, but the \
+                    .map_err(|e| StitchError::Other(format!("open GPU replay recorder: {e}")))?;
+                    session.set_stacked_gpu_recorder(recorder);
+                    let scale_note = if cfg.scale.is_some() {
+                        format!(
+                            " [A19 downscale: source {}x{} -> tile {}x{}]",
+                            info.camera_sizes[0].0, info.camera_sizes[0].1, out_w, out_h
+                        )
+                    } else {
+                        String::new()
+                    };
+                    log::info!(
+                        "reco-io: replay pack path = GPU (source GPU-resident; tile {}x{}, N=2, atlas {}x{}){} -> {}",
+                        out_w,
+                        out_h,
+                        atlas_w,
+                        atlas_h,
+                        scale_note,
+                        cfg.path.display(),
+                    );
+                    run_result = session.run(
+                        &mut source,
+                        frame_limit,
+                        interrupted,
+                        self.on_progress.take(),
+                    )?;
+                }
+                _ => {
+                    if cfg.scale.is_some() {
+                        log::warn!(
+                            "reco-io: --replay-scale requested on a CPU-resident source, but the \
                          CPU ReplayRecordingSource decorator doesn't support downscale today. \
                          Recording at source dims {}x{} instead. Use a GPU-resident source \
                          (zero-copy NVDEC) or disable --replay-scale.",
+                            info.camera_sizes[0].0,
+                            info.camera_sizes[0].1,
+                        );
+                    }
+                    log::info!(
+                        "reco-io: replay pack path = CPU (source CPU-resident; ReplayRecordingSource decorator, tile {}x{}, N=2) -> {}",
                         info.camera_sizes[0].0,
                         info.camera_sizes[0].1,
+                        cfg.path.display(),
                     );
+                    let inner: Box<dyn FrameSource> = Box::new(source);
+                    let mut replay = crate::stacked_video::replay::ReplayRecordingSource::wrap(
+                        inner,
+                        &cfg.path,
+                        *cfg.encoder_config,
+                    )
+                    .map_err(|e| StitchError::Other(format!("replay recording open: {e}")))?;
+                    run_result = session.run(
+                        &mut replay,
+                        frame_limit,
+                        interrupted,
+                        self.on_progress.take(),
+                    )?;
+                    replay_src = Some(replay);
                 }
-                log::info!(
-                    "reco-io: replay pack path = CPU (source CPU-resident; ReplayRecordingSource decorator, tile {}x{}, N=2) -> {}",
-                    info.camera_sizes[0].0,
-                    info.camera_sizes[0].1,
-                    cfg.path.display(),
-                );
-                let inner: Box<dyn FrameSource> = Box::new(source);
-                let mut replay = crate::stacked_video::replay::ReplayRecordingSource::wrap(
-                    inner,
-                    &cfg.path,
-                    *cfg.encoder_config,
-                )
-                .map_err(|e| StitchError::Other(format!("replay recording open: {e}")))?;
-                run_result = session.run(
-                    &mut replay,
-                    frame_limit,
-                    interrupted,
-                    self.on_progress.take(),
-                )?;
-                replay_src = Some(replay);
             }
         } else {
             run_result = session.run(
@@ -1052,7 +1081,7 @@ impl StitchJob {
         // closes the encoder file) before `session.finish()` so
         // the replay file lands before the main encoder's trailer.
         // No-op when the GPU path wasn't selected.
-        #[cfg(feature = "stacked-output")]
+        #[cfg(all(feature = "stacked-output", feature = "gpu"))]
         session.clear_stacked_gpu_recorder();
         session.finish()?;
         let telemetry_snap = session.telemetry_snapshot();

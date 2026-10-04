@@ -73,6 +73,10 @@ jobs:
       # on its own.
       - name: Clippy (reco-core wgpu-free)
         run: cargo clippy -p reco-core --all-targets --no-default-features -- -D warnings
+      - name: Clippy (reco-io wgpu-free)
+        run: |
+          cargo clippy -p reco-io --all-targets --no-default-features -- -D warnings
+          cargo clippy -p reco-io --all-targets --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling -- -D warnings
       - name: Clippy (reco-control CPU-only)
         run: cargo clippy -p reco-control --all-targets --no-default-features -- -D warnings
       - name: Clippy (reco-control device helper)
@@ -127,6 +131,18 @@ jobs:
           fi
         env:
           RECO_REQUIRE_GPU: ""
+      - name: Run tests (reco-io wgpu-free)
+        run: |
+          cargo test -p reco-io --no-default-features
+          cargo test -p reco-io --no-default-features --features ffmpeg
+          cargo test -p reco-io --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling
+          io_graph="$(cargo tree -p reco-io --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling -e normal --prefix none)"
+          if [[ "$io_graph" == *"wgpu v"* ]]; then
+            echo "Host I/O unexpectedly enables wgpu" >&2
+            exit 1
+          fi
+        env:
+          RECO_REQUIRE_GPU: ""
       - name: Run tests (reco-control CPU-only)
         run: |
           cargo test -p reco-control --no-default-features
@@ -153,6 +169,10 @@ jobs:
           packages: ${{ env.APT_PACKAGES }}
       - name: Build docs (profiling + gstreamer + load-dynamic + stacked-output + gopro)
         run: cargo doc --workspace --no-deps --features profiling,gstreamer,load-dynamic,stacked-output,gopro
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+      - name: Build docs (reco-io wgpu-free)
+        run: cargo doc -p reco-io --no-deps --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling
         env:
           RUSTDOCFLAGS: "-D warnings"
 

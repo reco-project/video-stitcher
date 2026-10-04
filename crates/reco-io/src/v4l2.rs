@@ -135,7 +135,7 @@ impl V4l2Camera {
     /// Open a V4L2 device and configure for raw Bayer capture.
     ///
     /// Sets format, controls, allocates MMAP buffers. Does NOT start
-    /// streaming - call [`start`] when ready.
+    /// streaming - call [`Self::start`] when ready.
     pub fn open(config: &V4l2CameraConfig) -> io::Result<Self> {
         let file = OpenOptions::new()
             .read(true)
@@ -486,7 +486,7 @@ impl V4l2StereoCameraSource {
 
     /// Get the next stereo frame pair as raw Bayer bytes.
     ///
-    /// Each Arc<Vec<u8>> is `width * height * 2` bytes of little-endian
+    /// Each `Arc<Vec<u8>>` is `width * height * 2` bytes of little-endian
     /// u16 (R16Uint). Arc-shared to avoid copying between threads.
     pub fn next_pair(&mut self) -> io::Result<Option<BayerFramePair>> {
         match self.rx.recv() {

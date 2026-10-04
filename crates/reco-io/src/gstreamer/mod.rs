@@ -13,7 +13,7 @@
 
 pub mod camera;
 mod capture;
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "gpu", target_os = "linux"))]
 mod nvmm;
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "gpu", target_os = "linux"))]
 mod nvmm_camera;

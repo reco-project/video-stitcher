@@ -8,9 +8,12 @@ use reco_core::source::SourceError;
 mod restart;
 pub(crate) use restart::Restartable;
 
-#[cfg(any(target_os = "windows", target_os = "macos", test))]
+#[cfg(any(
+    all(feature = "gpu", any(target_os = "windows", target_os = "macos")),
+    test
+))]
 mod owned_frames;
-#[cfg(any(target_os = "windows", target_os = "macos"))]
+#[cfg(all(feature = "gpu", any(target_os = "windows", target_os = "macos")))]
 pub(crate) use owned_frames::OwnedFrames;
 
 pub(crate) type Message<T> = Result<Option<T>, SourceError>;
@@ -28,7 +31,13 @@ pub(crate) fn receive<T>(rx: &Receiver<Message<T>>) -> Message<T> {
 /// Collect one frame from every input, stopping at the shortest input.
 /// Read all terminal messages before accepting EOF, so another input's error is not hidden.
 /// For stereo, positive offsets skip right frames and negative offsets skip left frames.
-#[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos", test))]
+#[cfg(any(
+    test,
+    all(
+        feature = "gpu",
+        any(target_os = "linux", target_os = "windows", target_os = "macos")
+    )
+))]
 pub(crate) fn collect<T: Send + 'static>(
     inputs: Vec<Receiver<Message<T>>>,
     sync_offset: i64,

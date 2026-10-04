@@ -75,7 +75,7 @@ fn independent_input_dimensions_survive_decode_and_cpu_render() {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "gpu", target_os = "linux"))]
 #[test]
 #[ignore = "requires NVIDIA CUDA/NVDEC and Vulkan external-memory interop"]
 fn mixed_native_inputs_preserve_pixels_detection_order_and_lookahead() {
@@ -249,7 +249,7 @@ fn mixed_native_inputs_preserve_pixels_detection_order_and_lookahead() {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "gpu", target_os = "linux"))]
 #[test]
 #[ignore = "requires NVDEC and a non-matching Vulkan adapter"]
 fn cuda_decode_uses_host_transfer_for_an_incompatible_renderer() {
@@ -281,7 +281,7 @@ fn cuda_decode_uses_host_transfer_for_an_incompatible_renderer() {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "gpu", target_os = "linux"))]
 #[test]
 #[ignore = "requires NVIDIA CUDA/NVDEC and Vulkan external-memory interop"]
 fn cuda_mono_session_preserves_pixels_order_and_buffered_tail() {
@@ -479,7 +479,7 @@ fn unusable_rate_is_unknown_not_thirty_fps() {
     assert_source_rates(false);
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "gpu", target_os = "linux"))]
 #[test]
 #[ignore = "requires NVIDIA CUDA/NVDEC and Vulkan external-memory interop"]
 fn native_sources_preserve_unknown_rates_and_reject_mismatches() {
@@ -496,10 +496,14 @@ fn assert_source_rates(native: bool) {
     fixture_rate(&path, "libx264", WIDTH, HEIGHT, (2000, 1));
     let normal = dir.path().join("normal.mp4");
     fixture(&normal);
+    #[cfg(feature = "gpu")]
     let gpu = native.then(|| reco_core::gpu::GpuContext::new_blocking().unwrap());
-    let open = |inputs: &[InputPath]| match &gpu {
-        Some(gpu) => reco_io::SmartFileSource::open(inputs, gpu, 0),
-        None => reco_io::SmartFileSource::open_cpu_only(inputs, 0, true),
+    let open = |inputs: &[InputPath]| {
+        #[cfg(feature = "gpu")]
+        if let Some(gpu) = &gpu {
+            return reco_io::SmartFileSource::open(inputs, gpu, 0);
+        }
+        reco_io::SmartFileSource::open_cpu_only(inputs, 0, true)
     };
     for paths in [
         vec![path.clone()],
@@ -607,7 +611,7 @@ fn assert_source_rates(native: bool) {
     assert_eq!(source.info().fps_rational, Some((30000, 1001)));
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "gpu", target_os = "linux"))]
 #[test]
 #[ignore = "requires NVIDIA CUDA/NVDEC and Vulkan external-memory interop"]
 fn native_file_counts_match_host_sources() {
@@ -620,7 +624,15 @@ fn assert_file_counts(native: bool) {
     fixture(&path);
     let single = InputPath::Single(path.clone());
     let chain = InputPath::Chained(vec![path.clone(), path]);
+    #[cfg(feature = "gpu")]
     let gpu = native.then(|| reco_core::gpu::GpuContext::new_blocking().unwrap());
+    let open = |inputs: &[InputPath], offset| {
+        #[cfg(feature = "gpu")]
+        if let Some(gpu) = &gpu {
+            return reco_io::SmartFileSource::open(inputs, gpu, offset);
+        }
+        reco_io::SmartFileSource::open_cpu_only(inputs, offset, true)
+    };
     for (inputs, offset, expected) in [
         (vec![single.clone()], 7, FRAMES),
         (vec![chain.clone()], 0, 2 * FRAMES),
@@ -630,17 +642,14 @@ fn assert_file_counts(native: bool) {
         (vec![chain, single.clone()], -7, FRAMES),
         (vec![single.clone(), single.clone()], i64::MIN, 0),
     ] {
-        let mut source = match &gpu {
-            Some(gpu) => reco_io::SmartFileSource::open(&inputs, gpu, offset).unwrap(),
-            None => reco_io::SmartFileSource::open_cpu_only(&inputs, offset, true).unwrap(),
-        };
+        let mut source = open(&inputs, offset).unwrap();
         assert_eq!(source.is_gpu_resident(), native);
         assert_eq!(source.info().total_frames, Some(expected as u64));
         assert_eq!(source.total_frames(), Some(expected as u64));
         source.start_decoding();
         let mut decoded = 0;
         while let Some(frame) = source.next_frame().unwrap() {
-            #[cfg(target_os = "linux")]
+            #[cfg(all(feature = "gpu", target_os = "linux"))]
             if let FrameSet::GpuResident { slots } = frame.images {
                 for (camera, slot) in source
                     .shared_texture_set()
@@ -652,7 +661,7 @@ fn assert_file_counts(native: bool) {
                     let _ = camera.slot_free_tx.send(slot);
                 }
             }
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(not(all(feature = "gpu", target_os = "linux")))]
             drop(frame);
             decoded += 1;
         }
@@ -813,6 +822,78 @@ fn job_setup_and_completion_are_explicit() {
     assert!(matches!(result, Err(StitchError::Session(_))), "{result:?}");
 }
 
+#[test]
+fn host_file_job_preserves_pixels_timing_and_lookahead_tail() {
+    use reco_core::calibration::{Calibration, Framing, Lens};
+    use reco_core::projection::Cylinder;
+    use std::sync::{Arc, atomic::AtomicBool};
+
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("input.mp4");
+    fixture(&input);
+    let modes: &[bool] = if cfg!(feature = "gpu") {
+        &[true]
+    } else {
+        &[true, false]
+    };
+    for &software in modes {
+        let output = dir.path().join(format!("output-{software}.mp4"));
+        let calibration = Calibration::new(
+            vec![Lens::flat(WIDTH, HEIGHT)],
+            Cylinder {
+                radius: 32.0,
+                ..Default::default()
+            },
+            Framing {
+                axis_offset: 0.0,
+                tilt: 0.0,
+                roll: 0.0,
+            },
+        );
+        let mut job = reco_io::StitchJob::with_calibration([input.clone()], calibration, &output)
+            .resolution(64, 32)
+            .audio(reco_io::output::AudioMode::Disabled)
+            .encoder_name("libx264")
+            .lookahead(0.1)
+            .lookahead_memory_limit(1024 * 1024)
+            .on_session(|session, source| {
+                assert!(!source.is_gpu_resident());
+                session.core_mut().set_constrained_look(false);
+                Ok(())
+            });
+        if software {
+            job = job.cpu();
+        }
+        let result = job.run(&Arc::new(AtomicBool::new(false))).unwrap();
+        assert_eq!(result.frames_processed, FRAMES as u64);
+        assert_eq!(result.gpu_name, "software (CPU)");
+        let mut decoder = VideoDecoder::open_software(&output).unwrap();
+        assert_eq!(decoder.frame_rate(), Some((30, 1).into()));
+        for index in 0..FRAMES {
+            let frame = decoder
+                .next_frame()
+                .unwrap()
+                .expect("missing rendered frame");
+            assert_eq!((frame.width, frame.height), (64, 32));
+            assert!((frame.timestamp_us - index as i64 * 1_000_000 / 30).abs() <= 1);
+            // These source colors remain inside RGB gamut during stitching.
+            if (16..32).contains(&index) {
+                for (plane, expected) in [
+                    (&frame.y, 32 + index as u8 * 4),
+                    (&frame.u, 96),
+                    (&frame.v, 160),
+                ] {
+                    assert!(
+                        plane.iter().all(|value| value.abs_diff(expected) <= 4),
+                        "frame {index}: expected {expected}"
+                    );
+                }
+            }
+        }
+        assert!(decoder.next_frame().unwrap().is_none());
+    }
+}
+
 fn fixture_encoding(path: &std::path::Path, codec_name: &str) {
     fixture_size(path, codec_name, WIDTH, HEIGHT);
 }
@@ -929,6 +1010,7 @@ fn reordered_frames_drain_and_seek_without_loss() {
 }
 
 #[test]
+#[cfg(feature = "gpu")]
 fn wrong_backend_is_error_without_consuming_a_frame() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("reordered.mp4");
@@ -1109,6 +1191,7 @@ fn assert_seek_replacements(software_decode: bool) {
 /// Opt-in hardware gate: fails rather than silently skipping when CUDA is absent.
 #[test]
 #[ignore = "requires NVIDIA CUDA/NVDEC"]
+#[cfg(feature = "gpu")]
 fn cuda_drains_reordered_frames_and_seeks() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("reordered.mp4");
@@ -1147,7 +1230,7 @@ fn cuda_drains_reordered_frames_and_seeks() {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "gpu", target_os = "linux"))]
 #[test]
 #[ignore = "requires NVIDIA CUDA/NVDEC and Vulkan external-memory interop"]
 fn cuda_workers_preserve_completion_failure_and_cancellation() {

@@ -258,7 +258,8 @@ pub fn available_h264_encoders() -> Vec<EncoderInfo> {
 }
 
 fn auto_candidate_allowed(name: &str) -> bool {
-    if name.ends_with("_nvenc") && !cuda_runtime_available() {
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    if name.ends_with("_nvenc") {
         return false;
     }
 
@@ -305,18 +306,6 @@ fn vaapi_peer_encoder(name: &str) -> Option<&'static str> {
         "hevc_qsv" => Some("hevc_vaapi"),
         "av1_qsv" => Some("av1_vaapi"),
         _ => None,
-    }
-}
-
-fn cuda_runtime_available() -> bool {
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    {
-        reco_core::interop::cuda::is_cuda_available()
-    }
-
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-    {
-        false
     }
 }
 

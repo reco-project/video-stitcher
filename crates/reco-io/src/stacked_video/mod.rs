@@ -42,33 +42,9 @@
 //! - Tile ordering in the input slice matches row-major iteration
 //!   over the grid (left-to-right, top-to-bottom).
 //!
-//! # GPU-accelerated path (future work)
+//! # Recording paths
 //!
-//! The current pack/unpack runs on the CPU: per-row `memcpy` into
-//! the packed buffer (roughly 8 ms for 4K 2-tile vstack on a
-//! warm cache). Good enough for a replay-recording side-path
-//! running alongside stitching, but not the fastest shape possible.
-//!
-//! A wgpu-backed path would keep frames on the GPU the whole time:
-//!
-//! - A compute shader (or a small render pass with a quad per tile)
-//!   blits N source textures into one render-target atlas. Textures
-//!   are already on the GPU from the stitch pipeline's readback
-//!   stage, so the CPU roundtrip disappears.
-//! - The atlas texture feeds straight into a GPU-resident encoder
-//!   (future NVENC / VideoToolbox path), never touching
-//!   the CPU side.
-//! - Conversely, the unpack direction is a single shader that
-//!   samples the atlas into N separate destination textures, fed
-//!   to the downstream pipeline as if they'd come from independent
-//!   sources.
-//!
-//! The primitives in this module are intentionally CPU-pure so they
-//! can be used from consumers that already have CPU frame data
-//! (FFmpeg decode output, test harnesses, tools). The GPU path is
-//! a separate module that would live in reco-core alongside the
-//! other wgpu compute paths, with this CPU impl as the fallback
-//! when GPU resources aren't available.
+//! The pack/unpack primitives operate on host YUV420P planes. With `stacked-output`, `replay::ReplayRecordingSource` records host frames and `replay::GpuAtlasRecorder` accepts atlases packed by the core GPU executor (also requiring `gpu`). Both feed the FFmpeg encoder. The replay round-trip tests in `tests/stacked_video_roundtrip.rs` exercise the host path.
 
 #[cfg(feature = "stacked-output")]
 pub mod encoder;

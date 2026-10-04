@@ -546,8 +546,8 @@ pub fn run_camera(
     } else if use_nvmm {
         if lookahead > 0.0 && ai_tracking {
             let frames = (lookahead * capture_fps as f64).round() as usize;
-            let budget = reco_io::lookahead::image_budget(
-                Some(session.core().gpu()),
+            let budget = reco_io::lookahead::native_image_budget(
+                session.core().gpu(),
                 lookahead_memory_bytes,
             )
             .map_err(anyhow::Error::msg)?;

@@ -19,10 +19,16 @@
 //! // source implements FrameSource - pass to session.run()
 //! ```
 
+#[cfg(feature = "gpu")]
 use reco_core::render::renderer::GpuPixelFormat;
-use reco_core::source::{FrameSet, FrameSource, SourceError, SourceFrame, SourceInfo};
+#[cfg(all(
+    feature = "gpu",
+    any(target_os = "linux", target_os = "windows", target_os = "macos")
+))]
+use reco_core::source::FrameSet;
+use reco_core::source::{FrameSource, SourceError, SourceFrame, SourceInfo};
 
-#[cfg(all(test, any(target_os = "windows", target_os = "macos")))]
+#[cfg(all(test, feature = "gpu", any(target_os = "windows", target_os = "macos")))]
 mod native_tests;
 
 /// GPU-aware file source that auto-selects the optimal decode path.
@@ -38,6 +44,7 @@ mod native_tests;
 pub struct SmartFileSource {
     mode: SourceMode,
     info: SourceInfo,
+    #[cfg(feature = "gpu")]
     pixel_format: GpuPixelFormat,
     full_range: bool,
     left_rotation: i32,
@@ -54,17 +61,17 @@ pub struct SmartFileSource {
 
 enum SourceMode {
     Cpu(Box<crate::adapters::FfmpegFileSource>),
-    #[cfg(target_os = "linux")]
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
     GpuZeroCopy(Box<LinuxZeroCopyState>),
-    #[cfg(target_os = "macos")]
+    #[cfg(all(feature = "gpu", target_os = "macos"))]
     MetalZeroCopy(
         crate::decode_stream::OwnedFrames<reco_core::interop::metal::RetainedCVPixelBuffer>,
     ),
-    #[cfg(target_os = "windows")]
+    #[cfg(all(feature = "gpu", target_os = "windows"))]
     D3d11ZeroCopy(Box<WindowsZeroCopyState>),
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "gpu", target_os = "windows"))]
 enum WindowsDecodeState {
     Pending {
         inputs: Vec<crate::stitch_job::InputPath>,
@@ -76,7 +83,7 @@ enum WindowsDecodeState {
     Failed(SourceError),
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "gpu", target_os = "windows"))]
 struct WindowsZeroCopyState {
     /// Holds the D3d11Frames from the most recent `next_frame()` call.
     ///
@@ -93,7 +100,7 @@ struct WindowsZeroCopyState {
     decode: WindowsDecodeState,
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "gpu", target_os = "windows"))]
 impl WindowsZeroCopyState {
     fn ensure_running(&mut self) {
         if let WindowsDecodeState::Pending {
@@ -111,7 +118,7 @@ impl WindowsZeroCopyState {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "gpu", target_os = "linux"))]
 struct LinuxZeroCopyState {
     /// Frame-set receiver. Drop takes it early to unblock the collector
     /// before joining decode workers.
@@ -133,6 +140,7 @@ impl SmartFileSource {
     ///
     /// `sync_offset` applies temporal alignment between cameras:
     /// positive skips camera 1, negative skips camera 0. Ignored for mono.
+    #[cfg(feature = "gpu")]
     pub fn open(
         inputs: &[crate::stitch_job::InputPath],
         gpu: &reco_core::gpu::GpuContext,
@@ -235,9 +243,7 @@ impl SmartFileSource {
         }
     }
 
-    /// Open a CPU-decode source for any number of inputs (projection
-    /// order). Format, fps, and color range are probed from input 0;
-    /// per-input rotation is probed by the decode layer.
+    /// Open host-backed YUV420P frames for any number of inputs in projection order. Hardware decoding can still be used unless `software_decode` is true. Format, fps and color range are probed from input 0; rotation is probed per input.
     pub fn open_cpu_only(
         inputs: &[crate::stitch_job::InputPath],
         sync_offset: i64,
@@ -246,10 +252,11 @@ impl SmartFileSource {
         let source =
             crate::adapters::FfmpegFileSource::open_inputs(inputs, sync_offset, software_decode)?;
         let info = source.info();
+        #[cfg(feature = "gpu")]
         let pixel_format = source.pixel_format();
         let full_range = source.is_full_range();
         log::info!(
-            "SmartFileSource: host-backed frames ({} camera(s), {}x{}, {pixel_format:?}{})",
+            "SmartFileSource: host-backed frames ({} camera(s), {}x{}{})",
             inputs.len(),
             info.camera_sizes[0].0,
             info.camera_sizes[0].1,
@@ -260,17 +267,18 @@ impl SmartFileSource {
         Ok(Self {
             mode: SourceMode::Cpu(Box::new(source)),
             info,
+            #[cfg(feature = "gpu")]
             pixel_format,
             full_range,
             left_rotation,
             right_rotation,
-            decode_mode: "CPU upload",
+            decode_mode: "Host YUV420P",
             exhausted: false,
             terminal_error: None,
         })
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
     #[allow(clippy::too_many_arguments)]
     fn open_zero_copy(
         inputs: &[crate::stitch_job::InputPath],
@@ -374,7 +382,7 @@ impl SmartFileSource {
         })
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(all(feature = "gpu", target_os = "macos"))]
     #[allow(clippy::too_many_arguments)]
     fn open_zero_copy(
         inputs: &[crate::stitch_job::InputPath],
@@ -408,7 +416,7 @@ impl SmartFileSource {
         })
     }
 
-    #[cfg(target_os = "windows")]
+    #[cfg(all(feature = "gpu", target_os = "windows"))]
     #[allow(clippy::too_many_arguments)]
     fn open_zero_copy(
         inputs: &[crate::stitch_job::InputPath],
@@ -441,6 +449,7 @@ impl SmartFileSource {
         })
     }
 
+    #[cfg(feature = "gpu")]
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     #[allow(clippy::too_many_arguments)]
     fn open_zero_copy(
@@ -466,7 +475,7 @@ impl SmartFileSource {
     ///
     /// The session uses this to create bind groups at the start of `run()`.
     /// Returns `None` for CPU-mode sources.
-    #[cfg(target_os = "linux")]
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
     pub fn shared_texture_set(&self) -> Option<&reco_core::interop::SharedTextureSet> {
         match &self.mode {
             SourceMode::GpuZeroCopy(state) => Some(&state.shared),
@@ -499,7 +508,7 @@ impl FrameSource for SmartFileSource {
                 }
                 Ok(frame)
             }
-            #[cfg(target_os = "linux")]
+            #[cfg(all(feature = "gpu", target_os = "linux"))]
             SourceMode::GpuZeroCopy(state) => {
                 let rx = state
                     .frame_rx
@@ -517,7 +526,7 @@ impl FrameSource for SmartFileSource {
                     }
                 }
             }
-            #[cfg(target_os = "macos")]
+            #[cfg(all(feature = "gpu", target_os = "macos"))]
             SourceMode::MetalZeroCopy(frames) => match frames
                 .receive()
                 .inspect_err(|error| self.terminal_error = Some(error.clone()))?
@@ -528,7 +537,7 @@ impl FrameSource for SmartFileSource {
                     Ok(None)
                 }
             },
-            #[cfg(target_os = "windows")]
+            #[cfg(all(feature = "gpu", target_os = "windows"))]
             SourceMode::D3d11ZeroCopy(state) => {
                 state.ensure_running();
                 let result = match &state.decode {
@@ -576,7 +585,7 @@ impl FrameSource for SmartFileSource {
             return Ok(0);
         }
         match &mut self.mode {
-            #[cfg(target_os = "linux")]
+            #[cfg(all(feature = "gpu", target_os = "linux"))]
             SourceMode::GpuZeroCopy(state) => {
                 let rx = state
                     .frame_rx
@@ -605,7 +614,7 @@ impl FrameSource for SmartFileSource {
                 log::debug!("CPU seek: jumped to frame {count}");
                 Ok(count)
             }
-            #[cfg(target_os = "macos")]
+            #[cfg(all(feature = "gpu", target_os = "macos"))]
             SourceMode::MetalZeroCopy(_) => {
                 for i in 0..count {
                     if self.next_frame()?.is_none() {
@@ -614,7 +623,7 @@ impl FrameSource for SmartFileSource {
                 }
                 Ok(count)
             }
-            #[cfg(target_os = "windows")]
+            #[cfg(all(feature = "gpu", target_os = "windows"))]
             SourceMode::D3d11ZeroCopy(_) => {
                 for i in 0..count {
                     if self.next_frame()?.is_none() {
@@ -626,6 +635,7 @@ impl FrameSource for SmartFileSource {
         }
     }
 
+    #[cfg(feature = "gpu")]
     fn gpu_pixel_format(&self) -> GpuPixelFormat {
         self.pixel_format
     }
@@ -647,17 +657,17 @@ impl FrameSource for SmartFileSource {
         // SmartFileSource exposes blocking reads, not polling.
         match &self.mode {
             SourceMode::Cpu(source) => self.exhausted || source.is_exhausted(),
-            #[cfg(target_os = "linux")]
+            #[cfg(all(feature = "gpu", target_os = "linux"))]
             SourceMode::GpuZeroCopy(_) => self.exhausted,
-            #[cfg(target_os = "macos")]
+            #[cfg(all(feature = "gpu", target_os = "macos"))]
             SourceMode::MetalZeroCopy(_) => self.exhausted,
-            #[cfg(target_os = "windows")]
+            #[cfg(all(feature = "gpu", target_os = "windows"))]
             SourceMode::D3d11ZeroCopy(_) => self.exhausted,
         }
     }
 
     fn start_decoding(&mut self) {
-        #[cfg(target_os = "windows")]
+        #[cfg(all(feature = "gpu", target_os = "windows"))]
         if let SourceMode::D3d11ZeroCopy(state) = &mut self.mode {
             state.ensure_running();
         }
@@ -668,7 +678,7 @@ impl Drop for SmartFileSource {
     fn drop(&mut self) {
         // Windows joins through its owned stream. CUDA additionally borrows
         // allocations that must remain mapped until its workers finish.
-        #[cfg(target_os = "linux")]
+        #[cfg(all(feature = "gpu", target_os = "linux"))]
         if let SourceMode::GpuZeroCopy(state) = &mut self.mode {
             // Graceful shutdown ordering to prevent CUDA error 700:
             //
@@ -698,15 +708,15 @@ impl Drop for SmartFileSource {
 }
 
 /// Check if a decode backend supports GPU zero-copy.
+#[cfg(feature = "gpu")]
 fn is_backend_zero_copy_capable(backend: crate::ffmpeg::decoder::DecodeBackend) -> bool {
-    use crate::ffmpeg::decoder::DecodeBackend;
     match backend {
         #[cfg(target_os = "linux")]
-        DecodeBackend::Cuda => true,
+        crate::ffmpeg::decoder::DecodeBackend::Cuda => true,
         #[cfg(target_os = "macos")]
-        DecodeBackend::VideoToolbox => true,
+        crate::ffmpeg::decoder::DecodeBackend::VideoToolbox => true,
         #[cfg(target_os = "windows")]
-        DecodeBackend::D3d11va => true,
+        crate::ffmpeg::decoder::DecodeBackend::D3d11va => true,
         _ => false,
     }
 }
