@@ -13,6 +13,7 @@
 
 extern crate ffmpeg_next as ffmpeg;
 
+use ffmpeg::Rescale;
 use ffmpeg::format::{Pixel, input};
 use ffmpeg::media::Type;
 use ffmpeg::software::scaling::{context::Context as ScalingContext, flag::Flags as ScalingFlags};
@@ -231,8 +232,7 @@ pub struct VideoDecoder {
     decoder: ffmpeg::decoder::Video,
     scaler: Option<ScalingContext>,
     video_stream_index: usize,
-    time_base_num: i64,
-    time_base_den: i64,
+    time_base: ffmpeg::Rational,
     width: u32,
     height: u32,
     eof_sent: bool,
@@ -546,8 +546,7 @@ impl VideoDecoder {
             decoder,
             scaler: None,
             video_stream_index,
-            time_base_num: time_base.0 as i64,
-            time_base_den: time_base.1 as i64,
+            time_base,
             width,
             height,
             eof_sent: false,
@@ -887,7 +886,7 @@ impl VideoDecoder {
             return Ok(None);
         }
         self.require_format(Pixel::D3D11)?;
-        Ok(Some(self.extract_d3d11_frame()))
+        self.extract_d3d11_frame().map(Some)
     }
 
     /// Decode the next frame and return a VideoToolbox `CVPixelBufferRef`.
@@ -904,24 +903,33 @@ impl VideoDecoder {
             return Ok(None);
         }
         self.require_format(Pixel::VIDEOTOOLBOX)?;
-        Ok(Some(self.extract_vt_frame()))
+        self.extract_vt_frame().map(Some)
     }
 
     /// Convert a raw PTS value to microseconds using the stream time base.
     ///
-    /// Treats `AV_NOPTS_VALUE` as 0. Returns 0 if the time base denominator
-    /// is zero (shouldn't happen with valid streams, but avoids division by zero).
-    fn pts_to_us(&self, raw_pts: i64) -> i64 {
-        let pts = if raw_pts == ffi::AV_NOPTS_VALUE {
-            0
-        } else {
-            raw_pts
-        };
-        if self.time_base_den != 0 {
-            pts * self.time_base_num * 1_000_000 / self.time_base_den
-        } else {
-            0
+    /// Missing PTS retains the frame API's zero placeholder. Invalid time bases and unrepresentable timestamps fail; valid timestamps truncate toward zero without intermediate overflow.
+    fn pts_to_us(&self, raw_pts: i64) -> Result<i64, DecodeError> {
+        if self.time_base.0 <= 0 || self.time_base.1 <= 0 {
+            return Err(DecodeError::ConversionError(
+                "invalid stream time base".into(),
+            ));
         }
+        if raw_pts == ffi::AV_NOPTS_VALUE {
+            return Ok(0);
+        }
+        let timestamp = raw_pts.rescale_with(
+            self.time_base,
+            ffmpeg::util::mathematics::rescale::TIME_BASE,
+            ffmpeg::Rounding::Zero,
+        );
+        // FFmpeg returns INT64_MIN when the rescaled value cannot be represented.
+        if timestamp == i64::MIN {
+            return Err(DecodeError::ConversionError(
+                "decoded timestamp is outside the microsecond range".into(),
+            ));
+        }
+        Ok(timestamp)
     }
 
     /// Extract the `CVPixelBufferRef` from a VideoToolbox-decoded frame.
@@ -930,16 +938,16 @@ impl VideoDecoder {
     /// pointer (CVPixelBufferRef for VideoToolbox).
     #[cfg(target_os = "macos")]
     #[cfg(feature = "gpu")]
-    fn extract_vt_frame(&self) -> VtFrame {
+    fn extract_vt_frame(&self) -> Result<VtFrame, DecodeError> {
         let raw = unsafe { &*self.decoded_frame.as_ptr() };
-        let timestamp_us = self.pts_to_us(raw.pts);
+        let timestamp_us = self.pts_to_us(raw.pts)?;
 
-        VtFrame {
+        Ok(VtFrame {
             cv_pixel_buffer: raw.data[3] as *mut std::ffi::c_void,
             width: self.width,
             height: self.height,
             timestamp_us,
-        }
+        })
     }
 
     /// Extract the D3D11VA texture pointer and array slice from a decoded frame.
@@ -948,20 +956,20 @@ impl VideoDecoder {
     /// pool until the `D3d11Frame` is dropped (after staging).
     #[cfg(target_os = "windows")]
     #[cfg(feature = "gpu")]
-    fn extract_d3d11_frame(&self) -> D3d11Frame {
+    fn extract_d3d11_frame(&self) -> Result<D3d11Frame, DecodeError> {
         let raw = unsafe { &*self.decoded_frame.as_ptr() };
-        let timestamp_us = self.pts_to_us(raw.pts);
+        let timestamp_us = self.pts_to_us(raw.pts)?;
         let frame_ref = unsafe { ffi::av_frame_clone(self.decoded_frame.as_ptr()) };
         assert!(!frame_ref.is_null(), "av_frame_clone failed (OOM?)");
 
-        D3d11Frame {
+        Ok(D3d11Frame {
             texture: raw.data[0] as *mut std::ffi::c_void,
             array_slice: raw.data[1] as usize,
             width: self.width,
             height: self.height,
             timestamp_us,
             _frame_ref: frame_ref,
-        }
+        })
     }
 
     /// Extract CUDA device pointers from an NVDEC-decoded NV12 frame.
@@ -972,7 +980,7 @@ impl VideoDecoder {
     #[cfg(feature = "gpu")]
     fn extract_gpu_frame(&self) -> Result<GpuFrame, DecodeError> {
         let raw = unsafe { &*self.decoded_frame.as_ptr() };
-        let timestamp_us = self.pts_to_us(raw.pts);
+        let timestamp_us = self.pts_to_us(raw.pts)?;
 
         // FFmpeg linesize can be negative for some pixel formats (bottom-to-top).
         // Negative values would wrap to huge usize, causing GPU memory corruption.
@@ -1124,7 +1132,7 @@ impl VideoDecoder {
             cpu_frame
         };
 
-        let timestamp_us = self.pts_to_us(unsafe { (*self.decoded_frame.as_ptr()).pts });
+        let timestamp_us = self.pts_to_us(unsafe { (*self.decoded_frame.as_ptr()).pts })?;
 
         let w = self.width as usize;
         let h = self.height as usize;
@@ -1477,6 +1485,54 @@ mod tests {
     const R30: ffmpeg::Rational = ffmpeg::Rational(30, 1);
     const NTSC: ffmpeg::Rational = ffmpeg::Rational(30000, 1001);
     const UNSET: ffmpeg::Rational = ffmpeg::Rational(0, 0);
+
+    #[test]
+    fn decoded_timestamp_rescaling_handles_large_clock_origins() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("clock.mov");
+        write_mjpeg_60fps(&path);
+        let mut decoder = super::VideoDecoder::open_software(&path).unwrap();
+        assert!(decoder.receive_frame().unwrap());
+        decoder.time_base = (1, 90_000).into();
+        let seconds = 1_753_000_000_i64;
+        // SAFETY: the decoder uniquely owns this decoded frame. Change only its timestamp.
+        unsafe { (*decoder.decoded_frame.as_mut_ptr()).pts = seconds * 90_000 };
+        assert_eq!(
+            decoder.extract_yuv().unwrap().timestamp_us,
+            seconds * 1_000_000
+        );
+        for (time_base, pts, expected) in [
+            ((1, 3), 1, 333_333),
+            ((1, 3), -1, -333_333),
+            ((1001, 30_000), 90_000, 3_003_000_000),
+            ((1, 1_000_000), i64::MAX, i64::MAX),
+            ((1, 1_000_000), i64::MIN + 1, i64::MIN + 1),
+            ((1, 90_000), ffmpeg::ffi::AV_NOPTS_VALUE, 0),
+        ] {
+            decoder.time_base = time_base.into();
+            assert_eq!(decoder.pts_to_us(pts).unwrap(), expected);
+        }
+        decoder.time_base = (1, 1).into();
+        assert!(decoder.pts_to_us(i64::MAX).is_err());
+        assert!(decoder.pts_to_us(i64::MIN + 1).is_err());
+        // SAFETY: the uniquely owned frame remains decoded and only its PTS changes.
+        unsafe { (*decoder.decoded_frame.as_mut_ptr()).pts = i64::MAX };
+        assert!(decoder.extract_yuv().is_err());
+        let mut seed = 0x53ab_9000_u64;
+        for _ in 0..1000 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let pts = seed as i64;
+            decoder.time_base = ((seed % 1001 + 1) as i32, (seed % 100_000 + 1) as i32).into();
+            let exact = i128::from(pts) * i128::from(decoder.time_base.0) * 1_000_000
+                / i128::from(decoder.time_base.1);
+            let expected = i64::try_from(exact).ok().filter(|&value| value != i64::MIN);
+            assert_eq!(decoder.pts_to_us(pts).ok(), expected);
+        }
+        for time_base in [(0, 1), (1, 0), (-1, 1), (1, -1)] {
+            decoder.time_base = time_base.into();
+            assert!(decoder.pts_to_us(1).is_err());
+        }
+    }
 
     #[cfg(target_os = "windows")]
     #[test]
