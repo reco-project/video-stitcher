@@ -33,6 +33,14 @@ fn default_schema_version() -> u32 {
 /// Errors produced by [`Calibration::validate`].
 #[derive(Debug, Clone, Error)]
 pub enum CalibrationError {
+    /// The document declares a schema version this build does not understand.
+    #[error(
+        "unsupported calibration schema version {found}; this reco requires version {SCHEMA_VERSION}"
+    )]
+    UnsupportedSchemaVersion {
+        /// The declared document version.
+        found: u32,
+    },
     /// A value is outside its documented range.
     #[error("{field} must be in [{min}, {max}], got {value}")]
     OutOfRange {
@@ -242,6 +250,7 @@ fn validate_framing(f: &Framing) -> Result<(), CalibrationError> {
 /// It is the CPU/GPU-independent record both executors derive their runtime
 /// form from. Two cameras of the same model share the same `Lens` content.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Lens {
     /// Calibration frame width in pixels.
     pub width: u32,
@@ -427,6 +436,7 @@ impl From<projection::Cylinder> for Projection {
 /// panning evolves *within*. Pan (yaw/pitch) and output framing (fov/size) are
 /// runtime state and are deliberately NOT stored here.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Framing {
     /// Virtual-camera distance from the origin along X and Z; the camera sits
     /// at `[axis_offset, 0, axis_offset]`.
@@ -444,6 +454,7 @@ pub struct Framing {
 /// A detection concern (consumed by `reco-autocam`), kept here transitionally;
 /// it will move out of the calibration when detection config is extracted.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct FieldRoi {
     /// Polygon vertices for the left camera, normalized `[0,1]`.
     #[serde(default)]
@@ -460,9 +471,7 @@ pub struct FieldRoi {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Calibration {
-    /// Document schema version. Counts revisions of this format family
-    /// (the retired "match" format predates versioning); `from_file`
-    /// rejects versions this build does not understand.
+    /// Document schema version. [`Self::validate`] rejects versions this build does not understand.
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
     /// Per-source optical models, one per camera (index 0 = left, 1 = right for
@@ -523,42 +532,7 @@ impl Calibration {
             });
         }
 
-        let value: serde_json::Value = serde_json::from_str(&json)?;
-        if let Some(obj) = value.as_object() {
-            // Legacy 'match' document, detected by its top-level keys (a
-            // substring scan would false-positive on nested strings and
-            // mask real parse errors).
-            if obj.contains_key("left_uniforms") || obj.contains_key("params") {
-                return Err(CalibrationLoadError::LegacyMatchFormat);
-            }
-            // A current-format document carrying stray legacy keys would
-            // otherwise parse cleanly with the real fields silently
-            // defaulted to zero (serde ignores unknown keys) - the seam
-            // alignment would vanish with no diagnostics. Fail loud.
-            const LEGACY_PROJECTION_KEYS: [&str; 5] = ["xTy", "xRz", "zRx", "xRx", "zRz"];
-            let projection_keys = obj.get("projection").and_then(|t| t.as_object());
-            let stray = LEGACY_PROJECTION_KEYS
-                .iter()
-                .find(|k| projection_keys.is_some_and(|t| t.contains_key(**k)))
-                .or_else(|| {
-                    ["rig_tilt", "rig_roll", "cameraAxisOffset"]
-                        .iter()
-                        .find(|k| obj.contains_key(**k))
-                        .map(|k| k as _)
-                });
-            if let Some(key) = stray {
-                return Err(CalibrationLoadError::LegacyKey {
-                    key: (*key).to_owned(),
-                });
-            }
-        }
-        let cal: Self = serde_json::from_value(value)?;
-        // Reject other schema versions rather than interpreting them using this format's defaults.
-        if cal.schema_version != SCHEMA_VERSION {
-            return Err(CalibrationLoadError::UnsupportedSchemaVersion {
-                found: cal.schema_version,
-            });
-        }
+        let cal: Self = serde_json::from_str(&json)?;
         cal.validate()?;
         Ok(cal)
     }
@@ -578,6 +552,11 @@ impl Calibration {
     /// Catches malformed values that would otherwise cause GPU hangs, shader
     /// division-by-zero, or excessive allocations. Returns the first error found.
     pub fn validate(&self) -> Result<(), CalibrationError> {
+        if self.schema_version != SCHEMA_VERSION {
+            return Err(CalibrationError::UnsupportedSchemaVersion {
+                found: self.schema_version,
+            });
+        }
         if self.lenses.is_empty() {
             return Err(CalibrationError::NoLenses);
         }
@@ -634,39 +613,6 @@ pub enum CalibrationLoadError {
     /// JSON parse error.
     #[error("invalid calibration JSON: {0}")]
     Parse(#[from] serde_json::Error),
-    /// A legacy "match" format calibration was detected. That pre-versioning
-    /// wire shape (`left_uniforms`/`cameraAxisOffset`) is no longer
-    /// supported; `schema_version` counts revisions of the current format
-    /// family and starts at 1.
-    ///
-    /// Transitional: we sniff the old wire shape only to give a clear
-    /// message instead of a raw `missing field lenses`. Remove a few
-    /// releases after the cutover.
-    #[error(
-        "legacy 'match' format calibration is no longer supported; \
-         re-run `reco calibrate` to produce a current calibration file"
-    )]
-    LegacyMatchFormat,
-    /// A current-format document carries a legacy key that serde would
-    /// silently ignore, defaulting the real field to zero.
-    #[error(
-        "calibration contains the legacy key '{key}', which the current \
-         schema would silently ignore; rename it to its snake_case \
-         equivalent or re-run `reco calibrate`"
-    )]
-    LegacyKey {
-        /// The offending key as found in the file.
-        key: String,
-    },
-    /// The file declares a schema version this build does not understand.
-    #[error(
-        "unsupported calibration schema version {found}; this reco requires \
-         version {SCHEMA_VERSION}; re-run `reco calibrate` with this version of reco"
-    )]
-    UnsupportedSchemaVersion {
-        /// The `schema_version` the file declared.
-        found: u32,
-    },
     /// Calibration values are invalid.
     #[error(transparent)]
     Invalid(#[from] CalibrationError),
@@ -721,6 +667,85 @@ mod tests {
     }
 
     #[test]
+    fn calibration_rejects_unknown_nested_fields() {
+        let mut calibration = valid_cal();
+        calibration.field_roi = Some(FieldRoi::default());
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("calibration.json");
+        for (object, field, misspelled) in [
+            ("/lenses/0", "correction", "corection"),
+            ("/projection", "blend_width", "blend_wdith"),
+            ("/framing", "roll", "rol"),
+            ("/field_roi", "right", "rigth"),
+        ] {
+            let mut value = serde_json::to_value(&calibration).unwrap();
+            let fields = value.pointer_mut(object).unwrap().as_object_mut().unwrap();
+            let parameter = fields.remove(field).unwrap();
+            fields.insert(misspelled.into(), parameter);
+            std::fs::write(&path, serde_json::to_string(&value).unwrap()).unwrap();
+            let err = Calibration::from_file(&path).unwrap_err();
+            assert!(err.to_string().contains(misspelled), "{object}: {err}");
+            let err = serde_json::from_value::<Calibration>(value).unwrap_err();
+            assert!(err.to_string().contains(misspelled), "{object}: {err}");
+        }
+    }
+
+    #[test]
+    fn calibration_file_rejects_duplicate_fields() {
+        let mut calibration = valid_cal();
+        calibration.field_roi = Some(FieldRoi::default());
+        let json = serde_json::to_string(&calibration).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("calibration.json");
+        for (field, first_value) in [
+            ("schema_version", "0"),
+            ("correction", "0"),
+            ("type", "\"cylinder\""),
+            ("intersect", "0"),
+            ("roll", "0"),
+            ("right", "[]"),
+        ] {
+            let duplicate = json.replacen(
+                &format!("\"{field}\":"),
+                &format!("\"{field}\":{first_value},\"{field}\":"),
+                1,
+            );
+            std::fs::write(&path, duplicate).unwrap();
+            let err = Calibration::from_file(&path).unwrap_err();
+            assert!(
+                err.to_string().contains("duplicate field"),
+                "{field}: {err}"
+            );
+            assert!(err.to_string().contains(field), "{field}: {err}");
+        }
+    }
+
+    #[test]
+    fn unsupported_schema_is_rejected_without_file_loading() {
+        for version in [0, 1, SCHEMA_VERSION + 1, u32::MAX] {
+            let mut calibration = valid_cal();
+            calibration.schema_version = version;
+            assert!(matches!(
+                calibration.validate(),
+                Err(CalibrationError::UnsupportedSchemaVersion { found }) if found == version
+            ));
+            let source_sizes = vec![(64, 32); calibration.lenses.len()];
+            assert!(
+                crate::stitch::CpuExecutor::new(
+                    calibration,
+                    crate::render::viewport::ViewportSize {
+                        width: 64,
+                        height: 32
+                    },
+                    source_sizes,
+                    false,
+                )
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
     fn older_schema_version_is_rejected() {
         let mut cal = valid_cal();
         cal.schema_version = 1;
@@ -731,7 +756,7 @@ mod tests {
         std::fs::remove_file(path).unwrap();
         assert!(matches!(
             err,
-            CalibrationLoadError::UnsupportedSchemaVersion { found: 1 }
+            CalibrationLoadError::Invalid(CalibrationError::UnsupportedSchemaVersion { found: 1 })
         ));
         assert!(!err.to_string().contains("newer"));
     }
@@ -782,10 +807,10 @@ mod tests {
         r#"{
             "schema_version": 2,
             "lenses": [
-                { "id": "test-cam", "width": 3840, "height": 2160,
+                { "width": 3840, "height": 2160,
                   "fx": 1796.32, "fy": 1797.22, "cx": 1919.37, "cy": 1063.17,
                   "distortion": [0.0342, 0.0677, -0.0741, 0.0299], "correction": 1.0 },
-                { "id": "test-cam", "width": 3840, "height": 2160,
+                { "width": 3840, "height": 2160,
                   "fx": 1796.32, "fy": 1797.22, "cx": 1919.37, "cy": 1063.17,
                   "distortion": [0.0342, 0.0677, -0.0741, 0.0299], "correction": 1.0 }
             ],
@@ -1062,9 +1087,10 @@ mod tests {
         std::fs::write(&path, r#"{"left_uniforms":{"width":100},"params":{}}"#).unwrap();
         let err = Calibration::from_file(&path).unwrap_err();
         let _ = std::fs::remove_file(&path);
+        assert!(matches!(err, CalibrationLoadError::Parse(_)));
         assert!(
-            matches!(err, CalibrationLoadError::LegacyMatchFormat),
-            "expected LegacyMatchFormat, got {err:?}"
+            err.to_string().contains("unknown field `left_uniforms`"),
+            "{err}"
         );
     }
 
@@ -1082,10 +1108,8 @@ mod tests {
         std::fs::write(&path, serde_json::to_string_pretty(&v).unwrap()).unwrap();
         let err = Calibration::from_file(&path).unwrap_err();
         let _ = std::fs::remove_file(&path);
-        assert!(
-            matches!(err, CalibrationLoadError::LegacyKey { ref key } if key == "xTy"),
-            "expected LegacyKey(xTy), got {err:?}"
-        );
+        assert!(matches!(err, CalibrationLoadError::Parse(_)));
+        assert!(err.to_string().contains("unknown field `xTy`"), "{err}");
     }
 
     #[test]
@@ -1101,7 +1125,9 @@ mod tests {
         assert!(
             matches!(
                 err,
-                CalibrationLoadError::UnsupportedSchemaVersion { found: 99 }
+                CalibrationLoadError::Invalid(CalibrationError::UnsupportedSchemaVersion {
+                    found: 99
+                })
             ),
             "expected UnsupportedSchemaVersion, got {err:?}"
         );

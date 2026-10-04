@@ -32,6 +32,7 @@ fn default_blend_width() -> f32 {
 
 /// 3D placement of the two L-shape source planes plus the overlap seam.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LShape {
     /// Plane placement parameter in `[0, 1]`. Each plane is translated by `(plane_width / 2) × (1 - intersect)` along its placement axis. This is not a measured fraction of rendered overlap.
     pub intersect: f64,

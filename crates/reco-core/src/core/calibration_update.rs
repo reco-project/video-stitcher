@@ -245,6 +245,9 @@ mod tests {
         let pixels = render(&mut core);
         let coverage = core.prepare_coverage().unwrap();
         let mut drafts = Vec::new();
+        let mut draft = calibration.clone();
+        draft.schema_version = u32::MAX;
+        drafts.push(draft);
         for invalid in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::MAX] {
             let mut draft = calibration.clone();
             draft.framing.axis_offset = invalid;
