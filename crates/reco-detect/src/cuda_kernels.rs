@@ -1,88 +1,79 @@
 //! CUDA kernels for GPU-side image preprocessing.
 //!
-//! Contains a normalize + HWC-to-CHW transpose kernel used to convert
-//! NPP's packed RGB u8 output into the float32 CHW tensor format expected
-//! by YOLO models. The kernel is embedded as PTX (compiled offline) to
-//! avoid a build-time CUDA SDK dependency.
+//! P010 conversion, NV12 letterboxing and HWC-to-CHW normalization for detector input. Embedded PTX avoids a build-time CUDA SDK dependency.
 
 use std::ffi::c_void;
 use std::sync::OnceLock;
 
 use reco_core::interop::cuda::{CUdeviceptr, CudaInteropError, CudaKernel};
 
-/// PTX source for the P010-to-NV12 conversion kernel.
-///
-/// P010 stores 10-bit values in the upper 10 bits of each u16 sample.
-/// This kernel right-shifts each u16 by 8, producing the high byte as a
-/// u8 output. This gives 8-bit precision from the 10-bit source, which
-/// is sufficient for object detection.
-///
-/// Parameters: src (u16*), dst (u8*), n (u32) - total element count
-///
-/// Grid: (ceil(n/256), 1, 1)
-/// Block: (256, 1, 1)
+/// Convert a strided P010 plane into tightly packed bytes by retaining each sample's high byte.
 const P010_TO_NV12_PTX: &[u8] = b"
 .version 7.0
 .target sm_50
 .address_size 64
 
-.visible .entry p010_to_nv12(
+.visible .entry p010_plane_to_nv12(
     .param .u64 src,
     .param .u64 dst,
-    .param .u32 n
+    .param .u32 pitch,
+    .param .u32 width,
+    .param .u32 height
 )
+.reqntid 128, 2, 1
 {
-    .reg .u32 %i, %n_val, %tmp, %tmp2;
-    .reg .u64 %src_ptr, %dst_ptr, %addr;
-    .reg .u16 %val16;
-    .reg .u32 %val32;
+    .reg .u32 %x, %y, %w, %h, %pitch, %tmp, %tmp2;
+    .reg .u64 %src, %dst, %offset, %column;
+    .reg .u16 %sample;
     .reg .pred %p;
 
-    // i = blockIdx.x * blockDim.x + threadIdx.x
     mov.u32 %tmp, %ctaid.x;
     mov.u32 %tmp2, %ntid.x;
-    mul.lo.u32 %i, %tmp, %tmp2;
+    mul.lo.u32 %x, %tmp, %tmp2;
     mov.u32 %tmp, %tid.x;
-    add.u32 %i, %i, %tmp;
+    add.u32 %x, %x, %tmp;
+    mov.u32 %tmp, %ctaid.y;
+    mov.u32 %tmp2, %ntid.y;
+    mul.lo.u32 %y, %tmp, %tmp2;
+    mov.u32 %tmp, %tid.y;
+    add.u32 %y, %y, %tmp;
 
-    // bounds check
-    ld.param.u32 %n_val, [n];
-    setp.ge.u32 %p, %i, %n_val;
+    ld.param.u32 %w, [width];
+    ld.param.u32 %h, [height];
+    setp.ge.u32 %p, %x, %w;
+    @%p bra done;
+    setp.ge.u32 %p, %y, %h;
     @%p bra done;
 
-    // Load u16 from src[i]
-    ld.param.u64 %src_ptr, [src];
-    cvt.u64.u32 %addr, %i;
-    shl.b64 %addr, %addr, 1;  // * sizeof(u16)
-    add.u64 %addr, %src_ptr, %addr;
-    ld.global.u16 %val16, [%addr];
+    ld.param.u64 %src, [src];
+    ld.param.u32 %pitch, [pitch];
+    mul.wide.u32 %offset, %y, %pitch;
+    mul.wide.u32 %column, %x, 2;
+    add.u64 %offset, %offset, %column;
+    add.u64 %src, %src, %offset;
+    // PTX memory is little-endian: the second byte is the retained high byte.
+    ld.global.u8 %sample, [%src+1];
 
-    // Right-shift by 8 to get high byte
-    cvt.u32.u16 %val32, %val16;
-    shr.u32 %val32, %val32, 8;
-
-    // Store u8 to dst[i]
-    ld.param.u64 %dst_ptr, [dst];
-    cvt.u64.u32 %addr, %i;
-    add.u64 %addr, %dst_ptr, %addr;
-    // Truncate u32 to u8 and store
-    cvt.u16.u32 %val16, %val32;
-    st.global.u8 [%addr], %val16;
+    ld.param.u64 %dst, [dst];
+    mul.wide.u32 %offset, %y, %w;
+    cvt.u64.u32 %column, %x;
+    add.u64 %offset, %offset, %column;
+    add.u64 %dst, %dst, %offset;
+    st.global.u8 [%dst], %sample;
 
 done:
     ret;
 }
 \0";
 
-/// Lazily loaded P010-to-NV12 kernel.
 static P010_KERNEL: OnceLock<Result<CudaKernel, CudaInteropError>> = OnceLock::new();
 
 fn get_p010_kernel() -> Result<&'static CudaKernel, CudaInteropError> {
     P010_KERNEL
-        .get_or_init(|| CudaKernel::from_ptx(P010_TO_NV12_PTX, "p010_to_nv12"))
+        .get_or_init(|| CudaKernel::from_ptx(P010_TO_NV12_PTX, "p010_plane_to_nv12"))
         .as_ref()
         .map_err(|e| CudaInteropError::CudaError {
-            function: "p010_to_nv12_load",
+            function: "p010_plane_to_nv12_load",
             code: match e {
                 CudaInteropError::CudaError { code, .. } => *code,
                 _ => -1,
@@ -90,60 +81,11 @@ fn get_p010_kernel() -> Result<&'static CudaKernel, CudaInteropError> {
         })
 }
 
-/// Convert a P010 (10-bit NV12) plane to 8-bit NV12 on the GPU.
+/// Convert a CUDA P010 plane to tightly packed 8-bit samples, discarding the low byte of each 16-bit sample.
 ///
-/// Reads `n` u16 samples from `src`, right-shifts each by 8 to extract
-/// the high byte, and writes `n` u8 samples to `dst`. Works for both
-/// the Y plane (width * height samples) and the UV plane (width * height/2
-/// samples, but counted as individual u16 values).
+/// `width` counts individual samples, including both components of interleaved UV. `src_pitch` is in bytes and must be even and at least `width * 2`. Dimensions must be positive and within [`reco_core::calibration::MAX_DIM`].
 ///
-/// Both `src` and `dst` are CUDA device pointers. `n` is the number of
-/// samples (not bytes). `src` must have at least `n * 2` bytes, `dst`
-/// must have at least `n` bytes.
-///
-/// Note: this performs a 2D-pitched to linear conversion. If the source
-/// has padding (pitch > width), use [`p010_plane_to_nv12`] instead, which
-/// handles pitched layouts via [`cuda_2d_copy`](reco_core::interop::cuda::cuda_2d_copy)
-/// style semantics. For contiguous data (pitch == width * 2), this function
-/// is simpler.
-pub fn p010_to_nv12(src: CUdeviceptr, dst: CUdeviceptr, n: u32) -> Result<(), CudaInteropError> {
-    reco_core::interop::cuda::cuda_ensure_context()?;
-    let kernel = get_p010_kernel()?;
-
-    let block = 256u32;
-    let grid = n.div_ceil(block);
-
-    let mut src_val = src;
-    let mut dst_val = dst;
-    let mut n_val = n;
-
-    let mut args: [*mut std::ffi::c_void; 3] = [
-        (&mut src_val as *mut u64).cast(),
-        (&mut dst_val as *mut u64).cast(),
-        (&mut n_val as *mut u32).cast(),
-    ];
-
-    unsafe {
-        kernel.launch((grid, 1, 1), (block, 1, 1), 0, &mut args)?;
-    }
-
-    // Synchronize to ensure kernel completion before using the output.
-    reco_core::interop::cuda::cuda_synchronize()?;
-
-    Ok(())
-}
-
-/// Convert a pitched P010 plane to a contiguous 8-bit plane on the GPU.
-///
-/// Handles the common case where the source P010 plane has row padding
-/// (pitch > width * 2). Reads `width` u16 samples per row from `src`
-/// with `src_pitch` byte stride, converts each to u8 by right-shifting
-/// by 8, and writes to `dst` with `width` byte stride (tightly packed).
-///
-/// `width` is in samples (pixels for Y, pixel pairs for UV).
-/// `height` is the number of rows.
-///
-/// Both `src` and `dst` are CUDA device pointers.
+/// `src` must reference a 16-bit-aligned device allocation covering all strided rows; `dst` must reference a separate device allocation of at least `width * height` bytes. Conversion finishes before returning, so the result can be used on another CUDA stream.
 pub fn p010_plane_to_nv12(
     src: CUdeviceptr,
     src_pitch: usize,
@@ -151,19 +93,48 @@ pub fn p010_plane_to_nv12(
     width: u32,
     height: u32,
 ) -> Result<(), CudaInteropError> {
-    if src_pitch == width as usize * 2 {
-        // Contiguous layout - use the simple kernel directly.
-        return p010_to_nv12(src, dst, width * height);
+    const CUDA_ERROR_INVALID_VALUE: i32 = 1;
+    if width == 0
+        || height == 0
+        || width > reco_core::calibration::MAX_DIM
+        || height > reco_core::calibration::MAX_DIM
+        || src == 0
+        || dst == 0
+        || !src.is_multiple_of(2)
+        || src_pitch > u32::MAX as usize
+        || src_pitch < width as usize * 2
+        || !src_pitch.is_multiple_of(2)
+        || src
+            .checked_add(src_pitch as u64 * (height - 1) as u64 + width as u64 * 2)
+            .is_none()
+        || dst.checked_add(width as u64 * height as u64).is_none()
+    {
+        return Err(CudaInteropError::CudaError {
+            function: "p010_plane_to_nv12",
+            code: CUDA_ERROR_INVALID_VALUE,
+        });
     }
-
-    // Pitched layout: process row by row through the kernel.
-    // Each row has `width` u16 samples starting at src + row * src_pitch.
-    for row in 0..height {
-        let row_src = src + (row as usize * src_pitch) as u64;
-        let row_dst = dst + (row as usize * width as usize) as u64;
-        p010_to_nv12(row_src, row_dst, width)?;
+    reco_core::interop::cuda::cuda_ensure_context()?;
+    let kernel = get_p010_kernel()?;
+    let block = (128, 2, 1); // Matches the PTX entry's required block dimensions.
+    let grid = (width.div_ceil(block.0), height.div_ceil(block.1), 1);
+    let mut src_val = src;
+    let mut dst_val = dst;
+    let mut pitch_val = src_pitch as u32;
+    let mut width_val = width;
+    let mut height_val = height;
+    let mut args: [*mut c_void; 5] = [
+        (&mut src_val as *mut u64).cast(),
+        (&mut dst_val as *mut u64).cast(),
+        (&mut pitch_val as *mut u32).cast(),
+        (&mut width_val as *mut u32).cast(),
+        (&mut height_val as *mut u32).cast(),
+    ];
+    // SAFETY: Argument types/order match the PTX entry point. Bounds checks guard partial blocks.
+    unsafe {
+        kernel.launch(grid, block, 0, &mut args)?;
     }
-
+    reco_core::interop::cuda::cuda_synchronize()?;
     Ok(())
 }
 
@@ -787,148 +758,4 @@ pub fn normalize_rgba_to_chw(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use reco_core::interop::cuda::{
-        cuda_mem_alloc, cuda_mem_free, cuda_memcpy_dtoh, cuda_memcpy_htod_2d,
-    };
-
-    struct Buffer(CUdeviceptr);
-
-    impl Buffer {
-        fn bytes(data: &[u8]) -> Self {
-            let buffer = Self(cuda_mem_alloc(data.len()).unwrap());
-            cuda_memcpy_htod_2d(
-                buffer.0,
-                data.len(),
-                data.as_ptr(),
-                data.len(),
-                data.len(),
-                1,
-            )
-            .unwrap();
-            buffer
-        }
-
-        fn floats(&self, len: usize) -> Vec<f32> {
-            let mut data = vec![0.0f32; len];
-            // SAFETY: the allocation and destination contain `len` f32 values.
-            unsafe {
-                cuda_memcpy_dtoh(data.as_mut_ptr().cast(), self.0, len * 4).unwrap();
-            }
-            data
-        }
-    }
-
-    impl Drop for Buffer {
-        fn drop(&mut self) {
-            cuda_mem_free(self.0).unwrap();
-        }
-    }
-
-    fn check_tensor(sizes: &[(u32, u32)], y_pitch: u32, uv_pitch: u32, p010: bool) {
-        reco_core::interop::cuda::cuda_ensure_context().unwrap();
-        const DST: u32 = 16;
-        let poison = vec![-99.0f32; (DST * DST * 3) as usize];
-        let tensor = Buffer::bytes(bytemuck::cast_slice(&poison));
-        for &(width, height) in sizes {
-            let mut y = vec![0; (y_pitch * height) as usize];
-            let mut uv = vec![0; (uv_pitch * height / 2) as usize];
-            for row in 0..height {
-                for col in 0..width {
-                    y[(row * y_pitch + col) as usize] = (50 + row * 7 + col * 3) as u8;
-                }
-            }
-            for row in 0..height / 2 {
-                for col in 0..width / 2 {
-                    uv[(row * uv_pitch + col * 2) as usize] = (100 + row * 7) as u8;
-                    uv[(row * uv_pitch + col * 2 + 1) as usize] = (140 + col * 5) as u8;
-                }
-            }
-            let (y, uv, y_stride, uv_stride) = if p010 {
-                let y16: Vec<u16> = y.iter().map(|&v| u16::from(v) << 8).collect();
-                let uv16: Vec<u16> = uv.iter().map(|&v| u16::from(v) << 8).collect();
-                let y16 = Buffer::bytes(bytemuck::cast_slice(&y16));
-                let uv16 = Buffer::bytes(bytemuck::cast_slice(&uv16));
-                let y = Buffer::bytes(&vec![0; (width * height) as usize]);
-                let uv = Buffer::bytes(&vec![0; (width * height / 2) as usize]);
-                p010_plane_to_nv12(y16.0, (y_pitch * 2) as usize, y.0, width, height).unwrap();
-                p010_plane_to_nv12(uv16.0, (uv_pitch * 2) as usize, uv.0, width, height / 2)
-                    .unwrap();
-                (y, uv, width, width)
-            } else {
-                (Buffer::bytes(&y), Buffer::bytes(&uv), y_pitch, uv_pitch)
-            };
-            let scale = (DST as f32 / width as f32).min(DST as f32 / height as f32);
-            let content_w = (width as f32 * scale).round() as u32;
-            let content_h = (height as f32 * scale).round() as u32;
-            let pad_x = (DST - content_w) / 2;
-            let pad_y = (DST - content_h) / 2;
-            for rotation in [0, 180] {
-                nv12_to_rgb_chw_fullrange(
-                    y.0, uv.0, tensor.0, y_stride, uv_stride, width, height, DST, DST, pad_x,
-                    pad_y, scale, rotation,
-                )
-                .unwrap();
-                let result = tensor.floats(poison.len());
-                for channel in 0..3 {
-                    for oy in 0..DST {
-                        for ox in 0..DST {
-                            let expected = if ox < pad_x
-                                || ox >= pad_x + content_w
-                                || oy < pad_y
-                                || oy >= pad_y + content_h
-                            {
-                                114.0 / 255.0
-                            } else {
-                                let mut x = (((ox - pad_x) as f32 / scale) as u32).min(width - 1);
-                                let mut y = (((oy - pad_y) as f32 / scale) as u32).min(height - 1);
-                                if rotation == 180 {
-                                    x = width - 1 - x;
-                                    y = height - 1 - y;
-                                }
-                                let luma = (50 + y * 7 + x * 3) as f32;
-                                let u = (100 + y / 2 * 7) as f32 - 128.0;
-                                let v = (140 + x / 2 * 5) as f32 - 128.0;
-                                let rgb = [
-                                    luma + 1.5748 * v,
-                                    luma - 0.1873 * u - 0.4681 * v,
-                                    luma + 1.8556 * u,
-                                ];
-                                rgb[channel as usize].clamp(0.0, 255.0) / 255.0
-                            };
-                            let actual = result[(channel * DST * DST + oy * DST + ox) as usize];
-                            assert!(
-                                (actual - expected).abs() < 1e-6,
-                                "{width}x{height}, rotation {rotation}, channel {channel}, ({ox},{oy}): {actual} != {expected}"
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    #[ignore = "requires NVIDIA CUDA"]
-    fn nv12_letterbox_overwrites_padding_when_shape_changes() {
-        check_tensor(
-            &[(8, 4), (4, 8), (8, 8), (6, 4), (4, 6), (8, 4)],
-            16,
-            16,
-            false,
-        );
-    }
-
-    #[test]
-    #[ignore = "requires NVIDIA CUDA"]
-    fn nv12_planes_have_independent_strides() {
-        check_tensor(&[(8, 8)], 16, 24, false);
-    }
-
-    #[test]
-    #[ignore = "requires NVIDIA CUDA"]
-    fn p010_strides_and_shape_changes_preserve_tensor_pixels() {
-        check_tensor(&[(8, 4), (4, 8), (8, 8), (6, 4), (4, 6)], 16, 24, true);
-    }
-}
+mod tests;
