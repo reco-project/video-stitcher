@@ -451,8 +451,7 @@ pub struct Framing {
 
 /// Playing-field region of interest for per-camera detection filtering.
 ///
-/// A detection concern (consumed by `reco-autocam`), kept here transitionally;
-/// it will move out of the calibration when detection config is extracted.
+/// Consumed by `reco-autocam` when configuring detection filtering.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct FieldRoi {
@@ -481,11 +480,10 @@ pub struct Calibration {
     pub projection: Projection,
     /// The virtual camera's calibrated coordinate frame.
     pub framing: Framing,
-    /// Temporal sync offset in frames (positive = right video ahead). Consumed
-    /// by `reco-io` decode pairing; transitional, moves to the synchronizer.
+    /// Temporal sync offset in frames (positive = right video ahead), consumed by `reco-io` decode pairing.
     #[serde(default)]
     pub sync_offset: i64,
-    /// Optional per-camera detection ROI. Transitional (a detection concern).
+    /// Optional per-camera detection ROI, consumed by camera-control setup.
     #[serde(default)]
     pub field_roi: Option<FieldRoi>,
 }
