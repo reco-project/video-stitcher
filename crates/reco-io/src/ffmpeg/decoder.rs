@@ -418,10 +418,6 @@ impl VideoDecoder {
         let time_base = stream.time_base();
 
         let mut context = ffmpeg::codec::context::Context::from_parameters(stream.parameters())?;
-        let mut threading = ffmpeg::threading::Config::kind(ffmpeg::threading::Type::Frame);
-        threading.count = 0;
-        context.set_threading(threading);
-
         let (backend, hw_device_ref) = if force_software {
             log::info!("Software decode: forced by the caller");
             (DecodeBackend::Software, ptr::null_mut())
@@ -434,6 +430,15 @@ impl VideoDecoder {
             try_hwaccel(&mut context)
         };
 
+        let mut threading = ffmpeg::threading::Config::kind(ffmpeg::threading::Type::Frame);
+        // FFmpeg reserves an extra decode surface per frame thread. NVDEC's H.264 32-surface limit must leave room for the stream's reference/reorder pool. Other codecs keep automatic threading.
+        threading.count =
+            if backend == DecodeBackend::Cuda && context.id() == ffmpeg::codec::Id::H264 {
+                1
+            } else {
+                0
+            };
+        context.set_threading(threading);
         let decoder = context.decoder().video()?;
 
         let width = decoder.width();
@@ -1409,6 +1414,55 @@ fn pick_frame_rate(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[ignore = "requires NVIDIA NVENC/NVDEC; also runs without reco-io's gpu feature"]
+    fn ffmpeg_hardware_codecs_preserve_host_frames() {
+        use super::{DecodeBackend, VideoDecoder};
+        use crate::ffmpeg::encoder::{EncoderConfig, VideoEncoder};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("hardware.mp4");
+        let config = EncoderConfig {
+            encoder_name: Some("h264_nvenc".into()),
+            ..Default::default()
+        };
+        let mut encoder = VideoEncoder::new(&path, 256, 192, (30, 1).into(), &config).unwrap();
+        assert_eq!(encoder.encoder_name(), "h264_nvenc");
+        for index in 0..12 {
+            let mut frame = vec![128; 256 * 192 * 3 / 2];
+            frame[..256 * 192].fill(80 + index * 8);
+            encoder.write_nv12_frame(&frame, None).unwrap();
+        }
+        encoder.finish().unwrap();
+        let mut decoder = VideoDecoder::open(&path).unwrap();
+        assert_eq!(decoder.backend(), DecodeBackend::Cuda);
+        for index in 0..12 {
+            let frame = decoder
+                .next_frame()
+                .unwrap()
+                .expect("missing hardware-decoded frame");
+            assert_eq!(
+                decoder.decoded_frame.format(),
+                ffmpeg::format::Pixel::CUDA,
+                "hardware decode must not silently fall back"
+            );
+            assert_eq!((frame.width, frame.height), (256, 192));
+            assert!(
+                frame
+                    .y
+                    .iter()
+                    .all(|value| value.abs_diff(80 + index * 8) <= 2)
+            );
+            assert!(
+                frame
+                    .u
+                    .iter()
+                    .chain(&frame.v)
+                    .all(|value| value.abs_diff(128) <= 2)
+            );
+        }
+        assert!(decoder.next_frame().unwrap().is_none());
+    }
+
     use super::pick_frame_rate;
     use ffmpeg_next as ffmpeg;
 
