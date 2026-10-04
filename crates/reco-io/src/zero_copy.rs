@@ -6,8 +6,6 @@
 #[cfg(all(test, target_os = "windows"))]
 mod windows_tests;
 
-#[cfg(target_os = "macos")]
-use crate::decode_stream::pair;
 #[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))]
 use crate::decode_stream::{Message, spawn};
 #[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))]
@@ -128,7 +126,7 @@ pub fn spawn_decode_threads_gpu(
         receivers.push(rx);
         join_handles.push(handle);
     }
-    let (frame_rx, collector) = crate::decode_stream::collect(receivers, 1);
+    let (frame_rx, collector) = crate::decode_stream::collect(receivers, 0, 1);
     join_handles.push(collector);
     reco_core::interop::zero_copy::GpuDecodeHandles {
         frame_rx,
@@ -136,55 +134,55 @@ pub fn spawn_decode_threads_gpu(
     }
 }
 
+/// Spawn camera-ordered VideoToolbox workers with cancellation and joined cleanup.
 #[cfg(target_os = "macos")]
-fn spawn_vt_decode_thread(
-    input: crate::stitch_job::InputPath,
-    label: &'static str,
-) -> std::sync::mpsc::Receiver<Message<reco_core::interop::metal::RetainedCVPixelBuffer>> {
-    use reco_core::interop::metal::RetainedCVPixelBuffer;
-
-    spawn(
-        format!("vt_decode_{label}"),
-        4,
-        move |tx| -> Result<(), DecodeError> {
-            let mut dec = VideoDecoder::open_input(&input)?;
-            log::info!("VT decode thread {label}: backend={}", dec.backend());
-            while let Some(vt) = dec.next_frame_vt()? {
-                let retained = unsafe { RetainedCVPixelBuffer::retain(vt.cv_pixel_buffer) };
-                if tx.send(Ok(Some(retained))).is_err() {
-                    break;
-                }
-            }
-            Ok(())
-        },
-    )
-    .0
-}
-
-/// Spawn paired VideoToolbox decode threads.
-///
-/// Positive `sync_offset` skips right frames; negative skips left frames.
-/// The receiver emits retained buffer pairs, then explicit EOF or an error.
-#[cfg(target_os = "macos")]
-pub fn spawn_vt_decode_pair(
-    left: &crate::stitch_job::InputPath,
-    right: &crate::stitch_job::InputPath,
+pub(crate) fn spawn_vt_decode_frames(
+    inputs: &[crate::stitch_job::InputPath],
     sync_offset: i64,
-) -> std::sync::mpsc::Receiver<Message<reco_core::interop::zero_copy::VtFramePair>> {
-    use reco_core::interop::zero_copy::VtFramePair;
-
-    let left_rx = spawn_vt_decode_thread(left.clone(), "left");
-    let right_rx = spawn_vt_decode_thread(right.clone(), "right");
-    pair(left_rx, right_rx, sync_offset, 4, |(left, right)| {
-        VtFramePair { left, right }
-    })
-    .0
+) -> crate::decode_stream::OwnedFrames<reco_core::interop::metal::RetainedCVPixelBuffer> {
+    use reco_core::interop::metal::RetainedCVPixelBuffer;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    let stop = Arc::new(AtomicBool::new(false));
+    let workers = inputs
+        .iter()
+        .enumerate()
+        .map(|(camera, input)| {
+            let input = input.clone();
+            let stop = stop.clone();
+            let (rx, worker) = spawn(
+                format!("vt_decode_{camera}"),
+                4,
+                move |tx| -> Result<(), DecodeError> {
+                    if stop.load(Ordering::Relaxed) {
+                        return Ok(());
+                    }
+                    let mut dec = VideoDecoder::open_input(&input)?;
+                    log::info!("VT decode thread {camera}: backend={}", dec.backend());
+                    while !stop.load(Ordering::Relaxed) {
+                        let Some(vt) = dec.next_frame_vt()? else {
+                            break;
+                        };
+                        let retained = unsafe { RetainedCVPixelBuffer::retain(vt.cv_pixel_buffer) };
+                        if tx.send(Ok(Some(retained))).is_err() {
+                            break;
+                        }
+                    }
+                    Ok(())
+                },
+            );
+            (rx, crate::decoder_cleanup::DecoderTask::new(worker))
+        })
+        .collect();
+    crate::decode_stream::OwnedFrames::new(workers, sync_offset, stop)
 }
 
 #[cfg(target_os = "windows")]
 fn spawn_d3d11_decode_thread_shared(
     input: crate::stitch_job::InputPath,
-    label: &'static str,
+    label: usize,
     shared_device: crate::ffmpeg::decoder::SharedHwDevice,
     stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) -> (
@@ -214,24 +212,17 @@ fn spawn_d3d11_decode_thread_shared(
     (rx, crate::decoder_cleanup::DecoderTask::new(worker))
 }
 
-#[cfg(target_os = "windows")]
-pub(crate) type D3d11FramePair = (
-    crate::ffmpeg::decoder::D3d11Frame,
-    crate::ffmpeg::decoder::D3d11Frame,
-);
-
-/// Spawn paired D3D11VA decode threads on a shared hardware device.
+/// Spawn camera-ordered D3D11VA decode threads on a shared hardware device.
 ///
-/// Both decoders must use the same `ID3D11Device` for staging copies.
+/// All decoders must use the same `ID3D11Device` for staging copies.
 /// Positive `sync_offset` skips right frames; negative skips left frames.
-/// The receiver emits retained texture pairs, then explicit EOF or an error.
+/// The receiver emits retained frames, then explicit EOF or an error.
 #[cfg(target_os = "windows")]
-pub(crate) fn spawn_d3d11_decode_pair(
-    left: &crate::stitch_job::InputPath,
-    right: &crate::stitch_job::InputPath,
+pub(crate) fn spawn_d3d11_decode_frames(
+    inputs: &[crate::stitch_job::InputPath],
     sync_offset: i64,
 ) -> Result<
-    crate::decode_stream::OwnedPair<crate::ffmpeg::decoder::D3d11Frame>,
+    crate::decode_stream::OwnedFrames<crate::ffmpeg::decoder::D3d11Frame>,
     reco_core::source::SourceError,
 > {
     let shared_device = crate::ffmpeg::decoder::create_shared_hw_device().ok_or_else(|| {
@@ -241,21 +232,20 @@ pub(crate) fn spawn_d3d11_decode_pair(
         }
     })?;
     let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let left = spawn_d3d11_decode_thread_shared(
-        left.clone(),
-        "left",
-        shared_device.new_ref(),
-        stop.clone(),
-    );
-    let right = spawn_d3d11_decode_thread_shared(
-        right.clone(),
-        "right",
-        shared_device.new_ref(),
-        stop.clone(),
-    );
-    Ok(crate::decode_stream::OwnedPair::new(
-        left,
-        right,
+    let workers = inputs
+        .iter()
+        .enumerate()
+        .map(|(camera, input)| {
+            spawn_d3d11_decode_thread_shared(
+                input.clone(),
+                camera,
+                shared_device.new_ref(),
+                stop.clone(),
+            )
+        })
+        .collect();
+    Ok(crate::decode_stream::OwnedFrames::new(
+        workers,
         sync_offset,
         stop,
     ))

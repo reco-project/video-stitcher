@@ -5,7 +5,7 @@
 //! outputs a float32 CHW tensor ready for YOLO inference.
 //!
 //! The shader performs in a single dispatch:
-//! 1. NV12 (Y + UV planes) to RGB color conversion (BT.601)
+//! 1. NV12 (Y + UV planes) to RGB color conversion (BT.709)
 //! 2. Bilinear resize to model input dimensions
 //! 3. Letterbox padding with grey (114/255)
 //! 4. Normalize to \[0,1\] and transpose HWC to CHW
@@ -39,39 +39,16 @@ pub enum MetalComputeError {
     Compute(String),
 }
 
-/// Parameters passed to the Metal compute shader via a constant buffer.
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct PreprocessParams {
-    /// Source frame width.
-    src_w: u32,
-    /// Source frame height.
-    src_h: u32,
-    /// Model input size (square, e.g. 1280).
-    dst_size: u32,
-    /// Padding (unused, alignment).
-    _pad: u32,
-    /// Letterbox scale factor.
-    scale: f32,
-    /// Horizontal padding offset.
-    pad_x: f32,
-    /// Vertical padding offset.
-    pad_y: f32,
-    /// Scaled content width (before padding).
-    new_w: f32,
-    /// Scaled content height (before padding).
-    new_h: f32,
-    /// Whether source is full-range YUV (1) or video-range (0).
-    is_full_range: u32,
-    /// Padding for 16-byte alignment.
-    _pad2: [u32; 2],
-}
+mod params;
+use params::PreprocessParams;
+#[cfg(test)]
+mod tests;
 
 /// MSL source for the fused NV12-to-CHW preprocessing kernel.
 ///
 /// This compute shader reads Y (R8Unorm) and UV (RG8Unorm) textures
 /// from `CVMetalTextureCache` and outputs a float32 CHW tensor suitable
-/// for YOLO inference. It performs NV12-to-RGB conversion (BT.601),
+/// for YOLO inference. It performs NV12-to-RGB conversion (BT.709),
 /// bilinear resize, letterbox padding, and HWC-to-CHW normalization
 /// in a single GPU dispatch.
 const PREPROCESS_MSL: &str = r#"
@@ -84,10 +61,10 @@ struct PreprocessParams {
     uint dst_size;
     uint _pad;
     float scale;
-    float pad_x;
-    float pad_y;
-    float new_w;
-    float new_h;
+    uint pad_x;
+    uint pad_y;
+    uint new_w;
+    uint new_h;
     uint is_full_range;
     uint _pad2[2];
 };
@@ -168,19 +145,14 @@ kernel void nv12_to_chw_tensor(
 /// Metal compute pipeline for NV12-to-CHW tensor preprocessing.
 ///
 /// Pre-allocates the compute pipeline state and output buffer.
-/// Reuse across frames for the same input/output dimensions.
+/// Reuse across cameras; only the model input dimension fixes the output allocation.
 pub struct MetalPreprocessPipeline {
-    #[allow(dead_code)]
-    device: Device,
     queue: CommandQueue,
     pipeline_state: ComputePipelineState,
     texture_cache: MetalTextureCache,
     output_buffer: Buffer,
     params_buffer: Buffer,
     input_size: u32,
-    frame_width: u32,
-    frame_height: u32,
-    is_full_range: bool,
 }
 
 // SAFETY: Metal device, queue, buffers, and pipeline state are thread-safe.
@@ -192,14 +164,8 @@ impl MetalPreprocessPipeline {
     /// Create a new preprocessing pipeline.
     ///
     /// `input_size` is the YOLO model's square input dimension (e.g. 1280).
-    /// `frame_width`/`frame_height` are the raw camera frame dimensions.
     /// `gpu` provides the Metal device via wgpu's HAL.
-    pub fn new(
-        gpu: &GpuContext,
-        input_size: u32,
-        frame_width: u32,
-        frame_height: u32,
-    ) -> Result<Self, MetalComputeError> {
+    pub fn new(gpu: &GpuContext, input_size: u32) -> Result<Self, MetalComputeError> {
         use reco_core::wgpu::hal::api::Metal;
 
         // Extract the raw MTLDevice from wgpu. wgpu-hal 28's metal
@@ -237,7 +203,14 @@ impl MetalPreprocessPipeline {
         let texture_cache = MetalTextureCache::new(gpu)?;
 
         // Allocate output buffer: 3 * input_size * input_size * sizeof(f32).
-        let tensor_bytes = 3 * (input_size as usize) * (input_size as usize) * 4;
+        let tensor_bytes = input_size
+            .checked_mul(input_size)
+            .and_then(|pixels| pixels.checked_mul(3))
+            .and_then(|elements| (elements as usize).checked_mul(4))
+            .filter(|&bytes| bytes > 0 && bytes as u64 <= device.max_buffer_length())
+            .ok_or_else(|| {
+                MetalComputeError::ResourceCreation("invalid model tensor size".into())
+            })?;
         let output_buffer =
             device.new_buffer(tensor_bytes as u64, MTLResourceOptions::StorageModeShared);
 
@@ -247,25 +220,19 @@ impl MetalPreprocessPipeline {
             device.new_buffer(params_bytes as u64, MTLResourceOptions::StorageModeShared);
 
         log::info!(
-            "MetalPreprocessPipeline ready: frame={}x{}, model={}x{}, buffer={:.1}MB",
-            frame_width,
-            frame_height,
+            "MetalPreprocessPipeline ready: model={}x{}, buffer={:.1}MB",
             input_size,
             input_size,
             tensor_bytes as f64 / 1024.0 / 1024.0,
         );
 
         Ok(Self {
-            device,
             queue,
             pipeline_state,
             texture_cache,
             output_buffer,
             params_buffer,
             input_size,
-            frame_width,
-            frame_height,
-            is_full_range: false,
         })
     }
 
@@ -281,49 +248,24 @@ impl MetalPreprocessPipeline {
     pub unsafe fn preprocess(
         &mut self,
         cv_pixel_buffer: CVPixelBufferRef,
+        size: (u32, u32),
         gpu: &GpuContext,
     ) -> Result<&mut [f32], MetalComputeError> {
         use reco_core::wgpu::hal::api::Metal;
 
         reco_core::profile_scope!("metal_preprocess");
 
-        // Detect pixel format (video-range vs full-range, 8-bit vs 10-bit).
+        if cv_pixel_buffer.is_null() {
+            return Err(MetalInteropError::InvalidLayout.into());
+        }
         let format = unsafe { reco_core::interop::metal::pixel_buffer_format(cv_pixel_buffer) };
-        self.is_full_range = format == 0x34323066 || format == 0x78663230; // '420f' or 'xf20'
-        let is_10bit = format == 0x78343230 || format == 0x78663230; // 'x420' or 'xf20'
-
-        // Import Y and UV planes as Metal textures (zero-copy via IOSurface).
-        let y_plane = unsafe {
-            self.texture_cache
-                .import_plane(cv_pixel_buffer, 0, is_10bit, gpu)?
-        };
-        let uv_plane = unsafe {
-            self.texture_cache
-                .import_plane(cv_pixel_buffer, 1, is_10bit, gpu)?
-        };
-
-        // Write preprocessing parameters to the shared params buffer.
-        let (fw, fh) = (self.frame_width as f32, self.frame_height as f32);
-        let is = self.input_size as f32;
-        let scale = (is / fw).min(is / fh);
-        let new_w = (fw * scale).round();
-        let new_h = (fh * scale).round();
-        let pad_x = (is - new_w) / 2.0;
-        let pad_y = (is - new_h) / 2.0;
-
-        let params = PreprocessParams {
-            src_w: self.frame_width,
-            src_h: self.frame_height,
-            dst_size: self.input_size,
-            _pad: 0,
-            scale,
-            pad_x,
-            pad_y,
-            new_w,
-            new_h,
-            is_full_range: u32::from(self.is_full_range),
-            _pad2: [0; 2],
-        };
+        let full_range = format == 0x34323066 || format == 0x78663230;
+        let params = PreprocessParams::new(size, self.input_size, full_range)
+            .map_err(|e| MetalComputeError::Compute(e.to_string()))?;
+        let (y_plane, uv_plane) = unsafe { self.texture_cache.import_nv12(cv_pixel_buffer, gpu)? };
+        if (y_plane.texture.width(), y_plane.texture.height()) != size {
+            return Err(MetalInteropError::InvalidLayout.into());
+        }
 
         unsafe {
             let params_ptr = self.params_buffer.contents() as *mut PreprocessParams;
@@ -383,6 +325,12 @@ impl MetalPreprocessPipeline {
         // Submit and wait for completion.
         cmd_buf.commit();
         cmd_buf.wait_until_completed();
+        if cmd_buf.status() != metal::MTLCommandBufferStatus::Completed {
+            return Err(MetalComputeError::Compute(format!(
+                "preprocessing command ended with {:?}",
+                cmd_buf.status()
+            )));
+        }
 
         // SAFETY: The output MTLBuffer has StorageModeShared (unified memory).
         // We have exclusive access after wait_until_completed(). Returning &mut

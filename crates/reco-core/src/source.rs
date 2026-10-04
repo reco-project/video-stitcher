@@ -284,7 +284,7 @@ pub use nvmm::{NvmmFrame, NvmmPlaneInfo};
 /// rejects a length that does not match the projection's camera count
 /// (`check_camera_count` in `stitch::cpu`, mirrored by the submit
 /// dispatch). CUDA/Vulkan slots also carry one entry per input and are
-/// validated by the session. Metal, D3D11 and NVMM imports carry stereo pairs.
+/// validated by the session, as are D3D11 and Metal frames. NVMM imports carry stereo pairs.
 #[non_exhaustive]
 pub enum FrameSet {
     /// Shared CPU-resident YUV420P images (3 planes per camera).
@@ -304,12 +304,12 @@ pub enum FrameSet {
     /// decode, one per camera. The session imports these as Metal
     /// textures each frame.
     #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
-    MetalResident([crate::interop::metal::RetainedCVPixelBuffer; 2]),
+    MetalResident(Vec<crate::interop::metal::RetainedCVPixelBuffer>),
     /// Windows D3D11VA zero-copy: decoded frames still on D3D11 GPU
     /// memory, one per camera. The session stages these into shared
     /// NV12 textures for wgpu rendering.
     #[cfg(target_os = "windows")]
-    D3d11Resident([D3d11CameraFrame; 2]),
+    D3d11Resident(Vec<D3d11CameraFrame>),
     /// Jetson NVMM zero-copy: NV12 frames in NvBufSurface DMA-buf
     /// memory, one per camera. The session imports the DMA-bufs as
     /// Vulkan textures for rendering (staged into the VRAM pool for lookahead) and

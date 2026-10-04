@@ -75,69 +75,50 @@ pub(super) fn shared_nv12_frames<'a>(
         .collect()
 }
 
-/// Per-camera wgpu NV12 texture-view frames (shared decode textures /
-/// D3D11 staging views).
+/// Per-camera detection input from D3D11 staging views.
 #[cfg(all(feature = "gpu", target_os = "windows"))]
-#[allow(clippy::too_many_arguments)]
 pub(super) fn wgpu_nv12_frames<'a>(
-    left_y: &'a wgpu::TextureView,
-    left_uv: &'a wgpu::TextureView,
-    right_y: &'a wgpu::TextureView,
-    right_uv: &'a wgpu::TextureView,
-    width: u32,
-    height: u32,
-    left_rotation: i32,
-    right_rotation: i32,
-) -> [(CameraIndex, DetectorFrame<'a>); 2] {
-    [
-        (
-            0,
-            DetectorFrame::WgpuNv12 {
-                y_view: left_y,
-                uv_view: left_uv,
-                width,
-                height,
-                rotation: left_rotation,
-            },
-        ),
-        (
-            1,
-            DetectorFrame::WgpuNv12 {
-                y_view: right_y,
-                uv_view: right_uv,
-                width,
-                height,
-                rotation: right_rotation,
-            },
-        ),
-    ]
+    views: &'a [(wgpu::TextureView, wgpu::TextureView)],
+    sizes: &[(u32, u32)],
+    rotations: [i32; 2],
+) -> Vec<(CameraIndex, DetectorFrame<'a>)> {
+    views
+        .iter()
+        .enumerate()
+        .map(|(camera, (y_view, uv_view))| {
+            (
+                camera,
+                DetectorFrame::WgpuNv12 {
+                    y_view,
+                    uv_view,
+                    width: sizes[camera].0,
+                    height: sizes[camera].1,
+                    rotation: rotations[camera],
+                },
+            )
+        })
+        .collect()
 }
 
 /// Per-camera Metal CVPixelBuffer frames (backends import natively).
 #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
 pub(super) fn metal_frames(
-    left_cvpb: crate::interop::metal::CVPixelBufferRef,
-    right_cvpb: crate::interop::metal::CVPixelBufferRef,
-    sizes: [(u32, u32); 2],
-) -> [(CameraIndex, DetectorFrame<'static>); 2] {
-    [
-        (
-            0,
-            DetectorFrame::Metal {
-                cv_pixel_buffer: left_cvpb,
-                width: sizes[0].0,
-                height: sizes[0].1,
-            },
-        ),
-        (
-            1,
-            DetectorFrame::Metal {
-                cv_pixel_buffer: right_cvpb,
-                width: sizes[1].0,
-                height: sizes[1].1,
-            },
-        ),
-    ]
+    cameras: &[crate::interop::metal::RetainedCVPixelBuffer],
+) -> Vec<(CameraIndex, DetectorFrame<'_>)> {
+    cameras
+        .iter()
+        .enumerate()
+        .map(|(camera, frame)| {
+            (
+                camera,
+                DetectorFrame::Metal {
+                    cv_pixel_buffer: frame.as_ptr(),
+                    width: frame.width(),
+                    height: frame.height(),
+                },
+            )
+        })
+        .collect()
 }
 
 impl StitchSession {
@@ -213,34 +194,21 @@ impl StitchSession {
                 FrameSet::D3d11Resident(..) => {
                     let views = self
                         .gpu_exec_ref()
-                        .d3d11_slots(produce_index)
-                        .and_then(|(ls, rs)| self.gpu_exec_ref().d3d11_views(ls, rs));
+                        .d3d11_slot(produce_index)
+                        .and_then(|slot| self.gpu_exec_ref().d3d11_views(slot));
                     if let Some(views) = views {
                         crate::profile_scope!("detect_wgpu_nv12");
-                        let (w, h) = self.core.source_sizes()[0];
                         let frames = wgpu_nv12_frames(
-                            &views[0],
-                            &views[1],
-                            &views[2],
-                            &views[3],
-                            w,
-                            h,
-                            self.left_rotation,
-                            self.right_rotation,
+                            &views,
+                            self.core.source_sizes(),
+                            [self.left_rotation, self.right_rotation],
                         );
                         self.core.run_detection_frames(&frames, capture_times_us)?;
                     }
                 }
                 #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]
-                FrameSet::MetalResident([left, right]) => {
-                    let frames = metal_frames(
-                        left.as_ptr(),
-                        right.as_ptr(),
-                        [
-                            (left.width(), left.height()),
-                            (right.width(), right.height()),
-                        ],
-                    );
+                FrameSet::MetalResident(cameras) => {
+                    let frames = metal_frames(cameras);
                     self.core.run_detection_frames(&frames, capture_times_us)?;
                 }
                 #[cfg(all(feature = "gpu", target_os = "linux"))]

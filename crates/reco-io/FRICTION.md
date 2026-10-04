@@ -1,5 +1,9 @@
 # Core API friction
 
+## Native mono and per-camera dimensions
+
+`SmartFileSource` retains host-backed delivery for mono or unequal-size inputs on Windows and Metal. Core's imported-plane rendering, native frame delivery, D3D11 staging and wgpu/Metal preprocessing accept per-camera dimensions; automatic selection remains restricted pending native acceptance. The ignored `smart_source::native_tests::native_camera_frames_keep_dimensions_and_identity_with_and_without_lookahead` test exercises native mono and both mixed-size camera orders without bypassing guards in production. The shared boundaries are exercised by core's `imported_planes` integration tests and the `wgpu_preprocess`/`wgpu_detector` tests. Metal's ignored `native_preprocessing_reuses_tensor_and_matches_integer_padding_for_each_camera` test checks native NV12/P010 tensor contents, padding and buffer reuse. These tests require native execution before lifting the source and detector setup guards; compilation alone is not platform acceptance.
+
 ## Mixed source colour ranges
 
 The renderer has one `set_full_range` flag for all camera inputs. File sources therefore reject a mixture of full-range and limited-range cameras instead of rendering one camera incorrectly. Per-input range handling belongs in the core renderer, not in consumer-side pixel conversions. The CPU-source rejection is covered by `ffmpeg::decoder::tests::cpu_source_rejects_mixed_camera_ranges_in_both_orders`.

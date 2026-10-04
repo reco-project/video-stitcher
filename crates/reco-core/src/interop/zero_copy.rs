@@ -46,15 +46,3 @@ pub struct GpuDecodeHandles {
     /// is still valid.
     pub join_handles: Vec<std::thread::JoinHandle<()>>,
 }
-
-/// A retained CVPixelBuffer pair from two VideoToolbox decode threads.
-///
-/// Each buffer has been `CFRetain`-ed so it remains valid until dropped.
-/// The session imports these as Metal textures for zero-copy rendering.
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-pub struct VtFramePair {
-    /// Left camera retained pixel buffer.
-    pub left: crate::interop::metal::RetainedCVPixelBuffer,
-    /// Right camera retained pixel buffer.
-    pub right: crate::interop::metal::RetainedCVPixelBuffer,
-}

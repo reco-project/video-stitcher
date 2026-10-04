@@ -1,40 +1,39 @@
-//! Cancellation and ordered cleanup for paired owned frames.
+//! Cancellation and ordered cleanup for camera-ordered owned frames.
 
 use super::*;
 use crate::decoder_cleanup::DecoderTask;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub(crate) struct OwnedPair<T> {
-    // Disconnect output before joining the pairer, which releases both inputs.
-    rx: Receiver<Message<(T, T)>>,
-    _workers: [DecoderTask; 3],
+pub(crate) struct OwnedFrames<T> {
+    // Disconnect output before joining the collector, which releases its inputs.
+    rx: Receiver<Message<Vec<T>>>,
+    _workers: Vec<DecoderTask>,
     stop: Arc<AtomicBool>,
 }
 
-impl<T: Send + 'static> OwnedPair<T> {
+impl<T: Send + 'static> OwnedFrames<T> {
     pub(crate) fn new(
-        left: (Receiver<Message<T>>, DecoderTask),
-        right: (Receiver<Message<T>>, DecoderTask),
+        inputs: Vec<(Receiver<Message<T>>, DecoderTask)>,
         offset: i64,
         stop: Arc<AtomicBool>,
     ) -> Self {
-        let (left_rx, left_task) = left;
-        let (right_rx, right_task) = right;
-        let (rx, pairer) = pair(left_rx, right_rx, offset, 4, |frames| frames);
+        let (receivers, mut workers): (Vec<_>, Vec<_>) = inputs.into_iter().unzip();
+        let (rx, collector) = collect(receivers, offset, 4);
+        workers.insert(0, DecoderTask::new(collector));
         Self {
             rx,
-            _workers: [DecoderTask::new(pairer), left_task, right_task],
+            _workers: workers,
             stop,
         }
     }
 
-    pub(crate) fn receive(&self) -> Message<(T, T)> {
+    pub(crate) fn receive(&self) -> Message<Vec<T>> {
         receive(&self.rx)
     }
 }
 
-impl<T> Drop for OwnedPair<T> {
+impl<T> Drop for OwnedFrames<T> {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
     }
@@ -45,6 +44,28 @@ mod tests {
     use super::*;
     use std::sync::mpsc::channel;
     use std::time::Duration;
+
+    #[test]
+    fn mono_delivery_retains_the_frame_until_the_consumer_releases_it() {
+        let frame = Arc::new(7u8);
+        let weak = Arc::downgrade(&frame);
+        let (rx, worker) = spawn("owned_mono_test".into(), 4, move |tx| {
+            let _ = tx.send(Ok(Some(frame)));
+            Ok::<_, SourceError>(())
+        });
+        let stream = OwnedFrames::new(
+            vec![(rx, DecoderTask::new(worker))],
+            0,
+            Arc::new(AtomicBool::new(false)),
+        );
+        let frames = stream.receive().unwrap().unwrap();
+        assert_eq!(frames.len(), 1);
+        assert!(stream.receive().unwrap().is_none());
+        drop(stream);
+        assert!(weak.upgrade().is_some());
+        drop(frames);
+        assert!(weak.upgrade().is_none());
+    }
 
     #[test]
     fn drop_releases_backpressured_queues_before_joining_every_worker() {
@@ -71,7 +92,7 @@ mod tests {
             });
             (rx, DecoderTask::new(handle))
         };
-        let stream = crate::decode_stream::OwnedPair::new(worker(), worker(), 0, stop.clone());
+        let stream = OwnedFrames::new(vec![worker(), worker()], 0, stop.clone());
         for _ in 0..2 {
             full_rx.recv_timeout(Duration::from_secs(5)).unwrap();
         }
@@ -107,7 +128,7 @@ mod tests {
                 });
                 (rx, DecoderTask::new(handle))
             };
-            let stream = OwnedPair::new(worker(), worker(), offset, stop.clone());
+            let stream = OwnedFrames::new(vec![worker(), worker()], offset, stop.clone());
             for _ in 0..2 {
                 started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
             }
@@ -122,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn owned_pair_preserves_frames_eof_and_errors() {
+    fn owned_frames_preserve_frames_eof_and_errors() {
         for fail in [false, true] {
             let worker = || {
                 let (rx, handle) = spawn("terminal_test".into(), 4, move |tx| {
@@ -131,8 +152,12 @@ mod tests {
                 });
                 (rx, DecoderTask::new(handle))
             };
-            let stream = OwnedPair::new(worker(), worker(), 0, Arc::new(AtomicBool::new(false)));
-            assert_eq!(stream.receive().unwrap(), Some((7, 7)));
+            let stream = OwnedFrames::new(
+                vec![worker(), worker()],
+                0,
+                Arc::new(AtomicBool::new(false)),
+            );
+            assert_eq!(stream.receive().unwrap(), Some(vec![7, 7]));
             let terminal = stream.receive();
             if fail {
                 assert!(terminal.is_err());

@@ -423,7 +423,7 @@ impl super::StitchCore {
     /// Thin wrapper over the pipeline's frame-set render that
     /// converts the pipeline error into a `StitchCoreError`. The
     /// `MetalResident` variant is NOT handled here; use
-    /// [`Self::render_imported_textures_at_pose`] after importing the
+    /// [`Self::render_imported_nv12_at_pose`] after importing the
     /// `CVPixelBuffer` via `MetalTextureCache`.
     #[cfg(feature = "gpu")]
     pub fn render_frame_set_at_pose(
@@ -437,27 +437,20 @@ impl super::StitchCore {
         Ok(gpu.pipeline.render_frame_set(frames, pose)?)
     }
 
-    /// Render from four pre-imported textures at an explicit pose.
+    /// Render imported NV12/P010 Y/UV views in calibrated camera order, without copying pixels or advancing tracking/coverage.
     ///
-    /// Used by the macOS zero-copy path where `CVPixelBuffer` Y/UV
-    /// planes are imported as wgpu textures via `MetalTextureCache`
-    /// (in `interop::metal`), and the Linux zero-copy path that shares
-    /// textures through the bind-group variant below.
+    /// Each pair must expose the complete Y and UV planes on this engine's device: separate R8/Rg8 or R16/Rg16 Unorm textures, or Plane0/Plane1 views of one NV12/P010 texture. Backing textures must be single-layer, single-mip, single-sampled and match the declared source size. All cameras must use the same format. Camera count and backing layouts are checked before changing bindings; plane aspects and device compatibility are the caller's responsibility.
+    ///
+    /// The command buffer retains wgpu resources, but callers must keep native allocation owners alive and prevent producer reuse until GPU completion. Imported bindings apply only to this frame; later host frames use their own upload textures.
     #[cfg(feature = "gpu")]
-    pub fn render_imported_textures_at_pose(
+    pub fn render_imported_nv12_at_pose(
         &mut self,
-        left_y: &wgpu::Texture,
-        left_uv: &wgpu::Texture,
-        right_y: &wgpu::Texture,
-        right_uv: &wgpu::Texture,
+        cameras: &[(&wgpu::TextureView, &wgpu::TextureView)],
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
-        Ok(self
-            .executor
-            .gpu_mut()
-            .expect("zero-copy render paths require the GPU executor")
-            .pipeline
-            .render_imported_textures(left_y, left_uv, right_y, right_uv, pose)
-            .map_err(crate::stitch::StitchError::from)?)
+        let Executor::Gpu(gpu) = &mut self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        Ok(gpu.pipeline.render_imported_views(cameras, pose)?)
     }
 }

@@ -22,6 +22,9 @@
 use reco_core::render::renderer::GpuPixelFormat;
 use reco_core::source::{FrameSet, FrameSource, SourceError, SourceFrame, SourceInfo};
 
+#[cfg(all(test, any(target_os = "windows", target_os = "macos")))]
+mod native_tests;
+
 /// GPU-aware file source that auto-selects the optimal decode path.
 ///
 /// Probes the input files at construction and selects the best available
@@ -55,9 +58,7 @@ enum SourceMode {
     GpuZeroCopy(Box<LinuxZeroCopyState>),
     #[cfg(target_os = "macos")]
     MetalZeroCopy(
-        std::sync::mpsc::Receiver<
-            crate::decode_stream::Message<reco_core::interop::zero_copy::VtFramePair>,
-        >,
+        crate::decode_stream::OwnedFrames<reco_core::interop::metal::RetainedCVPixelBuffer>,
     ),
     #[cfg(target_os = "windows")]
     D3d11ZeroCopy(Box<WindowsZeroCopyState>),
@@ -66,19 +67,18 @@ enum SourceMode {
 #[cfg(target_os = "windows")]
 enum WindowsDecodeState {
     Pending {
-        left: crate::stitch_job::InputPath,
-        right: crate::stitch_job::InputPath,
+        inputs: Vec<crate::stitch_job::InputPath>,
         sync_offset: i64,
     },
     Running {
-        pair_rx: crate::decode_stream::OwnedPair<crate::ffmpeg::decoder::D3d11Frame>,
+        frames: crate::decode_stream::OwnedFrames<crate::ffmpeg::decoder::D3d11Frame>,
     },
     Failed(SourceError),
 }
 
 #[cfg(target_os = "windows")]
 struct WindowsZeroCopyState {
-    /// Holds the D3d11Frame pair from the most recent `next_frame()` call.
+    /// Holds the D3d11Frames from the most recent `next_frame()` call.
     ///
     /// The `_frame_ref` inside each D3d11Frame pins the decode pool slice
     /// in FFmpeg's surface allocator. Without this, the slice is recycled
@@ -86,9 +86,9 @@ struct WindowsZeroCopyState {
     /// and the decoder thread can overwrite the surface before `stage_frames`
     /// copies it - causing frame reordering glitches on Intel and NVIDIA.
     ///
-    /// Dropped when the next pair arrives (or the source is dropped),
-    /// which is always after `stage_frames` has completed for this pair.
-    live_frame_guard: Option<crate::zero_copy::D3d11FramePair>,
+    /// Dropped when the next frame set arrives (or the source is dropped),
+    /// which is always after `stage_frames` has completed for these frames.
+    live_frame_guard: Option<Vec<crate::ffmpeg::decoder::D3d11Frame>>,
     // Release the displayed surfaces before cancelling and joining workers.
     decode: WindowsDecodeState,
 }
@@ -97,19 +97,16 @@ struct WindowsZeroCopyState {
 impl WindowsZeroCopyState {
     fn ensure_running(&mut self) {
         if let WindowsDecodeState::Pending {
-            left,
-            right,
+            inputs,
             sync_offset,
         } = &self.decode
         {
-            let left = left.clone();
-            let right = right.clone();
+            let inputs = inputs.clone();
             let sync_offset = *sync_offset;
-            self.decode =
-                match crate::zero_copy::spawn_d3d11_decode_pair(&left, &right, sync_offset) {
-                    Ok(pair_rx) => WindowsDecodeState::Running { pair_rx },
-                    Err(error) => WindowsDecodeState::Failed(error),
-                };
+            self.decode = match crate::zero_copy::spawn_d3d11_decode_frames(&inputs, sync_offset) {
+                Ok(frames) => WindowsDecodeState::Running { frames },
+                Err(error) => WindowsDecodeState::Failed(error),
+            };
         }
     }
 }
@@ -193,7 +190,7 @@ impl SmartFileSource {
                 right_rotation = probe.rotation();
             }
         }
-        // The other native importers still consume pairs.
+        // Automatic Windows/Metal native selection is restricted to validated layouts.
         let native_input_count = if cfg!(target_os = "linux") {
             matches!(inputs.len(), 1 | 2)
         } else {
@@ -389,7 +386,7 @@ impl SmartFileSource {
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
-        let pair_rx = crate::zero_copy::spawn_vt_decode_pair(&inputs[0], &inputs[1], sync_offset);
+        let frames = crate::zero_copy::spawn_vt_decode_frames(inputs, sync_offset);
 
         log::info!(
             "SmartFileSource: Metal zero-copy ({}x{}, VideoToolbox decode{})",
@@ -399,7 +396,7 @@ impl SmartFileSource {
         );
 
         Ok(Self {
-            mode: SourceMode::MetalZeroCopy(pair_rx),
+            mode: SourceMode::MetalZeroCopy(frames),
             info,
             pixel_format,
             full_range,
@@ -428,8 +425,7 @@ impl SmartFileSource {
         Ok(Self {
             mode: SourceMode::D3d11ZeroCopy(Box::new(WindowsZeroCopyState {
                 decode: WindowsDecodeState::Pending {
-                    left: inputs[0].clone(),
-                    right: inputs[1].clone(),
+                    inputs: inputs.to_vec(),
                     sync_offset,
                 },
                 live_frame_guard: None,
@@ -522,12 +518,11 @@ impl FrameSource for SmartFileSource {
                 }
             }
             #[cfg(target_os = "macos")]
-            SourceMode::MetalZeroCopy(rx) => match crate::decode_stream::receive(rx)
+            SourceMode::MetalZeroCopy(frames) => match frames
+                .receive()
                 .inspect_err(|error| self.terminal_error = Some(error.clone()))?
             {
-                Some(pair) => Ok(Some(SourceFrame::untimed(FrameSet::MetalResident([
-                    pair.left, pair.right,
-                ])))),
+                Some(frames) => Ok(Some(SourceFrame::untimed(FrameSet::MetalResident(frames)))),
                 None => {
                     self.exhausted = true;
                     Ok(None)
@@ -537,28 +532,27 @@ impl FrameSource for SmartFileSource {
             SourceMode::D3d11ZeroCopy(state) => {
                 state.ensure_running();
                 let result = match &state.decode {
-                    WindowsDecodeState::Running { pair_rx } => pair_rx.receive(),
+                    WindowsDecodeState::Running { frames } => frames.receive(),
                     WindowsDecodeState::Failed(error) => Err(error.clone()),
                     _ => unreachable!(),
                 };
                 match result.inspect_err(|error| self.terminal_error = Some(error.clone()))? {
-                    Some((left, right)) => {
-                        let frames = FrameSet::D3d11Resident([
-                            reco_core::source::D3d11CameraFrame {
-                                texture: left.texture,
-                                slice: left.array_slice,
-                            },
-                            reco_core::source::D3d11CameraFrame {
-                                texture: right.texture,
-                                slice: right.array_slice,
-                            },
-                        ]);
-                        // Keep the D3d11Frame pair alive so FFmpeg doesn't
+                    Some(decoded) => {
+                        let frames = FrameSet::D3d11Resident(
+                            decoded
+                                .iter()
+                                .map(|frame| reco_core::source::D3d11CameraFrame {
+                                    texture: frame.texture,
+                                    slice: frame.array_slice,
+                                })
+                                .collect(),
+                        );
+                        // Keep the D3d11Frames alive so FFmpeg doesn't
                         // recycle the decode pool slices before stage_frames
                         // copies them. The previous guard is dropped here,
                         // which is safe because its staging copy already
                         // completed in the previous loop iteration.
-                        state.live_frame_guard = Some((left, right));
+                        state.live_frame_guard = Some(decoded);
                         Ok(Some(SourceFrame::untimed(frames)))
                     }
                     None => {

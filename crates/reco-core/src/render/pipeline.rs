@@ -323,61 +323,55 @@ impl StitchPipeline {
         self.renderer.clear_imported_bind_groups();
     }
 
-    /// Render from imported GPU textures (e.g. Metal/VideoToolbox zero-copy).
-    ///
-    /// Takes raw Y + UV texture references for each camera, creates bind groups,
-    /// and renders. Unlike [`Self::render_gpu_frame`] which uses pre-built
-    /// double-buffered bind groups, this creates them per-frame (the overhead
-    /// is negligible compared to decode time).
-    pub fn render_imported_textures(
-        &mut self,
-        left_y: &wgpu::Texture,
-        left_uv: &wgpu::Texture,
-        right_y: &wgpu::Texture,
-        right_uv: &wgpu::Texture,
-        pose: RenderPose,
-    ) -> Result<wgpu::CommandBuffer, PipelineError> {
-        if self.scene.is_none() {
-            return Err(PipelineError::NoPlaneScene);
-        }
-
-        let left_bg = self
-            .renderer
-            .create_texture_bind_group(left_y, left_uv, "metal_left");
-        let right_bg = self
-            .renderer
-            .create_texture_bind_group(right_y, right_uv, "metal_right");
-        self.renderer.set_camera_bind_group(0, left_bg);
-        self.renderer.set_camera_bind_group(1, right_bg);
-        self.render_to_target_gpu(pose)
-    }
-
-    /// Render from pre-built GPU texture views.
-    ///
-    /// Used by the D3D11VA zero-copy path where NV12 plane views are
-    /// created from `TextureAspect::Plane0` / `Plane1`.
-    #[cfg(target_os = "windows")]
+    /// Render camera-ordered Y/UV views without uploading or retaining input bindings for later frames.
     pub fn render_imported_views(
         &mut self,
-        left_y: &wgpu::TextureView,
-        left_uv: &wgpu::TextureView,
-        right_y: &wgpu::TextureView,
-        right_uv: &wgpu::TextureView,
+        cameras: &[(&wgpu::TextureView, &wgpu::TextureView)],
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
-        if self.scene.is_none() {
-            return Err(PipelineError::NoPlaneScene);
+        self.check_inputs(cameras.len(), InputFormat::Nv12)?;
+        // Validate every backing allocation before changing any camera binding.
+        for (camera, (&(y, uv), &(width, height))) in
+            cameras.iter().zip(&self.source_sizes).enumerate()
+        {
+            let (y, uv) = (y.texture(), uv.texture());
+            use wgpu::TextureFormat as F;
+            let uv_size = match (y.format(), uv.format()) {
+                (F::R8Unorm, F::Rg8Unorm) | (F::R16Unorm, F::Rg16Unorm) => {
+                    Some((width / 2, height / 2))
+                }
+                (F::NV12, F::NV12) | (F::P010, F::P010) if y == uv => Some((width, height)),
+                _ => None,
+            };
+            if (y.width(), y.height()) != (width, height)
+                || uv_size != Some((uv.width(), uv.height()))
+                || y.format() != cameras[0].0.texture().format()
+                || [y, uv].iter().any(|t| {
+                    t.dimension() != wgpu::TextureDimension::D2
+                        || t.depth_or_array_layers() != 1
+                        || t.mip_level_count() != 1
+                        || t.sample_count() != 1
+                        || !t.usage().contains(wgpu::TextureUsages::TEXTURE_BINDING)
+                })
+            {
+                return Err(PipelineError::InvalidConfig {
+                    reason: format!(
+                        "camera {camera} requires matching {width}x{height} NV12/P010 plane views"
+                    ),
+                });
+            }
         }
-
-        let left_bg = self
-            .renderer
-            .create_bind_group_from_views(left_y, left_uv, "d3d11_left");
-        let right_bg = self
-            .renderer
-            .create_bind_group_from_views(right_y, right_uv, "d3d11_right");
-        self.renderer.set_camera_bind_group(0, left_bg);
-        self.renderer.set_camera_bind_group(1, right_bg);
-        self.render_to_target_gpu(pose)
+        for (camera, &(y, uv)) in cameras.iter().enumerate() {
+            let group = self
+                .renderer
+                .create_bind_group_from_views(y, uv, "imported_camera");
+            self.renderer.set_camera_bind_group(camera, group);
+        }
+        // The encoded command retains its bindings. Subsequent host submissions
+        // must sample their own upload textures, even if encoding failed.
+        let result = self.render_to_target_gpu(pose);
+        self.clear_imported_bind_groups();
+        result
     }
 
     /// Process a CPU-resident frame set and return the render command buffer.
@@ -572,16 +566,11 @@ impl StitchPipeline {
 
     /// Render to the internal target without upload or readback (zero-copy path).
     ///
-    /// Returns the render `CommandBuffer` without submitting. Assumes textures
-    /// are already populated via CUDA/Vulkan shared memory.
+    /// Returns the render `CommandBuffer` without submitting. Samples the current camera bindings, which must already contain the input pixels.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "render_to_target_gpu")
     )]
-    /// Render to the internal target using whatever textures are currently
-    /// bound. Call [`Self::render_imported_textures`] once to set up
-    /// bind groups, then use this for subsequent frames with the same
-    /// textures to avoid per-frame bind group allocation.
     pub fn render_to_target_gpu(
         &self,
         pose: RenderPose,

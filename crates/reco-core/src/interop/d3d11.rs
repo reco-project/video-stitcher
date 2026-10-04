@@ -27,9 +27,9 @@ use thiserror::Error;
 
 use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE, S_OK};
 use windows::Win32::Graphics::Direct3D11::{
-    D3D11_QUERY, D3D11_QUERY_DESC, D3D11_RESOURCE_MISC_SHARED, D3D11_RESOURCE_MISC_SHARED_NTHANDLE,
-    D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, ID3D11Device, ID3D11DeviceContext,
-    ID3D11Multithread, ID3D11Query, ID3D11Texture2D,
+    D3D11_BOX, D3D11_QUERY, D3D11_QUERY_DESC, D3D11_RESOURCE_MISC_SHARED,
+    D3D11_RESOURCE_MISC_SHARED_NTHANDLE, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, ID3D11Device,
+    ID3D11DeviceContext, ID3D11Multithread, ID3D11Query, ID3D11Texture2D,
 };
 use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
 use windows::Win32::Graphics::Dxgi::Common::{
@@ -46,9 +46,6 @@ pub enum D3d11InteropError {
 
     #[error("DXGI: {0}")]
     Dxgi(String),
-
-    #[error("wgpu NV12 texture format not available")]
-    Nv12NotSupported,
 
     #[error("wgpu backend is not DX12")]
     NotDx12,
@@ -88,8 +85,8 @@ struct StagingState {
 
 /// NV12/P010 staging pool for D3D11VA -> wgpu zero-copy.
 ///
-/// Allocates the requested number of staging textures with shared handles.
-/// Each texture is imported into wgpu with pre-built Y and UV plane views.
+/// Each frame slot holds one texture per camera, at that camera's extent.
+/// Textures are imported into wgpu with pre-built Y and UV plane views.
 ///
 /// The pool is constructed lightweight; the D3D11 device and staging
 /// textures are created lazily on the first `stage_frames` call by
@@ -99,9 +96,8 @@ struct StagingState {
 pub struct D3d11StagingPool {
     /// wgpu device, needed for DX12 shared handle import during lazy init.
     wgpu_device: wgpu::Device,
-    width: u32,
-    height: u32,
-    /// Number of staging slots.
+    source_sizes: Vec<(u32, u32)>,
+    /// Number of complete frame-set slots.
     n_slots: usize,
     /// Pixel format (NV12 8-bit or P010 10-bit).
     pixel_format: crate::render::renderer::GpuPixelFormat,
@@ -112,13 +108,12 @@ pub struct D3d11StagingPool {
 impl D3d11StagingPool {
     /// Create a staging pool that will bind to FFmpeg's D3D11 device lazily.
     ///
-    /// This only validates the wgpu backend and stores the dimensions.
+    /// Validates the backend, dimensions and capacity without allocating textures.
     /// The actual D3D11 device, staging textures, and wgpu imports are
     /// created on the first `stage_frames` call.
     pub fn new(
         gpu: &GpuContext,
-        width: u32,
-        height: u32,
+        source_sizes: &[(u32, u32)],
         n_slots: usize,
         pixel_format: crate::render::renderer::GpuPixelFormat,
     ) -> Result<Self, D3d11InteropError> {
@@ -126,10 +121,28 @@ impl D3d11StagingPool {
             return Err(D3d11InteropError::NotDx12);
         }
 
+        if source_sizes.is_empty()
+            || source_sizes
+                .iter()
+                .any(|&(w, h)| w == 0 || h == 0 || w % 2 != 0 || h % 2 != 0)
+            || n_slots == 0
+            || n_slots.checked_mul(source_sizes.len()).is_none()
+        {
+            return Err(D3d11InteropError::StagingCopy(
+                "invalid staging dimensions or capacity".into(),
+            ));
+        }
+        crate::lookahead::image_bytes(source_sizes, pixel_format.bytes_per_sample())
+            .and_then(|bytes| {
+                bytes
+                    .checked_mul(n_slots)
+                    .ok_or_else(|| "D3D11 staging capacity overflow".into())
+            })
+            .map_err(D3d11InteropError::StagingCopy)?;
+
         Ok(Self {
             wgpu_device: gpu.device().clone(),
-            width,
-            height,
+            source_sizes: source_sizes.to_vec(),
             n_slots,
             pixel_format,
             state: None,
@@ -186,8 +199,8 @@ impl D3d11StagingPool {
             _ => DXGI_FORMAT_NV12,
         };
         let desc = D3D11_TEXTURE2D_DESC {
-            Width: self.width,
-            Height: self.height,
+            Width: 0,
+            Height: 0,
             MipLevels: 1,
             ArraySize: 1,
             Format: dxgi_format,
@@ -202,20 +215,27 @@ impl D3d11StagingPool {
                 as u32,
         };
 
-        let n = self.n_slots;
+        let n = self.n_slots * self.source_sizes.len();
         let mut staging_textures: Vec<ID3D11Texture2D> = Vec::with_capacity(n);
         let mut wgpu_textures: Vec<wgpu::Texture> = Vec::with_capacity(n);
         let mut y_views: Vec<wgpu::TextureView> = Vec::with_capacity(n);
         let mut uv_views: Vec<wgpu::TextureView> = Vec::with_capacity(n);
 
-        // VRAM sizing for descriptive OOM errors (mirrors VramPool::new).
-        // Each slot is one NV12/P010 texture: Y (full res) + UV (half res).
-        let per_slot_bytes = (self.width as usize * self.height as usize * 3 / 2)
-            * self.pixel_format.bytes_per_sample();
-        let per_slot_mb = per_slot_bytes as f64 / (1024.0 * 1024.0);
-        let total_mb = (per_slot_bytes * n) as f64 / (1024.0 * 1024.0);
+        let bytes_per_frame =
+            crate::lookahead::image_bytes(&self.source_sizes, self.pixel_format.bytes_per_sample())
+                .map_err(D3d11InteropError::StagingCopy)?;
+        let total_mb = (bytes_per_frame * self.n_slots) as f64 / (1024.0 * 1024.0);
 
         for i in 0..n {
+            let (width, height) = self.source_sizes[i % self.source_sizes.len()];
+            let desc = D3D11_TEXTURE2D_DESC {
+                Width: width,
+                Height: height,
+                ..desc
+            };
+            let per_slot_mb =
+                width as f64 * height as f64 * 1.5 * self.pixel_format.bytes_per_sample() as f64
+                    / (1024.0 * 1024.0);
             let staging: ID3D11Texture2D = unsafe {
                 let mut tex = None;
                 device
@@ -234,7 +254,7 @@ impl D3d11StagingPool {
                 })?
             };
 
-            // Get shared NT handle (kept open for both DX12 and CUDA import).
+            // The NT handle is needed only during DX12 import.
             let dxgi_resource: IDXGIResource1 = staging.cast()?;
             let handle: HANDLE =
                 unsafe { dxgi_resource.CreateSharedHandle(None, GENERIC_ALL.0, None)? };
@@ -246,18 +266,18 @@ impl D3d11StagingPool {
                 import_d3d11_shared_handle(
                     &self.wgpu_device,
                     handle,
-                    self.width,
-                    self.height,
+                    width,
+                    height,
                     self.pixel_format.wgpu_format(),
                 )
             }));
+            unsafe {
+                let _ = CloseHandle(handle);
+            }
             let wgpu_texture = match import_result {
                 Ok(Ok(tex)) => tex,
                 Ok(Err(e)) => return Err(e),
                 Err(_) => {
-                    unsafe {
-                        let _ = CloseHandle(handle);
-                    }
                     return Err(D3d11InteropError::D3d11(format!(
                         "staging texture import (wgpu) failed at slot {i}/{n} \
                          (~{per_slot_mb:.0} MB/slot, ~{total_mb:.0} MB total). \
@@ -265,10 +285,6 @@ impl D3d11StagingPool {
                     )));
                 }
             };
-
-            unsafe {
-                let _ = CloseHandle(handle);
-            }
 
             // Create Y/UV plane views (R8/Rg8 for NV12, R16/Rg16 for P010).
             let y_view = wgpu_texture.create_view(&wgpu::TextureViewDescriptor {
@@ -301,10 +317,10 @@ impl D3d11StagingPool {
         }
 
         log::info!(
-            "D3D11VA staging pool ready: {}x{} {:?}, {n} slots (same-device)",
-            self.width,
-            self.height,
-            self.pixel_format
+            "D3D11VA staging pool ready: {:?} {:?}, {} frame slots (same-device)",
+            self.source_sizes,
+            self.pixel_format,
+            self.n_slots
         );
 
         self.state = Some(StagingState {
@@ -320,59 +336,80 @@ impl D3d11StagingPool {
         Ok(())
     }
 
-    /// Copy decoded D3D11VA frames into staging slots and await the batch.
+    /// Copy one complete frame set and await GPU completion before releasing its sources.
     ///
-    /// All sources must belong to the same decode device. One completion
-    /// query covers every copy before the caller releases the decoded frames.
-    pub fn stage_frames(
+    /// All sources must belong to the same decode device. Source textures may be
+    /// decoder-aligned, but only each camera's configured image extent is copied.
+    ///
+    /// # Safety
+    /// Each non-null texture must be a live ID3D11Texture2D COM pointer retained
+    /// by the caller until this call returns.
+    pub unsafe fn stage_frames(
         &mut self,
-        frames: &[(*mut c_void, usize, usize)],
+        frames: &[crate::source::D3d11CameraFrame],
+        slot: usize,
     ) -> Result<(), D3d11InteropError> {
-        if frames.is_empty() {
-            return Ok(());
+        if slot >= self.n_slots || frames.len() != self.source_sizes.len() {
+            return Err(D3d11InteropError::StagingCopy(
+                "invalid frame slot or camera count".into(),
+            ));
         }
-        for &(texture, _, slot) in frames {
-            if texture.is_null() {
-                return Err(D3d11InteropError::StagingCopy("null source texture".into()));
-            }
-            if slot >= self.n_slots {
-                return Err(D3d11InteropError::StagingCopy(format!(
-                    "slot {slot} out of range (0..{})",
-                    self.n_slots
-                )));
-            }
+        if frames.iter().any(|frame| frame.texture.is_null()) {
+            return Err(D3d11InteropError::StagingCopy("null source texture".into()));
         }
         unsafe {
             let sources: Vec<ID3D11Texture2D> = frames
                 .iter()
-                .map(|&(texture, _, _)| {
+                .map(|frame| {
                     // Borrow FFmpeg's reference; cast obtains our own AddRef.
-                    let unknown =
-                        std::mem::ManuallyDrop::new(windows::core::IUnknown::from_raw(texture));
+                    let unknown = std::mem::ManuallyDrop::new(windows::core::IUnknown::from_raw(
+                        frame.texture,
+                    ));
                     unknown.cast()
                 })
                 .collect::<windows::core::Result<_>>()?;
-            self.ensure_initialized(&sources[0])?;
-            let state = self.state.as_ref().unwrap();
-            // Validate the entire batch before issuing any GPU copies.
-            for src in &sources {
-                let device = src.GetDevice()?;
-                if Interface::as_raw(&device) != Interface::as_raw(&state.device) {
+            let device = if let Some(state) = &self.state {
+                state.device.clone()
+            } else {
+                sources[0].GetDevice()?
+            };
+            // Validate the entire batch before allocating or issuing any GPU copies.
+            for (camera, (src, frame)) in sources.iter().zip(frames).enumerate() {
+                if Interface::as_raw(&src.GetDevice()?) != Interface::as_raw(&device) {
                     return Err(D3d11InteropError::StagingCopy(
                         "source frame is on a different D3D11 device than the staging pool; the decoders must share one hw device".into()
                     ));
                 }
+                let mut desc = D3D11_TEXTURE2D_DESC::default();
+                src.GetDesc(&mut desc);
+                validate_source(
+                    &desc,
+                    frame.slice,
+                    self.source_sizes[camera],
+                    self.pixel_format,
+                )?;
             }
-            for (src, &(_, slice, slot)) in sources.iter().zip(frames) {
+            self.ensure_initialized(&sources[0])?;
+            let state = self.state.as_ref().unwrap();
+            for (camera, (src, frame)) in sources.iter().zip(frames).enumerate() {
+                let (width, height) = self.source_sizes[camera];
+                let region = D3D11_BOX {
+                    left: 0,
+                    top: 0,
+                    front: 0,
+                    right: width,
+                    bottom: height,
+                    back: 1,
+                };
                 state.context.CopySubresourceRegion(
-                    &state.staging[slot],
+                    &state.staging[slot * frames.len() + camera],
                     0,
                     0,
                     0,
                     0,
                     src,
-                    slice as u32,
-                    None,
+                    frame.slice as u32,
+                    Some(&region),
                 );
             }
             state.context.End(&state.event_query);
@@ -410,43 +447,32 @@ impl D3d11StagingPool {
         Ok(())
     }
 
-    /// Y plane view (R8Unorm, full resolution) for the given slot.
-    ///
-    /// # Panics
-    /// Panics if called before the first `stage_frames` (pool not initialized).
-    pub fn y_view(&self, slot: usize) -> &wgpu::TextureView {
-        &self
-            .state
-            .as_ref()
-            .expect("staging pool not initialized")
-            .y_views[slot]
+    /// Plane views for one staged frame set, in camera order.
+    pub(crate) fn views(&self, slot: usize) -> Option<Vec<(wgpu::TextureView, wgpu::TextureView)>> {
+        let state = self.state.as_ref()?;
+        if slot >= self.n_slots {
+            return None;
+        }
+        let first = slot * self.source_sizes.len();
+        Some(
+            (first..first + self.source_sizes.len())
+                .map(|i| (state.y_views[i].clone(), state.uv_views[i].clone()))
+                .collect(),
+        )
     }
 
-    /// UV plane view (Rg8Unorm, half resolution) for the given slot.
-    ///
-    /// # Panics
-    /// Panics if called before the first `stage_frames` (pool not initialized).
-    pub fn uv_view(&self, slot: usize) -> &wgpu::TextureView {
-        &self
-            .state
-            .as_ref()
-            .expect("staging pool not initialized")
-            .uv_views[slot]
+    /// Frame slot assigned round-robin after reducing the full-width sequence number.
+    pub(crate) fn slot(&self, sequence: u64) -> usize {
+        (sequence % self.n_slots as u64) as usize
     }
 
-    /// Number of staging slots.
-    pub fn n_slots(&self) -> usize {
-        self.n_slots
-    }
-
-    /// Staging texture width.
-    pub fn width(&self) -> u32 {
-        self.width
-    }
-
-    /// Staging texture height.
-    pub fn height(&self) -> u32 {
-        self.height
+    pub(crate) fn matches(
+        &self,
+        sizes: &[(u32, u32)],
+        slots: usize,
+        format: crate::render::renderer::GpuPixelFormat,
+    ) -> bool {
+        self.source_sizes == sizes && self.n_slots == slots && self.pixel_format == format
     }
 }
 
@@ -510,4 +536,153 @@ unsafe fn import_d3d11_shared_handle(
     let texture = unsafe { device.create_texture_from_hal::<Dx12>(hal_texture, &desc) };
 
     Ok(texture)
+}
+
+fn validate_source(
+    desc: &D3D11_TEXTURE2D_DESC,
+    slice: usize,
+    (width, height): (u32, u32),
+    format: crate::render::renderer::GpuPixelFormat,
+) -> Result<(), D3d11InteropError> {
+    let expected_format = match format {
+        crate::render::renderer::GpuPixelFormat::P010 => DXGI_FORMAT_P010,
+        _ => DXGI_FORMAT_NV12,
+    };
+    if desc.Width < width
+        || desc.Height < height
+        || desc.Format != expected_format
+        || desc.MipLevels != 1
+        || slice >= desc.ArraySize as usize
+        || desc.SampleDesc.Count != 1
+        || desc.SampleDesc.Quality != 0
+    {
+        return Err(D3d11InteropError::StagingCopy(
+            "source texture extent, format, array slice or sample layout does not match its camera"
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::render::renderer::GpuPixelFormat;
+
+    #[test]
+    #[ignore = "requires a DX12 adapter"]
+    fn frame_slot_layout_and_invalid_batches_do_not_allocate_native_resources() {
+        let gpu = GpuContext::new_blocking().unwrap();
+        for sizes in [
+            vec![(1920, 1080)],
+            vec![(1920, 1080), (1280, 720)],
+            vec![(1280, 720), (1920, 1080)],
+        ] {
+            for format in [GpuPixelFormat::Nv12, GpuPixelFormat::P010] {
+                for capacity in [2, 7, 16] {
+                    let mut pool = D3d11StagingPool::new(&gpu, &sizes, capacity, format).unwrap();
+                    for sequence in [0, 1, 2, 17, u64::MAX] {
+                        assert_eq!(pool.slot(sequence), (sequence % capacity as u64) as usize);
+                    }
+                    assert!(pool.matches(&sizes, capacity, format));
+                    assert!(!pool.matches(&sizes, capacity + 1, format));
+                    assert!(!pool.matches(&[(640, 480)], capacity, format));
+                    assert!(!pool.matches(
+                        &sizes,
+                        capacity,
+                        if format == GpuPixelFormat::Nv12 {
+                            GpuPixelFormat::P010
+                        } else {
+                            GpuPixelFormat::Nv12
+                        }
+                    ));
+                    let null_frames: Vec<_> = sizes
+                        .iter()
+                        .map(|_| crate::source::D3d11CameraFrame {
+                            texture: std::ptr::null_mut(),
+                            slice: 0,
+                        })
+                        .collect();
+                    // Null pointers are rejected before attempting to borrow a COM reference.
+                    unsafe {
+                        assert!(pool.stage_frames(&[], 0).is_err());
+                        assert!(pool.stage_frames(&null_frames, capacity).is_err());
+                        assert!(pool.stage_frames(&null_frames, 0).is_err());
+                    }
+                    assert!(pool.state.is_none());
+                    assert!(pool.views(0).is_none());
+                }
+            }
+        }
+        for sizes in [vec![], vec![(0, 1080)], vec![(1920, 1079)]] {
+            assert!(D3d11StagingPool::new(&gpu, &sizes, 2, GpuPixelFormat::Nv12).is_err());
+        }
+        for capacity in [0, usize::MAX] {
+            assert!(
+                D3d11StagingPool::new(&gpu, &[(1920, 1080); 2], capacity, GpuPixelFormat::P010)
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn copy_region_accepts_decoder_padding_but_rejects_invalid_subresources() {
+        for (format, dxgi) in [
+            (GpuPixelFormat::Nv12, DXGI_FORMAT_NV12),
+            (GpuPixelFormat::P010, DXGI_FORMAT_P010),
+        ] {
+            let desc = D3D11_TEXTURE2D_DESC {
+                Width: 1920,
+                Height: 1088,
+                MipLevels: 1,
+                ArraySize: 8,
+                Format: dxgi,
+                SampleDesc: DXGI_SAMPLE_DESC {
+                    Count: 1,
+                    Quality: 0,
+                },
+                ..Default::default()
+            };
+            assert!(validate_source(&desc, 7, (1920, 1080), format).is_ok());
+            assert!(validate_source(&desc, 0, (1280, 720), format).is_ok());
+            for slice in [8, usize::MAX] {
+                assert!(validate_source(&desc, slice, (1920, 1080), format).is_err());
+            }
+            for bad in [
+                D3D11_TEXTURE2D_DESC {
+                    Width: 1918,
+                    ..desc
+                },
+                D3D11_TEXTURE2D_DESC {
+                    Height: 1078,
+                    ..desc
+                },
+                D3D11_TEXTURE2D_DESC {
+                    MipLevels: 2,
+                    ..desc
+                },
+                D3D11_TEXTURE2D_DESC {
+                    ArraySize: 0,
+                    ..desc
+                },
+                D3D11_TEXTURE2D_DESC {
+                    Format: if dxgi == DXGI_FORMAT_NV12 {
+                        DXGI_FORMAT_P010
+                    } else {
+                        DXGI_FORMAT_NV12
+                    },
+                    ..desc
+                },
+                D3D11_TEXTURE2D_DESC {
+                    SampleDesc: DXGI_SAMPLE_DESC {
+                        Count: 2,
+                        Quality: 0,
+                    },
+                    ..desc
+                },
+            ] {
+                assert!(validate_source(&bad, 0, (1920, 1080), format).is_err());
+            }
+        }
+    }
 }

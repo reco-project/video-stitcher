@@ -474,7 +474,7 @@ impl GpuContext {
             // as "total" lets the pre-flight check fail fast before the pool
             // pushes the app into swap.
             let total = raw.recommended_max_working_set_size();
-            let used = raw.current_allocated_size() as u64;
+            let used = raw.current_allocated_size();
             return Some((total.saturating_sub(used), total));
         }
         #[allow(unreachable_code)]

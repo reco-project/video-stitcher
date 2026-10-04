@@ -141,7 +141,7 @@ impl CoreMlModel {
     /// exactly `product(input_shape)` elements. The buffer is NOT copied -
     /// CoreML reads directly from this pointer (unified memory).
     ///
-    /// Returns the output tensor data as a Vec<f32> and the number of
+    /// Returns the output tensor data as a `Vec<f32>` and the number of
     /// detections (second dimension of the output shape).
     pub fn predict(
         &self,

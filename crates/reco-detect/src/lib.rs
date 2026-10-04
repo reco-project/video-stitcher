@@ -14,6 +14,9 @@
 
 pub mod detectors;
 mod letterbox;
+#[cfg(all(test, not(any(target_os = "macos", target_os = "ios"))))]
+#[path = "metal_compute/params.rs"]
+mod metal_params;
 #[cfg(feature = "ort")]
 pub mod ort_session;
 #[cfg(feature = "ort")]

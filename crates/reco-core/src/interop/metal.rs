@@ -60,6 +60,7 @@ unsafe extern "C" {
     fn CVMetalTextureGetTexture(image: CVMetalTextureRef) -> *mut c_void;
 
     pub(crate) fn CVPixelBufferGetPixelFormatType(pixel_buffer: CVPixelBufferRef) -> u32;
+    fn CVPixelBufferGetPlaneCount(pixel_buffer: CVPixelBufferRef) -> usize;
     fn CVPixelBufferGetDataSize(pixel_buffer: CVPixelBufferRef) -> usize;
     pub(crate) fn CVPixelBufferGetWidthOfPlane(
         pixel_buffer: CVPixelBufferRef,
@@ -143,6 +144,10 @@ pub enum MetalInteropError {
     /// The CVPixelBuffer has an unsupported pixel format.
     #[error("unsupported CVPixelBuffer format: 0x{0:08x}")]
     UnsupportedFormat(u32),
+
+    /// The pixel buffer does not contain two nonempty 4:2:0 planes.
+    #[error("invalid NV12/P010 plane layout")]
+    InvalidLayout,
 }
 
 // ---------------------------------------------------------------------------
@@ -283,15 +288,19 @@ impl MetalTextureCache {
     /// # Safety
     ///
     /// `cv_pixel_buffer` must be a valid, non-null `CVPixelBufferRef`.
-    pub unsafe fn import_plane(
+    unsafe fn import_plane(
         &self,
         cv_pixel_buffer: CVPixelBufferRef,
         plane_index: u64,
         is_10bit: bool,
         gpu: &GpuContext,
     ) -> Result<ImportedPlaneTexture, MetalInteropError> {
-        let width = unsafe { CVPixelBufferGetWidthOfPlane(cv_pixel_buffer, plane_index) } as u32;
-        let height = unsafe { CVPixelBufferGetHeightOfPlane(cv_pixel_buffer, plane_index) } as u32;
+        let width =
+            u32::try_from(unsafe { CVPixelBufferGetWidthOfPlane(cv_pixel_buffer, plane_index) })
+                .map_err(|_| MetalInteropError::InvalidLayout)?;
+        let height =
+            u32::try_from(unsafe { CVPixelBufferGetHeightOfPlane(cv_pixel_buffer, plane_index) })
+                .map_err(|_| MetalInteropError::InvalidLayout)?;
 
         let (mtl_format, wgpu_format) = match (plane_index, is_10bit) {
             (0, false) => (MTL_PIXEL_FORMAT_R8_UNORM, wgpu::TextureFormat::R8Unorm),
@@ -320,11 +329,14 @@ impl MetalTextureCache {
         if ret != K_CV_RETURN_SUCCESS {
             return Err(MetalInteropError::TextureImportFailed(ret));
         }
+        if cv_texture.is_null() {
+            return Err(MetalInteropError::NullTexture);
+        }
+        let cv_texture = RetainedMetalTexture(cv_texture);
 
         // Extract the raw MTLTexture pointer
-        let mtl_texture_ptr = unsafe { CVMetalTextureGetTexture(cv_texture) };
+        let mtl_texture_ptr = unsafe { CVMetalTextureGetTexture(cv_texture.0) };
         if mtl_texture_ptr.is_null() {
-            unsafe { CFRelease(cv_texture as *const c_void) };
             return Err(MetalInteropError::NullTexture);
         }
 
@@ -335,6 +347,7 @@ impl MetalTextureCache {
         Ok(ImportedPlaneTexture {
             texture: wgpu_texture,
             _cv_texture_ref: cv_texture,
+            _pixel_buffer: unsafe { RetainedCVPixelBuffer::retain(cv_pixel_buffer) },
         })
     }
 
@@ -351,6 +364,25 @@ impl MetalTextureCache {
         cv_pixel_buffer: CVPixelBufferRef,
         gpu: &GpuContext,
     ) -> Result<(ImportedPlaneTexture, ImportedPlaneTexture), MetalInteropError> {
+        if cv_pixel_buffer.is_null() || unsafe { CVPixelBufferGetPlaneCount(cv_pixel_buffer) } != 2
+        {
+            return Err(MetalInteropError::InvalidLayout);
+        }
+        let (width, height) = unsafe {
+            (
+                CVPixelBufferGetWidthOfPlane(cv_pixel_buffer, 0),
+                CVPixelBufferGetHeightOfPlane(cv_pixel_buffer, 0),
+            )
+        };
+        if width == 0
+            || height == 0
+            || width % 2 != 0
+            || height % 2 != 0
+            || unsafe { CVPixelBufferGetWidthOfPlane(cv_pixel_buffer, 1) } != width / 2
+            || unsafe { CVPixelBufferGetHeightOfPlane(cv_pixel_buffer, 1) } != height / 2
+        {
+            return Err(MetalInteropError::InvalidLayout);
+        }
         let format = unsafe { CVPixelBufferGetPixelFormatType(cv_pixel_buffer) };
         let is_10bit = match format {
             K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_VIDEO_RANGE
@@ -380,6 +412,24 @@ impl MetalTextureCache {
         let y = unsafe { self.import_plane(cv_pixel_buffer, 0, is_10bit, gpu)? };
         let uv = unsafe { self.import_plane(cv_pixel_buffer, 1, is_10bit, gpu)? };
         Ok((y, uv))
+    }
+
+    pub(crate) fn import_frame(
+        &mut self,
+        cameras: &[RetainedCVPixelBuffer],
+        gpu: &GpuContext,
+    ) -> Result<ImportedFrame, MetalInteropError> {
+        let planes = cameras
+            .iter()
+            .map(|frame| {
+                // The retained wrapper guarantees a live pixel buffer through import.
+                unsafe { self.import_nv12(frame.as_ptr(), gpu) }
+            })
+            .collect::<Result<_, _>>()?;
+        Ok(ImportedFrame {
+            planes,
+            queue: gpu.queue().clone(),
+        })
     }
 
     /// Wrap a raw `MTLTexture` pointer as a `wgpu::Texture` via the HAL.
@@ -469,14 +519,52 @@ pub struct ImportedPlaneTexture {
     /// The wgpu texture, usable in bind groups.
     pub texture: wgpu::Texture,
     /// The CoreVideo texture reference (released on drop via `CFRelease`).
-    _cv_texture_ref: CVMetalTextureRef,
+    _cv_texture_ref: RetainedMetalTexture,
+    _pixel_buffer: RetainedCVPixelBuffer,
 }
 
-impl Drop for ImportedPlaneTexture {
+struct RetainedMetalTexture(CVMetalTextureRef);
+
+// Immutable retained CoreVideo texture references may be released by a GPU completion thread.
+unsafe impl Send for RetainedMetalTexture {}
+
+impl Drop for RetainedMetalTexture {
     fn drop(&mut self) {
-        if !self._cv_texture_ref.is_null() {
-            unsafe { CFRelease(self._cv_texture_ref as *const c_void) };
-        }
+        unsafe { CFRelease(self.0 as *const c_void) };
+    }
+}
+
+/// Holds the complete native import through all wgpu reads submitted within its scope.
+pub(crate) struct ImportedFrame {
+    planes: Vec<(ImportedPlaneTexture, ImportedPlaneTexture)>,
+    queue: wgpu::Queue,
+}
+
+impl ImportedFrame {
+    pub(crate) fn views(&self) -> Vec<(wgpu::TextureView, wgpu::TextureView)> {
+        self.planes
+            .iter()
+            .map(|(y, uv)| {
+                (
+                    y.texture.create_view(&Default::default()),
+                    uv.texture.create_view(&Default::default()),
+                )
+            })
+            .collect()
+    }
+}
+
+impl Drop for ImportedFrame {
+    fn drop(&mut self) {
+        let owners: Vec<_> = std::mem::take(&mut self.planes)
+            .into_iter()
+            .flat_map(|(y, uv)| [y, uv])
+            .map(|plane| (plane._cv_texture_ref, plane._pixel_buffer))
+            .collect();
+        // Submitted commands retain the wgpu textures. Retain only the native
+        // owners here, avoiding a device-reference cycle through this callback.
+        // Submission/readback polling drives release, including after errors.
+        self.queue.on_submitted_work_done(move || drop(owners));
     }
 }
 

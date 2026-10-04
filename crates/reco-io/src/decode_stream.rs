@@ -8,10 +8,10 @@ use reco_core::source::SourceError;
 mod restart;
 pub(crate) use restart::Restartable;
 
-#[cfg(any(target_os = "windows", test))]
-mod owned_pair;
-#[cfg(any(target_os = "windows", test))]
-pub(crate) use owned_pair::OwnedPair;
+#[cfg(any(target_os = "windows", target_os = "macos", test))]
+mod owned_frames;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+pub(crate) use owned_frames::OwnedFrames;
 
 pub(crate) type Message<T> = Result<Option<T>, SourceError>;
 
@@ -25,44 +25,13 @@ pub(crate) fn receive<T>(rx: &Receiver<Message<T>>) -> Message<T> {
     rx.recv().map_err(|_| disconnected())?
 }
 
-#[cfg(any(target_os = "windows", target_os = "macos", test))]
-fn receive_pair<T>(left: &Receiver<Message<T>>, right: &Receiver<Message<T>>) -> Message<(T, T)> {
-    let left = receive(left)?;
-    let right = receive(right)?;
-    Ok(left.zip(right))
-}
-
-#[cfg(any(target_os = "windows", target_os = "macos", test))]
-pub(crate) fn pair<T: Send + 'static, U: Send + 'static>(
-    left: Receiver<Message<T>>,
-    right: Receiver<Message<T>>,
-    sync_offset: i64,
-    capacity: usize,
-    map: impl Fn((T, T)) -> U + Send + 'static,
-) -> (Receiver<Message<U>>, JoinHandle<()>) {
-    spawn(
-        "decode_pair".into(),
-        capacity,
-        move |tx| -> Result<(), SourceError> {
-            let skip_rx = if sync_offset > 0 { &right } else { &left };
-            if !skip(skip_rx, sync_offset.unsigned_abs())? {
-                return Ok(());
-            }
-            while let Some(frames) = receive_pair(&left, &right)? {
-                if tx.send(Ok(Some(map(frames)))).is_err() {
-                    break;
-                }
-            }
-            Ok(())
-        },
-    )
-}
-
 /// Collect one frame from every input, stopping at the shortest input.
 /// Read all terminal messages before accepting EOF, so another input's error is not hidden.
-#[cfg(any(target_os = "linux", target_os = "windows", test))]
+/// For stereo, positive offsets skip right frames and negative offsets skip left frames.
+#[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos", test))]
 pub(crate) fn collect<T: Send + 'static>(
     inputs: Vec<Receiver<Message<T>>>,
+    sync_offset: i64,
     capacity: usize,
 ) -> (Receiver<Message<Vec<T>>>, JoinHandle<()>) {
     spawn(
@@ -71,6 +40,14 @@ pub(crate) fn collect<T: Send + 'static>(
         move |tx| -> Result<(), SourceError> {
             if inputs.is_empty() {
                 return Ok(());
+            }
+            if inputs.len() == 2 {
+                let shifted = usize::from(sync_offset > 0);
+                if !skip(&inputs[shifted], sync_offset.unsigned_abs())? {
+                    // EOF during alignment must not hide the other input's failure.
+                    receive(&inputs[1 - shifted])?;
+                    return Ok(());
+                }
             }
             loop {
                 let mut frames = Vec::with_capacity(inputs.len());
@@ -143,11 +120,67 @@ mod tests {
             let inputs = (0..cameras)
                 .map(|camera| scripted(vec![Ok(Some(camera)), Ok(Some(camera + 10)), Ok(None)]))
                 .collect();
-            let (rx, worker) = collect(inputs, 1);
+            let (rx, worker) = collect(inputs, 0, 1);
             assert_eq!(receive(&rx).unwrap(), Some((0..cameras).collect()));
             assert_eq!(receive(&rx).unwrap(), Some((10..10 + cameras).collect()));
             assert_eq!(receive(&rx).unwrap(), None);
             worker.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn collection_applies_stereo_offsets_and_ignores_mono_offset() {
+        for offset in [-1, 0, 1] {
+            let (rx, worker) = collect(
+                vec![
+                    scripted(vec![Ok(Some(1)), Ok(Some(2)), Ok(None)]),
+                    scripted(vec![Ok(Some(11)), Ok(Some(12)), Ok(None)]),
+                ],
+                offset,
+                4,
+            );
+            let expected = match offset {
+                -1 => vec![vec![2, 11]],
+                0 => vec![vec![1, 11], vec![2, 12]],
+                1 => vec![vec![1, 12]],
+                _ => unreachable!(),
+            };
+            for frames in expected {
+                assert_eq!(receive(&rx).unwrap(), Some(frames));
+            }
+            assert!(receive(&rx).unwrap().is_none());
+            worker.join().unwrap();
+        }
+        let (rx, worker) = collect(vec![scripted(vec![Ok(Some(9)), Ok(None)])], i64::MIN, 1);
+        assert_eq!(receive(&rx).unwrap(), Some(vec![9]));
+        assert!(receive(&rx).unwrap().is_none());
+        worker.join().unwrap();
+        for offset in [-1, 1] {
+            for terminal in [Ok(None), failure()] {
+                let fails = terminal.is_err();
+                let selected = usize::from(offset > 0);
+                let mut inputs = vec![scripted(vec![Ok(None)]), scripted(vec![Ok(None)])];
+                inputs[selected] = scripted(vec![terminal]);
+                let (rx, worker) = collect(inputs, offset, 1);
+                assert_eq!(receive(&rx).is_err(), fails);
+                worker.join().unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn offset_past_eof_preserves_other_camera_failure() {
+        for offset in [-1, 1] {
+            let shifted = usize::from(offset > 0);
+            let mut inputs = vec![scripted(vec![Ok(None)]), scripted(vec![Ok(None)])];
+            inputs[1 - shifted] = scripted(vec![failure()]);
+            let (rx, worker) = collect(inputs, offset, 1);
+            let result = receive(&rx);
+            worker.join().unwrap();
+            assert!(
+                result.is_err(),
+                "offset {offset} hid the other camera's error"
+            );
         }
     }
 
@@ -163,26 +196,31 @@ mod tests {
                     })
                 })
                 .collect();
-            let (rx, worker) = collect(inputs, 1);
+            let (rx, worker) = collect(inputs, 0, 1);
             assert!(receive(&rx).is_err());
             worker.join().unwrap();
         }
-        let (rx, worker) = collect(vec![scripted(vec![Ok(Some(1)), Ok(Some(2)), Ok(None)])], 0);
+        let (rx, worker) = collect(
+            vec![scripted(vec![Ok(Some(1)), Ok(Some(2)), Ok(None)])],
+            0,
+            0,
+        );
         drop(rx);
         worker.join().unwrap();
     }
 
     #[test]
     fn pairs_all_frames_then_explicit_eof() {
-        let (rx, worker) = pair(
-            scripted(vec![Ok(Some(1)), Ok(Some(2)), Ok(None)]),
-            scripted(vec![Ok(Some(3)), Ok(Some(4)), Ok(None)]),
+        let (rx, worker) = collect(
+            vec![
+                scripted(vec![Ok(Some(1)), Ok(Some(2)), Ok(None)]),
+                scripted(vec![Ok(Some(3)), Ok(Some(4)), Ok(None)]),
+            ],
             0,
             1,
-            |frames| frames,
         );
-        assert_eq!(receive(&rx).unwrap(), Some((1, 3)));
-        assert_eq!(receive(&rx).unwrap(), Some((2, 4)));
+        assert_eq!(receive(&rx).unwrap(), Some(vec![1, 3]));
+        assert_eq!(receive(&rx).unwrap(), Some(vec![2, 4]));
         assert_eq!(receive(&rx).unwrap(), None);
         worker.join().unwrap();
     }
@@ -197,7 +235,7 @@ mod tests {
             } else {
                 (long, short)
             };
-            let (rx, worker) = pair(left, right, 0, 1, |frames| frames);
+            let (rx, worker) = collect(vec![left, right], 0, 1);
             assert_eq!(receive(&rx).unwrap(), None);
             worker.join().unwrap();
         }
@@ -213,7 +251,7 @@ mod tests {
             } else {
                 (short, broken)
             };
-            let (rx, worker) = pair(left, right, 0, 1, |frames| frames);
+            let (rx, worker) = collect(vec![left, right], 0, 1);
             assert!(receive(&rx).unwrap().is_some());
             assert!(
                 receive(&rx)
@@ -237,7 +275,7 @@ mod tests {
                 } else {
                     (other, skipped)
                 };
-                let (rx, worker) = pair(left, right, offset, 1, |frames| frames);
+                let (rx, worker) = collect(vec![left, right], offset, 1);
                 if expect_error {
                     assert!(receive(&rx).is_err());
                 } else {
@@ -284,12 +322,12 @@ mod tests {
         };
         let (left, left_worker) = produce();
         let (right, right_worker) = produce();
-        let (rx, pair_worker) = pair(left, right, 0, 1, |frames| frames);
+        let (rx, collector) = collect(vec![left, right], 0, 1);
         assert!(receive(&rx).unwrap().is_some());
         drop(rx);
         let (done_tx, done_rx) = sync_channel(1);
         std::thread::spawn(move || {
-            pair_worker.join().unwrap();
+            collector.join().unwrap();
             left_worker.join().unwrap();
             right_worker.join().unwrap();
             done_tx.send(()).unwrap();

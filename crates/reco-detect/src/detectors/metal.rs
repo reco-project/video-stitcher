@@ -19,7 +19,6 @@ use crate::metal_compute::MetalPreprocessPipeline;
 use reco_core::detect::detector::{Detection, Detector, DetectorError, DetectorFrame};
 use reco_core::geometry::CameraIndex;
 use reco_core::gpu::GpuContext;
-use reco_core::interop::metal::CVPixelBufferRef;
 
 use super::postprocess;
 
@@ -44,22 +43,14 @@ enum InferenceBackend {
 ///
 /// Created via [`MetalYoloDetector::try_new`].
 pub struct MetalYoloDetector {
-    /// Owned clone of the session's `GpuContext`. Needed by the Metal
-    /// preprocess pipeline on every `detect()` call; before the M3
-    /// trait collapse the session passed a `&GpuContext` parameter
-    /// but `Detector::detect` has no such parameter, so the
-    /// detector now owns its own handle. Cloning is cheap (wgpu
-    /// types are reference-counted).
+    /// Shares the session's Metal device and queue.
     gpu: GpuContext,
     backend: InferenceBackend,
     preprocess: MetalPreprocessPipeline,
     input_size: u32,
     confidence_threshold: f32,
     labels: Vec<String>,
-    // Pre-computed letterbox parameters (constant for fixed frame dimensions).
-    scale: f32,
-    pad_x: f32,
-    pad_y: f32,
+    source_sizes: Vec<(u32, u32)>,
     /// Frame counter for periodic texture cache flush.
     frame_counter: u64,
 }
@@ -71,16 +62,17 @@ impl MetalYoloDetector {
     /// - A `.mlmodelc` directory: uses native CoreML inference (Neural Engine)
     /// - A `.onnx` file: uses ORT with CoreML EP (runtime conversion)
     ///
-    /// `frame_width`/`frame_height` are the raw camera frame dimensions.
-    /// Letterbox parameters are pre-computed from these dimensions.
+    /// `source_sizes` declares the raw dimensions of each camera in projection order.
     pub fn try_new(
         model_path: impl AsRef<Path>,
         gpu: &GpuContext,
-        frame_width: u32,
-        frame_height: u32,
+        source_sizes: &[(u32, u32)],
         confidence_threshold: f32,
         labels: Vec<String>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        if source_sizes.is_empty() || source_sizes.iter().any(|&(w, h)| w == 0 || h == 0) {
+            return Err("Metal detector requires nonempty camera dimensions".into());
+        }
         let path = model_path.as_ref();
 
         let (backend, input_size, labels) = if path.extension().is_some_and(|ext| ext == "mlmodelc")
@@ -120,31 +112,14 @@ impl MetalYoloDetector {
             )
         };
 
-        // Pre-compute letterbox parameters.
-        let (fw, fh) = (frame_width as f32, frame_height as f32);
-        let is = input_size as f32;
-        let scale = (is / fw).min(is / fh);
-        let new_w = (fw * scale).round() as u32;
-        let new_h = (fh * scale).round() as u32;
-        let pad_x = (input_size - new_w) as f32 / 2.0;
-        let pad_y = (input_size - new_h) as f32 / 2.0;
-
-        // Create Metal preprocessing pipeline.
-        let preprocess = MetalPreprocessPipeline::new(gpu, input_size, frame_width, frame_height)
-            .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
-
-        let tensor_bytes = 3 * (input_size as usize) * (input_size as usize) * 4;
+        for &size in source_sizes {
+            crate::letterbox::Letterbox::new(size, input_size)?;
+        }
+        let preprocess = MetalPreprocessPipeline::new(gpu, input_size)?;
         log::info!(
-            "MetalYoloDetector ready: input={}x{}, frame={}x{}, scale={:.3}, pad=({:.1},{:.1}), \
-             buffer={:.1}MB",
+            "MetalYoloDetector ready: model={}x{}, cameras={source_sizes:?}",
             input_size,
-            input_size,
-            frame_width,
-            frame_height,
-            scale,
-            pad_x,
-            pad_y,
-            tensor_bytes as f64 / 1024.0 / 1024.0,
+            input_size
         );
 
         Ok(Self {
@@ -154,58 +129,43 @@ impl MetalYoloDetector {
             input_size,
             confidence_threshold,
             labels,
-            scale,
-            pad_x,
-            pad_y,
+            source_sizes: source_sizes.to_vec(),
             frame_counter: 0,
         })
     }
+}
 
-    /// Run inference and return (n_detections, output_data).
-    fn run_inference(&mut self, tensor_data: &mut [f32]) -> Option<(usize, Vec<f32>)> {
-        match &mut self.backend {
-            InferenceBackend::CoreMlNative(coreml) => {
+impl InferenceBackend {
+    /// Borrows shared Metal tensor storage for synchronous inference.
+    fn run(&mut self, tensor_data: &mut [f32]) -> Result<(usize, Vec<f32>), DetectorError> {
+        let failed = |e: String| DetectorError::InferenceFailed(e);
+        match self {
+            Self::CoreMlNative(coreml) => {
                 reco_core::profile_scope!("coreml_native_inference");
-                match coreml.predict(tensor_data.as_mut_ptr(), tensor_data.len()) {
-                    Ok(result) => Some(result),
-                    Err(e) => {
-                        log::error!("CoreML native inference failed: {e}");
-                        None
-                    }
-                }
+                coreml
+                    .predict(tensor_data.as_mut_ptr(), tensor_data.len())
+                    .map_err(|e| failed(e.to_string()))
             }
-            InferenceBackend::OrtSession {
+            Self::OrtSession {
                 session,
                 input_size,
             } => {
                 reco_core::profile_scope!("metal_ort_inference");
                 let sz = *input_size as i64;
-                let tensor = match ort::value::TensorRef::from_array_view((
-                    [1i64, 3, sz, sz],
-                    &*tensor_data,
-                )) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        log::error!("Failed to create ORT tensor: {e}");
-                        return None;
-                    }
-                };
-
-                let outputs = match session.run(ort::inputs![tensor]) {
-                    Ok(o) => o,
-                    Err(e) => {
-                        log::error!("ORT inference failed: {e}");
-                        return None;
-                    }
-                };
-
-                match outputs[0].try_extract_tensor::<f32>() {
-                    Ok((shape, slice)) => Some((shape[1] as usize, slice.to_vec())),
-                    Err(e) => {
-                        log::error!("Failed to extract YOLO output: {e}");
-                        None
-                    }
-                }
+                let tensor =
+                    ort::value::TensorRef::from_array_view(([1i64, 3, sz, sz], &*tensor_data))
+                        .map_err(|e| failed(e.to_string()))?;
+                let outputs = session
+                    .run(ort::inputs![tensor])
+                    .map_err(|e| failed(e.to_string()))?;
+                let (shape, slice) = outputs[0]
+                    .try_extract_tensor::<f32>()
+                    .map_err(|e| failed(e.to_string()))?;
+                let count = shape
+                    .get(1)
+                    .and_then(|&n| usize::try_from(n).ok())
+                    .ok_or_else(|| failed("invalid Metal model output shape".into()))?;
+                Ok((count, slice.to_vec()))
             }
         }
     }
@@ -221,16 +181,6 @@ impl Detector for MetalYoloDetector {
         camera: CameraIndex,
         frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
-        // Metal-residency backend: matches `Metal { cv_pixel_buffer,
-        // width, height }`; all other residencies (Cpu, Cuda, future
-        // `#[non_exhaustive]` additions) are routed to
-        // `UnsupportedFrameKind` via a single wildcard arm so the
-        // dispatcher picks a different backend.
-        //
-        // The `GpuContext` needed by `MetalPreprocessPipeline` is
-        // owned by this struct (cloned at construction time); wgpu
-        // types are reference-counted so the clone is cheap and shares
-        // the session's device/queue.
         let (cv_pixel_buffer, width, height) = match frame {
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             DetectorFrame::Metal {
@@ -241,6 +191,12 @@ impl Detector for MetalYoloDetector {
             _ => return Err(DetectorError::UnsupportedFrameKind),
         };
 
+        if self.source_sizes.get(camera) != Some(&(width, height)) {
+            return Err(DetectorError::InferenceFailed(
+                "Metal camera or dimensions do not match the detector".into(),
+            ));
+        }
+        let layout = crate::letterbox::Letterbox::new((width, height), self.input_size)?;
         reco_core::profile_scope!("metal_yolo_detect");
 
         // Step 1: Metal compute preprocess (NV12 -> CHW f32 tensor).
@@ -248,15 +204,15 @@ impl Detector for MetalYoloDetector {
             reco_core::profile_scope!("metal_preprocess");
             // SAFETY: caller guarantees cv_pixel_buffer is valid
             // (session wraps it as a RetainedCVPixelBuffer).
-            unsafe { self.preprocess.preprocess(cv_pixel_buffer, &self.gpu) }
-                .map_err(|e| DetectorError::InferenceFailed(format!("metal preprocess: {e}")))?
+            unsafe {
+                self.preprocess
+                    .preprocess(cv_pixel_buffer, (width, height), &self.gpu)
+            }
+            .map_err(|e| DetectorError::InferenceFailed(format!("metal preprocess: {e}")))?
         };
 
         // Step 2: Run inference (CoreML native or ORT).
-        let mut tensor_owned = tensor_data.to_vec();
-        let (n, data) = self.run_inference(&mut tensor_owned).ok_or_else(|| {
-            DetectorError::InferenceFailed("metal inference returned None".into())
-        })?;
+        let (n, data) = self.backend.run(tensor_data)?;
 
         // Step 3: Postprocess on CPU (shared between all backends).
         let detections = postprocess(
@@ -264,9 +220,9 @@ impl Detector for MetalYoloDetector {
             n,
             camera,
             self.confidence_threshold,
-            self.scale,
-            self.pad_x,
-            self.pad_y,
+            layout.scale,
+            layout.pad_x as f32,
+            layout.pad_y as f32,
             width,
             height,
         );
@@ -319,5 +275,5 @@ fn extract_input_size_from_path(path: &Path) -> Option<u32> {
     last_part
         .parse::<u32>()
         .ok()
-        .filter(|&s| s >= 320 && s <= 2048)
+        .filter(|&s| (320..=2048).contains(&s))
 }

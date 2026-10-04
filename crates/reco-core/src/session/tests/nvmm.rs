@@ -122,15 +122,11 @@ fn nvmm_staged_pixels_survive_capture_reuse() {
                 session.current_vram_slot = None;
             } else {
                 let pose = session.advance_render_pose(1.0 / 30.0).unwrap();
+                let [ly, lu, ry, ru] = textures
+                    .each_ref()
+                    .map(|texture| texture.create_view(&wgpu::TextureViewDescriptor::default()));
                 session
-                    .render_frame_imported_nv12(
-                        &textures[0],
-                        &textures[1],
-                        &textures[2],
-                        &textures[3],
-                        pose,
-                        pts_us,
-                    )
+                    .render_frame_imported_nv12(&[(&ly, &lu), (&ry, &ru)], pose, pts_us)
                     .unwrap();
             }
         }

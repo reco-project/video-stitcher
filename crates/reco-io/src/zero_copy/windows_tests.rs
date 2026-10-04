@@ -5,8 +5,6 @@ use crate::InputPath;
 use crate::ffmpeg::decoder::{DecodeBackend, SharedHwDevice, create_shared_hw_device};
 use reco_core::source::{FrameSet, FrameSource};
 
-mod detection_order;
-
 fn input() -> InputPath {
     let path = std::path::PathBuf::from(std::env::var("RECO_DECODE_TEST_VIDEO").unwrap());
     assert_eq!(
@@ -57,7 +55,7 @@ fn shared_d3d11_decoders_start_concurrently_and_drain() {
 
 #[test]
 #[ignore = "requires Windows D3D11VA and RECO_DECODE_TEST_VIDEO, a short multi-frame file"]
-fn d3d11_owned_pair_drains_eof_and_propagates_failure() {
+fn d3d11_owned_frames_drain_eof_and_propagate_failure() {
     let input = input();
     let mut reference = VideoDecoder::open_input_software(&input).unwrap();
     let mut total = 0;
@@ -66,7 +64,7 @@ fn d3d11_owned_pair_drains_eof_and_propagates_failure() {
     }
     assert!(total > 3);
     for offset in [-3_i64, 0, 3] {
-        let stream = spawn_d3d11_decode_pair(&input, &input, offset).unwrap();
+        let stream = spawn_d3d11_decode_frames(&[input.clone(), input.clone()], offset).unwrap();
         let mut count = 0;
         while stream.receive().unwrap().is_some() {
             count += 1;
@@ -79,7 +77,7 @@ fn d3d11_owned_pair_drains_eof_and_propagates_failure() {
     assert!(!missing.exists());
     let broken = InputPath::Chained(vec![input.first_path().to_owned(), missing]);
     for (left, right) in [(&broken, &input), (&input, &broken)] {
-        let stream = spawn_d3d11_decode_pair(left, right, 0).unwrap();
+        let stream = spawn_d3d11_decode_frames(&[left.clone(), right.clone()], 0).unwrap();
         let mut count = 0;
         loop {
             match stream.receive() {
@@ -106,7 +104,7 @@ fn d3d11_source_repeated_close_releases_current_and_queued_frames() {
             source.start_decoding();
             if offset.unsigned_abs() <= 3 {
                 assert!(matches!(
-                    source.next_frame().unwrap(),
+                    source.next_frame().unwrap().map(|frame| frame.images),
                     Some(FrameSet::D3d11Resident(_))
                 ));
             }

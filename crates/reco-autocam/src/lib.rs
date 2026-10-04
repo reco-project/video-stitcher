@@ -308,8 +308,7 @@ pub fn setup_autocam(
         match MetalYoloDetector::try_new(
             model_path,
             gpu,
-            input_width,
-            input_height,
+            target.source_sizes(),
             config.confidence_threshold.unwrap_or(0.10),
             Vec::new(),
         ) {
