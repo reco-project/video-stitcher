@@ -244,7 +244,6 @@ impl DetectorFrame<'_> {
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "gpu"))]
             Self::CudaRgba { .. } => "CudaRgba",
-            #[cfg(any(target_os = "linux", target_os = "windows"))]
             #[cfg(all(target_os = "linux", feature = "gpu"))]
             Self::Nvmm(_) => "Nvmm",
             #[cfg(all(feature = "gpu", any(target_os = "macos", target_os = "ios")))]

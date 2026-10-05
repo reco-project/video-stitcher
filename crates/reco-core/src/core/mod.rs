@@ -291,9 +291,9 @@ impl StitchCore {
         self.event_sink = Some(sink);
     }
 
-    /// Attach a unified-trait detector. Replaces any existing one.
+    /// Attach a detector. Replaces any existing one.
     ///
-    /// Frame loops schedule detection using [`Self::detection_due`]. Results carry world-reference angular positions for tracking and observation. Unsupported frame kinds are logged at debug level; other inference errors are warned without aborting rendering.
+    /// Frame loops schedule detection using [`Self::detection_due`]. Results carry world-reference angular positions for tracking and observation. Input requirements and failure handling follow [`Self::run_detection_frames`].
     pub fn set_detector(&mut self, detector: Box<dyn Detector>) {
         self.clear_detection_cache();
         self.detector = Some(detector);
