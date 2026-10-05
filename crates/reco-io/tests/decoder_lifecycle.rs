@@ -1060,6 +1060,24 @@ fn fixture_rate(
     height: u32,
     rate: (i32, i32),
 ) {
+    fixture_color(
+        path,
+        codec_name,
+        width,
+        height,
+        rate,
+        ffmpeg::color::Range::Unspecified,
+    );
+}
+
+fn fixture_color(
+    path: &std::path::Path,
+    codec_name: &str,
+    width: u32,
+    height: u32,
+    rate: (i32, i32),
+    range: ffmpeg::color::Range,
+) {
     ffmpeg::init().unwrap();
     let codec = ffmpeg::encoder::find_by_name(codec_name).expect("test encoder");
     let mut output = ffmpeg::format::output(path).unwrap();
@@ -1071,6 +1089,11 @@ fn fixture_rate(
     encoder.set_width(width);
     encoder.set_height(height);
     encoder.set_format(ffmpeg::format::Pixel::YUV420P);
+    encoder.set_color_range(range);
+    if range != ffmpeg::color::Range::Unspecified {
+        // Require an explicit VUI range flag even for the default limited range.
+        encoder.set_colorspace(ffmpeg::color::Space::BT709);
+    }
     encoder.set_time_base((rate.1, rate.0));
     encoder.set_frame_rate(Some(rate));
     encoder.set_gop(48);
@@ -1584,4 +1607,68 @@ fn dimensions_cannot_change_under_a_fixed_frame_layout() {
         }
     }
     assert_eq!(count, FRAMES);
+}
+
+#[test]
+fn explicit_color_range_cannot_change_under_a_fixed_source_description() {
+    check_segment_color_ranges(false);
+}
+
+#[cfg(all(feature = "gpu", target_os = "linux"))]
+#[test]
+#[ignore = "requires NVIDIA CUDA/NVDEC"]
+fn cuda_explicit_color_range_cannot_change_under_a_fixed_source_description() {
+    check_segment_color_ranges(true);
+}
+
+fn check_segment_color_ranges(hardware: bool) {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = [dir.path().join("limited.mp4"), dir.path().join("full.mp4")];
+    for (path, range) in paths
+        .iter()
+        .zip([ffmpeg::color::Range::MPEG, ffmpeg::color::Range::JPEG])
+    {
+        fixture_color(path, "libx264", WIDTH, HEIGHT, (30, 1), range);
+    }
+    for order in [[0, 1], [1, 0], [0, 0], [1, 1]] {
+        let input = InputPath::Chained(order.map(|index| paths[index].clone()).to_vec());
+        let mut decoder = if hardware {
+            VideoDecoder::open_input(&input).unwrap()
+        } else {
+            VideoDecoder::open_input_software(&input).unwrap()
+        };
+        if hardware {
+            assert_eq!(decoder.backend(), DecodeBackend::Cuda);
+        }
+        assert_eq!(decoder.is_full_range(), order[0] == 1);
+        let mut count = 0;
+        loop {
+            #[cfg(feature = "gpu")]
+            let received = if hardware {
+                decoder.next_frame_gpu().map(|frame| frame.is_some())
+            } else {
+                decoder.next_frame().map(|frame| frame.is_some())
+            };
+            #[cfg(not(feature = "gpu"))]
+            let received = decoder.next_frame().map(|frame| frame.is_some());
+            match received {
+                Ok(true) => count += 1,
+                Ok(false) => {
+                    assert_eq!(order[0], order[1], "changed color range must be rejected");
+                    assert_eq!(count, FRAMES * 2);
+                    break;
+                }
+                Err(error) => {
+                    assert_ne!(order[0], order[1], "{error}");
+                    assert!(
+                        error.to_string().contains("decoded color range changed"),
+                        "{error}"
+                    );
+                    // FFmpeg can report new metadata on still-buffered B pictures.
+                    assert!((FRAMES - 3..=FRAMES).contains(&count), "count={count}");
+                    break;
+                }
+            }
+        }
+    }
 }

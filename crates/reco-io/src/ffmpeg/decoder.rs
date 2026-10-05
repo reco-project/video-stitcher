@@ -517,15 +517,14 @@ impl VideoDecoder {
         let is_full_range = {
             let raw_codecpar = unsafe { &*stream.parameters().as_ptr() };
             let format = Pixel::from(raw_i32_to_pix_fmt(raw_codecpar.format));
-            let yuvj = matches!(format, Pixel::YUVJ420P | Pixel::YUVJ422P | Pixel::YUVJ444P);
-            let range_jpeg = raw_codecpar.color_range == ffi::AVColorRange::AVCOL_RANGE_JPEG;
-            if yuvj || range_jpeg {
+            let full_range = is_full_range(format, raw_codecpar.color_range.into());
+            if full_range {
                 log::debug!(
                     "Source is full-range YUV (format={format:?}, color_range={:?})",
                     raw_codecpar.color_range
                 );
             }
-            yuvj || range_jpeg
+            full_range
         };
 
         log::debug!(
@@ -774,6 +773,15 @@ impl VideoDecoder {
                             "decoded dimensions changed from {}x{} to {width}x{height}",
                             self.width, self.height
                         )));
+                    }
+                    if is_full_range(
+                        self.decoded_frame.format(),
+                        self.decoded_frame.color_range(),
+                    ) != self.is_full_range
+                    {
+                        return Err(DecodeError::ConversionError(
+                            "decoded color range changed; the source requires a fixed range".into(),
+                        ));
                     }
                     #[cfg(target_os = "windows")]
                     {
@@ -1172,6 +1180,16 @@ impl VideoDecoder {
             height: self.height,
             timestamp_us,
         })
+    }
+}
+
+fn is_full_range(format: Pixel, range: ffmpeg::color::Range) -> bool {
+    match range {
+        ffmpeg::color::Range::JPEG => true,
+        ffmpeg::color::Range::MPEG => false,
+        ffmpeg::color::Range::Unspecified => {
+            matches!(format, Pixel::YUVJ420P | Pixel::YUVJ422P | Pixel::YUVJ444P)
+        }
     }
 }
 
