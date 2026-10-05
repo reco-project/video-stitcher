@@ -49,3 +49,4 @@ sysinfo = { version = "0.37.2", default-features = false, features = ["system"] 
 
 [dev-dependencies]
 tempfile = "3"
+socket2 = "0.6"

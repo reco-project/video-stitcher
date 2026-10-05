@@ -5656,6 +5656,7 @@ dependencies = [
  "reco-core",
  "serde",
  "serde_json",
+ "socket2",
  "sysinfo",
  "tempfile",
  "thiserror 2.0.18",
