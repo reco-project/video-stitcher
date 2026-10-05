@@ -405,281 +405,265 @@ pub fn run_camera(
 
     let start = std::time::Instant::now();
     let mut frame_count: u64 = 0;
+    #[cfg(target_os = "linux")]
+    let nvmm_summary = helpers::ProgressReporter::new(30);
 
-    if v4l2_direct {
-        #[cfg(not(feature = "v4l2"))]
-        anyhow::bail!("--v4l2-direct requires the `v4l2` feature flag");
+    let progress = helpers::with_session_finalization(&mut session, |session| {
+        if v4l2_direct {
+            #[cfg(not(feature = "v4l2"))]
+            anyhow::bail!("--v4l2-direct requires the `v4l2` feature flag");
 
-        #[cfg(feature = "v4l2")]
-        {
-            use reco_core::bayer::{AeController, AwbController, BayerDemosaic, IspParams};
-            use reco_io::v4l2::{V4l2CameraConfig, V4l2StereoCameraSource};
+            #[cfg(feature = "v4l2")]
+            {
+                use reco_core::bayer::{AeController, AwbController, BayerDemosaic, IspParams};
+                use reco_io::v4l2::{V4l2CameraConfig, V4l2StereoCameraSource};
 
-            let make_v4l2_config = |device: String| V4l2CameraConfig {
-                device,
-                width: capture_width,
-                height: capture_height,
-                fps: capture_fps,
-                exposure: _exposure,
-                gain: _sensor_gain,
-            };
-            let left_v4l2 = make_v4l2_config(cam_config.left_device.clone());
-            let right_v4l2 = make_v4l2_config(cam_config.right_device.clone());
+                let make_v4l2_config = |device: String| V4l2CameraConfig {
+                    device,
+                    width: capture_width,
+                    height: capture_height,
+                    fps: capture_fps,
+                    exposure: _exposure,
+                    gain: _sensor_gain,
+                };
+                let left_v4l2 = make_v4l2_config(cam_config.left_device.clone());
+                let right_v4l2 = make_v4l2_config(cam_config.right_device.clone());
 
-            let mut isp = IspParams::imx477_default(capture_width, capture_height);
-            let mut demosaic_left =
-                BayerDemosaic::new(session.gpu(), capture_width, capture_height, &isp);
-            let mut demosaic_right =
-                BayerDemosaic::new(session.gpu(), capture_width, capture_height, &isp);
+                let mut isp = IspParams::imx477_default(capture_width, capture_height);
+                let mut demosaic_left =
+                    BayerDemosaic::new(session.gpu(), capture_width, capture_height, &isp);
+                let mut demosaic_right =
+                    BayerDemosaic::new(session.gpu(), capture_width, capture_height, &isp);
 
-            let mut awb = AwbController::new(isp.wb_r, isp.wb_b, 15);
-            let mut ae = AeController::new(
-                _exposure,
-                _sensor_gain,
-                200.0,
-                vec![left_v4l2.device.clone(), right_v4l2.device.clone()],
-                15,
-            );
+                let mut awb = AwbController::new(isp.wb_r, isp.wb_b, 15);
+                let mut ae = AeController::new(
+                    _exposure,
+                    _sensor_gain,
+                    200.0,
+                    vec![left_v4l2.device.clone(), right_v4l2.device.clone()],
+                    15,
+                );
 
-            println!(
-                "GPU demosaic ready ({}x{}, zero-copy, AE+AWB), exposure={}, gain={}",
-                capture_width, capture_height, _exposure, _sensor_gain,
-            );
+                println!(
+                    "GPU demosaic ready ({}x{}, zero-copy, AE+AWB), exposure={}, gain={}",
+                    capture_width, capture_height, _exposure, _sensor_gain,
+                );
 
-            let mut source = V4l2StereoCameraSource::open(&left_v4l2, &right_v4l2)?;
-            if source.next_pair()?.is_some() {
-                println!("Warmup complete, starting V4L2 Bayer capture...");
+                let mut source = V4l2StereoCameraSource::open(&left_v4l2, &right_v4l2)?;
+                if source.next_pair()?.is_some() {
+                    println!("Warmup complete, starting V4L2 Bayer capture...");
+                }
+
+                let progress = helpers::ProgressReporter::new(30);
+
+                while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+                    let (left_bytes, right_bytes) = {
+                        reco_core::profile_scope!("wait_capture");
+                        match source.next_pair()? {
+                            Some(p) => p,
+                            None => break,
+                        }
+                    };
+
+                    if let Some((r, b)) = awb.update(&left_bytes, capture_width, capture_height) {
+                        isp.wb_r = r;
+                        isp.wb_b = b;
+                        demosaic_left.update_params(session.gpu(), &isp);
+                        demosaic_right.update_params(session.gpu(), &isp);
+                    }
+                    ae.update(&left_bytes, capture_width, capture_height);
+
+                    {
+                        reco_core::profile_scope!("demosaic");
+                        let gpu = session.gpu();
+                        let mut encoder = gpu.device().create_command_encoder(
+                            &reco_core::wgpu::CommandEncoderDescriptor {
+                                label: Some("bayer_demosaic"),
+                            },
+                        );
+                        demosaic_left.encode_demosaic(gpu, &mut encoder, &left_bytes);
+                        demosaic_right.encode_demosaic(gpu, &mut encoder, &right_bytes);
+                        gpu.queue().submit(std::iter::once(encoder.finish()));
+                    }
+
+                    // Detection: zero-copy CUDA path when available, CPU readback fallback.
+                    if session.detection_due() {
+                        #[cfg(target_os = "linux")]
+                        {
+                            reco_core::profile_scope!("detection_zerocopy");
+                            let gpu = session.gpu();
+                            let mut det_encoder = gpu.device().create_command_encoder(
+                                &reco_core::wgpu::CommandEncoderDescriptor {
+                                    label: Some("detection_copy"),
+                                },
+                            );
+                            let (l_ptr, l_pitch, w, h) =
+                                demosaic_left.copy_to_detection_shared(gpu, &mut det_encoder)?;
+                            let (r_ptr, r_pitch, _, _) =
+                                demosaic_right.copy_to_detection_shared(gpu, &mut det_encoder)?;
+                            gpu.queue().submit(std::iter::once(det_encoder.finish()));
+                            session.detect_and_update_world_pose_cuda_rgba(
+                                l_ptr,
+                                l_pitch,
+                                r_ptr,
+                                r_pitch,
+                                w,
+                                h,
+                                start.elapsed(),
+                            )?;
+                        }
+                        #[cfg(not(target_os = "linux"))]
+                        {
+                            reco_core::profile_scope!("detection_readback");
+                            let left_rgba = demosaic_left.readback_rgba(session.gpu())?;
+                            let right_rgba = demosaic_right.readback_rgba(session.gpu())?;
+                            session.detect_and_update_world_pose_rgba(
+                                &left_rgba,
+                                &right_rgba,
+                                capture_width,
+                                capture_height,
+                                start.elapsed(),
+                            )?;
+                        }
+                    } else {
+                        session.update_world_pose(start.elapsed())?;
+                    }
+                    let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
+                    session.render_frame_gpu_rgba(
+                        demosaic_left.output_texture(),
+                        demosaic_right.output_texture(),
+                        pos,
+                        None,
+                    )?;
+                    frame_count += 1;
+                    progress.report(frame_count);
+                }
+
+                source.stop();
+                Ok(progress)
+            }
+        } else if use_nvmm {
+            if lookahead > 0.0 && ai_tracking {
+                let frames = (lookahead * capture_fps as f64).round() as usize;
+                let budget = reco_io::lookahead::native_image_budget(
+                    session.core().gpu(),
+                    lookahead_memory_bytes,
+                )
+                .map_err(anyhow::Error::msg)?;
+                session.set_lookahead(frames, budget);
+                println!("Lookahead: {lookahead:.2}s buffer ({frames} frames @ {capture_fps} fps)");
+            }
+            // NVMM zero-copy path: DMA-buf Vulkan import for rendering,
+            // NvBufSurfTransform for detection. No CPU copies at all.
+            //
+            // The shared session loop owns rendering, detection and lookahead.
+            #[cfg(target_os = "linux")]
+            {
+                use reco_io::gstreamer::camera::GstreamerNvmmCameraSource;
+
+                let mut source = GstreamerNvmmCameraSource::open(&cam_config, interrupted.clone())?;
+
+                // Periodic "Processed N frames (… fps)" lines (parsed by gameday.py).
+                let reporter = helpers::ProgressReporter::new(30);
+                let on_progress: reco_core::session::types::ProgressCallback =
+                    Box::new(move |p: &reco_core::session::types::FrameProgress| {
+                        reporter.report_with_elapsed(p.frames_completed, p.elapsed);
+                    });
+
+                println!("Starting NVMM capture...");
+                frame_count = session
+                    .run(&mut source, frame_limit, interrupted, Some(on_progress))?
+                    .frames_processed;
+
+                source.stop()?;
+                Ok(nvmm_summary)
+            }
+
+            #[cfg(not(target_os = "linux"))]
+            anyhow::bail!("NVMM zero-copy is only available on Linux/Jetson");
+        } else if use_nv12_capture {
+            // NV12 path: skip nvvidconv format conversion, upload 2 planes
+            use reco_core::source::FrameSource;
+            let mut source = reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(
+                &cam_config,
+                interrupted.clone(),
+            )?;
+
+            // Warm up: render the first frame outside the progress loop so
+            // camera ISP + GPU pipeline init don't skew the reported rate.
+            if let Some(frames) = source.next_frame()? {
+                session.detect_and_update_world_pose(
+                    &frames.images,
+                    frames.capture.as_ref(),
+                    1.0 / capture_fps as f32,
+                    start.elapsed(),
+                )?;
+                let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
+                session.render_frame(&frames.images, pos, frames.pts_us)?;
+                println!("Warmup complete, starting capture...");
             }
 
             let progress = helpers::ProgressReporter::new(30);
 
             while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
-                let (left_bytes, right_bytes) = {
+                let frames = {
                     reco_core::profile_scope!("wait_capture");
-                    match source.next_pair()? {
-                        Some(p) => p,
+                    match source.next_frame()? {
+                        Some(f) => f,
                         None => break,
                     }
                 };
 
-                if let Some((r, b)) = awb.update(&left_bytes, capture_width, capture_height) {
-                    isp.wb_r = r;
-                    isp.wb_b = b;
-                    demosaic_left.update_params(session.gpu(), &isp);
-                    demosaic_right.update_params(session.gpu(), &isp);
-                }
-                ae.update(&left_bytes, capture_width, capture_height);
-
-                {
-                    reco_core::profile_scope!("demosaic");
-                    let gpu = session.gpu();
-                    let mut encoder = gpu.device().create_command_encoder(
-                        &reco_core::wgpu::CommandEncoderDescriptor {
-                            label: Some("bayer_demosaic"),
-                        },
-                    );
-                    demosaic_left.encode_demosaic(gpu, &mut encoder, &left_bytes);
-                    demosaic_right.encode_demosaic(gpu, &mut encoder, &right_bytes);
-                    gpu.queue().submit(std::iter::once(encoder.finish()));
-                }
-
-                // Detection: zero-copy CUDA path when available, CPU readback fallback.
-                if session.detection_due() {
-                    #[cfg(target_os = "linux")]
-                    {
-                        reco_core::profile_scope!("detection_zerocopy");
-                        let gpu = session.gpu();
-                        let mut det_encoder = gpu.device().create_command_encoder(
-                            &reco_core::wgpu::CommandEncoderDescriptor {
-                                label: Some("detection_copy"),
-                            },
-                        );
-                        let (l_ptr, l_pitch, w, h) =
-                            demosaic_left.copy_to_detection_shared(gpu, &mut det_encoder)?;
-                        let (r_ptr, r_pitch, _, _) =
-                            demosaic_right.copy_to_detection_shared(gpu, &mut det_encoder)?;
-                        gpu.queue().submit(std::iter::once(det_encoder.finish()));
-                        session.detect_and_update_world_pose_cuda_rgba(
-                            l_ptr,
-                            l_pitch,
-                            r_ptr,
-                            r_pitch,
-                            w,
-                            h,
-                            start.elapsed(),
-                        )?;
-                    }
-                    #[cfg(not(target_os = "linux"))]
-                    {
-                        reco_core::profile_scope!("detection_readback");
-                        let left_rgba = demosaic_left.readback_rgba(session.gpu())?;
-                        let right_rgba = demosaic_right.readback_rgba(session.gpu())?;
-                        session.detect_and_update_world_pose_rgba(
-                            &left_rgba,
-                            &right_rgba,
-                            capture_width,
-                            capture_height,
-                            start.elapsed(),
-                        )?;
-                    }
-                } else {
-                    session.update_world_pose(start.elapsed())?;
-                }
-                let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
-                session.render_frame_gpu_rgba(
-                    demosaic_left.output_texture(),
-                    demosaic_right.output_texture(),
-                    pos,
-                    None,
+                session.detect_and_update_world_pose(
+                    &frames.images,
+                    frames.capture.as_ref(),
+                    1.0 / capture_fps as f32,
+                    start.elapsed(),
                 )?;
+                let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
+                session.render_frame(&frames.images, pos, frames.pts_us)?;
                 frame_count += 1;
                 progress.report(frame_count);
             }
 
-            source.stop();
-            #[cfg(feature = "replay")]
-            session.clear_stacked_gpu_recorder();
-            session.finish()?;
-
-            progress.finish(frame_count, output);
-        }
-    } else if use_nvmm {
-        if lookahead > 0.0 && ai_tracking {
-            let frames = (lookahead * capture_fps as f64).round() as usize;
-            let budget = reco_io::lookahead::native_image_budget(
-                session.core().gpu(),
-                lookahead_memory_bytes,
-            )
-            .map_err(anyhow::Error::msg)?;
-            session.set_lookahead(frames, budget);
-            println!("Lookahead: {lookahead:.2}s buffer ({frames} frames @ {capture_fps} fps)");
-        }
-        // NVMM zero-copy path: DMA-buf Vulkan import for rendering,
-        // NvBufSurfTransform for detection. No CPU copies at all.
-        //
-        // The shared session loop owns rendering, detection and lookahead.
-        #[cfg(target_os = "linux")]
-        {
-            use reco_io::gstreamer::camera::GstreamerNvmmCameraSource;
-
-            let mut source = GstreamerNvmmCameraSource::open(&cam_config, interrupted.clone())?;
-
-            // Periodic "Processed N frames (… fps)" lines (parsed by gameday.py).
-            let reporter = helpers::ProgressReporter::new(30);
-            let on_progress: reco_core::session::types::ProgressCallback =
-                Box::new(move |p: &reco_core::session::types::FrameProgress| {
-                    reporter.report_with_elapsed(p.frames_completed, p.elapsed);
-                });
-
-            println!("Starting NVMM capture...");
-            frame_count = session
-                .run(&mut source, frame_limit, interrupted, Some(on_progress))?
-                .frames_processed;
-
+            // Stop cameras before finishing the encoder.
             source.stop()?;
-            #[cfg(feature = "replay")]
-            session.clear_stacked_gpu_recorder();
-            session.finish()?;
-
-            // Finish summary (matches `ProgressReporter::finish` formatting).
-            let secs = start.elapsed().as_secs_f64().max(1e-9);
-            println!(
-                "\n\nDone: {frame_count} frames in {secs:.1}s ({:.1} fps) \u{2192} {output}",
-                frame_count as f64 / secs
-            );
-        }
-
-        #[cfg(not(target_os = "linux"))]
-        anyhow::bail!("NVMM zero-copy is only available on Linux/Jetson");
-    } else if use_nv12_capture {
-        // NV12 path: skip nvvidconv format conversion, upload 2 planes
-        use reco_core::source::FrameSource;
-        let mut source = reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(
-            &cam_config,
-            interrupted.clone(),
-        )?;
-
-        // Warm up: render the first frame outside the progress loop so
-        // camera ISP + GPU pipeline init don't skew the reported rate.
-        if let Some(frames) = source.next_frame()? {
-            session.detect_and_update_world_pose(
-                &frames.images,
-                frames.capture.as_ref(),
-                1.0 / capture_fps as f32,
-                start.elapsed(),
+            Ok(progress)
+        } else {
+            // I420 path: standard YUV420P upload with 3 planes
+            use reco_core::source::FrameSource;
+            let mut source = reco_io::gstreamer::camera::GstreamerCameraSource::open(
+                &cam_config,
+                interrupted.clone(),
             )?;
-            let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
-            session.render_frame(&frames.images, pos, frames.pts_us)?;
-            println!("Warmup complete, starting capture...");
+
+            let progress = helpers::ProgressReporter::new(30);
+
+            while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+                let frame = {
+                    reco_core::profile_scope!("wait_capture");
+                    match source.next_frame()? {
+                        Some(f) => f,
+                        None => break,
+                    }
+                };
+
+                session.detect_and_update_world_pose(
+                    &frame.images,
+                    frame.capture.as_ref(),
+                    1.0 / capture_fps as f32,
+                    start.elapsed(),
+                )?;
+                let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
+                session.render_frame(&frame.images, pos, frame.pts_us)?;
+                frame_count += 1;
+                progress.report(frame_count);
+            }
+
+            Ok(progress)
         }
-
-        let progress = helpers::ProgressReporter::new(30);
-
-        while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
-            let frames = {
-                reco_core::profile_scope!("wait_capture");
-                match source.next_frame()? {
-                    Some(f) => f,
-                    None => break,
-                }
-            };
-
-            session.detect_and_update_world_pose(
-                &frames.images,
-                frames.capture.as_ref(),
-                1.0 / capture_fps as f32,
-                start.elapsed(),
-            )?;
-            let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
-            session.render_frame(&frames.images, pos, frames.pts_us)?;
-            frame_count += 1;
-            progress.report(frame_count);
-        }
-
-        // Stop cameras before finishing the encoder.
-        source.stop()?;
-        #[cfg(feature = "replay")]
-        session.clear_stacked_gpu_recorder();
-        session.finish()?;
-
-        progress.finish(frame_count, output);
-    } else {
-        // I420 path: standard YUV420P upload with 3 planes
-        use reco_core::source::FrameSource;
-        let mut source = reco_io::gstreamer::camera::GstreamerCameraSource::open(
-            &cam_config,
-            interrupted.clone(),
-        )?;
-
-        let progress = helpers::ProgressReporter::new(30);
-
-        while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
-            let frame = {
-                reco_core::profile_scope!("wait_capture");
-                match source.next_frame()? {
-                    Some(f) => f,
-                    None => break,
-                }
-            };
-
-            session.detect_and_update_world_pose(
-                &frame.images,
-                frame.capture.as_ref(),
-                1.0 / capture_fps as f32,
-                start.elapsed(),
-            )?;
-            let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
-            session.render_frame(&frame.images, pos, frame.pts_us)?;
-            frame_count += 1;
-            progress.report(frame_count);
-        }
-
-        #[cfg(feature = "replay")]
-        session.clear_stacked_gpu_recorder();
-        session.finish()?;
-
-        progress.finish(frame_count, output);
-    }
+    })?;
+    progress.finish(frame_count, output);
 
     Ok(())
 }

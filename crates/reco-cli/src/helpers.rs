@@ -128,3 +128,181 @@ pub fn is_tegra() -> bool {
         || std::fs::read_to_string("/proc/device-tree/compatible")
             .is_ok_and(|s| s.contains("nvidia,tegra"))
 }
+
+/// Finalize session outputs after capture, preserving the first error.
+/// Keep capture sources inside the callback so they stop before finalization.
+#[cfg(any(feature = "gstreamer", feature = "libcamera"))]
+pub fn with_session_finalization<T>(
+    session: &mut reco_core::session::StitchSession,
+    capture: impl FnOnce(&mut reco_core::session::StitchSession) -> anyhow::Result<T>,
+) -> anyhow::Result<T> {
+    let result = capture(session);
+    #[cfg(feature = "replay")]
+    session.clear_stacked_gpu_recorder();
+    let finished = session.finish();
+    if result.is_err()
+        && let Err(error) = &finished
+    {
+        log::warn!("Output finalization also failed after capture error: {error}");
+    }
+    let value = result?;
+    finished?;
+    Ok(value)
+}
+
+#[cfg(all(test, any(feature = "gstreamer", feature = "libcamera")))]
+mod tests {
+    use super::*;
+    use reco_core::calibration::{Calibration, Framing, Lens};
+    use reco_core::geometry::RenderPose;
+    use reco_core::projection::Cylinder;
+    use reco_core::render::viewport::ViewportSize;
+    use reco_core::session::{SinkDelivery, SinkErrorPolicy, SinkOptions, StitchSession};
+    use reco_core::sink::{OutputFrame, OutputSink, PixelFormat, SinkError, SinkInput};
+    use reco_core::source::{FrameSet, Yuv420pData};
+    use reco_core::stitch::{CpuExecutor, Executor};
+    use std::sync::{Arc, Mutex};
+
+    struct CaptureOwner(Arc<Mutex<Vec<&'static str>>>);
+    impl Drop for CaptureOwner {
+        fn drop(&mut self) {
+            self.0.lock().unwrap().push("capture stopped");
+        }
+    }
+
+    struct RecordingSink {
+        events: Arc<Mutex<Vec<&'static str>>>,
+        fail_finish: bool,
+    }
+    impl OutputSink for RecordingSink {
+        fn name(&self) -> &str {
+            "recording"
+        }
+        fn wants(&self) -> SinkInput {
+            SinkInput::CpuBytes(PixelFormat::Nv12)
+        }
+        fn consume(&mut self, _: OutputFrame<'_>) -> Result<(), SinkError> {
+            self.events.lock().unwrap().push("frame");
+            Ok(())
+        }
+        fn finish(&mut self) -> Result<(), SinkError> {
+            self.events.lock().unwrap().push("finished");
+            if self.fail_finish {
+                Err(SinkError::Finish {
+                    reason: "finalization failure".into(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    fn capture_finalization(gpu: bool) {
+        for fail_capture in [true, false] {
+            for fail_finish in [false, true] {
+                let calibration = Calibration::new(
+                    vec![Lens::flat(64, 32)],
+                    Cylinder {
+                        radius: 32.0,
+                        ..Default::default()
+                    },
+                    Framing {
+                        axis_offset: 0.0,
+                        tilt: 0.0,
+                        roll: 0.0,
+                    },
+                );
+                let size = ViewportSize {
+                    width: 64,
+                    height: 32,
+                };
+                let mut session = if gpu {
+                    StitchSession::builder()
+                        .calibration(calibration)
+                        .source_sizes(vec![(64, 32)])
+                        .viewport_size(size)
+                        .build()
+                        .unwrap()
+                } else {
+                    StitchSession::with_executor(Executor::Cpu(Box::new(
+                        CpuExecutor::new(calibration, size, vec![(64, 32)], false).unwrap(),
+                    )))
+                    .unwrap()
+                };
+                session.core_mut().set_constrained_look(false);
+                let events = Arc::new(Mutex::new(Vec::new()));
+                session
+                    .add_sink(
+                        Box::new(RecordingSink {
+                            events: events.clone(),
+                            fail_finish,
+                        }),
+                        SinkOptions {
+                            delivery: SinkDelivery::Inline,
+                            on_error: SinkErrorPolicy::Abort,
+                        },
+                    )
+                    .unwrap();
+                let result = with_session_finalization(&mut session, |session| {
+                    let _capture = CaptureOwner(events.clone());
+                    let images = FrameSet::Yuv420p(vec![Arc::new(Yuv420pData {
+                        size: (64, 32),
+                        y: vec![80; 64 * 32],
+                        u: vec![128; 32 * 16],
+                        v: vec![128; 32 * 16],
+                    })]);
+                    for index in 0..2 {
+                        session.render_frame(
+                            &images,
+                            RenderPose::default(),
+                            Some(index * 33_333),
+                        )?;
+                    }
+                    if fail_capture {
+                        anyhow::bail!("capture failure");
+                    }
+                    Ok(7)
+                });
+                let events = events.lock().unwrap();
+                assert_eq!(events.iter().filter(|&&event| event == "frame").count(), 2);
+                assert_eq!(
+                    events.iter().filter(|&&event| event == "finished").count(),
+                    1
+                );
+                assert!(
+                    events
+                        .iter()
+                        .position(|&event| event == "capture stopped")
+                        .unwrap()
+                        < events
+                            .iter()
+                            .position(|&event| event == "finished")
+                            .unwrap()
+                );
+                match (fail_capture, fail_finish) {
+                    (true, _) => {
+                        assert!(result.unwrap_err().to_string().contains("capture failure"))
+                    }
+                    (false, true) => assert!(
+                        result
+                            .unwrap_err()
+                            .to_string()
+                            .contains("finalization failure")
+                    ),
+                    (false, false) => assert_eq!(result.unwrap(), 7),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cpu_capture_finalizes_after_success_or_failure() {
+        capture_finalization(false);
+    }
+
+    #[test]
+    #[ignore = "requires a GPU adapter"]
+    fn gpu_capture_finalizes_after_success_or_failure() {
+        capture_finalization(true);
+    }
+}

@@ -164,51 +164,53 @@ pub fn run_libcamera(
         println!("Capturing up to {frame_limit} frames");
     }
 
-    let mut source =
-        reco_io::libcamera::LibcameraCameraSource::open(&cam_config, interrupted.clone())?;
+    let (progress, frame_count) = helpers::with_session_finalization(&mut session, |session| {
+        let mut source =
+            reco_io::libcamera::LibcameraCameraSource::open(&cam_config, interrupted.clone())?;
 
-    let start = std::time::Instant::now();
-    let mut frame_count: u64 = 0;
+        let start = std::time::Instant::now();
+        let mut frame_count: u64 = 0;
 
-    // Warm up: discard first frame (camera ISP init)
-    if let Some(frame) = source.next_frame()? {
-        session.detect_and_update_world_pose(
-            &frame.images,
-            frame.capture.as_ref(),
-            1.0 / capture_fps as f32,
-            start.elapsed(),
-        )?;
-        let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
-        session.render_frame(&frame.images, pos, frame.pts_us)?;
-        println!("Warmup complete, starting capture...");
-    }
+        // Warm up: discard first frame (camera ISP init)
+        if let Some(frame) = source.next_frame()? {
+            session.detect_and_update_world_pose(
+                &frame.images,
+                frame.capture.as_ref(),
+                1.0 / capture_fps as f32,
+                start.elapsed(),
+            )?;
+            let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
+            session.render_frame(&frame.images, pos, frame.pts_us)?;
+            println!("Warmup complete, starting capture...");
+        }
 
-    let progress = helpers::ProgressReporter::new(30);
+        let progress = helpers::ProgressReporter::new(30);
 
-    while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
-        let frame = {
-            reco_core::profile_scope!("wait_capture");
-            match source.next_frame()? {
-                Some(f) => f,
-                None => break,
-            }
-        };
+        while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
+            let frame = {
+                reco_core::profile_scope!("wait_capture");
+                match source.next_frame()? {
+                    Some(f) => f,
+                    None => break,
+                }
+            };
 
-        session.detect_and_update_world_pose(
-            &frame.images,
-            frame.capture.as_ref(),
-            1.0 / capture_fps as f32,
-            start.elapsed(),
-        )?;
-        let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
-        session.render_frame(&frame.images, pos, frame.pts_us)?;
-        frame_count += 1;
-        progress.report(frame_count);
-    }
+            session.detect_and_update_world_pose(
+                &frame.images,
+                frame.capture.as_ref(),
+                1.0 / capture_fps as f32,
+                start.elapsed(),
+            )?;
+            let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
+            session.render_frame(&frame.images, pos, frame.pts_us)?;
+            frame_count += 1;
+            progress.report(frame_count);
+        }
 
-    // Stop capture before finalizing the encoder.
-    drop(source);
-    session.finish()?;
+        // Stop capture before finalizing the encoder.
+        drop(source);
+        Ok((progress, frame_count))
+    })?;
 
     progress.finish(frame_count, output);
 
