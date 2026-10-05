@@ -187,8 +187,12 @@ fn fifo_overflow_resumes_on_video_keyframes_with_audio() {
     output.write_header(Dictionary::new()).unwrap();
     let start = Instant::now();
     let mut pictures = 0;
+    let mut source_audio_packets = 0;
     for (stream, mut packet) in input.packets() {
         let is_video = stream.index() == video;
+        source_audio_packets += usize::from(
+            stream.parameters().medium() == ffmpeg::media::Type::Audio && packet.size() > 0,
+        );
         packet.rescale_ts(
             stream.time_base(),
             output.stream(stream.index()).unwrap().time_base(),
@@ -214,6 +218,7 @@ fn fifo_overflow_resumes_on_video_keyframes_with_audio() {
         }
     }
     assert_eq!(pictures, 900);
+    assert!(source_audio_packets > 0, "fixture has no audio packets");
     output.finish().unwrap();
     drop(output);
     let received = dir.path().join("received.flv");
@@ -223,7 +228,11 @@ fn fifo_overflow_resumes_on_video_keyframes_with_audio() {
     let mut packets = format::input(&received).unwrap();
     assert!(packets.streams().best(ffmpeg::media::Type::Audio).is_some());
     let mut previous_pts = None;
+    let mut received_audio_packets = 0;
     for (stream, packet) in packets.packets() {
+        received_audio_packets += usize::from(
+            stream.parameters().medium() == ffmpeg::media::Type::Audio && packet.size() > 0,
+        );
         if stream.parameters().medium() != ffmpeg::media::Type::Video {
             continue;
         }
@@ -240,6 +249,7 @@ fn fifo_overflow_resumes_on_video_keyframes_with_audio() {
         }
         previous_pts = Some(pts);
     }
+    assert!(received_audio_packets > 0, "receiver got no audio packets");
 
     let mut expected = VideoDecoder::open_software(&source).unwrap();
     let mut actual = VideoDecoder::open_software(&received).unwrap();
