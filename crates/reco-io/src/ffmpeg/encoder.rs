@@ -8,7 +8,7 @@ extern crate ffmpeg_next as ffmpeg;
 use ffmpeg::format::Pixel;
 use ffmpeg::software::scaling::{context::Context as ScalingContext, flag::Flags as ScalingFlags};
 use ffmpeg::util::frame::video::Video as VideoFrame;
-use ffmpeg::{Rational, codec, encoder, format};
+use ffmpeg::{Rational, Rescale, codec, encoder, format};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -438,13 +438,13 @@ struct StreamOutput {
     audio: Option<SilentAudio>,
 }
 
-/// Generates silent AAC frames to satisfy RTMP ingest audio requirements.
+/// Generates a silent AAC track on the streamed video timeline.
 struct SilentAudio {
     encoder: ffmpeg::encoder::audio::Encoder,
     stream_index: usize,
     output_time_base: Rational,
     frame: ffmpeg::frame::Audio,
-    next_pts: i64,
+    next_pts: Option<i64>,
     samples_per_frame: usize,
     sample_rate: u32,
 }
@@ -755,7 +755,7 @@ impl VideoEncoder {
                     });
 
                     let stream = if let Some(ref url) = config.stream_url {
-                        match Self::open_stream_output(url, &octx, stream_index, fps, config) {
+                        match Self::open_stream_output(url, &octx, stream_index, config) {
                             Ok(s) => {
                                 log::info!("Optional stream output queued");
                                 Some(s)
@@ -1096,12 +1096,11 @@ impl VideoEncoder {
     /// Open a secondary FLV output context for RTMP streaming.
     ///
     /// Copies codec parameters from the primary video stream and adds a
-    /// silent AAC audio track (YouTube RTMP rejects video-only FLV).
+    /// silent AAC audio track.
     fn open_stream_output(
         url: &str,
         primary_octx: &format::context::Output,
         primary_video_index: usize,
-        fps: Rational,
         config: &EncoderConfig,
     ) -> Result<StreamOutput, EncodeError> {
         if !url.starts_with("rtmp://") && !url.starts_with("rtmps://") {
@@ -1137,7 +1136,7 @@ impl VideoEncoder {
         }
         let video_index = ost.index();
 
-        let silent_audio = SilentAudio::new(&mut octx)?;
+        let mut silent_audio = SilentAudio::new(&mut octx)?;
 
         octx.write_header(ffmpeg::Dictionary::new())?;
 
@@ -1146,26 +1145,12 @@ impl VideoEncoder {
             .expect("stream we just added")
             .time_base();
 
-        let mut silent_audio = {
-            let mut sa = silent_audio;
-            if let Some(s) = octx.stream(sa.stream_index) {
-                sa.output_time_base = s.time_base();
-            }
-            sa
-        };
+        silent_audio.output_time_base = octx
+            .stream(silent_audio.stream_index)
+            .expect("stream we just added")
+            .time_base();
 
-        // Pre-write one frame of silent audio so YouTube sees audio
-        // before the first video packet arrives. RTMP ingest servers
-        // expect interleaved A/V from the start.
-        let one_frame_duration = ffmpeg::Rational(fps.1, fps.0);
-        let preroll_pts = unsafe {
-            ffmpeg::sys::av_rescale_q(1, one_frame_duration.into(), video_time_base.into())
-        };
-        if let Err(e) = silent_audio.write_up_to(&mut octx, preroll_pts, video_time_base) {
-            log::warn!("Stream audio preroll failed: {e}");
-        }
-
-        log::info!("Optional stream configured (video tb={video_time_base}, fps={fps})");
+        log::info!("Optional stream configured (video tb={video_time_base})");
 
         Ok(StreamOutput {
             octx,
@@ -1636,16 +1621,20 @@ impl VideoEncoder {
             // Save PTS before write_interleaved blanks the packet
             // (av_interleaved_write_frame resets all fields to defaults).
             let video_pts = clone.pts().unwrap_or(0);
+            let video_duration = clone.duration();
             if let Err(e) = stream.octx.write_packet(&mut clone) {
                 log::warn!("RTMP stream write failed ({e}), disabling stream");
                 self.stream = None;
-            } else if let Some(ref mut sa) = stream.audio {
-                // Write silent audio to keep up with video PTS.
-                if let Err(e) = sa.write_up_to(&mut stream.octx, video_pts, stream.video_time_base)
-                {
-                    log::warn!("Silent audio write failed ({e}), continuing without audio");
-                    stream.audio = None;
-                }
+            } else if let Some(ref mut sa) = stream.audio
+                && let Err(e) = sa.write_for_video(
+                    &mut stream.octx,
+                    video_pts,
+                    video_duration,
+                    stream.video_time_base,
+                )
+            {
+                log::warn!("Silent audio write failed ({e}), continuing without audio");
+                stream.audio = None;
             }
         }
 
@@ -1863,13 +1852,29 @@ impl SilentAudio {
             stream_index,
             output_time_base,
             frame,
-            next_pts: 0,
+            next_pts: None,
             samples_per_frame,
             sample_rate,
         })
     }
 
-    /// Write enough silent audio frames to stay ahead of the given video PTS.
+    fn write_for_video(
+        &mut self,
+        octx: &mut OutputIo,
+        start: i64,
+        duration: i64,
+        time_base: Rational,
+    ) -> Result<(), EncodeError> {
+        let end = start.checked_add(duration).ok_or_else(|| {
+            EncodeError::InvalidConfig("stream video packet time overflow".into())
+        })?;
+        if self.next_pts.is_none() {
+            self.next_pts = Some(start.rescale(time_base, (1, self.sample_rate as i32)));
+        }
+        self.write_up_to(octx, end, time_base)
+    }
+
+    /// Generate silence through the supplied presentation time.
     fn write_up_to(
         &mut self,
         octx: &mut OutputIo,
@@ -1877,18 +1882,16 @@ impl SilentAudio {
         video_time_base: Rational,
     ) -> Result<(), EncodeError> {
         // Convert video PTS to audio sample count.
-        let video_samples = unsafe {
-            ffmpeg::sys::av_rescale_q(
-                video_pts,
-                video_time_base.into(),
-                Rational(1, self.sample_rate as i32).into(),
-            )
-        };
+        let video_samples = video_pts.rescale(video_time_base, (1, self.sample_rate as i32));
 
-        while self.next_pts < video_samples {
-            self.frame.set_pts(Some(self.next_pts));
+        let Some(mut next_pts) = self.next_pts else {
+            return Ok(());
+        };
+        while next_pts < video_samples {
+            self.frame.set_pts(Some(next_pts));
             self.encoder.send_frame(&self.frame)?;
-            self.next_pts += self.samples_per_frame as i64;
+            next_pts += self.samples_per_frame as i64;
+            self.next_pts = Some(next_pts);
 
             self.write_packets(octx)?;
         }
@@ -2210,12 +2213,18 @@ mod tests {
     }
 
     #[test]
-    fn streaming_audio_covers_the_final_video_frame() {
-        use ffmpeg::Rescale;
-
+    fn streaming_audio_matches_the_video_timeline() {
         crate::init();
         for fps in [Rational(30, 1), Rational(30000, 1001)] {
-            for frames in [1, 2, 30] {
+            for (frames, origin, gap) in [
+                (0, 0, 0),
+                (1, 0, 0),
+                (2, 0, 0),
+                (30, 0, 0),
+                (30, 1_000_000, 0),
+                (30, 60_000_000, 0),
+                (30, 1_000_000, 150_000),
+            ] {
                 let dir = tempfile::tempdir().unwrap();
                 let config = EncoderConfig {
                     software_only: true,
@@ -2248,9 +2257,6 @@ mod tests {
                     .rescale((1, audio.sample_rate as i32), (1, 1_000_000));
                 output.write_header(ffmpeg::Dictionary::new()).unwrap();
                 audio.output_time_base = output.stream(audio.stream_index).unwrap().time_base();
-                audio
-                    .write_up_to(&mut output, 1, Rational(fps.1, fps.0))
-                    .unwrap();
                 encoder.stream = Some(StreamOutput {
                     video_index,
                     video_time_base: output.stream(video_index).unwrap().time_base(),
@@ -2258,7 +2264,9 @@ mod tests {
                     audio: Some(audio),
                 });
                 for frame in 0..frames {
-                    let pts = frame * 1_000_000 * i64::from(fps.1) / i64::from(fps.0);
+                    let pts = origin
+                        + frame * 1_000_000 * i64::from(fps.1) / i64::from(fps.0)
+                        + if frame >= frames / 2 { gap } else { 0 };
                     encoder
                         .write_nv12_frame(&vec![128; 64 * 64 * 3 / 2], Some(pts))
                         .unwrap();
@@ -2267,18 +2275,28 @@ mod tests {
                 encoder.finish().unwrap();
                 drop(encoder);
 
+                if frames == 0 {
+                    continue;
+                }
+
                 let mut received = format::input(&received).unwrap();
                 let mut audio_end = None;
                 let mut last_video = None;
+                let mut audio_start = None;
+                let mut video_start = None;
                 for (stream, packet) in received.packets() {
                     let pts = packet.pts().unwrap();
                     match stream.parameters().medium() {
                         ffmpeg::media::Type::Audio => {
+                            audio_start
+                                .get_or_insert(pts.rescale(stream.time_base(), (1, 1_000_000)));
                             let end = (pts + packet.duration())
                                 .rescale(stream.time_base(), (1, 1_000_000));
                             audio_end = Some(audio_end.map_or(end, |last: i64| last.max(end)));
                         }
                         ffmpeg::media::Type::Video => {
+                            video_start
+                                .get_or_insert(pts.rescale(stream.time_base(), (1, 1_000_000)));
                             last_video = Some(pts.rescale(stream.time_base(), (1, 1_000_000)));
                         }
                         _ => {}
@@ -2287,6 +2305,11 @@ mod tests {
                 let video_end =
                     last_video.unwrap() + 1_000_000 * i64::from(fps.1) / i64::from(fps.0);
                 let audio_end = audio_end.expect("stream contains no encoded audio");
+                assert!(
+                    video_start.unwrap().abs_diff(audio_start.unwrap())
+                        <= (audio_frame_us + 2_000) as u64,
+                    "generated audio does not share the video origin: video={video_start:?}, audio={audio_start:?}"
+                );
                 assert!(
                     audio_end >= video_end - 2_000,
                     "audio ends at {audio_end}, video at {video_end}; fps={fps}, frames={frames}"
