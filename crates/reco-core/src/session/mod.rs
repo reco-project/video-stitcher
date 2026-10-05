@@ -333,37 +333,34 @@ impl StitchSession {
     /// [`OutputSink::finish`](crate::sink::OutputSink::finish) on each
     /// sink in attach order. Must be called after the frame loop ends.
     pub fn finish(&mut self) -> Result<(), SessionError> {
-        #[cfg(all(feature = "gpu", target_os = "linux"))]
-        if let Some(exec) = self.core.executor.gpu_mut() {
-            exec.finish_nvmm_reads().map_err(SessionError::ZeroCopy)?;
-        }
-        // Field-path borrow: `nv12_data` borrows the executor inside
-        // `core` while the fan-out feeds the session-owned sinks.
-        //
-        // An Abort error here skips `finish_all`, but no output is left
-        // without its trailer: dropping a SinkThread disconnects its
-        // channel and the worker runs the sink's own `finish` on exit,
-        // and inline sinks finalize in their Drop impls.
+        #[cfg(not(feature = "gpu"))]
+        let delivery_result: Result<(), SessionError> = Ok(());
         #[cfg(feature = "gpu")]
-        let (nv12_width, nv12_height) = self.nv12_delivery_dims();
-        #[cfg(feature = "gpu")]
-        loop {
-            let Some(exec) = self.core.executor.gpu_mut() else {
-                break;
-            };
-            let Some(nv12_data) = exec.flush_nv12()? else {
-                break;
-            };
-            sinks::deliver_frame(
-                &mut self.sinks,
-                nv12_data,
-                nv12_width,
-                nv12_height,
-                self.pending_pts.pop_front().ok_or_else(|| {
-                    SessionError::Config("readback has no originating timestamp".into())
-                })?,
-            )?;
-        }
+        let delivery_result = (|| -> Result<(), SessionError> {
+            #[cfg(target_os = "linux")]
+            if let Some(exec) = self.core.executor.gpu_mut() {
+                exec.finish_nvmm_reads().map_err(SessionError::ZeroCopy)?;
+            }
+            let (nv12_width, nv12_height) = self.nv12_delivery_dims();
+            loop {
+                let Some(exec) = self.core.executor.gpu_mut() else {
+                    break;
+                };
+                let Some(nv12_data) = exec.flush_nv12()? else {
+                    break;
+                };
+                sinks::deliver_frame(
+                    &mut self.sinks,
+                    nv12_data,
+                    nv12_width,
+                    nv12_height,
+                    self.pending_pts.pop_front().ok_or_else(|| {
+                        SessionError::Config("readback has no originating timestamp".into())
+                    })?,
+                )?;
+            }
+            Ok(())
+        })();
 
         let stats = &mut self.finished_sink_stats;
         let result = sinks::finish_all(&mut self.sinks, |(_, avg_ms, stalls, ms)| {
@@ -372,6 +369,13 @@ impl StitchSession {
             stats.2 += ms;
         });
         self.publish_telemetry(true);
+        // Finalize every attached sink even when pending delivery failed.
+        if delivery_result.is_err()
+            && let Err(error) = &result
+        {
+            log::warn!("sink finalization also failed: {error}");
+        }
+        delivery_result?;
         result?;
 
         Ok(())

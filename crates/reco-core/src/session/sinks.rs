@@ -193,7 +193,13 @@ pub(crate) fn deliver_frame(
                         sinks[i].name,
                         sinks.len() - 1
                     );
-                    sinks.remove(i);
+                    let mut detached = sinks.remove(i);
+                    if let Err(error) = detached.finish() {
+                        log::warn!(
+                            "Detached sink '{}' failed to finish: {error}",
+                            detached.name
+                        );
+                    }
                 }
             },
         }
@@ -250,6 +256,7 @@ mod tests {
         finished: Arc<AtomicU64>,
         /// Fail consume from this frame count on (u64::MAX = never).
         fail_after: u64,
+        fail_finish: bool,
         seen: u64,
     }
 
@@ -264,6 +271,7 @@ mod tests {
                 frames,
                 finished,
                 fail_after: u64::MAX,
+                fail_finish: false,
                 seen: 0,
             }
         }
@@ -289,6 +297,11 @@ mod tests {
         }
         fn finish(&mut self) -> Result<(), SinkError> {
             self.finished.fetch_add(1, Ordering::SeqCst);
+            if self.fail_finish {
+                return Err(SinkError::Finish {
+                    reason: "scripted finalization failure".into(),
+                });
+            }
             Ok(())
         }
     }
@@ -339,6 +352,7 @@ mod tests {
         let done = Arc::new(AtomicU64::new(0));
         let mut failing = RecordingSink::new("flaky", f1.clone(), done.clone());
         failing.fail_after = 2;
+        failing.fail_finish = true;
         let mut sinks = vec![
             attach(failing, SinkOptions::inline_lossy()),
             attach(
@@ -354,7 +368,13 @@ mod tests {
         assert_eq!(sinks.len(), 1, "failing sink was detached");
         assert_eq!(f1.lock().unwrap().len(), 2, "flaky sink kept its 2 frames");
         assert_eq!(f2.lock().unwrap().len(), 5, "stable sink saw every frame");
+        assert_eq!(
+            done.load(Ordering::SeqCst),
+            1,
+            "detached sink was finalized"
+        );
         finish_all(&mut sinks, |_| {}).unwrap();
+        assert_eq!(done.load(Ordering::SeqCst), 2, "both sinks finished once");
     }
 
     #[test]

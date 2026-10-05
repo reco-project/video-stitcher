@@ -417,6 +417,76 @@ fn build_test_session(
 }
 
 #[test]
+#[ignore = "requires GPU readback"]
+#[cfg(feature = "gpu")]
+fn finish_finalizes_all_sinks_when_pending_delivery_fails() {
+    struct FinalizationProbe {
+        fail_consume: bool,
+        fail_finish: bool,
+        finishes: Arc<AtomicU64>,
+    }
+    impl OutputSink for FinalizationProbe {
+        fn name(&self) -> &str {
+            "finalization-probe"
+        }
+        fn wants(&self) -> SinkInput {
+            SinkInput::CpuBytes(crate::sink::PixelFormat::Nv12)
+        }
+        fn consume(&mut self, _: OutputFrame<'_>) -> Result<(), SinkError> {
+            if self.fail_consume {
+                Err(SinkError::Consume {
+                    frame_index: None,
+                    reason: "pending delivery failure".into(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+        fn finish(&mut self) -> Result<(), SinkError> {
+            self.finishes.fetch_add(1, Ordering::Relaxed);
+            if self.fail_finish {
+                Err(SinkError::Finish {
+                    reason: "secondary finalization failure".into(),
+                })
+            } else {
+                Ok(())
+            }
+        }
+    }
+    for fail_finish in [false, true] {
+        let mut session = build_test_session(None, None, 1).unwrap();
+        session.core_mut().set_constrained_look(false);
+        let finishes = Arc::new(AtomicU64::new(0));
+        for fail_consume in [true, false] {
+            session
+                .add_sink(
+                    Box::new(FinalizationProbe {
+                        fail_consume,
+                        fail_finish,
+                        finishes: finishes.clone(),
+                    }),
+                    super::SinkOptions {
+                        delivery: super::SinkDelivery::Inline,
+                        on_error: super::SinkErrorPolicy::Abort,
+                    },
+                )
+                .unwrap();
+        }
+        session
+            .run(&mut MockSource::new(2), 2, &AtomicBool::new(false), None)
+            .unwrap();
+        let error = session.finish().unwrap_err();
+        assert!(
+            error.to_string().contains("pending delivery failure"),
+            "{error}"
+        );
+        assert_eq!(finishes.load(Ordering::Relaxed), 2);
+        session.finish().unwrap();
+        assert_eq!(finishes.load(Ordering::Relaxed), 2);
+    }
+}
+
+#[test]
 #[ignore] // requires GPU
 #[cfg(feature = "gpu")]
 fn basic_frame_loop() {
