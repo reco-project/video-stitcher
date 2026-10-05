@@ -1667,7 +1667,7 @@ impl HevcHeaderCheck {
         let context = codec::context::Context::from_parameters(codec::Parameters::from(encoder))?;
         // SAFETY: allocate an independent parser, owned until Drop.
         let parser =
-            unsafe { ffmpeg::sys::av_parser_init(ffmpeg::sys::AVCodecID::AV_CODEC_ID_HEVC as i32) };
+            unsafe { ffmpeg::sys::av_parser_init(ffmpeg::sys::AVCodecID::AV_CODEC_ID_HEVC as _) };
         let parser = std::ptr::NonNull::new(parser).ok_or_else(|| {
             EncodeError::InvalidConfig("HEVC header parser is unavailable".into())
         })?;
