@@ -408,7 +408,7 @@ pub fn run_camera(
     #[cfg(target_os = "linux")]
     let nvmm_summary = helpers::ProgressReporter::new(30);
 
-    let progress = helpers::with_session_finalization(&mut session, |session| {
+    let progress = helpers::run_capture(&mut session, |session| {
         if v4l2_direct {
             #[cfg(not(feature = "v4l2"))]
             anyhow::bail!("--v4l2-direct requires the `v4l2` feature flag");

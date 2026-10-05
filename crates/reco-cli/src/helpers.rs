@@ -1,4 +1,4 @@
-//! Shared CLI helpers: progress reporting, platform detection.
+//! Shared CLI helpers: capture lifecycle, progress reporting and platform detection.
 
 use std::cell::Cell;
 
@@ -129,14 +129,19 @@ pub fn is_tegra() -> bool {
             .is_ok_and(|s| s.contains("nvidia,tegra"))
 }
 
-/// Finalize session outputs after capture, preserving the first error.
+/// Prepare coverage, run capture, and finalize outputs while preserving the first error.
 /// Keep capture sources inside the callback so they stop before finalization.
 #[cfg(any(feature = "gstreamer", feature = "libcamera"))]
-pub fn with_session_finalization<T>(
+pub fn run_capture<T>(
     session: &mut reco_core::session::StitchSession,
     capture: impl FnOnce(&mut reco_core::session::StitchSession) -> anyhow::Result<T>,
 ) -> anyhow::Result<T> {
-    let result = capture(session);
+    let result = (|| {
+        if session.core().constrained_look() {
+            session.core_mut().prepare_coverage()?;
+        }
+        capture(session)
+    })();
     #[cfg(feature = "replay")]
     session.clear_stacked_gpu_recorder();
     let finished = session.finish();
@@ -197,38 +202,42 @@ mod tests {
         }
     }
 
+    fn session(gpu: bool) -> StitchSession {
+        let calibration = Calibration::new(
+            vec![Lens::flat(64, 32)],
+            Cylinder {
+                radius: 32.0,
+                ..Default::default()
+            },
+            Framing {
+                axis_offset: 0.0,
+                tilt: 0.0,
+                roll: 0.0,
+            },
+        );
+        let size = ViewportSize {
+            width: 64,
+            height: 32,
+        };
+        if gpu {
+            StitchSession::builder()
+                .calibration(calibration)
+                .source_sizes(vec![(64, 32)])
+                .viewport_size(size)
+                .build()
+                .unwrap()
+        } else {
+            StitchSession::with_executor(Executor::Cpu(Box::new(
+                CpuExecutor::new(calibration, size, vec![(64, 32)], false).unwrap(),
+            )))
+            .unwrap()
+        }
+    }
+
     fn capture_finalization(gpu: bool) {
         for fail_capture in [true, false] {
             for fail_finish in [false, true] {
-                let calibration = Calibration::new(
-                    vec![Lens::flat(64, 32)],
-                    Cylinder {
-                        radius: 32.0,
-                        ..Default::default()
-                    },
-                    Framing {
-                        axis_offset: 0.0,
-                        tilt: 0.0,
-                        roll: 0.0,
-                    },
-                );
-                let size = ViewportSize {
-                    width: 64,
-                    height: 32,
-                };
-                let mut session = if gpu {
-                    StitchSession::builder()
-                        .calibration(calibration)
-                        .source_sizes(vec![(64, 32)])
-                        .viewport_size(size)
-                        .build()
-                        .unwrap()
-                } else {
-                    StitchSession::with_executor(Executor::Cpu(Box::new(
-                        CpuExecutor::new(calibration, size, vec![(64, 32)], false).unwrap(),
-                    )))
-                    .unwrap()
-                };
+                let mut session = session(gpu);
                 session.core_mut().set_constrained_look(false);
                 let events = Arc::new(Mutex::new(Vec::new()));
                 session
@@ -243,7 +252,7 @@ mod tests {
                         },
                     )
                     .unwrap();
-                let result = with_session_finalization(&mut session, |session| {
+                let result = run_capture(&mut session, |session| {
                     let _capture = CaptureOwner(events.clone());
                     let images = FrameSet::Yuv420p(vec![Arc::new(Yuv420pData {
                         size: (64, 32),
@@ -293,6 +302,54 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn coverage_is_ready_before_capture_opens() {
+        for constrained in [true, false] {
+            let mut session = session(false);
+            session.core_mut().set_constrained_look(constrained);
+            assert!(session.core().coverage_max_fov_degrees().is_none());
+            run_capture(&mut session, |session| {
+                assert_eq!(
+                    session.core().coverage_max_fov_degrees().is_some(),
+                    constrained
+                );
+                Ok(())
+            })
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn unusable_coverage_finalizes_outputs_without_opening_capture() {
+        let mut session = session(false);
+        let mut calibration = session.core().calibration().clone();
+        calibration.projection = Cylinder {
+            radius: 32.0,
+            surface_height: Some(0.001),
+            ..Default::default()
+        }
+        .into();
+        session.core_mut().update_calibration(calibration).unwrap();
+        let events = Arc::new(Mutex::new(Vec::new()));
+        session
+            .add_sink(
+                Box::new(RecordingSink {
+                    events: events.clone(),
+                    fail_finish: true,
+                }),
+                SinkOptions {
+                    delivery: SinkDelivery::Inline,
+                    on_error: SinkErrorPolicy::Abort,
+                },
+            )
+            .unwrap();
+        let result: anyhow::Result<()> = run_capture(&mut session, |_| {
+            panic!("capture opened without usable coverage");
+        });
+        assert!(result.unwrap_err().to_string().contains("coverage"));
+        assert_eq!(*events.lock().unwrap(), ["finished"]);
     }
 
     #[test]

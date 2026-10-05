@@ -164,7 +164,7 @@ pub fn run_libcamera(
         println!("Capturing up to {frame_limit} frames");
     }
 
-    let (progress, frame_count) = helpers::with_session_finalization(&mut session, |session| {
+    let (progress, frame_count) = helpers::run_capture(&mut session, |session| {
         let mut source =
             reco_io::libcamera::LibcameraCameraSource::open(&cam_config, interrupted.clone())?;
 
