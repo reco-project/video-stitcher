@@ -605,8 +605,8 @@ impl BayerDemosaic {
     /// Copy the graded output to a CUDA-shared texture for zero-copy detection.
     ///
     /// Returns `(cuda_ptr, pitch, width, height)`. The shared texture is
-    /// lazily allocated on first call. The GPU-to-GPU copy is ~0.5ms
-    /// at 4032x3040, vs 158ms for CPU readback.
+    /// lazily allocated on first call. The caller must submit the encoder and
+    /// wait for that submission to complete before CUDA reads the returned pointer.
     #[cfg(target_os = "linux")]
     pub fn copy_to_detection_shared(
         &mut self,
@@ -667,6 +667,60 @@ impl BayerDemosaic {
             &self.demosaic_output
         } else {
             &self.graded_output
+        }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+    use crate::interop::cuda;
+
+    #[test]
+    #[ignore = "requires NVIDIA Vulkan and CUDA interop"]
+    fn completed_detection_copies_match_both_current_bayer_images() {
+        cuda::cuda_ensure_context().unwrap();
+        let gpu = GpuContext::new_blocking().unwrap();
+        let mut images = [(64, 32), (128, 16)].map(|(width, height)| {
+            BayerDemosaic::new(
+                &gpu,
+                width,
+                height,
+                &IspParams::imx477_default(width, height),
+            )
+        });
+        let mut previous = [Vec::new(), Vec::new()];
+        for level in [96u16, 512, 128, 768, 160, 320] {
+            let mut encoder = gpu.device().create_command_encoder(&Default::default());
+            let mut copies = Vec::new();
+            for (camera, image) in images.iter_mut().enumerate() {
+                let sample = ((level + 16 * camera as u16) << 6).to_le_bytes();
+                let raw = sample.repeat((image.width * image.height) as usize);
+                image.encode_demosaic(&gpu, &mut encoder, &raw);
+                copies.push(image.copy_to_detection_shared(&gpu, &mut encoder).unwrap());
+            }
+            let copied = gpu.queue().submit([encoder.finish()]);
+            gpu.device()
+                .poll(wgpu::PollType::Wait {
+                    submission_index: Some(copied),
+                    timeout: Some(std::time::Duration::from_secs(5)),
+                })
+                .unwrap();
+            for (camera, (ptr, pitch, width, height)) in copies.into_iter().enumerate() {
+                let mut pixels = vec![0u8; (width * height * 4) as usize];
+                cuda::cuda_2d_copy_dtoh(
+                    pixels.as_mut_ptr().cast(),
+                    width as usize * 4,
+                    ptr,
+                    pitch,
+                    width as usize * 4,
+                    height as usize,
+                )
+                .unwrap();
+                assert_ne!(pixels, previous[camera]);
+                assert_eq!(pixels, images[camera].readback_rgba(&gpu).unwrap());
+                previous[camera] = pixels;
+            }
         }
     }
 }

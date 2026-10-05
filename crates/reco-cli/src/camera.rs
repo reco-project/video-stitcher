@@ -501,7 +501,12 @@ pub fn run_camera(
                                 demosaic_left.copy_to_detection_shared(gpu, &mut det_encoder)?;
                             let (r_ptr, r_pitch, _, _) =
                                 demosaic_right.copy_to_detection_shared(gpu, &mut det_encoder)?;
-                            gpu.queue().submit(std::iter::once(det_encoder.finish()));
+                            let copied = gpu.queue().submit(std::iter::once(det_encoder.finish()));
+                            // CUDA cannot observe Vulkan queue ordering without a handoff.
+                            gpu.device().poll(reco_core::wgpu::PollType::Wait {
+                                submission_index: Some(copied),
+                                timeout: None,
+                            })?;
                             session.detect_and_update_world_pose_cuda_rgba(
                                 l_ptr,
                                 l_pitch,
