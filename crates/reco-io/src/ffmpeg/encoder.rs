@@ -1564,10 +1564,15 @@ impl VideoEncoder {
         // Publish the recording trailer before waiting for optional transport drain.
         let primary_result = self.octx.finish();
         // Finalize stream output (non-fatal).
-        if let Some(ref mut stream) = self.stream
-            && let Err(e) = stream.octx.finish()
-        {
-            log::warn!("RTMP stream finalization failed: {e}");
+        if let Some(ref mut stream) = self.stream {
+            if let Some(ref mut audio) = stream.audio
+                && let Err(error) = audio.finish(&mut stream.octx, self.timeline.end_us())
+            {
+                log::warn!("Silent audio finalization failed: {error}");
+            }
+            if let Err(error) = stream.octx.finish() {
+                log::warn!("RTMP stream finalization failed: {error}");
+            }
         }
         self.stream = None;
 
@@ -1885,12 +1890,23 @@ impl SilentAudio {
             self.encoder.send_frame(&self.frame)?;
             self.next_pts += self.samples_per_frame as i64;
 
-            let mut packet = ffmpeg::Packet::empty();
-            while receive_encoded_packet(&mut self.encoder, &mut packet)? {
-                packet.set_stream(self.stream_index);
-                packet.rescale_ts(Rational(1, self.sample_rate as i32), self.output_time_base);
-                octx.write_packet(&mut packet)?;
-            }
+            self.write_packets(octx)?;
+        }
+        Ok(())
+    }
+
+    fn finish(&mut self, octx: &mut OutputIo, end_us: i64) -> Result<(), EncodeError> {
+        self.write_up_to(octx, end_us, Rational(1, 1_000_000))?;
+        self.encoder.send_eof()?;
+        self.write_packets(octx)
+    }
+
+    fn write_packets(&mut self, octx: &mut OutputIo) -> Result<(), EncodeError> {
+        let mut packet = ffmpeg::Packet::empty();
+        while receive_encoded_packet(&mut self.encoder, &mut packet)? {
+            packet.set_stream(self.stream_index);
+            packet.rescale_ts(Rational(1, self.sample_rate as i32), self.output_time_base);
+            octx.write_packet(&mut packet)?;
         }
         Ok(())
     }
@@ -2190,6 +2206,96 @@ mod tests {
         assert_eq!(silent.frame.planes(), 2);
         for plane in 0..silent.frame.planes() {
             assert!(silent.frame.data(plane).iter().all(|sample| *sample == 0));
+        }
+    }
+
+    #[test]
+    fn streaming_audio_covers_the_final_video_frame() {
+        use ffmpeg::Rescale;
+
+        crate::init();
+        for fps in [Rational(30, 1), Rational(30000, 1001)] {
+            for frames in [1, 2, 30] {
+                let dir = tempfile::tempdir().unwrap();
+                let config = EncoderConfig {
+                    software_only: true,
+                    encoder_name: Some("libx264".into()),
+                    preset: Some("ultrafast".into()),
+                    ..Default::default()
+                };
+                let mut encoder =
+                    VideoEncoder::new(&dir.path().join("primary.mp4"), 64, 64, fps, &config)
+                        .unwrap();
+                let received = dir.path().join("stream.flv");
+                let mut output = OutputIo::open(&received, "flv", &config, false).unwrap();
+                let mut stream = output
+                    .add_stream(ffmpeg::encoder::find(codec::Id::None))
+                    .unwrap();
+                stream.set_parameters(
+                    encoder
+                        .octx
+                        .stream(encoder.stream_index)
+                        .unwrap()
+                        .parameters(),
+                );
+                // SAFETY: the new stream owns writable codec parameters.
+                unsafe {
+                    (*stream.parameters().as_mut_ptr()).codec_tag = 0;
+                }
+                let video_index = stream.index();
+                let mut audio = SilentAudio::new(&mut output).unwrap();
+                let audio_frame_us = (audio.samples_per_frame as i64)
+                    .rescale((1, audio.sample_rate as i32), (1, 1_000_000));
+                output.write_header(ffmpeg::Dictionary::new()).unwrap();
+                audio.output_time_base = output.stream(audio.stream_index).unwrap().time_base();
+                audio
+                    .write_up_to(&mut output, 1, Rational(fps.1, fps.0))
+                    .unwrap();
+                encoder.stream = Some(StreamOutput {
+                    video_index,
+                    video_time_base: output.stream(video_index).unwrap().time_base(),
+                    octx: output,
+                    audio: Some(audio),
+                });
+                for frame in 0..frames {
+                    let pts = frame * 1_000_000 * i64::from(fps.1) / i64::from(fps.0);
+                    encoder
+                        .write_nv12_frame(&vec![128; 64 * 64 * 3 / 2], Some(pts))
+                        .unwrap();
+                }
+                encoder.finish().unwrap();
+                encoder.finish().unwrap();
+                drop(encoder);
+
+                let mut received = format::input(&received).unwrap();
+                let mut audio_end = None;
+                let mut last_video = None;
+                for (stream, packet) in received.packets() {
+                    let pts = packet.pts().unwrap();
+                    match stream.parameters().medium() {
+                        ffmpeg::media::Type::Audio => {
+                            let end = (pts + packet.duration())
+                                .rescale(stream.time_base(), (1, 1_000_000));
+                            audio_end = Some(audio_end.map_or(end, |last: i64| last.max(end)));
+                        }
+                        ffmpeg::media::Type::Video => {
+                            last_video = Some(pts.rescale(stream.time_base(), (1, 1_000_000)));
+                        }
+                        _ => {}
+                    }
+                }
+                let video_end =
+                    last_video.unwrap() + 1_000_000 * i64::from(fps.1) / i64::from(fps.0);
+                let audio_end = audio_end.expect("stream contains no encoded audio");
+                assert!(
+                    audio_end >= video_end - 2_000,
+                    "audio ends at {audio_end}, video at {video_end}; fps={fps}, frames={frames}"
+                );
+                assert!(
+                    audio_end <= video_end + audio_frame_us + 2_000,
+                    "audio exceeds one AAC frame of tail padding"
+                );
+            }
         }
     }
 
