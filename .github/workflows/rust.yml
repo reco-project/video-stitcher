@@ -30,6 +30,55 @@ env:
     pkg-config clang
 
 jobs:
+  ffmpeg-sdk:
+    name: Pinned FFmpeg and Linux relocation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      CARGO_BUILD_JOBS: 2
+      RUST_TEST_THREADS: 1
+      RAYON_NUM_THREADS: 2
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: ./.github/actions/linux-desktop-sdk
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          key: ffmpeg-sdk-${{ hashFiles('scripts/ffmpeg-sdk.json', 'scripts/build_ffmpeg_sdk.py') }}
+      - name: Packaging regression tests
+        run: python3 -m unittest discover -s scripts/tests -v
+      - name: I/O tests on the pinned runtime
+        run: |
+          cargo test -p reco-io --no-default-features --features ffmpeg
+          cargo test -p reco-io --no-default-features --features ffmpeg --lib --no-run --message-format=json > "$RUNNER_TEMP/io-artifacts.json"
+          test_binary=$(jq -ser '[.[] | select(.reason == "compiler-artifact" and .profile.test and .target.kind == ["lib"]) | .executable] | if length == 1 then .[0] else error("expected one I/O test executable") end' "$RUNNER_TEMP/io-artifacts.json")
+          cp "$test_binary" "$RUNNER_TEMP/reco-io-tests"
+      - name: Build CLI on the pinned runtime
+        run: cargo build -p reco-cli --features load-dynamic
+      - name: Build mandatory inference probe
+        run: |
+          cargo test -p reco-detect --features load-dynamic --lib --no-run --message-format=json > "$RUNNER_TEMP/detect-artifacts.json"
+          test_binary=$(jq -ser '[.[] | select(.reason == "compiler-artifact" and .profile.test and .target.name == "reco_detect") | .executable] | if length == 1 then .[0] else error("expected one detection test executable") end' "$RUNNER_TEMP/detect-artifacts.json")
+          cp "$test_binary" "$RUNNER_TEMP/reco-detect-tests"
+      - name: Stage desktop CLI notices and dependency sources
+        run: |
+          curl -fL --max-time 120 "$(jq -r '.onnxruntime.source' scripts/linux-desktop.json)" -o "$RUNNER_TEMP/onnxruntime.tgz"
+          python3 scripts/stage_linux_desktop.py --sdk "$FFMPEG_DIR" --ort-archive "$RUNNER_TEMP/onnxruntime.tgz" \
+            --library-dir /usr/lib/x86_64-linux-gnu --output "$RUNNER_TEMP/desktop-cli" target/debug/reco
+          python3 scripts/fetch_linux_sources.py "$RUNNER_TEMP/desktop-cli/notices/required-sources.json" --output "$RUNNER_TEMP/dependency-sources"
+      - name: Relocate and exercise native runtime
+        shell: bash
+        run: |
+          python3 scripts/bundle_linux.py \
+            --library-dir "$FFMPEG_DIR/lib" --library-dir /usr/lib/x86_64-linux-gnu \
+            --max-glibc "$(jq -r '.glibc_ceiling' scripts/linux-desktop.json)" --output "$RUNNER_TEMP/ffmpeg-package" \
+            "$FFMPEG_DIR/bin/ffmpeg" "$FFMPEG_DIR/bin/ffprobe" "$RUNNER_TEMP/reco-io-tests" target/debug/reco \
+            "$RUNNER_TEMP/reco-detect-tests" "$RUNNER_TEMP/desktop-cli/libonnxruntime.so"
+          mv "$RUNNER_TEMP/ffmpeg-package" "$RUNNER_TEMP/relocated package"
+          mv "$FFMPEG_DIR" "$FFMPEG_DIR-hidden"
+          trap 'mv "$FFMPEG_DIR-hidden" "$FFMPEG_DIR"' EXIT
+          python3 scripts/verify_ffmpeg_bundle.py "$RUNNER_TEMP/relocated package"
+
   # ===========================================================================
   # check & lint — the tight-loop gate. Runs on every push.
   # ===========================================================================

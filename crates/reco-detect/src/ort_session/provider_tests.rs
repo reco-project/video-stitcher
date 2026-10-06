@@ -32,6 +32,13 @@ fn host_session_runs_identity() {
     host_inference(&model);
 }
 
+#[test]
+#[ignore = "requires a working native ONNX Runtime"]
+fn required_host_session_runs_identity() {
+    ort_runtime_available().expect("ONNX Runtime must load for native acceptance");
+    host_session_runs_identity();
+}
+
 #[cfg(any(
     feature = "load-dynamic",
     all(target_os = "linux", any(feature = "tensorrt", feature = "cuda"))

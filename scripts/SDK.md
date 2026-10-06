@@ -1,0 +1,42 @@
+# Native FFmpeg SDK and Linux packaging checks
+
+`ffmpeg-sdk.json` selects the native source release, checksum and explicit Linux build features. Rust's `ffmpeg-next` version does not select the native library version. The SDK builder installs only into a new caller-provided directory; it does not modify system FFmpeg or drivers. Source builds of Reco can still use their own native libraries.
+
+The scripts require Python 3.12+, a C/C++ toolchain, make, nasm and pkg-config. Linux development dependencies are x264, x265, aom, dav1d, GnuTLS, zlib, bzip2, xz, libdrm, libva and nv-codec headers. The packaging tests additionally require patchelf and GNU readelf. `build_ffmpeg_sdk.py` defaults to one compile job. Use `--archive` to reuse a downloaded source tarball; its checksum is always verified.
+
+The recipe checks its pinned VA API and nv-codec header versions so a different build machine cannot silently raise graphics runtime requirements. Other dependency versions come from the build environment; this source/configuration pin is not a claim of bit-for-bit reproducibility. CI fingerprints the installed packages before caching the SDK.
+
+```sh
+python3 scripts/build_ffmpeg_sdk.py --work-dir /tmp/reco-ffmpeg-build --prefix /tmp/reco-ffmpeg-sdk
+FFMPEG_DIR=/tmp/reco-ffmpeg-sdk LD_LIBRARY_PATH=/tmp/reco-ffmpeg-sdk/lib PATH=/tmp/reco-ffmpeg-sdk/bin:$PATH cargo test -p reco-io --no-default-features --features ffmpeg
+python3 -m unittest discover -s scripts/tests -v
+python3 scripts/bundle_linux.py --library-dir /tmp/reco-ffmpeg-sdk/lib --library-dir /usr/lib/x86_64-linux-gnu --output /tmp/reco-ffmpeg-bundle /tmp/reco-ffmpeg-sdk/bin/ffmpeg /tmp/reco-ffmpeg-sdk/bin/ffprobe
+python3 scripts/verify_ffmpeg_bundle.py /tmp/reco-ffmpeg-bundle
+```
+
+`bundle_linux.py` inspects trusted ELF build outputs and copies their transitive DT_NEEDED dependencies from explicitly supplied library directories. It does not execute input binaries or search the current directory, loader environment or loader cache. Each staged ELF gets an `$ORIGIN` runpath. The output must not exist. The original SDK and binaries are unchanged. `bundle.json` records staged file hashes and required system-library names. The platform C runtime and graphics driver libraries remain external; this is not a fully static application or proof of compatibility with an older OS.
+
+The receipt also records each staged ELF's glibc version references. `--max-glibc 2.39` rejects newer or nonnumeric/private references, including transitive dependencies; `test_bundle_linux.py` tests numeric ordering, dependency rejection and separation of required versus exported versions. This is a conservative static check, not an assertion that every machine with that glibc version supports the application or its dynamically loaded drivers. CI uses the Ubuntu 24.04 glibc ceiling so a dependency upgrade cannot silently raise it.
+
+`test_bundle_linux.py` exercises transitive relocation after hiding the original build directory, missing libraries, architecture/SONAME mismatches, input preservation and external driver dependencies. `verify_ffmpeg_bundle.py` checks actual loader resolution, the pinned version, TLS/RTMPS protocol availability, PNG support and exact pixels through a short lossless encode/decode round trip. When the package includes the I/O lib test executable as `reco-io-tests`, the verifier also requires and runs the exact FIFO A/V recovery regression using the packaged libraries and tools. Protocol availability is not TLS certificate/authentication or server interoperability testing. These checks do not benchmark performance or certify GPU drivers.
+
+When `reco` is staged, the verifier also runs an actual CPU cylindrical export of 12 distinct solid-colour frames. The generated input explicitly uses BT.709 limited-range YUV. Every decoded RGB channel must match its frame's expected colour within 8/255, checking ordering, frame count and exterior black pixels without treating codec rounding as a geometry failure. This is a packaging smoke test, not general source-colour, projection, ONNX Runtime or GUI acceptance.
+
+`stage_linux_desktop.py` stages one CLI or GUI executable, FFmpeg tools/libraries and the Linux x86-64 CPU ONNX Runtime selected by `linux-desktop.json`. It verifies the ONNX archive checksum and the SDK recipe/source archive, then reuses the ELF bundler. ONNX keeps the exact `libonnxruntime.so` name used by dynamic loading. The application license, FFmpeg source/build recipe/licenses and ONNX license/third-party notices are retained. Outputs must be fresh; failed collection does not publish partial staging.
+
+`linux_notices.py` identifies every other copied native library through the installed Debian package database, checking the library against its package checksum before attributing notices or source versions. Unknown owners, diversions and modified libraries are rejected. `notices/dependencies.json` maps the copied closure to components and package identities; `notices/required-sources.json` lists exact distribution source versions. `test_linux_notices.py` covers rejection and source-download failure paths. The SDK and ONNX receipts are separate from distribution package ownership.
+
+```sh
+python3 scripts/stage_linux_desktop.py --sdk /tmp/reco-ffmpeg-sdk --ort-archive /tmp/onnxruntime.tgz --library-dir /usr/lib/x86_64-linux-gnu --output /tmp/reco-desktop target/release/reco
+python3 scripts/fetch_linux_sources.py /tmp/reco-desktop/notices/required-sources.json --output /tmp/reco-dependency-sources
+```
+
+`fetch_linux_sources.py` uses APT's authenticated source indexes and exact `package=version` selection in download-only mode. Configure matching `deb-src` indexes first, or use an isolated APT configuration via `APT_CONFIG`; the script does not enable repositories or install packages. Unavailable exact versions fail rather than selecting newer sources. Its source directory includes distribution patches/build files and a SHA256 receipt and must accompany the corresponding binary distribution. This is native dependency provenance, not a complete license audit of Reco's statically linked Rust dependencies or a claim of bit-for-bit reproducibility.
+
+These tools do not by themselves publish or certify a desktop release. The release must also provide Reco's corresponding source/build inputs and applicable notices, define and test its OS support matrix and validate dynamically loaded platform components. This guide describes SDK CI and staging checks, not the release support matrix. Native macOS and Windows packaging require their own loader and acceptance checks.
+
+The Linux x86-64 path in [Release](../.github/workflows/release.yml) uses the same [SDK setup](../.github/actions/linux-desktop-sdk/action.yml) as CI and requires both optimized application builds to succeed. It stages CLI and GUI separately, combines their exact native source requirements, and creates a matching source archive containing the Git revision, Rust toolchain identity, FFmpeg source/recipe, native distribution sources and Reco with `cargo vendor --locked` dependencies. Vendored dependency resolution is checked offline. Only tracked Reco source is archived, and a dirty tracked checkout fails the source-packaging step. No local ignored configuration, review files or build directories are included.
+
+Before creating the three Linux archives, the release path hides its original SDK and checks relocated loader resolution, the CLI export oracle and mandatory CPU ONNX inference. GUI loader checks are not an interactive preview/export test, and these checks do not establish every graphics-driver combination. The source archive must remain distributed alongside the two binary archives. The native ARM cross-build, Windows and macOS paths use their own packaging recipes.
+
+The `ffmpeg-sdk` job in [Rust CI](../.github/workflows/rust.yml) builds the pinned SDK and CLI on Ubuntu 24.04, stages notices and retrieves matching dependency sources, and tests the relocated runtime and CLI export while the original SDK path is unavailable. It explicitly executes the FIFO recovery regression and the mandatory CPU identity-model inference test in `ort_session::provider_tests`; the latter fails instead of skipping if ONNX cannot load. The verifier clears `ORT_*` and loader overrides. These checks do not certify GPU inference or GUI interaction. This runner choice defines the test environment, not a new minimum OS for all Reco consumers. The SDK cache includes the build recipe and installed package fingerprint.

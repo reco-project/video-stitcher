@@ -23,7 +23,7 @@ jobs:
         include:
           - name: linux-x86_64
             target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-24.04
             binary: reco
 
           - name: linux-arm64
@@ -56,21 +56,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
-          key: release-${{ matrix.target }}
+          key: release-${{ matrix.target }}-${{ matrix.name == 'linux-x86_64' && hashFiles('scripts/ffmpeg-sdk.json', 'scripts/build_ffmpeg_sdk.py') || 'system' }}
 
       # ----------------------------------------------------------------
       # Linux x86_64 (native) dependencies
       # ----------------------------------------------------------------
-      - name: Install dependencies (Linux)
+      - name: Set up pinned Linux desktop SDK
         if: runner.os == 'Linux' && !matrix.cross
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libavcodec-dev libavformat-dev libavutil-dev \
-            libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev \
-            pkg-config clang \
-            libfontconfig1-dev libxcb-render0-dev libxcb-shape0-dev \
-            libxcb-xfixes0-dev libxkbcommon-dev
+        uses: ./.github/actions/linux-desktop-sdk
 
       # ----------------------------------------------------------------
       # Linux ARM64 cross-compilation
@@ -194,9 +187,16 @@ jobs:
           fi
 
       - name: Build release binaries
+        if: matrix.name != 'linux-x86_64'
         run: |
           cargo build --release --target ${{ matrix.target }} -p reco-cli --features load-dynamic
           cargo build --release --target ${{ matrix.target }} -p reco-gui --features load-dynamic || echo "::warning::reco-gui build failed on ${{ matrix.name }} (cross-compile or missing deps)"
+
+      - name: Build Linux desktop binaries
+        if: matrix.name == 'linux-x86_64'
+        env:
+          CARGO_BUILD_JOBS: 2
+        run: cargo build --release --locked --target ${{ matrix.target }} -p reco-cli -p reco-gui --features load-dynamic
 
       # ----------------------------------------------------------------
       # ONNX Runtime (bundled for AI detection)
@@ -232,17 +232,64 @@ jobs:
       - name: Download ONNX Runtime (Linux)
         if: runner.os == 'Linux' && !matrix.cross
         run: |
-          curl -sL "https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-linux-x64-1.24.4.tgz" -o /tmp/ort.tgz
-          tar xzf /tmp/ort.tgz -C /tmp
-          ORT_LIB=$(find /tmp/onnxruntime-* -name "libonnxruntime.so*" -not -type l | head -1)
-          echo "ORT_LIB=$ORT_LIB" >> "$GITHUB_ENV"
-          echo "Bundled ONNX Runtime 1.24.4 CPU ($(du -h "$ORT_LIB" | cut -f1))"
+          curl -fL --max-time 120 "$(jq -r '.onnxruntime.source' scripts/linux-desktop.json)" -o "$RUNNER_TEMP/onnxruntime.tgz"
 
       # ----------------------------------------------------------------
       # Package
       # ----------------------------------------------------------------
+      - name: Package and verify Linux desktop
+        if: matrix.name == 'linux-x86_64'
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+          CARGO_BUILD_JOBS: 2
+        run: |
+          python3 -m unittest discover -s scripts/tests -v
+          cli="reco-cli-$RELEASE_TAG-linux-x86_64"
+          gui="reco-gui-$RELEASE_TAG-linux-x86_64"
+          sources="reco-sources-$RELEASE_TAG-linux-x86_64"
+          for item in "$cli:reco" "$gui:reco-gui"; do
+            python3 scripts/stage_linux_desktop.py --sdk "$FFMPEG_DIR" --ort-archive "$RUNNER_TEMP/onnxruntime.tgz" \
+              --library-dir /usr/lib/x86_64-linux-gnu --output "${item%:*}" "target/$TARGET/release/${item##*:}"
+          done
+
+          mkdir "$sources"
+          jq -s 'add | unique_by([.package, .version])' "$cli/notices/required-sources.json" "$gui/notices/required-sources.json" > "$RUNNER_TEMP/required-sources.json"
+          python3 scripts/fetch_linux_sources.py "$RUNNER_TEMP/required-sources.json" --output "$sources/native"
+          cp -R "$FFMPEG_DIR/share/reco-ffmpeg" "$sources/ffmpeg"
+          git diff --exit-code
+          git diff --cached --exit-code
+          git archive --format=tar --output="$RUNNER_TEMP/reco-source.tar" HEAD
+          mkdir "$sources/reco"
+          tar xf "$RUNNER_TEMP/reco-source.tar" -C "$sources/reco"
+          git rev-parse HEAD > "$sources/REVISION"
+          rustc -Vv > "$sources/TOOLCHAIN"
+          (
+            cd "$sources/reco"
+            mkdir -p .cargo
+            cargo vendor --locked --versioned-dirs vendor >> .cargo/config.toml
+            cargo metadata --offline --locked --format-version=1 > "$RUNNER_TEMP/vendored-metadata.json"
+          )
+
+          cargo test --release --locked --target "$TARGET" -p reco-detect --features load-dynamic --lib --no-run --message-format=json > "$RUNNER_TEMP/detect-artifacts.json"
+          test_binary=$(jq -ser '[.[] | select(.reason == "compiler-artifact" and .profile.test and .target.name == "reco_detect") | .executable] | if length == 1 then .[0] else error("expected one detection test executable") end' "$RUNNER_TEMP/detect-artifacts.json")
+          cp "$test_binary" "$RUNNER_TEMP/reco-detect-tests"
+          python3 scripts/bundle_linux.py --library-dir "$cli" \
+            --max-glibc "$(jq -r '.glibc_ceiling' scripts/linux-desktop.json)" --output "$RUNNER_TEMP/inference-probe" \
+            "$RUNNER_TEMP/reco-detect-tests" "$cli/libonnxruntime.so" "$cli/ffmpeg" "$cli/ffprobe"
+
+          mv "$FFMPEG_DIR" "$FFMPEG_DIR-hidden"
+          trap 'mv "$FFMPEG_DIR-hidden" "$FFMPEG_DIR"' EXIT
+          python3 scripts/verify_ffmpeg_bundle.py "$cli"
+          python3 scripts/verify_ffmpeg_bundle.py "$gui"
+          python3 scripts/verify_ffmpeg_bundle.py "$RUNNER_TEMP/inference-probe"
+          tar czf "$cli.tar.gz" "$cli"
+          tar czf "$gui.tar.gz" "$gui"
+          tar czf "$sources.tar.gz" "$sources"
+
       - name: Package CLI (Unix)
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && matrix.name != 'linux-x86_64'
         run: |
           staging="reco-cli-${{ github.ref_name }}-${{ matrix.name }}"
           mkdir "$staging"
@@ -260,7 +307,7 @@ jobs:
           tar czf "$staging.tar.gz" "$staging"
 
       - name: Package GUI (Unix)
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && matrix.name != 'linux-x86_64'
         run: |
           gui_bin="target/${{ matrix.target }}/release/reco-gui"
           if [ -f "$gui_bin" ]; then

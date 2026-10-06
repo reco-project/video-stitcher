@@ -101,6 +101,8 @@ Push-based is the canonical ingestion path: consumers call `StitchCore::submit_f
 
 ## Building
 
+Linux x86-64 desktop archives produced by the [release workflow](.github/workflows/release.yml) bundle FFmpeg and CPU ONNX Runtime. They target Ubuntu 24.04 or compatible systems with glibc 2.39; graphics drivers remain system dependencies. Keep the extracted directory together. Matching source archives include Reco, vendored Rust dependencies and native dependency sources. See the [SDK and packaging checks](scripts/SDK.md) for validation and platform boundaries. Source builds can use their own native FFmpeg installation; this desktop baseline does not apply to ARM/Jetson builds.
+
 Prerequisites: Rust **1.92+** (workspace MSRV), FFmpeg development libraries, pkg-config, clang.
 
 ```bash

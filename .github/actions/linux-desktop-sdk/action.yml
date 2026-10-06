@@ -1,0 +1,31 @@
+name: Linux desktop SDK
+description: Install and cache the pinned Ubuntu 24.04 desktop FFmpeg build.
+runs:
+  using: composite
+  steps:
+    - name: Install native build dependencies
+      id: deps
+      shell: bash
+      run: |
+        . /etc/os-release
+        test "$ID:$VERSION_ID:$(uname -m)" = "ubuntu:24.04:x86_64"
+        sudo -A sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
+        sudo -A apt-get update
+        sudo -A apt-get install -y build-essential nasm pkg-config clang patchelf jq \
+          libx264-dev libx265-dev libaom-dev libdav1d-dev libgnutls28-dev \
+          libdrm-dev libva-dev libffmpeg-nvenc-dev zlib1g-dev libbz2-dev liblzma-dev \
+          libfontconfig1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev
+        fingerprint=$(dpkg-query -W -f='${Package}=${Version}\n' | sha256sum | cut -d' ' -f1)
+        echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+        echo "FFMPEG_DIR=$RUNNER_TEMP/reco-ffmpeg-sdk" >> "$GITHUB_ENV"
+        echo "LD_LIBRARY_PATH=$RUNNER_TEMP/reco-ffmpeg-sdk/lib" >> "$GITHUB_ENV"
+        echo "$RUNNER_TEMP/reco-ffmpeg-sdk/bin" >> "$GITHUB_PATH"
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      id: sdk-cache
+      with:
+        path: ${{ runner.temp }}/reco-ffmpeg-sdk
+        key: ffmpeg-sdk-linux24-${{ steps.deps.outputs.fingerprint }}-${{ hashFiles('scripts/ffmpeg-sdk.json', 'scripts/build_ffmpeg_sdk.py') }}
+    - name: Build pinned SDK
+      if: steps.sdk-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: python3 scripts/build_ffmpeg_sdk.py --work-dir "$RUNNER_TEMP/reco-ffmpeg-build" --prefix "$FFMPEG_DIR" --jobs 2

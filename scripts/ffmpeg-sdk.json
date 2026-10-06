@@ -1,0 +1,14 @@
+{
+  "version": "9.0.2",
+  "source": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
+  "sha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e",
+  "linux_headers": {"ffnvcodec": "12.1.14.0", "libva": "1.20.0"},
+  "linux_configure": [
+    "--disable-doc", "--disable-debug", "--disable-autodetect",
+    "--enable-shared", "--disable-static", "--enable-gpl",
+    "--enable-pthreads", "--enable-gnutls", "--enable-zlib", "--enable-bzlib", "--enable-lzma",
+    "--enable-libx264", "--enable-libx265", "--enable-libaom", "--enable-libdav1d",
+    "--enable-libdrm", "--enable-vaapi", "--enable-ffnvcodec",
+    "--enable-nvenc", "--enable-nvdec", "--enable-cuvid"
+  ]
+}
