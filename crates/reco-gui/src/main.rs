@@ -30,6 +30,8 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use qrcode::QrCode;
+use qrcode::types::Color as QrColor;
 use reco_calibrate::{LensProfileInfo, ProfileSource};
 use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_control::{ControlIntent, IntentTranslator, PoseIntent};
@@ -66,6 +68,125 @@ const PREVIEW_HEIGHT_DEFAULT: u32 = 1080;
 /// timing error at 30fps and is cheap since the tick is a no-op when
 /// no frame advance is due.
 const TICK_INTERVAL_MS: i64 = 2;
+
+/// Fixed pixel size of the QR bitmap shown by Slint. Keeping the source and
+/// display dimensions identical prevents interpolation from blurring modules.
+const SCOREBOARD_QR_IMAGE_SIZE: usize = 216;
+const SCOREBOARD_QR_QUIET_ZONE_MODULES: usize = 4;
+
+fn scoreboard_share_qr_buffer(url: &str) -> Option<slint::SharedPixelBuffer<slint::Rgba8Pixel>> {
+    let code = QrCode::new(url.as_bytes()).ok()?;
+    let module_count = code.width();
+    let total_modules = module_count + SCOREBOARD_QR_QUIET_ZONE_MODULES * 2;
+    let module_size = SCOREBOARD_QR_IMAGE_SIZE / total_modules;
+    if module_size == 0 {
+        return None;
+    }
+
+    let qr_size = total_modules * module_size;
+    let offset = (SCOREBOARD_QR_IMAGE_SIZE - qr_size) / 2;
+    let mut buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(
+        SCOREBOARD_QR_IMAGE_SIZE as u32,
+        SCOREBOARD_QR_IMAGE_SIZE as u32,
+    );
+    let pixels = buffer.make_mut_slice();
+    pixels.fill(slint::Rgba8Pixel {
+        r: 255,
+        g: 255,
+        b: 255,
+        a: 255,
+    });
+
+    let modules = code.to_colors();
+    for module_y in 0..module_count {
+        for module_x in 0..module_count {
+            if modules[module_y * module_count + module_x] != QrColor::Dark {
+                continue;
+            }
+            let pixel_x = offset + (module_x + SCOREBOARD_QR_QUIET_ZONE_MODULES) * module_size;
+            let pixel_y = offset + (module_y + SCOREBOARD_QR_QUIET_ZONE_MODULES) * module_size;
+            for y in pixel_y..pixel_y + module_size {
+                for x in pixel_x..pixel_x + module_size {
+                    pixels[y * SCOREBOARD_QR_IMAGE_SIZE + x] = slint::Rgba8Pixel {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                        a: 255,
+                    };
+                }
+            }
+        }
+    }
+
+    Some(buffer)
+}
+
+fn scoreboard_share_qr(url: &str) -> Option<slint::Image> {
+    scoreboard_share_qr_buffer(url).map(slint::Image::from_rgba8)
+}
+
+fn sync_scoreboard_share(app: &RecoApp, network_editor_url: Option<&str>) {
+    app.set_scoreboard_share_available(network_editor_url.is_some());
+
+    match network_editor_url {
+        Some(url) if app.get_scoreboard_share_url().as_str() != url => {
+            app.set_scoreboard_share_url(url.into());
+            match scoreboard_share_qr(url) {
+                Some(image) => app.set_scoreboard_share_qr(image),
+                None => {
+                    log::warn!("could not generate QR code for scoreboard sharing URL");
+                    app.set_scoreboard_share_qr(slint::Image::default());
+                }
+            }
+        }
+        Some(_) => {}
+        None => {
+            app.set_scoreboard_share_url("".into());
+            app.set_scoreboard_share_qr(slint::Image::default());
+            app.set_scoreboard_share_dialog_open(false);
+        }
+    }
+}
+
+#[cfg(test)]
+mod scoreboard_share_qr_tests {
+    use super::*;
+
+    #[test]
+    fn renders_exact_qr_modules_with_white_quiet_zone() {
+        let url = "http://192.168.178.42:43127/index.html?token=0123456789abcdef";
+        let code = QrCode::new(url.as_bytes()).expect("test URL must fit in a QR code");
+        let buffer = scoreboard_share_qr_buffer(url).expect("QR bitmap should be generated");
+
+        assert_eq!(buffer.width(), SCOREBOARD_QR_IMAGE_SIZE as u32);
+        assert_eq!(buffer.height(), SCOREBOARD_QR_IMAGE_SIZE as u32);
+        let pixels = buffer.as_slice();
+        assert!(
+            pixels[..SCOREBOARD_QR_IMAGE_SIZE]
+                .iter()
+                .all(|pixel| pixel.r == 255 && pixel.g == 255 && pixel.b == 255)
+        );
+
+        let module_count = code.width();
+        let total_modules = module_count + SCOREBOARD_QR_QUIET_ZONE_MODULES * 2;
+        let module_size = SCOREBOARD_QR_IMAGE_SIZE / total_modules;
+        let offset = (SCOREBOARD_QR_IMAGE_SIZE - total_modules * module_size) / 2;
+        let modules = code.to_colors();
+        for module_y in 0..module_count {
+            for module_x in 0..module_count {
+                let x = offset
+                    + (module_x + SCOREBOARD_QR_QUIET_ZONE_MODULES) * module_size
+                    + module_size / 2;
+                let y = offset
+                    + (module_y + SCOREBOARD_QR_QUIET_ZONE_MODULES) * module_size
+                    + module_size / 2;
+                let pixel_is_dark = pixels[y * SCOREBOARD_QR_IMAGE_SIZE + x].r == 0;
+                let module_is_dark = modules[module_y * module_count + module_x] == QrColor::Dark;
+                assert_eq!(pixel_is_dark, module_is_dark);
+            }
+        }
+    }
+}
 
 /// FOV clamp range (degrees), matching CLI preview.
 const FOV_MIN: f32 = 20.0;
@@ -2612,11 +2733,7 @@ fn main() -> anyhow::Result<()> {
             .scoreboard_runtime
             .as_ref()
             .and_then(reco_scoreboard::ScoreboardRuntime::network_editor_url);
-        app.set_scoreboard_share_available(network_editor_url.is_some());
-        app.set_scoreboard_share_url(network_editor_url.unwrap_or_default().into());
-        if network_editor_url.is_none() {
-            app.set_scoreboard_share_dialog_open(false);
-        }
+        sync_scoreboard_share(&app, network_editor_url);
     });
 
     let app_weak = app.as_weak();
@@ -4222,11 +4339,7 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
             .scoreboard_runtime
             .as_ref()
             .and_then(reco_scoreboard::ScoreboardRuntime::network_editor_url);
-        app.set_scoreboard_share_available(network_editor_url.is_some());
-        app.set_scoreboard_share_url(network_editor_url.unwrap_or_default().into());
-        if network_editor_url.is_none() {
-            app.set_scoreboard_share_dialog_open(false);
-        }
+        sync_scoreboard_share(&app, network_editor_url);
     }
 
     // Adaptive preview: resize render target to match the preview

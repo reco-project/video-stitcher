@@ -569,6 +569,7 @@ export component RecoApp inherits Window {
     in-out property <bool> scoreboard-editor-available: false;
     in-out property <bool> scoreboard-share-available: false;
     in-out property <string> scoreboard-share-url: "";
+    in-out property <image> scoreboard-share-qr;
     in-out property <bool> scoreboard-share-dialog-open: false;
 
     // Export progress (also used by the main status bar).
@@ -1832,8 +1833,8 @@ export component RecoApp inherits Window {
             Rectangle {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
-                width: 540px;
-                height: 270px;
+                width: 680px;
+                height: 350px;
                 background: root.bg-surface;
                 border-radius: 12px;
                 border-width: 1px;
@@ -1850,35 +1851,59 @@ export component RecoApp inherits Window {
                         font-size: 16px;
                         font-weight: 600;
                     }
-                    Text {
-                        text: "Open this address to control the active scoreboard:";
-                        color: root.text-body;
-                        font-size: 13px;
-                        wrap: word-wrap;
-                    }
-                    Rectangle {
-                        height: 54px;
-                        background: root.bg-panel;
-                        border-radius: 6px;
-                        border-width: 1px;
-                        border-color: root.border-mid;
-                        Text {
-                            x: 10px;
-                            y: 8px;
-                            width: parent.width - 20px;
-                            height: parent.height - 16px;
-                            text: root.scoreboard-share-url;
-                            color: root.text-heading;
-                            font-size: 12px;
-                            wrap: word-wrap;
-                            vertical-alignment: center;
+                    HorizontalLayout {
+                        spacing: 18px;
+                        vertical-stretch: 1;
+
+                        Rectangle {
+                            width: 232px;
+                            height: 232px;
+                            background: #ffffff;
+                            border-radius: 8px;
+                            Image {
+                                x: 8px;
+                                y: 8px;
+                                width: 216px;
+                                height: 216px;
+                                source: root.scoreboard-share-qr;
+                                image-fit: fill;
+                                image-rendering: pixelated;
+                            }
                         }
-                    }
-                    Text {
-                        text: "The phone, tablet, or computer must be connected to the same Wi-Fi or LAN as this computer.";
-                        color: root.text-muted;
-                        font-size: 12px;
-                        wrap: word-wrap;
+                        VerticalLayout {
+                            spacing: 12px;
+                            Text {
+                                text: "Scan the QR code to control the active scoreboard, or open this address:";
+                                color: root.text-body;
+                                font-size: 13px;
+                                wrap: word-wrap;
+                            }
+                            Rectangle {
+                                height: 92px;
+                                background: root.bg-panel;
+                                border-radius: 6px;
+                                border-width: 1px;
+                                border-color: root.border-mid;
+                                Text {
+                                    x: 10px;
+                                    y: 8px;
+                                    width: parent.width - 20px;
+                                    height: parent.height - 16px;
+                                    text: root.scoreboard-share-url;
+                                    color: root.text-heading;
+                                    font-size: 12px;
+                                    wrap: word-wrap;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            Text {
+                                text: "The phone, tablet, or computer must be connected to the same Wi-Fi or LAN as this computer.";
+                                color: root.text-muted;
+                                font-size: 12px;
+                                wrap: word-wrap;
+                            }
+                            Rectangle { vertical-stretch: 1; }
+                        }
                     }
                     HorizontalLayout {
                         alignment: end;
