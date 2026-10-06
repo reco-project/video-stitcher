@@ -2,7 +2,7 @@
 
 Reco scoreboards are trusted local HTML/CSS/JavaScript packages rendered over the final camera image. Packages are discovered from the `scoreboards/` directory next to the Reco GUI executable, from the per-user data directory, or from `RECO_SCOREBOARDS_DIR`. Reco never interprets sport rules or hardcodes sport names.
 
-The bundled `basketball/` package is a reference implementation, not part of the Rust API. See [DESIGNER_GUIDE.md](DESIGNER_GUIDE.md) to create a package and [AGENTS.md](AGENTS.md) for constraints that apply when an agent adds a sport.
+The bundled packages cover Basketball, Soccer, Futsal, Handball, Ice Hockey, Lacrosse, Field Hockey, American Football, and Rugby. Together they include every sport exposed by Reco Trainer, with Field Hockey as an additional template. Each package owns its rules and is a reference implementation rather than part of the Rust API. See [DESIGNER_GUIDE.md](DESIGNER_GUIDE.md) to create a package and [AGENTS.md](AGENTS.md) for constraints that apply when an agent adds a sport.
 
 ## Runtime architecture
 

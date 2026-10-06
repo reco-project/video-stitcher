@@ -106,7 +106,7 @@ fn discover_root(root: &Path, ids: &mut HashMap<String, PathBuf>, report: &mut D
             path.is_dir()
                 && !matches!(
                     path.file_name().and_then(|name| name.to_str()),
-                    Some("sdk" | "examples")
+                    Some("sdk" | "examples" | "designer" | "tests")
                 )
         })
         .collect();
@@ -271,5 +271,17 @@ mod tests {
                 .iter()
                 .any(|package| package.manifest.id == "basketball")
         );
+    }
+
+    #[test]
+    fn repository_tooling_directories_are_not_reported_as_packages() {
+        let temp = tempfile::tempdir().unwrap();
+        for directory in ["sdk", "examples", "designer", "tests"] {
+            std::fs::create_dir(temp.path().join(directory)).unwrap();
+        }
+        write_package(temp.path(), "basketball", "");
+        let report = discover([temp.path().to_path_buf()]);
+        assert!(report.issues.is_empty());
+        assert_eq!(report.packages.len(), 1);
     }
 }

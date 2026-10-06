@@ -4,7 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "..");
-const packageIds = ["basketball", "soccer", "handball", "lacrosse", "field-hockey", "american-football", "rugby"];
+const packageIds = ["basketball", "soccer", "futsal", "handball", "ice-hockey", "lacrosse", "field-hockey", "american-football", "rugby"];
 function readPackageFile(packageId, filename) { return fs.readFileSync(path.join(root, packageId, filename), "utf8"); }
 
 test("bundled scoreboards use manifest schema v1", () => {
@@ -28,16 +28,20 @@ test("sport packages keep their sport-specific scoring models", () => {
     const handball = readPackageFile("handball", "scoreboard.js");
     const lacrosse = readPackageFile("lacrosse", "scoreboard.js");
     const fieldHockey = readPackageFile("field-hockey", "scoreboard.js");
+    const futsal = readPackageFile("futsal", "scoreboard.js");
+    const iceHockey = readPackageFile("ice-hockey", "scoreboard.js");
     const americanFootball = readPackageFile("american-football", "scoreboard.js");
     const rugby = readPackageFile("rugby", "scoreboard.js");
     assert.match(handball, /suspensionsHome/); assert.match(handball, /sevenMeterGoalsHome/); assert.match(handball, /scoreAmounts: \[1\]/);
     assert.match(lacrosse, /shotClock/); assert.match(lacrosse, /manUpHome/);
     assert.match(fieldHockey, /penaltyCornersHome/); assert.match(fieldHockey, /greenCardsHome/);
+    assert.match(futsal, /accumulatedFoulLimit/); assert.match(futsal, /accumulatedFoulsHome/); assert.match(futsal, /timeoutsHome/); assert.match(futsal, /scoreAmounts: \[1\]/);
+    assert.match(iceHockey, /shotsHome/); assert.match(iceHockey, /penaltiesHome/); assert.match(iceHockey, /powerPlay/); assert.match(iceHockey, /scoreAmounts: \[1\]/);
     assert.match(americanFootball, /yardsToGo/); assert.match(americanFootball, /Touchdown/); assert.match(americanFootball, /scoreAmounts: \[1,2,3,6\]/);
     assert.match(rugby, /triesHome/); assert.match(rugby, /sinBinsHome/); assert.match(rugby, /scoreAmounts: \[2,3,5\]/); assert.match(handball, /foulsHome/); assert.match(handball, /suspensionsHome/);
 });
 test("bundled packages honor template branding and typography", () => { for (const packageId of packageIds) { const script = readPackageFile(packageId, "scoreboard.js"); assert.match(script, /applyTypography/); assert.match(script, /applyTheme/); assert.match(readPackageFile(packageId, "assets/springfield-falcons.svg"), /Springfield Falcons/); assert.match(readPackageFile(packageId, "assets/springfield-lions.svg"), /Springfield Lions/); } });
 test("universal designer supports all bundled sports and publishing", () => {
     const html = fs.readFileSync(path.join(root, "designer", "index.html"), "utf8"); const script = fs.readFileSync(path.join(root, "designer", "designer.js"), "utf8"); const style = fs.readFileSync(path.join(root, "designer", "style.css"), "utf8");
-    for (const sport of ["basketball", "soccer", "handball", "lacrosse", "field-hockey", "american-football", "rugby"]) assert.match(html, new RegExp("value=\"" + sport + "\"")); assert.match(html, /Download state JSON/); assert.match(script, /__reco\/editor-state/); assert.match(script, /RecoScoreboard\.update/); assert.match(script, /scoreAmounts/); assert.match(html, /toggle-editing/); assert.match(style, /aspect-ratio: 16 \/ 9/); assert.match(script, /sportId/); assert.match(script, /toggleEditing/); assert.match(script, /updateEditorMode/); assert.match(script, /template-mode/); assert.match(html, /mode-template/); assert.match(html, /mode-game/); assert.match(script, /data-foul-team/); assert.match(script, /modeTabs/); assert.match(script, /foulsHome/); assert.match(script, /handleImageUpload/); assert.match(script, /typographyFor/); assert.match(html, /template-free-logo-upload/); assert.match(html, /game-home-logo-upload/); assert.match(html, /ratio-square/); assert.match(html, /design-style/);
+    for (const sport of packageIds) assert.match(html, new RegExp("value=\"" + sport + "\"")); assert.match(html, /Download state JSON/); assert.match(script, /__reco\/editor-state/); assert.match(script, /RecoScoreboard\.update/); assert.match(script, /scoreAmounts/); assert.match(html, /toggle-editing/); assert.match(style, /aspect-ratio: 16 \/ 9/); assert.match(script, /sportId/); assert.match(script, /toggleEditing/); assert.match(script, /updateEditorMode/); assert.match(script, /template-mode/); assert.match(html, /mode-template/); assert.match(html, /mode-game/); assert.match(script, /data-foul-team/); assert.match(script, /modeTabs/); assert.match(script, /foulsHome/); assert.match(script, /handleImageUpload/); assert.match(script, /typographyFor/); assert.match(html, /template-free-logo-upload/); assert.match(html, /game-home-logo-upload/); assert.match(html, /ratio-square/); assert.match(html, /design-style/); assert.match(script, /accumulatedFoulsHome/); assert.match(script, /powerPlay/);
 });

@@ -1,6 +1,6 @@
 # Universal Scoreboard Designer v2
 
-The shared designer is at `scoreboards/designer/index.html`. It configures Basketball, Soccer, Handball, Lacrosse, Field Hockey, American Football, and Rugby with one versioned state model.
+The shared designer is at `scoreboards/designer/index.html`. It configures Basketball, Soccer, Futsal, Handball, Ice Hockey, Lacrosse, Field Hockey, American Football, and Rugby with one versioned state model.
 
 Open it directly for a local preview:
 
