@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+        .scoreboard { position: absolute; left: 60px; bottom: 60px; padding: 24px 32px; color: white; background: rgba(0,0,0,.78); border-radius: 12px; font: 36px system-ui; }
+        .score { font-size: 56px; font-weight: 800; }
+    </style>
+</head>
+<body>
+    <div class="scoreboard">
+        <span id="home">HOME</span> <span id="home-score" class="score">0</span>
+        <span id="clock">10:00</span>
+        <span id="away-score" class="score">0</span> <span id="away">AWAY</span>
+    </div>
+    <script src="../../sdk/reco-scoreboard.js"></script>
+    <script>
+        Reco.onUpdate(state => {
+            document.querySelector("#home").textContent = state.home.shortName;
+            document.querySelector("#home-score").textContent = state.home.score;
+            document.querySelector("#away").textContent = state.away.shortName;
+            document.querySelector("#away-score").textContent = state.away.score;
+            document.querySelector("#clock").textContent = state.game.clock;
+        });
+        Reco.ready();
+    </script>
+</body>
+</html>

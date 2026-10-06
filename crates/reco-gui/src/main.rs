@@ -30,11 +30,14 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use qrcode::QrCode;
+use qrcode::types::Color as QrColor;
 use reco_calibrate::{LensProfileInfo, ProfileSource};
 use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_control::{ControlIntent, IntentTranslator, PoseIntent};
 use reco_core::calibration::MatchCalibration;
 use reco_core::detect::director::ViewportPosition;
+use reco_core::render::overlay::{OverlayFrame, OverlayFrameSource};
 use reco_core::wgpu;
 
 use crate::playback::{PlayState, Playback};
@@ -65,6 +68,125 @@ const PREVIEW_HEIGHT_DEFAULT: u32 = 1080;
 /// timing error at 30fps and is cheap since the tick is a no-op when
 /// no frame advance is due.
 const TICK_INTERVAL_MS: i64 = 2;
+
+/// Fixed pixel size of the QR bitmap shown by Slint. Keeping the source and
+/// display dimensions identical prevents interpolation from blurring modules.
+const SCOREBOARD_QR_IMAGE_SIZE: usize = 216;
+const SCOREBOARD_QR_QUIET_ZONE_MODULES: usize = 4;
+
+fn scoreboard_share_qr_buffer(url: &str) -> Option<slint::SharedPixelBuffer<slint::Rgba8Pixel>> {
+    let code = QrCode::new(url.as_bytes()).ok()?;
+    let module_count = code.width();
+    let total_modules = module_count + SCOREBOARD_QR_QUIET_ZONE_MODULES * 2;
+    let module_size = SCOREBOARD_QR_IMAGE_SIZE / total_modules;
+    if module_size == 0 {
+        return None;
+    }
+
+    let qr_size = total_modules * module_size;
+    let offset = (SCOREBOARD_QR_IMAGE_SIZE - qr_size) / 2;
+    let mut buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(
+        SCOREBOARD_QR_IMAGE_SIZE as u32,
+        SCOREBOARD_QR_IMAGE_SIZE as u32,
+    );
+    let pixels = buffer.make_mut_slice();
+    pixels.fill(slint::Rgba8Pixel {
+        r: 255,
+        g: 255,
+        b: 255,
+        a: 255,
+    });
+
+    let modules = code.to_colors();
+    for module_y in 0..module_count {
+        for module_x in 0..module_count {
+            if modules[module_y * module_count + module_x] != QrColor::Dark {
+                continue;
+            }
+            let pixel_x = offset + (module_x + SCOREBOARD_QR_QUIET_ZONE_MODULES) * module_size;
+            let pixel_y = offset + (module_y + SCOREBOARD_QR_QUIET_ZONE_MODULES) * module_size;
+            for y in pixel_y..pixel_y + module_size {
+                for x in pixel_x..pixel_x + module_size {
+                    pixels[y * SCOREBOARD_QR_IMAGE_SIZE + x] = slint::Rgba8Pixel {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                        a: 255,
+                    };
+                }
+            }
+        }
+    }
+
+    Some(buffer)
+}
+
+fn scoreboard_share_qr(url: &str) -> Option<slint::Image> {
+    scoreboard_share_qr_buffer(url).map(slint::Image::from_rgba8)
+}
+
+fn sync_scoreboard_share(app: &RecoApp, network_editor_url: Option<&str>) {
+    app.set_scoreboard_share_available(network_editor_url.is_some());
+
+    match network_editor_url {
+        Some(url) if app.get_scoreboard_share_url().as_str() != url => {
+            app.set_scoreboard_share_url(url.into());
+            match scoreboard_share_qr(url) {
+                Some(image) => app.set_scoreboard_share_qr(image),
+                None => {
+                    log::warn!("could not generate QR code for scoreboard sharing URL");
+                    app.set_scoreboard_share_qr(slint::Image::default());
+                }
+            }
+        }
+        Some(_) => {}
+        None => {
+            app.set_scoreboard_share_url("".into());
+            app.set_scoreboard_share_qr(slint::Image::default());
+            app.set_scoreboard_share_dialog_open(false);
+        }
+    }
+}
+
+#[cfg(test)]
+mod scoreboard_share_qr_tests {
+    use super::*;
+
+    #[test]
+    fn renders_exact_qr_modules_with_white_quiet_zone() {
+        let url = "http://192.168.178.42:43127/index.html?token=0123456789abcdef";
+        let code = QrCode::new(url.as_bytes()).expect("test URL must fit in a QR code");
+        let buffer = scoreboard_share_qr_buffer(url).expect("QR bitmap should be generated");
+
+        assert_eq!(buffer.width(), SCOREBOARD_QR_IMAGE_SIZE as u32);
+        assert_eq!(buffer.height(), SCOREBOARD_QR_IMAGE_SIZE as u32);
+        let pixels = buffer.as_slice();
+        assert!(
+            pixels[..SCOREBOARD_QR_IMAGE_SIZE]
+                .iter()
+                .all(|pixel| pixel.r == 255 && pixel.g == 255 && pixel.b == 255)
+        );
+
+        let module_count = code.width();
+        let total_modules = module_count + SCOREBOARD_QR_QUIET_ZONE_MODULES * 2;
+        let module_size = SCOREBOARD_QR_IMAGE_SIZE / total_modules;
+        let offset = (SCOREBOARD_QR_IMAGE_SIZE - total_modules * module_size) / 2;
+        let modules = code.to_colors();
+        for module_y in 0..module_count {
+            for module_x in 0..module_count {
+                let x = offset
+                    + (module_x + SCOREBOARD_QR_QUIET_ZONE_MODULES) * module_size
+                    + module_size / 2;
+                let y = offset
+                    + (module_y + SCOREBOARD_QR_QUIET_ZONE_MODULES) * module_size
+                    + module_size / 2;
+                let pixel_is_dark = pixels[y * SCOREBOARD_QR_IMAGE_SIZE + x].r == 0;
+                let module_is_dark = modules[module_y * module_count + module_x] == QrColor::Dark;
+                assert_eq!(pixel_is_dark, module_is_dark);
+            }
+        }
+    }
+}
 
 /// FOV clamp range (degrees), matching CLI preview.
 const FOV_MIN: f32 = 20.0;
@@ -198,6 +320,11 @@ struct AppState {
     calibration: Option<MatchCalibration>,
     playback: Playback,
     bridge: Option<PreviewBridge>,
+    scoreboard_packages: Vec<reco_scoreboard::ScoreboardPackage>,
+    scoreboard_runtime: Option<reco_scoreboard::ScoreboardRuntime>,
+    scoreboard_frame: Option<OverlayFrame>,
+    scoreboard_frame_dirty: bool,
+    scoreboard_error: String,
     recording_tx: Option<std::sync::mpsc::SyncSender<RecordingFrame>>,
     recording_thread: Option<std::thread::JoinHandle<()>>,
     recording_path: Option<PathBuf>,
@@ -446,6 +573,19 @@ struct RecordingFrame {
 
 impl AppState {
     fn new() -> Self {
+        let discovery = reco_scoreboard::discover_installed();
+        for issue in &discovery.issues {
+            log::error!(
+                "Skipping scoreboard package {}: {}",
+                issue.path.display(),
+                issue.message
+            );
+        }
+        let scoreboard_error = discovery
+            .issues
+            .first()
+            .map(|issue| issue.message.clone())
+            .unwrap_or_default();
         Self {
             left_path: None,
             right_path: None,
@@ -455,6 +595,11 @@ impl AppState {
             calibration: None,
             playback: Playback::new(),
             bridge: None,
+            scoreboard_packages: discovery.packages,
+            scoreboard_runtime: None,
+            scoreboard_frame: None,
+            scoreboard_frame_dirty: false,
+            scoreboard_error,
             recording_tx: None,
             recording_thread: None,
             recording_path: None,
@@ -521,8 +666,86 @@ impl AppState {
         self.export_thread.is_some()
     }
 
+    fn configure_scoreboard(&mut self, enabled: bool, selected_index: usize) {
+        self.scoreboard_runtime = None;
+        self.scoreboard_frame = None;
+        self.scoreboard_frame_dirty = false;
+        if let Some(bridge) = self.bridge.as_mut() {
+            bridge.clear_overlay();
+        }
+        self.preview_dirty = true;
+        if !enabled {
+            self.scoreboard_error.clear();
+            return;
+        }
+        let Some(package) = self.scoreboard_packages.get(selected_index).cloned() else {
+            self.scoreboard_error = "No valid scoreboard package is installed".into();
+            return;
+        };
+        match reco_scoreboard::ScoreboardRuntime::start(package, 30) {
+            Ok(runtime) => {
+                self.scoreboard_runtime = Some(runtime);
+                self.scoreboard_error.clear();
+            }
+            Err(error) => {
+                self.scoreboard_error = error.to_string();
+                log::error!("Cannot enable scoreboard: {error}");
+            }
+        }
+    }
+
+    /// Poll the independent HTML worker and upload only a changed RGBA frame.
+    fn poll_scoreboard_overlay(&mut self) -> bool {
+        let frame_result = self
+            .scoreboard_runtime
+            .as_mut()
+            .map(OverlayFrameSource::try_frame);
+        match frame_result {
+            None | Some(Ok(None)) => {}
+            Some(Ok(Some(frame))) => {
+                self.scoreboard_frame = Some(frame);
+                self.scoreboard_frame_dirty = true;
+            }
+            Some(Err(error)) => {
+                self.scoreboard_error = error;
+                log::error!("Disabling scoreboard: {}", self.scoreboard_error);
+                self.scoreboard_runtime = None;
+                self.scoreboard_frame = None;
+                self.scoreboard_frame_dirty = false;
+                if let Some(bridge) = self.bridge.as_mut() {
+                    bridge.clear_overlay();
+                }
+                return true;
+            }
+        }
+
+        if !self.scoreboard_frame_dirty {
+            return false;
+        }
+        let (Some(frame), Some(bridge)) = (self.scoreboard_frame.as_ref(), self.bridge.as_mut())
+        else {
+            return false;
+        };
+        match bridge.set_overlay_frame(frame) {
+            Ok(()) => {
+                self.scoreboard_frame_dirty = false;
+                true
+            }
+            Err(error) => {
+                self.scoreboard_error = format!("Cannot upload scoreboard: {error}");
+                log::error!("{}", self.scoreboard_error);
+                self.scoreboard_runtime = None;
+                self.scoreboard_frame = None;
+                self.scoreboard_frame_dirty = false;
+                bridge.clear_overlay();
+                true
+            }
+        }
+    }
+
     fn reset_pipeline(&mut self) {
         self.bridge = None;
+        self.scoreboard_frame_dirty = self.scoreboard_frame.is_some();
         self.playback = Playback::new();
         self.pose = PoseControl::new(PoseControlConfig {
             drag_deg_per_pixel: DRAG_DEG_PER_PIXEL,
@@ -1492,6 +1715,18 @@ fn main() -> anyhow::Result<()> {
         );
     }
     app.set_available_codecs(slint::ModelRc::new(slint::VecModel::from(codecs)));
+
+    // The selector is manifest-driven; no sport name is compiled into Rust.
+    {
+        let s = state.borrow();
+        let names = s
+            .scoreboard_packages
+            .iter()
+            .map(|package| package.manifest.name.clone().into())
+            .collect::<Vec<slint::SharedString>>();
+        app.set_available_scoreboards(slint::ModelRc::new(slint::VecModel::from(names)));
+        app.set_scoreboard_error_text(s.scoreboard_error.clone().into());
+    }
 
     // Seed recording and preview settings from persisted preferences.
     {
@@ -2474,6 +2709,72 @@ fn main() -> anyhow::Result<()> {
         let mut s = state_ref.borrow_mut();
         s.user_settings.preview_aspect = aspect.to_string();
         s.user_settings.save();
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_changed_scoreboard(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let mut s = state_ref.borrow_mut();
+        s.configure_scoreboard(
+            app.get_scoreboard_enabled(),
+            app.get_scoreboard_current_index().max(0) as usize,
+        );
+        app.set_scoreboard_error_text(s.scoreboard_error.clone().into());
+        app.set_scoreboard_editor_available(
+            s.scoreboard_runtime
+                .as_ref()
+                .and_then(reco_scoreboard::ScoreboardRuntime::editor_url)
+                .is_some(),
+        );
+        let network_editor_url = s
+            .scoreboard_runtime
+            .as_ref()
+            .and_then(reco_scoreboard::ScoreboardRuntime::network_editor_url);
+        sync_scoreboard_share(&app, network_editor_url);
+    });
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_edit_scoreboard(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let editor_url = state_ref
+            .borrow()
+            .scoreboard_runtime
+            .as_ref()
+            .and_then(reco_scoreboard::ScoreboardRuntime::editor_url)
+            .map(str::to_owned);
+        let Some(editor_url) = editor_url else {
+            app.set_scoreboard_error_text("This scoreboard has no editor".into());
+            return;
+        };
+        if let Err(error) = open::that(&editor_url) {
+            let message = format!("Cannot open scoreboard editor: {error}");
+            state_ref.borrow_mut().scoreboard_error.clone_from(&message);
+            app.set_scoreboard_error_text(message.into());
+        }
+    });
+
+    let app_weak = app.as_weak();
+    app.on_copy_scoreboard_share(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let url = app.get_scoreboard_share_url().to_string();
+        if url.is_empty() {
+            return;
+        }
+        if let Err(error) =
+            arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(url))
+        {
+            app.set_scoreboard_error_text(
+                format!("Cannot copy scoreboard address: {error}").into(),
+            );
+        }
     });
 
     // ── Auto-calibration callback ──
@@ -3475,6 +3776,17 @@ fn main() -> anyhow::Result<()> {
         } else {
             None
         };
+        let scoreboard_package = if app.get_scoreboard_enabled() {
+            s.scoreboard_packages
+                .get(app.get_scoreboard_current_index().max(0) as usize)
+                .cloned()
+        } else {
+            None
+        };
+        let scoreboard_state = s
+            .scoreboard_runtime
+            .as_ref()
+            .and_then(reco_scoreboard::ScoreboardRuntime::current_editor_state);
 
         // Persist the user's codec / quality / blend choices as the
         // defaults for next session. Model path is saved in the
@@ -3506,6 +3818,7 @@ fn main() -> anyhow::Result<()> {
         // Release the preview pipeline so its VRAM is free for the export;
         // rebuilt on completion. run_export uses its own source.
         log::info!("Releasing preview GPU pipeline to free VRAM for export");
+        s.scoreboard_runtime = None;
         s.reset_pipeline();
 
         app.set_export_error_text("".into());
@@ -3535,6 +3848,8 @@ fn main() -> anyhow::Result<()> {
                 start_secs,
                 end_secs,
                 autocam,
+                scoreboard_package,
+                scoreboard_state,
                 app_weak_bg,
                 &interrupted,
                 last_progress_at,
@@ -3740,6 +4055,11 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
                 if let Some(app) = app_weak.upgrade() {
+                    s.configure_scoreboard(
+                        app.get_scoreboard_enabled(),
+                        app.get_scoreboard_current_index().max(0) as usize,
+                    );
+                    app.set_scoreboard_error_text(s.scoreboard_error.clone().into());
                     app.set_export_in_progress(false);
                     app.set_export_progress(0.0);
                     match outcome {
@@ -4002,6 +4322,24 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
     let mut s = state.borrow_mut();
     if s.is_exporting() {
         return false;
+    }
+
+    if s.poll_scoreboard_overlay() {
+        s.preview_dirty = true;
+    }
+    if let Some(app) = app_weak.upgrade() {
+        app.set_scoreboard_error_text(s.scoreboard_error.clone().into());
+        app.set_scoreboard_editor_available(
+            s.scoreboard_runtime
+                .as_ref()
+                .and_then(reco_scoreboard::ScoreboardRuntime::editor_url)
+                .is_some(),
+        );
+        let network_editor_url = s
+            .scoreboard_runtime
+            .as_ref()
+            .and_then(reco_scoreboard::ScoreboardRuntime::network_editor_url);
+        sync_scoreboard_share(&app, network_editor_url);
     }
 
     // Adaptive preview: resize render target to match the preview

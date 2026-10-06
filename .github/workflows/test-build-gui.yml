@@ -73,6 +73,7 @@ jobs:
           New-Item -ItemType Directory -Path $staging | Out-Null
           Copy-Item "target\x86_64-pc-windows-msvc\release\reco-gui.exe" "$staging\"
           Copy-Item LICENSE "$staging\"
+          Copy-Item scoreboards "$staging\scoreboards" -Recurse
           Copy-Item "$env:FFMPEG_DLL_DIR\*.dll" "$staging\"
           Copy-Item "$env:ORT_DLL" "$staging\"
           Copy-Item "$env:DML_DLL" "$staging\"

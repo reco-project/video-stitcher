@@ -1,0 +1,49 @@
+(function americanfootballScoreboard() {
+    "use strict";
+    const specification = { period: (value, count) => "Q" + value + " / " + count, detail: (state) => "DOWN " + (state.sport.down ?? 1) + " · " + (state.sport.yardsToGo ?? 10) + " TO GO · BALL " + (state.sport.ballOn ?? "-"), scoreAmounts: [1,2,3,6], scoreLabels: {1:"PAT",2:"Safety",3:"Field goal",6:"Touchdown"}, fields: [["Quarters","sport.periodCount","number"],["Quarter length (min)","sport.periodDurationMinutes","number"],["Down","sport.down","number"],["Yards to go","sport.yardsToGo","number"],["Ball on","sport.ballOn","number"],["Play clock","sport.playClock","number"],["Possession","sport.possession","text"],["Home timeouts","sport.timeoutsHome","number"],["Away timeouts","sport.timeoutsAway","number"]], clockDirection: -1 };
+    const fallbackState = {version:1,game:{competition:"Regional American Football League",clock:"04:18",period:2,running:false,status:"live"},home:{name:"Springfield Falcons",shortName:"FALCONS",score:21,color:"#0057a8",secondaryColor:"#fff",logo:"assets/springfield-falcons.svg"},away:{name:"Springfield Lions",shortName:"LIONS",score:17,color:"#cf2027",secondaryColor:"#fff",logo:"assets/springfield-lions.svg"},sport:{sportId:"american-football",periodCount:4,periodDurationMinutes:15,down:2,yardsToGo:7,ballOn:42,playClock:18,possession:"FALCONS",timeoutsHome:2,timeoutsAway:1},custom:{scoreboard:{x:430,y:120,scale:.62},freeText:{text:"created with",x:1640,y:940,scale:1,color:"#fff",visible:true},freeLogo:{src:"assets/reco-logo.png",x:1800,y:1005,scale:0.8,visible:true}}};
+    const elements = { board: document.querySelector(".scoreboard"), competition: document.querySelector("#competition"), status: document.querySelector("#status"), homeName: document.querySelector("#home-name"), awayName: document.querySelector("#away-name"), homeScore: document.querySelector("#home-score"), awayScore: document.querySelector("#away-score"), homeLogo: document.querySelector("#home-logo"), awayLogo: document.querySelector("#away-logo"), clock: document.querySelector("#clock"), period: document.querySelector("#period"), detail: document.querySelector("#detail"), customText: document.querySelector("#custom-text"), customLogo: document.querySelector("#custom-logo"), debug: document.querySelector("#debug-controls"), message: document.querySelector("#message"), editorStatus: document.querySelector("#editor-status") };
+    const query = new URLSearchParams(location.search);
+    const editorMode = query.get("debug") === "1";
+    const editorToken = query.get("recoEditorToken");
+    let debugState = structuredClone(fallbackState);
+    let timer = null;
+    function pathGet(target, path) { return path.split(".").reduce((value, key) => value?.[key], target); }
+    function pathSet(target, path, value) { const keys = path.split("."); const leaf = keys.pop(); const parent = keys.reduce((current, key) => current[key] ??= {}, target); parent[leaf] = value; }
+    function inputValue(input) { return input.type === "checkbox" ? input.checked : input.type === "number" ? Number(input.value) || 0 : input.value; }
+    function normalize(input) { const source = input && typeof input === "object" ? input : {}; return { ...structuredClone(fallbackState), ...source, game: { ...fallbackState.game, ...(source.game || {}) }, home: { ...fallbackState.home, ...(source.home || {}) }, away: { ...fallbackState.away, ...(source.away || {}) }, sport: { ...fallbackState.sport, ...(source.sport || {}) }, custom: { ...fallbackState.custom, ...(source.custom || {}), scoreboard: { ...fallbackState.custom.scoreboard, ...(source.custom?.scoreboard || {}) }, freeText: { ...fallbackState.custom.freeText, ...(source.custom?.freeText || {}) }, freeLogo: { ...fallbackState.custom.freeLogo, ...(source.custom?.freeLogo || {}) } } }; }
+    function setPosition(element, config, defaultX, defaultY, defaultScale) { const x = Number(config?.x) || defaultX; const y = Number(config?.y) || defaultY; const scale = Math.min(3, Math.max(.5, Number(config?.scale) || defaultScale)); element.style.left = x / 1920 * 100 + "%"; element.style.top = y / 1080 * 100 + "%"; element.style.transform = "translate(-50%, 0) scale(" + scale + ")"; }
+    function assetUrl(value) { return value && (value.startsWith("data:") || value.startsWith("http") || value.startsWith("/") || value.includes("/")) ? value : value ? "assets/" + value : ""; }
+    function renderPlacement(state) { setPosition(elements.board, state.custom.scoreboard, 430, 120, .62); setPosition(elements.customText, state.custom.freeText, 1640, 1005, 1); setPosition(elements.customLogo, state.custom.freeLogo, 1800, 940, .8); elements.customText.textContent = state.custom.freeText.text || ""; elements.customText.hidden = state.custom.freeText.visible === false || !state.custom.freeText.text; elements.customLogo.src = assetUrl(state.custom.freeLogo.src); elements.customLogo.hidden = state.custom.freeLogo.visible === false || !state.custom.freeLogo.src; }
+    function applyTheme(state) { const theme = ["minimal","bauhaus","playful","classic"].includes(state.custom?.theme) ? state.custom.theme : "minimal"; for (const name of ["minimal","bauhaus","playful","classic"]) elements.board.classList.toggle("theme-" + name, name === theme); }
+    function applyTypography(state) {
+        const typography = state.custom?.typography || {};
+        const defaults = {fontFamily:"Inter",fontSize:18,fontWeight:"700",fontStyle:"normal",color:"#fff"};
+        const targets = {
+            competition: [elements.competition], teamNames: [elements.homeName, elements.awayName], teamLabels: [...document.querySelectorAll(".team .label")],
+            scores: [elements.homeScore, elements.awayScore], clock: [elements.clock], period: [elements.period], detail: [elements.detail], freeText: [elements.customText]
+        };
+        for (const [target, targetElements] of Object.entries(targets)) {
+            const config = {...defaults, ...(typography[target] || {})};
+            for (const element of targetElements) if (element) { element.style.fontFamily=config.fontFamily; element.style.fontSize=(Number(config.fontSize)||18)+"px"; element.style.fontWeight=config.fontWeight; element.style.fontStyle=config.fontStyle; element.style.color=config.color; }
+        }
+    }
+    function render(state) { elements.competition.textContent = state.game.competition || ""; elements.status.textContent = String(state.game.status || "live").toUpperCase(); elements.status.className = "status " + (state.game.status || "live"); elements.homeName.textContent = state.home.shortName || state.home.name || "HOME"; elements.awayName.textContent = state.away.shortName || state.away.name || "AWAY"; elements.homeScore.textContent = Number(state.home.score) || 0; elements.awayScore.textContent = Number(state.away.score) || 0; elements.clock.textContent = state.game.clock || "00:00"; elements.period.textContent = specification.period(state.game.period || 1, state.sport.periodCount || 1); elements.detail.textContent = specification.detail(state); elements.homeLogo.src = assetUrl(state.home.logo); elements.awayLogo.src = assetUrl(state.away.logo); elements.homeLogo.hidden = !state.home.logo; elements.awayLogo.hidden = !state.away.logo; elements.board.style.setProperty("--home-color", state.home.color || "#0057a8"); elements.board.style.setProperty("--away-color", state.away.color || "#cf2027"); applyTheme(state); applyTypography(state); renderPlacement(state); renderInputs(state); }
+    function renderInputs(state) { for (const input of elements.debug.querySelectorAll("[data-bind]")) { if (document.activeElement === input) continue; const value = pathGet(state, input.dataset.bind); if (input.type === "checkbox") input.checked = Boolean(value); else input.value = value ?? ""; } }
+    function renderFields() { }
+    function publishRemote(state) { if (!editorToken) return; fetch("/__reco/editor-state", { method:"PUT", headers:{"Content-Type":"application/json","X-Reco-Editor-Token":editorToken}, body:JSON.stringify(state) }).catch(() => {}); }
+    function publish() { if (window.RecoScoreboard?.update) RecoScoreboard.update(debugState); publishRemote(debugState); }
+    function parseClock(value) { const match = String(value || "00:00").match(/^(\d+):(\d{2})$/); return match ? Number(match[1]) * 60 + Number(match[2]) : 0; }
+    function formatClock(seconds) { const safe = Math.max(0, Math.floor(seconds)); return String(Math.floor(safe / 60)).padStart(2,"0") + ":" + String(safe % 60).padStart(2,"0"); }
+    function tick() { if (!debugState.game.running) return; const seconds = parseClock(debugState.game.clock) + specification.clockDirection; debugState.game.clock = formatClock(seconds); render(debugState); publishRemote(debugState); }
+    function score(team, amount) { debugState[team].score = Math.max(0, Number(debugState[team].score || 0) + Number(amount)); render(debugState); publish(); }
+    elements.debug.querySelectorAll("[data-bind]").forEach((input) => input.addEventListener("input", (event) => { pathSet(debugState, event.target.dataset.bind, inputValue(event.target)); render(debugState); publish(); }));
+    elements.debug.querySelectorAll("[data-score-team]").forEach((button) => button.addEventListener("click", () => score(button.dataset.scoreTeam, button.dataset.scoreAmount)));
+    document.querySelector("#reset-state").addEventListener("click", () => { debugState = structuredClone(fallbackState); render(debugState); publish(); });
+    document.querySelector("#publish-state").addEventListener("click", () => { publish(); elements.message.textContent = "Published"; });
+    if (editorMode) elements.debug.hidden = false;
+    Reco.onUpdate((nextState) => { debugState = normalize(nextState); render(debugState); });
+    timer = window.setInterval(tick, 1000);
+    render(debugState);
+    Reco.ready();
+})();

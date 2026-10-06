@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "handball",
+  "name": "Handball",
+  "sport": "handball",
+  "version": "1.0.0",
+  "author": "Reco Community",
+  "description": "Reference handball scoreboard with halves, timeouts, suspensions and seven-metre goals.",
+  "entry": "index.html",
+  "editor": "index.html?debug=1",
+  "viewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "transparent": true,
+  "updateApiVersion": 1
+}
