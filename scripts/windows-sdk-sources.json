@@ -1,0 +1,198 @@
+{
+  "toolchain_image": "ghcr.io/btbn/ffmpeg-builds/win64-gpl-shared-9.0@sha256:e6738cf07c5607353552e8df94e6293604f2af5307898df7ae8c93e2e8e90645",
+  "upstream_build": "https://github.com/BtbN/FFmpeg-Builds/actions/runs/37207441721/job/111479566601",
+  "sources": [
+    {
+      "name": "btbn",
+      "revision": "9acad4a9ef1583096af7836cc1e9c8cbcb4d3950",
+      "url": "https://codeload.github.com/BtbN/FFmpeg-Builds/tar.gz/9acad4a9ef1583096af7836cc1e9c8cbcb4d3950",
+      "archive": "btbn.tar.gz",
+      "sha256": "27dca8db7b2466b6f5145168721264de91dc9b56f50bebc441249f92e4acf548",
+      "prefix": "FFmpeg-Builds-9acad4a9ef1583096af7836cc1e9c8cbcb4d3950",
+      "required_notices": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "nv-codec-headers",
+      "revision": "12.1.14.0",
+      "url": "https://codeload.github.com/FFmpeg/nv-codec-headers/tar.gz/refs/tags/n12.1.14.0",
+      "archive": "nv-codec-headers.tar.gz",
+      "sha256": "2fefaa227d2a3b4170797796425a59d1dd2ed5fd231db9b4244468ba327acd0b",
+      "prefix": "nv-codec-headers-n12.1.14.0",
+      "required_notices": [
+        "README",
+        "include/ffnvcodec/dynlink_cuda.h",
+        "include/ffnvcodec/dynlink_cuviddec.h",
+        "include/ffnvcodec/dynlink_loader.h",
+        "include/ffnvcodec/dynlink_nvcuvid.h",
+        "include/ffnvcodec/nvEncodeAPI.h"
+      ]
+    },
+    {
+      "name": "zlib",
+      "revision": "767c4c947852e143f582c85f14cf573411df1b35",
+      "url": "https://codeload.github.com/madler/zlib/tar.gz/767c4c947852e143f582c85f14cf573411df1b35",
+      "archive": "zlib.tar.gz",
+      "sha256": "cafa75b907cd067b471fba32a2772c010a859086241ef70d3d57eda6aeea3a64",
+      "prefix": "zlib-767c4c947852e143f582c85f14cf573411df1b35",
+      "required_notices": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "xz",
+      "revision": "3b1efb04d17c3a9ef7f473d73af13f1531428ffe",
+      "url": "https://codeload.github.com/tukaani-project/xz/tar.gz/3b1efb04d17c3a9ef7f473d73af13f1531428ffe",
+      "archive": "xz.tar.gz",
+      "sha256": "0d35404f5e2bf0042523945b9fc10ab1c653fc7d96905e2c3179961a4a128b5f",
+      "prefix": "xz-3b1efb04d17c3a9ef7f473d73af13f1531428ffe",
+      "required_notices": [
+        "COPYING"
+      ]
+    },
+    {
+      "name": "vmaf",
+      "revision": "86da14d0306a138fd3f01319860b905169746516",
+      "url": "https://codeload.github.com/Netflix/vmaf/tar.gz/86da14d0306a138fd3f01319860b905169746516",
+      "archive": "vmaf.tar.gz",
+      "sha256": "bd8f96d1fbc0aceaf0aa9d0a2f3d3f01f8f7ab8df95023f914d21d70dddb7dcb",
+      "prefix": "vmaf-86da14d0306a138fd3f01319860b905169746516",
+      "required_notices": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "libvpl",
+      "revision": "674d015bcb294bc39fa276e99a652ea045423e82",
+      "url": "https://codeload.github.com/intel/libvpl/tar.gz/674d015bcb294bc39fa276e99a652ea045423e82",
+      "archive": "libvpl.tar.gz",
+      "sha256": "9d5d3c221b9d41468e04add6855cf5eec6df06dae7be649f84e1f846c98e38fb",
+      "prefix": "libvpl-674d015bcb294bc39fa276e99a652ea045423e82",
+      "required_notices": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "amf",
+      "revision": "6277e353fd625121a8f627b1d0540323ef372a49",
+      "url": "https://codeload.github.com/GPUOpen-LibrariesAndSDKs/AMF/tar.gz/6277e353fd625121a8f627b1d0540323ef372a49",
+      "archive": "amf.tar.gz",
+      "sha256": "b4c489025e1e0da9890ac7134252604a9b9c9f314a6048393d46826294e77d09",
+      "prefix": "AMF-6277e353fd625121a8f627b1d0540323ef372a49",
+      "required_notices": [
+        "LICENSE.txt"
+      ]
+    },
+    {
+      "name": "x265",
+      "revision": "020d7054dbecfd3be8e62efe33ff8a305d41856e",
+      "url": "https://codeload.github.com/Multicorewareinc/x265/tar.gz/020d7054dbecfd3be8e62efe33ff8a305d41856e",
+      "archive": "x265.tar.gz",
+      "sha256": "ade2fd082d1a3d7adf89bb38eb54a5cbf6aad6c1c7ed130c89c7bf2cd626484d",
+      "prefix": "x265-020d7054dbecfd3be8e62efe33ff8a305d41856e",
+      "required_notices": [
+        "COPYING"
+      ]
+    },
+    {
+      "name": "ct-ng",
+      "revision": "b1a94f65c5187d99037a4e2f57aefbdf995a9677",
+      "url": "https://codeload.github.com/crosstool-ng/crosstool-ng/tar.gz/b1a94f65c5187d99037a4e2f57aefbdf995a9677",
+      "archive": "ct-ng.tar.gz",
+      "sha256": "6959db2607dd9f5725e29cb8f371e4d5956ba0ecbc42baf3fbf61982163b5899",
+      "prefix": "crosstool-ng-b1a94f65c5187d99037a4e2f57aefbdf995a9677",
+      "required_notices": [
+        "COPYING"
+      ]
+    },
+    {
+      "name": "mingw-std-threads",
+      "revision": "c931bac289dd431f1dd30fc4a5d1a7be36668073",
+      "url": "https://codeload.github.com/meganz/mingw-std-threads/tar.gz/c931bac289dd431f1dd30fc4a5d1a7be36668073",
+      "archive": "mingw-std-threads.tar.gz",
+      "sha256": "bba362a5fd537ecd223239efa1f7e7c570018e6d5ea7b26cc0515d3ede9da5ad",
+      "prefix": "mingw-std-threads-c931bac289dd431f1dd30fc4a5d1a7be36668073",
+      "required_notices": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "aom",
+      "revision": "b4ce2cd097b00921b0327bfb5f07b5f8361ade99",
+      "url": "https://aomedia.googlesource.com/aom/+archive/b4ce2cd097b00921b0327bfb5f07b5f8361ade99.tar.gz",
+      "archive": "aom.tar.gz",
+      "sha256": "b887698e46a3ce07197758454753c0f5de9794cb41ff7c4a9eede09b30bb7257",
+      "prefix": "",
+      "required_notices": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "x264",
+      "revision": "0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee",
+      "url": "https://code.videolan.org/videolan/x264/-/archive/0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee/x264-0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee.tar.gz",
+      "archive": "x264.tar.gz",
+      "sha256": "d0967a1348c85dfde363bb52610403be898171493100561efa0dd05d5fd1ae50",
+      "prefix": "x264-0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee",
+      "required_notices": [
+        "COPYING"
+      ]
+    },
+    {
+      "name": "dav1d",
+      "revision": "9711965b60bb692ae24004659acf61f5c7d9ed61",
+      "url": "https://code.videolan.org/videolan/dav1d/-/archive/9711965b60bb692ae24004659acf61f5c7d9ed61/dav1d-9711965b60bb692ae24004659acf61f5c7d9ed61.tar.gz",
+      "archive": "dav1d.tar.gz",
+      "sha256": "d4956d2a926011e242659e0d0e21b0213d61e14e853fa5585a8b79b2a0f115ba",
+      "prefix": "dav1d-9711965b60bb692ae24004659acf61f5c7d9ed61",
+      "required_notices": [
+        "COPYING"
+      ]
+    },
+    {
+      "name": "svt-av1",
+      "revision": "5ed9ffbcb5086da23f30fe9bc5b00145358462da",
+      "url": "https://gitlab.com/AOMediaCodec/SVT-AV1/-/archive/5ed9ffbcb5086da23f30fe9bc5b00145358462da/SVT-AV1-5ed9ffbcb5086da23f30fe9bc5b00145358462da.tar.gz",
+      "archive": "svt-av1.tar.gz",
+      "sha256": "30137902c7d3f30e04f8b0d8a37a459a9ee26fb8877797418a409897ed3cbe65",
+      "prefix": "SVT-AV1-5ed9ffbcb5086da23f30fe9bc5b00145358462da",
+      "required_notices": [
+        "LICENSE.md"
+      ]
+    },
+    {
+      "name": "mingw-w64",
+      "revision": "57b595039040eaa15bece85b7cc71d952281b269",
+      "url": "https://codeload.github.com/mingw-w64/mingw-w64/tar.gz/57b595039040eaa15bece85b7cc71d952281b269",
+      "archive": "mingw-w64.tar.gz",
+      "sha256": "a68816e314290facd5da1ac96c7eead7e6de6ea4f709a1fbdcf8185497c57eb2",
+      "prefix": "mingw-w64-57b595039040eaa15bece85b7cc71d952281b269",
+      "required_notices": [
+        "COPYING"
+      ]
+    },
+    {
+      "name": "mingw-w64-base",
+      "revision": "v14.0.0",
+      "url": "https://codeload.github.com/mingw-w64/mingw-w64/tar.gz/refs/tags/v14.0.0",
+      "archive": "mingw-w64-base.tar.gz",
+      "sha256": "d71cc644cd5a37c337f2719f3e0c79d89e8d8d5fb9e2952a62d3fa23623dc137",
+      "prefix": "mingw-w64-14.0.0",
+      "required_notices": [
+        "COPYING"
+      ]
+    },
+    {
+      "name": "gcc",
+      "revision": "16.2.0",
+      "url": "https://mirrors.kernel.org/gnu/gcc/gcc-16.2.0/gcc-16.2.0.tar.xz",
+      "archive": "gcc.tar.xz",
+      "sha256": "e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e",
+      "prefix": "gcc-16.2.0",
+      "required_notices": [
+        "COPYING.RUNTIME"
+      ]
+    }
+  ]
+}

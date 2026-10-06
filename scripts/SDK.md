@@ -1,4 +1,4 @@
-# Native FFmpeg SDK and Linux packaging checks
+# Native FFmpeg SDK and packaging checks
 
 `ffmpeg-sdk.json` selects the native source release, checksum and explicit Linux build features. Rust's `ffmpeg-next` version does not select the native library version. The SDK builder installs only into a new caller-provided directory; it does not modify system FFmpeg or drivers. Source builds of Reco can still use their own native libraries.
 
@@ -40,3 +40,34 @@ The Linux x86-64 path in [Release](../.github/workflows/release.yml) uses the sa
 Before creating the three Linux archives, the release path hides its original SDK and checks relocated loader resolution, the CLI export oracle and mandatory CPU ONNX inference. GUI loader checks are not an interactive preview/export test, and these checks do not establish every graphics-driver combination. The source archive must remain distributed alongside the two binary archives. The native ARM cross-build, Windows and macOS paths use their own packaging recipes.
 
 The `ffmpeg-sdk` job in [Rust CI](../.github/workflows/rust.yml) builds the pinned SDK and CLI on Ubuntu 24.04, stages notices and retrieves matching dependency sources, and tests the relocated runtime and CLI export while the original SDK path is unavailable. It explicitly executes the FIFO recovery regression and the mandatory CPU identity-model inference test in `ort_session::provider_tests`; the latter fails instead of skipping if ONNX cannot load. The verifier clears `ORT_*` and loader overrides. These checks do not certify GPU inference or GUI interaction. This runner choice defines the test environment, not a new minimum OS for all Reco consumers. The SDK cache includes the build recipe and installed package fingerprint.
+
+## Windows cross-build inputs
+
+`windows-sdk-sources.json` pins the Windows cross-toolchain image by digest and records the dependency source revisions, archive checksums and required notices. Its upstream build link records the recipe commit and exported image digest. The FFmpeg source pin is shared with `ffmpeg-sdk.json`. The compiler runtime sources, crosstool patches and upstream dependency build scripts accompany the codec sources; AMD and NVIDIA headers are included without redistributing graphics drivers.
+
+```sh
+python3 scripts/fetch_windows_sources.py --cache /tmp/reco-windows-source-cache --output /tmp/reco-windows-sources
+```
+
+The collector supports `--offline` for a populated cache. It verifies every archive before collecting regular notice files, retains the complete original archives and publishes only a complete output directory. It never follows source archive links when collecting notices. Required notice paths are explicit, including header-embedded NVIDIA notices. `test_windows_sources.py` covers modified archives, omitted or modified notice receipts, unsafe archive paths, missing inputs and preservation of existing outputs. Collected source archives are not executed by the collector.
+
+Run `build_windows_ffmpeg_sdk.py` inside the manifest's Linux cross-toolchain image, with the scripts and collected sources mounted read-only and a separate writable work directory:
+
+```sh
+python3 /recipe/build_windows_ffmpeg_sdk.py --sources /sources --work-dir /work/build --prefix /work/sdk --jobs 2
+```
+
+The builder needs no network. It rechecks the source and notice receipts, installs the pinned NVIDIA headers in its private build directory, and uses explicit FFmpeg features rather than the image's broad default configuration. Host compiler/include flags are not inherited. MSVC import libraries are placed in `lib`, where `ffmpeg-sys-next` searches; runtime DLLs stay in `bin`. `share/reco-ffmpeg` contains notices, the source receipt, build configuration and hashes of SDK outputs. The separate collected source directory must accompany redistribution of this SDK.
+
+The reusable [Windows SDK workflow](../.github/workflows/windows-sdk.yml) builds inside the digest-pinned image with no network, a read-only root, two CPUs and a 6 GiB memory limit. Cache identity includes both manifests and build/collection scripts. SDK and corresponding-source artifacts are separate. The [Windows setup action](../.github/actions/windows-desktop-sdk/action.yml) checks recipe identity, required import libraries and receipt-named bytes before exporting `FFMPEG_DIR`. Release and test builds use this shared path instead of selecting a floating upstream download.
+
+`stage_windows_desktop.py` requires the application, verified SDK and the checksum-pinned ONNX Runtime/DirectML packages from `windows-desktop.json`. It copies the x64 runtime DLLs, FFmpeg tools, component licenses and notices into a fresh directory, recording output hashes in `files.json`. Only selected NuGet members are read, not the full multi-platform package. `test_windows_desktop.py` exercises missing DLLs/notices, corrupt SDK/archive bytes, absent offline runtimes and preservation of existing outputs. Both Windows applications must build and stage successfully in the release workflow; its matching FFmpeg source archive accompanies the binary archives. Intermediate SDK artifacts are excluded from release asset selection.
+
+```sh
+python scripts/stage_windows_desktop.py --sdk C:/sdk --verify-only
+python scripts/stage_windows_desktop.py target/release/reco.exe --sdk C:/sdk --runtime-cache C:/runtime-cache --output C:/reco-package
+```
+
+Windows drivers and the Microsoft Visual C++ runtime remain platform prerequisites. Staging is not a transitive PE dependency audit, hardware acceptance, GUI interaction test or a complete license audit of statically linked Rust dependencies. These checks do not certify a desktop release or bit-for-bit reproducibility.
+
+The [Windows package verification action](../.github/actions/verify-windows-desktop/action.yml) reuses `verify_ffmpeg_bundle.py` for codec/protocol checks and the CPU colour export oracle. It checks the packaged file receipt, restricts child `PATH` to the package and Windows system directory, and clears FFmpeg/ORT loader overrides. It also requires the native identity-model inference test to execute successfully with the packaged ONNX runtime. A GUI-only bundle exercises native runtimes but does not launch or validate the GUI; hardware decode/encode and interactive preview need native acceptance separately.

@@ -12,7 +12,13 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  windows-sdk:
+    uses: ./.github/workflows/windows-sdk.yml
+
   build:
+    needs: windows-sdk
+    # A failed Windows SDK must not suppress the independent Unix packages.
+    if: always() && !cancelled()
     name: Build (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -56,7 +62,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
-          key: release-${{ matrix.target }}-${{ matrix.name == 'linux-x86_64' && hashFiles('scripts/ffmpeg-sdk.json', 'scripts/build_ffmpeg_sdk.py') || 'system' }}
+          key: release-${{ matrix.target }}-${{ matrix.name == 'linux-x86_64' && hashFiles('scripts/ffmpeg-sdk.json', 'scripts/build_ffmpeg_sdk.py') || matrix.name == 'windows-x86_64' && hashFiles('scripts/ffmpeg-sdk.json', 'scripts/windows-sdk-sources.json', 'scripts/build_windows_ffmpeg_sdk.py', 'scripts/fetch_windows_sources.py') || 'system' }}
 
       # ----------------------------------------------------------------
       # Linux x86_64 (native) dependencies
@@ -129,46 +135,9 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ffmpeg pkg-config
 
-      # ----------------------------------------------------------------
-      # Windows dependencies
-      #
-      # Downloads pre-built FFmpeg shared libraries from BtbN/FFmpeg-Builds.
-      # The "latest" tag always points to the most recent nightly build.
-      # For reproducible releases, pin to a specific BtbN release tag.
-      #
-      # KNOWN LIMITATION: No Windows ARM64 release build. There are no
-      # widely available FFmpeg development libraries for aarch64-pc-windows-msvc.
-      # The CI workflow runs cargo check for Windows ARM64 (reco-core only).
-      # ----------------------------------------------------------------
-      # Pinned to a specific BtbN autobuild snapshot + the n7.1 stable
-      # branch (not master/nightly) so Windows release binaries are
-      # reproducible across builds. n7.1 is ABI-compatible with
-      # ffmpeg-next 8.x. When bumping: check
-      # https://github.com/BtbN/FFmpeg-Builds/releases for a newer
-      # autobuild tag and update both the TAG and the version-specific
-      # filename together.
-      - name: Install FFmpeg (Windows)
+      - name: Set up pinned Windows desktop SDK
         if: runner.os == 'Windows'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Resolve the newest BtbN autobuild carrying an n7.1
-          # win64-gpl-shared zip; a hard-pinned tag 404s once BtbN GCs it.
-          $headers = @{ 'User-Agent' = 'reco-ci'; 'Authorization' = "Bearer $env:GH_TOKEN" }
-          $releases = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases?per_page=15"
-          $asset = $null
-          foreach ($r in $releases) {
-            $asset = $r.assets | Where-Object { $_.name -like "*n7.1*win64-gpl-shared*.zip" } | Select-Object -First 1
-            if ($asset) { break }
-          }
-          if (-not $asset) { throw "No n7.1 win64-gpl-shared FFmpeg asset found in recent BtbN autobuilds" }
-          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$env:RUNNER_TEMP\ffmpeg.zip"
-          Expand-Archive -Path "$env:RUNNER_TEMP\ffmpeg.zip" -DestinationPath "$env:RUNNER_TEMP\ffmpeg"
-          $dir = (Get-ChildItem "$env:RUNNER_TEMP\ffmpeg" -Directory | Select-Object -First 1).FullName
-          echo "FFMPEG_DIR=$dir" >> $env:GITHUB_ENV
-          echo "FFMPEG_DLL_DIR=$dir\bin" >> $env:GITHUB_ENV
-          echo "Bundled FFmpeg: $($asset.name)"
+        uses: ./.github/actions/windows-desktop-sdk
 
       # ----------------------------------------------------------------
       # Build
@@ -187,10 +156,16 @@ jobs:
           fi
 
       - name: Build release binaries
-        if: matrix.name != 'linux-x86_64'
+        if: matrix.name != 'linux-x86_64' && runner.os != 'Windows'
         run: |
           cargo build --release --target ${{ matrix.target }} -p reco-cli --features load-dynamic
           cargo build --release --target ${{ matrix.target }} -p reco-gui --features load-dynamic || echo "::warning::reco-gui build failed on ${{ matrix.name }} (cross-compile or missing deps)"
+
+      - name: Build Windows desktop binaries
+        if: runner.os == 'Windows'
+        env:
+          CARGO_BUILD_JOBS: 2
+        run: cargo build --release --locked --target ${{ matrix.target }} -p reco-cli -p reco-gui --features load-dynamic
 
       - name: Build Linux desktop binaries
         if: matrix.name == 'linux-x86_64'
@@ -201,25 +176,6 @@ jobs:
       # ----------------------------------------------------------------
       # ONNX Runtime (bundled for AI detection)
       # ----------------------------------------------------------------
-      - name: Download ONNX Runtime (Windows - DirectML)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $nupkg = "$env:RUNNER_TEMP\ort-dml.nupkg"
-          Invoke-WebRequest -Uri "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime.directml/1.24.4/microsoft.ml.onnxruntime.directml.1.24.4.nupkg" -OutFile $nupkg
-          Expand-Archive -Path $nupkg -DestinationPath "$env:RUNNER_TEMP\ort-dml"
-          $dll = "$env:RUNNER_TEMP\ort-dml\runtimes\win-x64\native\onnxruntime.dll"
-          echo "ORT_DLL=$dll" >> $env:GITHUB_ENV
-          echo "Bundled ONNX Runtime 1.24.4 DirectML ($('{0:N1}' -f ((Get-Item $dll).Length / 1MB)) MB)"
-
-          # DirectML.dll is in a separate NuGet package (not bundled in ORT DirectML).
-          $dmlPkg = "$env:RUNNER_TEMP\directml.nupkg"
-          Invoke-WebRequest -Uri "https://api.nuget.org/v3-flatcontainer/microsoft.ai.directml/1.15.4/microsoft.ai.directml.1.15.4.nupkg" -OutFile $dmlPkg
-          Expand-Archive -Path $dmlPkg -DestinationPath "$env:RUNNER_TEMP\directml"
-          $dml = "$env:RUNNER_TEMP\directml\bin\x64-win\DirectML.dll"
-          echo "DML_DLL=$dml" >> $env:GITHUB_ENV
-          echo "Bundled DirectML.dll 1.15.4 ($('{0:N1}' -f ((Get-Item $dml).Length / 1MB)) MB)"
-
       - name: Download ONNX Runtime (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -332,42 +288,44 @@ jobs:
         shell: pwsh
         run: |
           $staging = "reco-cli-${{ github.ref_name }}-${{ matrix.name }}"
-          New-Item -ItemType Directory -Path $staging | Out-Null
-          Copy-Item "target\${{ matrix.target }}\release\${{ matrix.binary }}" "$staging\"
-          Copy-Item LICENSE "$staging\"
-          if (Test-Path "$env:FFMPEG_DLL_DIR") {
-            Copy-Item "$env:FFMPEG_DLL_DIR\*.dll" "$staging\"
-          }
-          if (Test-Path "$env:ORT_DLL") {
-            Copy-Item "$env:ORT_DLL" "$staging\"
-          }
-          if (Test-Path "$env:DML_DLL") {
-            Copy-Item "$env:DML_DLL" "$staging\"
-          }
+          python scripts/stage_windows_desktop.py "target/${{ matrix.target }}/release/${{ matrix.binary }}" --sdk "$env:FFMPEG_DIR" --runtime-cache "$env:RUNNER_TEMP/windows-runtimes" --output $staging
+          if ($LASTEXITCODE -ne 0) { throw 'CLI staging failed' }
+
+      - name: Verify Windows packaged runtime
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/verify-windows-desktop
+        env:
+          CARGO_BUILD_TARGET: ${{ matrix.target }}
+        with:
+          package: reco-cli-${{ github.ref_name }}-${{ matrix.name }}
+
+      - name: Archive verified Windows CLI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $staging = "reco-cli-${{ github.ref_name }}-${{ matrix.name }}"
           Compress-Archive -Path $staging -DestinationPath "$staging.zip"
 
       - name: Package GUI (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $guiBin = "target\${{ matrix.target }}\release\reco-gui.exe"
-          if (Test-Path $guiBin) {
-            $staging = "reco-gui-${{ github.ref_name }}-${{ matrix.name }}"
-            New-Item -ItemType Directory -Path $staging | Out-Null
-            Copy-Item $guiBin "$staging\"
-            Copy-Item LICENSE "$staging\"
-            if (Test-Path "$env:FFMPEG_DLL_DIR") {
-              Copy-Item "$env:FFMPEG_DLL_DIR\*.dll" "$staging\"
-            }
-            # Bundle ONNX Runtime + DirectML for AI detection
-            if (Test-Path "$env:ORT_DLL") {
-              Copy-Item "$env:ORT_DLL" "$staging\"
-            }
-            if (Test-Path "$env:DML_DLL") {
-              Copy-Item "$env:DML_DLL" "$staging\"
-            }
-            Compress-Archive -Path $staging -DestinationPath "$staging.zip"
-          }
+          $staging = "reco-gui-${{ github.ref_name }}-${{ matrix.name }}"
+          python scripts/stage_windows_desktop.py "target/${{ matrix.target }}/release/reco-gui.exe" --sdk "$env:FFMPEG_DIR" --runtime-cache "$env:RUNNER_TEMP/windows-runtimes" --output $staging
+          if ($LASTEXITCODE -ne 0) { throw 'GUI staging failed' }
+          Compress-Archive -Path $staging -DestinationPath "$staging.zip"
+
+      - name: Download Windows corresponding sources
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-ffmpeg-sources
+          path: windows-sources
+
+      - name: Name Windows corresponding sources
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Move-Item windows-sources/windows-ffmpeg-sources.tar.gz "reco-ffmpeg-sources-${{ github.ref_name }}-${{ matrix.name }}.tar.gz"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -388,6 +346,7 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
+          pattern: reco-*
           path: artifacts
           merge-multiple: true
 

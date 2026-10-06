@@ -1,0 +1,68 @@
+name: Windows FFmpeg SDK
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ''
+    outputs:
+      revision:
+        description: Exact source revision used to select the SDK recipe
+        value: ${{ jobs.sdk.outputs.revision }}
+
+permissions:
+  contents: read
+
+jobs:
+  sdk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      revision: ${{ steps.revision.outputs.sha }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.ref }}
+      - id: revision
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        id: cache
+        with:
+          path: sdk-artifacts
+          key: windows-sdk-${{ hashFiles('scripts/ffmpeg-sdk.json', 'scripts/windows-sdk-sources.json', 'scripts/fetch_windows_sources.py', 'scripts/build_windows_ffmpeg_sdk.py') }}
+      - name: Build pinned SDK and collect corresponding sources
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/fetch_windows_sources.py --cache "$RUNNER_TEMP/source-cache" --output "$RUNNER_TEMP/sources"
+          image=$(python3 -c 'import json; print(json.load(open("scripts/windows-sdk-sources.json"))["toolchain_image"])')
+          docker pull "$image"
+          mkdir "$RUNNER_TEMP/windows-build" sdk-artifacts
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --cpus 2 --memory 6g --memory-swap 6g --pids-limit 256 --user "$(id -u):$(id -g)" \
+            --tmpfs /tmp:rw,size=256m \
+            --mount "type=bind,src=$PWD/scripts,dst=/recipe,readonly" \
+            --mount "type=bind,src=$RUNNER_TEMP/sources,dst=/sources,readonly" \
+            --mount "type=bind,src=$RUNNER_TEMP/windows-build,dst=/work" \
+            --entrypoint python3 "$image" /recipe/build_windows_ffmpeg_sdk.py \
+            --sources /sources --work-dir /work/build --prefix /work/sdk --jobs 2
+          tar -czf sdk-artifacts/windows-sdk.tar.gz -C "$RUNNER_TEMP/windows-build/sdk" .
+          tar -czf sdk-artifacts/windows-ffmpeg-sources.tar.gz -C "$RUNNER_TEMP" sources
+          cd sdk-artifacts
+          sha256sum *.tar.gz > SHA256SUMS
+      - name: Check cached archives
+        run: cd sdk-artifacts && sha256sum -c SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-sdk
+          path: sdk-artifacts/windows-sdk.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-ffmpeg-sources
+          path: sdk-artifacts/windows-ffmpeg-sources.tar.gz
+          if-no-files-found: error
+          compression-level: 0

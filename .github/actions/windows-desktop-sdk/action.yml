@@ -1,0 +1,27 @@
+name: Windows desktop SDK
+description: Load and verify the source-built Windows SDK from this workflow run
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.12'
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        name: windows-sdk
+        path: ${{ runner.temp }}/windows-sdk-archive
+    - name: Verify SDK and configure native build
+      shell: pwsh
+      run: |
+        $sdk = "$env:RUNNER_TEMP\windows-sdk"
+        New-Item -ItemType Directory $sdk | Out-Null
+        tar -xf "$env:RUNNER_TEMP\windows-sdk-archive\windows-sdk.tar.gz" -C $sdk
+        if ($LASTEXITCODE -ne 0) { throw 'SDK extraction failed' }
+        python scripts/stage_windows_desktop.py --sdk $sdk --verify-only
+        if ($LASTEXITCODE -ne 0) { throw 'SDK verification failed' }
+        "FFMPEG_DIR=$sdk" >> $env:GITHUB_ENV
+        "$sdk\bin" >> $env:GITHUB_PATH
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: ${{ runner.temp }}/windows-runtimes
+        key: windows-runtimes-${{ hashFiles('scripts/windows-desktop.json') }}

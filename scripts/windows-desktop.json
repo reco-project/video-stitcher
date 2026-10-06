@@ -1,0 +1,16 @@
+{
+  "onnxruntime": {
+    "version": "1.24.4",
+    "url": "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime.directml/1.24.4/microsoft.ml.onnxruntime.directml.1.24.4.nupkg",
+    "sha256": "57e9f11b73437bef7a309496135d4c1f96b1a8e9ddba60013fa27bfc1d788681",
+    "libraries": ["runtimes/win-x64/native/onnxruntime.dll", "runtimes/win-x64/native/onnxruntime_providers_shared.dll"],
+    "notices": ["LICENSE", "ThirdPartyNotices.txt"]
+  },
+  "directml": {
+    "version": "1.15.4",
+    "url": "https://api.nuget.org/v3-flatcontainer/microsoft.ai.directml/1.15.4/microsoft.ai.directml.1.15.4.nupkg",
+    "sha256": "4e7cb7ddce8cf837a7a75dc029209b520ca0101470fcdf275c1f49736a3615b9",
+    "libraries": ["bin/x64-win/DirectML.dll"],
+    "notices": ["LICENSE.txt", "LICENSE-CODE.txt", "ThirdPartyNotices.txt"]
+  }
+}

@@ -1,0 +1,31 @@
+name: Verify Windows desktop package
+description: Exercise packaged codecs and mandatory ONNX inference without SDK loader paths
+inputs:
+  package:
+    description: Staged application directory
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Build native inference test
+      shell: pwsh
+      env:
+        CARGO_BUILD_JOBS: 2
+      run: |
+        cargo test --release --locked -p reco-detect --features load-dynamic --lib --no-run --message-format=json > "$env:RUNNER_TEMP/detect-artifacts.json"
+        if ($LASTEXITCODE -ne 0) { throw 'Inference test build failed' }
+    - name: Verify packaged runtime
+      shell: pwsh
+      env:
+        PACKAGE: ${{ inputs.package }}
+      run: |
+        $tests = @(Get-Content "$env:RUNNER_TEMP/detect-artifacts.json" | ForEach-Object { $_ | ConvertFrom-Json } | Where-Object { $_.reason -eq 'compiler-artifact' -and $_.target.name -eq 'reco_detect' -and $_.profile.test -and $_.executable })
+        if ($tests.Count -ne 1) { throw 'Expected one detector test executable' }
+        $probe = Join-Path $env:PACKAGE 'reco-detect-tests.exe'
+        Copy-Item $tests[0].executable $probe
+        try {
+          python scripts/verify_ffmpeg_bundle.py $env:PACKAGE
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged runtime verification failed' }
+        } finally {
+          Remove-Item -LiteralPath $probe
+        }

@@ -10,45 +10,57 @@ import sys
 import tempfile
 
 from bundle_linux import SYSTEM_LIBRARIES, inspect
+from fetch_windows_sources import digest, relative_path
 
 
 def verify(directory: Path):
     directory = directory.resolve(strict=True)
+    windows = sys.platform == "win32"
+    suffix = ".exe" if windows else ""
     env = {key: value for key, value in os.environ.items()
-           if not key.startswith(("LD_", "FFMPEG_", "PKG_CONFIG", "ORT_"))}
-    env["PATH"] = str(directory) + os.pathsep + env.get("PATH", os.defpath)
+           if not key.upper().startswith(("LD_", "FFMPEG_", "PKG_CONFIG", "ORT_"))}
+    if windows:
+        # Exclude SDK/developer directories, retaining Windows and its driver stack.
+        env = {key: value for key, value in env.items() if key.upper() != "PATH"}
+        env["PATH"] = str(directory) + os.pathsep + str(Path(os.environ["SystemRoot"]) / "System32")
+        for name, checksum in json.loads((directory / "files.json").read_text()).items():
+            if digest(directory / relative_path(name)) != checksum:
+                raise ValueError(f"package checksum mismatch: {name}")
+    else:
+        env["PATH"] = str(directory) + os.pathsep + env.get("PATH", os.defpath)
     manifest = json.loads(Path(__file__).with_name("ffmpeg-sdk.json").read_text())
-    ffmpeg, ffprobe = directory / "ffmpeg", directory / "ffprobe"
+    ffmpeg, ffprobe = directory / f"ffmpeg{suffix}", directory / f"ffprobe{suffix}"
 
     def run(binary, *args, input=None):
-        return subprocess.check_output([str(binary), *args], input=input, env=env, cwd="/", stderr=subprocess.PIPE, timeout=120)
+        return subprocess.check_output([str(binary), *args], input=input, env=env, cwd=directory.parent, stderr=subprocess.PIPE, timeout=120)
 
-    io_tests = directory / "reco-io-tests"
+    io_tests = directory / f"reco-io-tests{suffix}"
     binaries = [ffmpeg, ffprobe]
     if io_tests.is_file():
         binaries.append(io_tests)
-    detect_tests = directory / "reco-detect-tests"
+    detect_tests = directory / f"reco-detect-tests{suffix}"
     if detect_tests.is_file():
         binaries.append(detect_tests)
-    reco = directory / "reco"
+    reco = directory / f"reco{suffix}"
     if reco.is_file():
         binaries.append(reco)
-    gui = directory / "reco-gui"
+    gui = directory / f"reco-gui{suffix}"
     if gui.is_file():
         binaries.append(gui)
     for binary in binaries:
-        interpreter, = inspect("--print-interpreter", binary)
-        linked = run(interpreter, "--list", str(binary)).decode()
-        for line in linked.splitlines():
-            if "=>" not in line:
-                continue
-            name, target = line.strip().split(" => ", 1)
-            path = Path(target.rsplit(" (", 1)[0])
-            if name not in SYSTEM_LIBRARIES and path != directory / name:
-                raise ValueError(f"library escaped the bundle: {line.strip()}")
+        if not windows:
+            interpreter, = inspect("--print-interpreter", binary)
+            linked = run(interpreter, "--list", str(binary)).decode()
+            for line in linked.splitlines():
+                if "=>" not in line:
+                    continue
+                name, target = line.strip().split(" => ", 1)
+                path = Path(target.rsplit(" (", 1)[0])
+                if name not in SYSTEM_LIBRARIES and path != directory / name:
+                    raise ValueError(f"library escaped the bundle: {line.strip()}")
         if binary in (ffmpeg, ffprobe):
             version = run(binary, "-version").decode().splitlines()[0]
-            if not version.startswith(f"{binary.name} version {manifest['version']} "):
+            if not version.startswith(f"{binary.stem if windows else binary.name} version {manifest['version']} "):
                 raise ValueError(f"unexpected runtime: {version}")
     protocols = run(ffmpeg, "-hide_banner", "-protocols").decode().split()
     for protocol in ("file", "tcp", "rtmp", "tls", "https", "rtmps"):
@@ -94,7 +106,7 @@ def verify(directory: Path):
             if len(pixels) != len(raw) or any(abs(a - b) > 8 for a, b in zip(pixels, raw)):
                 raise ValueError("packaged CLI changed frame order, colour or coverage in the CPU export")
             print("Packaged CLI: 12 ordered CPU-rendered colour frames passed (8/255 channel tolerance).")
-    print("Pinned runtime, bundled dependency resolution, protocol availability and 12-frame lossless round trip passed.")
+    print("Pinned runtime, protocol availability and 12-frame lossless round trip passed.")
     if io_tests.is_file():
         case = "ffmpeg::output_io::tests::overflow::fifo_overflow_resumes_on_video_keyframes_with_audio"
         listed = run(io_tests, case, "--exact", "--list").decode().splitlines()
