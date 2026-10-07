@@ -458,8 +458,8 @@ pub fn calibrate_with(
         cam_d: best_framing.axis_offset,
         x_rz: best_topology.x_rz,
         z_rx: best_topology.z_rx,
-        z_rz: None,
-        x_rx: None,
+        z_rz: Some(best_topology.z_rz),
+        x_rx: Some(best_topology.x_rx),
     };
     let total_reproj = geometry::reprojection_error(&all_points, &best_params);
     let angular_err = geometry::angular_error(&all_points, &best_params);

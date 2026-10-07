@@ -67,9 +67,7 @@ fn rotation_matrix(rx: f64, ry: f64, rz: f64) -> Matrix3<f64> {
 
 /// Parameters for the optimization objective function.
 ///
-/// The core model has 5 parameters: `cam_d`, `intersect`, `x_ty`, `x_rz`,
-/// `z_rx`. An optional 6th (`z_rz`) is available. Use `lock_cam_d = true`
-/// to reduce to 4 parameters (derives `cam_d` from `intersect`).
+/// The base parameters are `cam_d`, `intersect`, `x_ty`, `x_rz` and `z_rx`. The objectives also support `z_rz` and `x_rx`. The default optimizer's configuration selects its active subset; `enable_x_rx` adds right-plane pitch.
 #[derive(Debug, Clone, Copy)]
 pub struct OptParams {
     /// Y-axis translation of the right plane (corrects vertical misalignment).
@@ -82,8 +80,7 @@ pub struct OptParams {
     pub x_rz: f64,
     /// X-axis rotation of the left plane (radians).
     pub z_rx: f64,
-    /// Z-axis rotation of the left plane (radians) - the 6th parameter.
-    /// `None` when running in 5-param mode.
+    /// Z-axis rotation of the left plane (radians), applied before `z_rx`. The default optimizer leaves this at zero.
     pub z_rz: Option<f64>,
     /// X-axis rotation of the right plane (radians).
     /// `None` unless `enable_x_rx` is set in the optimizer config.
@@ -151,32 +148,81 @@ pub fn apply_transformations(
     points: &[MatchedPoint],
     params: &OptParams,
 ) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
-    let half_offset = PLANE_WIDTH / 2.0 * (1.0 - params.intersect);
+    let [x, z] = planes(params);
+    points
+        .iter()
+        .map(|p| {
+            (
+                x.point(to_3d_x_plane(p.left)),
+                z.point(to_3d_z_plane(p.right)),
+            )
+        })
+        .unzip()
+}
 
-    // Left plane (x-plane): Z-rotation by x_rz, translated along X
-    let r_x_plane = rotation_matrix(0.0, 0.0, params.x_rz);
-    let t_x_plane = Vector3::new(half_offset, params.x_ty, 0.0);
+struct Plane {
+    rotation: Matrix3<f64>,
+    origin: Vector3<f64>,
+    normal: Vector3<f64>,
+}
 
-    // Right plane (z-plane): X-rotation by z_rx, optionally Z-rotation by z_rz,
-    // translated along Z
-    let z_rz = params.z_rz.unwrap_or(0.0);
-    let r_z_plane = rotation_matrix(params.z_rx, 0.0, z_rz);
-    let t_z_plane = Vector3::new(0.0, 0.0, half_offset);
-
-    let mut x_transformed = Vec::with_capacity(points.len());
-    let mut z_transformed = Vec::with_capacity(points.len());
-
-    for mp in points {
-        let x_3d = to_3d_x_plane(mp.left);
-        let z_3d = to_3d_z_plane(mp.right);
-
-        // v1 uses `point @ R.T` (row-vector convention).
-        // nalgebra uses column vectors, so `R * point` is equivalent.
-        x_transformed.push(r_x_plane * x_3d + t_x_plane);
-        z_transformed.push(r_z_plane * z_3d + t_z_plane);
+impl Plane {
+    fn point(&self, local: Vector3<f64>) -> Vector3<f64> {
+        self.rotation * local + self.origin
     }
 
-    (x_transformed, z_transformed)
+    fn reprojection_error(
+        &self,
+        camera: Vector3<f64>,
+        from: Vector3<f64>,
+        target: Vector3<f64>,
+    ) -> f64 {
+        let direction = from - camera;
+        let denominator = self.normal.dot(&direction);
+        // Parallel, zero-length and behind-camera rays must not look like perfect matches.
+        if denominator.abs() <= 1e-12 * direction.norm() {
+            return 1e6;
+        }
+        let t = self.normal.dot(&(self.origin - camera)) / denominator;
+        if !t.is_finite() || t <= 0.0 {
+            return 1e6;
+        }
+        let error = (camera + direction * t - target).norm_squared();
+        if error.is_finite() { error } else { 1e6 }
+    }
+}
+
+fn planes(params: &OptParams) -> [Plane; 2] {
+    let half_offset = PLANE_WIDTH / 2.0 * (1.0 - params.intersect);
+    let x_rotation = rotation_matrix(params.x_rx.unwrap_or(0.0), 0.0, params.x_rz);
+    // Match L-shape rendering: z_rx follows z_rz, after the base plane orientation.
+    let z_rotation = rotation_matrix(params.z_rx, 0.0, 0.0)
+        * rotation_matrix(0.0, 0.0, params.z_rz.unwrap_or(0.0));
+    [
+        Plane {
+            rotation: x_rotation,
+            origin: Vector3::new(half_offset, params.x_ty, 0.0),
+            normal: x_rotation * Vector3::z(),
+        },
+        Plane {
+            rotation: z_rotation,
+            origin: Vector3::new(0.0, 0.0, half_offset),
+            normal: z_rotation * Vector3::x(),
+        },
+    ]
+}
+
+fn point_errors<'a>(
+    points: &'a [MatchedPoint],
+    params: &OptParams,
+) -> impl Iterator<Item = f64> + 'a {
+    let [x, z] = planes(params);
+    let camera = Vector3::new(params.cam_d, 0.0, params.cam_d);
+    points.iter().map(move |p| {
+        let xp = x.point(to_3d_x_plane(p.left));
+        let zp = z.point(to_3d_z_plane(p.right));
+        z.reprojection_error(camera, xp, zp) + x.reprojection_error(camera, zp, xp)
+    })
 }
 
 /// Symmetric plane-to-plane reprojection error (sum of squared distances).
@@ -186,50 +232,12 @@ pub fn apply_transformations(
 /// the intersection and the actual matched point is the error.
 ///
 /// Both directions are computed (x-plane → z-plane and z-plane → x-plane)
-/// for symmetry. This is the standard reprojection metric used in bundle
-/// adjustment and has a proper global minimum in cam_d, unlike angular
-/// error which is degenerate.
+/// for symmetry. Distances are measured on the calibrated planes, whose widths are normalized to one.
 ///
-/// # Why this works
-///
-/// The x-plane stays at z=0 and the z-plane stays at x=0 even after
-/// their respective rotations (Rz around Z-axis preserves z=0, Rx around
-/// X-axis preserves x=0). So ray-plane intersection is a simple division.
+/// Intersections use the transformed plane normals, including optional pitch and tilt.
+/// Parallel, degenerate or behind-camera rays receive a finite penalty per direction.
 pub fn reprojection_error(points: &[MatchedPoint], params: &OptParams) -> f64 {
-    let camera = Vector3::new(params.cam_d, 0.0, params.cam_d);
-    let (x_pts, z_pts) = apply_transformations(points, params);
-
-    let mut total = 0.0;
-    for (x_pt, z_pt) in x_pts.iter().zip(z_pts.iter()) {
-        // Forward: ray from camera through x_pt, intersect z-plane (x=0)
-        let dir_x = x_pt - camera;
-        if dir_x.x.abs() > 1e-15 {
-            let t = -camera.x / dir_x.x;
-            if t > 0.0 {
-                let hit = camera + t * dir_x;
-                let dy = hit.y - z_pt.y;
-                let dz = hit.z - z_pt.z;
-                total += dy * dy + dz * dz;
-            } else {
-                total += 1e6;
-            }
-        }
-
-        // Backward: ray from camera through z_pt, intersect x-plane (z=0)
-        let dir_z = z_pt - camera;
-        if dir_z.z.abs() > 1e-15 {
-            let t = -camera.z / dir_z.z;
-            if t > 0.0 {
-                let hit = camera + t * dir_z;
-                let dx = hit.x - x_pt.x;
-                let dy = hit.y - x_pt.y;
-                total += dx * dx + dy * dy;
-            } else {
-                total += 1e6;
-            }
-        }
-    }
-    total
+    point_errors(points, params).sum()
 }
 
 /// Compute per-point symmetric reprojection errors.
@@ -238,44 +246,7 @@ pub fn reprojection_error(points: &[MatchedPoint], params: &OptParams) -> f64 {
 /// squared distances per pair). Used for outlier detection and trimmed
 /// evaluation.
 pub fn per_point_reprojection_error(points: &[MatchedPoint], params: &OptParams) -> Vec<f64> {
-    let camera = Vector3::new(params.cam_d, 0.0, params.cam_d);
-    let (x_pts, z_pts) = apply_transformations(points, params);
-
-    x_pts
-        .iter()
-        .zip(z_pts.iter())
-        .map(|(x_pt, z_pt)| {
-            let mut err = 0.0;
-
-            let dir_x = x_pt - camera;
-            if dir_x.x.abs() > 1e-15 {
-                let t = -camera.x / dir_x.x;
-                if t > 0.0 {
-                    let hit = camera + t * dir_x;
-                    let dy = hit.y - z_pt.y;
-                    let dz = hit.z - z_pt.z;
-                    err += dy * dy + dz * dz;
-                } else {
-                    return 1e6;
-                }
-            }
-
-            let dir_z = z_pt - camera;
-            if dir_z.z.abs() > 1e-15 {
-                let t = -camera.z / dir_z.z;
-                if t > 0.0 {
-                    let hit = camera + t * dir_z;
-                    let dx = hit.x - x_pt.x;
-                    let dy = hit.y - x_pt.y;
-                    err += dx * dx + dy * dy;
-                } else {
-                    return 1e6;
-                }
-            }
-
-            err
-        })
-        .collect()
+    point_errors(points, params).collect()
 }
 
 /// Trimmed reprojection error for robust evaluation.
@@ -375,9 +346,6 @@ fn per_point_seam_weighted_errors_full(
     params: &OptParams,
     config: &SeamWeightConfig,
 ) -> Vec<f64> {
-    let camera = Vector3::new(params.cam_d, 0.0, params.cam_d);
-    let (x_pts, z_pts) = apply_transformations(points, params);
-
     let left_cam_seam = 1.0 - params.intersect / 2.0;
     let right_cam_seam = params.intersect / 2.0;
     // Clamp sigma to a minimum to prevent NaN from division by zero
@@ -386,11 +354,9 @@ fn per_point_seam_weighted_errors_full(
     let inv_2sigma_sq = 1.0 / (2.0 * sx * sx);
     let inv_2sigma_y_sq = 1.0 / (2.0 * sy * sy);
 
-    x_pts
-        .iter()
-        .zip(z_pts.iter())
+    point_errors(points, params)
         .enumerate()
-        .map(|(idx, (x_pt, z_pt))| {
+        .map(|(idx, error)| {
             let dl = points[idx].left_pixel_nx - right_cam_seam;
             let dr = points[idx].right_pixel_nx - left_cam_seam;
             let w_horiz =
@@ -401,36 +367,7 @@ fn per_point_seam_weighted_errors_full(
             let w_vert =
                 0.5 * ((-yl * yl * inv_2sigma_y_sq).exp() + (-yr * yr * inv_2sigma_y_sq).exp());
 
-            let w = w_horiz * w_vert;
-            let mut err = 0.0;
-
-            let dir_x = x_pt - camera;
-            if dir_x.x.abs() > 1e-15 {
-                let t = -camera.x / dir_x.x;
-                if t > 0.0 {
-                    let hit = camera + t * dir_x;
-                    let dy = hit.y - z_pt.y;
-                    let dz = hit.z - z_pt.z;
-                    err += w * (dy * dy + dz * dz);
-                } else {
-                    err += w * 1e6;
-                }
-            }
-
-            let dir_z = z_pt - camera;
-            if dir_z.z.abs() > 1e-15 {
-                let t = -camera.z / dir_z.z;
-                if t > 0.0 {
-                    let hit = camera + t * dir_z;
-                    let dx = hit.x - x_pt.x;
-                    let dy = hit.y - x_pt.y;
-                    err += w * (dx * dx + dy * dy);
-                } else {
-                    err += w * 1e6;
-                }
-            }
-
-            err
+            w_horiz * w_vert * error
         })
         .collect()
 }
@@ -496,6 +433,98 @@ pub fn normalize_to_plane(px: f64, py: f64, img_w: u32, img_h: u32) -> [f64; 2] 
 mod tests {
     use super::*;
     use approx::assert_abs_diff_eq;
+
+    #[test]
+    fn mixed_aspect_feature_coordinates_match_calibrated_source_directions() {
+        for (x_rx, z_rz) in [
+            (None, None),
+            (Some(0.12), None),
+            (None, Some(-0.1)),
+            (Some(-0.1), Some(0.12)),
+        ] {
+            assert_feature_directions(OptParams {
+                intersect: 0.5,
+                cam_d: 0.25,
+                x_ty: 0.01,
+                x_rz: 0.06,
+                z_rx: -0.04,
+                z_rz,
+                x_rx,
+            });
+        }
+    }
+
+    fn assert_feature_directions(params: OptParams) {
+        use reco_core::calibration::{Calibration, Framing, Lens};
+        use reco_core::projection::LShape;
+
+        for sizes in [[(128, 96), (160, 90)], [(160, 90), (128, 96)]] {
+            let cal = Calibration::new(
+                sizes
+                    .map(|(w, h)| {
+                        Lens::fisheye(
+                            w,
+                            h,
+                            w as f64 * 0.5,
+                            h as f64 * 0.6,
+                            w as f64 * 0.48,
+                            h as f64 * 0.52,
+                            [0.0; 4],
+                        )
+                    })
+                    .to_vec(),
+                LShape {
+                    intersect: params.intersect,
+                    x_ty: params.x_ty,
+                    x_rz: params.x_rz,
+                    z_rx: params.z_rx,
+                    x_rx: params.x_rx.unwrap_or(0.0),
+                    z_rz: params.z_rz.unwrap_or(0.0),
+                    blend_width: 0.0,
+                },
+                Framing {
+                    axis_offset: params.cam_d,
+                    tilt: 0.0,
+                    roll: 0.0,
+                },
+            );
+            cal.validate().unwrap();
+            for uv in [[0.4, 0.4], [0.5, 0.5], [0.6, 0.6]] {
+                let plane = sizes
+                    .map(|(w, h)| normalize_to_plane(uv[0] * w as f64, uv[1] * h as f64, w, h));
+                let (right, left) = apply_transformations(
+                    &[MatchedPoint {
+                        left: plane[1],
+                        right: plane[0],
+                        left_pixel_nx: uv[0],
+                        right_pixel_nx: uv[0],
+                    }],
+                    &params,
+                );
+                for (camera, world) in [left[0], right[0]].into_iter().enumerate() {
+                    let lens = &cal.lenses[camera];
+                    // Undistortion fills its output quad and samples extended UV (2*uv - 0.5).
+                    // Zero-polynomial KB4 has the independent closed form atan(r)/r.
+                    let fx = lens.fx / lens.width as f64;
+                    let fy = lens.fy / lens.height as f64;
+                    let cx = lens.cx / lens.width as f64;
+                    let cy = lens.cy / lens.height as f64;
+                    let x = (uv[0] * 2.0 - 0.5 - cx) / fx;
+                    let y = (uv[1] * 2.0 - 0.5 - cy) / fy;
+                    let r = x.hypot(y);
+                    let scale = if r < 1e-12 { 1.0 } else { r.atan() / r };
+                    let source = [(cx + fx * x * scale) as f32, (cy + fy * y * scale) as f32];
+                    let actual = cal.map_source_point(camera, source).unwrap();
+                    let virtual_camera = cal.virtual_camera();
+                    let eye = Vector3::new(params.cam_d, 0.0, params.cam_d);
+                    let expected = virtual_camera
+                        .direction_to_yaw_pitch(&(world - eye).cast::<f32>().normalize());
+                    assert_abs_diff_eq!(actual.yaw, expected.yaw, epsilon = 1e-6);
+                    assert_abs_diff_eq!(actual.pitch, expected.pitch, epsilon = 1e-6);
+                }
+            }
+        }
+    }
 
     #[test]
     fn to_3d_x_plane_maps_correctly() {
