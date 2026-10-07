@@ -667,12 +667,28 @@ mod tests {
             c.framing.roll = roll;
             c
         };
+        let mixed_aspect = |camera: usize| {
+            let mut c = calib_tilt_roll(0.26, -0.12);
+            c.lenses[camera] = c.lenses[camera].rescaled(cam_w, 192).unwrap();
+            c.lenses[camera].cx *= 0.9;
+            c.lenses[camera].correction = 0.4;
+            c
+        };
+        let mixed_rotated = |camera: usize, sign: f64| {
+            let mut c = mixed_aspect(camera);
+            let shape = c.projection.l_shape_mut().unwrap();
+            shape.x_rx = sign * 0.12;
+            shape.z_rz = sign * 0.1;
+            shape.x_rz = sign * 0.08;
+            shape.z_rx = -sign * 0.06;
+            c
+        };
         let base = calib(cam_w, cam_h);
         let (ly, luv) = textured_nv12(cam_w, cam_h, 0.0);
         let (ry, ruv) = textured_nv12(cam_w, cam_h, 1.3);
         let left = Nv12Planes { y: &ly, uv: &luv };
         let right = Nv12Planes { y: &ry, uv: &ruv };
-        let cases: [(&str, Calibration, ViewportSize, RenderPose, bool); 8] = [
+        let cases: [(&str, Calibration, ViewportSize, RenderPose, bool); 12] = [
             (
                 "wide-pan",
                 base.clone(),
@@ -727,6 +743,34 @@ mod tests {
                 calib_tilt_roll(0.26, 0.12),
                 cfg(192, 108),
                 pose(0.6, 0.0, 75.0),
+                false,
+            ),
+            (
+                "mixed-aspect-camera-0",
+                mixed_aspect(0),
+                cfg(192, 108),
+                pose(-0.6, 0.12, 95.0),
+                false,
+            ),
+            (
+                "mixed-aspect-camera-1",
+                mixed_aspect(1),
+                cfg(144, 108),
+                pose(0.6, -0.12, 95.0),
+                false,
+            ),
+            (
+                "mixed-aspect-rotated-positive",
+                mixed_rotated(0, 1.0),
+                cfg(192, 108),
+                pose(-0.6, 0.12, 95.0),
+                false,
+            ),
+            (
+                "mixed-aspect-rotated-negative",
+                mixed_rotated(1, -1.0),
+                cfg(144, 108),
+                pose(0.6, -0.12, 95.0),
                 false,
             ),
         ];

@@ -99,99 +99,44 @@ impl LShape {
 }
 
 impl LShape {
-    /// Derive the 3D plane placement from these parameters + framing.
+    /// Derive unit-square transforms from plane placement and each calibrated image's aspect.
     ///
-    /// `aspect` is the source frame `width / height`. Plane placement:
+    /// `aspects` are calibration image `width / height`, not decoded raster sizes. Plane placement:
     /// - Left plane: `position = [0, 0, (w/2)(1 - intersect)]`, `rotation = [z_rx, π/2, z_rz]`
     /// - Right plane: `position = [(w/2)(1 - intersect), x_ty, 0]`, `rotation = [x_rx, 0, x_rz]`
     /// - Virtual camera at `[axis_offset, 0, axis_offset]`.
-    ///
-    /// Known limitation: both planes are sized with one aspect (the
-    /// callers pass lens 0's), even for mixed-aspect calibrations.
-    pub(crate) fn scene(&self, framing: &Framing, aspect: f32) -> PlaneScene {
+    pub(crate) fn scene(&self, framing: &Framing, aspects: [f32; 2]) -> PlaneScene {
         // Unit plane width: each plane is a 1.0-wide quad, so the
         // intersect offset is half of what the overlap leaves.
         let half_offset = 0.5 * (1.0 - self.intersect as f32);
+        // z_rx rolls around the final plane normal, after the base Y rotation and z_rz tilt.
+        let base =
+            UnitQuaternion::from_euler_angles(0.0, std::f32::consts::FRAC_PI_2, self.z_rz as f32);
+        let roll = UnitQuaternion::from_euler_angles(self.z_rx as f32, 0.0, 0.0);
+        let right_rotation =
+            UnitQuaternion::from_euler_angles(self.x_rx as f32, 0.0, self.x_rz as f32);
+        let scale = |aspect| Matrix4::new_nonuniform_scaling(&Vector3::new(1.0, 1.0 / aspect, 1.0));
         PlaneScene {
-            left_position: [0.0, 0.0, half_offset],
-            left_rotation: [
-                self.z_rx as f32,
-                std::f32::consts::FRAC_PI_2,
-                self.z_rz as f32,
+            models: [
+                Translation3::new(0.0, 0.0, half_offset).to_homogeneous()
+                    * (roll * base).to_homogeneous()
+                    * scale(aspects[0]),
+                Translation3::new(half_offset, self.x_ty as f32, 0.0).to_homogeneous()
+                    * right_rotation.to_homogeneous()
+                    * scale(aspects[1]),
             ],
-            right_position: [half_offset, self.x_ty as f32, 0.0],
-            right_rotation: [self.x_rx as f32, 0.0, self.x_rz as f32],
             camera: self.virtual_camera(framing),
-            plane_aspect: aspect,
         }
     }
 }
 
-/// 3D placement of the two L-shape camera planes.
-///
-/// Derived from [`LShape`] + [`Framing`] by [`LShape::scene`]; consumed
-/// by the CPU plane maps, the GPU uniforms, the coverage sampler, and
-/// the detection forward map. Plane-less projections have no scene -
-/// this type exists only inside the L-shape's own paths.
+/// L-shape geometry shared by rendering, coverage and source-point mapping.
 #[derive(Debug, Clone)]
 pub(crate) struct PlaneScene {
-    /// Left plane position `[x, y, z]`.
-    pub(crate) left_position: [f32; 3],
-    /// Left plane rotation `[rx, ry, rz]` in radians.
-    pub(crate) left_rotation: [f32; 3],
-    /// Right plane position `[x, y, z]`.
-    pub(crate) right_position: [f32; 3],
-    /// Right plane rotation `[rx, ry, rz]` in radians.
-    pub(crate) right_rotation: [f32; 3],
+    /// Unit-square to world transforms, including each plane's calibrated size.
+    pub(crate) models: [Matrix4<f32>; 2],
     /// Virtual camera position and reference orientation.
     pub(crate) camera: VirtualCamera,
-    /// Plane aspect ratio (width / height).
-    pub(crate) plane_aspect: f32,
-}
-
-impl PlaneScene {
-    /// Model matrix for the left camera plane.
-    ///
-    /// The z-plane base rotation is π/2 around Y (faces sideways).
-    /// `z_rx` is applied as a post-rotation around X so it acts as
-    /// a roll around the plane's final normal. `z_rz` is applied
-    /// as a pre-rotation (tilt correction).
-    pub(crate) fn model_matrix_left(&self) -> Matrix4<f32> {
-        let t = Translation3::new(
-            self.left_position[0],
-            self.left_position[1],
-            self.left_position[2],
-        );
-        // Base: π/2 Y rotation + z_rz tilt
-        let base = UnitQuaternion::from_euler_angles(
-            0.0,
-            self.left_rotation[1], // π/2
-            self.left_rotation[2], // z_rz
-        );
-        // Post-rotate: z_rx as roll around X (the plane's final normal)
-        let roll = UnitQuaternion::from_euler_angles(
-            self.left_rotation[0], // z_rx
-            0.0,
-            0.0,
-        );
-        let r = roll * base;
-        t.to_homogeneous() * r.to_homogeneous()
-    }
-
-    /// Model matrix for the right camera plane.
-    pub(crate) fn model_matrix_right(&self) -> Matrix4<f32> {
-        let t = Translation3::new(
-            self.right_position[0],
-            self.right_position[1],
-            self.right_position[2],
-        );
-        let r = UnitQuaternion::from_euler_angles(
-            self.right_rotation[0],
-            self.right_rotation[1],
-            self.right_rotation[2],
-        );
-        t.to_homogeneous() * r.to_homogeneous()
-    }
 }
 
 /// Inverse KB4 fisheye: distorted camera pixel `[0,1]` to extended plane UV.
@@ -224,18 +169,13 @@ fn plane_uv_to_world(uv: (f64, f64), camera: CameraIndex, scene: &PlaneScene) ->
     let tex_u = ((uv.0 + 0.5) / 2.0) as f32;
     let tex_v = ((uv.1 + 0.5) / 2.0) as f32;
     let local_x = tex_u - 0.5;
-    let local_y = (0.5 - tex_v) / scene.plane_aspect;
+    let local_y = 0.5 - tex_v;
     let local_point = nalgebra::Vector4::new(local_x, local_y, 0.0, 1.0);
 
     // A validated L-shape calibration has exactly two lenses, so resolving
     // `lenses[camera]` before this makes the index a binary choice.
     debug_assert!(camera < 2, "the L-shape mapping is two-camera");
-    let model = if camera == 0 {
-        scene.model_matrix_left()
-    } else {
-        scene.model_matrix_right()
-    };
-    let world = model * local_point;
+    let world = scene.models[camera] * local_point;
     Point3::new(world.x, world.y, world.z)
 }
 
@@ -264,8 +204,6 @@ struct PlaneMap {
     /// `clip_z = z_row . [local_x, local_y, 1]`. The 3x3 inverse drops z, but the
     /// GPU rasterizer still depth-clips, so the z-row is kept to reconstruct it.
     z_row: (f64, f64, f64),
-    /// Camera aspect (`width / height`) baked into the plane quad's half-height.
-    plane_aspect: f64,
     /// Normalised intrinsics: `fx/w`, `fy/h`, `cx/w`, `cy/h` (by calibration
     /// resolution, so they are independent of the actual frame size).
     fx_n: f64,
@@ -286,7 +224,6 @@ impl PlaneMap {
         model: Matrix4<f32>,
         view_projection: &Matrix4<f32>,
         cam: &Lens,
-        plane_aspect: f64,
         correction: f64,
     ) -> Self {
         let mvp = view_projection * model;
@@ -311,7 +248,6 @@ impl PlaneMap {
         Self {
             m3_inv,
             z_row,
-            plane_aspect,
             fx_n: cam.fx / w,
             fy_n: cam.fy / h,
             cx_n: cam.cx / w,
@@ -370,7 +306,7 @@ impl SurfaceMap for PlaneMap {
             }
         }
         let u = lx + I::point(0.5);
-        let v = I::point(0.5) - ly * I::point(self.plane_aspect);
+        let v = I::point(0.5) - ly;
         if !u.inside(1e-7, 1.0 - 1e-7) || !v.inside(1e-7, 1.0 - 1e-7) {
             return false;
         }
@@ -422,9 +358,9 @@ impl SurfaceMap for PlaneMap {
         }
 
         // Plane-local -> texture UV (inverse of the quad vertex layout:
-        // `local_x = uv_x - 0.5`, `local_y = (0.5 - uv_y) / aspect`).
+        // `local_x = uv_x - 0.5`, `local_y = 0.5 - uv_y`).
         let uv_x = local_x + 0.5;
-        let uv_y = 0.5 - local_y * self.plane_aspect;
+        let uv_y = 0.5 - local_y;
 
         // The GPU rasterizes a FINITE quad (uv in [0,1]); the extended-UV remap
         // below only widens the sampling domain, not the rasterized footprint.
@@ -473,11 +409,10 @@ fn l_shape_plane_maps(
     viewport_size: &ViewportSize,
     pose: RenderPose,
 ) -> (PlaneMap, PlaneMap) {
-    // Known limitation: both planes are sized with lens 0's aspect.
-    // Mixed-aspect rigs are valid calibrations; per-plane aspects are
-    // the planned generalization.
-    let plane_aspect = lenses[0].aspect_ratio();
-    let scene = projection.scene(framing, plane_aspect);
+    let scene = projection.scene(
+        framing,
+        [lenses[0].aspect_ratio(), lenses[1].aspect_ratio()],
+    );
 
     let out_aspect = viewport_size.aspect_ratio();
     let projection = opengl_to_wgpu_matrix()
@@ -497,19 +432,16 @@ fn l_shape_plane_maps(
     );
     let view_projection = projection * view;
 
-    let aspect = plane_aspect as f64;
     let left = PlaneMap::new(
-        scene.model_matrix_left(),
+        scene.models[0],
         &view_projection,
         &lenses[0],
-        aspect,
         lenses[0].correction as f64,
     );
     let right = PlaneMap::new(
-        scene.model_matrix_right(),
+        scene.models[1],
         &view_projection,
         &lenses[1],
-        aspect,
         lenses[1].correction as f64,
     );
     (left, right)
@@ -536,9 +468,11 @@ impl ProjectionGeometry for LShape {
         lenses: &[Lens],
         framing: &Framing,
     ) -> Result<crate::geometry::YawPitch, SourceMapError> {
-        let first = lenses.first().ok_or(SourceMapError::InvalidCamera)?;
-        let scene = self.scene(framing, first.aspect_ratio());
         let lens = lenses.get(camera).ok_or(SourceMapError::InvalidCamera)?;
+        let scene = self.scene(
+            framing,
+            [lenses[0].aspect_ratio(), lenses[1].aspect_ratio()],
+        );
         let plane_uv = inverse_fisheye(f64::from(point[0]), f64::from(point[1]), lens)
             .ok_or(SourceMapError::NoDirection)?;
         let world_point = plane_uv_to_world(plane_uv, camera, &scene);
@@ -611,14 +545,16 @@ mod tests {
 
     #[test]
     fn geometry_from_default_layout() {
-        let geom = topo(0.5).scene(&framing(0.25), 16.0 / 9.0);
+        let geom = topo(0.5).scene(&framing(0.25), [16.0 / 9.0; 2]);
 
         // Half offset = 0.5 * (1 - 0.5) = 0.25
-        assert!((geom.left_position[2] - 0.25).abs() < 1e-5);
-        assert!((geom.right_position[0] - 0.25).abs() < 1e-5);
+        assert!((geom.models[0][(2, 3)] - 0.25).abs() < 1e-5);
+        assert!((geom.models[1][(0, 3)] - 0.25).abs() < 1e-5);
         assert!((geom.camera.eye.x - 0.25).abs() < 1e-5);
         assert!((geom.camera.eye.z - 0.25).abs() < 1e-5);
-        assert!((geom.plane_aspect - 16.0 / 9.0).abs() < 1e-5);
+        for model in geom.models {
+            assert!((model.column(1).norm() - 9.0 / 16.0).abs() < 1e-5);
+        }
     }
 
     #[test]
@@ -633,13 +569,13 @@ mod tests {
             blend_width: 0.05,
         };
 
-        let geom = projection.scene(&framing(0.24), 16.0 / 9.0);
+        let geom = projection.scene(&framing(0.24), [16.0 / 9.0; 2]);
 
         // Right plane should have the x_ty correction
-        assert!((geom.right_position[1] - 0.005).abs() < 1e-5);
+        assert!((geom.models[1][(1, 3)] - 0.005).abs() < 1e-5);
         // Rotations should be applied
-        assert!((geom.right_rotation[2] - 0.008).abs() < 1e-5);
-        assert!((geom.left_rotation[0] - (-0.004)).abs() < 1e-5);
+        assert!((geom.models[1][(1, 0)] - 0.008_f32.sin()).abs() < 1e-5);
+        assert!((geom.models[0][(2, 1)] - (-0.004_f32).sin() * 9.0 / 16.0).abs() < 1e-5);
     }
 
     #[test]
@@ -653,10 +589,14 @@ mod tests {
     }
 
     #[test]
-    fn geometry_with_custom_aspect() {
-        let aspect_4_3 = 4.0 / 3.0;
-        let geom = topo(0.5).scene(&framing(0.25), aspect_4_3);
-        assert!((geom.plane_aspect - aspect_4_3).abs() < 1e-5);
+    fn geometry_with_independent_aspects() {
+        for aspects in [[4.0 / 3.0, 16.0 / 9.0], [16.0 / 9.0, 4.0 / 3.0]] {
+            let geom = topo(0.5).scene(&framing(0.25), aspects);
+            for (model, aspect) in geom.models.iter().zip(aspects) {
+                assert!((model.column(0).norm() - 1.0).abs() < 1e-5);
+                assert!((model.column(1).norm() - 1.0 / aspect).abs() < 1e-5);
+            }
+        }
     }
 
     #[test]

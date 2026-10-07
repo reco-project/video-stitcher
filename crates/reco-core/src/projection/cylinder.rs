@@ -39,9 +39,7 @@ pub struct Cylinder {
     /// pre-stitched action-camera case; 360 is a full cylinder.
     #[serde(default = "default_arc_deg")]
     pub arc_deg: f64,
-    /// Painted height in the same units as `radius` (source
-    /// pixels). Omitted = the source video's pixel height, which is
-    /// the convention's default.
+    /// Painted height in the same units as `radius`. Omitted = the calibration image's pixel height, not the current decoded frame height.
     #[serde(default)]
     pub surface_height: Option<f64>,
 }

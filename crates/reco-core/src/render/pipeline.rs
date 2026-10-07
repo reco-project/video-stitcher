@@ -88,13 +88,17 @@ pub(crate) struct GpuSourceBindGroups {
 
 impl StitchPipeline {
     /// The L-shape's plane placement for the GPU uniforms, when the
-    /// projection has planes. Both planes share lens 0's aspect (the
-    /// documented limitation, kept identical to the CPU maps).
+    /// projection has planes, including each calibrated image's proportions.
     fn derive_plane_scene(calibration: &Calibration) -> Option<PlaneScene> {
-        calibration
-            .projection
-            .l_shape()
-            .map(|t| t.scene(&calibration.framing, calibration.lenses[0].aspect_ratio()))
+        calibration.projection.l_shape().map(|t| {
+            t.scene(
+                &calibration.framing,
+                [
+                    calibration.lenses[0].aspect_ratio(),
+                    calibration.lenses[1].aspect_ratio(),
+                ],
+            )
+        })
     }
 
     /// Create a pipeline with an existing GPU context and custom output format.
@@ -137,9 +141,6 @@ impl StitchPipeline {
             &source_sizes,
             output_format,
             input_format,
-            // Quad geometry: the source aspect, independent of whether
-            // the projection has planes (harmless placeholder otherwise).
-            calibration.lenses[0].aspect_ratio(),
         );
 
         log::info!(

@@ -414,6 +414,11 @@ mod tests {
     #[test]
     fn cpu_live_edits_match_fresh_engines() {
         accepted_matches_fresh(cpu, calib(WIDTH, HEIGHT));
+        for camera in 0..2 {
+            let mut mixed = calib(WIDTH, HEIGHT);
+            mixed.lenses[camera] = mixed.lenses[camera].rescaled(WIDTH, HEIGHT * 2).unwrap();
+            accepted_matches_fresh(cpu, mixed);
+        }
         accepted_matches_fresh(
             cpu,
             Calibration::new(
@@ -455,6 +460,11 @@ mod tests {
         };
         rejection_preserves_state(make);
         accepted_matches_fresh(make, calib(WIDTH, HEIGHT));
+        for camera in 0..2 {
+            let mut mixed = calib(WIDTH, HEIGHT);
+            mixed.lenses[camera] = mixed.lenses[camera].rescaled(WIDTH, HEIGHT * 2).unwrap();
+            accepted_matches_fresh(make, mixed);
+        }
         accepted_matches_fresh(
             make,
             Calibration::new(

@@ -67,13 +67,13 @@ impl Vertex {
     };
 }
 
-/// Generate quad vertices for a plane (1.0 wide, given aspect ratio).
+/// Generate unit-square vertices; model transforms supply each plane's size and placement.
 ///
 /// The quad lies in the XY plane, centered at origin. The model matrix
 /// positions and rotates it to match the v1 Three.js `PlaneGeometry`.
-fn quad_vertices(aspect: f32) -> [Vertex; 6] {
+fn quad_vertices() -> [Vertex; 6] {
     let hw = 0.5; // half width
-    let hh = 0.5 / aspect; // half height
+    let hh = 0.5; // half height
     [
         Vertex {
             position: [-hw, -hh, 0.0],
@@ -241,7 +241,6 @@ impl Renderer {
     ///
     /// `input_format` selects between YUV420P (3 separate planes) and
     /// NV12 (Y + interleaved UV). NV12 is the native NVDEC output format.
-    #[allow(clippy::too_many_arguments)] // construction-only plumbing
     pub fn new(
         gpu: &GpuContext,
         program: &crate::render::GpuProgram,
@@ -250,7 +249,6 @@ impl Renderer {
         source_sizes: &[(u32, u32)],
         output_format: wgpu::TextureFormat,
         input_format: InputFormat,
-        source_aspect: f32,
     ) -> Self {
         let device = &gpu.device;
 
@@ -262,7 +260,7 @@ impl Renderer {
         });
 
         // Vertex buffer (quad for both planes — same shape, different model matrices)
-        let vertices = quad_vertices(source_aspect);
+        let vertices = quad_vertices();
         let vertex_buffer = (program.pass == super::GpuPass::Planes).then(|| {
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("quad_vertices"),
@@ -770,7 +768,7 @@ impl Renderer {
                 calibration.framing.roll as f32,
             );
 
-            let left_mvp = projection * view * scene.model_matrix_left();
+            let left_mvp = projection * view * scene.models[0];
             let mut left_uniforms = build_gpu_uniforms(
                 &left_mvp,
                 &calibration.lenses[0],
@@ -782,7 +780,7 @@ impl Renderer {
             );
             left_uniforms.lens_preview[0] = calibration.lenses[0].correction;
 
-            let right_mvp = projection * view * scene.model_matrix_right();
+            let right_mvp = projection * view * scene.models[1];
             let mut right_uniforms = build_gpu_uniforms(
                 &right_mvp,
                 &calibration.lenses[1],
