@@ -235,7 +235,13 @@ impl super::StitchCore {
             }
         }
         if !out.is_empty() {
-            let mapped = self.map_detections(out);
+            let mapped = match self.map_detections(out) {
+                Ok(mapped) => mapped,
+                Err(error) => {
+                    self.clear_detection_cache();
+                    return Err(error);
+                }
+            };
             self.last_detections.extend(mapped);
             self.last_detections
                 .sort_by_key(|detection| detection.camera);
@@ -332,9 +338,15 @@ impl super::StitchCore {
     }
 
     /// Enrich raw source-image detections with world-reference angular positions for tracking.
-    pub(super) fn map_detections(&self, detections: Vec<Detection>) -> Vec<MappedDetection> {
+    pub(super) fn map_detections(
+        &mut self,
+        mut detections: Vec<Detection>,
+    ) -> Result<Vec<MappedDetection>, super::StitchCoreError> {
         let calibration = self.executor.calibration();
-        detections
+        if let Some(filter) = &mut self.detection_filter {
+            filter.retain(calibration, &mut detections)?;
+        }
+        Ok(detections
             .into_iter()
             .map(|d| {
                 let position = calibration
@@ -349,6 +361,6 @@ impl super::StitchCore {
                     position,
                 }
             })
-            .collect()
+            .collect())
     }
 }

@@ -10,11 +10,23 @@ pub mod panner;
 pub mod pipeline_event;
 pub mod tracker;
 
+/// Post-inference image-support policy, independent of detector backend and frame residency.
+pub trait DetectionFilter: Send {
+    /// Retain accepted observations before source-to-world mapping, using the current validated document.
+    fn retain(
+        &mut self,
+        calibration: &crate::calibration::Calibration,
+        detections: &mut Vec<detector::Detection>,
+    ) -> Result<(), crate::calibration::CalibrationError>;
+}
+
 /// Shared interface for types that accept detection/tracking/panning
 /// configuration. Implemented by both [`StitchCore`](crate::core::StitchCore)
 /// and `StitchSession` (with the `gpu` feature), so consumers like
 /// `reco_autocam::setup_autocam` can configure either without duplication.
 pub trait DetectionTarget {
+    /// Replace the post-inference policy, or remove it with `None`.
+    fn set_detection_filter(&mut self, filter: Option<Box<dyn DetectionFilter>>);
     /// Attach a detector backend.
     fn set_detector(&mut self, detector: Box<dyn detector::Detector>);
     /// Set the detection interval (run every N frames).

@@ -15,6 +15,7 @@ struct Target {
 }
 
 impl DetectionTarget for Target {
+    fn set_detection_filter(&mut self, _: Option<Box<dyn reco_core::detect::DetectionFilter>>) {}
     fn set_detector(&mut self, detector: Box<dyn Detector>) {
         self.detector = Some(detector);
     }

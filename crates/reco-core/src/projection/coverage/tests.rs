@@ -5,12 +5,15 @@ use super::*;
 #[test]
 fn spatial_refinement_is_bounded_and_never_uses_samples_as_proof() {
     use crate::stitch::SurfaceUv;
-    use std::{cell::Cell, rc::Rc};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     struct RefinedSheet {
         leaf_width: f64,
         hole: bool,
-        queries: Rc<Cell<usize>>,
+        queries: Arc<AtomicUsize>,
     }
     impl SurfaceMap for RefinedSheet {
         fn sample_uv(&self, p: [f64; 2]) -> Option<SurfaceUv> {
@@ -21,11 +24,11 @@ fn spatial_refinement_is_bounded_and_never_uses_samples_as_proof() {
             })
         }
         fn covers_ndc(&self, lo: [f64; 2], hi: [f64; 2], _: f64) -> bool {
-            self.queries.set(self.queries.get() + 1);
+            self.queries.fetch_add(1, Ordering::Relaxed);
             !self.hole && (0..2).all(|i| hi[i] - lo[i] <= self.leaf_width)
         }
     }
-    let queries = Rc::new(Cell::new(0));
+    let queries = Arc::new(AtomicUsize::new(0));
     let maps = |leaf_width, hole| {
         vec![(
             Box::new(RefinedSheet {
@@ -38,7 +41,7 @@ fn spatial_refinement_is_bounded_and_never_uses_samples_as_proof() {
     };
     // 64 x 64 leaves require 8,191 nodes in this binary subdivision.
     for budget in [0, 1, 2048, 8190, 8191, 8192] {
-        queries.set(0);
+        queries.store(0, Ordering::Relaxed);
         let result = certify_rect(&maps(1.0 / 32.0, false), [-1.0; 2], [1.0; 2], 0.0, budget);
         assert_eq!(
             result,
@@ -48,15 +51,15 @@ fn spatial_refinement_is_bounded_and_never_uses_samples_as_proof() {
                 Certificate::Covered
             }
         );
-        assert_eq!(queries.get(), budget.min(8191));
+        assert_eq!(queries.load(Ordering::Relaxed), budget.min(8191));
     }
-    queries.set(0);
+    queries.store(0, Ordering::Relaxed);
     assert_eq!(
         certify_rect(&maps(2.0, false), [-1.0; 2], [1.0; 2], 0.0, 8192),
         Certificate::Covered
     );
     assert_eq!(
-        queries.get(),
+        queries.load(Ordering::Relaxed),
         1,
         "easy regions do not spend the larger allowance"
     );

@@ -4,7 +4,7 @@ use super::{StitchCore, StitchCoreError};
 use crate::calibration::Calibration;
 use crate::projection::coverage::controller::Controller;
 
-/// Compare geometry while ignoring blending, which affects neither tracking nor coverage.
+/// Compare geometry while ignoring blending. Detection policies may depend on blending independently.
 pub(super) fn same_geometry(current: &Calibration, updated: &Calibration) -> bool {
     if current == updated {
         return true;
@@ -35,7 +35,7 @@ impl StitchCore {
 
     /// Apply an edited calibration without changing input layout or projection kind.
     ///
-    /// Invalid documents and changed image dimensions or projection kind are rejected without changing the accepted state. With a tracker or panner attached, only no-op and L-shape blend-width edits are accepted: neither changes mapping, framing, timing or ROI. These preserve coverage and cached detections; other accepted edits refresh coverage and clear detections. Backend geometry is refreshed on every changed document. See this module's CPU/GPU regression tests.
+    /// Invalid documents and changed image dimensions or projection kind are rejected without changing the accepted state. With a tracker or panner attached, only no-op edits and, without a detection filter, L-shape blend-width edits are accepted. Filters can use blending to select camera ownership. These preserve coverage and cached detections; other accepted edits refresh coverage and clear detections. Backend geometry is refreshed on every changed document. See this module's CPU/GPU regression tests.
     pub fn update_calibration(&mut self, calibration: Calibration) -> Result<(), StitchCoreError> {
         let tracking_unchanged = self.validate_calibration_update(&calibration)?;
         if self.calibration() == &calibration {
@@ -94,7 +94,8 @@ impl StitchCore {
                 "projection kind or calibration image dimensions changed",
             ));
         }
-        let tracking_unchanged = same_geometry(current, calibration);
+        let tracking_unchanged = same_geometry(current, calibration)
+            && (self.detection_filter.is_none() || current == calibration);
         if !tracking_unchanged
             && (self.ball_tracker.is_some()
                 || self.player_tracker.is_some()
@@ -523,8 +524,12 @@ mod tests {
                 |cal| cal.sync_offset = 1,
                 |cal| {
                     cal.field_roi = Some(crate::calibration::FieldRoi {
-                        left: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]],
-                        right: vec![],
+                        corners: [[0.3, 0.3], [0.7, 0.3], [0.7, 0.7], [0.3, 0.7]].map(|position| {
+                            crate::projection::SourcePoint {
+                                camera: 0,
+                                position,
+                            }
+                        }),
                     })
                 },
             ];
@@ -539,6 +544,32 @@ mod tests {
                 assert_eq!(core.calibration(), &accepted);
             }
         }
+    }
+
+    #[test]
+    fn a_blend_sensitive_policy_prevents_stale_tracking_state() {
+        struct Filter;
+        impl crate::detect::DetectionFilter for Filter {
+            fn retain(
+                &mut self,
+                _: &Calibration,
+                _: &mut Vec<crate::detect::detector::Detection>,
+            ) -> Result<(), crate::calibration::CalibrationError> {
+                Ok(())
+            }
+        }
+        let mut core = cpu(calib(WIDTH, HEIGHT));
+        core.set_detection_filter(Some(Box::new(Filter)));
+        core.set_panner(Box::new(NoopControl));
+        let original = core.calibration().clone();
+        assert!(matches!(
+            core.edit_calibration(|c| c.projection.l_shape_mut().unwrap().blend_width += 0.1),
+            Err(StitchCoreError::CalibrationRequiresRebuild(_))
+        ));
+        assert_eq!(core.calibration(), &original);
+        core.set_detection_filter(None);
+        core.edit_calibration(|c| c.projection.l_shape_mut().unwrap().blend_width += 0.1)
+            .unwrap();
     }
 
     #[test]

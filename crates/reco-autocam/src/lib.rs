@@ -15,7 +15,7 @@
 //! - [`panners::FieldPanner`] / [`panners::SweepPanner`] /
 //!   [`panners::FilePanner`] - camera-motion policies implementing
 //!   [`Panner`](reco_core::detect::panner::Panner).
-//! - [`RoiFilter`] and [`RoiFilteredDetector`] - one polygonal-ROI policy for completed observations or synchronous inference, before tracking.
+//! - [`RoiFilter`] - one calibration-aware field policy for completed observations, before tracking.
 //! - [`TrackingMode`] + [`AutocamConfig`] + [`setup_autocam`] -
 //!   orchestration glue a consumer calls once per session.
 //!
@@ -59,7 +59,7 @@ pub use reco_detect::OrtGpuDetector;
 #[cfg(feature = "tensorrt-native")]
 pub use reco_detect::TrtGpuDetector;
 
-pub use roi_filter::{RoiAnchor, RoiFilter, RoiFilteredDetector};
+pub use roi_filter::{RoiAnchor, RoiFilter};
 #[cfg(feature = "detectors")]
 pub mod wgpu_detector;
 pub use tracking_mode::TrackingMode;
@@ -72,9 +72,8 @@ pub use wgpu_detector::WgpuPreprocessingDetector;
 /// on the current platform and zero-copy mode, then attaches the
 /// tracker(s) and panner chain selected by [`TrackingMode`].
 ///
-/// When `field_roi` is provided, the detector is wrapped in an ROI filter
-/// that discards detections outside the playing field polygon before they
-/// reach the trackers.
+/// The shared post-inference filter reads the target's current calibration
+/// and rejects observations outside its field region before tracking.
 ///
 /// Configuration for the autocam pipeline.
 ///
@@ -99,8 +98,6 @@ pub struct AutocamConfig {
     pub tracking_mode: TrackingMode,
     /// Run detection every N frames (default: 1).
     pub detection_interval: u64,
-    /// Optional playing field ROI polygons for filtering.
-    pub field_roi: Option<reco_core::calibration::FieldRoi>,
     /// Whether the source produces P010 (10-bit NV12) frames.
     pub is_10bit: bool,
     /// Field panner tuning. Only used when tracking_mode is Field.
@@ -117,7 +114,6 @@ impl AutocamConfig {
             model_path: model_path.into(),
             tracking_mode: TrackingMode::Field,
             detection_interval: 1,
-            field_roi: None,
             is_10bit: false,
             field_panner_config: None,
             confidence_threshold: None,
@@ -133,12 +129,6 @@ impl AutocamConfig {
     /// Set the detection interval.
     pub fn with_detection_interval(mut self, interval: u64) -> Self {
         self.detection_interval = interval;
-        self
-    }
-
-    /// Set the field ROI for detection filtering.
-    pub fn with_field_roi(mut self, roi: reco_core::calibration::FieldRoi) -> Self {
-        self.field_roi = Some(roi);
         self
     }
 
@@ -316,20 +306,11 @@ fn attach_control(
         detector.name()
     );
 
-    let detector: Box<dyn reco_core::detect::detector::Detector> = if let Some(roi) = config
-        .field_roi
-        .as_ref()
-        .filter(|roi| roi.left.len() >= 3 || roi.right.len() >= 3)
-    {
-        let filter = RoiFilter::new(roi.clone());
-        let filter = match roi_player {
-            Some(class) => filter.with_class_anchor(class, RoiAnchor::Bottom),
-            None => filter,
-        };
-        Box::new(RoiFilteredDetector::new(detector, filter))
-    } else {
-        detector
+    let filter = match roi_player {
+        Some(class) => RoiFilter::default().with_class_anchor(class, RoiAnchor::Bottom),
+        None => RoiFilter::default(),
     };
+    target.set_detection_filter(Some(Box::new(filter)));
     target.set_detector(detector);
     target.set_detection_interval(config.detection_interval);
 

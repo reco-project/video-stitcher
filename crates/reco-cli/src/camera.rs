@@ -146,8 +146,6 @@ pub fn run_camera(
         }
         (None, _) => {}
     }
-    #[cfg(feature = "autocam")]
-    let field_roi = cal.field_roi.clone();
 
     let viewport_size = ViewportSize { width, height };
 
@@ -192,11 +190,6 @@ pub fn run_camera(
             let autocam_config = reco_autocam::AutocamConfig::new(effective_model)
                 .with_tracking_mode(tracking_mode)
                 .with_detection_interval(detection_interval);
-            let autocam_config = if let Some(roi) = field_roi.as_ref() {
-                autocam_config.with_field_roi(roi.clone())
-            } else {
-                autocam_config
-            };
             match reco_autocam::setup_autocam(
                 &mut session,
                 &autocam_config,
@@ -858,6 +851,7 @@ pub fn run_live_calibrate(
             ),
         }
     }
+    cal.validate()?;
     let json = serde_json::to_string_pretty(&cal)?;
     std::fs::write(output_path, &json)?;
     eprintln!("Written to {output_path}");

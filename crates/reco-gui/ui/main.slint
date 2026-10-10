@@ -70,9 +70,17 @@ export component RecoApp inherits Window {
     in-out property <bool> has-roi: false;
     in-out property <[float]> roi-points-x: [];
     in-out property <[float]> roi-points-y: [];
-    callback launch-roi-editor();
-    callback paste-roi();
-    in-out property <string> roi-manual-json: "";
+    in-out property <bool> field-editing: false;
+    in-out property <bool> field-can-apply: false;
+    in-out property <int> field-corner-count: 0;
+    in-out property <string> field-message;
+    in-out property <string> field-outline;
+    callback edit-field();
+    callback place-field-corner(int, float, float);
+    callback hit-field-corner(float, float, float, float) -> int;
+    callback finish-field(bool);
+    callback reset-field-draft();
+    callback remove-field();
 
     // Camera view state (kept in sync with Rust AppState).
     in-out property <float> yaw: 0.0;      // radians
@@ -435,6 +443,7 @@ export component RecoApp inherits Window {
             if !root.files-loaded || root.export-in-progress {
                 return reject;
             }
+            if root.field-editing && event.text == Key.Escape { root.finish-field(false); return accept; }
             // Source playback remains available in either preview mode.
             if (event.text == " ") {
                 root.toggle-playback();
@@ -565,7 +574,7 @@ export component RecoApp inherits Window {
                         text: "Export…";
                         description: root.recording ? "Stop quick recording before exporting" : "Export a stitched video";
                         primary: true;
-                        enabled: root.files-loaded && !root.export-in-progress && !root.recording && !root.calibrating;
+                        enabled: root.files-loaded && !root.export-in-progress && !root.recording && !root.calibrating && !root.field-editing;
                         clicked => {
                             root.open-export-dialog();
                         }
@@ -673,48 +682,66 @@ export component RecoApp inherits Window {
                             }
                         }
 
-                        // Core maps source vertices into the corrected lens image.
-                    for idx in root.roi-points-x.length: Rectangle {
-                            visible: root.lens-preview-active && root.has-roi && root.roi-points-x[idx] >= 0 && root.roi-points-x[idx] <= 1 && root.roi-points-y[idx] >= 0 && root.roi-points-y[idx] <= 1;
-                            x: preview-box.image-left + root.roi-points-x[idx] * preview-box.image-width - 4px;
-                            y: preview-box.image-top + root.roi-points-y[idx] * preview-box.image-height - 4px;
-                            width: 8px;
-                            height: 8px;
-                            border-radius: 4px;
-                            background: #0f08;
-                            border-width: 1px;
-                            border-color: #0f0;
+                        if root.field-editing: Path {
+                            x: preview-box.image-left;
+                            y: preview-box.image-top;
+                            width: preview-box.image-width;
+                            height: preview-box.image-height;
+                            viewbox-width: root.preview-frame.width;
+                            viewbox-height: root.preview-frame.height;
+                            commands: root.field-outline;
+                            fill: #22ff6630;
+                            stroke: #22ff66;
+                            stroke-width: 2px;
+                        }
+                        for idx in root.roi-points-x.length: Rectangle {
+                            visible: root.field-editing && root.roi-points-x[idx] >= 0 && root.roi-points-x[idx] <= 1 && root.roi-points-y[idx] >= 0 && root.roi-points-y[idx] <= 1;
+                            x: preview-box.image-left + root.roi-points-x[idx] * preview-box.image-width - 10px;
+                            y: preview-box.image-top + root.roi-points-y[idx] * preview-box.image-height - 10px;
+                            width: 20px; height: 20px;
+                            border-radius: 10px;
+                            background: #22ff66;
+                            Text { text: idx + 1; color: #112218; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
                         }
                     }
 
                     drag := TouchArea {
                         enabled: root.files-loaded && !root.export-in-progress && !root.lens-preview-active;
-                        mouse-cursor: self.pressed ? grabbing : grab;
+                        mouse-cursor: root.field-editing ? crosshair : self.pressed ? grabbing : grab;
                         property <length> last-x: 0px;
                         property <length> last-y: 0px;
-
+                        property <int> corner: -1;
+                        property <bool> dragged: false;
+                        property <float> image-x: (self.mouse-x - preview-box.x - preview-box.image-left) / max(1px, preview-box.image-width);
+                        property <float> image-y: (self.mouse-y - preview-box.y - preview-box.image-top) / max(1px, preview-box.image-height);
                         pointer-event(e) => {
-                            if (e.kind == PointerEventKind.down) {
+                            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
                                 self.last-x = self.mouse-x;
                                 self.last-y = self.mouse-y;
+                                self.dragged = false;
+                                self.corner = root.field-editing ? root.hit-field-corner(self.image-x, self.image-y, preview-box.image-width / 1px, preview-box.image-height / 1px) : -1;
                             }
+                            if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
+                                if root.field-editing && !self.dragged && self.corner < 0 {
+                                    root.place-field-corner(-1, self.image-x, self.image-y);
+                                }
+                                self.corner = -1;
+                            }
+                            if e.kind == PointerEventKind.cancel { self.corner = -1; self.dragged = true; }
                         }
-
                         moved => {
-                            if (self.pressed) {
-                                root.pan(
-                                (self.mouse-x - self.last-x) / 1px,
-                                (self.mouse-y - self.last-y) / 1px,
-                            );
+                            if self.pressed {
+                                if abs(self.mouse-x - self.pressed-x) > 4px || abs(self.mouse-y - self.pressed-y) > 4px { self.dragged = true; }
+                                if root.field-editing && self.corner >= 0 {
+                                    root.place-field-corner(self.corner, self.image-x, self.image-y);
+                                } else if !root.field-editing || self.dragged {
+                                    root.pan((self.mouse-x - self.last-x) / 1px, (self.mouse-y - self.last-y) / 1px);
+                                }
                                 self.last-x = self.mouse-x;
                                 self.last-y = self.mouse-y;
                             }
                         }
-
-                        scroll-event(e) => {
-                            root.zoom(-e.delta-y / 40px);
-                            return accept;
-                        }
+                        scroll-event(e) => { root.zoom(-e.delta-y / 40px); return accept; }
                     }
 
                     if root.files-loaded && root.lens-preview-active && !root.export-in-progress: Rectangle {
@@ -796,6 +823,32 @@ export component RecoApp inherits Window {
                                 padding: 8px;
                                 spacing: 12px;
                                 alignment: start;
+                                if root.files-loaded: VerticalLayout {
+                                    spacing: 6px;
+                                    Text { text: root.field-editing ? "Field corners · " + root.field-corner-count + "/4" : root.has-roi ? "Tracking region is set" : "Tracking region"; color: Theme.text-primary; font-size: 13px; }
+                                    if !root.field-editing: HorizontalLayout {
+                                        Button {
+                                            text: root.has-roi ? "Edit four corners" : "Set four corners";
+                                            enabled: !root.export-in-progress && !root.recording && !root.calibrating && !root.lens-preview-active;
+                                            clicked => { root.edit-field(); }
+                                        }
+                                        if root.has-roi: Button {
+                                            text: "Remove";
+                                            enabled: !root.export-in-progress && !root.recording && !root.calibrating;
+                                            clicked => { root.remove-field(); }
+                                        }
+                                    }
+                                    if root.field-editing: Text {
+                                        text: root.field-message;
+                                        color: Theme.text-muted; font-size: 12px; wrap: word-wrap;
+                                    }
+                                    if root.field-editing: HorizontalLayout {
+                                        Button { text: "Apply"; enabled: root.field-can-apply; clicked => { root.finish-field(true); } }
+                                        Button { text: "Cancel"; clicked => { root.finish-field(false); } }
+                                        Button { text: "Reset"; enabled: root.field-corner-count > 0; clicked => { root.reset-field-draft(); } }
+                                    }
+                                }
+
                         // Left video section
                         HorizontalLayout {
                                     spacing: 6px;
@@ -999,51 +1052,6 @@ export component RecoApp inherits Window {
                                             }
                                         }
                                     }
-                                }
-
-                                // Field ROI status
-
-                        if root.files-loaded: HorizontalLayout {
-                                    spacing: 6px;
-                                    Text {
-                                        text: root.has-roi ? "Tracking region is set" : "Tracking region";
-                                        color: root.has-roi ? Theme.accent : Theme.text-muted;
-                                        font-size: 12px;
-                                        vertical-alignment: center;
-                                        horizontal-stretch: 1;
-                                    }
-                                }
-
-                                if root.files-loaded: HorizontalLayout {
-                                    spacing: 4px;
-                                    if root.is-l-shape: Button {
-                                        text: root.has-roi ? "Edit region…" : "Draw region…";
-                                        horizontal-stretch: 1;
-                                        clicked => {
-                                            root.launch-roi-editor();
-                                        }
-                                    }
-                                    Button {
-                                        text: "Paste";
-                                        clicked => {
-                                            root.paste-roi();
-                                        }
-                                    }
-                                }
-
-                                if root.files-loaded: LineEdit {
-                                    placeholder-text: "Or paste ROI JSON here...";
-                                    accepted(text) => {
-                                        root.roi-manual-json = text;
-                                        root.paste-roi();
-                                    }
-                                }
-
-                                if root.files-loaded && !root.has-roi: Text {
-                                    text: root.is-l-shape ? "Draw in browser, Copy ROI, then Paste or type JSON above." : "Paste ROI JSON for the panorama camera.";
-                                    color: Theme.text-muted;
-                                    font-size: 12px;
-                                    wrap: word-wrap;
                                 }
 
                                 Button {
@@ -1577,7 +1585,7 @@ export component RecoApp inherits Window {
 
                                     Button {
                                         text: root.recording ? "Stop recording" : "Start recording";
-                                        enabled: root.files-loaded && !root.export-in-progress && !root.lens-preview-active;
+                                        enabled: root.files-loaded && !root.export-in-progress && !root.lens-preview-active && !root.field-editing;
                                         clicked => {
                                             root.toggle-recording(root.recording-codec, root.recording-quality);
                                         }

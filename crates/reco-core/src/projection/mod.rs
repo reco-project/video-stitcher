@@ -15,21 +15,30 @@
 
 pub(crate) mod coverage;
 pub(crate) mod cylinder;
-mod geometry;
+pub mod field;
 pub(crate) mod interval;
 pub(crate) mod l_shape;
 
 pub use cylinder::Cylinder;
 pub use l_shape::{DEFAULT_BLEND_WIDTH, LShape};
 
-// Re-export geometry utility.
-pub use geometry::point_in_polygon;
-
 use crate::calibration::{Calibration, Framing, Lens};
 use crate::geometry::VirtualCamera;
 use crate::geometry::{CameraIndex, RenderPose, WorldPose, YawPitch};
 use crate::stitch::{BlendRule, SurfaceMap};
 use thiserror::Error;
+
+/// A normalized observation in one complete source image, independent of output pan, zoom and framing.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourcePoint {
+    /// Index in the calibration's lens/source order.
+    pub camera: CameraIndex,
+    /// Texture coordinates in `[0, 1]`; pixel `(x, y)` has centre `[(x+.5)/width, (y+.5)/height]`.
+    pub position: [f64; 2],
+}
+
+pub(crate) type SourceRays = Box<dyn Fn([f64; 2]) -> Option<nalgebra::Vector3<f64>> + Send + Sync>;
 
 /// Why a calibrated source-image point could not be mapped to an angle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -95,6 +104,8 @@ pub(crate) struct ProjectionContext<'a> {
     pub viewport_size: &'a crate::render::viewport::ViewportSize,
     /// The render pose: yaw/pitch pan plus fov zoom, one bundle.
     pub pose: RenderPose,
+    /// Apply render-depth clipping. Geometric source ownership excludes view-dependent near/far planes.
+    pub clip_depth: bool,
 }
 
 impl Calibration {
@@ -198,6 +209,7 @@ impl Calibration {
             framing: &self.framing,
             viewport_size,
             pose,
+            clip_depth: true,
         })
     }
 }
@@ -211,6 +223,13 @@ impl Calibration {
 ///
 /// `Send + Sync` allows implementations to be shared across processing threads.
 pub(crate) trait ProjectionGeometry: Send + Sync {
+    /// Prepare allocation-free source-to-ray queries in the virtual camera's world frame.
+    fn source_rays(
+        &self,
+        camera: CameraIndex,
+        lenses: &[Lens],
+        framing: &Framing,
+    ) -> Result<SourceRays, SourceMapError>;
     /// Prepare correspondence between two valid source indices.
     fn source_correspondence(
         &self,
@@ -480,70 +499,6 @@ mod tests {
                 }
             }
         }
-    }
-
-    // --- point_in_polygon tests ---
-
-    /// Unit square: [0,0] -> [1,0] -> [1,1] -> [0,1].
-    fn unit_square() -> Vec<[f64; 2]> {
-        vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
-    }
-
-    #[test]
-    fn pip_center_of_square() {
-        assert!(point_in_polygon([0.5, 0.5], &unit_square()));
-    }
-
-    #[test]
-    fn pip_outside_square() {
-        assert!(!point_in_polygon([1.5, 0.5], &unit_square()));
-        assert!(!point_in_polygon([-0.1, 0.5], &unit_square()));
-        assert!(!point_in_polygon([0.5, -0.1], &unit_square()));
-        assert!(!point_in_polygon([0.5, 1.1], &unit_square()));
-    }
-
-    #[test]
-    fn pip_triangle() {
-        let triangle = vec![[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]];
-        // Inside
-        assert!(point_in_polygon([0.5, 0.3], &triangle));
-        // Outside (right of the triangle)
-        assert!(!point_in_polygon([0.9, 0.8], &triangle));
-    }
-
-    #[test]
-    fn pip_concave_l_shape() {
-        // L-shaped polygon (concave):
-        //   (0,0) -> (1,0) -> (1,0.5) -> (0.5,0.5) -> (0.5,1) -> (0,1)
-        let l_shape = vec![
-            [0.0, 0.0],
-            [1.0, 0.0],
-            [1.0, 0.5],
-            [0.5, 0.5],
-            [0.5, 1.0],
-            [0.0, 1.0],
-        ];
-        // Inside the bottom-right arm
-        assert!(point_in_polygon([0.75, 0.25], &l_shape));
-        // Inside the top-left arm
-        assert!(point_in_polygon([0.25, 0.75], &l_shape));
-        // In the concave cutout (top-right) - should be outside
-        assert!(!point_in_polygon([0.75, 0.75], &l_shape));
-    }
-
-    #[test]
-    fn pip_degenerate_polygon() {
-        // Fewer than 3 vertices: always false.
-        assert!(!point_in_polygon([0.5, 0.5], &[]));
-        assert!(!point_in_polygon([0.5, 0.5], &[[0.0, 0.0]]));
-        assert!(!point_in_polygon([0.5, 0.5], &[[0.0, 0.0], [1.0, 1.0]]));
-    }
-
-    #[test]
-    fn pip_near_edge_of_square() {
-        // Just inside the edge
-        assert!(point_in_polygon([0.001, 0.5], &unit_square()));
-        assert!(point_in_polygon([0.999, 0.5], &unit_square()));
     }
 
     // -- ProjectionGeometry trait tests --

@@ -246,6 +246,7 @@ struct PlaneMap {
     /// `clip_z = z_row . [local_x, local_y, 1]`. The 3x3 inverse drops z, but the
     /// GPU rasterizer still depth-clips, so the z-row is kept to reconstruct it.
     z_row: (f64, f64, f64),
+    clip_depth: bool,
     /// Normalised intrinsics: `fx/w`, `fy/h`, `cx/w`, `cy/h` (by calibration
     /// resolution, so they are independent of the actual frame size).
     optics: NormalizedLens,
@@ -283,6 +284,7 @@ impl PlaneMap {
         Self {
             m3_inv,
             z_row,
+            clip_depth: true,
             optics,
             tan_half_h: 1.0
                 / (view_projection[(0, 0)] as f64)
@@ -383,7 +385,7 @@ impl SurfaceMap for PlaneMap {
         // or an extreme FOV) is gathered by the CPU but clipped by the GPU.
         let clip_w = 1.0 / p.z;
         let clip_z = self.z_row.0 * local_x + self.z_row.1 * local_y + self.z_row.2;
-        if clip_z < 0.0 || clip_z > clip_w {
+        if self.clip_depth && (clip_z < 0.0 || clip_z > clip_w) {
             return None;
         }
 
@@ -442,6 +444,29 @@ fn l_shape_plane_maps(
 }
 
 impl ProjectionGeometry for LShape {
+    fn source_rays(
+        &self,
+        camera: CameraIndex,
+        lenses: &[Lens],
+        framing: &Framing,
+    ) -> Result<super::SourceRays, SourceMapError> {
+        let lens = NormalizedLens::new(lenses.get(camera).ok_or(SourceMapError::InvalidCamera)?);
+        let inverse = crate::lens::inverse::Inverse::new(&lens.d, lens.correction)
+            .ok_or(SourceMapError::NoDirection)?;
+        let models = self.plane_models([
+            lenses[0].width as f64 / lenses[0].height as f64,
+            lenses[1].width as f64 / lenses[1].height as f64,
+        ]);
+        let model = models[camera];
+        let eye = Vector3::new(framing.axis_offset, 0.0, framing.axis_offset);
+        Ok(Box::new(move |point| {
+            let [x, y] = lens.unproject(point, &inverse)?;
+            lens.sample_plane([x, y])?;
+            let p = model * nalgebra::Vector4::new(x, y, 0.0, 1.0);
+            (p.xyz() - eye).try_normalize(1e-12)
+        }))
+    }
+
     fn source_correspondence(
         &self,
         from: CameraIndex,
@@ -516,8 +541,10 @@ impl ProjectionGeometry for LShape {
     }
 
     fn surface_maps(&self, ctx: &ProjectionContext) -> Vec<(Box<dyn SurfaceMap>, BlendRule)> {
-        let (left, right) =
+        let (mut left, mut right) =
             l_shape_plane_maps(self, ctx.lenses, ctx.framing, ctx.viewport_size, ctx.pose);
+        left.clip_depth = ctx.clip_depth;
+        right.clip_depth = ctx.clip_depth;
         vec![
             (Box::new(left), BlendRule::Opaque),
             (

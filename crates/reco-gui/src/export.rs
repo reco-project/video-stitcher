@@ -129,9 +129,6 @@ pub fn run_export(
         }
     };
 
-    #[cfg(feature = "autocam")]
-    let field_roi = cal.field_roi.clone();
-
     let post_status = |text: String| {
         let weak = app_weak.clone();
         let _ = slint::invoke_from_event_loop(move || {
@@ -295,11 +292,6 @@ pub fn run_export(
             if mode == reco_autocam::TrackingMode::Ball {
                 autocam_config.confidence_threshold = Some(0.25);
             }
-            let autocam_config = if let Some(roi) = field_roi.as_ref() {
-                autocam_config.with_field_roi(roi.clone())
-            } else {
-                autocam_config
-            };
             let result = reco_autocam::setup_autocam(
                 session,
                 &autocam_config,

@@ -234,19 +234,23 @@ fn inputs_follow_calibration_without_duplicating_mono_frames() {
 }
 
 #[test]
-fn roi_save_failure_keeps_the_applied_document_dirty_and_reports_the_error() {
+fn region_apply_is_unsaved_even_without_a_writable_path() {
     slint::platform::set_platform(Box::new(HeadlessPlatform)).unwrap();
     let app = RecoApp::new().unwrap();
     let roi = reco_core::calibration::FieldRoi {
-        left: vec![[0.1, 0.1], [0.9, 0.1], [0.5, 0.9]],
-        right: vec![],
+        corners: [[0.3, 0.3], [0.7, 0.3], [0.7, 0.7], [0.3, 0.7]].map(|position| {
+            reco_core::projection::SourcePoint {
+                camera: 0,
+                position,
+            }
+        }),
     };
     for path in [None, Some(std::env::temp_dir())] {
         let mut state = AppState::new(Default::default());
         state.calibration = Some(calibration());
         state.calibration_path = path;
         app.set_cal_dirty(false);
-        state.apply_roi(&app, roi.clone());
+        assert!(state.edit_calibration(&app, |cal| cal.field_roi = Some(roi.clone())));
         assert_eq!(
             state.calibration.as_ref().unwrap().field_roi,
             Some(roi.clone())
@@ -256,9 +260,8 @@ fn roi_save_failure_keeps_the_applied_document_dirty_and_reports_the_error() {
             app.get_cal_dirty(),
             "an unsaved ROI must remain visibly dirty"
         );
-        let toast = app.get_toasts().row_data(0).unwrap();
-        assert_eq!(toast.severity, "error");
-        assert_eq!(toast.title, "ROI not saved");
+        assert!(state.save_calibration().is_err());
+        assert!(app.get_cal_dirty());
     }
 }
 
@@ -292,7 +295,7 @@ fn accepted_calibration_edits_and_resets_remain_unsaved_until_persisted() {
 }
 
 #[test]
-fn roi_save_persists_the_document_and_clears_dirty_flags() {
+fn region_changes_persist_only_when_explicitly_saved() {
     slint::platform::set_platform(Box::new(HeadlessPlatform)).unwrap();
     let app = RecoApp::new().unwrap();
     let path = std::env::temp_dir().join(format!("reco-gui-roi-{}.json", uuid::Uuid::new_v4()));
@@ -301,24 +304,27 @@ fn roi_save_persists_the_document_and_clears_dirty_flags() {
     state.calibration_path = Some(path.clone());
     app.set_lens_dirty(true);
     let roi = reco_core::calibration::FieldRoi {
-        left: vec![[0.1, 0.1], [0.9, 0.1], [0.5, 0.9]],
-        right: vec![],
+        corners: [[0.3, 0.3], [0.7, 0.3], [0.7, 0.7], [0.3, 0.7]].map(|position| {
+            reco_core::projection::SourcePoint {
+                camera: 0,
+                position,
+            }
+        }),
     };
-    state.apply_roi(&app, roi.clone());
-    assert!(!app.get_cal_dirty());
-    assert!(!app.get_lens_dirty());
+    assert!(state.edit_calibration(&app, |cal| cal.field_roi = Some(roi.clone())));
+    assert!(app.get_cal_dirty());
+    assert!(app.get_lens_dirty());
+    assert!(!path.exists());
+    state.save_calibration().unwrap();
     assert_eq!(
         Calibration::from_file(&path).unwrap(),
         state.calibration.clone().unwrap()
     );
-    state.apply_roi(&app, Default::default());
+    assert!(state.edit_calibration(&app, |cal| cal.field_roi = None));
+    assert!(app.get_cal_dirty());
+    state.save_calibration().unwrap();
     assert!(!app.get_has_roi());
-    assert!(!app.get_cal_dirty());
-    assert_eq!(
-        Calibration::from_file(&path).unwrap().field_roi,
-        Some(Default::default())
-    );
-    assert_eq!(app.get_toasts().row_data(1).unwrap().severity, "info");
+    assert_eq!(Calibration::from_file(&path).unwrap().field_roi, None);
     std::fs::remove_file(path).unwrap();
 }
 

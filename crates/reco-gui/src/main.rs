@@ -17,9 +17,9 @@
 mod calibration_edit_tests;
 mod calibration_job;
 mod export;
+mod field_editor;
 mod playback;
 mod preview;
-mod roi_editor;
 mod settings;
 #[cfg(test)]
 mod shutdown_tests;
@@ -41,6 +41,7 @@ use reco_calibrate::{LensProfileInfo, ProfileSource};
 use reco_control::ControlIntent;
 use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_core::calibration::Calibration;
+use reco_core::render::viewport::ViewportSize;
 use reco_core::wgpu;
 
 use crate::playback::{PlayState, Playback};
@@ -214,8 +215,8 @@ struct AppState {
     /// Owns a calibration worker and the document it was started for.
     calibration_job: Option<calibration_job::PendingCalibration>,
     review_calibration: Option<(CalibrationOutput, calibration_job::CalibrationSnapshot)>,
-    roi_editor_job: Option<roi_editor::PendingEditor>,
-    roi_editor_page: Option<roi_editor::EditorFile>,
+    field_editor: Option<field_editor::FieldEditor>,
+    displayed_view: Option<(ViewportSize, reco_core::geometry::RenderPose)>,
     /// Receives native file dialog selections after the OS dialog
     /// completes on a background waiter.
     file_dialog_rx: Option<std::sync::mpsc::Receiver<Option<Box<dyn FileDialogAction>>>>,
@@ -462,47 +463,6 @@ impl Drop for AppState {
 }
 
 impl AppState {
-    fn poll_roi_editor(&mut self, app: &RecoApp) -> bool {
-        if !self
-            .roi_editor_job
-            .as_ref()
-            .is_some_and(roi_editor::PendingEditor::is_finished)
-        {
-            return false;
-        }
-        let job = self.roi_editor_job.take().unwrap();
-        let Some(result) = job.finish(self) else {
-            app.set_status_text(
-                "ROI preparation discarded because the inputs or calibration changed".into(),
-            );
-            return true;
-        };
-        match result.and_then(|page| {
-            open::that(&page.path)?;
-            Ok(page)
-        }) {
-            Ok(page) => {
-                self.roi_editor_page = Some(page);
-                app.set_status_text("ROI editor opened".into());
-                self.toasts.push(
-                    crate::toast::Severity::Info,
-                    "ROI editor opened in browser",
-                    "Draw the boundary, click Copy ROI, then return here and click Paste.",
-                );
-            }
-            Err(error) => {
-                app.set_status_text("Could not open ROI editor".into());
-                self.toasts.push(
-                    crate::toast::Severity::Error,
-                    "ROI editor",
-                    error.to_string(),
-                );
-            }
-        }
-        crate::toast::sync_to_ui(&self.toasts, app);
-        true
-    }
-
     fn new(user_settings: crate::settings::GuiSettings) -> Self {
         Self {
             left_path: None,
@@ -520,8 +480,8 @@ impl AppState {
             recording_frames: 0,
             calibration_job: None,
             review_calibration: None,
-            roi_editor_job: None,
-            roi_editor_page: None,
+            field_editor: None,
+            displayed_view: None,
             file_dialog_rx: None,
             file_dialog_open: false,
             shared_gpu: None,
@@ -561,6 +521,8 @@ impl AppState {
     }
 
     fn reset_pipeline(&mut self) {
+        self.field_editor = None;
+        self.displayed_view = None;
         self.cancel_calibration();
         self.export_preview = None;
         self.bridge = None;
@@ -729,6 +691,7 @@ impl AppState {
         }
         self.cancel_calibration();
         self.calibration = Some(calibration);
+        self.displayed_view = None;
         self.preview_dirty = true;
         self.clamp_targets();
         Ok(())
@@ -737,7 +700,7 @@ impl AppState {
     fn finish_calibration_edit(&mut self, app: &RecoApp) {
         app.set_cal_dirty(true);
         self.sync_calibration_controls(app);
-        sync_roi_points(self, app);
+        field_editor::sync(self, app);
         app.set_status_text("Calibration updated".into());
     }
 
@@ -745,36 +708,6 @@ impl AppState {
         self.sync_calibration_controls(app);
         self.toasts
             .push(Severity::Error, "Calibration unchanged", error.to_string());
-        crate::toast::sync_to_ui(&self.toasts, app);
-    }
-
-    fn apply_roi(&mut self, app: &RecoApp, roi: reco_core::calibration::FieldRoi) {
-        let point_count = roi.left.len() + roi.right.len();
-        if !self.edit_calibration(app, |cal| cal.field_roi = Some(roi)) {
-            return;
-        }
-        app.set_has_roi(point_count > 0);
-        match self.save_calibration() {
-            Ok(()) => {
-                app.set_cal_dirty(false);
-                app.set_lens_dirty(false);
-                self.toasts.push(
-                    Severity::Info,
-                    "ROI saved",
-                    format!("{point_count} points saved to calibration."),
-                );
-            }
-            Err(error) => {
-                log::error!("Failed to save calibration with ROI: {error}");
-                self.toasts.push(
-                    Severity::Error,
-                    "ROI not saved",
-                    format!(
-                        "The ROI is applied in this workspace, but could not be saved: {error}"
-                    ),
-                );
-            }
-        }
         crate::toast::sync_to_ui(&self.toasts, app);
     }
 
@@ -922,6 +855,8 @@ impl AppState {
 
     /// Release preview resources and pending work while retaining the selected paths and calibration document.
     fn unload_pipeline(&mut self) {
+        self.field_editor = None;
+        self.displayed_view = None;
         self.stop_recording();
         self.reset_pipeline();
     }
@@ -1514,26 +1449,6 @@ fn sync_segments(state: &AppState, app: &RecoApp) {
     app.set_right_segments(slint::ModelRc::new(slint::VecModel::from(input_to_names(
         &state.right_input,
     ))));
-}
-
-fn sync_roi_points(state: &AppState, app: &RecoApp) {
-    let camera = usize::from(state.lens_preview_side == "right");
-    let (xs, ys) = if let Some(cal) = &state.calibration
-        && let Some(roi) = &cal.field_roi
-        && let Some(lens) = cal.lenses.get(camera)
-    {
-        let side = if camera == 1 { &roi.right } else { &roi.left };
-        side.iter()
-            .filter_map(|point| {
-                reco_core::lens::preview::LensPreviewRenderer::source_to_preview(*point, lens)
-            })
-            .map(|[x, y]| (x as f32, y as f32))
-            .unzip::<_, _, Vec<_>, Vec<_>>()
-    } else {
-        (vec![], vec![])
-    };
-    app.set_roi_points_x(slint::ModelRc::new(slint::VecModel::from(xs)));
-    app.set_roi_points_y(slint::ModelRc::new(slint::VecModel::from(ys)));
 }
 
 /// Install the standard tracing subscriber + log bridge.
@@ -2217,85 +2132,7 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
-    let app_weak = app.as_weak();
-    let state_ref = Rc::clone(&state);
-    app.on_launch_roi_editor(move || {
-        let mut s = state_ref.borrow_mut();
-        let Some(app) = app_weak.upgrade() else {
-            return;
-        };
-        if s.roi_editor_job.is_some() {
-            app.set_status_text("Preparing ROI editor…".into());
-            return;
-        }
-        match roi_editor::PendingEditor::start(&s) {
-            Ok(job) => {
-                s.roi_editor_job = Some(job);
-                app.set_status_text("Preparing ROI editor…".into());
-            }
-            Err(error) => {
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "ROI editor",
-                    error.to_string(),
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
-        }
-    });
-
-    let app_weak = app.as_weak();
-    let state_ref = Rc::clone(&state);
-    app.on_paste_roi(move || {
-        let mut s = state_ref.borrow_mut();
-        // Try manual JSON input first, then clipboard
-        let manual = app_weak
-            .upgrade()
-            .map(|a| {
-                let t = a.get_roi_manual_json().to_string();
-                a.set_roi_manual_json("".into());
-                t
-            })
-            .unwrap_or_default();
-        let clipboard_text = if !manual.trim().is_empty() {
-            manual
-        } else {
-            match arboard::Clipboard::new().and_then(|mut cb| cb.get_text()) {
-                Ok(t) => t,
-                Err(e) => {
-                    log::warn!("Clipboard read failed: {e}");
-                    if let Some(app) = app_weak.upgrade() {
-                        s.toasts.push(
-                            crate::toast::Severity::Error,
-                            "Paste ROI",
-                            "Could not read clipboard. Paste JSON in the text field instead.",
-                        );
-                        crate::toast::sync_to_ui(&s.toasts, &app);
-                    }
-                    return;
-                }
-            }
-        };
-
-        let roi: reco_core::calibration::FieldRoi = match serde_json::from_str(&clipboard_text) {
-            Ok(r) => r,
-            Err(e) => {
-                log::warn!("Clipboard is not valid ROI JSON: {e}");
-                if let Some(app) = app_weak.upgrade() {
-                    s.toasts.push(
-                        crate::toast::Severity::Error,
-                        "Paste ROI",
-                        "Clipboard doesn't contain valid ROI JSON. Copy ROI in the browser editor first.",
-                    );
-                    crate::toast::sync_to_ui(&s.toasts, &app);
-                }
-                return;
-            }
-        };
-
-        let Some(app) = app_weak.upgrade() else { return; };
-        s.apply_roi(&app, roi);
-    });
+    field_editor::install(&app, &state);
 
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
@@ -3264,7 +3101,7 @@ fn main() -> anyhow::Result<()> {
         let mut s = state_ref.borrow_mut();
         s.lens_preview_active = app.get_lens_preview_active();
         s.lens_preview_side = app.get_lens_preview_side().to_string();
-        sync_roi_points(&s, &app);
+        field_editor::sync(&mut s, &app);
         s.preview_dirty = true;
     });
 
@@ -3736,12 +3573,6 @@ fn main() -> anyhow::Result<()> {
                 }
             }
 
-            if let Some(app) = app_weak.upgrade()
-                && s.poll_roi_editor(&app)
-            {
-                return;
-            }
-
             // Check for update notification from the background thread.
             if let Ok(mut guard) = update_check.try_lock()
                 && let Some(tag) = guard.take()
@@ -4048,7 +3879,15 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
 
     let img = s.render_current();
     if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
+        s.displayed_view = (!s.lens_preview_active).then_some((
+            ViewportSize {
+                width: img.size().width,
+                height: img.size().height,
+            },
+            s.pose.current_pose(),
+        ));
         app.set_preview_frame(img);
+        field_editor::sync(&mut s, &app);
         s.last_render_at = Some(Instant::now());
         let fps = s.playback.fps();
         let total = s.playback.total_frames().unwrap_or(0);
@@ -4239,7 +4078,7 @@ fn update_preview_ui(
                     s.calibration
                         .as_ref()
                         .and_then(|c| c.field_roi.as_ref())
-                        .is_some_and(|r| !r.left.is_empty() || !r.right.is_empty()),
+                        .is_some(),
                 );
                 sync_frame_display(&app, s.playback.frame_index(), total, fps);
                 app.set_fps(fps as f32);
@@ -4260,7 +4099,15 @@ fn update_preview_ui(
                     );
                 }
                 if let Some(img) = img {
+                    s.displayed_view = (!s.lens_preview_active).then_some((
+                        ViewportSize {
+                            width: img.size().width,
+                            height: img.size().height,
+                        },
+                        s.pose.current_pose(),
+                    ));
                     app.set_preview_frame(img);
+                    field_editor::sync(s, &app);
                 }
                 app.set_fov(clamped_fov);
                 refresh_lens_candidates(&app, in_w, in_h);

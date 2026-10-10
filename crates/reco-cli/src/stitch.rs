@@ -82,14 +82,8 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
 
     let progress = crate::helpers::ProgressReporter::new(30);
 
-    // Load calibration up front so we can extract field_roi for autocam
-    // and pass the pre-loaded calibration to StitchJob. `field_roi` is
-    // only consumed under the autocam feature; a leading underscore
-    // silences the unused-var lint on `--no-default-features` builds.
+    // Load and validate the accepted calibration.
     let cal = reco_core::calibration::Calibration::from_file(Path::new(args.calibration))?;
-    #[cfg_attr(not(feature = "autocam"), allow(unused_variables))]
-    let field_roi = cal.field_roi.clone();
-
     // Arity is not decided here: StitchJob::run validates the input
     // count against the calibration's projection with a typed error.
     // Each input accepts `a.mp4;b.mp4` segment chaining.
@@ -305,11 +299,6 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
             if let Some(ref cfg) = panner_cfg {
                 autocam_config.field_panner_config = Some(cfg.clone());
             }
-            let autocam_config = if let Some(roi) = field_roi {
-                autocam_config.with_field_roi(roi)
-            } else {
-                autocam_config
-            };
             match reco_autocam::setup_autocam(
                 session,
                 &autocam_config,

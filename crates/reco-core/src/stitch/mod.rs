@@ -81,7 +81,7 @@ pub struct SurfaceUv {
 /// plane); the CPU gather loop queries each surface and composites the ones
 /// that cover a pixel. Maps are obtained through [`Calibration::surface_maps`](crate::calibration::Calibration::surface_maps). It is the CPU dual
 /// of the GPU rasterizer's per-fragment plane-UV interpolation.
-pub trait SurfaceMap {
+pub trait SurfaceMap: Send + Sync {
     /// Map a view-plane point in normalized device coordinates to source-camera UV, or `None` outside this surface. The viewport is `[-1, 1]` on each axis, with positive Y pointing up. Positions between pixel centres and beyond the viewport follow the same mapping.
     fn sample_uv(&self, ndc: [f64; 2]) -> Option<SurfaceUv>;
 

@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
 use slint::platform::{Platform, WindowAdapter, WindowEvent};
-use slint::{ComponentHandle, PhysicalSize};
+use slint::{ComponentHandle, Model, PhysicalSize};
 
 use super::RecoApp;
 
@@ -190,15 +190,15 @@ fn calibration_action_cancels_then_waits_for_the_worker() {
     let count = cancels.clone();
     app.on_cancel_calibration(move || count.set(count.get() + 1));
     draw(&window, 1280, 820);
-    click(&app, 1060.0, 350.0);
+    click(&app, 1060.0, 418.0);
     assert_eq!(starts.get(), 1);
     app.set_calibrating(true);
     draw(&window, 1280, 820);
-    click(&app, 1060.0, 350.0);
+    click(&app, 1060.0, 418.0);
     assert_eq!(cancels.get(), 1);
     app.set_calibration_step("Stopping…".into());
     draw(&window, 1280, 820);
-    click(&app, 1060.0, 350.0);
+    click(&app, 1060.0, 418.0);
     assert_eq!(starts.get(), 1);
     assert_eq!(cancels.get(), 1);
 }
@@ -271,7 +271,7 @@ fn notifications_do_not_replace_the_workspace_status() {
 fn roi_vertices_follow_the_contained_image_not_its_letterbox() {
     let (app, window) = workspace();
     app.set_files_loaded(true);
-    app.set_lens_preview_active(true);
+    app.set_field_editing(true);
     app.set_has_roi(true);
     app.set_roi_points_x(slint::ModelRc::new(slint::VecModel::from(vec![0.5])));
     app.set_roi_points_y(slint::ModelRc::new(slint::VecModel::from(vec![0.2])));
@@ -290,7 +290,7 @@ fn roi_vertices_follow_the_contained_image_not_its_letterbox() {
             let mut count = 0;
             let mut center = [0.0, 0.0];
             for (index, pixel) in pixels.iter().enumerate() {
-                if pixel.g > 200 && pixel.r < 64 && pixel.b < 64 {
+                if pixel.g > 200 && pixel.r < 64 && pixel.b < 130 {
                     count += 1;
                     center[0] += (index % width as usize) as f64 + 0.5;
                     center[1] += (index / width as usize) as f64 + 0.5;
@@ -301,6 +301,175 @@ fn roi_vertices_follow_the_contained_image_not_its_letterbox() {
             assert!((center[1] / f64::from(count) - expected_y).abs() < 1.0);
         }
     }
+}
+
+#[test]
+fn field_setup_is_reachable_without_scrolling_and_gated_during_output() {
+    let (app, window) = workspace();
+    app.set_files_loaded(true);
+    let edits = Rc::new(Cell::new(0));
+    let count = edits.clone();
+    app.on_edit_field(move || count.set(count.get() + 1));
+    draw(&window, 800, 600);
+    click(&app, 625.0, 160.0);
+    assert_eq!(edits.get(), 1);
+    app.set_recording(true);
+    draw(&window, 800, 600);
+    click(&app, 625.0, 160.0);
+    assert_eq!(edits.get(), 1);
+    app.set_recording(false);
+    app.set_export_in_progress(true);
+    draw(&window, 800, 600);
+    click(&app, 625.0, 160.0);
+    assert_eq!(edits.get(), 1);
+}
+
+#[test]
+#[ignore = "requires RECO_FIELD_TEST_CALIBRATION, RECO_FIELD_TEST_INPUTS (semicolon-separated), and RECO_FIELD_TEST_SCREENSHOT"]
+fn real_footage_field_selection_drag_and_pan() {
+    use reco_core::{
+        calibration::Calibration,
+        geometry::WorldPose,
+        render::viewport::ViewportSize,
+        source::{FrameSet, FrameSource},
+        stitch::CpuExecutor,
+    };
+    use std::{cell::RefCell, path::PathBuf};
+    let cal = Calibration::from_file(&PathBuf::from(
+        std::env::var("RECO_FIELD_TEST_CALIBRATION").unwrap(),
+    ))
+    .unwrap();
+    let inputs: Vec<_> = std::env::var("RECO_FIELD_TEST_INPUTS")
+        .unwrap()
+        .split(';')
+        .map(|p| reco_io::InputPath::Single(p.into()))
+        .collect();
+    let mut source =
+        reco_io::adapters::FfmpegFileSource::open_inputs(&inputs, cal.sync_offset, true).unwrap();
+    let FrameSet::Yuv420p(cameras) = source.next_frame().unwrap().unwrap().images else {
+        panic!("host fixture")
+    };
+    drop(source);
+    let size = ViewportSize {
+        width: 640,
+        height: 360,
+    };
+    let pose = cal.world_to_render_pose(WorldPose {
+        yaw: 0.0,
+        pitch: -0.15,
+        fov_degrees: 65.0,
+    });
+    let executor = CpuExecutor::new(
+        cal.clone(),
+        size.clone(),
+        cameras.iter().map(|c| c.size).collect(),
+        false,
+    )
+    .unwrap();
+    let planes: Vec<_> = cameras.iter().map(|c| c.as_planes()).collect();
+    let render = |pose| {
+        let pixels = executor.stitch_yuv(&planes, pose).unwrap();
+        slint::Image::from_rgba8(
+            slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+                &pixels,
+                size.width,
+                size.height,
+            ),
+        )
+    };
+    let (app, window) = workspace();
+    app.set_files_loaded(true);
+    app.set_preview_frame(render(pose));
+    let mut state = super::AppState::new(Default::default());
+    state.calibration = Some(cal);
+    state.left_input = inputs.first().cloned();
+    state.right_input = inputs.get(1).cloned();
+    state.pose.set_pose(pose);
+    state.displayed_view = Some((size.clone(), pose));
+    let state = Rc::new(RefCell::new(state));
+    super::field_editor::install(&app, &state);
+    let pan_count = Rc::new(Cell::new(0));
+    let count = pan_count.clone();
+    app.on_pan(move |_, _| count.set(count.get() + 1));
+    draw(&window, 1280, 820);
+    app.invoke_edit_field();
+    draw(&window, 1280, 820);
+    let w = app.get_preview_area_width();
+    let h = app.get_preview_area_height();
+    let iw = w.min(h * 16.0 / 9.0);
+    let ih = iw * 9.0 / 16.0;
+    let screen = |x: f32, y: f32| {
+        slint::LogicalPosition::new(
+            12.0 + (w - iw) * 0.5 + x * iw,
+            62.0 + (h - ih) * 0.5 + y * ih,
+        )
+    };
+    for [x, y] in [[0.2, 0.3], [0.8, 0.3], [0.8, 0.7], [0.2, 0.7]] {
+        let p = screen(x, y);
+        click(&app, p.x, p.y);
+        draw(&window, 1280, 820);
+    }
+    assert_eq!(app.get_field_corner_count(), 4);
+    assert!(app.get_field_can_apply());
+    let start = screen(0.2, 0.3);
+    let end = screen(0.22, 0.32);
+    let button = slint::platform::PointerEventButton::Left;
+    app.window().dispatch_event(WindowEvent::PointerPressed {
+        position: start,
+        button,
+    });
+    app.window()
+        .dispatch_event(WindowEvent::PointerMoved { position: end });
+    app.window().dispatch_event(WindowEvent::PointerReleased {
+        position: end,
+        button,
+    });
+    assert_eq!(pan_count.get(), 0, "dragging a handle must not pan");
+    assert!((app.get_roi_points_x().row_data(0).unwrap() - 0.22).abs() < 1e-4);
+    assert!(app.get_field_can_apply());
+    let output = PathBuf::from(std::env::var("RECO_FIELD_TEST_SCREENSHOT").unwrap());
+    for (name, pose) in [
+        ("selected", pose),
+        (
+            "panned",
+            reco_core::geometry::RenderPose {
+                yaw: pose.yaw + 0.15,
+                fov_degrees: 55.0,
+                ..pose
+            },
+        ),
+    ] {
+        app.set_preview_frame(render(pose));
+        state.borrow_mut().displayed_view = Some((size.clone(), pose));
+        super::field_editor::sync(&mut state.borrow_mut(), &app);
+        let pixels = draw(&window, 1280, 820);
+        let mut ppm = b"P6\n1280 820\n255\n".to_vec();
+        for p in pixels {
+            ppm.extend_from_slice(&[p.r, p.g, p.b]);
+        }
+        std::fs::write(output.with_extension(format!("{name}.ppm")), ppm).unwrap();
+    }
+    let start = screen(0.5, 0.5);
+    let end = screen(0.55, 0.5);
+    app.window().dispatch_event(WindowEvent::PointerPressed {
+        position: start,
+        button,
+    });
+    app.window()
+        .dispatch_event(WindowEvent::PointerMoved { position: end });
+    app.window().dispatch_event(WindowEvent::PointerReleased {
+        position: end,
+        button,
+    });
+    assert!(pan_count.get() > 0);
+    assert_eq!(
+        app.get_field_corner_count(),
+        4,
+        "panning must not add a corner"
+    );
+    app.invoke_finish_field(true);
+    assert!(app.get_has_roi());
+    assert!(app.get_cal_dirty());
 }
 
 #[test]

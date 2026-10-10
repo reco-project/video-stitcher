@@ -97,15 +97,6 @@ pub struct LensPreviewRenderer {
 }
 
 impl LensPreviewRenderer {
-    /// Map a source-normalized camera point into the rendered lens-preview image.
-    ///
-    /// Uses the same central-branch inverse KB4 mapping as projection. The result may lie outside the image; returns `None` for an invalid lens/point or an inverse outside that branch. This locates a point, not a guarantee of rendered visibility or a globally unique inverse for folded distortion coefficients. `source_points_follow_rendered_landmarks_at_each_correction_strength` checks it against rendered landmarks.
-    pub fn source_to_preview(point: [f64; 2], lens: &Lens) -> Option<[f64; 2]> {
-        lens.validate().ok()?;
-        let (u, v) = super::inverse_fisheye(point[0], point[1], lens)?;
-        Some([(u + 0.5) * 0.5, (v + 0.5) * 0.5])
-    }
-
     /// Create a renderer for single-camera preview.
     ///
     /// `width`/`height` are the input frame dimensions.
@@ -438,15 +429,6 @@ mod tests {
     use crate::gpu::nv12_converter::Nv12Converter;
 
     #[test]
-    fn source_point_rejects_invalid_lenses_and_nonfinite_coordinates() {
-        let mut lens = Lens::flat(256, 144);
-        assert!(LensPreviewRenderer::source_to_preview([f64::NAN, 0.5], &lens).is_none());
-        assert!(LensPreviewRenderer::source_to_preview([0.5, f64::INFINITY], &lens).is_none());
-        lens.fx = 0.0;
-        assert!(LensPreviewRenderer::source_to_preview([0.5, 0.5], &lens).is_none());
-    }
-
-    #[test]
     fn source_points_follow_rendered_landmarks_at_each_correction_strength() {
         let Some(gpu) = crate::stitch::test_support::gpu_or_skip() else {
             return;
@@ -489,7 +471,8 @@ mod tests {
                         (f64::from(source_x) + 0.5) / f64::from(width),
                         (f64::from(source_y) + 0.5) / f64::from(height),
                     ];
-                    let mapped = LensPreviewRenderer::source_to_preview(point, &lens).unwrap();
+                    let (u, v) = crate::lens::inverse_fisheye(point[0], point[1], &lens).unwrap();
+                    let mapped = [(u + 0.5) * 0.5, (v + 0.5) * 0.5];
                     let mut y = vec![16; (width * height) as usize];
                     for dy in -3_i32..=3 {
                         for dx in -3_i32..=3 {

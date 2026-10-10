@@ -372,6 +372,9 @@ impl StitchSession {
 }
 
 impl crate::detect::DetectionTarget for StitchSession {
+    fn set_detection_filter(&mut self, filter: Option<Box<dyn crate::detect::DetectionFilter>>) {
+        self.core.set_detection_filter(filter);
+    }
     fn set_detector(&mut self, detector: Box<dyn crate::detect::detector::Detector>) {
         self.set_detector(detector);
     }

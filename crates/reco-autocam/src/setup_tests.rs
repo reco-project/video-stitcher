@@ -11,6 +11,7 @@ use reco_core::detect::{
 #[derive(Default)]
 struct Target {
     detector: Option<Box<dyn Detector>>,
+    filter: Option<Box<dyn reco_core::detect::DetectionFilter>>,
     interval: u64,
     ball: Option<u16>,
     players: Option<u16>,
@@ -20,6 +21,12 @@ struct Target {
 impl DetectionTarget for Target {
     fn set_detector(&mut self, detector: Box<dyn Detector>) {
         self.detector = Some(detector);
+    }
+    fn set_detection_filter(
+        &mut self,
+        filter: Option<Box<dyn reco_core::detect::DetectionFilter>>,
+    ) {
+        self.filter = filter;
     }
     fn set_detection_interval(&mut self, interval: u64) {
         self.interval = interval;
@@ -85,12 +92,24 @@ fn loaded_detector_drives_tracking_and_roi_without_another_model_load() {
                 ..Default::default()
             };
             let names: Vec<_> = names.iter().map(|name| (*name).into()).collect();
-            let config = AutocamConfig::new("nonexistent-model")
-                .with_tracking_mode(mode)
-                .with_field_roi(reco_core::calibration::FieldRoi {
-                    left: vec![[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]],
-                    right: vec![],
-                });
+            let config = AutocamConfig::new("nonexistent-model").with_tracking_mode(mode);
+            let mut cal = reco_core::calibration::Calibration::new(
+                vec![reco_core::calibration::Lens::flat(1920, 1080)],
+                reco_core::projection::Cylinder::default(),
+                reco_core::calibration::Framing {
+                    axis_offset: 0.0,
+                    tilt: 0.0,
+                    roll: 0.0,
+                },
+            );
+            cal.field_roi = Some(reco_core::calibration::FieldRoi {
+                corners: [[0.4, 0.2], [0.6, 0.2], [0.6, 0.8], [0.4, 0.8]].map(|position| {
+                    reco_core::projection::SourcePoint {
+                        camera: 0,
+                        position,
+                    }
+                }),
+            });
             attach_control(&mut target, &config, 30.0, Box::new(Labeled(names.clone())));
             assert_eq!(target.interval, 1);
             assert_eq!(target.ball, Some(ball));
@@ -106,7 +125,7 @@ fn loaded_detector_drives_tracking_and_roi_without_another_model_load() {
             let detector = target.detector.as_mut().unwrap();
             assert_eq!(detector.name(), "labeled-fixture");
             assert_eq!(detector.class_names(), Some(names.as_slice()));
-            let boxes = detector
+            let mut boxes = detector
                 .detect(
                     0,
                     &DetectorFrame::Rgba {
@@ -115,6 +134,12 @@ fn loaded_detector_drives_tracking_and_roi_without_another_model_load() {
                         height: 1,
                     },
                 )
+                .unwrap();
+            target
+                .filter
+                .as_mut()
+                .unwrap()
+                .retain(&cal, &mut boxes)
                 .unwrap();
             assert_eq!(
                 boxes.iter().map(|d| d.class_id).collect::<Vec<_>>(),

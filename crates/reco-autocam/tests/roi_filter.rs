@@ -1,61 +1,46 @@
-//! Public post-inference ROI policy and synchronous decorator agreement.
+//! Source-attached field policy for completed detections, independent of detector backend.
 
-use reco_autocam::{RoiAnchor, RoiFilter, RoiFilteredDetector};
-use reco_core::calibration::FieldRoi;
-use reco_core::detect::detector::{Detection, Detector, DetectorError, DetectorFrame};
-use reco_core::geometry::CameraIndex;
+use reco_autocam::{RoiAnchor, RoiFilter};
+use reco_core::calibration::{Calibration, FieldRoi, Framing, Lens};
+use reco_core::detect::detector::Detection;
+use reco_core::projection::{Cylinder, SourcePoint};
 
-struct Completed {
-    result: Result<Vec<Detection>, DetectorError>,
-    labels: Vec<String>,
+fn calibration() -> Calibration {
+    let mut cal = Calibration::new(
+        vec![Lens::flat(1920, 1080)],
+        Cylinder::default(),
+        Framing {
+            axis_offset: 0.0,
+            tilt: 0.0,
+            roll: 0.0,
+        },
+    );
+    cal.field_roi = Some(FieldRoi {
+        corners: [[0.4, 0.2], [0.6, 0.2], [0.6, 0.8], [0.4, 0.8]].map(|position| SourcePoint {
+            camera: 0,
+            position,
+        }),
+    });
+    cal.validate().unwrap();
+    cal
 }
 
-impl Detector for Completed {
-    fn name(&self) -> &'static str {
-        "completed-fixture"
-    }
-
-    fn detect(
-        &mut self,
-        _: CameraIndex,
-        _: &DetectorFrame<'_>,
-    ) -> Result<Vec<Detection>, DetectorError> {
-        self.result.clone()
-    }
-
-    fn class_names(&self) -> Option<&[String]> {
-        Some(&self.labels)
+fn detection(class_id: u16, center_y: f32) -> Detection {
+    Detection {
+        camera: 0,
+        class_id,
+        confidence: 0.73,
+        center_x: 0.5,
+        center_y,
+        width: 0.1,
+        height: 0.4,
     }
 }
 
-fn policy(default: RoiAnchor) -> RoiFilter {
-    RoiFilter::new(FieldRoi {
-        left: vec![[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]],
-        right: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
-    })
-    .with_default_anchor(default)
-    .with_class_anchor(1, RoiAnchor::Bottom)
-    .with_class_anchor(2, RoiAnchor::Top)
-}
-
-fn samples() -> Vec<Detection> {
-    (0..4)
-        .flat_map(|camera| {
-            (0..4).flat_map(move |class_id| {
-                [0.1, 0.3, 0.5, 0.7, 0.9]
-                    .into_iter()
-                    .map(move |center_y| Detection {
-                        camera,
-                        class_id,
-                        confidence: 0.73,
-                        center_x: 0.5,
-                        center_y,
-                        width: 0.1,
-                        height: 0.4,
-                    })
-            })
-        })
-        .collect()
+fn policy() -> RoiFilter {
+    RoiFilter::default()
+        .with_class_anchor(1, RoiAnchor::Bottom)
+        .with_class_anchor(2, RoiAnchor::Top)
 }
 
 fn fields(d: &Detection) -> (usize, u16, [u32; 5]) {
@@ -67,103 +52,63 @@ fn fields(d: &Detection) -> (usize, u16, [u32; 5]) {
 }
 
 #[test]
-fn completed_batches_and_detector_share_policy_without_altering_metadata() {
-    for anchor in [RoiAnchor::Center, RoiAnchor::Bottom, RoiAnchor::Top] {
-        let original = samples();
-        let mut completed = original.clone();
-        let allocation = completed.as_ptr();
-        let capacity = completed.capacity();
-        policy(anchor).retain(&mut completed);
-        assert_eq!(completed.as_ptr(), allocation);
-        assert_eq!(completed.capacity(), capacity);
-        assert!(completed.len() < original.len());
-        assert_eq!(completed.iter().filter(|d| d.camera >= 2).count(), 40);
-
-        let mut decorated = RoiFilteredDetector::new(
-            Box::new(Completed {
-                result: Ok(original.clone()),
-                labels: vec!["ball".into(), "person".into()],
-            }),
-            policy(anchor),
-        );
-        assert_eq!(decorated.name(), "completed-fixture");
-        assert_eq!(decorated.class_names().unwrap(), ["ball", "person"]);
-        let frame = DetectorFrame::Rgba {
-            data: &[0; 4],
-            width: 1,
-            height: 1,
-        };
-        let sync = decorated.detect(0, &frame).unwrap();
-        assert_eq!(
-            sync.iter().map(fields).collect::<Vec<_>>(),
-            completed.iter().map(fields).collect::<Vec<_>>()
-        );
-        let mut source = original.iter();
-        for item in &completed {
-            assert!(source.any(|candidate| fields(candidate) == fields(item)));
-        }
-        let once = completed.iter().map(fields).collect::<Vec<_>>();
-        policy(anchor).retain(&mut completed);
-        assert_eq!(completed.iter().map(fields).collect::<Vec<_>>(), once);
-    }
-}
-
-#[test]
-fn anchors_apply_to_the_same_box_and_class_overrides_win() {
-    let mut boxes: Vec<_> = (0..3)
-        .map(|class_id| Detection {
-            camera: 0,
-            class_id,
-            confidence: 0.9,
-            center_x: 0.5,
-            center_y: 0.7,
-            width: 0.1,
-            height: 0.4,
-        })
-        .collect();
-    policy(RoiAnchor::Center).retain(&mut boxes);
-    assert_eq!(boxes.iter().map(|d| d.class_id).collect::<Vec<_>>(), [0, 2]);
-
-    let mut boxes = samples();
-    let original = boxes.iter().map(fields).collect::<Vec<_>>();
-    RoiFilter::new(FieldRoi {
-        left: vec![],
-        right: vec![[0.0, 0.0], [1.0, 1.0]],
-    })
-    .retain(&mut boxes);
-    assert_eq!(boxes.iter().map(fields).collect::<Vec<_>>(), original);
-    let mut empty = Vec::new();
-    policy(RoiAnchor::Top).retain(&mut empty);
+fn anchors_preserve_batch_allocation_order_and_metadata() {
+    let cal = calibration();
+    let original: Vec<_> = (0..3).map(|class| detection(class, 0.7)).collect();
+    let mut boxes = original.clone();
+    let allocation = boxes.as_ptr();
+    let capacity = boxes.capacity();
+    let mut policy = policy();
+    policy.retain(&cal, &mut boxes).unwrap();
+    assert_eq!(boxes.as_ptr(), allocation);
+    assert_eq!(boxes.capacity(), capacity);
+    assert_eq!(
+        boxes.iter().map(fields).collect::<Vec<_>>(),
+        [fields(&original[0]), fields(&original[2])]
+    );
+    policy.retain(&cal, &mut boxes).unwrap();
+    assert_eq!(boxes.len(), 2);
+    let mut empty = vec![];
+    policy.retain(&cal, &mut empty).unwrap();
     assert!(empty.is_empty());
 }
 
 #[test]
-fn decorator_preserves_inference_failures() {
-    for error in [
-        DetectorError::InferenceFailed("fixture".into()),
-        DetectorError::Timeout {
-            after: std::time::Duration::from_millis(40),
-        },
-        DetectorError::UnsupportedFrameKind,
-        DetectorError::Transport("disconnected".into()),
-        DetectorError::Canceled,
-    ] {
-        let expected = error.to_string();
-        let mut detector = RoiFilteredDetector::new(
-            Box::new(Completed {
-                result: Err(error),
-                labels: Vec::new(),
-            }),
-            policy(RoiAnchor::Bottom),
-        );
-        let frame = DetectorFrame::Rgba {
-            data: &[0; 4],
-            width: 1,
-            height: 1,
-        };
-        assert_eq!(
-            detector.detect(0, &frame).unwrap_err().to_string(),
-            expected
-        );
+fn accepted_document_changes_replace_cached_geometry_and_none_disables_policy() {
+    let mut cal = calibration();
+    let mut policy = policy();
+    let mut boxes = vec![detection(0, 0.7)];
+    policy.retain(&cal, &mut boxes).unwrap();
+    assert_eq!(boxes.len(), 1);
+    for corner in &mut cal.field_roi.as_mut().unwrap().corners {
+        corner.position[1] *= 0.5;
     }
+    policy.retain(&cal, &mut boxes).unwrap();
+    assert!(boxes.is_empty());
+    cal.field_roi = None;
+    boxes.push(detection(0, 0.7));
+    policy.retain(&cal, &mut boxes).unwrap();
+    assert_eq!(boxes.len(), 1);
+}
+
+#[test]
+fn malformed_regions_error_and_unsupported_observations_are_rejected() {
+    let mut cal = calibration();
+    let mut policy = policy();
+    let mut boxes = vec![detection(0, 0.5); 4];
+    boxes[1].camera = 99;
+    boxes[2].center_x = f32::NAN;
+    boxes[3].center_x = -0.1;
+    policy.retain(&cal, &mut boxes).unwrap();
+    assert_eq!(boxes.len(), 1);
+    cal.field_roi.as_mut().unwrap().corners.swap(1, 2);
+    assert!(policy.retain(&cal, &mut boxes).is_err());
+    assert_eq!(
+        boxes.len(),
+        1,
+        "failure does not partially mutate the batch"
+    );
+    cal = calibration();
+    policy.retain(&cal, &mut boxes).unwrap();
+    assert_eq!(boxes.len(), 1);
 }

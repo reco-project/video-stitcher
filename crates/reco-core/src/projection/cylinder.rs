@@ -129,6 +129,27 @@ pub(crate) struct CylinderUniforms {
 }
 
 impl ProjectionGeometry for Cylinder {
+    fn source_rays(
+        &self,
+        camera: CameraIndex,
+        lenses: &[Lens],
+        _framing: &Framing,
+    ) -> Result<super::SourceRays, SourceMapError> {
+        let lens = lenses.get(camera).ok_or(SourceMapError::InvalidCamera)?;
+        let height = self.surface_height.unwrap_or(f64::from(lens.height));
+        let arc = self.arc_deg.to_radians();
+        let radius = self.radius;
+        Ok(Box::new(move |[u, v]| {
+            let theta = (u - 0.5) * arc;
+            nalgebra::Vector3::new(
+                radius * theta.sin(),
+                (0.5 - v) * height,
+                -radius * theta.cos(),
+            )
+            .try_normalize(1e-12)
+        }))
+    }
+
     fn source_correspondence(
         &self,
         _from: CameraIndex,

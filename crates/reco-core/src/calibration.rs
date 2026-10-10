@@ -33,6 +33,9 @@ fn default_schema_version() -> u32 {
 /// Errors produced by [`Calibration::validate`].
 #[derive(Debug, Clone, Error)]
 pub enum CalibrationError {
+    /// Field observations do not define a finite convex region under this calibration.
+    #[error("invalid field region: {0}")]
+    InvalidFieldRegion(String),
     /// The document declares a schema version this build does not understand.
     #[error(
         "unsupported calibration schema version {found}; this reco requires version {SCHEMA_VERSION}"
@@ -458,18 +461,15 @@ pub struct Framing {
     pub roll: f64,
 }
 
-/// Playing-field region of interest for per-camera detection filtering.
+/// Four field-boundary observations in perimeter order, clockwise or counterclockwise.
 ///
-/// Consumed by `reco-autocam` when configuring detection filtering.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+/// Corners stay attached to their source images. Calibration derives the common region and its curved source-image edges.
+/// This is image support for tracking, not a metric ground-plane reconstruction.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FieldRoi {
-    /// Polygon vertices for the left camera, normalized `[0,1]`.
-    #[serde(default)]
-    pub left: Vec<[f64; 2]>,
-    /// Polygon vertices for the right camera, normalized `[0,1]`.
-    #[serde(default)]
-    pub right: Vec<[f64; 2]>,
+    /// Exactly four source observations around the boundary. No independently editable per-camera polygons.
+    pub corners: [crate::projection::SourcePoint; 4],
 }
 
 /// The calibration document: canonical, serializable source of truth.
@@ -492,7 +492,7 @@ pub struct Calibration {
     /// Temporal sync offset in frames (positive = right video ahead), consumed by `reco-io` decode pairing.
     #[serde(default)]
     pub sync_offset: i64,
-    /// Optional per-camera detection ROI, consumed by camera-control setup.
+    /// Optional four-corner detection region, interpreted through this calibration.
     #[serde(default)]
     pub field_roi: Option<FieldRoi>,
 }
@@ -587,6 +587,7 @@ impl Calibration {
             Projection::Cylinder(t) => t.validate()?,
         }
         validate_framing(&self.framing)?;
+        self.field_boundary()?;
         if self.sync_offset < -MAX_SYNC_OFFSET_FRAMES || self.sync_offset > MAX_SYNC_OFFSET_FRAMES {
             return Err(CalibrationError::SyncOffsetOutOfRange {
                 value: self.sync_offset,
@@ -676,14 +677,21 @@ mod tests {
     #[test]
     fn calibration_rejects_unknown_nested_fields() {
         let mut calibration = valid_cal();
-        calibration.field_roi = Some(FieldRoi::default());
+        calibration.field_roi = Some(FieldRoi {
+            corners: [[0.3, 0.3], [0.7, 0.3], [0.7, 0.7], [0.3, 0.7]].map(|position| {
+                crate::projection::SourcePoint {
+                    camera: 0,
+                    position,
+                }
+            }),
+        });
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("calibration.json");
         for (object, field, misspelled) in [
             ("/lenses/0", "correction", "corection"),
             ("/projection", "blend_width", "blend_wdith"),
             ("/framing", "roll", "rol"),
-            ("/field_roi", "right", "rigth"),
+            ("/field_roi", "corners", "coners"),
         ] {
             let mut value = serde_json::to_value(&calibration).unwrap();
             let fields = value.pointer_mut(object).unwrap().as_object_mut().unwrap();
@@ -700,7 +708,16 @@ mod tests {
     #[test]
     fn calibration_file_rejects_duplicate_fields() {
         let mut calibration = valid_cal();
-        calibration.field_roi = Some(FieldRoi::default());
+        calibration.field_roi = Some(FieldRoi {
+            corners: [[0.3, 0.3], [0.7, 0.3], [0.7, 0.7], [0.3, 0.7]].map(|position| {
+                crate::projection::SourcePoint {
+                    camera: 0,
+                    position,
+                }
+            }),
+        });
+        let corners =
+            serde_json::to_string(&calibration.field_roi.as_ref().unwrap().corners).unwrap();
         let json = serde_json::to_string(&calibration).unwrap();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("calibration.json");
@@ -710,7 +727,7 @@ mod tests {
             ("type", "\"cylinder\""),
             ("intersect", "0"),
             ("roll", "0"),
-            ("right", "[]"),
+            ("corners", corners.as_str()),
         ] {
             let duplicate = json.replacen(
                 &format!("\"{field}\":"),
@@ -873,14 +890,18 @@ mod tests {
     fn parse_calibration_with_field_roi() {
         let mut cal: Calibration = serde_json::from_str(sample_json()).unwrap();
         cal.field_roi = Some(FieldRoi {
-            left: vec![[0.49, 0.90], [0.33, 0.73], [0.42, 0.58]],
-            right: vec![[0.63, 0.85], [0.78, 0.68], [0.55, 0.60]],
+            corners: [[0.3, 0.3], [0.7, 0.3], [0.7, 0.7], [0.3, 0.7]].map(|position| {
+                crate::projection::SourcePoint {
+                    camera: 0,
+                    position,
+                }
+            }),
         });
         let json = cal.to_json_pretty();
         let back: Calibration = serde_json::from_str(&json).unwrap();
         let roi = back.field_roi.as_ref().unwrap();
-        assert_eq!(roi.left.len(), 3);
-        assert!((roi.right[1][1] - 0.68).abs() < 1e-6);
+        assert_eq!(roi.corners.len(), 4);
+        assert_eq!(roi.corners[1].position, [0.7, 0.3]);
     }
 
     fn valid_cal() -> Calibration {

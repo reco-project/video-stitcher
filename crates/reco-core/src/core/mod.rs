@@ -114,6 +114,7 @@ pub struct StitchCore {
     pub(crate) event_sink: Option<Box<dyn crate::detect::pipeline_event::PipelineEventSink>>,
 
     pub(crate) detector: Option<Box<dyn Detector>>,
+    detection_filter: Option<Box<dyn crate::detect::DetectionFilter>>,
     /// How often detection runs. 1 = every frame (default), higher =
     /// skip frames. On skipped frames the panner still ticks with
     /// the previously tracked detections.
@@ -192,6 +193,7 @@ impl StitchCore {
             requested_world_pose: WorldPose::default(),
             event_sink: None,
             detector: None,
+            detection_filter: None,
             detection_interval: 1,
             last_detections: Vec::new(),
             fresh_cameras: Vec::new(),
@@ -284,6 +286,15 @@ impl StitchCore {
     pub fn set_detector(&mut self, detector: Box<dyn Detector>) {
         self.clear_detection_cache();
         self.detector = Some(detector);
+    }
+
+    /// Replace the post-inference image-support policy and clear previously accepted observations.
+    pub fn set_detection_filter(
+        &mut self,
+        filter: Option<Box<dyn crate::detect::DetectionFilter>>,
+    ) {
+        self.clear_detection_cache();
+        self.detection_filter = filter;
     }
 
     /// Remove the currently attached detector. Cached last detections
@@ -538,6 +549,9 @@ impl StitchCore {
 }
 
 impl crate::detect::DetectionTarget for StitchCore {
+    fn set_detection_filter(&mut self, filter: Option<Box<dyn crate::detect::DetectionFilter>>) {
+        self.set_detection_filter(filter);
+    }
     fn set_detector(&mut self, detector: Box<dyn crate::detect::detector::Detector>) {
         self.set_detector(detector);
     }
@@ -1117,6 +1131,84 @@ mod tests {
             RenderOutcome::Warmup => {}
             RenderOutcome::Rgba(_) => unreachable!("built a Warmup"),
         }
+    }
+
+    #[test]
+    fn detection_policy_reads_accepted_calibration_and_invalidates_failed_batches() {
+        use crate::detect::{
+            DetectionFilter,
+            detector::{Detection, Detector, DetectorError, DetectorFrame},
+        };
+        struct Boxes;
+        impl Detector for Boxes {
+            fn name(&self) -> &'static str {
+                "policy-fixture"
+            }
+            fn detect(
+                &mut self,
+                camera: usize,
+                _: &DetectorFrame<'_>,
+            ) -> Result<Vec<Detection>, DetectorError> {
+                Ok(vec![Detection {
+                    camera,
+                    class_id: 0,
+                    confidence: 0.9,
+                    center_x: 0.5,
+                    center_y: 0.5,
+                    width: 0.1,
+                    height: 0.1,
+                }])
+            }
+        }
+        struct Policy;
+        impl DetectionFilter for Policy {
+            fn retain(
+                &mut self,
+                cal: &crate::calibration::Calibration,
+                boxes: &mut Vec<Detection>,
+            ) -> Result<(), crate::calibration::CalibrationError> {
+                if cal.sync_offset == 1 {
+                    boxes.retain(|d| d.camera == 1);
+                }
+                if cal.sync_offset == 2 {
+                    return Err(crate::calibration::CalibrationError::InvalidFieldRegion(
+                        "fixture".into(),
+                    ));
+                }
+                Ok(())
+            }
+        }
+        let mut core = cpu_engine(16, 16);
+        core.set_detector(Box::new(Boxes));
+        core.set_detection_filter(Some(Box::new(Policy)));
+        let data = [0; 16 * 16 * 4];
+        let frame = || DetectorFrame::Rgba {
+            data: &data,
+            width: 16,
+            height: 16,
+        };
+        core.run_detection_frames(&[(0, frame()), (1, frame())], &[10, 10])
+            .unwrap();
+        assert_eq!(core.last_detections.len(), 2);
+        let mut cal = core.calibration().clone();
+        cal.sync_offset = 1;
+        core.update_calibration(cal.clone()).unwrap();
+        core.run_detection_frames(&[(0, frame()), (1, frame())], &[20, 20])
+            .unwrap();
+        assert_eq!(core.last_detections.len(), 1);
+        assert_eq!(core.last_detections[0].camera, 1);
+        cal.sync_offset = 2;
+        core.update_calibration(cal).unwrap();
+        assert!(
+            core.run_detection_frames(&[(0, frame()), (1, frame())], &[30, 30])
+                .is_err()
+        );
+        assert!(core.last_detections.is_empty());
+        assert!(core.fresh_cameras.is_empty());
+        core.set_detection_filter(None);
+        core.run_detection_frames(&[(0, frame()), (1, frame())], &[30, 30])
+            .unwrap();
+        assert_eq!(core.last_detections.len(), 2);
     }
 
     /// A stub detector returning no detections - just enough for
