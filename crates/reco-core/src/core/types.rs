@@ -67,7 +67,7 @@ pub enum StitchCoreError {
 /// frame just submitted - `Warmup` never occurs.
 pub enum RenderOutcome<'a> {
     /// Pipeline warm-up - submit more frames before expecting output.
-    /// Only returned on the first two submit calls after construction.
+    /// Returned on the first two GPU submits after construction or an output resize.
     Warmup,
     /// A rendered panorama frame, tightly packed as RGBA
     /// (`output_width * output_height * 4` bytes). Borrowed from the

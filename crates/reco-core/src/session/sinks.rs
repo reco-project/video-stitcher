@@ -138,15 +138,16 @@ impl AttachedSink {
         height: u32,
         pts_us: Option<i64>,
     ) -> Result<(), SinkError> {
+        let frame = OutputFrame {
+            data,
+            width,
+            height,
+            format: PixelFormat::Nv12,
+            pts_us,
+        };
         match &mut self.runner {
-            SinkRunner::Threaded(t) => t.submit(data, pts_us),
-            SinkRunner::Inline(sink) => sink.consume(OutputFrame {
-                data,
-                width,
-                height,
-                format: PixelFormat::Nv12,
-                pts_us,
-            }),
+            SinkRunner::Threaded(t) => t.submit(frame),
+            SinkRunner::Inline(sink) => sink.consume(frame),
         }
     }
 

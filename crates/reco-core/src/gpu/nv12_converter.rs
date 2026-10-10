@@ -76,20 +76,37 @@ pub struct Nv12Converter {
 impl Nv12Converter {
     /// Create a new NV12 converter for the given output dimensions.
     ///
-    /// Returns an error if `width` is not divisible by 4 or `height` is not even.
+    /// Dimensions must be nonzero, width divisible by four and height even. Image and buffer sizes must fit the device's texture, allocation and storage-binding limits.
     pub fn new(gpu: &GpuContext, width: u32, height: u32) -> Result<Self, Nv12Error> {
-        if !width.is_multiple_of(4) {
+        if width == 0 || !width.is_multiple_of(4) {
             return Err(Nv12Error::InvalidDimensions(format!(
-                "width must be divisible by 4, got {width}"
+                "width must be nonzero and divisible by 4, got {width}"
             )));
         }
-        if !height.is_multiple_of(2) {
+        if height == 0 || !height.is_multiple_of(2) {
             return Err(Nv12Error::InvalidDimensions(format!(
-                "height must be even, got {height}"
+                "height must be nonzero and even, got {height}"
             )));
         }
 
         let device = &gpu.device;
+        let limits = device.limits();
+        let pixels = u64::from(width) * u64::from(height);
+        let Some(nv12_bytes) = pixels.checked_add(pixels / 2).filter(|&size| {
+            width <= limits.max_texture_dimension_2d
+                && height <= limits.max_texture_dimension_2d
+                && size <= limits.max_buffer_size
+                && size <= u64::from(limits.max_storage_buffer_binding_size)
+        }) else {
+            return Err(Nv12Error::InvalidDimensions(format!(
+                "NV12 layout {width}x{height} exceeds device texture or buffer limits"
+            )));
+        };
+        let nv12_len = usize::try_from(nv12_bytes).map_err(|_| {
+            Nv12Error::InvalidDimensions(format!(
+                "NV12 layout {width}x{height} exceeds host address space"
+            ))
+        })?;
 
         // Compile compute shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -152,8 +169,6 @@ impl Nv12Converter {
             cache: None,
         });
 
-        // NV12 buffer size: Y plane (w*h) + UV plane (w*h/2) = w*h*3/2 bytes
-        let nv12_bytes = width as u64 * height as u64 * 3 / 2;
         // GPU storage buffer for compute shader output
         let nv12_gpu_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("nv12_gpu"),
@@ -163,8 +178,7 @@ impl Nv12Converter {
         });
 
         // Triple-buffered CPU-readable staging buffers for pipelined readback.
-        // The third buffer ensures we always read from 2 frames ago (guaranteed
-        // complete), eliminating the blocking poll.
+        // Older submissions can finish while newer frames are being rendered.
         let nv12_staging_buffers = [
             device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("nv12_staging_0"),
@@ -221,9 +235,9 @@ impl Nv12Converter {
             pending_count: 0,
             cached_bind_group: None,
             readback_buffers: [
-                vec![0u8; nv12_bytes as usize],
-                vec![0u8; nv12_bytes as usize],
-                vec![0u8; nv12_bytes as usize],
+                vec![0u8; nv12_len],
+                vec![0u8; nv12_len],
+                vec![0u8; nv12_len],
             ],
             map_tx,
             map_rx,

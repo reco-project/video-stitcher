@@ -1,19 +1,19 @@
 # reco-core
 
-GPU stitching engine. The no-I/O, no-domain-logic foundation of the Reco workspace.
+Calibrated panoramic rendering with CPU and GPU executors, shared pose resolution and session orchestration.
 
 ## Module structure
 
 ```
 src/
   core/        - StitchCore push API (submit frames, get rendered output)
-  session/     - StitchSession pull API (batch processing with encoder wiring)
-  render/      - GPU rendering pipeline, planes, viewport, scene geometry
+  session/     - StitchSession pull API (sources, lookahead and output sinks)
+  render/      - GPU pipeline, shared image-plane views and viewport dimensions
   gpu/         - GpuContext, NV12 converter, RGBA readback, YUV stack packer
   detect/      - Detection/tracking vocabulary (detector, tracker, panner traits)
   interop/     - Platform zero-copy (CUDA, Vulkan, Metal, D3D11, DMA-buf)
   projection/  - Coordinate math, coverage boundary, virtual camera
-  lens/        - KB4 fisheye model, undistortion, rig correction
+  lens/        - KB4 fisheye model and undistortion
   stitch/      - Projection-agnostic CPU/GPU stitch backends + agreement oracle
   calibration.rs - Calibration (lenses, projection, framing)
   source.rs      - FrameSource trait, FrameSet enum
@@ -23,14 +23,14 @@ src/
 
 ## What it does NOT own
 
-No file I/O, no FFmpeg, no GStreamer, no ONNX/TensorRT. Those live in `reco-io` and `reco-detect`. reco-core is usable headless.
+Source acquisition, codecs and network delivery live in `reco-io` or injected consumers. Concrete inference backends live in `reco-detect`. The core has no FFmpeg, GStreamer or ONNX/TensorRT dependency.
 
 ## Build
 
 ```bash
 cargo build -p reco-core
 cargo test -p reco-core --no-default-features  # CPU engine, session and rendering
-cargo build -p reco-core --features profiling   # tracing-chrome instrumentation
+cargo build -p reco-core --features profiling   # tracing spans; the application selects a subscriber
 cargo doc --no-deps -p reco-core --open
 ```
 

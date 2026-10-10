@@ -24,6 +24,8 @@ use crate::sink::{OutputFrame, OutputSink, PixelFormat, SinkError};
 struct SinkJob {
     /// NV12 pixel data (borrowed from the buffer pool).
     data: Vec<u8>,
+    width: u32,
+    height: u32,
     /// Presentation timestamp in microseconds.
     pts_us: Option<i64>,
 }
@@ -56,9 +58,6 @@ pub struct SinkThread {
     handle: Option<JoinHandle<Result<(), SinkError>>>,
     /// Preserve failure after joining so later shutdown cannot report success.
     error: Option<SinkError>,
-    /// Output dimensions (needed for OutputFrame construction).
-    width: u32,
-    height: u32,
     /// Sink-thread counters (shared with the worker).
     stats: Arc<SinkStats>,
 }
@@ -71,6 +70,7 @@ impl SinkThread {
     /// The `queue_depth` parameter controls how many frames can be
     /// in-flight between the render thread and the sink thread
     /// (typically 2).
+    /// Dimensions determine the initial buffer allocation, not later frame geometry.
     pub fn new(sink: Box<dyn OutputSink>, width: u32, height: u32, queue_depth: usize) -> Self {
         let nv12_size = width as usize * height as usize * 3 / 2;
         let (tx, rx) = mpsc::sync_channel::<SinkJob>(queue_depth);
@@ -86,7 +86,7 @@ impl SinkThread {
         let worker_stats = Arc::clone(&stats);
         let handle = thread::Builder::new()
             .name("sink".into())
-            .spawn(move || Self::consume_loop(rx, pool_tx, sink, width, height, worker_stats))
+            .spawn(move || Self::consume_loop(rx, pool_tx, sink, worker_stats))
             .expect("spawn sink thread");
 
         Self {
@@ -95,17 +95,15 @@ impl SinkThread {
             handle: Some(handle),
             error: None,
             stats,
-            width,
-            height,
         }
     }
 
     /// Submit NV12 data to the sink.
     ///
-    /// Copies `nv12_data` into a pooled buffer and sends it to the
+    /// Copies the frame into a pooled buffer and sends it to the
     /// sink thread. Blocks if the channel is full (backpressure).
-    /// `pts_us` follows [`OutputFrame::pts_us`], including fixed-rate `None`.
-    pub fn submit(&mut self, nv12_data: &[u8], pts_us: Option<i64>) -> Result<(), SinkError> {
+    /// Geometry and presentation time stay associated with the copied pixels.
+    pub fn submit(&mut self, frame: OutputFrame<'_>) -> Result<(), SinkError> {
         profile_scope!("sink_thread_submit");
         if let Some(error) = &self.error {
             return Err(error.clone());
@@ -114,22 +112,40 @@ impl SinkThread {
             frame_index: None,
             reason: "sink already finished".into(),
         })?;
+        let expected_size = (frame.width as usize)
+            .checked_mul(frame.height as usize)
+            .and_then(|pixels| pixels.checked_mul(3))
+            .map(|bytes| bytes / 2);
+        if frame.format != PixelFormat::Nv12
+            || frame.width == 0
+            || frame.height == 0
+            || !frame.width.is_multiple_of(2)
+            || !frame.height.is_multiple_of(2)
+            || expected_size != Some(frame.data.len())
+        {
+            return Err(SinkError::Consume {
+                frame_index: None,
+                reason: "threaded delivery requires tightly packed, even-sized NV12 frames".into(),
+            });
+        }
         let pool_rx = self.pool_rx.as_ref();
 
         // Try to get a recycled buffer from the pool, or allocate if empty.
         let mut buf = pool_rx
             .and_then(|rx| rx.try_recv().ok())
-            .unwrap_or_else(|| {
-                let nv12_size = self.width as usize * self.height as usize * 3 / 2;
-                vec![0u8; nv12_size]
-            });
+            .unwrap_or_default();
 
-        buf.resize(nv12_data.len(), 0);
-        buf.copy_from_slice(nv12_data);
+        buf.resize(frame.data.len(), 0);
+        buf.copy_from_slice(frame.data);
 
         // Try non-blocking first; only a full channel means the sink is
         // the bottleneck. Measure that stall.
-        match tx.try_send(SinkJob { data: buf, pts_us }) {
+        match tx.try_send(SinkJob {
+            data: buf,
+            width: frame.width,
+            height: frame.height,
+            pts_us: frame.pts_us,
+        }) {
             Ok(()) => Ok(()),
             Err(TrySendError::Full(job)) => {
                 let t0 = Instant::now();
@@ -224,8 +240,6 @@ impl SinkThread {
         rx: Receiver<SinkJob>,
         pool_tx: SyncSender<Vec<u8>>,
         mut sink: Box<dyn OutputSink>,
-        width: u32,
-        height: u32,
         stats: Arc<SinkStats>,
     ) -> Result<(), SinkError> {
         while let Ok(job) = rx.recv() {
@@ -233,8 +247,8 @@ impl SinkThread {
             let t0 = Instant::now();
             if let Err(error) = sink.consume(OutputFrame {
                 data: &job.data,
-                width,
-                height,
+                width: job.width,
+                height: job.height,
                 format: PixelFormat::Nv12,
                 pts_us: job.pts_us,
             }) {
@@ -279,6 +293,16 @@ mod tests {
     use super::*;
     use crate::sink::SinkInput;
 
+    fn frame(data: &[u8], pts_us: Option<i64>) -> OutputFrame<'_> {
+        OutputFrame {
+            data,
+            width: 16,
+            height: 16,
+            format: PixelFormat::Nv12,
+            pts_us,
+        }
+    }
+
     struct NoopSink;
     impl OutputSink for NoopSink {
         fn name(&self) -> &str {
@@ -300,12 +324,32 @@ mod tests {
         let mut t = SinkThread::new(Box::new(NoopSink), 16, 16, 2);
         let data = vec![0u8; 16 * 16 * 3 / 2];
         for i in 0..8 {
-            t.submit(&data, Some(i)).unwrap();
+            t.submit(frame(&data, Some(i))).unwrap();
         }
         t.finish().unwrap();
         let (frames, avg_ms, _bp, _bp_ms) = t.stats();
         assert_eq!(frames, 8);
         assert!(avg_ms.is_finite() && avg_ms >= 0.0);
+    }
+
+    #[test]
+    fn malformed_frames_do_not_enter_the_queue_or_poison_delivery() {
+        let mut sink = SinkThread::new(Box::new(NoopSink), 16, 16, 1);
+        let pixels = [128; 16 * 16 * 3 / 2];
+        for case in 0..5 {
+            let mut invalid = frame(&pixels, None);
+            match case {
+                0 => invalid.width = 0,
+                1 => invalid.width = 15,
+                2 => invalid.height = 15,
+                3 => invalid.format = PixelFormat::Rgba8,
+                _ => invalid.data = &pixels[..pixels.len() - 1],
+            }
+            assert!(sink.submit(invalid).is_err());
+        }
+        sink.submit(frame(&pixels, None)).unwrap();
+        sink.finish().unwrap();
+        assert_eq!(sink.stats().0, 1);
     }
 
     /// A dying worker must surface the sink's real error to the
@@ -336,7 +380,7 @@ mod tests {
         // The first submits may succeed (queued before the worker
         // errors); keep going until the disconnect is observed.
         let err = (0..100)
-            .find_map(|i| t.submit(&data, Some(i)).err())
+            .find_map(|i| t.submit(frame(&data, Some(i))).err())
             .expect("worker death must surface as a submit error");
         assert!(
             err.to_string().contains("codec rejected the frame"),
@@ -345,7 +389,7 @@ mod tests {
         assert_eq!(t.finish().unwrap_err().to_string(), err.to_string());
         assert_eq!(t.finish().unwrap_err().to_string(), err.to_string());
         assert_eq!(
-            t.submit(&data, Some(100)).unwrap_err().to_string(),
+            t.submit(frame(&data, Some(100))).unwrap_err().to_string(),
             err.to_string()
         );
     }
@@ -387,14 +431,14 @@ mod tests {
             16,
             1,
         );
-        let frame = [128; 16 * 16 * 3 / 2];
-        sink.submit(&frame, None).unwrap();
+        let pixels = [128; 16 * 16 * 3 / 2];
+        sink.submit(frame(&pixels, None)).unwrap();
         entered_rx.recv().unwrap();
-        sink.submit(&frame, None).unwrap();
+        sink.submit(frame(&pixels, None)).unwrap();
         // The worker holds frame one and frame two fills the only queue slot.
         let (done_tx, done_rx) = mpsc::channel();
         let submitter = thread::spawn(move || {
-            let result = sink.submit(&frame, None);
+            let result = sink.submit(frame(&pixels, None));
             assert!(done_tx.send((sink, result)).is_ok());
         });
         assert!(matches!(
@@ -409,7 +453,7 @@ mod tests {
         assert!(matches!(sink.finish(), Err(SinkError::Cancelled)));
         assert!(matches!(sink.finish(), Err(SinkError::Cancelled)));
         assert!(matches!(
-            sink.submit(&frame, None),
+            sink.submit(frame(&pixels, None)),
             Err(SinkError::Cancelled)
         ));
         submitter.join().unwrap();
@@ -457,7 +501,9 @@ mod tests {
                 16,
                 1,
             );
-            thread.submit(&[0; 16 * 16 * 3 / 2], Some(0)).unwrap();
+            thread
+                .submit(frame(&[0; 16 * 16 * 3 / 2], Some(0)))
+                .unwrap();
             let error = thread.finish().unwrap_err().to_string();
             assert!(error.contains(if fail_consume {
                 "consume failure"

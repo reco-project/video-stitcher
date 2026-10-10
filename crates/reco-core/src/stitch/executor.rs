@@ -188,7 +188,7 @@ impl Executor {
                 Some((width, height))
             }
             #[cfg(feature = "gpu")]
-            Executor::Gpu(g) => g.pipeline.resize(width, height),
+            Executor::Gpu(g) => g.resize(width, height),
         }
     }
 
@@ -509,8 +509,23 @@ mod tests {
                 .unwrap();
                 for (width, height) in [(80, 48), (48, 80)] {
                     executor.pipeline.resize(width, height).unwrap();
-                    // Preview resize changes the caller's viewport, not the
-                    // separately owned offscreen target used by batch output.
+                    for (invalid_width, invalid_height) in
+                        [(0, height), (width, 0), (u32::MAX, height)]
+                    {
+                        assert!(
+                            executor
+                                .pipeline
+                                .resize(invalid_width, invalid_height)
+                                .is_none()
+                        );
+                        assert_eq!(
+                            (
+                                executor.pipeline.viewport_size.width,
+                                executor.pipeline.viewport_size.height
+                            ),
+                            (width, height)
+                        );
+                    }
                     let batch_executor = GpuExecutor::new(
                         gpu.clone(),
                         GpuExecutorConfig {
@@ -568,6 +583,15 @@ mod tests {
                             "cameras={count}, format={format:?}, {width}x{height}, yaw={yaw}"
                         );
                         assert!(preview.chunks_exact(4).any(|pixel| pixel[0] > 32));
+                        let cmd = executor.pipeline.render_frame_set(&frames, pose).unwrap();
+                        readback
+                            .readback(&gpu, executor.pipeline.render_target(), cmd)
+                            .unwrap();
+                        let resized = readback.flush_pending(&gpu).unwrap().unwrap();
+                        assert_eq!(
+                            preview, resized,
+                            "resized internal target must match caller output"
+                        );
                     }
                     assert!(
                         executor
@@ -595,6 +619,55 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "gpu")]
+    fn camera_dimensions_respect_the_consumers_device_limits() {
+        use crate::gpu::GpuContext;
+        use crate::render::renderer::InputFormat;
+
+        let Some(original) = gpu_or_skip() else {
+            return;
+        };
+        let adapter = original.adapter.as_ref().unwrap();
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("consumer with smaller texture limits"),
+            required_limits: wgpu::Limits {
+                max_texture_dimension_2d: 128,
+                ..original.device.limits()
+            },
+            required_features: original.device.features(),
+            ..Default::default()
+        }))
+        .unwrap();
+        let gpu = GpuContext::from_device_queue(device, queue, adapter.get_info());
+        let config = |sizes, format| GpuExecutorConfig {
+            viewport_size: ViewportSize {
+                width: 64,
+                height: 32,
+            },
+            ..GpuExecutorConfig::new(calib(64, 32), sizes, format)
+        };
+        for format in [InputFormat::Nv12, InputFormat::Yuv420p, InputFormat::Rgba] {
+            for camera in 0..2 {
+                for oversized in [(130, 32), (64, 130)] {
+                    let mut sizes = vec![(64, 32); 2];
+                    sizes[camera] = oversized;
+                    let Err(error) = GpuExecutor::new(gpu.clone(), config(sizes, format)) else {
+                        panic!("oversized camera accepted")
+                    };
+                    assert!(
+                        error.to_string().contains("device texture dimension limit"),
+                        "{error}"
+                    );
+                }
+            }
+            assert!(
+                GpuExecutor::new(gpu.clone(), config(vec![(128, 32), (64, 128)], format)).is_ok(),
+                "dimensions at the device limit must remain usable"
+            );
         }
     }
 

@@ -1,31 +1,19 @@
 //! # reco-core
 //!
-//! GPU-accelerated panoramic video stitching engine.
+//! Calibrated panoramic rendering with shared CPU and GPU engine orchestration.
 //!
-//! `reco-core` is the foundation of the Reco Video Stitcher. It provides the
-//! complete GPU pipeline for stitching two camera feeds into a seamless panoramic
-//! view, using `wgpu` for cross-platform GPU acceleration.
+//! [`calibration::Calibration`] owns lenses, projection geometry and rig framing. It supports stereo L-shape and mono cylindrical inputs; [`core::StitchCore`] owns coverage, render-pose resolution and optional tracking. [`session::StitchSession`] drives the engine from a source through immediate or lookahead processing into output sinks.
 //!
 //! ## Architecture
 //!
 //! The pipeline processes frames through these stages:
 //!
 //! ```text
-//! Input frames (YUV/NV12)
-//!   → GPU texture upload
-//!   → Fisheye undistortion (per-camera)
-//!   → Composite two planes with blending
-//!   → Viewport crop (panner-controlled pan)
-//!   → Output frame for encoding
+//! Source frames → detection/tracking → render-pose resolution
+//!                                      → CPU/GPU executor → output sinks
 //! ```
 //!
-//! ## Geometric Model
-//!
-//! Two camera planes are arranged in an L-shape in 3D space:
-//! - Left camera plane lies in the X-Z plane (faces right)
-//! - Right camera plane lies in the X-Y plane (faces forward)
-//! - A virtual camera sits at the corner, looking at both planes
-//! - Panning is achieved by rotating the virtual camera (yaw/pitch)
+//! CPU rendering, calibrated geometry and session orchestration build without the default `gpu` feature. GPU execution, native image imports and preview/readback require it. The isolated CPU test and dependency-graph checks in `.github/workflows/rust.yml` enforce this boundary.
 //!
 //! ## Modularity
 //!
@@ -46,12 +34,17 @@
 //! let calibration: Calibration = serde_json::from_str(&json).unwrap();
 //! ```
 
-/// Create a tracing span guard (no-op when `profiling` feature is disabled).
+// Exported macros must resolve dependencies through their defining crate.
+#[cfg(feature = "profiling")]
+#[doc(hidden)]
+pub use tracing::info_span as __profile_span;
+
+/// Create a scope-bound tracing span when reco-core's `profiling` feature is enabled. Otherwise, expands to nothing without evaluating the argument. Callers do not need a direct tracing dependency.
 #[cfg(feature = "profiling")]
 #[macro_export]
 macro_rules! profile_scope {
     ($name:expr) => {
-        let _span = tracing::info_span!($name).entered();
+        let _span = $crate::__profile_span!($name).entered();
     };
 }
 

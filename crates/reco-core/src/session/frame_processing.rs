@@ -319,7 +319,7 @@ impl StitchSession {
 
     /// Render camera-ordered imported Y/UV views and deliver the output to sinks.
     ///
-    /// Input layout and lifetime requirements are those of [`StitchCore::render_imported_nv12_at_pose`](crate::core::StitchCore::render_imported_nv12_at_pose). Native owners must remain alive until GPU completion, not just until this method returns. Stereo replay uses the supplied views directly. `pts_us` follows [`crate::sink::OutputFrame::pts_us`].
+    /// Input layout and lifetime requirements are those of [`StitchCore::render_imported_nv12_to_view`](crate::core::StitchCore::render_imported_nv12_to_view). Native owners must remain alive until GPU completion, not just until this method returns. Stereo replay uses the supplied views directly. `pts_us` follows [`crate::sink::OutputFrame::pts_us`].
     #[cfg(feature = "gpu")]
     pub fn render_frame_imported_nv12(
         &mut self,
@@ -494,32 +494,28 @@ impl StitchSession {
         render_commands: wgpu::CommandBuffer,
         pts_us: Option<i64>,
     ) -> Result<(), SessionError> {
-        // Field-path borrow: `nv12_data` borrows the executor inside
+        // Field-path borrow: the output borrows the executor inside
         // `core` for the rest of the function, while the sink fan-out
         // below touches only session-owned fields.
-        let (nv12_width, nv12_height) = self.gpu_exec_ref().nv12_dims();
         let readback_t0 = std::time::Instant::now();
-        let nv12_data = self
+        let output = self
             .core
             .executor
             .gpu_mut()
             .expect("the streaming session runs on the GPU executor")
-            .convert_nv12(render_commands)?;
+            .convert_nv12(render_commands, pts_us)?;
         self.last_readback_time = readback_t0.elapsed();
-        self.pending_pts.push_back(pts_us);
 
         // First two calls return None (triple-buffer warmup).
         // From the third call onward, we get data from 2 frames ago.
         let submit_t0 = std::time::Instant::now();
-        if let Some(data) = nv12_data {
+        if let Some(frame) = output {
             super::sinks::deliver_frame(
                 &mut self.sinks,
-                data,
-                nv12_width,
-                nv12_height,
-                self.pending_pts.pop_front().ok_or_else(|| {
-                    SessionError::Config("readback has no originating timestamp".into())
-                })?,
+                frame.data,
+                frame.width,
+                frame.height,
+                frame.pts_us,
             )?;
         }
         self.last_submit_time = submit_t0.elapsed();

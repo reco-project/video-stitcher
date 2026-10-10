@@ -63,11 +63,11 @@ pub enum SinkInput {
 
 /// A rendered frame ready for a sink.
 ///
-/// Borrows pixel data from the GPU readback buffer. The data is valid
-/// until the next frame is rendered (the readback buffer is reused).
+/// Borrows pixel data for the duration of the sink's consume call.
+/// A sink that retains the image must copy it into its own storage.
 #[derive(Debug)]
 pub struct OutputFrame<'a> {
-    /// Raw pixel data (borrowed from readback buffer).
+    /// Borrowed, tightly packed pixel data.
     pub data: &'a [u8],
     /// Frame width in pixels.
     pub width: u32,

@@ -5,6 +5,7 @@
 
 use crate::calibration::Calibration;
 use crate::geometry::RenderPose;
+use crate::render::color::bt709_yuv_to_rgb;
 use crate::render::planes::{Nv12Planes, Yuv420pPlanes};
 use crate::render::viewport::ViewportSize;
 
@@ -202,7 +203,7 @@ fn sample_nv12(
         u * cw as f64 - 0.5,
         v * ch as f64 - 0.5,
     );
-    yuv_to_rgb(y_raw, u_raw / 255.0, v_raw / 255.0, full_range)
+    bt709_yuv_to_rgb(y_raw, u_raw / 255.0, v_raw / 255.0, full_range)
 }
 
 /// Sample a YUV420p frame at normalised UV (bilinear Y + separate U, V planes).
@@ -220,29 +221,7 @@ fn sample_yuv420p(
     let y_raw = bilinear_u8(planes.y, w, h, u * w as f64 - 0.5, v * h as f64 - 0.5) / 255.0;
     let u_raw = bilinear_u8(planes.u, cw, ch, u * cw as f64 - 0.5, v * ch as f64 - 0.5) / 255.0;
     let v_raw = bilinear_u8(planes.v, cw, ch, u * cw as f64 - 0.5, v * ch as f64 - 0.5) / 255.0;
-    yuv_to_rgb(y_raw, u_raw, v_raw, full_range)
-}
-
-/// BT.709 YCbCr -> sRGB-domain R'G'B', inputs normalised to `[0, 1]`.
-///
-/// Limited range rescales to full before the matrix. Mirrors
-/// `video_sampling.wgsl::sample_video`.
-#[inline]
-fn yuv_to_rgb(y_raw: f64, u_raw: f64, v_raw: f64, full_range: bool) -> [f64; 3] {
-    let (y, cb, cr) = if full_range {
-        (y_raw, u_raw - 0.5, v_raw - 0.5)
-    } else {
-        (
-            (y_raw - 16.0 / 255.0) * (255.0 / 219.0),
-            (u_raw - 128.0 / 255.0) * (255.0 / 224.0),
-            (v_raw - 128.0 / 255.0) * (255.0 / 224.0),
-        )
-    };
-    [
-        (y + 1.5748 * cr).clamp(0.0, 1.0),
-        (y - 0.1873 * cb - 0.4681 * cr).clamp(0.0, 1.0),
-        (y + 1.8556 * cb).clamp(0.0, 1.0),
-    ]
+    bt709_yuv_to_rgb(y_raw, u_raw, v_raw, full_range)
 }
 
 /// Bilinear sample of a tightly-packed single-byte plane (row stride = `w`),

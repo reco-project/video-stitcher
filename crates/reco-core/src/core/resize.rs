@@ -48,7 +48,7 @@ impl StitchCore {
 
     /// Apply preview dimensions immediately, invalidating coverage when the aspect changes.
     ///
-    /// Coverage is prepared separately by [`Self::prepare_coverage_preview`]. Same-aspect resizes preserve coverage and motion. Delivery allocation still happens on the calling thread. Recording consumers must retain their encoder dimensions.
+    /// Coverage is prepared separately by [`Self::prepare_coverage_preview`]. Same-aspect resizes preserve coverage and motion. Internal output and readback storage are recreated when next used. Recording consumers must retain their encoder dimensions.
     pub fn resize_preview(&mut self, width: u32, height: u32) -> Result<(), StitchCoreError> {
         let size = ViewportSize { width, height };
         size.validate()

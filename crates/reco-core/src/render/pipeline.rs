@@ -124,12 +124,28 @@ impl StitchPipeline {
         if let Err(e) = viewport_size.validate() {
             return Err(PipelineError::InvalidConfig { reason: e });
         }
+        let limit = gpu.device.limits().max_texture_dimension_2d;
+        if viewport_size.width > limit || viewport_size.height > limit {
+            return Err(PipelineError::InvalidConfig {
+                reason: format!("viewport exceeds the device texture dimension limit {limit}"),
+            });
+        }
         crate::source::validate_camera_sizes(
             &source_sizes,
             calibration.lenses.len(),
             input_format != InputFormat::Rgba,
         )
         .map_err(|reason| PipelineError::InvalidConfig { reason })?;
+
+        for (camera, &(width, height)) in source_sizes.iter().enumerate() {
+            if width > limit || height > limit {
+                return Err(PipelineError::InvalidConfig {
+                    reason: format!(
+                        "camera {camera} dimensions {width}x{height} exceed the device texture dimension limit {limit}"
+                    ),
+                });
+            }
+        }
 
         let output_format = output_format.into();
         let scene = Self::derive_plane_scene(&calibration);
@@ -216,22 +232,16 @@ impl StitchPipeline {
         self.renderer.right_plane_views()
     }
 
-    /// Update the viewport metadata (aspect ratio, projection matrix).
+    /// Update viewport geometry and invalidate the internal output texture.
     ///
-    /// **Important:** this does NOT recreate GPU textures or the render
-    /// target. Use this for viewport-metadata changes (e.g. surface
-    /// reconfigure in a preview window). For actual output resolution
-    /// changes, rebuild the pipeline with [`Self::with_gpu`].
-    /// Returns `Some((width, height))` on success, or `None` if the
-    /// dimensions were zero (ignored). Consumers that own external
-    /// staging buffers (e.g.
-    /// [`RgbaReadback`](crate::gpu::rgba_readback::RgbaReadback)) should
-    /// recreate them when the returned size differs from the previous.
+    /// Shaders and camera resources remain valid. Output storage is recreated only when used; caller-owned preview targets need none. Rejects zero or device-exceeding dimensions without mutation. Owners of readback storage must resize it too.
     pub fn resize(&mut self, width: u32, height: u32) -> Option<(u32, u32)> {
-        if width == 0 || height == 0 {
-            log::warn!("resize({width}, {height}) ignored: dimensions must be non-zero");
+        let limit = self.gpu.device.limits().max_texture_dimension_2d;
+        if width == 0 || height == 0 || width > limit || height > limit {
+            log::warn!("resize({width}, {height}) ignored: dimensions must be in 1..={limit}");
             return None;
         }
+        self.renderer.resize(width, height);
         self.viewport_size.width = width;
         self.viewport_size.height = height;
         Some((width, height))
@@ -330,6 +340,16 @@ impl StitchPipeline {
         cameras: &[(&wgpu::TextureView, &wgpu::TextureView)],
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
+        self.bind_imported_views(cameras)?;
+        let result = self.render_to_target_gpu(pose);
+        self.clear_imported_bind_groups();
+        result
+    }
+
+    fn bind_imported_views(
+        &mut self,
+        cameras: &[(&wgpu::TextureView, &wgpu::TextureView)],
+    ) -> Result<(), PipelineError> {
         self.check_inputs(cameras.len(), InputFormat::Nv12)?;
         // Validate every backing allocation before changing any camera binding.
         for (camera, (&(y, uv), &(width, height))) in
@@ -368,11 +388,21 @@ impl StitchPipeline {
                 .create_bind_group_from_views(y, uv, "imported_camera");
             self.renderer.set_camera_bind_group(camera, group);
         }
-        // The encoded command retains its bindings. Subsequent host submissions
-        // must sample their own upload textures, even if encoding failed.
-        let result = self.render_to_target_gpu(pose);
+        Ok(())
+    }
+
+    /// Submit imported camera views directly to a caller-owned render target.
+    pub fn render_imported_to_view(
+        &mut self,
+        cameras: &[(&wgpu::TextureView, &wgpu::TextureView)],
+        pose: RenderPose,
+        target: &wgpu::TextureView,
+    ) -> Result<wgpu::SubmissionIndex, PipelineError> {
+        self.validate_target(target)?;
+        self.bind_imported_views(cameras)?;
+        let submission = self.render_bound_to_view(pose, target);
         self.clear_imported_bind_groups();
-        result
+        Ok(submission)
     }
 
     /// Process a CPU-resident frame set and return the render command buffer.
@@ -452,9 +482,38 @@ impl StitchPipeline {
         frames: &crate::source::FrameSet,
         pose: RenderPose,
         target_view: &wgpu::TextureView,
-    ) -> Result<(), PipelineError> {
+    ) -> Result<wgpu::SubmissionIndex, PipelineError> {
+        self.validate_target(target_view)?;
         self.upload_frame_set(frames)?;
+        Ok(self.render_bound_to_view(pose, target_view))
+    }
 
+    fn validate_target(&self, view: &wgpu::TextureView) -> Result<(), PipelineError> {
+        let texture = view.texture();
+        if texture.width() != self.viewport_size.width
+            || texture.height() != self.viewport_size.height
+            || texture.dimension() != wgpu::TextureDimension::D2
+            || texture.depth_or_array_layers() != 1
+            || texture.mip_level_count() != 1
+            || texture.sample_count() != 1
+            || !texture
+                .usage()
+                .contains(wgpu::TextureUsages::RENDER_ATTACHMENT)
+            || crate::render::strip_srgb(texture.format())
+                != crate::render::strip_srgb(self.renderer.output_format())
+        {
+            return Err(PipelineError::InvalidConfig {
+                reason: "render target must match the configured viewport and output format".into(),
+            });
+        }
+        Ok(())
+    }
+
+    fn render_bound_to_view(
+        &self,
+        pose: RenderPose,
+        target_view: &wgpu::TextureView,
+    ) -> wgpu::SubmissionIndex {
         self.renderer.render_to_view(
             &self.gpu,
             self.scene.as_ref(),
@@ -463,8 +522,7 @@ impl StitchPipeline {
             self.viewport_size.aspect_ratio(),
             self.calibration.projection.blend_width(),
             target_view,
-        );
-        Ok(())
+        )
     }
 
     /// Render a frame to the internal render target without CPU readback.

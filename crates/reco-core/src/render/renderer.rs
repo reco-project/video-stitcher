@@ -12,6 +12,7 @@ use crate::projection::l_shape::PlaneScene;
 
 use bytemuck::{Pod, Zeroable};
 use nalgebra::{Matrix4, Perspective3};
+use std::sync::OnceLock;
 use thiserror::Error;
 use wgpu::util::DeviceExt;
 
@@ -195,8 +196,9 @@ pub(crate) struct Renderer {
     pipeline: wgpu::RenderPipeline,
     vertex_buffer: Option<wgpu::Buffer>,
     cameras: Vec<PlaneResources>,
-    render_target: wgpu::Texture,
-    render_target_view: wgpu::TextureView,
+    /// Caller-owned previews do not allocate an unused internal output texture.
+    render_target: OnceLock<(wgpu::Texture, wgpu::TextureView)>,
+    output_format: wgpu::TextureFormat,
     output_width: u32,
     output_height: u32,
     /// Input pixel format (YUV420P or NV12).
@@ -382,31 +384,12 @@ impl Renderer {
             })
             .collect();
 
-        // Render target (output-sized, RGBA)
-        let render_target = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("render_target"),
-            size: wgpu::Extent3d {
-                width: output_width,
-                height: output_height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: output_format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_SRC
-                | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-        let render_target_view = render_target.create_view(&wgpu::TextureViewDescriptor::default());
-
         Self {
             pipeline,
             vertex_buffer,
             cameras,
-            render_target,
-            render_target_view,
+            render_target: OnceLock::new(),
+            output_format,
             output_width,
             output_height,
             input_format,
@@ -891,7 +874,7 @@ impl Renderer {
             calibration,
             pose,
             blend_width,
-            &self.render_target_view,
+            &self.output_target().1,
             aspect,
             "stitch_to_target",
         );
@@ -903,7 +886,44 @@ impl Renderer {
     /// Used by [`Nv12Converter`](crate::gpu::nv12_converter::Nv12Converter) to read
     /// the RGBA output without an intermediate CPU copy.
     pub fn render_target(&self) -> &wgpu::Texture {
-        &self.render_target
+        &self.output_target().0
+    }
+
+    /// Configured output format, without allocating internal image storage.
+    pub fn output_format(&self) -> wgpu::TextureFormat {
+        self.output_format
+    }
+
+    /// Invalidate only output storage, retaining shaders and camera resources.
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if (width, height) != (self.output_width, self.output_height) {
+            self.render_target.take();
+            self.output_width = width;
+            self.output_height = height;
+        }
+    }
+
+    fn output_target(&self) -> &(wgpu::Texture, wgpu::TextureView) {
+        self.render_target.get_or_init(|| {
+            let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("render_target"),
+                size: wgpu::Extent3d {
+                    width: self.output_width,
+                    height: self.output_height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.output_format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::COPY_SRC
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            });
+            let view = texture.create_view(&Default::default());
+            (texture, view)
+        })
     }
 
     /// Render a stitched frame directly to a texture view (e.g., a window surface).
@@ -919,7 +939,7 @@ impl Renderer {
         aspect: f32,
         blend_width: f32,
         target_view: &wgpu::TextureView,
-    ) {
+    ) -> wgpu::SubmissionIndex {
         let encoder = self.encode_stitch_pass(
             gpu,
             scene,
@@ -930,7 +950,7 @@ impl Renderer {
             aspect,
             "preview_frame",
         );
-        gpu.queue.submit(Some(encoder.finish()));
+        gpu.queue.submit(Some(encoder.finish()))
     }
 }
 
@@ -1165,6 +1185,47 @@ pub(crate) fn build_gpu_uniforms(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn internal_output_is_lazy_and_only_size_changes_invalidate_it() {
+        use crate::stitch::test_support::{calib, gpu_or_skip};
+        let Some(gpu) = gpu_or_skip() else { return };
+        let calibration = calib(64, 32);
+        let program = calibration.projection.geometry().gpu_program().unwrap();
+        let mut renderer = Renderer::new(
+            &gpu,
+            &program,
+            80,
+            48,
+            &[(64, 32); 2],
+            wgpu::TextureFormat::Rgba8Unorm,
+            InputFormat::Nv12,
+        );
+        assert!(renderer.render_target.get().is_none());
+        assert_eq!(renderer.output_format(), wgpu::TextureFormat::Rgba8Unorm);
+        renderer.resize(48, 80);
+        assert!(renderer.render_target.get().is_none());
+        assert_eq!(
+            (
+                renderer.render_target().width(),
+                renderer.render_target().height()
+            ),
+            (48, 80)
+        );
+        let retained = renderer.render_target().clone();
+        renderer.resize(48, 80);
+        assert_eq!(renderer.render_target(), &retained);
+        renderer.resize(128, 72);
+        assert!(renderer.render_target.get().is_none());
+        assert_ne!(renderer.render_target(), &retained);
+        assert_eq!(
+            (
+                renderer.render_target().width(),
+                renderer.render_target().height()
+            ),
+            (128, 72)
+        );
+    }
 
     #[test]
     fn uniforms_are_normalized() {

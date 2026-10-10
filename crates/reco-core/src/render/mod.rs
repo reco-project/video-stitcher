@@ -3,6 +3,7 @@
 //! Groups the modules responsible for turning decoded video frames into a
 //! stitched panoramic output on the GPU. The `planes` and `viewport` value types also serve the CPU stitch path and remain available without the `gpu` feature.
 
+pub mod color;
 pub mod nv12_cpu;
 #[cfg(feature = "gpu")]
 pub mod pipeline;

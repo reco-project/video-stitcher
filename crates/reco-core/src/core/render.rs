@@ -206,6 +206,13 @@ impl super::StitchCore {
         let Executor::Gpu(gpu) = &self.executor else {
             unreachable!("routed from the GPU arm");
         };
+        if self.readback.is_none() {
+            self.readback = Some(crate::gpu::rgba_readback::RgbaReadback::new(
+                gpu.pipeline.gpu(),
+                self.output_width,
+                self.output_height,
+            )?);
+        }
         let rgba = self
             .readback
             .as_mut()
@@ -271,27 +278,7 @@ impl super::StitchCore {
             return Err(StitchCoreError::RequiresGpu);
         };
         let cmd = gpu.pipeline.render_to_target_rgba(left, right, pose)?;
-        let captured_at = self.session_start.map(|s| s.elapsed()).unwrap_or_default();
-        let Executor::Gpu(gpu) = &self.executor else {
-            return Err(StitchCoreError::RequiresGpu);
-        };
-        let rgba = self
-            .readback
-            .as_mut()
-            .expect("gpu engine owns the readback ring")
-            .readback(gpu.pipeline.gpu(), gpu.pipeline.render_target(), cmd)?;
-        self.frame_count += 1;
-        if let (Some(replay), Some(bytes)) = (self.replay.as_mut(), rgba) {
-            replay.push(ReplayFrame {
-                rgba: bytes.to_vec(),
-                captured_at,
-                pose,
-            });
-        }
-        Ok(match rgba {
-            Some(bytes) => RenderOutcome::Rgba(bytes),
-            None => RenderOutcome::Warmup,
-        })
+        self.deliver_gpu_render(cmd, pose)
     }
 
     /// Store a CPU-stitched frame and hand out the borrowed outcome -
@@ -320,11 +307,10 @@ impl super::StitchCore {
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
-        Ok(self
-            .readback
-            .as_mut()
-            .expect("gpu engine owns the readback ring")
-            .flush_pending(gpu.pipeline.gpu())?)
+        match &mut self.readback {
+            Some(readback) => Ok(readback.flush_pending(gpu.pipeline.gpu())?),
+            None => Ok(None),
+        }
     }
 
     // -----------------------------------------------------------------
@@ -337,17 +323,39 @@ impl super::StitchCore {
     ///
     /// The full pose is the render parameter - fov included, so there
     /// is no cached zoom state to go stale between calls.
+    ///
+    /// Submits on this engine's queue without waiting for completion. The caller controls frames in flight; the returned marker covers this render, not later processing by the caller. The target must be a full, single-sampled 2D view matching the configured viewport, output format and device. Backing layout is checked here; view format and device compatibility remain wgpu requirements. Keep any external allocation owner alive and prevent reuse until this submission completes.
     #[cfg(feature = "gpu")]
     pub fn render_to_view(
         &mut self,
         frames: &crate::source::FrameSet,
         pose: RenderPose,
         view: &wgpu::TextureView,
-    ) -> Result<(), StitchCoreError> {
+    ) -> Result<wgpu::SubmissionIndex, StitchCoreError> {
         let Executor::Gpu(gpu) = &self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
         Ok(gpu.pipeline.render_to_view(frames, pose, view)?)
+    }
+
+    /// Submit imported NV12/P010 camera views directly to a caller-owned GPU target, without uploading or reading back pixels.
+    ///
+    /// Does not run detection or advance tracking/coverage. The pose is already in render space. Target requirements and the returned completion marker are those of [`Self::render_to_view`].
+    ///
+    /// Each camera supplies complete Y/UV planes on this engine's device: R8/Rg8 or R16/Rg16 Unorm textures, or Plane0/Plane1 views of one NV12/P010 texture. Backing textures must be single-layer, single-mip, single-sampled and match the configured camera size. All cameras use the same format. Camera count and backing layouts are checked before changing bindings; view aspects and device compatibility remain the caller's responsibility.
+    ///
+    /// Retaining wgpu handles does not prevent a native producer from reusing its allocation. Keep native input and output owners alive and prevent reuse until this submission completes. Imported bindings apply only to this submission; later host frames use their own upload textures.
+    #[cfg(feature = "gpu")]
+    pub fn render_imported_nv12_to_view(
+        &mut self,
+        cameras: &[(&wgpu::TextureView, &wgpu::TextureView)],
+        pose: RenderPose,
+        view: &wgpu::TextureView,
+    ) -> Result<wgpu::SubmissionIndex, StitchCoreError> {
+        let Executor::Gpu(gpu) = &mut self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        Ok(gpu.pipeline.render_imported_to_view(cameras, pose, view)?)
     }
 
     /// Render a CPU-resident frame set and read back NV12 bytes for encoding - the
@@ -365,7 +373,8 @@ impl super::StitchCore {
             return Err(StitchCoreError::RequiresGpu);
         };
         let cmd = gpu.pipeline.render_frame_set(frames, pose)?;
-        gpu.convert_nv12(cmd)
+        gpu.convert_nv12(cmd, None)
+            .map(|output| output.map(|frame| frame.data))
             .map_err(|e| StitchCoreError::Config(format!("NV12 preview readback: {e}")))
     }
 
@@ -377,24 +386,11 @@ impl super::StitchCore {
             return Err(StitchCoreError::RequiresGpu);
         };
         gpu.flush_nv12()
+            .map(|output| output.map(|frame| frame.data))
             .map_err(|e| StitchCoreError::Config(format!("NV12 preview flush: {e}")))
     }
 
-    // -----------------------------------------------------------------
-    // Low-level render-at-pose methods
-    //
-    // These produce a `wgpu::CommandBuffer` at a **caller-supplied pose**
-    // without running detection, without ticking the panner, and
-    // without performing RGBA readback. They exist so consumers that
-    // need the rendered GPU texture as input to further GPU work
-    // (NV12 conversion for encoding, compositor texture import) can
-    // drive the core without paying for readback.
-    //
-    // The `StitchSession::run` pull-adapter routes its encode loop
-    // through these, passing the pose it resolved through the engine's
-    // dispatch. They are also the render primitives for multi-output
-    // consumers (record + stream, zero-copy compositor).
-    // -----------------------------------------------------------------
+    // Session encoding combines a single frame's rendering and conversion in one submission.
 
     /// Render from GPU-resident RGBA textures (e.g. Bayer demosaic output).
     ///
@@ -402,31 +398,23 @@ impl super::StitchCore {
     /// planes (GPU-to-GPU blit), then renders the stitch. Returns the
     /// render command buffer for `submit_render_output`.
     #[cfg(feature = "gpu")]
-    pub fn render_gpu_rgba_at_pose(
+    pub(crate) fn render_gpu_rgba_at_pose(
         &self,
         left_rgba: &wgpu::Texture,
         right_rgba: &wgpu::Texture,
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
-        Ok(self
-            .executor
-            .gpu()
-            .expect("zero-copy render paths require the GPU executor")
+        let Executor::Gpu(gpu) = &self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        Ok(gpu
             .pipeline
-            .render_from_gpu_rgba(left_rgba, right_rgba, pose)
-            .map_err(crate::stitch::StitchError::from)?)
+            .render_from_gpu_rgba(left_rgba, right_rgba, pose)?)
     }
 
-    /// Render any [`FrameSet`](crate::source::FrameSet) variant
-    /// (YUV / NV12 / GpuResident) at an explicit pose.
-    ///
-    /// Thin wrapper over the pipeline's frame-set render that
-    /// converts the pipeline error into a `StitchCoreError`. The
-    /// `MetalResident` variant is NOT handled here; use
-    /// [`Self::render_imported_nv12_at_pose`] after importing the
-    /// `CVPixelBuffer` via `MetalTextureCache`.
+    /// Encode host YUV420P/NV12 input at an explicit pose. Submit the returned commands before another render changes the shared uniforms or upload textures.
     #[cfg(feature = "gpu")]
-    pub fn render_frame_set_at_pose(
+    pub(crate) fn render_frame_set_at_pose(
         &self,
         frames: &crate::source::FrameSet,
         pose: RenderPose,
@@ -437,13 +425,9 @@ impl super::StitchCore {
         Ok(gpu.pipeline.render_frame_set(frames, pose)?)
     }
 
-    /// Render imported NV12/P010 Y/UV views in calibrated camera order, without copying pixels or advancing tracking/coverage.
-    ///
-    /// Each pair must expose the complete Y and UV planes on this engine's device: separate R8/Rg8 or R16/Rg16 Unorm textures, or Plane0/Plane1 views of one NV12/P010 texture. Backing textures must be single-layer, single-mip, single-sampled and match the declared source size. All cameras must use the same format. Camera count and backing layouts are checked before changing bindings; plane aspects and device compatibility are the caller's responsibility.
-    ///
-    /// The command buffer retains wgpu resources, but callers must keep native allocation owners alive and prevent producer reuse until GPU completion. Imported bindings apply only to this frame; later host frames use their own upload textures.
+    /// Encode imported input under [`Self::render_imported_nv12_to_view`]'s layout and ownership contract. Submit before another render changes the shared uniforms. Encoded commands retain wgpu bindings, not native producer-reuse protection.
     #[cfg(feature = "gpu")]
-    pub fn render_imported_nv12_at_pose(
+    pub(crate) fn render_imported_nv12_at_pose(
         &mut self,
         cameras: &[(&wgpu::TextureView, &wgpu::TextureView)],
         pose: RenderPose,

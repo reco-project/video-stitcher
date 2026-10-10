@@ -80,9 +80,7 @@ use self::types::{StackedReplayRecorder, StitchCoreError};
 /// Detection is wired through [`Detector`]. Frame loops dispatch supported detector inputs, map results to world-reference angles, update trackers and request a world-space pose from the panner. Explicit render-at-pose methods render an already resolved pose without advancing that chain.
 pub struct StitchCore {
     pub(crate) executor: Executor,
-    /// Pipelined RGBA delivery ring - GPU executors only (`Some` iff
-    /// the executor is [`Executor::Gpu`]). The CPU path returns owned
-    /// bytes synchronously and never allocates it.
+    /// Pipelined RGBA delivery ring, allocated on the first GPU push submission. Texture-only previews, NV12 delivery and CPU executors do not allocate it.
     #[cfg(feature = "gpu")]
     pub(crate) readback: Option<RgbaReadback>,
     /// The last CPU-stitched frame - the synchronous dual of the GPU
@@ -174,17 +172,6 @@ impl StitchCore {
             let viewport = executor.viewport_size();
             (viewport.width, viewport.height)
         };
-        // The pipelined RGBA ring is GPU delivery machinery; the CPU
-        // executor returns owned bytes and needs none.
-        #[cfg(feature = "gpu")]
-        let readback = match executor.gpu() {
-            Some(gpu) => Some(RgbaReadback::new(
-                gpu.pipeline.gpu(),
-                output_width,
-                output_height,
-            )?),
-            None => None,
-        };
         log::info!(
             "StitchCore: engine constructed over the '{}' executor",
             StitchExecutor::name(&executor)
@@ -193,7 +180,7 @@ impl StitchCore {
         Ok(Self {
             executor,
             #[cfg(feature = "gpu")]
-            readback,
+            readback: None,
             cpu_frame: Vec::new(),
             output_width,
             output_height,
@@ -355,12 +342,12 @@ impl StitchCore {
     }
 
     /// Resize the output viewport. Returns the accepted `(width, height)`,
-    /// or `None` when the request was rejected (zero dimension).
+    /// or `None` when dimensions or coverage preparation are rejected.
     ///
     /// A resize is a stream discontinuity for the delivery machinery:
-    /// the GPU streaming readback ring is rebuilt at the new size
+    /// the GPU streaming readback ring is invalidated and recreated on use
     /// (frames in flight in the old ring are dropped) and the executor's
-    /// NV12 delivery re-creates itself on next use (it is keyed by dims).
+    /// NV12 delivery discards pending images and their timestamps together.
     /// Configured coverage motion is rebuilt before the resize is accepted. A failed
     /// map rebuild returns `None` without changing the viewport or motion state.
     pub fn resize(&mut self, width: u32, height: u32) -> Option<(u32, u32)> {
@@ -414,16 +401,8 @@ impl StitchCore {
             self.output_width = width;
             self.output_height = height;
             #[cfg(feature = "gpu")]
-            if let Some(gpu) = self.executor.gpu() {
-                // Infallible here: `Executor::resize` already rejected
-                // zero dimensions, the ring's only construction error.
-                self.readback = Some(
-                    RgbaReadback::new(gpu.pipeline.gpu(), width, height)
-                        .expect("resize validated non-zero dimensions"),
-                );
-                log::info!(
-                    "StitchCore: delivery machinery rebuilt for the {width}x{height} resize"
-                );
+            {
+                self.readback = None;
             }
         }
         accepted
@@ -1023,22 +1002,97 @@ mod tests {
             .into(),
         ]);
 
+        assert!(core.readback.is_none());
+        assert!(core.flush().unwrap().is_none());
+        core.set_constrained_look(false);
         // Warm the ring at the original size, then resize.
         let _ = core.submit_frame(&frames, 1.0 / 30.0).expect("submit");
-        assert_eq!(core.resize(128, 72), Some((128, 72)));
-
-        // The rebuilt ring delivers frames at the new size by the
-        // third post-resize submit.
-        let mut delivered = None;
-        for _ in 0..3 {
-            if let RenderOutcome::Rgba(bytes) =
-                core.submit_frame(&frames, 1.0 / 30.0).expect("submit")
-            {
-                delivered = Some(bytes.len());
-                break;
+        assert!(core.readback.is_some());
+        for (width, height) in [(128, 72), (72, 128), (256, 144), (160, 90)] {
+            assert_eq!(core.resize(width, height), Some((width, height)));
+            assert!(core.readback.is_none());
+            assert!(core.flush().unwrap().is_none());
+            let mut delivered = None;
+            for _ in 0..3 {
+                if let RenderOutcome::Rgba(bytes) =
+                    core.submit_frame(&frames, 1.0 / 30.0).expect("submit")
+                {
+                    delivered = Some(bytes.len());
+                    break;
+                }
             }
+            assert_eq!(delivered, Some((width * height * 4) as usize));
         }
-        assert_eq!(delivered, Some((128 * 72 * 4) as usize));
+    }
+
+    #[test]
+    #[cfg(feature = "gpu")]
+    fn nv12_after_preview_resize_matches_fresh_output_without_rgba_staging() {
+        use crate::core::StitchCore;
+        use crate::render::renderer::InputFormat;
+        use crate::render::viewport::ViewportSize;
+        use crate::source::{FrameSet, Nv12Data};
+        use crate::stitch::test_support::{calib, gpu_or_skip, nv12};
+        use crate::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
+        let Some(gpu) = gpu_or_skip() else { return };
+        let create = |width, height| {
+            StitchCore::new(Executor::Gpu(Box::new(
+                GpuExecutor::new(
+                    gpu.clone(),
+                    GpuExecutorConfig {
+                        viewport_size: ViewportSize { width, height },
+                        ..GpuExecutorConfig::new(
+                            calib(64, 32),
+                            vec![(64, 32); 2],
+                            InputFormat::Nv12,
+                        )
+                    },
+                )
+                .unwrap(),
+            )))
+            .unwrap()
+        };
+        let frames = FrameSet::Nv12(
+            (0..2)
+                .map(|camera| {
+                    let (y, uv) = nv12(64, 32, camera * 30);
+                    Nv12Data {
+                        size: (64, 32),
+                        y,
+                        uv,
+                    }
+                    .into()
+                })
+                .collect(),
+        );
+        let mut resized = create(80, 48);
+        for (width, height) in [(80, 48), (81, 49), (48, 80), (256, 144), (80, 48)] {
+            resized.resize_preview(width, height).unwrap();
+            let mut fresh = create(width, height);
+            for step in 0..5 {
+                let pose = RenderPose {
+                    yaw: step as f32 * 0.1,
+                    pitch: 0.05,
+                    fov_degrees: 50.0,
+                };
+                let actual = resized.render_and_readback_nv12(&frames, pose).unwrap();
+                let expected = fresh.render_and_readback_nv12(&frames, pose).unwrap();
+                assert!(actual == expected, "{width}x{height}, step {step}");
+                if let Some(bytes) = actual {
+                    assert_eq!(bytes.len(), ((width & !3) * (height & !1) * 3 / 2) as usize);
+                }
+            }
+            assert!(resized.readback.is_none());
+            assert!(fresh.readback.is_none());
+        }
+        resized.resize_preview(48, 80).unwrap();
+        resized.resize_preview(80, 48).unwrap();
+        assert!(
+            resized
+                .render_and_readback_nv12(&frames, RenderPose::default())
+                .unwrap()
+                .is_none()
+        );
     }
 
     /// `StitchCoreError` is `std::error::Error` (so downstream

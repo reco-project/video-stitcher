@@ -80,9 +80,6 @@ pub struct StitchSession {
     pub(crate) lookahead_frames: usize,
     pub(crate) lookahead_memory_bytes: usize,
     pub(crate) frame_count: u64,
-    /// Timestamps in the same submission order as the GPU's readback ring.
-    #[cfg(feature = "gpu")]
-    pub(crate) pending_pts: std::collections::VecDeque<Option<i64>>,
     pub(crate) telemetry: crate::telemetry::TelemetryCollector,
     telemetry_sink: Option<(Box<dyn crate::telemetry::TelemetrySink>, u64)>,
     /// Final worker average maximum, backpressure count and milliseconds after sink release.
@@ -199,8 +196,6 @@ impl StitchSession {
             lookahead_frames: 0,
             lookahead_memory_bytes: 0,
             frame_count: 0,
-            #[cfg(feature = "gpu")]
-            pending_pts: std::collections::VecDeque::with_capacity(3),
             telemetry: crate::telemetry::TelemetryCollector::new(),
             telemetry_sink: None,
             finished_sink_stats: (0.0, 0, 0.0),
@@ -341,22 +336,16 @@ impl StitchSession {
             if let Some(exec) = self.core.executor.gpu_mut() {
                 exec.finish_nvmm_reads().map_err(SessionError::ZeroCopy)?;
             }
-            let (nv12_width, nv12_height) = self.nv12_delivery_dims();
-            loop {
-                let Some(exec) = self.core.executor.gpu_mut() else {
-                    break;
-                };
-                let Some(nv12_data) = exec.flush_nv12()? else {
+            while let Some(exec) = self.core.executor.gpu_mut() {
+                let Some(frame) = exec.flush_nv12()? else {
                     break;
                 };
                 sinks::deliver_frame(
                     &mut self.sinks,
-                    nv12_data,
-                    nv12_width,
-                    nv12_height,
-                    self.pending_pts.pop_front().ok_or_else(|| {
-                        SessionError::Config("readback has no originating timestamp".into())
-                    })?,
+                    frame.data,
+                    frame.width,
+                    frame.height,
+                    frame.pts_us,
                 )?;
             }
             Ok(())

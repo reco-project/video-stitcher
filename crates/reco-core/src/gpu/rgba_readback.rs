@@ -9,10 +9,9 @@
 //! ## Triple-buffered readback
 //!
 //! Uses the same pattern as [`Nv12Converter`](crate::gpu::nv12_converter::Nv12Converter):
-//! three staging buffers cycle so the CPU always reads from 2 frames ago,
-//! which is guaranteed to have completed on the GPU. This avoids the
-//! blocking `poll(Wait)` stall (3-8ms at 1080p) that a single-buffered
-//! reader incurs.
+//! three staging buffers cycle so the CPU reads from two frames ago.
+//! This allows GPU work and CPU delivery to overlap. If the older frame
+//! is unfinished, readback still waits for it.
 //!
 //! ## Why a separate type
 //!
@@ -23,20 +22,6 @@
 //! consumer to pay for the GPU conversion work; instead this module
 //! handles the staging-buffer + map-async + row-strip plumbing directly.
 //!
-//! ## Usage
-//!
-//! ```rust,ignore
-//! use reco_core::gpu::rgba_readback::RgbaReadback;
-//!
-//! let mut readback = RgbaReadback::new(&gpu, width, height)?;
-//! // Inside the render loop:
-//! let cmd = pipeline.render_to_target(&left, &right, yaw, pitch)?;
-//! if let Some(rgba) = readback.readback(&gpu, pipeline.render_target(), cmd)? {
-//!     // rgba is &[u8] of length width * height * 4
-//!     display.update(rgba);
-//! }
-//! ```
-
 use super::GpuContext;
 
 /// GPU → CPU RGBA readback with triple-buffered staging.
@@ -73,19 +58,42 @@ impl RgbaReadback {
     /// Allocates three staging buffers plus three tightly-packed output
     /// `Vec<u8>`s (no per-frame allocation during the frame loop).
     pub fn new(gpu: &GpuContext, width: u32, height: u32) -> Result<Self, RgbaReadbackError> {
-        if width == 0 || height == 0 {
+        let limits = gpu.device.limits();
+        if width == 0
+            || height == 0
+            || width > limits.max_texture_dimension_2d
+            || height > limits.max_texture_dimension_2d
+        {
             return Err(RgbaReadbackError::InvalidDimensions(format!(
-                "width and height must be > 0, got {width}x{height}"
+                "dimensions {width}x{height} must be within 1..={}",
+                limits.max_texture_dimension_2d
             )));
         }
 
-        let bytes_per_row = width * 4;
+        let invalid_layout = || {
+            RgbaReadbackError::InvalidDimensions(format!(
+                "readback layout overflows for {width}x{height}"
+            ))
+        };
+        let bytes_per_row = width.checked_mul(4).ok_or_else(invalid_layout)?;
         // wgpu requires `copy_texture_to_buffer` rows aligned to 256 bytes
         // (D3D12 / Vulkan requirement, enforced as
         // `COPY_BYTES_PER_ROW_ALIGNMENT`).
-        let padded_bytes_per_row = bytes_per_row.div_ceil(256) * 256;
+        let alignment = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let padded_bytes_per_row = bytes_per_row
+            .checked_add(alignment - 1)
+            .ok_or_else(invalid_layout)?
+            / alignment
+            * alignment;
         let staging_size = (padded_bytes_per_row as u64) * (height as u64);
-        let output_len = (bytes_per_row as usize) * (height as usize);
+        if staging_size > limits.max_buffer_size {
+            return Err(RgbaReadbackError::InvalidDimensions(format!(
+                "readback needs {staging_size} bytes per buffer, device limit is {}",
+                limits.max_buffer_size
+            )));
+        }
+        let output_len = usize::try_from(u64::from(bytes_per_row) * u64::from(height))
+            .map_err(|_| invalid_layout())?;
 
         let device = &gpu.device;
         let staging = [
@@ -347,6 +355,63 @@ pub enum RgbaReadbackError {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn readback_dimensions_respect_device_limits() {
+        use super::{RgbaReadback, RgbaReadbackError};
+        use crate::gpu::{
+            GpuContext,
+            nv12_converter::{Nv12Converter, Nv12Error},
+        };
+
+        let Some(original) = crate::stitch::test_support::gpu_or_skip() else {
+            return;
+        };
+        let adapter = original.adapter.as_ref().unwrap();
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("consumer with smaller buffer limits"),
+            required_limits: wgpu::Limits {
+                max_texture_dimension_2d: 128,
+                max_buffer_size: 8192,
+                max_storage_buffer_binding_size: 4096,
+                ..original.device.limits()
+            },
+            required_features: original.device.features(),
+            ..Default::default()
+        }))
+        .unwrap();
+        let gpu = GpuContext::from_device_queue(device, queue, adapter.get_info());
+        for (width, height) in [(0, 2), (2, 0), (u32::MAX, 2), (2, u32::MAX), (64, 64)] {
+            assert!(
+                matches!(
+                    RgbaReadback::new(&gpu, width, height),
+                    Err(RgbaReadbackError::InvalidDimensions(_))
+                ),
+                "RGBA {width}x{height}"
+            );
+        }
+        for (width, height) in [
+            (0, 2),
+            (4, 0),
+            (u32::MAX - 3, 2),
+            (4, u32::MAX - 1),
+            (128, 64),
+            (64, 64),
+        ] {
+            assert!(
+                matches!(
+                    Nv12Converter::new(&gpu, width, height),
+                    Err(Nv12Error::InvalidDimensions(_))
+                ),
+                "NV12 {width}x{height}"
+            );
+        }
+        // RGBA row padding reaches the buffer limit exactly; NV12 stays below the binding limit.
+        assert!(RgbaReadback::new(&gpu, 32, 32).is_ok());
+        assert!(Nv12Converter::new(&gpu, 32, 32).is_ok());
+        assert!(RgbaReadback::new(&gpu, 1, 1).is_ok());
+        assert!(Nv12Converter::new(&gpu, 4, 2).is_ok());
+    }
+
     #[test]
     fn padded_row_stride_matches_width_when_aligned() {
         // 1920 * 4 = 7680, which is a multiple of 256.

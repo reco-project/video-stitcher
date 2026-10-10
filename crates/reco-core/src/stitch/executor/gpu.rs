@@ -7,6 +7,14 @@ use crate::gpu::{GpuContext, rgba_readback::RgbaReadback};
 use crate::render::planes::Nv12Planes;
 use crate::render::viewport::ViewportSize;
 use crate::render::{pipeline::StitchPipeline, renderer::InputFormat};
+use crate::sink::{OutputFrame, PixelFormat};
+use std::collections::VecDeque;
+
+/// Image storage and its associated timestamps have one invalidation lifetime.
+struct Nv12Delivery {
+    converter: crate::gpu::nv12_converter::Nv12Converter,
+    pending_pts: VecDeque<Option<i64>>,
+}
 
 /// Configuration for building a [`GpuExecutor`].
 ///
@@ -73,13 +81,11 @@ pub struct GpuExecutor {
     /// Readback ring for the synchronous [`StitchExecutor::stitch`]
     /// path, created on first use so engine-embedded executors (which
     /// read back through the engine's own pipelined ring) never
-    /// allocate it. Keyed by the output dims it was built for so a
-    /// resize recreates it.
-    sync_readback: Option<(RgbaReadback, (u32, u32))>,
+    /// allocate it. Invalidated when output dimensions change.
+    sync_readback: Option<RgbaReadback>,
     /// NV12 delivery: triple-buffered render-target -> NV12 readback
-    /// for encoders and preview taps. Created on first use and keyed
-    /// by the dims it was built for so a resize recreates it.
-    nv12: Option<(crate::gpu::nv12_converter::Nv12Converter, (u32, u32))>,
+    /// for encoders and preview taps. Created on first use and invalidated on resize, even when the rounded delivery dimensions are unchanged.
+    nv12: Option<Nv12Delivery>,
 }
 
 impl GpuExecutor {
@@ -122,9 +128,16 @@ impl GpuExecutor {
         })
     }
 
-    // -----------------------------------------------------------------
-    // Resident-frame surface (zero-copy sources, lookahead pool)
-    // -----------------------------------------------------------------
+    /// Accept output dimensions and invalidate every delivery queue before another render.
+    pub(super) fn resize(&mut self, width: u32, height: u32) -> Option<(u32, u32)> {
+        let changed = self.output_dims() != (width, height);
+        let accepted = self.pipeline.resize(width, height)?;
+        if changed {
+            self.sync_readback = None;
+            self.nv12 = None;
+        }
+        Some(accepted)
+    }
 
     /// Wire the shared zero-copy decode textures into the pipeline:
     /// bind groups for rendering, views for detection and replay
@@ -518,9 +531,10 @@ impl GpuExecutor {
     pub(crate) fn convert_nv12(
         &mut self,
         render_commands: wgpu::CommandBuffer,
-    ) -> Result<Option<&[u8]>, crate::gpu::nv12_converter::Nv12Error> {
+        pts_us: Option<i64>,
+    ) -> Result<Option<OutputFrame<'_>>, crate::gpu::nv12_converter::Nv12Error> {
         let dims = self.nv12_dims();
-        if self.nv12.as_ref().is_none_or(|(_, built)| *built != dims) {
+        if self.nv12.is_none() {
             let (w, h) = dims;
             let vp = self.pipeline.viewport_size();
             if (vp.width, vp.height) != dims {
@@ -533,25 +547,50 @@ impl GpuExecutor {
             let converter =
                 crate::gpu::nv12_converter::Nv12Converter::new(self.pipeline.gpu(), w, h)?;
             log::info!("GpuExecutor: NV12 delivery initialized ({w}x{h})");
-            self.nv12 = Some((converter, dims));
+            self.nv12 = Some(Nv12Delivery {
+                converter,
+                pending_pts: VecDeque::with_capacity(3),
+            });
         }
-        let (converter, _) = self.nv12.as_mut().expect("created above");
-        converter.convert_and_readback(
+        let delivery = self.nv12.as_mut().expect("created above");
+        let data = delivery.converter.convert_and_readback(
             self.pipeline.gpu(),
             self.pipeline.render_target(),
             render_commands,
-        )
+        )?;
+        delivery.pending_pts.push_back(pts_us);
+        Ok(data.map(|data| nv12_output(data, dims, &mut delivery.pending_pts)))
     }
 
     /// Drain one pending NV12 frame from the triple buffer. `None`
     /// when nothing remains (or NV12 delivery was never used).
     pub(crate) fn flush_nv12(
         &mut self,
-    ) -> Result<Option<&[u8]>, crate::gpu::nv12_converter::Nv12Error> {
+    ) -> Result<Option<OutputFrame<'_>>, crate::gpu::nv12_converter::Nv12Error> {
+        let dims = self.nv12_dims();
         match self.nv12.as_mut() {
-            Some((converter, _)) => converter.flush_pending(self.pipeline.gpu()),
+            Some(delivery) => {
+                let data = delivery.converter.flush_pending(self.pipeline.gpu())?;
+                Ok(data.map(|data| nv12_output(data, dims, &mut delivery.pending_pts)))
+            }
             None => Ok(None),
         }
+    }
+}
+
+fn nv12_output<'a>(
+    data: &'a [u8],
+    (width, height): (u32, u32),
+    pending_pts: &mut VecDeque<Option<i64>>,
+) -> OutputFrame<'a> {
+    OutputFrame {
+        data,
+        width,
+        height,
+        format: PixelFormat::Nv12,
+        pts_us: pending_pts
+            .pop_front()
+            .expect("each converted image has a queued timestamp"),
     }
 }
 
@@ -573,15 +612,15 @@ impl StitchExecutor for GpuExecutor {
         }
         // (Re)create the private ring on first use or after a resize.
         let dims = self.output_dims();
-        if !matches!(&self.sync_readback, Some((_, d)) if *d == dims) {
+        if self.sync_readback.is_none() {
             let ring = RgbaReadback::new(self.pipeline.gpu(), dims.0, dims.1)?;
-            self.sync_readback = Some((ring, dims));
+            self.sync_readback = Some(ring);
         }
         // Record the frame, submit it via the readback, then drain it
         // synchronously: one render in, this frame's RGBA out.
         let cmd = self.pipeline.render_nv12(planes, pose)?;
         let tex = self.pipeline.render_target();
-        let (ring, _) = self.sync_readback.as_mut().expect("created above");
+        let ring = self.sync_readback.as_mut().expect("created above");
         ring.readback(self.pipeline.gpu(), tex, cmd)?;
         // A frame was just submitted, so flush_pending always drains it.
         let frame = ring
