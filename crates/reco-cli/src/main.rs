@@ -11,6 +11,8 @@ mod helpers;
 #[cfg(feature = "libcamera")]
 mod libcamera_cmd;
 mod preview;
+#[cfg(feature = "profiling")]
+mod profiling;
 #[cfg(feature = "snapshot")]
 mod snapshot;
 mod stitch;
@@ -18,20 +20,6 @@ mod stitch;
 use clap::{Parser, Subcommand};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-
-/// Initialize the tracing profiler. Returns a guard that must be held
-/// until the end of `main()` — the trace file is written on drop.
-#[cfg(feature = "profiling")]
-fn init_profiling() -> tracing_chrome::FlushGuard {
-    use tracing_subscriber::prelude::*;
-    let (chrome_layer, guard) = tracing_chrome::ChromeLayerBuilder::new()
-        .file("reco-trace.json")
-        .include_args(true)
-        .build();
-    tracing_subscriber::registry().with(chrome_layer).init();
-    eprintln!("Profiling enabled — trace will be written to reco-trace.json");
-    guard
-}
 
 /// Install the standard tracing subscriber for the non-profiling path.
 ///
@@ -209,7 +197,7 @@ enum Commands {
         /// Tracking mode: "field" (ball + players, default), "ball"
         /// (ball only), "sweep" (no AI, debug pan). field is robust with
         /// COCO models; ball-only follows the weak COCO ball alone.
-        #[arg(long, default_value = "field")]
+        #[arg(long, default_value = "field", value_parser = ["field", "ball", "sweep"])]
         tracking: String,
 
         /// Encoder quality on a 0-100 scale (higher = better). Overrides the
@@ -446,7 +434,7 @@ enum Commands {
 
         /// Tracking mode: `field` (ball + players, default), `ball`
         /// (ball only), `sweep` (no AI, slow pan; no --model needed).
-        #[arg(long, default_value = "field")]
+        #[arg(long, default_value = "field", value_parser = ["field", "ball", "sweep"])]
         tracking: String,
 
         /// Disable the constrained-look coverage clamp. When off,
@@ -715,6 +703,8 @@ fn parse_wxh(s: &str) -> Result<(u32, u32), String> {
 }
 
 fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+
     #[cfg(target_os = "linux")]
     quiet_libva_info_by_default();
 
@@ -722,7 +712,7 @@ fn main() -> anyhow::Result<()> {
     // (one global subscriber per process). Otherwise, install our fmt
     // subscriber + log bridge for normal structured output.
     #[cfg(feature = "profiling")]
-    let _profiling_guard = init_profiling();
+    let _profiling_guard = profiling::init()?;
     #[cfg(not(feature = "profiling"))]
     init_tracing();
     install_panic_hook();
@@ -741,8 +731,6 @@ fn main() -> anyhow::Result<()> {
         })
         .expect("set Ctrl-C handler");
     }
-
-    let cli = Cli::parse();
 
     match cli.command {
         Commands::Stitch {
@@ -1147,6 +1135,45 @@ fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stitch_rejects_unknown_tracking_modes_before_startup() {
+        let args = [
+            "reco",
+            "stitch",
+            "left.mp4",
+            "right.mp4",
+            "-c",
+            "match.json",
+            "--tracking",
+        ];
+        for mode in ["field", "ball", "sweep"] {
+            assert!(Cli::try_parse_from(args.into_iter().chain([mode])).is_ok());
+        }
+        assert!(Cli::try_parse_from(args.into_iter().chain(["bal"])).is_err());
+    }
+
+    #[cfg(feature = "gstreamer")]
+    #[test]
+    fn camera_rejects_unknown_tracking_modes_before_startup() {
+        let args = [
+            "reco",
+            "camera",
+            "--left-device",
+            "0",
+            "--right-device",
+            "1",
+            "-c",
+            "match.json",
+            "-o",
+            "out.mp4",
+            "--tracking",
+        ];
+        for mode in ["field", "ball", "sweep"] {
+            assert!(Cli::try_parse_from(args.into_iter().chain([mode])).is_ok());
+        }
+        assert!(Cli::try_parse_from(args.into_iter().chain(["bal"])).is_err());
+    }
 
     #[test]
     fn preview_accepts_calibrated_input_lists() {

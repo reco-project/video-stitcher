@@ -1,0 +1,61 @@
+//! Command-line parsing must not create or truncate profiling output.
+
+#[test]
+fn argument_only_exits_leave_trace_untouched() {
+    let directory = std::env::temp_dir().join(format!("reco-cli-startup-{}", std::process::id()));
+    std::fs::create_dir(&directory).unwrap();
+    let trace = directory.join("reco-trace.json");
+    for arguments in [
+        vec!["--help"],
+        vec!["--version"],
+        vec!["stitch", "--help"],
+        vec!["--invalid-argument-for-test"],
+    ] {
+        for existing in [false, true] {
+            if existing {
+                std::fs::write(&trace, "previous trace").unwrap();
+            }
+            let output = std::process::Command::new(env!("CARGO_BIN_EXE_reco"))
+                .args(&arguments)
+                .current_dir(&directory)
+                .output()
+                .unwrap();
+            assert_eq!(
+                output.status.success(),
+                arguments[0] != "--invalid-argument-for-test",
+                "{output:?}"
+            );
+            if existing {
+                assert_eq!(std::fs::read_to_string(&trace).unwrap(), "previous trace");
+                std::fs::remove_file(&trace).unwrap();
+            } else {
+                assert!(!trace.exists(), "{arguments:?} created a trace");
+            }
+        }
+    }
+    std::fs::remove_dir(directory).unwrap();
+}
+
+#[cfg(feature = "profiling")]
+#[test]
+fn unusable_trace_path_is_a_command_error_not_a_panic() {
+    let directory =
+        std::env::temp_dir().join(format!("reco-cli-trace-error-{}", std::process::id()));
+    std::fs::create_dir(&directory).unwrap();
+    let trace = directory.join("reco-trace.json");
+    std::fs::create_dir(&trace).unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_reco"))
+        .arg("info")
+        .current_dir(&directory)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let error = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        error.contains("create profiling trace reco-trace.json"),
+        "{error}"
+    );
+    assert!(!error.contains("panicked"), "{error}");
+    std::fs::remove_dir(trace).unwrap();
+    std::fs::remove_dir(directory).unwrap();
+}
