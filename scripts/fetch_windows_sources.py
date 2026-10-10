@@ -100,7 +100,32 @@ def collect_notices(archive, component, output):
     return receipt
 
 
-def collect(cache, output, manifest=None, offline=False):
+def verify_sources(sources, expected=None):
+    """Require the complete collected receipt and recheck archives and notices."""
+    expected = recipe() if expected is None else expected
+    actual = json.loads((sources / "sources.json").read_text())
+    recorded = [{key: value for key, value in component.items() if key != "notices"}
+                for component in actual["sources"]]
+    if {**actual, "sources": recorded} != expected:
+        raise ValueError("source receipt differs from the pinned recipe")
+    for component in expected["sources"]:
+        if digest(sources / "archives" / component["archive"]) != component["sha256"]:
+            raise ValueError(f"source checksum mismatch: {component['name']}")
+    # Regenerate the expected notice list from pinned bytes, not a mutable cache receipt.
+    with tempfile.TemporaryDirectory(prefix="sdk-notices-") as scratch:
+        for component in actual["sources"]:
+            notices = collect_notices(sources / "archives" / component["archive"],
+                                      component, Path(scratch) / component["name"])
+            if notices != component["notices"]:
+                raise ValueError(f"notice list differs from source: {component['name']}")
+            for notice in notices:
+                path = relative_path(notice["path"])
+                if digest(sources / "notices" / component["name"] / path) != notice["sha256"]:
+                    raise ValueError(f"notice checksum mismatch: {component['name']}/{path}")
+    return actual
+
+
+def collect(cache, output, manifest=None, offline=False, support_files=None):
     """Publish a fresh source directory only when every pin and notice passes."""
     manifest = recipe() if manifest is None else manifest
     validate(manifest)
@@ -141,10 +166,9 @@ def collect(cache, output, manifest=None, offline=False):
             notices = collect_notices(staged, component, stage / "notices" / component["name"])
             components.append({**component, "notices": notices})
         (stage / "sources.json").write_text(json.dumps({**manifest, "sources": components}, indent=2) + "\n")
-        shutil.copy2(MANIFEST, stage)
-        shutil.copy2(FFMPEG, stage)
-        shutil.copy2(Path(__file__), stage)
-        shutil.copy2(Path(__file__).with_name("build_windows_ffmpeg_sdk.py"), stage)
+        for support in support_files if support_files is not None else (
+                MANIFEST, FFMPEG, Path(__file__), Path(__file__).with_name("build_windows_ffmpeg_sdk.py")):
+            shutil.copy2(support, stage)
         stage.rename(output)
 
 

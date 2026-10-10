@@ -8,9 +8,8 @@ import shutil
 import subprocess
 import sys
 import tarfile
-import tempfile
 
-from fetch_windows_sources import MANIFEST, FFMPEG, collect_notices, digest, recipe, relative_path
+from fetch_windows_sources import MANIFEST, FFMPEG, digest, relative_path, verify_sources
 
 CONFIGURE = [
     "--pkg-config=pkg-config", "--pkg-config-flags=--static",
@@ -25,31 +24,6 @@ CONFIGURE = [
     "--enable-libdav1d", "--enable-libvpl", "--enable-ffnvcodec", "--enable-nvenc",
     "--enable-nvdec", "--enable-cuvid", "--enable-amf", "--enable-d3d11va", "--enable-dxva2",
 ]
-
-
-def verify_sources(sources):
-    """Require the complete collected receipt and recheck the actual archive bytes."""
-    expected = recipe()
-    actual = json.loads((sources / "sources.json").read_text())
-    recorded = [{key: value for key, value in component.items() if key != "notices"}
-                for component in actual["sources"]]
-    if {**actual, "sources": recorded} != expected:
-        raise ValueError("source receipt differs from the pinned recipe")
-    for component in expected["sources"]:
-        if digest(sources / "archives" / component["archive"]) != component["sha256"]:
-            raise ValueError(f"source checksum mismatch: {component['name']}")
-    # Regenerate the expected notice list from pinned bytes, not a mutable cache receipt.
-    with tempfile.TemporaryDirectory(prefix="windows-sdk-notices-") as scratch:
-        for component in actual["sources"]:
-            notices = collect_notices(sources / "archives" / component["archive"],
-                                      component, Path(scratch) / component["name"])
-            if notices != component["notices"]:
-                raise ValueError(f"notice list differs from source: {component['name']}")
-            for notice in notices:
-                path = relative_path(notice["path"])
-                if digest(sources / "notices" / component["name"] / path) != notice["sha256"]:
-                    raise ValueError(f"notice checksum mismatch: {component['name']}/{path}")
-    return actual
 
 
 def build(sources, work, prefix, jobs):

@@ -134,7 +134,7 @@ class WindowsSourcesTests(unittest.TestCase):
     def test_sdk_rejects_mutated_notice_and_omitted_notice_receipt(self):
         manifest = self.fixture()
         collect(self.cache, self.output, manifest, offline=True)
-        with patch("build_windows_ffmpeg_sdk.recipe", return_value=manifest):
+        with patch("fetch_windows_sources.recipe", return_value=manifest):
             self.assertEqual(verify_sources(self.output)["sources"][0]["name"], "example")
             receipt_path = self.output / "sources.json"
             receipt = json.loads(receipt_path.read_text())
@@ -151,7 +151,7 @@ class WindowsSourcesTests(unittest.TestCase):
     def test_sdk_rejects_changed_archive_or_recipe(self):
         manifest = self.fixture()
         collect(self.cache, self.output, manifest, offline=True)
-        with patch("build_windows_ffmpeg_sdk.recipe", return_value=manifest):
+        with patch("fetch_windows_sources.recipe", return_value=manifest):
             receipt_path = self.output / "sources.json"
             receipt = json.loads(receipt_path.read_text())
             original = receipt_path.read_bytes()

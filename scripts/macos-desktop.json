@@ -1,0 +1,18 @@
+{
+  "onnxruntime": {
+    "version": "1.24.4",
+    "arm64": {
+      "url": "https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-osx-arm64-1.24.4.tgz",
+      "sha256": "93787795f47e1eee369182e43ed51b9e5da0878ab0346aecf4258979b8bba989"
+    },
+    "source": {
+      "name": "onnxruntime",
+      "revision": "2d924974ef147392ced8409d36bd6d2e7fcc8a74",
+      "url": "https://codeload.github.com/microsoft/onnxruntime/tar.gz/refs/tags/v1.24.4",
+      "archive": "onnxruntime.tar.gz",
+      "prefix": "onnxruntime-1.24.4",
+      "sha256": "0cf4d2ee4392fbb8aedaabc6b2ba11b4a680d1071fa4f75546c2289ca5b404cf",
+      "required_notices": ["LICENSE", "ThirdPartyNotices.txt"]
+    }
+  }
+}

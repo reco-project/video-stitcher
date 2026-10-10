@@ -71,3 +71,25 @@ python scripts/stage_windows_desktop.py target/release/reco.exe --sdk C:/sdk --r
 Windows drivers and the Microsoft Visual C++ runtime remain platform prerequisites. Staging is not a transitive PE dependency audit, hardware acceptance, GUI interaction test or a complete license audit of statically linked Rust dependencies. These checks do not certify a desktop release or bit-for-bit reproducibility.
 
 The [Windows package verification action](../.github/actions/verify-windows-desktop/action.yml) reuses `verify_ffmpeg_bundle.py` for codec/protocol checks and the CPU colour export oracle. It checks the packaged file receipt, restricts child `PATH` to the package and Windows system directory, and clears FFmpeg/ORT loader overrides. It also requires the native identity-model inference test to execute successfully with the packaged ONNX runtime. A GUI-only bundle exercises native runtimes but does not launch or validate the GUI; hardware decode/encode and interactive preview need native acceptance separately.
+
+## Native macOS SDK and relocation
+
+`build_macos_ffmpeg_sdk.py` uses the shared FFmpeg and codec source pins, building with Apple's compiler and a macOS 14.0 deployment target. It requires Python 3.12+, CMake, Ninja, Meson, Make and pkg-config; Intel builds also require NASM for codec assembly. Tools must already be available on `PATH`. The builder installs only into its requested fresh prefix and defaults to two build jobs. A populated source cache permits `--offline` builds.
+
+```sh
+python3 scripts/build_macos_ffmpeg_sdk.py --source-cache /tmp/reco-source-cache --work-dir /tmp/reco-sdk-build --prefix /tmp/reco-sdk --jobs 2
+python3 scripts/bundle_macos.py --arch arm64 --max-macos 14.0 --library-dir /tmp/reco-sdk/lib --output /tmp/reco-ffmpeg-bundle /tmp/reco-sdk/bin/ffmpeg /tmp/reco-sdk/bin/ffprobe
+python3 scripts/verify_ffmpeg_bundle.py /tmp/reco-ffmpeg-bundle
+```
+
+The SDK retains all selected source archives, notices, configure commands and output hashes under `share/reco-ffmpeg`. `verify_sdk` rechecks those inputs and required outputs before staging. `test_macos_sdk.py` covers mismatched recipes, architectures, missing outputs, modified archives/notices/libraries and escaping symlinks. This is source provenance and build-configuration validation, not bit-for-bit reproducibility across Apple toolchains.
+
+`bundle_macos.py` accepts only explicitly trusted library directories. It checks each Mach-O's architecture and deployment target, gathers its non-system dependency closure, rewrites load commands to `@loader_path`, ad-hoc signs and verifies the results, and publishes a fresh directory with a hash receipt. `test_bundle_macos.py` covers rejected foreign paths, ambiguous dependencies, filename collisions, architecture/OS mismatches and atomic failure. On macOS, the shared runtime verifier clears loader overrides and checks actual dyld paths during its codec/protocol and lossless-roundtrip checks. Ad-hoc signing is not Developer ID signing, notarization, Gatekeeper acceptance or an application bundle.
+
+`macos-desktop.json` pins the Apple Silicon ONNX Runtime archive and the matching source release for Intel. `build_macos_onnxruntime.py` builds the x86-64 shared library with upstream's CMake recipe, disabling package discovery for fetched dependencies and retaining the pinned source archive and third-party notices. Upstream fetches dependencies with the hashes in its pinned `cmake/deps.txt`, so this build needs network access. The builder neither installs Python packages nor modifies system tools. `test_macos_onnxruntime.py` checks destination safety, failure atomicity and the selected Intel configuration.
+
+```sh
+python3 scripts/build_macos_onnxruntime.py --source-cache /tmp/reco-source-cache --work-dir /tmp/reco-ort-build --output /tmp/reco-ort --jobs 2
+```
+
+The Intel runtime can be cross-built on Apple Silicon, but architecture inspection does not replace native inference and application acceptance. Runtime staging must preserve `libonnxruntime.dylib`, its license and third-party notices. Relocation checks do not establish an OS support matrix or certify GUI interaction.

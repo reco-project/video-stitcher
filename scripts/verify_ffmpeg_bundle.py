@@ -10,15 +10,17 @@ import sys
 import tempfile
 
 from bundle_linux import SYSTEM_LIBRARIES, inspect
+from bundle_macos import verify_loaded_libraries
 from fetch_windows_sources import digest, relative_path
 
 
 def verify(directory: Path):
     directory = directory.resolve(strict=True)
     windows = sys.platform == "win32"
+    macos = sys.platform == "darwin"
     suffix = ".exe" if windows else ""
     env = {key: value for key, value in os.environ.items()
-           if not key.upper().startswith(("LD_", "FFMPEG_", "PKG_CONFIG", "ORT_"))}
+           if not key.upper().startswith(("LD_", "DYLD_", "FFMPEG_", "PKG_CONFIG", "ORT_"))}
     if windows:
         # Exclude SDK/developer directories, retaining Windows and its driver stack.
         env = {key: value for key, value in env.items() if key.upper() != "PATH"}
@@ -26,13 +28,24 @@ def verify(directory: Path):
         for name, checksum in json.loads((directory / "files.json").read_text()).items():
             if digest(directory / relative_path(name)) != checksum:
                 raise ValueError(f"package checksum mismatch: {name}")
+    elif macos:
+        env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+        env["DYLD_PRINT_LIBRARIES"] = "1"
+        for name, record in json.loads((directory / "mach-o.json").read_text()).items():
+            path = directory / relative_path(name)
+            if path.is_symlink() or digest(path) != record["output_sha256"]:
+                raise ValueError(f"package checksum mismatch: {name}")
     else:
         env["PATH"] = str(directory) + os.pathsep + env.get("PATH", os.defpath)
     manifest = json.loads(Path(__file__).with_name("ffmpeg-sdk.json").read_text())
     ffmpeg, ffprobe = directory / f"ffmpeg{suffix}", directory / f"ffprobe{suffix}"
 
     def run(binary, *args, input=None):
-        return subprocess.check_output([str(binary), *args], input=input, env=env, cwd=directory.parent, stderr=subprocess.PIPE, timeout=120)
+        result = subprocess.run([str(binary), *args], input=input, env=env, cwd=directory.parent,
+                                capture_output=True, timeout=120, check=True)
+        if macos:
+            verify_loaded_libraries(result.stderr.decode(errors="replace"), directory)
+        return result.stdout
 
     io_tests = directory / f"reco-io-tests{suffix}"
     binaries = [ffmpeg, ffprobe]
@@ -48,7 +61,7 @@ def verify(directory: Path):
     if gui.is_file():
         binaries.append(gui)
     for binary in binaries:
-        if not windows:
+        if not windows and not macos:
             interpreter, = inspect("--print-interpreter", binary)
             linked = run(interpreter, "--list", str(binary)).decode()
             for line in linked.splitlines():
