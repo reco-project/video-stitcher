@@ -19,7 +19,7 @@ directml = ["ort", "ort/directml"]
 load-dynamic = ["ort", "ort/load-dynamic", "dep:libloading"]
 tensorrt-native = []
 ncnn = []
-profiling = ["reco-core/profiling", "dep:tracing"]
+profiling = ["reco-core/profiling"]
 
 [dependencies]
 reco-core = { path = "../reco-core" }
@@ -30,7 +30,6 @@ wgpu = "28"
 bytemuck = { version = "1", features = ["derive"] }
 log = "0.4"
 thiserror = "2"
-tracing = { workspace = true, optional = true }
 
 # libloading: used by npp_interop (dynamically loads NPP libraries so
 # the compiled binary keeps running on machines without CUDA installed,

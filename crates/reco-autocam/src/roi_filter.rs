@@ -1,11 +1,8 @@
-//! ROI-filtered detector decorator.
+//! Playing-field ROI filtering for completed detections and synchronous detectors.
 //!
-//! Wraps any [`Detector`] to drop detections whose camera-space
-//! position falls outside a playing-field polygon. This moves
-//! sports-domain filtering out of `reco-core` (which stays domain-
-//! agnostic) into `reco-autocam`.
+//! [`RoiFilter`] applies the same camera-space polygon and per-class anchor policy to either input. It does not map coordinates or alter measurement identity, timing or freshness.
 //!
-//! Per-class anchor policy (Step 7c):
+//! Per-class anchor policy:
 //!
 //! - [`RoiAnchor::Center`] (default) tests the bounding-box center.
 //!   Appropriate for balls and any "the detection is a point-shaped
@@ -68,89 +65,87 @@ impl RoiAnchor {
     }
 }
 
-/// Filter detections by field ROI polygon using a per-class anchor
-/// policy. Classes without an explicit entry use `default_anchor`.
-fn filter_by_roi(
-    detections: Vec<Detection>,
-    roi: &FieldRoi,
-    class_anchors: &HashMap<u16, RoiAnchor>,
-    default_anchor: RoiAnchor,
-) -> Vec<Detection> {
-    detections
-        .into_iter()
-        .filter(|d| {
-            let polygon = match d.camera {
-                0 => &roi.left,
-                1 => &roi.right,
-                // FieldRoi is pair-shaped until the schema v2 split;
-                // a camera with no defined polygon goes unfiltered,
-                // same as an empty polygon.
-                _ => return true,
-            };
-            if polygon.len() < 3 {
-                return true;
-            }
-            let anchor = class_anchors
-                .get(&d.class_id)
-                .copied()
-                .unwrap_or(default_anchor);
-            anchor.passes(d, polygon)
-        })
-        .collect()
-}
-
-/// An [`Detector`] decorator that filters output detections by
-/// field ROI polygon using a per-class anchor policy.
+/// Playing-field polygons and the bounding-box anchors tested against them.
 ///
-/// Wraps an inner detector and drops detections outside the playing
-/// field after each `detect()` call. Works for every residency the
-/// inner detector supports (CPU / CUDA / Metal / future variants)
-/// because the filter runs on the post-inference `Vec<Detection>`.
+/// Apply this policy after inference and before source-to-world mapping. Empty or degenerate polygons, and cameras other than the pair described by [`FieldRoi`], leave their detections unchanged. This filters spatial support, not detection confidence or measurement age.
 ///
-/// Default anchor is [`RoiAnchor::Center`] (good for balls and
-/// point-shaped targets); call
-/// [`with_class_anchor`](Self::with_class_anchor) to override per
-/// class. Common pattern:
-///
-/// ```rust,ignore
-/// RoiFilteredDetector::new(inner, roi)
-///     .with_class_anchor(person_class_id, RoiAnchor::Bottom)
 /// ```
+/// use reco_autocam::{RoiAnchor, RoiFilter};
+/// use reco_core::{calibration::FieldRoi, detect::detector::Detection};
 ///
-/// `name()` forwards to the inner detector's name so telemetry
-/// still identifies the underlying backend; the ROI wrap is invisible
-/// to log consumers.
-pub struct RoiFilteredDetector {
-    inner: Box<dyn Detector>,
+/// # let roi = FieldRoi::default();
+/// # let mut detections: Vec<Detection> = Vec::new();
+/// let filter = RoiFilter::new(roi).with_class_anchor(0, RoiAnchor::Bottom);
+/// filter.retain(&mut detections);
+/// ```
+pub struct RoiFilter {
     roi: FieldRoi,
     class_anchors: HashMap<u16, RoiAnchor>,
     default_anchor: RoiAnchor,
 }
 
-impl RoiFilteredDetector {
-    /// Create a new ROI-filtered detector wrapping `inner`. All
-    /// classes default to [`RoiAnchor::Center`] until
-    /// [`with_class_anchor`](Self::with_class_anchor) overrides them.
-    pub fn new(inner: Box<dyn Detector>, roi: FieldRoi) -> Self {
+impl RoiFilter {
+    /// Use center anchors for all classes in the supplied camera-space polygons.
+    pub fn new(roi: FieldRoi) -> Self {
         Self {
-            inner,
             roi,
             class_anchors: HashMap::new(),
             default_anchor: RoiAnchor::Center,
         }
     }
 
-    /// Override the anchor for a specific class id. Chainable.
+    /// Override the anchor for a specific class ID.
     pub fn with_class_anchor(mut self, class_id: u16, anchor: RoiAnchor) -> Self {
         self.class_anchors.insert(class_id, anchor);
         self
     }
 
-    /// Override the default anchor for classes without an explicit
-    /// [`with_class_anchor`](Self::with_class_anchor) entry. Chainable.
+    /// Set the anchor for classes without an explicit override.
     pub fn with_default_anchor(mut self, anchor: RoiAnchor) -> Self {
         self.default_anchor = anchor;
         self
+    }
+
+    /// Retain detections inside their camera's polygon, preserving their order and allocation.
+    pub fn retain(&self, detections: &mut Vec<Detection>) {
+        detections.retain(|d| {
+            let polygon = match d.camera {
+                0 => &self.roi.left,
+                1 => &self.roi.right,
+                _ => return true,
+            };
+            if polygon.len() < 3 {
+                return true;
+            }
+            let anchor = self
+                .class_anchors
+                .get(&d.class_id)
+                .copied()
+                .unwrap_or(self.default_anchor);
+            anchor.passes(d, polygon)
+        });
+    }
+}
+
+/// A [`Detector`] decorator applying a [`RoiFilter`] after successful inference.
+///
+/// Wraps an inner detector and drops detections outside the playing
+/// field after each `detect()` call. Works for every residency the
+/// inner detector supports (CPU / CUDA / Metal / future variants)
+/// because the filter runs on the post-inference `Vec<Detection>`.
+///
+/// `name()` forwards to the inner detector's name so telemetry
+/// still identifies the underlying backend; the ROI wrap is invisible
+/// to log consumers.
+pub struct RoiFilteredDetector {
+    inner: Box<dyn Detector>,
+    filter: RoiFilter,
+}
+
+impl RoiFilteredDetector {
+    /// Wrap `inner` with the supplied post-inference policy.
+    pub fn new(inner: Box<dyn Detector>, filter: RoiFilter) -> Self {
+        Self { inner, filter }
     }
 }
 
@@ -168,13 +163,9 @@ impl Detector for RoiFilteredDetector {
         camera: CameraIndex,
         frame: &DetectorFrame<'_>,
     ) -> Result<Vec<Detection>, DetectorError> {
-        let detections = self.inner.detect(camera, frame)?;
-        Ok(filter_by_roi(
-            detections,
-            &self.roi,
-            &self.class_anchors,
-            self.default_anchor,
-        ))
+        let mut detections = self.inner.detect(camera, frame)?;
+        self.filter.retain(&mut detections);
+        Ok(detections)
     }
 
     fn class_names(&self) -> Option<&[String]> {
@@ -245,13 +236,15 @@ mod tests {
             }
         }
         for native in [false, true] {
-            let filtered = RoiFilteredDetector::new(Box::new(NativeInput(native)), full_roi());
+            let filtered =
+                RoiFilteredDetector::new(Box::new(NativeInput(native)), RoiFilter::new(full_roi()));
             assert_eq!(filtered.prefers_cuda_nv12(), native);
         }
     }
 
-    fn filter(dets: Vec<Detection>, roi: &FieldRoi) -> Vec<Detection> {
-        filter_by_roi(dets, roi, &HashMap::new(), RoiAnchor::Center)
+    fn filter(mut dets: Vec<Detection>, roi: &FieldRoi) -> Vec<Detection> {
+        RoiFilter::new(roi.clone()).retain(&mut dets);
+        dets
     }
 
     #[test]
@@ -310,8 +303,6 @@ mod tests {
         assert!((filtered[0].center_x - 0.5).abs() < f32::EPSILON);
     }
 
-    // ── Step 7c: per-class anchor policy ─────────────────────────
-
     #[test]
     fn center_anchor_passes_ball_whose_feet_fall_outside() {
         // Small ROI [0.2, 0.8]^2. Detection centered in-bounds at
@@ -328,9 +319,10 @@ mod tests {
         // Bottom anchor: feet at y=0.85 outside -> rejected.
         let roi = small_roi();
         let player = make_detection_class(0, 1, 0.5, 0.7, 0.1, 0.3);
-        let mut anchors = HashMap::new();
-        anchors.insert(1u16, RoiAnchor::Bottom);
-        let filtered = filter_by_roi(vec![player], &roi, &anchors, RoiAnchor::Center);
+        let mut filtered = vec![player];
+        RoiFilter::new(roi)
+            .with_class_anchor(1, RoiAnchor::Bottom)
+            .retain(&mut filtered);
         assert!(filtered.is_empty());
     }
 
@@ -342,21 +334,22 @@ mod tests {
         let roi = small_roi();
         let ball = make_detection_class(0, 0, 0.5, 0.7, 0.1, 0.3);
         let player = make_detection_class(0, 1, 0.5, 0.7, 0.1, 0.3);
-        let mut anchors = HashMap::new();
-        anchors.insert(1u16, RoiAnchor::Bottom);
-        let filtered = filter_by_roi(vec![ball, player], &roi, &anchors, RoiAnchor::Center);
+        let mut filtered = vec![ball, player];
+        RoiFilter::new(roi)
+            .with_class_anchor(1, RoiAnchor::Bottom)
+            .retain(&mut filtered);
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].class_id, 0, "only the ball should survive");
     }
 
     #[test]
     fn with_class_anchor_builder_stores_mapping() {
-        // Locks the public-API shape: builder method + lookup via
-        // detect() path work together.
         let roi = small_roi();
         let det = make_detection_class(0, 7, 0.5, 0.7, 0.1, 0.3);
-        let mut anchors = HashMap::new();
-        anchors.insert(7u16, RoiAnchor::Bottom);
-        assert!(filter_by_roi(vec![det], &roi, &anchors, RoiAnchor::Center).is_empty());
+        let mut detections = vec![det];
+        RoiFilter::new(roi)
+            .with_class_anchor(7, RoiAnchor::Bottom)
+            .retain(&mut detections);
+        assert!(detections.is_empty());
     }
 }

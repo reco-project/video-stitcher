@@ -4,7 +4,7 @@
 //! into a clean [`WorldState`](reco_core::detect::tracker::WorldState) with
 //! stable identities and lifecycle flags; [`panners`] turn that world
 //! state into a virtual-camera [`WorldPose`](reco_core::geometry::WorldPose).
-//! Detector backends live in [`reco_detect`] and are re-exported at
+//! Detector backends live in `reco-detect` and are re-exported at
 //! crate root for convenience but are not owned here.
 //!
 //! # What this crate owns
@@ -15,9 +15,7 @@
 //! - [`panners::FieldPanner`] / [`panners::SweepPanner`] /
 //!   [`panners::FilePanner`] - camera-motion policies implementing
 //!   [`Panner`](reco_core::detect::panner::Panner).
-//! - [`RoiFilteredDetector`] - polygonal-ROI mask wrapper over any
-//!   `Detector`, pre-filtering detections before they reach a
-//!   tracker.
+//! - [`RoiFilter`] and [`RoiFilteredDetector`] - one polygonal-ROI policy for completed observations or synchronous inference, before tracking.
 //! - [`TrackingMode`] + [`AutocamConfig`] + [`setup_autocam`] -
 //!   orchestration glue a consumer calls once per session.
 //!
@@ -51,12 +49,7 @@ mod roi_filter;
 pub mod trackers;
 mod tracking_mode;
 
-// Re-export detector types from reco-detect for backwards compatibility.
-// Ort-backed detectors are only available when the `ort` feature is
-// enabled on this crate (passed through to reco-detect). Builds that
-// opt out of ort (e.g. Jetson with glibc-incompatible prebuilt ort-sys)
-// and rely on tensorrt-native + .engine models don't see these
-// re-exports.
+// Backend feature selection controls both setup and the available detector types.
 #[cfg(feature = "ort")]
 pub use reco_detect::CpuYoloDetector;
 #[cfg(all(feature = "ort", target_os = "macos"))]
@@ -66,15 +59,12 @@ pub use reco_detect::OrtGpuDetector;
 #[cfg(feature = "tensorrt-native")]
 pub use reco_detect::TrtGpuDetector;
 
-pub use roi_filter::{RoiAnchor, RoiFilteredDetector};
+pub use roi_filter::{RoiAnchor, RoiFilter, RoiFilteredDetector};
+#[cfg(feature = "detectors")]
 pub mod wgpu_detector;
-pub use wgpu_detector::WgpuPreprocessingDetector;
-// `RoiFilteredGpuDetector` and `RoiFilteredMetalDetector` were
-// deleted: the unified `RoiFilteredDetector` covers every residency
-// because it wraps `Box<dyn Detector>`.
 pub use tracking_mode::TrackingMode;
-
-use std::path::Path;
+#[cfg(feature = "detectors")]
+pub use wgpu_detector::WgpuPreprocessingDetector;
 
 /// Set up automatic camera control on any [`DetectionTarget`](reco_core::detect::DetectionTarget).
 ///
@@ -105,7 +95,7 @@ use std::path::Path;
 pub struct AutocamConfig {
     /// Path to a YOLO model file (.onnx, .engine, .mlmodelc, or NCNN dir).
     pub model_path: std::path::PathBuf,
-    /// Tracking strategy (default: Ball).
+    /// Tracking strategy (default: Field).
     pub tracking_mode: TrackingMode,
     /// Run detection every N frames (default: 1).
     pub detection_interval: u64,
@@ -162,366 +152,220 @@ impl AutocamConfig {
     }
 }
 
-/// Set up the autocam pipeline from a config struct.
+/// Attach the selected camera-control policy and its detector when needed.
 ///
-/// Infers input dimensions, fps, and zero-copy mode from the session.
-/// Returns `true` if detection was successfully activated.
-/// Set up the autocam pipeline (detection + tracking + panning) on a stitch session.
-///
-/// Infers input dimensions, GPU capabilities, and fps from the session and
-/// source. Returns `true` if detection was successfully activated, `false`
-/// if no detector backend is available (the session remains usable without
-/// autocam).
-#[cfg_attr(
-    not(any(feature = "ort", feature = "tensorrt-native", feature = "ncnn")),
-    allow(unused_variables, unreachable_code)
-)]
+/// Source dimensions and GPU context come from the target. The caller supplies source FPS and residency. Returns `true` when configured, or `false` when no detector backend is available. Sweep mode requires neither a detector nor a model file.
 pub fn setup_autocam(
     target: &mut impl reco_core::detect::DetectionTarget,
     config: &AutocamConfig,
     fps: f32,
     source_is_gpu_resident: bool,
 ) -> Result<bool, Box<dyn std::error::Error>> {
+    if config.tracking_mode == TrackingMode::Sweep {
+        target.set_panner(Box::new(
+            crate::panners::SweepPanner::new(0.8, 10.0)
+                .with_zoom(30.0, 90.0, 7.0)
+                .with_fps(fps),
+        ));
+        return Ok(true);
+    }
+    #[cfg(any(feature = "ort", feature = "tensorrt-native", feature = "ncnn"))]
+    {
+        setup_detection(target, config, fps, source_is_gpu_resident)
+    }
     #[cfg(not(any(feature = "ort", feature = "tensorrt-native", feature = "ncnn")))]
     {
-        let _ = (target, config, fps);
+        let _ = (target, config, fps, source_is_gpu_resident);
         log::warn!(
             "Autocam: no detector backend compiled in (enable ort, tensorrt-native, or ncnn). \
              Session will run without AI camera control."
         );
-        return Ok(false);
+        Ok(false)
     }
+}
 
+#[cfg(any(feature = "ort", feature = "tensorrt-native", feature = "ncnn"))]
+fn setup_detection(
+    target: &mut impl reco_core::detect::DetectionTarget,
+    config: &AutocamConfig,
+    fps: f32,
+    source_is_gpu_resident: bool,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let Some(detector) = select_detector(target, config, source_is_gpu_resident)? else {
+        return Ok(false);
+    };
+    attach_control(target, config, fps, detector);
+    Ok(true)
+}
+
+#[cfg(any(feature = "ort", feature = "tensorrt-native", feature = "ncnn"))]
+fn select_detector(
+    target: &impl reco_core::detect::DetectionTarget,
+    config: &AutocamConfig,
+    source_is_gpu_resident: bool,
+) -> Result<Option<Box<dyn reco_core::detect::detector::Detector>>, Box<dyn std::error::Error>> {
     let sizes = target.source_sizes();
-    let &(input_width, input_height) = sizes.first().ok_or("autocam requires input dimensions")?;
-    let mixed_sizes = sizes
-        .iter()
-        .any(|&size| size != (input_width, input_height));
-    if source_is_gpu_resident && mixed_sizes && !cfg!(target_os = "linux") {
+    let &first = sizes.first().ok_or("autocam requires input dimensions")?;
+    if source_is_gpu_resident
+        && sizes.iter().any(|size| *size != first)
+        && !cfg!(target_os = "linux")
+    {
         return Err("native autocam preprocessing requires equal camera dimensions".into());
     }
-    let model_path = config.model_path.to_str().unwrap_or("");
-    let detection_interval = config.detection_interval;
-    let tracking_mode = config.tracking_mode;
-    let field_roi = config.field_roi.as_ref();
+    let model_path = config
+        .model_path
+        .to_str()
+        .ok_or("model path is not UTF-8")?;
+    #[cfg(any(feature = "ort", feature = "tensorrt-native"))]
+    let confidence = config.confidence_threshold.unwrap_or(0.10);
 
-    let mut detection_active = false;
-
-    let class_names = load_model_labels(model_path);
-
-    // Check if ROI filtering should be applied.
-    // A FieldRoi is only meaningful if at least one polygon has >= 3 vertices.
-    let effective_roi = field_roi
-        .filter(|roi| roi.left.len() >= 3 || roi.right.len() >= 3)
-        .cloned();
-    let has_effective_roi = effective_roi.is_some();
-    if has_effective_roi {
-        log::info!("Autocam: field ROI filtering enabled");
-    }
-
-    // Only players get the bottom-anchor policy. Known ball-only models keep
-    // the center anchor; unlabeled models retain the COCO class fallback.
-    let person_id_for_roi = roi_player_class(&class_names);
-
-    // Tiny helper so each backend's "wrap the detector in
-    // RoiFilteredDetector if ROI is present" site stays one line.
-    let wrap_with_roi = |inner: Box<dyn reco_core::detect::detector::Detector>,
-                         roi: reco_core::calibration::FieldRoi|
-     -> Box<dyn reco_core::detect::detector::Detector> {
-        let filtered = RoiFilteredDetector::new(inner, roi);
-        Box::new(match person_id_for_roi {
-            Some(person) => filtered.with_class_anchor(person, RoiAnchor::Bottom),
-            None => filtered,
-        })
-    };
-
-    // Native TensorRT path: if the model is a .engine file and the feature
-    // is enabled, use TrtGpuDetector directly (no ORT dependency).
     #[cfg(feature = "tensorrt-native")]
     if source_is_gpu_resident && model_path.ends_with(".engine") {
-        // `confidence_threshold` is an override: when the caller sets
-        // it (e.g. 0.25 for ball-only models) it wins on every backend,
-        // not just the CPU fallback; otherwise each backend keeps its
-        // own sensible default.
-        match reco_detect::TrtGpuDetector::try_new(
-            model_path,
-            target.source_sizes(),
-            config.confidence_threshold.unwrap_or(0.10),
-            class_names.clone(),
-        ) {
-            Ok(Some(trt_det)) => {
-                let detector: Box<dyn reco_core::detect::detector::Detector> =
-                    if let Some(roi) = effective_roi.clone() {
-                        wrap_with_roi(Box::new(trt_det), roi)
-                    } else {
-                        Box::new(trt_det)
-                    };
-                target.set_detector(detector);
-                detection_active = true;
-                log::info!("Autocam: native TensorRT tracking enabled (engine: {model_path})");
-            }
-            Ok(None) => {
-                log::warn!("Autocam: NPP not available, TRT detection disabled");
-            }
-            Err(e) => {
-                log::warn!("Autocam: TRT detector init failed ({e})");
-            }
+        let labels = reco_detect::read_labels_file(config.model_path.with_extension("labels"));
+        match TrtGpuDetector::try_new(model_path, sizes, confidence, labels) {
+            Ok(Some(detector)) => return Ok(Some(Box::new(detector))),
+            Ok(None) => log::warn!("Autocam: NPP not available, TRT detection disabled"),
+            Err(error) => log::warn!("Autocam: TRT detector init failed ({error})"),
         }
     }
 
-    // ORT-based GPU detection (fallback for .onnx models or when tensorrt-native is not enabled).
-    // Linux only: OrtGpuDetector accepts DetectorFrame::CudaNv12 (CUDA NV12 pointers from V4L2/VAAPI).
-    // On Windows, D3D11VA zero-copy produces WgpuNv12 frames instead — use the wgpu preprocessing
-    // path below which wraps CpuYoloDetector (still gets TensorRT EP for inference).
+    // CUDA input requires a CUDA-compatible inference provider; wgpu input uses the adapter below.
     #[cfg(all(feature = "ort", target_os = "linux"))]
-    if !detection_active && source_is_gpu_resident {
-        match OrtGpuDetector::try_new(
-            model_path,
-            target.source_sizes(),
-            config.confidence_threshold.unwrap_or(0.10),
-            Vec::new(),
-            config.is_10bit,
-        ) {
-            Ok(Some(gpu_det)) => {
-                let detector: Box<dyn reco_core::detect::detector::Detector> =
-                    if let Some(roi) = effective_roi.clone() {
-                        wrap_with_roi(Box::new(gpu_det), roi)
-                    } else {
-                        Box::new(gpu_det)
-                    };
-                target.set_detector(detector);
-                detection_active = true;
-                log::info!("Autocam: GPU YOLO ball tracking enabled (model: {model_path})");
-            }
-            Ok(None) => {
-                log::warn!(
-                    "Autocam: no CUDA inference provider compiled in, trying host-input inference"
-                );
-            }
-            Err(e) => {
-                log::warn!("Autocam: CUDA detector init failed ({e}), trying host-input inference");
-            }
+    if source_is_gpu_resident {
+        match OrtGpuDetector::try_new(model_path, sizes, confidence, Vec::new(), config.is_10bit) {
+            Ok(Some(detector)) => return Ok(Some(Box::new(detector))),
+            Ok(None) => log::warn!(
+                "Autocam: no CUDA inference provider compiled in, trying host-input inference"
+            ),
+            Err(error) => log::warn!(
+                "Autocam: CUDA detector init failed ({error}), trying host-input inference"
+            ),
         }
     }
 
     #[cfg(all(feature = "ort", target_os = "macos"))]
     if source_is_gpu_resident && let Some(gpu) = target.gpu() {
-        match MetalYoloDetector::try_new(
-            model_path,
-            gpu,
-            target.source_sizes(),
-            config.confidence_threshold.unwrap_or(0.10),
-            Vec::new(),
-        ) {
-            Ok(metal_det) => {
-                let detector: Box<dyn reco_core::detect::detector::Detector> =
-                    if let Some(roi) = effective_roi.clone() {
-                        wrap_with_roi(Box::new(metal_det), roi)
-                    } else {
-                        Box::new(metal_det)
-                    };
-                target.set_detector(detector);
-                detection_active = true;
-                log::info!("Autocam: Metal YOLO ball tracking enabled (model: {model_path})");
-            }
-            Err(e) => {
-                log::warn!("Autocam: Metal detector init failed ({e}), ball tracking disabled");
-            }
+        match MetalYoloDetector::try_new(model_path, gpu, sizes, confidence, Vec::new()) {
+            Ok(detector) => return Ok(Some(Box::new(detector))),
+            Err(error) => log::warn!(
+                "Autocam: Metal detector init failed ({error}), trying host-input inference"
+            ),
         }
     }
 
-    // NCNN backend: use for _ncnn_model directories (Ultralytics NCNN export).
     #[cfg(feature = "ncnn")]
-    if !detection_active && std::path::Path::new(model_path).is_dir() {
+    if config.model_path.is_dir() {
         if source_is_gpu_resident {
             return Err("NCNN requires host YUV frames; select host-memory decoding".into());
         }
         match reco_detect::NcnnYoloDetector::new(
             model_path,
-            640, // default NCNN input size
+            640,
             config.confidence_threshold.unwrap_or(0.25),
             Vec::new(),
         ) {
-            Ok(ncnn_det) => {
-                let detector: Box<dyn reco_core::detect::detector::Detector> =
-                    if let Some(roi) = effective_roi.clone() {
-                        wrap_with_roi(Box::new(ncnn_det), roi)
-                    } else {
-                        Box::new(ncnn_det)
-                    };
-                target.set_detector(detector);
-                detection_active = true;
-                log::info!("Autocam: NCNN YOLO tracking enabled (model: {model_path})");
-            }
-            Err(e) => {
-                log::warn!("Autocam: NCNN detector init failed ({e}), trying ORT fallback");
+            Ok(detector) => return Ok(Some(Box::new(detector))),
+            Err(error) => {
+                log::warn!("Autocam: NCNN detector init failed ({error}), trying ORT fallback")
             }
         }
     }
 
-    // Fall back through wgpu preprocessing to host-memory model input.
-    // Inference can still use a GPU provider if one registered successfully.
     #[cfg(feature = "ort")]
-    if !detection_active
-        && source_is_gpu_resident
-        && let Some(gpu) = target.gpu()
     {
-        let yolo = CpuYoloDetector::with_config(
-            model_path,
-            config.confidence_threshold.unwrap_or(0.10),
-            Vec::new(),
-        )?;
-        let input_size = yolo.input_size();
-        let wrapper = WgpuPreprocessingDetector::new(
-            Box::new(yolo),
-            gpu.device().clone(),
-            gpu.queue().clone(),
-            input_size,
-            target.source_sizes().to_vec(),
-        )?;
-        let detector: Box<dyn reco_core::detect::detector::Detector> =
-            if let Some(roi) = effective_roi.clone() {
-                wrap_with_roi(Box::new(wrapper), roi)
-            } else {
-                Box::new(wrapper)
-            };
-        target.set_detector(detector);
-        detection_active = true;
-        log::info!(
-            "Autocam: wgpu preprocessing + host-input ORT tracking enabled (model: {model_path})"
-        );
-    }
-
-    // ORT CPU fallback for .onnx files.
-    #[cfg(feature = "ort")]
-    if !detection_active && !source_is_gpu_resident {
-        let conf = config.confidence_threshold.unwrap_or(0.10);
-        let yolo = CpuYoloDetector::with_config(model_path, conf, Vec::new())?;
-        let detector: Box<dyn reco_core::detect::detector::Detector> =
-            if let Some(roi) = effective_roi {
-                wrap_with_roi(Box::new(yolo), roi)
-            } else {
-                Box::new(yolo)
-            };
-        target.set_detector(detector);
-        detection_active = true;
-        log::info!("Autocam: YOLO ball tracking enabled (model: {model_path})");
-    }
-    // Without ort feature, detection only activates via the
-    // tensorrt-native or ncnn branches above. If we still don't
-    // have a detector here, log so the user understands why.
-    #[cfg(not(feature = "ort"))]
-    if !detection_active {
-        log::warn!(
-            "Autocam: no detector attached. Build has `ort` disabled; only `.engine` \
-             (tensorrt-native) and NCNN `_ncnn_model` directories are supported. \
-             Received model_path={model_path}"
-        );
-    }
-
-    // Sweep panner doesn't need detection - attach it regardless.
-    if tracking_mode == TrackingMode::Sweep {
-        log::info!("Tracking mode: sweep (debug, no AI)");
-        let panner =
-            Box::new(crate::panners::SweepPanner::new(0.8, 10.0).with_zoom(30.0, 90.0, 7.0));
-        target.set_panner(panner);
-        return Ok(true);
-    }
-
-    if detection_active {
-        if detection_interval > 1 {
-            target.set_detection_interval(detection_interval);
-            log::info!("Detection interval: every {detection_interval} frames");
+        if source_is_gpu_resident {
+            if let Some(gpu) = target.gpu() {
+                let detector = CpuYoloDetector::with_config(model_path, confidence, Vec::new())?;
+                let input_size = detector.input_size();
+                return Ok(Some(Box::new(WgpuPreprocessingDetector::new(
+                    Box::new(detector),
+                    gpu.device().clone(),
+                    gpu.queue().clone(),
+                    input_size,
+                    sizes.to_vec(),
+                )?)));
+            }
+        } else {
+            return Ok(Some(Box::new(CpuYoloDetector::with_config(
+                model_path,
+                confidence,
+                Vec::new(),
+            )?)));
         }
+    }
+    log::warn!(
+        "Autocam: no detector available for model {model_path} and selected input residency"
+    );
+    Ok(None)
+}
 
-        // Resolve label names to class IDs from the model's label list.
-        // The ball tracker always needs an id (COCO fallback); the player
-        // class is left as an Option so field mode can tell "no players
-        // in this model" apart from "players at the COCO index".
-        let ball_id = resolve_or(&class_names, &["ball", "sports ball"], 32);
-        let person = resolve_class_id(&class_names, &["person"]);
-        match person {
-            Some(p) => log::info!(
-                "Resolved class ids from {} model labels: ball={ball_id}, person={p}",
-                class_names.len()
-            ),
-            None => log::info!(
-                "Resolved class ids from {} model labels: ball={ball_id}, person=absent",
-                class_names.len()
-            ),
-        }
+#[cfg(any(feature = "ort", feature = "tensorrt-native", feature = "ncnn"))]
+fn attach_control(
+    target: &mut impl reco_core::detect::DetectionTarget,
+    config: &AutocamConfig,
+    fps: f32,
+    detector: Box<dyn reco_core::detect::detector::Detector>,
+) {
+    // Read metadata from the selected, loaded detector so inference, tracking and ROI use one class interpretation.
+    let names = detector.class_names().unwrap_or(&[]);
+    let ball = resolve_or(names, &["ball", "sports ball"], 32);
+    let person = resolve_class_id(names, &["person"]);
+    let roi_player = roi_player_class(names);
+    log::info!(
+        "Autocam: {} detector, ball={ball}, person={person:?}",
+        detector.name()
+    );
 
-        match tracking_mode {
-            TrackingMode::Field => {
-                let ball_tracker =
-                    crate::trackers::BallTracker::new(ball_id).with_max_jump_rad(0.8);
-                target.set_ball_tracker(Box::new(ball_tracker));
+    let detector: Box<dyn reco_core::detect::detector::Detector> = if let Some(roi) = config
+        .field_roi
+        .as_ref()
+        .filter(|roi| roi.left.len() >= 3 || roi.right.len() >= 3)
+    {
+        let filter = RoiFilter::new(roi.clone());
+        let filter = match roi_player {
+            Some(class) => filter.with_class_anchor(class, RoiAnchor::Bottom),
+            None => filter,
+        };
+        Box::new(RoiFilteredDetector::new(detector, filter))
+    } else {
+        detector
+    };
+    target.set_detector(detector);
+    target.set_detection_interval(config.detection_interval);
 
-                // Attach the player provider only when the model actually
-                // names a player class. With a ball-only model there are no
-                // players to cluster, so the panner runs on the ball alone
-                // rather than mis-ingesting the ball as a "player" (its id
-                // would collide with the COCO person fallback).
-                match person {
-                    Some(person_id) => {
-                        target.set_player_tracker(Box::new(crate::trackers::ClassProvider::new(
-                            person_id,
-                        )));
-                        log::info!(
-                            "Tracking mode: field with player cluster \
-                             (player_class={person_id}, ball_class={ball_id})"
-                        );
-                    }
-                    None => log::info!(
-                        "Tracking mode: field, but the model names no player class - the panner \
-                         will follow the ball alone (ball_class={ball_id})"
-                    ),
-                }
-
-                let fp_config = config.field_panner_config.clone().unwrap_or(
-                    crate::panners::FieldPannerConfig {
+    match config.tracking_mode {
+        TrackingMode::Field => {
+            target.set_ball_tracker(Box::new(
+                crate::trackers::BallTracker::new(ball).with_max_jump_rad(0.8),
+            ));
+            if let Some(person) = person {
+                target.set_player_tracker(Box::new(crate::trackers::ClassProvider::new(person)));
+            }
+            let panner =
+                config
+                    .field_panner_config
+                    .clone()
+                    .unwrap_or(crate::panners::FieldPannerConfig {
                         ball_weight: 0.20,
                         ..Default::default()
-                    },
-                );
-                log::info!(
-                    "FieldPanner: framing={:?}, confidence_weighted={}, lock_pitch={}",
-                    fp_config.framing,
-                    fp_config.confidence_weighted,
-                    fp_config.lock_pitch,
-                );
-                let field_panner = crate::panners::FieldPanner::with_config(fps, fp_config);
-                target.set_panner(Box::new(field_panner));
-            }
-            TrackingMode::Ball => {
-                let ball_tracker =
-                    crate::trackers::BallTracker::new(ball_id).with_max_jump_rad(0.5);
-                // No player provider - ball-only mode, even if the model
-                // has a player class (the user asked to track the ball).
-                target.set_ball_tracker(Box::new(ball_tracker));
-
-                // No player provider means no cluster, so the ball must
-                // drive the frame fully: force ball_weight=1.0 even when a
-                // config is supplied (there is nothing to blend against).
-                // Owning this here is what lets consumers pass a panner
-                // config without re-deriving the mode default themselves.
-                // All other tuning (dead-zone / reactivity / lead / fov)
-                // still comes from the supplied override.
-                let mut fp_config = config.field_panner_config.clone().unwrap_or_default();
-                fp_config.ball_weight = 1.0;
-                let panner = crate::panners::FieldPanner::with_config(fps, fp_config);
-
-                log::info!(
-                    "Tracking mode: ball-only (BallTracker + FieldPanner, \
-                     ball_class={ball_id})"
-                );
-                target.set_panner(Box::new(panner));
-            }
-            TrackingMode::Sweep => unreachable!("handled before detection block"),
+                    });
+            target.set_panner(Box::new(crate::panners::FieldPanner::with_config(
+                fps, panner,
+            )));
         }
+        TrackingMode::Ball => {
+            target.set_ball_tracker(Box::new(
+                crate::trackers::BallTracker::new(ball).with_max_jump_rad(0.5),
+            ));
+            let mut panner = config.field_panner_config.clone().unwrap_or_default();
+            // Ball-only mode has no player cluster to mix with.
+            panner.ball_weight = 1.0;
+            target.set_panner(Box::new(crate::panners::FieldPanner::with_config(
+                fps, panner,
+            )));
+        }
+        TrackingMode::Sweep => unreachable!("sweep does not initialize detection"),
     }
-
-    Ok(detection_active)
 }
 
 /// Resolve a class label to its ID from the model's label list, by name
@@ -532,6 +376,7 @@ pub fn setup_autocam(
 /// class entirely (e.g. don't attach a player provider for a model with
 /// no player class). This is the signal that drives field-mode's
 /// adaptive wiring.
+#[cfg(any(feature = "ort", feature = "tensorrt-native", feature = "ncnn"))]
 fn resolve_class_id(class_names: &[String], candidates: &[&str]) -> Option<u16> {
     candidates.iter().find_map(|candidate| {
         class_names
@@ -542,6 +387,7 @@ fn resolve_class_id(class_names: &[String], candidates: &[&str]) -> Option<u16> 
 }
 
 /// [`resolve_class_id`] with a COCO-index fallback for the ball tracker. Logs when the fallback is used so a mislabeled or label-less model is visible.
+#[cfg(any(feature = "ort", feature = "tensorrt-native", feature = "ncnn"))]
 fn resolve_or(class_names: &[String], candidates: &[&str], default_id: u16) -> u16 {
     resolve_class_id(class_names, candidates).unwrap_or_else(|| {
         log::warn!(
@@ -552,68 +398,13 @@ fn resolve_or(class_names: &[String], candidates: &[&str], default_id: u16) -> u
     })
 }
 
-fn load_model_labels(model_path: &str) -> Vec<String> {
-    let is_onnx = model_path.ends_with(".onnx");
-    if model_path.ends_with(".engine") {
-        reco_detect::read_labels_file(Path::new(model_path).with_extension("labels"))
-    } else {
-        #[cfg(feature = "ort")]
-        {
-            if is_onnx {
-                match reco_detect::create_ort_session(Path::new(model_path), Vec::new()) {
-                    Ok((_, _, names)) => names,
-                    Err(e) => {
-                        log::warn!("Could not read model labels: {e}, using COCO defaults");
-                        Vec::new()
-                    }
-                }
-            } else {
-                Vec::new()
-            }
-        }
-        #[cfg(not(feature = "ort"))]
-        {
-            if is_onnx {
-                log::warn!(
-                    "Autocam: ort feature disabled; can't parse ONNX class names from {model_path}. Using COCO defaults."
-                );
-            }
-            Vec::new()
-        }
-    }
-}
-
+#[cfg(any(feature = "ort", feature = "tensorrt-native", feature = "ncnn"))]
 fn roi_player_class(class_names: &[String]) -> Option<u16> {
     resolve_class_id(class_names, &["person"]).or_else(|| class_names.is_empty().then_some(0))
 }
 
-#[cfg(test)]
-mod setup_tests {
-    use super::*;
-
-    #[test]
-    fn engine_sidecar_drives_tracker_and_roi_class_ids() {
-        let dir = tempfile::tempdir().unwrap();
-        let engine = dir.path().join("detector.engine");
-        let labels_path = engine.with_extension("labels");
-        std::fs::write(&labels_path, "ball\n").unwrap();
-        let labels = load_model_labels(engine.to_str().unwrap());
-        assert_eq!(labels, ["ball"]);
-        assert_eq!(resolve_or(&labels, &["ball", "sports ball"], 32), 0);
-        assert_eq!(roi_player_class(&labels), None);
-        std::fs::write(&labels_path, "ball\nperson\n").unwrap();
-        let labels = load_model_labels(engine.to_str().unwrap());
-        assert_eq!(resolve_or(&labels, &["ball", "sports ball"], 32), 0);
-        assert_eq!(roi_player_class(&labels), Some(1));
-    }
-
-    #[test]
-    fn missing_labels_keep_coco_fallback_without_inventing_known_classes() {
-        let dir = tempfile::tempdir().unwrap();
-        let labels = load_model_labels(dir.path().join("missing.engine").to_str().unwrap());
-        assert!(labels.is_empty());
-        assert_eq!(resolve_or(&labels, &["ball", "sports ball"], 32), 32);
-        assert_eq!(roi_player_class(&labels), Some(0));
-        assert_eq!(roi_player_class(&["ball".into(), "other".into()]), None);
-    }
-}
+#[cfg(all(
+    test,
+    any(feature = "ort", feature = "tensorrt-native", feature = "ncnn")
+))]
+mod setup_tests;

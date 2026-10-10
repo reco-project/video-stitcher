@@ -70,6 +70,8 @@ pub struct StitchArgs<'a> {
 
 /// Run the stitch subcommand.
 pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow::Result<()> {
+    #[cfg(feature = "autocam")]
+    let tracking_mode = crate::helpers::parse_tracking_mode(args.tracking_mode)?;
     const MAX_DIM: u32 = 8192;
     anyhow::ensure!(
         args.width > 0 && args.width <= MAX_DIM && args.height > 0 && args.height <= MAX_DIM,
@@ -248,7 +250,6 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     {
         let model_path = model_path.to_owned();
         let interval = args.detection_interval;
-        let mode_str = args.tracking_mode.to_owned();
         // Resolve FieldPanner tuning up front so a bad preset/file fails
         // before rendering. Preset is the base; --panner-config overlays.
         let panner_cfg: Option<reco_autocam::panners::FieldPannerConfig> = {
@@ -292,18 +293,13 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         };
         job = job.on_session(move |session, source| {
             let info = source.info();
-            let mode = match mode_str.as_str() {
-                "sweep" => reco_autocam::TrackingMode::Sweep,
-                "ball" => reco_autocam::TrackingMode::Ball,
-                _ => reco_autocam::TrackingMode::Field,
-            };
             let is_10bit =
                 source.gpu_pixel_format() == reco_core::render::renderer::GpuPixelFormat::P010;
             let mut autocam_config = reco_autocam::AutocamConfig::new(&model_path)
-                .with_tracking_mode(mode)
+                .with_tracking_mode(tracking_mode)
                 .with_detection_interval(interval)
                 .with_10bit(is_10bit);
-            if mode == reco_autocam::TrackingMode::Ball {
+            if tracking_mode == reco_autocam::TrackingMode::Ball {
                 autocam_config.confidence_threshold = Some(0.25);
             }
             if let Some(ref cfg) = panner_cfg {

@@ -2,6 +2,34 @@
 
 use std::cell::Cell;
 
+/// Resolve a CLI tracking name without silently changing the requested strategy.
+#[cfg(feature = "autocam")]
+pub fn parse_tracking_mode(value: &str) -> anyhow::Result<reco_autocam::TrackingMode> {
+    use reco_autocam::TrackingMode;
+    match value {
+        "field" => Ok(TrackingMode::Field),
+        "ball" => Ok(TrackingMode::Ball),
+        "sweep" => Ok(TrackingMode::Sweep),
+        _ => anyhow::bail!("unknown tracking mode '{value}' (expected field, ball or sweep)"),
+    }
+}
+
+#[cfg(all(test, feature = "autocam"))]
+mod tracking_tests {
+    #[test]
+    fn every_tracking_name_reaches_its_requested_strategy() {
+        use reco_autocam::TrackingMode;
+        for (name, expected) in [
+            ("field", TrackingMode::Field),
+            ("ball", TrackingMode::Ball),
+            ("sweep", TrackingMode::Sweep),
+        ] {
+            assert_eq!(super::parse_tracking_mode(name).unwrap(), expected);
+        }
+        assert!(super::parse_tracking_mode("bal").is_err());
+    }
+}
+
 /// Progress reporter that prints frame count and FPS every N frames.
 ///
 /// Reports two rates when driven from the session's own elapsed

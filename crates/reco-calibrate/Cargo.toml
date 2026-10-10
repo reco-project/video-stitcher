@@ -27,11 +27,10 @@ realfft = "3"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
-tracing = { version = "0.1", optional = true }
 reco-io = { path = "../reco-io", optional = true }
 
 [features]
-profiling = ["dep:tracing", "reco-core/profiling"]
+profiling = ["reco-core/profiling"]
 io = ["dep:reco-io"]
 
 [dev-dependencies]

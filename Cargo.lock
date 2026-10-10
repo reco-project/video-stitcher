@@ -5463,7 +5463,6 @@ dependencies = [
  "reco-detect",
  "serde",
  "tempfile",
- "tracing",
  "wgpu",
 ]
 
@@ -5491,7 +5490,6 @@ dependencies = [
  "serde_json",
  "telemetry-parser",
  "thiserror 2.0.18",
- "tracing",
 ]
 
 [[package]]
@@ -5578,7 +5576,6 @@ dependencies = [
  "reco-core",
  "tempfile",
  "thiserror 2.0.18",
- "tracing",
  "wgpu",
 ]
 

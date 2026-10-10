@@ -124,6 +124,8 @@ pub fn run_camera(
         exposure: _exposure,
         sensor_gain: _sensor_gain,
     } = config;
+    #[cfg(feature = "autocam")]
+    let tracking_mode = helpers::parse_tracking_mode(tracking)?;
     // Reject FFmpeg network URLs as output to prevent data exfiltration (#64).
     anyhow::ensure!(
         !output.contains("://"),
@@ -181,27 +183,11 @@ pub fn run_camera(
         log::info!("constrained_look: disabled (unconstrained viewport)");
     }
 
-    // Parse tracking mode. Sweep is useful without detection.
-    #[cfg(feature = "autocam")]
-    let tracking_mode = match tracking {
-        "sweep" => reco_autocam::TrackingMode::Sweep,
-        other if other != "field" => {
-            log::warn!("unknown tracking mode '{other}', defaulting to 'field'");
-            reco_autocam::TrackingMode::Field
-        }
-        _ => reco_autocam::TrackingMode::Field,
-    };
-
     // Set up autocam (detector + panner). Model path is optional in
     // sweep mode — SweepPanner needs no detector.
     #[cfg(feature = "autocam")]
     {
-        let effective_model = if tracking_mode == reco_autocam::TrackingMode::Sweep {
-            // Sweep bypasses detection entirely.
-            model_path.unwrap_or("")
-        } else {
-            model_path.unwrap_or("")
-        };
+        let effective_model = model_path.unwrap_or("");
         if !effective_model.is_empty() || tracking_mode == reco_autocam::TrackingMode::Sweep {
             let autocam_config = reco_autocam::AutocamConfig::new(effective_model)
                 .with_tracking_mode(tracking_mode)

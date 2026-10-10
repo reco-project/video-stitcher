@@ -9,36 +9,30 @@ repository.workspace = true
 description = "Automatic camera control for reco: object detection, trackers, panners and ROI filtering"
 
 [dependencies]
-reco-core = { path = "../reco-core" }
+reco-core = { path = "../reco-core", default-features = false }
 # default-features = false so consumers can choose a detection
 # backend explicitly (ort / tensorrt-native / ncnn / etc.) without
 # reco-detect's `default = ["ort"]` sneaking ort in via feature
 # unification. Needed for Jetson builds where prebuilt ort-sys
 # references glibc symbols the Tegra host doesn't have.
-reco-detect = { path = "../reco-detect", default-features = false }
-wgpu = "28"
+reco-detect = { path = "../reco-detect", default-features = false, optional = true }
+wgpu = { version = "28", optional = true }
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 
 [features]
-# Preserve pre-refactor behavior: autocam's default build still
-# enables the ort (CPU) backend so no existing consumer regresses.
-# Jetson / custom builds opt out via `--no-default-features
-# --features tensorrt-native` (or ncnn).
 default = ["ort"]
-ort = ["reco-detect/ort"]
-cuda = ["reco-detect/cuda"]
-tensorrt = ["reco-detect/tensorrt"]
-coreml = ["reco-detect/coreml"]
-directml = ["reco-detect/directml"]
-load-dynamic = ["reco-detect/load-dynamic"]
-tensorrt-native = ["reco-detect/tensorrt-native"]
-ncnn = ["reco-detect/ncnn"]
-profiling = ["reco-core/profiling", "reco-detect/profiling", "dep:tracing"]
-
-[dependencies.tracing]
-workspace = true
-optional = true
+# Detector adapters include GPU preprocessing; tracking, panning and ROI need neither GPU nor inference libraries.
+detectors = ["dep:reco-detect", "dep:wgpu", "reco-core/gpu"]
+ort = ["detectors", "reco-detect/ort"]
+cuda = ["ort", "reco-detect/cuda"]
+tensorrt = ["ort", "reco-detect/tensorrt"]
+coreml = ["ort", "reco-detect/coreml"]
+directml = ["ort", "reco-detect/directml"]
+load-dynamic = ["ort", "reco-detect/load-dynamic"]
+tensorrt-native = ["detectors", "reco-detect/tensorrt-native"]
+ncnn = ["detectors", "reco-detect/ncnn"]
+profiling = ["reco-core/profiling", "reco-detect?/profiling"]
 
 [dev-dependencies]
 tempfile = "3"

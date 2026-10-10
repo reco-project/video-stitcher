@@ -122,12 +122,20 @@ jobs:
       # on its own.
       - name: Clippy (reco-core wgpu-free)
         run: cargo clippy -p reco-core --all-targets --no-default-features -- -D warnings
+      - name: Profiling across consumer feature boundaries
+        run: |
+          cargo test -p reco-core --no-default-features --features profiling --test profiling
+          cargo clippy -p reco-io --all-targets --no-default-features --features ffmpeg,reco-core/profiling -- -D warnings
       - name: Clippy (reco-io wgpu-free)
         run: |
           cargo clippy -p reco-io --all-targets --no-default-features -- -D warnings
           cargo clippy -p reco-io --all-targets --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling -- -D warnings
       - name: Clippy (reco-control CPU-only)
         run: cargo clippy -p reco-control --all-targets --no-default-features -- -D warnings
+      - name: Clippy (reco-autocam control-only)
+        run: cargo clippy -p reco-autocam --all-targets --no-default-features --features profiling -- -D warnings
+      - name: Clippy (reco-autocam detector adapters)
+        run: cargo clippy -p reco-autocam --all-targets --no-default-features --features detectors -- -D warnings
       - name: Clippy (reco-control device helper)
         run: cargo clippy -p reco-control --all-targets --features gopro -- -D warnings
 
@@ -202,6 +210,14 @@ jobs:
           fi
       - name: Run tests (reco-control device helper)
         run: cargo test -p reco-control --features gopro
+      - name: Run tests (reco-autocam control-only)
+        run: |
+          cargo test -p reco-autocam --no-default-features --features profiling
+          autocam_graph="$(cargo tree -p reco-autocam --no-default-features --features profiling -e normal --prefix none)"
+          if [[ "$autocam_graph" == *"wgpu v"* || "$autocam_graph" == *"reco-detect v"* || "$autocam_graph" == *"ort v"* ]]; then
+            echo "Camera-control policies unexpectedly enable GPU or inference dependencies" >&2
+            exit 1
+          fi
 
   # ===========================================================================
   # doc — full workspace docs, all features enabled, warnings-as-errors.
@@ -222,6 +238,10 @@ jobs:
           RUSTDOCFLAGS: "-D warnings"
       - name: Build docs (reco-io wgpu-free)
         run: cargo doc -p reco-io --no-deps --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+      - name: Build docs (reco-autocam control-only)
+        run: cargo doc -p reco-autocam --no-deps --no-default-features --features profiling
         env:
           RUSTDOCFLAGS: "-D warnings"
 
