@@ -100,6 +100,8 @@ pub struct FfmpegFileSource {
     software_decode: bool,
     /// Current frame position (incremented on each next_frame).
     current_frame: u64,
+    /// Frames before this position are discarded by subsequent reads.
+    skip_until: u64,
     /// True once the decode pipeline has signaled end-of-stream.
     ///
     /// Set only by explicit EOF, not by a failed or disconnected worker.
@@ -214,6 +216,7 @@ impl FfmpegFileSource {
             sync_offset,
             software_decode,
             current_frame: 0,
+            skip_until: 0,
             exhausted: false,
             terminal_error: None,
         })
@@ -232,6 +235,44 @@ impl FfmpegFileSource {
     /// decoder generation before delivering replacement frames.
     pub fn defer_cleanup(&mut self, cleanup: &crate::DecoderCleanup) {
         self.cleanup.defer_to(cleanup);
+    }
+
+    fn read_frame(&mut self, blocking: bool) -> Result<Option<SourceFrame>, SourceError> {
+        if let Some(error) = &self.terminal_error {
+            return Err(error.clone());
+        }
+        if self.exhausted {
+            return Ok(None);
+        }
+        loop {
+            let result = if blocking {
+                self.stream.receive()
+            } else {
+                match self.stream.try_receive() {
+                    Ok(result) => result,
+                    Err(std::sync::mpsc::TryRecvError::Empty) => return Ok(None),
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        Err(crate::decode_stream::disconnected())
+                    }
+                }
+            };
+            let frames = result.inspect_err(|error| self.terminal_error = Some(error.clone()))?;
+            let Some(images) = frames else {
+                self.exhausted = true;
+                return Ok(None);
+            };
+            let index = self.current_frame;
+            self.current_frame += 1;
+            if index >= self.skip_until {
+                return Ok(Some(SourceFrame::untimed(FrameSet::Yuv420p(
+                    images.into_iter().map(std::sync::Arc::new).collect(),
+                ))));
+            }
+            // Poll at most one frame set, including when it must be discarded.
+            if !blocking {
+                return Ok(None);
+            }
+        }
     }
 
     /// GPU pixel format for zero-copy shared textures.
@@ -440,6 +481,7 @@ mod decode_tests {
             sync_offset: 0,
             software_decode: true,
             current_frame: 0,
+            skip_until: 0,
             exhausted: false,
             terminal_error: None,
         }
@@ -486,15 +528,57 @@ mod decode_tests {
     #[test]
     fn forward_seek_does_not_swallow_a_worker_failure() {
         let mut source = source(vec![Ok(Some(vec![])), failure()]);
+        source.seek(2).unwrap();
+        assert_eq!(source.current_frame, 0, "request must not consume frames");
         assert!(
             source
-                .seek(2)
-                .unwrap_err()
+                .next_frame()
+                .err()
+                .unwrap()
                 .to_string()
                 .contains("decode failed")
         );
         assert_eq!(source.current_frame, 1);
         assert!(!source.is_exhausted());
+    }
+
+    #[test]
+    fn forward_seek_polling_is_bounded_and_newer_targets_replace_the_old_one() {
+        let mut source = source((0..12).map(|_| Ok(Some(vec![]))).collect());
+        source.seek(9).unwrap();
+        assert!(source.try_next_frame().unwrap().is_none());
+        assert_eq!(source.current_frame, 1);
+        assert!(!source.is_exhausted());
+        source.seek(2).unwrap();
+        assert!(source.try_next_frame().unwrap().is_none());
+        assert!(source.try_next_frame().unwrap().is_some());
+        assert_eq!(source.current_frame, 3);
+        assert!(source.next_frame().unwrap().is_some());
+        assert_eq!(source.current_frame, 4);
+    }
+
+    #[test]
+    fn forward_seek_preserves_eof_and_errors_in_both_read_modes() {
+        for polling in [false, true] {
+            for failed in [false, true] {
+                let terminal = if failed { failure() } else { Ok(None) };
+                let mut source = source(vec![Ok(Some(vec![])), terminal]);
+                source.seek(3).unwrap();
+                let result = if polling {
+                    assert!(source.try_next_frame().unwrap().is_none());
+                    assert!(!source.is_exhausted());
+                    source.try_next_frame()
+                } else {
+                    source.next_frame()
+                };
+                assert_eq!(result.is_err(), failed);
+                assert_eq!(source.is_exhausted(), !failed);
+                assert_eq!(source.current_frame, 1);
+                if !failed {
+                    assert!(result.unwrap().is_none());
+                }
+            }
+        }
     }
 
     #[test]
@@ -632,51 +716,11 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
     }
 
     fn next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {
-        if let Some(error) = &self.terminal_error {
-            return Err(error.clone());
-        }
-        if self.exhausted {
-            return Ok(None);
-        }
-        let frames = self
-            .stream
-            .receive()
-            .inspect_err(|error| self.terminal_error = Some(error.clone()))?;
-        self.current_frame += u64::from(frames.is_some());
-        self.exhausted = frames.is_none();
-        Ok(frames.map(|images| {
-            SourceFrame::untimed(FrameSet::Yuv420p(
-                images.into_iter().map(std::sync::Arc::new).collect(),
-            ))
-        }))
+        self.read_frame(true)
     }
 
     fn try_next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {
-        if let Some(error) = &self.terminal_error {
-            return Err(error.clone());
-        }
-        if self.exhausted {
-            return Ok(None);
-        }
-        match self.stream.try_receive() {
-            Ok(result) => {
-                let frames =
-                    result.inspect_err(|error| self.terminal_error = Some(error.clone()))?;
-                self.current_frame += u64::from(frames.is_some());
-                self.exhausted = frames.is_none();
-                Ok(frames.map(|images| {
-                    SourceFrame::untimed(FrameSet::Yuv420p(
-                        images.into_iter().map(std::sync::Arc::new).collect(),
-                    ))
-                }))
-            }
-            Err(std::sync::mpsc::TryRecvError::Empty) => Ok(None),
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                let error = crate::decode_stream::disconnected();
-                self.terminal_error = Some(error.clone());
-                Err(error)
-            }
-        }
+        self.read_frame(false)
     }
 
     fn seek(&mut self, frame: u64) -> Result<(), SourceError> {
@@ -687,9 +731,8 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         }
         // Two strategies depending on seek direction and distance:
         //
-        // 1. **Forward ≤ 10s**: drain frames from the existing decode
-        //    pipeline, without reopening decoders. This still decodes
-        //    every intervening frame and can block the caller.
+        // 1. **Forward ≤ 10s**: reuse the existing decode pipeline. Reads
+        //    discard intervening frames; polling bounds the work per call.
         //
         // 2. **Backward or > 10s forward**: replace the decode generation
         //    at the target position. Each decoder seeks to the
@@ -697,19 +740,15 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
         //    discards frames until reaching the exact target PTS.
         //
         // Pending replacements coalesce behind cleanup of the old decoders.
-        // Strategy 2 returns before cleanup or decoding the first new frame.
-        // A subsequent blocking read waits for both. Native calls have no
+        // Neither strategy waits for the target frame. A subsequent
+        // blocking read waits for it. Native calls have no
         // shutdown deadline, so a stuck decoder also stalls the replacement.
-        if frame >= self.current_frame {
+        if frame >= self.current_frame && !self.exhausted && self.terminal_error.is_none() {
             let skip = frame - self.current_frame;
             let max_forward = (self.info.fps * 10.0) as u64;
             if skip <= max_forward {
                 log::debug!("Forward seek: skipping {skip} frames via decode");
-                for _ in 0..skip {
-                    if self.next_frame()?.is_none() {
-                        break;
-                    }
-                }
+                self.skip_until = frame;
                 return Ok(());
             }
         }
@@ -723,6 +762,7 @@ impl reco_core::source::FrameSource for FfmpegFileSource {
             Self::decode_pipeline(inputs, sync_offset, Some(secs), software_decode, tx, stop)
         });
         self.current_frame = frame;
+        self.skip_until = frame;
         self.exhausted = false;
         self.terminal_error = None;
         Ok(())
