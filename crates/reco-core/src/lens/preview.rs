@@ -93,11 +93,19 @@ pub struct LensPreviewRenderer {
     uniform_bind_group: wgpu::BindGroup,
     width: u32,
     height: u32,
-    plane_aspect: f32,
     output_format: wgpu::TextureFormat,
 }
 
 impl LensPreviewRenderer {
+    /// Map a source-normalized camera point into the rendered lens-preview image.
+    ///
+    /// Uses the same central-branch inverse KB4 mapping as projection. The result may lie outside the image; returns `None` for an invalid lens/point or an inverse outside that branch. This locates a point, not a guarantee of rendered visibility or a globally unique inverse for folded distortion coefficients. `source_points_follow_rendered_landmarks_at_each_correction_strength` checks it against rendered landmarks.
+    pub fn source_to_preview(point: [f64; 2], lens: &Lens) -> Option<[f64; 2]> {
+        lens.validate().ok()?;
+        let (u, v) = super::inverse_fisheye(point[0], point[1], lens)?;
+        Some([(u + 0.5) * 0.5, (v + 0.5) * 0.5])
+    }
+
     /// Create a renderer for single-camera preview.
     ///
     /// `width`/`height` are the input frame dimensions.
@@ -107,7 +115,6 @@ impl LensPreviewRenderer {
         gpu: &GpuContext,
         width: u32,
         height: u32,
-        plane_aspect: f32,
         output_format: wgpu::TextureFormat,
     ) -> Self {
         let device = &gpu.device;
@@ -123,7 +130,7 @@ impl LensPreviewRenderer {
             ),
         });
 
-        let vertices = quad_vertices(plane_aspect);
+        let vertices = quad_vertices(width as f32 / height as f32);
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("lens_preview_quad"),
             contents: bytemuck::cast_slice(&vertices),
@@ -264,7 +271,6 @@ impl LensPreviewRenderer {
             uniform_bind_group,
             width,
             height,
-            plane_aspect,
             output_format,
         }
     }
@@ -274,14 +280,13 @@ impl LensPreviewRenderer {
     /// The returned texture has `RENDER_ATTACHMENT | TEXTURE_BINDING` and
     /// can be passed to `slint::Image::try_from(wgpu::Texture)`.
     ///
-    /// `correction_amount`: 0.0 = equidistant (zero polynomial, not raw), 1.0 = full KB4 correction.
+    /// Uses the lens's correction strength: zero is equidistant, not raw.
     /// `full_range` selects the range of the supplied YUV planes.
     pub fn render_yuv(
         &self,
         gpu: &GpuContext,
         planes: &Yuv420pPlanes<'_>,
         params: &Lens,
-        correction_amount: f32,
         full_range: bool,
     ) -> wgpu::Texture {
         upload_plane(
@@ -306,7 +311,7 @@ impl LensPreviewRenderer {
             self.height / 2,
         );
 
-        let hh = 0.5 / self.plane_aspect;
+        let hh = 0.5 * self.height as f32 / self.width as f32;
         let ortho = Orthographic3::new(-0.5, 0.5, -hh, hh, -1.0, 1.0);
         let mvp = opengl_to_wgpu_matrix() * ortho.to_homogeneous();
 
@@ -319,7 +324,7 @@ impl LensPreviewRenderer {
             false,
             full_range,
         );
-        uniforms.lens_preview[0] = correction_amount.clamp(-1.0, 1.0);
+        uniforms.lens_preview[0] = params.correction;
 
         gpu.queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
@@ -425,4 +430,116 @@ fn upload_plane(
             depth_or_array_layers: 1,
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gpu::nv12_converter::Nv12Converter;
+
+    #[test]
+    fn source_point_rejects_invalid_lenses_and_nonfinite_coordinates() {
+        let mut lens = Lens::flat(256, 144);
+        assert!(LensPreviewRenderer::source_to_preview([f64::NAN, 0.5], &lens).is_none());
+        assert!(LensPreviewRenderer::source_to_preview([0.5, f64::INFINITY], &lens).is_none());
+        lens.fx = 0.0;
+        assert!(LensPreviewRenderer::source_to_preview([0.5, 0.5], &lens).is_none());
+    }
+
+    #[test]
+    fn source_points_follow_rendered_landmarks_at_each_correction_strength() {
+        let Some(gpu) = crate::stitch::test_support::gpu_or_skip() else {
+            return;
+        };
+        let (width, height) = (256_u32, 144_u32);
+        let preview =
+            LensPreviewRenderer::new(&gpu, width, height, wgpu::TextureFormat::Rgba8Unorm);
+        let mut converter = Nv12Converter::new(&gpu, width, height).unwrap();
+        let chroma = vec![128; (width * height / 4) as usize];
+        let lens = Lens::fisheye(
+            1024,
+            576,
+            580.0,
+            550.0,
+            490.0,
+            300.0,
+            [0.2, -0.06, 0.015, -0.001],
+        );
+        let folded = Lens::fisheye(
+            3840,
+            2880,
+            1500.0,
+            1500.0,
+            1920.0,
+            1440.0,
+            [0.5, 0.0, -0.08, 0.0],
+        );
+        for (mut lens, corrections, points) in [
+            (
+                lens,
+                &[0.0, 0.35, 1.0][..],
+                [(48_i32, 32_i32), (130, 80), (208, 114)],
+            ),
+            (folded, &[1.0][..], [(16, 12), (130, 80), (240, 132)]),
+        ] {
+            for &correction in corrections {
+                lens.correction = correction;
+                for (source_x, source_y) in points {
+                    let point = [
+                        (f64::from(source_x) + 0.5) / f64::from(width),
+                        (f64::from(source_y) + 0.5) / f64::from(height),
+                    ];
+                    let mapped = LensPreviewRenderer::source_to_preview(point, &lens).unwrap();
+                    let mut y = vec![16; (width * height) as usize];
+                    for dy in -3_i32..=3 {
+                        for dx in -3_i32..=3 {
+                            if dx * dx + dy * dy <= 9 {
+                                y[((source_y + dy) as u32 * width + (source_x + dx) as u32)
+                                    as usize] = 235;
+                            }
+                        }
+                    }
+                    let output = preview.render_yuv(
+                        &gpu,
+                        &Yuv420pPlanes {
+                            y: &y,
+                            u: &chroma,
+                            v: &chroma,
+                        },
+                        &lens,
+                        false,
+                    );
+                    let empty = gpu
+                        .device
+                        .create_command_encoder(&Default::default())
+                        .finish();
+                    assert!(
+                        converter
+                            .convert_and_readback(&gpu, &output, empty)
+                            .unwrap()
+                            .is_none()
+                    );
+                    let pixels = converter.flush_pending(&gpu).unwrap().unwrap();
+                    let mut weight = 0.0;
+                    let mut center = [0.0, 0.0];
+                    for (index, &value) in pixels[..(width * height) as usize].iter().enumerate() {
+                        let contribution = f64::from(value.saturating_sub(32));
+                        weight += contribution;
+                        center[0] += (index % width as usize) as f64 * contribution;
+                        center[1] += (index / width as usize) as f64 * contribution;
+                    }
+                    assert!(weight > 100.0, "rendered landmark disappeared");
+                    for axis in 0..2 {
+                        let extent = if axis == 0 { width } else { height };
+                        let expected = mapped[axis] * f64::from(extent) - 0.5;
+                        let actual = center[axis] / weight;
+                        assert!(
+                            (expected - actual).abs() < 0.75,
+                            "correction={correction}, source={point:?}, axis={axis}: mapped {expected}, rendered {actual}"
+                        );
+                    }
+                }
+            }
+        }
+    }
 }

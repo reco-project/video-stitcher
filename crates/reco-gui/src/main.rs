@@ -2,9 +2,7 @@
 
 //! Reco GUI - Slint-based panoramic video stitcher.
 //!
-//! Opens a Material dark themed window with file pickers for left/right
-//! video files and calibration JSON, a GPU-rendered preview panel, and
-//! play/pause/seek controls.
+//! Preview-first workspace for source files, calibration, camera controls and export.
 //!
 //! ## Architecture
 //!
@@ -21,11 +19,14 @@ mod calibration_job;
 mod export;
 mod playback;
 mod preview;
+mod roi_editor;
 mod settings;
 #[cfg(test)]
 mod shutdown_tests;
 mod telemetry_client;
 mod toast;
+#[cfg(test)]
+mod ui_tests;
 
 use std::cell::RefCell;
 use std::future::Future;
@@ -65,22 +66,12 @@ const PREVIEW_HEIGHT_DEFAULT: u32 = 1080;
 /// Tick interval for the playback timer (ms).
 ///
 /// Needs to be much smaller than one frame (33ms at 30fps) so the
-/// drift-free scheduler in `Playback::tick` can catch up promptly when
-/// a scheduled frame boundary is crossed mid-tick. 2ms gives sub-1%
-/// timing error at 30fps and is cheap since the tick is a no-op when
-/// no frame advance is due.
+/// drift-free scheduler in `Playback::tick` can catch up when a scheduled frame boundary is crossed between callbacks. Display delivery still depends on the presentation backend.
 const TICK_INTERVAL_MS: i64 = 2;
 
 /// FOV clamp range (degrees), matching CLI preview.
 const FOV_MIN: f32 = 1.0;
 const FOV_MAX: f32 = 150.0;
-
-/// How long the seek-slider fraction must stay stable before we
-/// actually execute the seek. Debouncing is required because every
-/// pixel of drag emits a `changed` event, and each seek forces a
-/// NVDEC codec reinit that costs ~50ms. Without debouncing, a drag
-/// saturates the GPU with hundreds of pending reinits.
-const SEEK_DEBOUNCE_MS: u64 = 120;
 
 /// Calibration payload sent from the background worker: the computed
 /// match calibration plus the lens profile info each side resolved to,
@@ -223,6 +214,8 @@ struct AppState {
     /// Owns a calibration worker and the document it was started for.
     calibration_job: Option<calibration_job::PendingCalibration>,
     review_calibration: Option<(CalibrationOutput, calibration_job::CalibrationSnapshot)>,
+    roi_editor_job: Option<roi_editor::PendingEditor>,
+    roi_editor_page: Option<roi_editor::EditorFile>,
     /// Receives native file dialog selections after the OS dialog
     /// completes on a background waiter.
     file_dialog_rx: Option<std::sync::mpsc::Receiver<Option<Box<dyn FileDialogAction>>>>,
@@ -250,22 +243,11 @@ struct AppState {
     /// extension so successive runs do not overwrite each other.
     #[cfg(feature = "automation")]
     auto_export_base: Option<PathBuf>,
-    /// Unified pose state machine (target + current + smoothing +
-    /// coverage clamping). Replaces the earlier hand-rolled
-    /// `yaw/pitch/target_*` fields; all input events (drag, wheel,
-    /// slider, reset) feed `PoseControl` and the render loop reads
-    /// `pose.current_pose()`.
+    /// Pending direct input and the last pose accepted by coverage.
     pose: PoseControl,
-    /// Pending debounced seek: (fraction, time the request was made).
-    /// The timer tick executes the seek once the fraction has stopped
-    /// changing for `SEEK_DEBOUNCE_MS`.
-    pending_seek: Option<(f32, Instant)>,
-    /// Last time we pushed a rendered frame to Slint. Used to cap the
-    /// smoothing-driven render rate.
+    /// Last time we pushed a rendered frame to Slint.
     last_render_at: Option<Instant>,
-    /// Set by control changes (blend width, rig tilt) that don't go
-    /// through the camera-smoothing path but still need a re-render.
-    /// Cleared by the timer after it renders.
+    /// A changed frame or control needs rendering even while playback is paused.
     preview_dirty: bool,
     /// Keep polling the first coverage build even when playback is paused.
     coverage_pending: bool,
@@ -278,6 +260,8 @@ struct AppState {
     export_thread: Option<std::thread::JoinHandle<()>>,
     /// Receives export completion notifications from the worker.
     export_rx: Option<std::sync::mpsc::Receiver<ExportOutcome>>,
+    /// Editor state retained while export releases the preview's GPU resources and decoders.
+    export_preview: Option<PreviewBookmark>,
     /// Original Projection values — what auto-calibrate produced. Live
     /// calibration sliders edit relative to this so Reset restores.
     cal_baseline: Option<reco_core::calibration::Calibration>,
@@ -301,8 +285,6 @@ struct AppState {
     lens_preview_active: bool,
     /// Which camera to show in lens preview mode ("left" or "right").
     lens_preview_side: String,
-    /// Lens correction amount for the preview (0.0 = raw, 1.0 = full).
-    lens_correction_amount: f32,
     toasts: ToastManager,
     telemetry: Option<telemetry_client::TelemetryClient>,
 }
@@ -378,7 +360,7 @@ fn build_bug_report(state: &AppState, app_weak: &slint::Weak<RecoApp>) -> String
         let total_ms = app.get_telem_total_ms();
         if fps_avg > 0.0 || total_ms > 0.0 {
             report.push_str(&format!(
-                "\n## Performance\n\
+                "\n## Last export performance\n\
                  - FPS: {fps_avg:.0} avg / {fps_recent:.0} recent\n\
                  - Frame time: {total_ms:.1} ms\n"
             ));
@@ -417,6 +399,38 @@ struct RecordingFrame {
     height: u32,
 }
 
+struct PreviewBookmark {
+    inputs: Vec<Vec<PathBuf>>,
+    calibration: Calibration,
+    pose: PoseControl,
+    frame: u64,
+}
+
+impl PreviewBookmark {
+    fn capture(state: &AppState) -> Option<Self> {
+        let calibration = state.calibration.clone()?;
+        let inputs = state.selected_inputs(&calibration)?;
+        Some(Self {
+            inputs: inputs.iter().map(reco_io::InputPath::all_paths).collect(),
+            calibration,
+            pose: state.pose.clone(),
+            frame: state.playback.frame_index().saturating_sub(1),
+        })
+    }
+
+    fn matches(&self, state: &AppState) -> bool {
+        state.calibration.as_ref() == Some(&self.calibration)
+            && state
+                .selected_inputs(&self.calibration)
+                .is_some_and(|inputs| {
+                    inputs
+                        .iter()
+                        .map(reco_io::InputPath::all_paths)
+                        .eq(self.inputs.iter().cloned())
+                })
+    }
+}
+
 fn preview_pose_control(engine: Option<&reco_core::core::StitchCore>) -> PoseControl {
     let mut config = PoseControlConfig {
         fov_min_degrees: FOV_MIN,
@@ -448,6 +462,47 @@ impl Drop for AppState {
 }
 
 impl AppState {
+    fn poll_roi_editor(&mut self, app: &RecoApp) -> bool {
+        if !self
+            .roi_editor_job
+            .as_ref()
+            .is_some_and(roi_editor::PendingEditor::is_finished)
+        {
+            return false;
+        }
+        let job = self.roi_editor_job.take().unwrap();
+        let Some(result) = job.finish(self) else {
+            app.set_status_text(
+                "ROI preparation discarded because the inputs or calibration changed".into(),
+            );
+            return true;
+        };
+        match result.and_then(|page| {
+            open::that(&page.path)?;
+            Ok(page)
+        }) {
+            Ok(page) => {
+                self.roi_editor_page = Some(page);
+                app.set_status_text("ROI editor opened".into());
+                self.toasts.push(
+                    crate::toast::Severity::Info,
+                    "ROI editor opened in browser",
+                    "Draw the boundary, click Copy ROI, then return here and click Paste.",
+                );
+            }
+            Err(error) => {
+                app.set_status_text("Could not open ROI editor".into());
+                self.toasts.push(
+                    crate::toast::Severity::Error,
+                    "ROI editor",
+                    error.to_string(),
+                );
+            }
+        }
+        crate::toast::sync_to_ui(&self.toasts, app);
+        true
+    }
+
     fn new(user_settings: crate::settings::GuiSettings) -> Self {
         Self {
             left_path: None,
@@ -465,6 +520,8 @@ impl AppState {
             recording_frames: 0,
             calibration_job: None,
             review_calibration: None,
+            roi_editor_job: None,
+            roi_editor_page: None,
             file_dialog_rx: None,
             file_dialog_open: false,
             shared_gpu: None,
@@ -479,7 +536,6 @@ impl AppState {
             #[cfg(feature = "automation")]
             auto_export_base: None,
             pose: preview_pose_control(None),
-            pending_seek: None,
             last_render_at: None,
             preview_dirty: false,
             coverage_pending: false,
@@ -487,6 +543,7 @@ impl AppState {
             export_interrupted: Arc::new(AtomicBool::new(false)),
             export_thread: None,
             export_rx: None,
+            export_preview: None,
             cal_baseline: None,
             user_settings,
             last_persisted_window_size: None,
@@ -494,7 +551,6 @@ impl AppState {
             use_constrained_look: true,
             lens_preview_active: false,
             lens_preview_side: "left".into(),
-            lens_correction_amount: 1.0,
             toasts: ToastManager::default(),
             telemetry: None,
         }
@@ -502,6 +558,18 @@ impl AppState {
 
     fn is_exporting(&self) -> bool {
         self.export_thread.is_some()
+    }
+
+    fn reset_pipeline(&mut self) {
+        self.cancel_calibration();
+        self.export_preview = None;
+        self.bridge = None;
+        self.playback = Playback::new();
+        self.pose = preview_pose_control(None);
+        self.last_render_at = None;
+        self.preview_dirty = false;
+        self.coverage_pending = false;
+        self.coverage_error_reported = false;
     }
 
     fn cancel_calibration(&self) {
@@ -558,24 +626,43 @@ impl AppState {
         true
     }
 
-    fn reset_pipeline(&mut self) {
-        self.cancel_calibration();
-        self.bridge = None;
-        self.playback = Playback::new();
-        self.pose = preview_pose_control(None);
-        self.pending_seek = None;
-        self.last_render_at = None;
-        self.preview_dirty = false;
-        self.coverage_pending = false;
-        self.coverage_error_reported = false;
+    fn suspend_preview_for_export(&mut self) {
+        let bookmark = PreviewBookmark::capture(self);
+        self.reset_pipeline();
+        self.export_preview = bookmark;
+    }
+
+    fn restore_preview_after_export(&mut self) -> Result<(), String> {
+        let Some(saved) = self.export_preview.take() else {
+            return Ok(());
+        };
+        let same_context = saved.matches(self);
+        let Some(cal) = self.calibration.clone() else {
+            return Ok(());
+        };
+        self.init_preview(&cal)?;
+        if same_context {
+            self.pose = saved.pose;
+            self.playback
+                .seek_frame(saved.frame)
+                .map_err(|e| e.to_string())?;
+            if self.playback.is_seeking() {
+                self.playback
+                    .advance_blocking()
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        self.preview_dirty = true;
+        Ok(())
     }
 
     /// Build a PreviewBridge using the captured Slint GPU handles. Fails
     /// if the rendering notifier hasn't populated `shared_gpu` yet.
     fn build_bridge(
-        &mut self,
+        &self,
         cal: &Calibration,
         source_sizes: Vec<(u32, u32)>,
+        full_range: bool,
     ) -> Result<PreviewBridge, String> {
         let gpu = self
             .shared_gpu
@@ -592,9 +679,7 @@ impl AppState {
             PREVIEW_HEIGHT_DEFAULT,
         )
         .map_err(|e| format!("GPU init error: {e}"))?;
-        bridge
-            .engine_mut()
-            .set_full_range(self.playback.is_full_range());
+        bridge.engine_mut().set_full_range(full_range);
         Ok(bridge)
     }
 
@@ -642,7 +727,6 @@ impl AppState {
         } else {
             calibration.validate()?;
         }
-        self.lens_correction_amount = calibration.lenses[0].correction;
         self.cancel_calibration();
         self.calibration = Some(calibration);
         self.preview_dirty = true;
@@ -651,6 +735,7 @@ impl AppState {
     }
 
     fn finish_calibration_edit(&mut self, app: &RecoApp) {
+        app.set_cal_dirty(true);
         self.sync_calibration_controls(app);
         sync_roi_points(self, app);
         app.set_status_text("Calibration updated".into());
@@ -660,6 +745,36 @@ impl AppState {
         self.sync_calibration_controls(app);
         self.toasts
             .push(Severity::Error, "Calibration unchanged", error.to_string());
+        crate::toast::sync_to_ui(&self.toasts, app);
+    }
+
+    fn apply_roi(&mut self, app: &RecoApp, roi: reco_core::calibration::FieldRoi) {
+        let point_count = roi.left.len() + roi.right.len();
+        if !self.edit_calibration(app, |cal| cal.field_roi = Some(roi)) {
+            return;
+        }
+        app.set_has_roi(point_count > 0);
+        match self.save_calibration() {
+            Ok(()) => {
+                app.set_cal_dirty(false);
+                app.set_lens_dirty(false);
+                self.toasts.push(
+                    Severity::Info,
+                    "ROI saved",
+                    format!("{point_count} points saved to calibration."),
+                );
+            }
+            Err(error) => {
+                log::error!("Failed to save calibration with ROI: {error}");
+                self.toasts.push(
+                    Severity::Error,
+                    "ROI not saved",
+                    format!(
+                        "The ROI is applied in this workspace, but could not be saved: {error}"
+                    ),
+                );
+            }
+        }
         crate::toast::sync_to_ui(&self.toasts, app);
     }
 
@@ -737,23 +852,46 @@ impl AppState {
         }
     }
 
-    /// Initialize once the calibration and its camera inputs are selected.
+    /// Rebuild preview from the accepted document when its inputs and GPU are ready.
     fn try_init(&mut self) -> Result<bool, String> {
-        let Some(cal_path) = &self.calibration_path else {
+        let Some(cal) = self.calibration.clone() else {
             return Ok(false);
         };
-        let cal =
-            Calibration::from_file(cal_path).map_err(|e| format!("Calibration load error: {e}"))?;
-        if self.selected_inputs(&cal).is_none() {
+        if self.selected_inputs(&cal).is_none() || self.shared_gpu.is_none() {
             return Ok(false);
         }
-        self.init_with_calibration(cal)
+        self.init_preview(&cal)?;
+        Ok(true)
+    }
+
+    /// Load a document without discarding the accepted state on read or preview failure.
+    fn load_calibration(&mut self, path: PathBuf) -> Result<bool, String> {
+        let cal =
+            Calibration::from_file(&path).map_err(|e| format!("Calibration load error: {e}"))?;
+        let ready = self.selected_inputs(&cal).is_some() && self.shared_gpu.is_some();
+        if ready {
+            self.init_with_calibration(cal)?;
+        } else {
+            self.unload_pipeline();
+            self.cal_baseline = Some(cal.clone());
+            self.calibration = Some(cal);
+        }
+        self.calibration_path = Some(path);
+        Ok(ready)
     }
 
     /// Initialize preview from a calibration result (no file needed).
-    fn init_with_calibration(&mut self, cal: Calibration) -> Result<bool, String> {
+    fn init_with_calibration(&mut self, cal: Calibration) -> Result<(), String> {
+        self.init_preview(&cal)?;
+        self.cal_baseline = Some(cal.clone());
+        self.calibration = Some(cal);
+        Ok(())
+    }
+
+    /// Replace playback and rendering together without changing the document or reset baseline.
+    fn init_preview(&mut self, cal: &Calibration) -> Result<(), String> {
         let inputs = self
-            .selected_inputs(&cal)
+            .selected_inputs(cal)
             .ok_or("Select the calibration's video inputs")?;
 
         let sync_offset = cal.sync_offset;
@@ -767,30 +905,25 @@ impl AppState {
             .ok_or("No input dimensions")?
             .to_vec();
 
-        let bridge = self.build_bridge(&cal, source_sizes)?;
+        let bridge = self.build_bridge(cal, source_sizes, playback.is_full_range())?;
 
+        self.cancel_calibration();
+        self.stop_recording();
         if cal.projection.camera_count() == 1 {
             self.lens_preview_active = false;
             self.lens_preview_side = "left".into();
         }
-        self.cancel_calibration();
-        self.stop_recording();
         self.playback = playback;
-        self.cal_baseline = Some(cal.clone());
-        self.calibration = Some(cal);
         self.bridge = Some(bridge);
+        self.export_preview = None;
         self.reset_view();
-        Ok(true)
+        Ok(())
     }
 
-    /// Tear down the live pipeline so the preview stops rendering the
-    /// stale source after a calibration failure or an in-place file
-    /// swap. Keeps the user-picked paths on `AppState` so the user can
-    /// fix and retry, but drops the bridge + playback + calibration.
+    /// Release preview resources and pending work while retaining the selected paths and calibration document.
     fn unload_pipeline(&mut self) {
         self.stop_recording();
         self.reset_pipeline();
-        self.cal_baseline = None;
     }
 
     fn start_recording(&mut self, codec: &str, quality: &str) -> Result<PathBuf, String> {
@@ -900,7 +1033,6 @@ impl AppState {
                 &planes,
                 cameras[camera].size,
                 &params,
-                self.lens_correction_amount,
                 self.playback.is_full_range(),
             ) {
                 Ok(img) => Some(img),
@@ -1046,6 +1178,7 @@ impl AppState {
     /// calibration and bridge are unchanged, only the decode order differs,
     /// so the next render picks up the new order from the start.
     fn reopen_source(&mut self, app: &RecoApp) {
+        self.cancel_calibration();
         // Nothing consumes the source until a preview pipeline exists (e.g.
         // before calibration), so skip the costly decoder open. try_init opens
         // it in the current order once calibration is loaded.
@@ -1070,6 +1203,7 @@ impl AppState {
                 app.set_files_loaded(false);
                 app.set_playing(false);
                 app.set_preview_frame(slint::Image::default());
+                app.set_status_text("Could not reopen reordered inputs".into());
                 self.toasts.push(
                     Severity::Error,
                     "Could not reopen reordered inputs",
@@ -1123,15 +1257,14 @@ impl AppState {
     /// Seek by a relative number of seconds (positive = forward).
     fn seek_relative(&mut self, secs: f32) -> Result<(), String> {
         let fps = self.playback.fps();
-        let total = self.playback.total_frames().unwrap_or(0).max(1);
-        if fps <= 0.0 || total == 0 {
+        let total = self.playback.total_frames().unwrap_or(0);
+        if fps <= 0.0 || total == 0 || !secs.is_finite() {
             return Ok(());
         }
-        let current = self.playback.frame_index() as i64;
-        let delta_frames = (secs as f64 * fps) as i64;
-        let target = (current + delta_frames).clamp(0, total as i64 - 1) as u64;
-        let fraction = target as f32 / total as f32;
-        self.playback.seek(fraction).map_err(|e| format!("{e}"))
+        let current = self.playback.requested_frame();
+        let delta = (secs as f64 * fps).round() as i64;
+        let target = current.saturating_add_signed(delta).min(total - 1);
+        self.playback.seek_frame(target).map_err(|e| e.to_string())
     }
 }
 
@@ -1308,16 +1441,7 @@ fn set_lens_profile_props(
         app.set_lens_right_source("Not detected".into());
     }
 
-    // Count candidate profiles for the current resolution so the user
-    // sees whether alternates exist. Loading the embedded database is
-    // O(1) after the first call (static OnceCell inside reco-calibrate).
-    let candidates = if in_w > 0 && in_h > 0 {
-        let db = reco_calibrate::lens_database::LensDatabase::embedded();
-        db.candidates(in_w, in_h).len() as i32
-    } else {
-        0
-    };
-    app.set_lens_candidates_count(candidates);
+    refresh_lens_candidates(app, in_w, in_h);
     app.set_lens_info_available(left.is_some() || right.is_some());
 }
 
@@ -1393,17 +1517,18 @@ fn sync_segments(state: &AppState, app: &RecoApp) {
 }
 
 fn sync_roi_points(state: &AppState, app: &RecoApp) {
+    let camera = usize::from(state.lens_preview_side == "right");
     let (xs, ys) = if let Some(cal) = &state.calibration
         && let Some(roi) = &cal.field_roi
+        && let Some(lens) = cal.lenses.get(camera)
     {
-        let side = if state.lens_preview_side == "right" {
-            &roi.right
-        } else {
-            &roi.left
-        };
-        let xs: Vec<f32> = side.iter().map(|p| p[0] as f32).collect();
-        let ys: Vec<f32> = side.iter().map(|p| p[1] as f32).collect();
-        (xs, ys)
+        let side = if camera == 1 { &roi.right } else { &roi.left };
+        side.iter()
+            .filter_map(|point| {
+                reco_core::lens::preview::LensPreviewRenderer::source_to_preview(*point, lens)
+            })
+            .map(|[x, y]| (x as f32, y as f32))
+            .unzip::<_, _, Vec<_>, Vec<_>>()
     } else {
         (vec![], vec![])
     };
@@ -1413,7 +1538,7 @@ fn sync_roi_points(state: &AppState, app: &RecoApp) {
 
 /// Install the standard tracing subscriber + log bridge.
 ///
-/// Replaces the previous `env_logger::init()`. Bridges `log::*` calls
+/// Bridges `log::*` calls
 /// from reco-core / reco-io / reco-calibrate into tracing so user bug
 /// reports arrive as one structured event stream instead of two
 /// loggers writing to the same stderr.
@@ -1700,14 +1825,6 @@ fn main() -> anyhow::Result<()> {
         let s = state.borrow();
         app.set_recording_codec(s.user_settings.recording_codec.clone().into());
         app.set_recording_quality(s.user_settings.recording_quality.clone().into());
-        app.set_recording_folder(
-            s.user_settings
-                .recording_folder
-                .as_ref()
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_default()
-                .into(),
-        );
         app.set_preview_aspect(s.user_settings.preview_aspect.clone().into());
     }
 
@@ -1779,15 +1896,7 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
                 slint::RenderingState::BeforeRendering => {
-                    // Vsync-locked playback tick. Previously this ran off a
-                    // 2 ms free-running timer, which put set_preview_frame
-                    // calls at random phases relative to Slint's 60 Hz
-                    // compositor. Small (~1 ms) submission jitter around
-                    // the 33 ms video interval crossed vsync boundaries
-                    // unpredictably, so individual frames displayed for
-                    // 1, 2, or 3 vsync slots at random, producing visible
-                    // judder perceived as ~25 fps. Driving from here
-                    // phase-locks everything to the compositor.
+                    // Produce the preview immediately before Slint renders its scene.
                     vsync_render_tick(&state_for_notifier, &app_weak_notifier);
                 }
                 _ => {}
@@ -1847,7 +1956,7 @@ fn main() -> anyhow::Result<()> {
                 {
                     let mut s = state_ref.borrow_mut();
                     let changed = s.left_path.as_ref() != Some(&first);
-                    if changed && s.bridge.is_some() {
+                    if changed {
                         s.unload_pipeline();
                         if let Some(app) = app_weak.upgrade() {
                             app.set_files_loaded(false);
@@ -1929,7 +2038,7 @@ fn main() -> anyhow::Result<()> {
                 {
                     let mut s = state_ref.borrow_mut();
                     let changed = s.right_path.as_ref() != Some(&first);
-                    if changed && s.bridge.is_some() {
+                    if changed {
                         s.unload_pipeline();
                         if let Some(app) = app_weak.upgrade() {
                             app.set_files_loaded(false);
@@ -1974,25 +2083,7 @@ fn main() -> anyhow::Result<()> {
                 async move { task.await.map(file_handle_to_path) }
             },
             |path, state_ref, app_weak| {
-                let mut s = state_ref.borrow_mut();
-                let changed = s.calibration_path.as_ref() != Some(&path);
-                if changed && s.bridge.is_some() {
-                    s.unload_pipeline();
-                    if let Some(app) = app_weak.upgrade() {
-                        app.set_files_loaded(false);
-                        app.set_status_text("Calibration changed - reloading".into());
-                    }
-                }
-                if let Some(app) = app_weak.upgrade() {
-                    app.set_calibration_path(display_name(&path).into());
-                }
-                s.user_settings.push_calibration(path.clone());
-                if let Some(app) = app_weak.upgrade() {
-                    sync_recent_paths(&s.user_settings, &app);
-                }
-                s.calibration_path = Some(path);
-                drop(s);
-                try_init_and_update(state_ref, app_weak);
+                load_calibration_and_update(state_ref, app_weak, path);
             },
         );
     });
@@ -2009,7 +2100,7 @@ fn main() -> anyhow::Result<()> {
         let path = PathBuf::from(entry.as_str());
         let mut s = state_ref.borrow_mut();
         let changed = s.left_path.as_ref() != Some(&path);
-        if changed && s.bridge.is_some() {
+        if changed {
             s.unload_pipeline();
             if let Some(app) = app_weak.upgrade() {
                 app.set_files_loaded(false);
@@ -2038,7 +2129,7 @@ fn main() -> anyhow::Result<()> {
         let path = PathBuf::from(entry.as_str());
         let mut s = state_ref.borrow_mut();
         let changed = s.right_path.as_ref() != Some(&path);
-        if changed && s.bridge.is_some() {
+        if changed {
             s.unload_pipeline();
             if let Some(app) = app_weak.upgrade() {
                 app.set_files_loaded(false);
@@ -2061,26 +2152,7 @@ fn main() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     app.on_load_recent_calibration(move |entry| {
-        let path = PathBuf::from(entry.as_str());
-        let mut s = state_ref.borrow_mut();
-        let changed = s.calibration_path.as_ref() != Some(&path);
-        if changed && s.bridge.is_some() {
-            s.unload_pipeline();
-            if let Some(app) = app_weak.upgrade() {
-                app.set_files_loaded(false);
-                app.set_status_text("Calibration changed — reloading".into());
-            }
-        }
-        if let Some(app) = app_weak.upgrade() {
-            app.set_calibration_path(display_name(&path).into());
-        }
-        s.user_settings.push_calibration(path.clone());
-        if let Some(app) = app_weak.upgrade() {
-            sync_recent_paths(&s.user_settings, &app);
-        }
-        s.calibration_path = Some(path);
-        drop(s);
-        try_init_and_update(&state_ref, &app_weak);
+        load_calibration_and_update(&state_ref, &app_weak, PathBuf::from(entry.as_str()));
     });
 
     let app_weak = app.as_weak();
@@ -2102,9 +2174,7 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_clear_left(move || {
         let mut s = state_ref.borrow_mut();
-        if s.bridge.is_some() {
-            s.unload_pipeline();
-        }
+        s.unload_pipeline();
         s.left_path = None;
         s.left_input = None;
         if let Some(app) = app_weak.upgrade() {
@@ -2119,9 +2189,7 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_clear_right(move || {
         let mut s = state_ref.borrow_mut();
-        if s.bridge.is_some() {
-            s.unload_pipeline();
-        }
+        s.unload_pipeline();
         s.right_path = None;
         s.right_input = None;
         if let Some(app) = app_weak.upgrade() {
@@ -2136,12 +2204,13 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_clear_calibration(move || {
         let mut s = state_ref.borrow_mut();
-        if s.bridge.is_some() {
-            s.unload_pipeline();
-        }
+        s.unload_pipeline();
         s.calibration_path = None;
         s.calibration = None;
+        s.cal_baseline = None;
         if let Some(app) = app_weak.upgrade() {
+            app.set_cal_dirty(false);
+            app.set_lens_dirty(false);
             app.set_calibration_path("".into());
             app.set_files_loaded(false);
             app.set_status_text("Calibration cleared".into());
@@ -2151,170 +2220,24 @@ fn main() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     app.on_launch_roi_editor(move || {
-        let paths = {
-            let s = state_ref.borrow();
-            match (
-                s.left_path.clone(),
-                s.right_path.clone(),
-                s.calibration_path.clone(),
-            ) {
-                (Some(l), Some(r), Some(c)) => Some((l, r, c)),
-                _ => None,
-            }
-        };
-        let Some((left, right, cal_path)) = paths else {
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "Cannot set ROI",
-                    "Need left video, right video, and calibration loaded.",
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
+        let mut s = state_ref.borrow_mut();
+        let Some(app) = app_weak.upgrade() else {
             return;
         };
-
-        // Use $HOME/.cache/reco instead of /tmp because snap-packaged
-        // browsers (Firefox) can't access /tmp due to sandboxing.
-        let cache_base = std::env::var("XDG_CACHE_HOME")
-            .map(PathBuf::from)
-            .or_else(|_| std::env::var("HOME").map(|h| PathBuf::from(h).join(".cache")))
-            .unwrap_or_else(|_| std::env::temp_dir());
-        let tmp_dir = cache_base.join("reco").join("roi");
-        if let Err(e) = std::fs::create_dir_all(&tmp_dir) {
-            log::error!("Failed to create ROI temp dir {}: {e}", tmp_dir.display());
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
+        if s.roi_editor_job.is_some() {
+            app.set_status_text("Preparing ROI editor…".into());
+            return;
+        }
+        match roi_editor::PendingEditor::start(&s) {
+            Ok(job) => {
+                s.roi_editor_job = Some(job);
+                app.set_status_text("Preparing ROI editor…".into());
+            }
+            Err(error) => {
                 s.toasts.push(
                     crate::toast::Severity::Error,
                     "ROI editor",
-                    format!("Cannot create temp dir: {e}"),
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
-            return;
-        }
-        let left_png = tmp_dir.join("left.png");
-        let right_png = tmp_dir.join("right.png");
-
-        let current_secs = {
-            let s = state_ref.borrow();
-            if s.playback.fps() > 0.0 {
-                s.playback.frame_index() as f64 / s.playback.fps()
-            } else {
-                1.0
-            }
-        };
-        let _seek_str = format!("{:.2}", current_secs);
-        let frame_index = {
-            let s = state_ref.borrow();
-            s.playback.frame_index()
-        };
-        let extract_frame = |video: &std::path::Path, out: &std::path::Path, idx: u64| {
-            match reco_io::ffmpeg::calibration_io::extract_frames(video, &[idx]) {
-                Ok(frames) if !frames.is_empty() => {
-                    let yuv = &frames[0];
-                    let w = yuv.width as usize;
-                    let h = yuv.height as usize;
-                    let uv_w = w / 2;
-                    let mut rgb = vec![0u8; w * h * 3];
-                    for row in 0..h {
-                        for col in 0..w {
-                            let yi = row * w + col;
-                            let uvi = (row / 2) * uv_w + (col / 2);
-                            let y = yuv.y[yi] as f32;
-                            let u = yuv.u[uvi] as f32;
-                            let v = yuv.v[uvi] as f32;
-                            let r = y + 1.402 * (v - 128.0);
-                            let g = y - 0.344 * (u - 128.0) - 0.714 * (v - 128.0);
-                            let b = y + 1.772 * (u - 128.0);
-                            let pi = yi * 3;
-                            rgb[pi] = r.clamp(0.0, 255.0) as u8;
-                            rgb[pi + 1] = g.clamp(0.0, 255.0) as u8;
-                            rgb[pi + 2] = b.clamp(0.0, 255.0) as u8;
-                        }
-                    }
-                    if let Err(e) =
-                        image::save_buffer(out, &rgb, w as u32, h as u32, image::ColorType::Rgb8)
-                    {
-                        log::warn!("Failed to save ROI frame {}: {e}", out.display());
-                    }
-                }
-                Ok(_) => log::warn!("No frame decoded from {}", video.display()),
-                Err(e) => log::error!("Frame extraction failed for {}: {e}", video.display()),
-            }
-        };
-        extract_frame(&left, &left_png, frame_index);
-        extract_frame(&right, &right_png, frame_index);
-        log::info!(
-            "ROI frame extraction: left={} right={}",
-            left_png.exists(),
-            right_png.exists()
-        );
-
-        use base64::Engine;
-        let b64 = base64::engine::general_purpose::STANDARD;
-
-        let left_data = std::fs::read(&left_png)
-            .ok()
-            .map(|bytes| format!("data:image/png;base64,{}", b64.encode(&bytes)))
-            .unwrap_or_default();
-        let right_data = std::fs::read(&right_png)
-            .ok()
-            .map(|bytes| format!("data:image/png;base64,{}", b64.encode(&bytes)))
-            .unwrap_or_default();
-
-        let cal_json_str = std::fs::read_to_string(&cal_path).unwrap_or_else(|_| "{}".into());
-
-        // Template is embedded at compile time so deployed binaries work
-        // without needing the source tree.
-        let template = include_str!("../../../resources/roi_editor.html");
-        let html = template
-            .replace("'{{LEFT_IMAGE_DATA}}'", &format!("'{left_data}'"))
-            .replace("'{{RIGHT_IMAGE_DATA}}'", &format!("'{right_data}'"))
-            .replace("{{CAL_JSON}}", &cal_json_str)
-            .replace("'{{CAL_PATH}}'", &format!("'{}'", cal_path.display()));
-
-        let out_html = tmp_dir.join("roi_editor.html");
-        if let Err(e) = std::fs::write(&out_html, &html) {
-            log::error!("Failed to write ROI editor HTML: {e}");
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "ROI editor",
-                    format!("Cannot write temp file: {e}"),
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
-            return;
-        }
-        log::info!(
-            "ROI editor: wrote {} bytes to {}, opening in browser",
-            html.len(),
-            out_html.display()
-        );
-
-        let open_result = open::that(out_html.as_os_str());
-        if let Err(e) = open_result {
-            log::error!("Failed to open ROI editor: {e}");
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Error,
-                    "Cannot open browser",
-                    e.to_string(),
-                );
-                crate::toast::sync_to_ui(&s.toasts, &app);
-            }
-        } else {
-            let mut s = state_ref.borrow_mut();
-            if let Some(app) = app_weak.upgrade() {
-                s.toasts.push(
-                    crate::toast::Severity::Info,
-                    "ROI editor opened in browser",
-                    "Draw field boundary, click Save ROI, then come back here and click Paste ROI.",
+                    error.to_string(),
                 );
                 crate::toast::sync_to_ui(&s.toasts, &app);
             }
@@ -2362,7 +2285,7 @@ fn main() -> anyhow::Result<()> {
                     s.toasts.push(
                         crate::toast::Severity::Error,
                         "Paste ROI",
-                        "Clipboard doesn't contain valid ROI JSON. Save ROI in the browser editor first.",
+                        "Clipboard doesn't contain valid ROI JSON. Copy ROI in the browser editor first.",
                     );
                     crate::toast::sync_to_ui(&s.toasts, &app);
                 }
@@ -2370,26 +2293,8 @@ fn main() -> anyhow::Result<()> {
             }
         };
 
-        let point_count = roi.left.len() + roi.right.len();
         let Some(app) = app_weak.upgrade() else { return; };
-        if !s.edit_calibration(&app, |cal| cal.field_roi = Some(roi)) {
-            return;
-        }
-        if let Err(e) = s.save_calibration() {
-            log::error!("Failed to save calibration with ROI: {e}");
-        }
-
-        if let Some(app) = app_weak.upgrade() {
-            let has = point_count > 0;
-            app.set_has_roi(has);
-            sync_roi_points(&s, &app);
-            s.toasts.push(
-                crate::toast::Severity::Info,
-                "ROI applied",
-                format!("{point_count} points saved to calibration."),
-            );
-            crate::toast::sync_to_ui(&s.toasts, &app);
-        }
+        s.apply_roi(&app, roi);
     });
 
     let app_weak = app.as_weak();
@@ -2424,9 +2329,7 @@ fn main() -> anyhow::Result<()> {
             _ => false,
         };
         if removed {
-            if s.bridge.is_some() {
-                s.unload_pipeline();
-            }
+            s.unload_pipeline();
             if let Some(app) = app_weak.upgrade() {
                 let label = s
                     .left_input
@@ -2442,6 +2345,8 @@ fn main() -> anyhow::Result<()> {
                 app.set_files_loaded(false);
                 sync_segments(&s, &app);
             }
+            drop(s);
+            try_init_and_update(&state_ref, &app_weak);
         }
     });
 
@@ -2477,9 +2382,7 @@ fn main() -> anyhow::Result<()> {
             _ => false,
         };
         if removed {
-            if s.bridge.is_some() {
-                s.unload_pipeline();
-            }
+            s.unload_pipeline();
             if let Some(app) = app_weak.upgrade() {
                 let label = s
                     .right_input
@@ -2495,6 +2398,8 @@ fn main() -> anyhow::Result<()> {
                 app.set_files_loaded(false);
                 sync_segments(&s, &app);
             }
+            drop(s);
+            try_init_and_update(&state_ref, &app_weak);
         }
     });
 
@@ -2610,9 +2515,9 @@ fn main() -> anyhow::Result<()> {
                 .unwrap_or_default()
                 .into(),
         );
-        app.set_recording_codec(s.user_settings.recording_codec.clone().into());
-        app.set_recording_quality(s.user_settings.recording_quality.clone().into());
-        app.set_recording_folder(
+        app.set_prefs_recording_codec(s.user_settings.recording_codec.clone().into());
+        app.set_prefs_recording_quality(s.user_settings.recording_quality.clone().into());
+        app.set_prefs_recording_folder(
             s.user_settings
                 .recording_folder
                 .as_ref()
@@ -2641,9 +2546,11 @@ fn main() -> anyhow::Result<()> {
         } else {
             Some(PathBuf::from(model_path))
         };
-        s.user_settings.recording_codec = app.get_recording_codec().to_string();
-        s.user_settings.recording_quality = app.get_recording_quality().to_string();
-        let rec_folder = app.get_recording_folder().to_string();
+        s.user_settings.recording_codec = app.get_prefs_recording_codec().to_string();
+        s.user_settings.recording_quality = app.get_prefs_recording_quality().to_string();
+        app.set_recording_codec(app.get_prefs_recording_codec());
+        app.set_recording_quality(app.get_prefs_recording_quality());
+        let rec_folder = app.get_prefs_recording_folder().to_string();
         s.user_settings.recording_folder = if rec_folder.is_empty() {
             None
         } else {
@@ -2717,7 +2624,7 @@ fn main() -> anyhow::Result<()> {
             },
             |path, _, app_weak| {
                 if let Some(app) = app_weak.upgrade() {
-                    app.set_recording_folder(path.to_string_lossy().to_string().into());
+                    app.set_prefs_recording_folder(path.to_string_lossy().to_string().into());
                 }
             },
         );
@@ -2914,18 +2821,9 @@ fn main() -> anyhow::Result<()> {
         if s.playback.state() == PlayState::Playing {
             s.playback.toggle();
         }
-        match s.playback.step_forward() {
-            Ok(true) => {
-                let img = s.render_current();
-                if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
-                    app.set_preview_frame(img);
-                    let fps = s.playback.fps();
-                    let total = s.playback.total_frames().unwrap_or(0);
-                    sync_frame_display(&app, s.playback.frame_index(), total, fps);
-                }
-            }
-            Ok(false) => {}
-            Err(e) => log::error!("Step forward error: {e}"),
+        let target = s.playback.requested_frame().saturating_add(1);
+        if let Err(e) = s.playback.seek_frame(target) {
+            log::error!("Step forward error: {e}");
         }
         if let Some(app) = app_weak.upgrade() {
             app.set_playing(false);
@@ -2942,21 +2840,9 @@ fn main() -> anyhow::Result<()> {
         if s.playback.state() == PlayState::Playing {
             s.playback.toggle();
         }
-        // Step back = seek to current - 1.
-        let target = s.playback.frame_index().saturating_sub(2);
-        let total = s.playback.total_frames().unwrap_or(1).max(1);
-        let fraction = target as f32 / total as f32;
-        match s.playback.seek(fraction) {
-            Ok(()) => {
-                let img = s.render_current();
-                if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
-                    app.set_preview_frame(img);
-                    let fps = s.playback.fps();
-                    let total = s.playback.total_frames().unwrap_or(0);
-                    sync_frame_display(&app, s.playback.frame_index(), total, fps);
-                }
-            }
-            Err(e) => log::error!("Step backward error: {e}"),
+        let target = s.playback.requested_frame().saturating_sub(1);
+        if let Err(e) = s.playback.seek_frame(target) {
+            log::error!("Step backward error: {e}");
         }
         if let Some(app) = app_weak.upgrade() {
             app.set_playing(false);
@@ -2964,30 +2850,15 @@ fn main() -> anyhow::Result<()> {
     });
 
     let state_ref = Rc::clone(&state);
-    app.on_seek(move |fraction| {
+    app.on_seek_frame(move |frame| {
         let mut s = state_ref.borrow_mut();
-        // Two problems the seek slider creates, both solved by debouncing:
-        //
-        // 1. Every Rust-driven frame advance sets `current-frame`,
-        //    which updates the slider's bound `value`, which fires
-        //    `changed(val)`, which calls us. A value delta of 0 is
-        //    the echo — we drop it.
-        //
-        // 2. A user drag emits `changed` on every mouse pixel movement.
-        //    Each seek reinits NVDEC (~50ms), and hundreds per second
-        //    saturate the GPU. We defer the seek until the fraction
-        //    has been stable for `SEEK_DEBOUNCE_MS`, which the timer
-        //    tick monitors.
-        let total = match s.playback.total_frames() {
-            Some(t) if t > 0 => t,
-            _ => return,
-        };
-        let target = ((fraction as f64) * total as f64) as u64;
-        if target.abs_diff(s.playback.frame_index()) < 2 {
-            // Echo from our own set_current_frame — ignore.
+        if s.is_exporting() || frame < 0 {
             return;
         }
-        s.pending_seek = Some((fraction, Instant::now()));
+        // Slint emits this only on pointer/key release, never from playback updates.
+        if let Err(e) = s.playback.seek_frame(frame as u64) {
+            log::error!("Seek error: {e}");
+        }
     });
 
     // ── Camera / view control callbacks ──
@@ -3023,13 +2894,11 @@ fn main() -> anyhow::Result<()> {
         let Some(app) = app_weak.upgrade() else {
             return;
         };
-        if state_ref.borrow_mut().edit_calibration(&app, |cal| {
+        state_ref.borrow_mut().edit_calibration(&app, |cal| {
             if let Some(layout) = cal.projection.l_shape_mut() {
                 layout.blend_width = v;
             }
-        }) {
-            app.set_cal_dirty(true);
-        }
+        });
     });
 
     let state_ref = Rc::clone(&state);
@@ -3038,11 +2907,9 @@ fn main() -> anyhow::Result<()> {
         let Some(app) = app_weak.upgrade() else {
             return;
         };
-        if state_ref.borrow_mut().edit_calibration(&app, |cal| {
+        state_ref.borrow_mut().edit_calibration(&app, |cal| {
             cal.framing.tilt = (v as f64).to_radians();
-        }) {
-            app.set_cal_dirty(true);
-        }
+        });
     });
 
     let state_ref = Rc::clone(&state);
@@ -3051,11 +2918,9 @@ fn main() -> anyhow::Result<()> {
         let Some(app) = app_weak.upgrade() else {
             return;
         };
-        if state_ref.borrow_mut().edit_calibration(&app, |cal| {
+        state_ref.borrow_mut().edit_calibration(&app, |cal| {
             cal.framing.roll = (v as f64).to_radians();
-        }) {
-            app.set_cal_dirty(true);
-        }
+        });
     });
 
     let state_ref = Rc::clone(&state);
@@ -3064,9 +2929,7 @@ fn main() -> anyhow::Result<()> {
         let Some(app) = app_weak.upgrade() else {
             return;
         };
-        if state_ref.borrow_mut().set_sync_offset(&app, frames) {
-            app.set_cal_dirty(true);
-        }
+        state_ref.borrow_mut().set_sync_offset(&app, frames);
     });
 
     let state_ref = Rc::clone(&state);
@@ -3074,28 +2937,17 @@ fn main() -> anyhow::Result<()> {
         state_ref.borrow_mut().set_fov(deg);
     });
 
-    let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     app.on_seek_relative(move |secs| {
         let mut s = state_ref.borrow_mut();
         if let Err(e) = s.seek_relative(secs) {
             log::error!("Seek relative error: {e}");
-            return;
-        }
-        let img = s.render_current();
-        if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
-            app.set_preview_frame(img);
-            let fps = s.playback.fps();
-            let total = s.playback.total_frames().unwrap_or(0);
-            sync_frame_display(&app, s.playback.frame_index(), total, fps);
         }
     });
 
     // ── Live calibration editing callbacks ──
     //
-    // Each slider writes the corresponding field on the Projection,
-    // pushes the edited layout into the renderer, and flips cal-dirty
-    // so the Save button becomes enabled.
+    // Accepted document edits share validation, renderer updates and unsaved-state tracking.
 
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
@@ -3103,13 +2955,11 @@ fn main() -> anyhow::Result<()> {
         let Some(app) = app_weak.upgrade() else {
             return;
         };
-        if state_ref.borrow_mut().edit_calibration(&app, |cal| {
+        state_ref.borrow_mut().edit_calibration(&app, |cal| {
             if let Some(layout) = cal.projection.l_shape_mut() {
                 layout.intersect = v as f64;
             }
-        }) {
-            app.set_cal_dirty(true);
-        }
+        });
     });
 
     let app_weak = app.as_weak();
@@ -3118,11 +2968,9 @@ fn main() -> anyhow::Result<()> {
         let Some(app) = app_weak.upgrade() else {
             return;
         };
-        if state_ref.borrow_mut().edit_calibration(&app, |cal| {
+        state_ref.borrow_mut().edit_calibration(&app, |cal| {
             cal.framing.axis_offset = v as f64;
-        }) {
-            app.set_cal_dirty(true);
-        }
+        });
     });
 
     let app_weak = app.as_weak();
@@ -3131,13 +2979,11 @@ fn main() -> anyhow::Result<()> {
         let Some(app) = app_weak.upgrade() else {
             return;
         };
-        if state_ref.borrow_mut().edit_calibration(&app, |cal| {
+        state_ref.borrow_mut().edit_calibration(&app, |cal| {
             if let Some(layout) = cal.projection.l_shape_mut() {
                 layout.x_ty = v as f64;
             }
-        }) {
-            app.set_cal_dirty(true);
-        }
+        });
     });
 
     let app_weak = app.as_weak();
@@ -3180,13 +3026,10 @@ fn main() -> anyhow::Result<()> {
         let Some(base) = s.cal_baseline.clone() else {
             return;
         };
-        if s.edit_calibration(&app, |cal| {
+        s.edit_calibration(&app, |cal| {
             cal.projection = base.projection;
             cal.framing = base.framing;
-        }) {
-            s.sync_calibration_controls(&app);
-            app.set_cal_dirty(false);
-        }
+        });
     });
 
     // ── Live lens tuning callbacks ──
@@ -3433,14 +3276,11 @@ fn main() -> anyhow::Result<()> {
         };
         let mut s = state_ref.borrow_mut();
         let correction = if amount > 0.5 { 1.0 } else { 0.0 };
-        if s.edit_calibration(&app, |cal| {
+        s.edit_calibration(&app, |cal| {
             for lens in &mut cal.lenses {
                 lens.correction = correction;
             }
-        }) {
-            app.set_lens_correction_amount(correction);
-            app.set_cal_dirty(true);
-        }
+        });
     });
 
     // ── Toast dismissal ──
@@ -3593,6 +3433,10 @@ fn main() -> anyhow::Result<()> {
             log::warn!("Export already running, ignoring start request");
             return;
         }
+        if s.is_recording() {
+            app.set_export_error_text("Stop quick recording before starting export.".into());
+            return;
+        }
         if s.calibration_job.is_some() {
             app.set_export_error_text("Wait for calibration to finish before exporting.".into());
             return;
@@ -3686,11 +3530,13 @@ fn main() -> anyhow::Result<()> {
         // Release the preview pipeline so its VRAM is free for the export;
         // rebuilt on completion. run_export uses its own source.
         log::info!("Releasing preview GPU pipeline to free VRAM for export");
-        s.reset_pipeline();
+        s.suspend_preview_for_export();
 
         app.set_export_error_text("".into());
         app.set_export_in_progress(true);
         app.set_export_progress(0.0);
+        app.set_telem_fps_avg(0.0);
+        app.set_telem_fps_recent(0.0);
         app.set_export_frames_done(0);
         app.set_export_frames_total(0);
         app.set_export_status_text("Initializing…".into());
@@ -3876,25 +3722,42 @@ fn main() -> anyhow::Result<()> {
 
             let mut s = state_ref.borrow_mut();
 
+            // Seek readiness is independent of display cadence; paused seeks
+            // must progress without submitting unchanged preview frames.
+            if s.playback.is_seeking() {
+                match s.playback.poll_seek() {
+                    Ok(ready) => s.preview_dirty |= ready,
+                    Err(error) => {
+                        log::error!("Seek failed: {error}");
+                        if let Some(app) = app_weak.upgrade() {
+                            app.set_status_text(format!("Seek failed: {error}").into());
+                        }
+                    }
+                }
+            }
+
+            if let Some(app) = app_weak.upgrade()
+                && s.poll_roi_editor(&app)
+            {
+                return;
+            }
+
             // Check for update notification from the background thread.
             if let Ok(mut guard) = update_check.try_lock()
                 && let Some(tag) = guard.take()
                 && let Some(app) = app_weak.upgrade()
             {
-                        let url = format!(
-                            "https://github.com/reco-project/video-stitcher/releases/tag/{tag}"
-                        );
-                        s.toasts.push_with_ttl(
-                            Severity::Info,
-                            format!("Update available: {tag}"),
-                            "Opening download page in your browser.",
-                            Duration::from_secs(30),
-                        );
-                        log::info!("Toast pushed for update {tag}");
-                        crate::toast::sync_to_ui(&s.toasts, &app);
-                        let _ = open::that(&url);
+                s.toasts.push_with_ttl(
+                    Severity::Info,
+                    format!("Update available: {tag}"),
+                    "Download it from the project website under Help.",
+                    Duration::from_secs(30),
+                );
+                log::info!("Toast pushed for update {tag}");
+                crate::toast::sync_to_ui(&s.toasts, &app);
             }
 
+            // Poll for calibration results from the background thread.
             if s.poll_calibration(&app_weak) {
                 return;
             }
@@ -3909,13 +3772,14 @@ fn main() -> anyhow::Result<()> {
                 }
                 // Rebuild the preview from the in-memory calibration, on any
                 // outcome.
-                if let Some(cal) = s.calibration.clone() {
-                    match s.init_with_calibration(cal) {
-                        Ok(_) => {
-                            s.preview_dirty = true;
-                            log::info!("Rebuilt live preview after export");
-                        }
-                        Err(e) => log::warn!("Failed to rebuild preview after export: {e}"),
+                if let Err(e) = s.restore_preview_after_export() {
+                    log::warn!("Failed to rebuild preview after export: {e}");
+                    s.unload_pipeline();
+                    s.toasts.push(Severity::Error, "Could not restore preview", e);
+                    if let Some(app) = app_weak.upgrade() {
+                        app.set_files_loaded(false);
+                        app.set_preview_frame(slint::Image::default());
+                        crate::toast::sync_to_ui(&s.toasts, &app);
                     }
                 }
                 if let Some(app) = app_weak.upgrade() {
@@ -4033,10 +3897,7 @@ fn main() -> anyhow::Result<()> {
                                     format!("{other}"),
                                 ),
                             };
-                            // Build the detailed status now (body is moved into
-                            // the toast below) and apply it AFTER sync_to_ui,
-                            // whose status-bar fallback would otherwise replace
-                            // it with the generic toast title.
+                            // Retain the detailed status before moving the body into the toast.
                             let status = format!("Export failed - {body}");
                             let msg = format!("{err}");
                             if let Some(ref t) = s.telemetry {
@@ -4097,33 +3958,6 @@ fn main() -> anyhow::Result<()> {
                 crate::toast::sync_to_ui(&s.toasts, &app);
             }
 
-            // Commit a debounced seek once the requested fraction has
-            // stopped changing. During drag the fraction is refreshed
-            // every pixel, so the elapsed check never passes. Only
-            // after the user lets go does ~120ms pass without new
-            // requests, triggering one seek instead of hundreds.
-            if !s.is_exporting()
-                && let Some((frac, requested_at)) = s.pending_seek
-                && Instant::now().duration_since(requested_at)
-                    >= Duration::from_millis(SEEK_DEBOUNCE_MS)
-            {
-                s.pending_seek = None;
-                match s.playback.seek(frac) {
-                    Ok(()) => {
-                        let img = s.render_current();
-                        if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
-                            app.set_preview_frame(img);
-                            let fps = s.playback.fps();
-                            let total = s.playback.total_frames().unwrap_or(0);
-                            sync_frame_display(&app, s.playback.frame_index(), total, fps);
-                            s.last_render_at = Some(Instant::now());
-                        }
-                    }
-                    Err(e) => log::error!("Seek error: {e}"),
-                }
-                return;
-            }
-
             // Playback, pose fitting, and rendering happen in
             // `vsync_render_tick` (driven by Slint's BeforeRendering
             // notifier), so this timer only handles work that does
@@ -4131,27 +3965,19 @@ fn main() -> anyhow::Result<()> {
             // nudge Slint to keep redrawing so BeforeRendering fires
             // even if nothing marked the window dirty yet.
             if let Some(app) = app_weak.upgrade()
-                && (app.get_playing() || s.pending_seek.is_some() || s.preview_dirty || s.coverage_pending)
+                && (app.get_playing() || s.preview_dirty || s.coverage_pending)
             {
                 app.window().request_redraw();
             }
         },
     );
 
-    // Auto-open the files panel when no files are loaded so the user
-    // sees the first action they need to take.
-    if !app.get_files_loaded() {
-        app.set_files_panel_open(true);
-    }
-
     app.run()?;
     Ok(())
 }
 
-/// Vsync-aligned playback tick. Called from Slint's `BeforeRendering`
-/// notifier so render submissions land at deterministic phase
-/// relative to the compositor's 60 Hz cycle. Returns `true` when a
-/// frame was submitted.
+/// Advance playback and render from Slint's `BeforeRendering` notifier.
+/// Returns `true` when a frame was submitted; display cadence depends on the backend.
 fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoApp>) -> bool {
     let mut s = state.borrow_mut();
     if s.is_exporting() {
@@ -4204,6 +4030,15 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
         }
     };
 
+    if let Some(app) = app_weak.upgrade()
+        && app.get_playing() != (s.playback.state() == PlayState::Playing)
+    {
+        app.set_playing(s.playback.state() == PlayState::Playing);
+        if s.playback.state() == PlayState::Finished {
+            app.set_status_text("Playback finished".into());
+        }
+    }
+
     let was_dirty = s.preview_dirty;
     // Poll readiness while paused without submitting unchanged video frames.
     s.preview_dirty = false;
@@ -4215,15 +4050,9 @@ fn vsync_render_tick(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<RecoA
     if let (Some(app), Some(img)) = (app_weak.upgrade(), img) {
         app.set_preview_frame(img);
         s.last_render_at = Some(Instant::now());
-        if video_advanced {
-            let fps = s.playback.fps();
-            let total = s.playback.total_frames().unwrap_or(0);
-            sync_frame_display(&app, s.playback.frame_index(), total, fps);
-            if s.playback.state() == PlayState::Finished {
-                app.set_playing(false);
-                app.set_status_text("Playback finished".into());
-            }
-        }
+        let fps = s.playback.fps();
+        let total = s.playback.total_frames().unwrap_or(0);
+        sync_frame_display(&app, s.playback.frame_index(), total, fps);
         // Show the accepted pose, including any geometric FOV cap.
         let current = s.pose.current_pose();
         app.set_yaw(current.yaw);
@@ -4285,7 +4114,6 @@ fn run_autoload(
         s.left_path = Some(spec.left[0].clone());
         s.right_input = (!spec.right.is_empty()).then(|| make_input(&spec.right));
         s.right_path = spec.right.first().cloned();
-        s.calibration_path = Some(spec.cal.clone());
         if let Some(app) = app_weak.upgrade() {
             app.set_left_path(display_name(&spec.left[0]).into());
             app.set_right_path(
@@ -4295,10 +4123,11 @@ fn run_autoload(
                     .unwrap_or_default()
                     .into(),
             );
-            app.set_calibration_path(display_name(&spec.cal).into());
         }
     }
-    try_init_and_update(state, app_weak);
+    if !load_calibration_and_update(state, app_weak, spec.cal) {
+        return;
+    }
     if let Some(exp) = spec.export
         && let Some(app) = app_weak.upgrade()
     {
@@ -4347,6 +4176,42 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
         s.unload_pipeline();
     }
     update_preview_ui(&mut s, app_weak, result, prev_total);
+}
+
+fn load_calibration_and_update(
+    state: &Rc<RefCell<AppState>>,
+    app_weak: &slint::Weak<RecoApp>,
+    path: PathBuf,
+) -> bool {
+    let mut s = state.borrow_mut();
+    let prev_total = s.playback.total_frames();
+    match s.load_calibration(path.clone()) {
+        Ok(ready) => {
+            s.user_settings.push_calibration(path.clone());
+            if let Some(app) = app_weak.upgrade() {
+                app.set_calibration_path(display_name(&path).into());
+                app.set_cal_dirty(false);
+                app.set_lens_dirty(false);
+                app.set_files_loaded(ready);
+                s.sync_calibration_controls(&app);
+                let (in_w, in_h) = s.playback.input_dimensions().unwrap_or((0, 0));
+                set_lens_profile_props(&app, None, None, in_w, in_h);
+                sync_recent_paths(&s.user_settings, &app);
+                sync_segments(&s, &app);
+            }
+            update_preview_ui(&mut s, app_weak, Ok(ready), prev_total);
+            ready
+        }
+        Err(error) => {
+            log::error!("Calibration load failed: {error}");
+            if let Some(app) = app_weak.upgrade() {
+                s.toasts
+                    .push(Severity::Error, "Calibration unchanged", error);
+                crate::toast::sync_to_ui(&s.toasts, &app);
+            }
+            false
+        }
+    }
 }
 
 fn update_preview_ui(
@@ -4465,7 +4330,7 @@ fn update_preview_ui(
 
 /// Inspect an init error string and decide what to show the user.
 ///
-/// Batch G's `SourceError::InvalidPath` display format is
+/// `SourceError::InvalidPath` display format is
 /// `"invalid input path (path): reason"`. We substring-match to pick
 /// a friendlier title; the full stringified error becomes the body.
 fn classify_init_error(err: &str) -> (String, String) {
@@ -4525,7 +4390,7 @@ fn handle_calibration_result(
             let right_profile = output.right_lens_profile.clone();
             let prev_total = state.playback.total_frames();
             match state.init_with_calibration(output.calibration) {
-                Ok(_) => {
+                Ok(()) => {
                     let fps = state.playback.fps();
                     let total = state.playback.total_frames().unwrap_or(0);
                     let (in_w, in_h) = state.playback.input_dimensions().unwrap_or((0, 0));

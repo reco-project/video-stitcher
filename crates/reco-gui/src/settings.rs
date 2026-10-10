@@ -70,7 +70,7 @@ pub struct GuiSettings {
     #[serde(default)]
     pub recording_folder: Option<PathBuf>,
 
-    /// Preview aspect ratio mode (fill, 16:9, 4:3, 21:9).
+    /// Preview aspect ratio mode (auto, 16:9, 4:3, 21:9).
     #[serde(default = "default_preview_aspect")]
     pub preview_aspect: String,
 

@@ -448,7 +448,10 @@ mod tests {
         let source = reco_io::ffmpeg::decoder::VideoDecoder::open_software(&input).unwrap();
         let cal = Calibration::new(
             vec![Lens::flat(source.width(), source.height())],
-            Cylinder::default(),
+            Cylinder {
+                surface_height: Some(2400.0),
+                ..Default::default()
+            },
             Framing {
                 axis_offset: 0.0,
                 tilt: 0.0,

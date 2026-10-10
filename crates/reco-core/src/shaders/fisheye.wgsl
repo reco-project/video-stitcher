@@ -25,7 +25,7 @@ struct Uniforms {
     //          Used by the GPU zero-copy path where buffer reversal is not possible.
     // flags.w: is_full_range (0 = limited 16-235, 1 = full 0-255)
     flags: vec4<u32>,
-    // lens_preview.x: correction_amount (0.0 = no correction, 1.0 = full KB4)
+    // lens_preview.x: 0.0 = equidistant, 1.0 = full KB4, negative = raw bypass
     // lens_preview.y: split_view (> 0.5 = left half uncorrected, right half corrected)
     lens_preview: vec4<f32>,
 };

@@ -73,7 +73,6 @@ mod tests {
             &gpu,
             32,
             16,
-            2.0,
             wgpu::TextureFormat::Rgba8Unorm,
         );
         let texture = preview.render_yuv(
@@ -84,7 +83,6 @@ mod tests {
                 v: &chroma,
             },
             &lens,
-            1.0,
             false,
         );
         gpu.device

@@ -23,8 +23,7 @@
 //! the texture for as long as the `Image` is referenced by any UI
 //! property. Reusing a texture would mean the old `Image` (still
 //! displayed until the UI swaps the property) and the new render target
-//! alias the same storage. Slint's texture pool / compositor makes
-//! per-frame allocation inexpensive; the driver reuses VRAM slabs.
+//! alias the same storage. Independent image ownership prevents overwriting a texture that the UI is still displaying.
 
 use reco_core::calibration::{Calibration, Lens};
 use reco_core::core::StitchCore;
@@ -169,13 +168,12 @@ impl PreviewBridge {
     /// Render a single camera through orthographic projection with
     /// optional lens correction. Returns a Slint image for display.
     ///
-    /// `correction_amount`: 0.0 = raw input, 1.0 = full KB4 correction.
+    /// Correction strength comes from the selected camera's lens.
     pub fn render_lens_preview(
         &mut self,
         planes: &Yuv420pPlanes<'_>,
         size: (u32, u32),
         params: &Lens,
-        correction_amount: f32,
         full_range: bool,
     ) -> Result<slint::Image, PipelineError> {
         if self
@@ -183,27 +181,14 @@ impl PreviewBridge {
             .as_ref()
             .is_none_or(|(cached, _)| *cached != size)
         {
-            let aspect = size.0 as f32 / size.1 as f32;
             self.lens_preview = Some((
                 size,
-                LensPreviewRenderer::new(
-                    self.engine.gpu(),
-                    size.0,
-                    size.1,
-                    aspect,
-                    self.texture_format,
-                ),
+                LensPreviewRenderer::new(self.engine.gpu(), size.0, size.1, self.texture_format),
             ));
         }
         let (_, lp) = self.lens_preview.as_ref().expect("prepared lens preview");
 
-        let texture = lp.render_yuv(
-            self.engine.gpu(),
-            planes,
-            params,
-            correction_amount,
-            full_range,
-        );
+        let texture = lp.render_yuv(self.engine.gpu(), planes, params, full_range);
 
         slint::Image::try_from(texture).map_err(|_| PipelineError::InvalidConfig {
             reason: "slint::Image::try_from(wgpu::Texture) failed".into(),
