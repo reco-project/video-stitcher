@@ -10,8 +10,8 @@
 //! |--------|----------|-----------|-------------|---------------|
 //! | GoPro  | Yes      | Yes       | Yes (CORI)  | No            |
 //! | DJI    | No (model-dependent) | No (model-dependent) | Yes | Yes |
-//! | Insta360 | Yes    | Yes       | No          | Yes           |
-//! | Sony   | Yes      | Yes       | No          | Yes (mesh)    |
+//! | Insta360 | Yes    | Yes       | No          | Unsupported model |
+//! | Sony   | Yes      | Yes       | No          | Unsupported mesh |
 //!
 //! ## Usage for calibration
 //!
@@ -38,7 +38,7 @@ pub struct TelemetryData {
     pub gyro: Vec<ImuSample>,
     /// Accelerometer samples (m/s^2, timestamped).
     pub accel: Vec<ImuSample>,
-    /// Embedded lens profile if the camera provides one (DJI, Insta360).
+    /// Embedded KB4 lens profile, when available in a supported format.
     pub lens_profile: Option<Lens>,
     /// Orientation quaternions [w, x, y, z] (DJI, GoPro CORI).
     /// Represents rotation from camera frame to gravity-aligned world frame.
@@ -87,9 +87,7 @@ pub struct CameraMetadata {
 
 /// Extract only camera metadata and lens profile (fast path).
 ///
-/// Uses `probe_only` mode to skip the expensive quaternion derivation
-/// and IMU normalization. For DJI Action 4 this reduces parse time
-/// from ~76s to under 1s.
+/// Uses `probe_only` mode to skip full-file quaternion derivation.
 pub fn extract_metadata(path: &Path) -> Result<CameraMetadata, TelemetryError> {
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
@@ -133,8 +131,7 @@ pub fn extract_metadata(path: &Path) -> Result<CameraMetadata, TelemetryError> {
         for sample in samples {
             if let Some(ref tag_map) = sample.tag_map {
                 if lens_profile.is_none() {
-                    lens_profile = extract_lens_from_tags(tag_map)
-                        .or_else(|| extract_lens_from_clip_meta(tag_map));
+                    lens_profile = extract_lens_from_tags(tag_map);
                 }
                 if lens_info.is_none()
                     && let Some(map) = tag_map.get(&telemetry_parser::tags_impl::GroupId::Default)
@@ -239,10 +236,8 @@ pub fn extract(path: &Path) -> Result<TelemetryData, TelemetryError> {
 
         for sample in samples {
             if let Some(ref tag_map) = sample.tag_map {
-                // Try Lens/Data tag first, then ClipMeta JSON fallback
                 if lens_profile.is_none() {
-                    lens_profile = extract_lens_from_tags(tag_map)
-                        .or_else(|| extract_lens_from_clip_meta(tag_map));
+                    lens_profile = extract_lens_from_tags(tag_map);
                 }
 
                 // Extract GoPro FOV mode from GPMF tags (VFOV, ZFOV, PRJT)
@@ -638,126 +633,79 @@ fn rig_tilt_from_quaternions(data: &TelemetryData) -> Option<f64> {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/// Extract lens profile from ClipMeta JSON (DJI Action 4 fallback).
-///
-/// When the parser doesn't insert a Lens/Data tag, we read focal_length
-/// and distortion_coefficients directly from the ClipMeta JSON stored
-/// in the Default group.
-fn extract_lens_from_clip_meta(
-    tag_map: &telemetry_parser::tags_impl::GroupedTagMap,
-) -> Option<Lens> {
-    use telemetry_parser::tags_impl::*;
-    // The ClipMeta JSON is stored in GroupId::Default / TagId::Metadata
-    let default_map = tag_map.get(&GroupId::Default)?;
-    let tag = default_map.get(&TagId::Metadata)?;
-    let json = if let TagValue::Json(ref json_val) = tag.value {
-        json_val.get()
-    } else {
-        return None;
-    };
-
-    let focal = json
-        .get("digital_focal_length")
-        .and_then(|v| v.get("focal_length"))
-        .and_then(|v| v.as_f64())?;
-
-    let coeffs = json
-        .get("distortion_coefficients")
-        .and_then(|v| v.get("coeffients")) // note: typo in DJI proto
-        .and_then(|v| v.as_array())?;
-
-    if coeffs.len() < 4 {
-        return None;
-    }
-
-    // Need resolution - not in ClipMeta, use a reasonable default for DJI Action 4
-    // The caller should override width/height from the video decoder
-    let width = 3840;
-    let height = 2880;
-    let half_w = width as f64 / 2.0;
-    let half_h = height as f64 / 2.0;
-
-    log::info!(
-        "embedded lens (from ClipMeta): focal={focal:.2}, d=[{:.4}, {:.4}, {:.4}, {:.4}]",
-        coeffs[0].as_f64().unwrap_or(0.0),
-        coeffs[1].as_f64().unwrap_or(0.0),
-        coeffs[2].as_f64().unwrap_or(0.0),
-        coeffs[3].as_f64().unwrap_or(0.0),
-    );
-
-    Some(Lens {
-        width,
-        height,
-        fx: focal,
-        fy: focal,
-        cx: half_w,
-        cy: half_h,
-        distortion: [
-            coeffs[0].as_f64().unwrap_or(0.0),
-            coeffs[1].as_f64().unwrap_or(0.0),
-            coeffs[2].as_f64().unwrap_or(0.0),
-            coeffs[3].as_f64().unwrap_or(0.0),
-        ],
-        correction: 1.0,
-    })
-}
-
-/// Extract an embedded lens profile from a tag map (DJI, Insta360).
+/// Extract a supported KB4 lens profile from a telemetry tag map.
 fn extract_lens_from_tags(tag_map: &telemetry_parser::tags_impl::GroupedTagMap) -> Option<Lens> {
     use telemetry_parser::tags_impl::*;
     let lens_map = tag_map.get(&GroupId::Lens)?;
     let tag = lens_map.get(&TagId::Data)?;
     if let TagValue::Json(ref json_val) = tag.value {
-        parse_embedded_lens_profile(json_val.get())
+        crate::lens_database::parse_gyroflow_lens(json_val.get())
     } else {
         None
     }
 }
 
-/// Parse an embedded lens profile JSON from telemetry-parser.
-///
-/// DJI cameras embed focal_length + distortion_coeffs as JSON in the
-/// `Lens/Data` tag. This function converts to our `Lens` format.
-fn parse_embedded_lens_profile(json: &serde_json::Value) -> Option<Lens> {
-    let cm = json.get("camera_matrix")?;
-    let fx = cm.get("fx")?.as_f64()?;
-    let fy = cm.get("fy")?.as_f64()?;
-    let cx = cm.get("cx")?.as_f64()?;
-    let cy = cm.get("cy")?.as_f64()?;
+#[cfg(test)]
+mod embedded_profile_tests {
+    use super::extract_lens_from_tags;
+    use reco_core::calibration::Lens;
+    use serde_json::json;
+    use telemetry_parser::tags_impl::{
+        GroupId, GroupedTagMap, TagDescription, TagId, TagValue, ValueType,
+    };
 
-    let dc = json.get("distortion_coeffs")?.as_array()?;
-    if dc.len() < 4 {
-        return None;
+    fn embedded_lens(profile: serde_json::Value) -> Option<Lens> {
+        let tag = TagDescription {
+            group: GroupId::Lens,
+            id: TagId::Data,
+            native_id: None,
+            description: "Lens profile".into(),
+            value: TagValue::Json(ValueType::new_parsed(
+                serde_json::Value::to_string,
+                profile,
+                vec![],
+            )),
+        };
+        let tags = GroupedTagMap::from([(GroupId::Lens, [(TagId::Data, tag)].into())]);
+        extract_lens_from_tags(&tags)
     }
-    let d = [
-        dc[0].as_f64().unwrap_or(0.0),
-        dc[1].as_f64().unwrap_or(0.0),
-        dc[2].as_f64().unwrap_or(0.0),
-        dc[3].as_f64().unwrap_or(0.0),
-    ];
 
-    // Resolution from the lens profile
-    let res = json
-        .get("resolution")
-        .or_else(|| json.get("calib_dimension"))?;
-    let width = res.get("width").or_else(|| res.get("w"))?.as_u64()? as u32;
-    let height = res.get("height").or_else(|| res.get("h"))?.as_u64()? as u32;
+    fn dji_profile(width: u32, height: u32) -> serde_json::Value {
+        json!({
+            "camera_brand": "DJI",
+            "camera_model": "OsmoAction4",
+            "calib_dimension": {"w": width, "h": height},
+            "fisheye_params": {
+                "camera_matrix": [[910.5, 0.0, f64::from(width)/2.0], [0.0, 908.25, f64::from(height)/2.0], [0.0, 0.0, 1.0]],
+                "distortion_coeffs": [0.15, 0.13, -0.09, 0.004]
+            }
+        })
+    }
 
-    log::info!("embedded lens profile: {width}x{height}, fx={fx:.2}, fy={fy:.2}");
+    #[test]
+    fn reads_the_pinned_telemetry_parsers_nested_dji_profile() {
+        for (width, height) in [(3840, 2880), (3840, 2160), (1920, 1080)] {
+            let lens = embedded_lens(dji_profile(width, height))
+                .expect("the telemetry parser emits a nested Gyroflow profile");
+            assert_eq!((lens.width, lens.height), (width, height));
+            assert_eq!((lens.fx, lens.fy), (910.5, 908.25));
+            assert_eq!(
+                (lens.cx, lens.cy),
+                (f64::from(width) / 2.0, f64::from(height) / 2.0)
+            );
+            assert_eq!(lens.distortion, [0.15, 0.13, -0.09, 0.004]);
+        }
+    }
 
-    Some(Lens {
-        width,
-        height,
-        fx,
-        fy,
-        cx,
-        cy,
-        distortion: d,
-        correction: 1.0,
-    })
+    #[test]
+    fn does_not_interpret_insta360s_six_coefficient_model_as_kb4() {
+        let mut profile = dji_profile(1920, 1920);
+        profile["distortion_model"] = json!("insta360");
+        profile["fisheye_params"]["distortion_coeffs"] = json!([0.1, 0.2, 0.3, 0.01, 0.02, 0.5]);
+        assert!(embedded_lens(profile).is_none());
+    }
 }
 
-/// Linearly resample a timestamped signal to a uniform sample rate.
 /// Normalize a signal to zero mean, unit variance (for Pearson correlation).
 /// Returns empty vec if the signal has zero variance (constant).
 fn normalize_signal(signal: &[f64]) -> Vec<f64> {
@@ -774,6 +722,7 @@ fn normalize_signal(signal: &[f64]) -> Vec<f64> {
     signal.iter().map(|&x| (x - mean) / std).collect()
 }
 
+/// Linearly resample a timestamped signal to a uniform sample rate.
 fn resample_signal(signal: &[(f64, f64)], t_start: f64, rate: f64, n: usize) -> Vec<f64> {
     let mut result = Vec::with_capacity(n);
     let mut src_idx = 0;

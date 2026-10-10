@@ -17,6 +17,7 @@
 
 #[cfg(test)]
 mod calibration_edit_tests;
+mod calibration_job;
 mod export;
 mod playback;
 mod preview;
@@ -87,7 +88,7 @@ const SEEK_DEBOUNCE_MS: u64 = 120;
 /// without re-running detection.
 struct CalibrationOutput {
     calibration: Calibration,
-    confidence: f64,
+    assessment: reco_calibrate::CalibrationAssessment,
     total_matches: usize,
     left_lens_profile: Option<LensProfileInfo>,
     right_lens_profile: Option<LensProfileInfo>,
@@ -219,8 +220,9 @@ struct AppState {
     recording_thread: Option<std::thread::JoinHandle<()>>,
     recording_path: Option<PathBuf>,
     recording_frames: u64,
-    /// Receives calibration results from the background thread.
-    cal_rx: Option<std::sync::mpsc::Receiver<CalibrationResult>>,
+    /// Owns a calibration worker and the document it was started for.
+    calibration_job: Option<calibration_job::PendingCalibration>,
+    review_calibration: Option<(CalibrationOutput, calibration_job::CalibrationSnapshot)>,
     /// Receives native file dialog selections after the OS dialog
     /// completes on a background waiter.
     file_dialog_rx: Option<std::sync::mpsc::Receiver<Option<Box<dyn FileDialogAction>>>>,
@@ -381,19 +383,6 @@ fn build_bug_report(state: &AppState, app_weak: &slint::Weak<RecoApp>) -> String
                  - Frame time: {total_ms:.1} ms\n"
             ));
         }
-
-        let cal_confidence = app.get_telem_cal_confidence();
-        let cal_matches = app.get_telem_cal_matches();
-        if cal_matches > 0 {
-            let reproj = app.get_telem_cal_reproj_err();
-            report.push_str(&format!(
-                "\n## Calibration\n\
-                 - Confidence: {:.0}%\n\
-                 - Matches: {cal_matches}\n\
-                 - Reprojection error: {reproj:.4}\n",
-                cal_confidence * 100.0
-            ));
-        }
     }
 
     // Redact file paths
@@ -449,6 +438,7 @@ fn displayed_image_height(width: f32, height: f32, image: (u32, u32)) -> f32 {
 
 impl Drop for AppState {
     fn drop(&mut self) {
+        self.cancel_calibration();
         self.export_interrupted.store(true, Ordering::Relaxed);
         if let Some(worker) = self.export_thread.take() {
             let _ = worker.join();
@@ -473,7 +463,8 @@ impl AppState {
             recording_thread: None,
             recording_path: None,
             recording_frames: 0,
-            cal_rx: None,
+            calibration_job: None,
+            review_calibration: None,
             file_dialog_rx: None,
             file_dialog_open: false,
             shared_gpu: None,
@@ -513,7 +504,62 @@ impl AppState {
         self.export_thread.is_some()
     }
 
+    fn cancel_calibration(&self) {
+        if let Some(job) = &self.calibration_job {
+            job.cancel();
+        }
+    }
+
+    fn poll_calibration(&mut self, app_weak: &slint::Weak<RecoApp>) -> bool {
+        let Some(job) = &self.calibration_job else {
+            return false;
+        };
+        let result = match job.receiver.try_recv() {
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                if job.is_cancelled()
+                    && let Some(app) = app_weak.upgrade()
+                    && app.get_calibration_step() != "Stopping…"
+                {
+                    app.set_calibration_step("Stopping…".into());
+                }
+                return false;
+            }
+            result => result,
+        };
+        let current = job.matches(self);
+        let cancelled = job.is_cancelled();
+        self.calibration_job = None;
+        if let Some(app) = app_weak.upgrade() {
+            app.set_calibrating(false);
+        }
+        if !current || cancelled {
+            if current
+                && cancelled
+                && let Some(app) = app_weak.upgrade()
+            {
+                app.set_status_text("Calibration cancelled".into());
+            }
+            log::info!("Discarded calibration result for superseded inputs or settings");
+            return true;
+        }
+        match result {
+            Ok(result) => handle_calibration_result(result, self, app_weak, false),
+            Err(_) => {
+                self.toasts.push(
+                    Severity::Error,
+                    "Calibration stopped",
+                    "The worker stopped without a result. You can retry calibration.",
+                );
+                if let Some(app) = app_weak.upgrade() {
+                    crate::toast::sync_to_ui(&self.toasts, &app);
+                }
+            }
+        }
+        true
+    }
+
     fn reset_pipeline(&mut self) {
+        self.cancel_calibration();
         self.bridge = None;
         self.playback = Playback::new();
         self.pose = preview_pose_control(None);
@@ -536,8 +582,6 @@ impl AppState {
             .as_ref()
             .ok_or("GPU not ready yet (Slint rendering not initialized)")?
             .clone();
-        // Save baseline layout so Reset Calibration can restore it.
-        self.cal_baseline = Some(cal.clone());
         let mut bridge = PreviewBridge::new(
             gpu.device,
             gpu.queue,
@@ -599,6 +643,7 @@ impl AppState {
             calibration.validate()?;
         }
         self.lens_correction_amount = calibration.lenses[0].correction;
+        self.cancel_calibration();
         self.calibration = Some(calibration);
         self.preview_dirty = true;
         self.clamp_targets();
@@ -712,12 +757,12 @@ impl AppState {
             .ok_or("Select the calibration's video inputs")?;
 
         let sync_offset = cal.sync_offset;
-        self.playback
+        let mut playback = Playback::new();
+        playback
             .open(&inputs, sync_offset, &self.decoder_cleanup)
             .map_err(|e| format!("Video open error: {e}"))?;
 
-        let source_sizes = self
-            .playback
+        let source_sizes = playback
             .source_sizes()
             .ok_or("No input dimensions")?
             .to_vec();
@@ -728,6 +773,10 @@ impl AppState {
             self.lens_preview_active = false;
             self.lens_preview_side = "left".into();
         }
+        self.cancel_calibration();
+        self.stop_recording();
+        self.playback = playback;
+        self.cal_baseline = Some(cal.clone());
         self.calibration = Some(cal);
         self.bridge = Some(bridge);
         self.reset_view();
@@ -1219,6 +1268,7 @@ fn set_lens_sliders(app: &RecoApp, lenses: &[reco_core::calibration::Lens]) {
 fn profile_source_label(info: &LensProfileInfo) -> &'static str {
     match info.source {
         ProfileSource::AutoDetected => "Auto-detected",
+        ProfileSource::Estimated => "Stitching estimate",
         ProfileSource::Database => "Database match",
         ProfileSource::File(_) => "File",
         ProfileSource::Fallback => "Fallback",
@@ -1262,13 +1312,24 @@ fn set_lens_profile_props(
     // sees whether alternates exist. Loading the embedded database is
     // O(1) after the first call (static OnceCell inside reco-calibrate).
     let candidates = if in_w > 0 && in_h > 0 {
-        let db = reco_calibrate::lens_database::LensDatabase::load_embedded();
+        let db = reco_calibrate::lens_database::LensDatabase::embedded();
         db.candidates(in_w, in_h).len() as i32
     } else {
         0
     };
     app.set_lens_candidates_count(candidates);
     app.set_lens_info_available(left.is_some() || right.is_some());
+}
+
+fn refresh_lens_candidates(app: &RecoApp, in_w: u32, in_h: u32) {
+    // Reuse the shared database when refreshing resolution-specific alternatives.
+    let candidates = if in_w > 0 && in_h > 0 {
+        let db = reco_calibrate::lens_database::LensDatabase::embedded();
+        db.candidates(in_w, in_h).len() as i32
+    } else {
+        0
+    };
+    app.set_lens_candidates_count(candidates);
 }
 
 fn format_time(frame: u64, fps: f64) -> String {
@@ -2671,10 +2732,40 @@ fn main() -> anyhow::Result<()> {
 
     // ── Auto-calibration callback ──
 
+    let state_ref = Rc::clone(&state);
+    app.on_cancel_calibration(move || state_ref.borrow().cancel_calibration());
+
+    let app_weak = app.as_weak();
+    let state_ref = Rc::clone(&state);
+    app.on_review_calibration(move || {
+        let mut s = state_ref.borrow_mut();
+        if let Some(app) = app_weak.upgrade() {
+            app.set_calibration_needs_review(false);
+        }
+        if let Some((output, snapshot)) = s.review_calibration.take() {
+            if snapshot.matches(&s)
+                && !s.is_exporting()
+                && !s.is_recording()
+                && s.calibration_job.is_none()
+            {
+                handle_calibration_result(Ok(output), &mut s, &app_weak, true);
+            } else {
+                s.toasts.push(
+                    Severity::Warn,
+                    "Calibration discarded",
+                    "Inputs changed. Run calibration again.",
+                );
+            }
+        }
+    });
+
     let app_weak = app.as_weak();
     let state_ref = Rc::clone(&state);
     app.on_auto_calibrate(move || {
         let s = state_ref.borrow();
+        if s.calibration_job.is_some() || s.is_exporting() || s.is_recording() {
+            return;
+        }
         let (left, right) = match (&s.left_path, &s.right_path) {
             (Some(l), Some(r)) => (l.clone(), r.clone()),
             _ => return,
@@ -2687,23 +2778,25 @@ fn main() -> anyhow::Result<()> {
         };
         drop(s);
 
-        let (use_imu_seeds, cal_frames, akaze_threshold, detect_y_min, detect_y_max, skip_end) =
-            app_weak
-                .upgrade()
-                .map(|a| {
-                    (
-                        a.get_use_imu_seeds(),
-                        a.get_calibration_frames().max(2) as usize,
-                        a.get_cal_akaze_threshold() as f64,
-                        a.get_cal_detect_y_min() as f64,
-                        a.get_cal_detect_y_max() as f64,
-                        a.get_cal_skip_end_secs() as f64,
-                    )
-                })
-                .unwrap_or((false, 4, 0.0001, 0.05, 0.95, 0.0));
+        let (cal_frames, skip_end) = app_weak
+            .upgrade()
+            .map(|a| {
+                (
+                    a.get_calibration_frames()
+                        .to_string()
+                        .parse::<usize>()
+                        .unwrap_or(4),
+                    a.get_cal_skip_end_secs() as f64,
+                )
+            })
+            .unwrap_or((4, 0.0));
+        let estimate_optics = app_weak
+            .upgrade()
+            .is_some_and(|a| a.get_calibration_estimate_optics());
 
         if let Some(app) = app_weak.upgrade() {
             app.set_calibrating(true);
+            app.set_calibration_needs_review(false);
             app.set_calibration_step("Starting...".into());
             app.set_status_text("Auto-calibrating...".into());
         }
@@ -2718,13 +2811,23 @@ fn main() -> anyhow::Result<()> {
         // only `self.calibration` retained before the picker wrote it.
         let (existing_left_params, existing_right_params) = {
             let s = state_ref.borrow();
-            let lenses = s.calibration.as_ref().or(s.cal_baseline.as_ref()).map(|c| c.lenses.as_slice()).unwrap_or_default();
+            let lenses = s
+                .calibration
+                .as_ref()
+                .or(s.cal_baseline.as_ref())
+                .map(|c| c.lenses.as_slice())
+                .unwrap_or_default();
             (lenses.first().cloned(), lenses.get(1).cloned())
         };
 
         {
             let mut s = state_ref.borrow_mut();
-            s.cal_rx = Some(rx);
+            s.calibration_job = Some(calibration_job::PendingCalibration::new(
+                &s,
+                rx,
+                Arc::clone(&interrupted),
+            ));
+            s.review_calibration = None;
         }
 
         // Run calibration on a background thread. Only Send types
@@ -2732,25 +2835,11 @@ fn main() -> anyhow::Result<()> {
         let app_weak_bg = app_weak.clone();
         std::thread::spawn(move || {
             let app_weak_progress = app_weak_bg.clone();
-            // Bump frame-pair count above the reco-core default of 2.
-            // More frames give the bundle adjustment more constraints
-            // to settle on, which especially helps at 4K where AKAZE
-            // feature matches are noisier per frame.
-            log::info!(
-                "Auto-calibrate: {cal_frames} frames, skip=[{current_time_secs:.1}s, -{skip_end:.0}s], \
-                 imu_seeds={use_imu_seeds}, akaze={akaze_threshold}, \
-                 detect_y=[{detect_y_min:.2}, {detect_y_max:.2}]"
-            );
-            let mut config = reco_calibrate::CalibrationConfig {
+            let config = reco_calibrate::CalibrationConfig {
                 num_frames: cal_frames,
                 skip_start_secs: current_time_secs,
                 skip_end_secs: skip_end,
-                use_imu_rotation_seeds: use_imu_seeds,
-                ..Default::default()
             };
-            config.akaze.threshold = akaze_threshold;
-            config.akaze.detect_y_min = detect_y_min;
-            config.akaze.detect_y_max = detect_y_max;
             if existing_left_params.is_some() {
                 log::info!("Re-calibrating with user-picked lens profiles");
             }
@@ -2758,6 +2847,7 @@ fn main() -> anyhow::Result<()> {
                 &left,
                 &right,
                 reco_calibrate::video::CalibrateVideosOptions {
+                    estimate_optics,
                     config: Some(config),
                     left_params: existing_left_params,
                     right_params: existing_right_params,
@@ -2767,8 +2857,11 @@ fn main() -> anyhow::Result<()> {
                     let step_name = format!("{:?}", progress.step);
                     let detail = progress.detail.clone();
                     let weak = app_weak_progress.clone();
+                    let active = Arc::clone(&interrupted);
                     slint::invoke_from_event_loop(move || {
-                        if let Some(app) = weak.upgrade() {
+                        if !active.load(Ordering::Relaxed)
+                            && let Some(app) = weak.upgrade()
+                        {
                             app.set_calibration_step(step_name.into());
                             app.set_status_text(format!("Calibrating: {detail}").into());
                         }
@@ -2783,7 +2876,7 @@ fn main() -> anyhow::Result<()> {
                     log::info!("Auto-calibration complete: {} matches", r.total_matches,);
                     Ok(CalibrationOutput {
                         calibration: r.calibration,
-                        confidence: r.confidence,
+                        assessment: r.assessment,
                         total_matches: r.total_matches,
                         left_lens_profile: r.left_lens_profile,
                         right_lens_profile: r.right_lens_profile,
@@ -3500,6 +3593,10 @@ fn main() -> anyhow::Result<()> {
             log::warn!("Export already running, ignoring start request");
             return;
         }
+        if s.calibration_job.is_some() {
+            app.set_export_error_text("Wait for calibration to finish before exporting.".into());
+            return;
+        }
         let output_path = PathBuf::from(&output_str);
         if let Some(parent) = output_path.parent() {
             if !parent.exists() {
@@ -3798,12 +3895,7 @@ fn main() -> anyhow::Result<()> {
                         let _ = open::that(&url);
             }
 
-            // Poll for calibration results from the background thread.
-            if let Some(rx) = &s.cal_rx
-                && let Ok(result) = rx.try_recv()
-            {
-                s.cal_rx = None;
-                handle_calibration_result(result, &mut s, &app_weak);
+            if s.poll_calibration(&app_weak) {
                 return;
             }
 
@@ -4249,7 +4341,24 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
     // change (new load / appended segments) from a calibration-only
     // reload further down.
     let prev_total = s.playback.total_frames();
-    match s.try_init() {
+    let result = s.try_init();
+    if result.is_err() {
+        // Selected inputs now differ from the old playback. Do not keep rendering that old source.
+        s.unload_pipeline();
+    }
+    update_preview_ui(&mut s, app_weak, result, prev_total);
+}
+
+fn update_preview_ui(
+    s: &mut AppState,
+    app_weak: &slint::Weak<RecoApp>,
+    result: Result<bool, String>,
+    prev_total: Option<u64>,
+) {
+    if let Some(app) = app_weak.upgrade() {
+        app.set_recording(s.is_recording());
+    }
+    match result {
         Ok(true) => {
             let fps = s.playback.fps();
             let total = s.playback.total_frames().unwrap_or(0);
@@ -4257,31 +4366,7 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
             s.clamp_targets();
             let clamped_fov = s.pose.current_fov_deg();
             let img = s.render_current();
-            // Seed calibration slider values from the baseline layout.
-            let layout = s.cal_baseline.clone();
-
             let (in_w, in_h) = s.playback.input_dimensions().unwrap_or((0, 0));
-
-            // Same for viewport-level settings (rig tilt, blend width).
-            let rig_tilt_rad = s
-                .bridge
-                .as_ref()
-                .map(|b| b.engine().calibration().framing.tilt as f32);
-            let rig_roll_rad = s
-                .bridge
-                .as_ref()
-                .map(|b| b.engine().calibration().framing.roll as f32);
-            let blend_width = s
-                .bridge
-                .as_ref()
-                .map(|b| b.engine().calibration().projection.blend_width());
-            // Lens-correction strength came in via the loaded calibration and
-            // the renderer was seeded with it at bridge creation; mirror it
-            // into AppState so a later save re-persists the right value.
-            let lens_correction = s.calibration.as_ref().map(|c| c.lenses[0].correction);
-            if let Some(lc) = lens_correction {
-                s.lens_correction_amount = lc;
-            }
 
             if let Some(app) = app_weak.upgrade() {
                 app.set_files_loaded(true);
@@ -4312,40 +4397,12 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
                 if let Some(img) = img {
                     app.set_preview_frame(img);
                 }
-                if let Some(layout) = layout {
-                    if let Some(t) = layout.projection.l_shape() {
-                        app.set_cal_intersect(t.intersect as f32);
-                        app.set_cal_x_ty(t.x_ty as f32);
-                    }
-                    app.set_cal_camera_axis_offset(layout.framing.axis_offset as f32);
-                    app.set_cal_dirty(false);
-                }
-                if let Some(rt) = rig_tilt_rad {
-                    app.set_rig_tilt(rt.to_degrees());
-                }
-                if let Some(rr) = rig_roll_rad {
-                    app.set_rig_roll(rr.to_degrees());
-                }
-                if let Some(bw) = blend_width {
-                    app.set_blend_width(bw);
-                }
-                if let Some(lc) = lens_correction {
-                    app.set_lens_correction_amount(lc);
-                }
-                if let Some(cal) = s.calibration.as_ref() {
-                    app.set_sync_offset(cal.sync_offset as i32);
-                }
                 app.set_fov(clamped_fov);
-                // Manual calibration JSON does not embed lens-profile info,
-                // so clear the display (hide the lens card) and just show
-                // the candidates count for this resolution so the user
-                // still knows how many database entries could match.
-                set_lens_profile_props(&app, None, None, in_w, in_h);
+                refresh_lens_candidates(&app, in_w, in_h);
                 // Lens fine-tune sliders are seeded from the loaded
                 // calibration's camera params either way; the Lens
                 // fine-tune section is gated on `files-loaded` in Slint.
                 s.sync_calibration_controls(&app);
-                app.set_lens_dirty(false);
                 // Seed export dialog output filename suggestion to
                 // sit next to the left-video file for convenience.
                 let left_path = s.left_path.clone();
@@ -4392,7 +4449,7 @@ fn try_init_and_update(state: &Rc<RefCell<AppState>>, app_weak: &slint::Weak<Rec
         Err(e) => {
             log::error!("Init error: {e}");
             if let Some(app) = app_weak.upgrade() {
-                // Batch G emits "invalid input path (...): <reason>" for
+                // Source validation emits "invalid input path (...): <reason>" for
                 // validation failures. Classify so the toast carries a
                 // reason-specific title; fall back to generic "Init
                 // failed" otherwise.
@@ -4435,6 +4492,7 @@ fn handle_calibration_result(
     result: CalibrationResult,
     state: &mut AppState,
     app_weak: &slint::Weak<RecoApp>,
+    explicit_preview: bool,
 ) {
     if let Some(app) = app_weak.upgrade() {
         app.set_calibrating(false);
@@ -4442,92 +4500,65 @@ fn handle_calibration_result(
 
     match result {
         Ok(output) => {
-            let confidence = output.confidence;
+            let confirmed = output.assessment == reco_calibrate::CalibrationAssessment::Confirmed;
+            if let reco_calibrate::CalibrationAssessment::NeedsReview { reason } =
+                &output.assessment
+                && !explicit_preview
+            {
+                state
+                    .toasts
+                    .push(Severity::Warn, "Calibration needs review", reason.clone());
+                if let Some(app) = app_weak.upgrade() {
+                    app.set_calibration_needs_review(true);
+                    app.set_status_text("Candidate ready. Preview it before saving.".into());
+                    crate::toast::sync_to_ui(&state.toasts, &app);
+                }
+                state.review_calibration =
+                    Some((output, calibration_job::CalibrationSnapshot::new(state)));
+                return;
+            }
             let total_matches = output.total_matches;
             if let Some(ref t) = state.telemetry {
-                t.calibration_complete(confidence, total_matches);
+                t.calibration_complete(confirmed, total_matches);
             }
             let left_profile = output.left_lens_profile.clone();
             let right_profile = output.right_lens_profile.clone();
-            // Either camera resolving to a Fallback profile means no real
-            // camera match was found - the user must know, because it is the
-            // most common reason calibration looks wrong or fails outright.
-            let used_fallback = [left_profile.as_ref(), right_profile.as_ref()]
-                .into_iter()
-                .flatten()
-                .any(|p| matches!(p.source, ProfileSource::Fallback));
+            let prev_total = state.playback.total_frames();
             match state.init_with_calibration(output.calibration) {
-                Ok(true) => {
+                Ok(_) => {
                     let fps = state.playback.fps();
                     let total = state.playback.total_frames().unwrap_or(0);
-                    state.reset_view();
-                    state.clamp_targets();
-                    let clamped_fov = state.pose.current_fov_deg();
-                    let img = state.render_current();
                     let (in_w, in_h) = state.playback.input_dimensions().unwrap_or((0, 0));
 
-                    // Grab the layout baseline so the Calibration sliders
-                    // (intersect, camera-axis offset, x_ty) show the
-                    // auto-calibrated values instead of 0. Without this
-                    // the preview looks correct while the sliders read
-                    // 0; clicking any of them snaps the layout to ~0
-                    // and destroys the calibration.
-                    let layout_baseline = state.cal_baseline.clone();
-                    // Same idea for rig tilt and blend width: read the
-                    // calibrated values off the viewport so the View
-                    // panel sliders match what the preview actually shows.
-                    let rig_tilt_rad = state
-                        .bridge
-                        .as_ref()
-                        .map(|b| b.engine().calibration().framing.tilt as f32);
-                    // rig_roll was previously omitted here (only the manual
-                    // load restored it), so an auto-calibrated roll left the
-                    // slider at 0 while the preview was corrected - touching
-                    // it then snapped roll back to 0 and broke the cal.
-                    let rig_roll_rad = state
-                        .bridge
-                        .as_ref()
-                        .map(|b| b.engine().calibration().framing.roll as f32);
-                    let blend_width = state
-                        .bridge
-                        .as_ref()
-                        .map(|b| b.engine().calibration().projection.blend_width());
-                    let lens_correction =
-                        state.calibration.as_ref().map(|c| c.lenses[0].correction);
-                    if let Some(lc) = lens_correction {
-                        state.lens_correction_amount = lc;
-                    }
-
-                    // Auto-save calibration next to the left video so
-                    // it appears in Recent and can be reloaded.
-                    if let Some(left) = state.left_path.as_ref() {
-                        let cal_path = left.with_file_name(format!(
+                    // Keep the intended destination on failure so Save cannot overwrite an older document.
+                    state.calibration_path = state.left_path.as_ref().map(|left| {
+                        left.with_file_name(format!(
                             "{}_calibration.json",
                             left.file_stem()
                                 .map(|s| s.to_string_lossy().into_owned())
                                 .unwrap_or_else(|| "reco".into())
-                        ));
-                        if let Some(cal) = state.calibration.as_ref() {
-                            match serde_json::to_string_pretty(cal) {
-                                Ok(json) => match std::fs::write(&cal_path, json) {
-                                    Ok(()) => {
-                                        log::info!(
-                                            "Auto-saved calibration to {}",
-                                            cal_path.display()
-                                        );
-                                        state.calibration_path = Some(cal_path.clone());
-                                        state.user_settings.push_calibration(cal_path.clone());
-                                    }
-                                    Err(e) => {
-                                        log::warn!("Failed to auto-save calibration: {e}");
-                                    }
-                                },
-                                Err(e) => {
-                                    log::warn!("Failed to serialize calibration: {e}");
+                        ))
+                    });
+                    let saved = if !confirmed {
+                        false
+                    } else {
+                        match state.save_calibration() {
+                            Ok(()) => {
+                                if let Some(path) = &state.calibration_path {
+                                    state.user_settings.push_calibration(path.clone());
                                 }
+                                true
+                            }
+                            Err(error) => {
+                                log::warn!("Failed to auto-save calibration: {error}");
+                                state
+                                    .toasts
+                                    .push(Severity::Error, "Calibration not saved", error);
+                                false
                             }
                         }
-                    }
+                    };
+                    update_preview_ui(state, app_weak, Ok(true), prev_total);
 
                     if let Some(app) = app_weak.upgrade() {
                         let cal_label = state
@@ -4535,89 +4566,26 @@ fn handle_calibration_result(
                             .as_ref()
                             .map(|p| display_name(p))
                             .unwrap_or_else(|| "(auto-calibrated)".into());
-                        app.set_files_loaded(true);
-                        app.set_has_roi(
-                            state
-                                .calibration
-                                .as_ref()
-                                .and_then(|c| c.field_roi.as_ref())
-                                .is_some_and(|r| !r.left.is_empty() || !r.right.is_empty()),
-                        );
                         app.set_calibration_path(cal_label.into());
                         sync_recent_paths(&state.user_settings, &app);
-                        sync_frame_display(&app, state.playback.frame_index(), total, fps);
-                        app.set_fps(fps as f32);
                         app.set_status_text(
                             format!("Auto-calibrated - {:.0} fps - {total} frames", fps,).into(),
                         );
-                        if let Some(img) = img {
-                            app.set_preview_frame(img);
-                        }
-                        if let Some(layout) = layout_baseline.as_ref() {
-                            if let Some(t) = layout.projection.l_shape() {
-                                app.set_cal_intersect(t.intersect as f32);
-                                app.set_cal_x_ty(t.x_ty as f32);
-                            }
-                            app.set_cal_camera_axis_offset(layout.framing.axis_offset as f32);
-                            app.set_cal_dirty(false);
-                        }
-                        if let Some(rt) = rig_tilt_rad {
-                            app.set_rig_tilt(rt.to_degrees());
-                        }
-                        if let Some(rr) = rig_roll_rad {
-                            app.set_rig_roll(rr.to_degrees());
-                        }
-                        if let Some(bw) = blend_width {
-                            app.set_blend_width(bw);
-                        }
-                        if let Some(lc) = lens_correction {
-                            app.set_lens_correction_amount(lc);
-                        }
-                        if let Some(cal) = state.calibration.as_ref() {
-                            app.set_sync_offset(cal.sync_offset as i32);
-                        }
-                        app.set_fov(clamped_fov);
                         set_lens_profile_props(&app, left_profile, right_profile, in_w, in_h);
-                        state.sync_calibration_controls(&app);
+                        app.set_cal_dirty(!saved);
                         app.set_lens_dirty(false);
+                        crate::toast::sync_to_ui(&state.toasts, &app);
 
-                        if confidence < 0.5 {
-                            log::warn!(
-                                "Low calibration confidence ({:.0}%, {total_matches} matches). \
-                                 Stitch quality may be poor.",
-                                confidence * 100.0
-                            );
+                        if !confirmed {
                             state.toasts.push(
                                 Severity::Warn,
-                                "Low calibration confidence",
-                                format!(
-                                    "{:.0}% confidence ({total_matches} matches). \
-                                     Try recording with more camera overlap.",
-                                    confidence * 100.0
-                                ),
-                            );
-                            crate::toast::sync_to_ui(&state.toasts, &app);
-                        }
-                        if used_fallback {
-                            log::warn!(
-                                "calibration used a GENERIC fallback lens profile (no \
-                                 camera match at {in_w}x{in_h}); stitch quality may be \
-                                 poor and the optimizer can fail to converge"
-                            );
-                            state.toasts.push(
-                                Severity::Warn,
-                                "Using a generic lens profile",
-                                format!(
-                                    "No lens profile matched your camera at {in_w}x{in_h}, \
-                                     so a generic one was used. If the stitch looks wrong, \
-                                     load a lens profile or adjust the Lens sliders."
-                                ),
+                                "Unsaved calibration preview",
+                                "Inspect the seam and use Save to accept this candidate.",
                             );
                             crate::toast::sync_to_ui(&state.toasts, &app);
                         }
                     }
                 }
-                Ok(false) => {}
                 Err(e) => {
                     log::error!("Post-calibration init: {e}");
                     if let Some(app) = app_weak.upgrade() {
@@ -4633,16 +4601,7 @@ fn handle_calibration_result(
             if let Some(ref t) = state.telemetry {
                 t.calibration_error(&e.to_string());
             }
-            // Critical: unload the live pipeline so the preview stops
-            // rendering whatever it was showing before. Otherwise the
-            // preview keeps playing the OLD right/left video while the
-            // state thinks the new paths are active - and export would
-            // read the new paths and produce garbage. Flipping
-            // `files-loaded=false` forces the user to re-pick or
-            // re-calibrate from a clean state.
-            state.unload_pipeline();
             if let Some(app) = app_weak.upgrade() {
-                app.set_files_loaded(false);
                 app.set_status_text("Calibration failed".into());
                 // Toast wants a display-ready message; stringify at
                 // the UI boundary (not across the mpsc channel).

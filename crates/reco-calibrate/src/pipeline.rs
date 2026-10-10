@@ -31,13 +31,12 @@
 //! let frames = my_decoder.extract_pairs(&left_indices, &right_indices)?;
 //!
 //! // Run calibration
-//! let result = pipeline.calibrate(&gpu, &frames)?;
+//! let result = pipeline.calibrate(&std::sync::atomic::AtomicBool::new(false), &frames)?;
 //! ```
 
 use std::path::Path;
 
 use reco_core::calibration::Lens;
-use reco_core::gpu::GpuContext;
 
 use crate::error::CalibrateError;
 use crate::telemetry::TelemetryData;
@@ -79,24 +78,15 @@ pub struct CalibrationPipeline {
     left_profile_info: Option<LensProfileInfo>,
     /// Lens profile metadata for the right camera.
     right_profile_info: Option<LensProfileInfo>,
-    /// Cached parsed telemetry for the left video, lazily populated on
-    /// first use (detect_profiles or imu_sync) so the expensive parse
-    /// runs at most once per video. `Some(Ok(..))` after a successful
-    /// parse, `Some(Err(()))` after a failed one (so we don't retry on
-    /// every call), `None` before first use.
+    /// Cached parsed telemetry for the left video, lazily populated when IMU data is requested. `Some(Ok(..))` after a successful parse, `Some(Err(()))` after a failure, `None` before first use.
     left_telemetry: Option<Result<TelemetryData, ()>>,
     /// Cached parsed telemetry for the right video. See [`Self::left_telemetry`].
     right_telemetry: Option<Result<TelemetryData, ()>>,
     sync_offset_frames: i64,
-    /// IMU seeds extracted during imu_sync
-    imu_xrz_seed: Option<f64>,
-    imu_xrx_seed: Option<f64>,
-    imu_zrx_seed: Option<f64>,
-    enable_x_rx: bool,
     /// Whether the camera has native gyroscope data (set by detect_profiles).
     /// When false, the full telemetry parse is skipped because derived
     /// quaternion data produces unreliable sync and rig tilt.
-    has_native_gyro: bool,
+    has_native_gyro: Option<bool>,
     /// Rig tilt in radians (forward lean from vertical).
     rig_tilt: f64,
     /// Rig roll in radians (lateral lean).
@@ -117,11 +107,7 @@ impl CalibrationPipeline {
             left_telemetry: None,
             right_telemetry: None,
             sync_offset_frames: 0,
-            imu_xrz_seed: None,
-            imu_xrx_seed: None,
-            imu_zrx_seed: None,
-            enable_x_rx: false,
-            has_native_gyro: false,
+            has_native_gyro: None,
             rig_tilt: 0.0,
             rig_roll: 0.0,
         }
@@ -132,89 +118,47 @@ impl CalibrationPipeline {
     // ---------------------------------------------------------------
 
     /// Set lens profiles manually (loaded by the app from files, UI, etc.).
-    pub fn set_profiles(&mut self, left: Lens, right: Lens) {
-        self.left_params = Some(left);
-        self.right_params = Some(right);
+    pub fn set_profiles(&mut self, left: Option<Lens>, right: Option<Lens>) {
+        self.left_params = left;
+        self.right_params = right;
+        self.left_profile_info = None;
+        self.right_profile_info = None;
     }
 
     /// Auto-detect lens profiles from video metadata and the embedded database.
     ///
     /// Reads telemetry from the video files to identify camera model,
     /// then looks up the matching profile in the embedded Gyroflow database.
-    /// Falls back to the left profile for the right camera if not found.
+    /// Missing profiles remain absent so calibration can estimate that camera's optics.
     ///
-    /// The parsed telemetry is cached on the pipeline so
-    /// [`imu_sync`](Self::imu_sync) reuses it instead of parsing the same
-    /// files a second time. This matters on heavy sources (DJI Action 4,
-    /// newer GoPro) where each parse is 30-60s.
+    /// Reads only camera metadata here. Full telemetry is parsed and cached by [`imu_sync`](Self::imu_sync) when needed. The embedded lens database is shared across calls.
     ///
     /// Returns the detected profiles for logging/display.
-    pub fn detect_profiles(&mut self) -> Result<(Lens, Lens), CalibrateError> {
-        let db = lens_database::LensDatabase::load_embedded();
+    pub fn detect_profiles(&mut self) -> Result<(Option<Lens>, Option<Lens>), CalibrateError> {
+        let db = lens_database::LensDatabase::embedded();
 
         // Use the fast metadata-only path for lens detection. The full
         // telemetry parse (quaternion derivation, IMU normalization) is
-        // deferred to ensure_*_telemetry which only runs when IMU data
-        // is actually needed (sync offset, rig tilt). On DJI Action 4
-        // this saves ~75s of I/O on cold HDD reads.
+        // deferred until IMU data is needed for sync or rig orientation.
         let left_meta = telemetry::extract_metadata(&self.left_info.path).ok();
         let right_meta = telemetry::extract_metadata(&self.right_info.path).ok();
 
-        self.has_native_gyro = left_meta.as_ref().is_some_and(|m| m.has_native_gyro);
+        self.has_native_gyro = Some(left_meta.as_ref().is_some_and(|m| m.has_native_gyro));
 
-        // Build a lightweight TelemetryData with just the metadata fields
-        // that detect_profile needs (camera_type, camera_model, lens_profile, lens_info).
-        let to_stub = |m: &telemetry::CameraMetadata| telemetry::TelemetryData {
-            camera_type: m.camera_type.clone(),
-            camera_model: m.camera_model.clone(),
-            lens_profile: m.lens_profile.clone(),
-            lens_info: m.lens_info.clone(),
-            gyro: Vec::new(),
-            accel: Vec::new(),
-            quaternions: Vec::new(),
+        let resolve = |metadata: Option<&telemetry::CameraMetadata>, info: &VideoInfo| {
+            db.find_for_metadata(metadata, info.width, info.height)
+                .filter(|(_, profile)| !matches!(profile.source, crate::ProfileSource::Fallback))
         };
-        let left_tel_stub = left_meta.as_ref().map(to_stub);
-        let right_tel_stub = right_meta.as_ref().map(to_stub);
-        let left_tel = left_tel_stub.as_ref();
-        let right_tel = right_tel_stub.as_ref();
-
-        let (left_p, left_info) = lens_database::detect_profile(
-            &self.left_info.path,
-            self.left_info.width,
-            self.left_info.height,
-            &db,
-            left_tel,
-        )
-        .ok_or_else(|| {
-            CalibrateError::InvalidConfig(format!(
-                "no lens profile matched the left camera at {}x{}: the video carries no \
-                 usable camera telemetry and no database profile shares this resolution. \
-                 Load a lens profile or record at a supported resolution.",
-                self.left_info.width, self.left_info.height
-            ))
-        })?;
-
-        let (right_p, right_info) = lens_database::detect_profile(
-            &self.right_info.path,
-            self.right_info.width,
-            self.right_info.height,
-            &db,
-            right_tel,
-        )
-        .unwrap_or_else(|| {
-            log::info!("right camera: no profile found, using left camera profile");
-            (left_p.clone(), left_info.clone())
-        });
-
-        self.left_params = Some(left_p.clone());
-        self.right_params = Some(right_p.clone());
-        self.left_profile_info = Some(left_info);
-        self.right_profile_info = Some(right_info);
-        Ok((left_p, right_p))
+        let left = resolve(left_meta.as_ref(), &self.left_info);
+        let right = resolve(right_meta.as_ref(), &self.right_info);
+        self.left_params = left.as_ref().map(|(lens, _)| lens.clone());
+        self.right_params = right.as_ref().map(|(lens, _)| lens.clone());
+        self.left_profile_info = left.map(|(_, info)| info);
+        self.right_profile_info = right.map(|(_, info)| info);
+        Ok((self.left_params.clone(), self.right_params.clone()))
     }
 
-    /// Lazily populate the left-video telemetry cache. Called from
-    /// `detect_profiles` and `imu_sync`; subsequent calls are no-ops.
+    /// Lazily populate the left-video telemetry cache for IMU processing; subsequent calls are no-ops.
     ///
     /// Parse failures are recorded as `Err(())` so we don't retry on
     /// every call - telemetry extraction is deterministic per-file.
@@ -250,26 +194,24 @@ impl CalibrationPipeline {
         }
     }
 
-    /// Load lens profiles from file paths.
+    /// Load independently supplied lens profiles. A missing side remains estimated.
     pub fn load_profiles(
         &mut self,
-        left_path: &Path,
+        left_path: Option<&Path>,
         right_path: Option<&Path>,
-    ) -> Result<(Lens, Lens), CalibrateError> {
-        let left_p = lens_database::load_from_file(left_path).map_err(|e| {
-            CalibrateError::InvalidConfig(format!("failed to load left profile: {e}"))
-        })?;
-        let right_p = if let Some(rp) = right_path {
-            lens_database::load_from_file(rp).map_err(|e| {
-                CalibrateError::InvalidConfig(format!("failed to load right profile: {e}"))
-            })?
-        } else {
-            left_p.clone()
+    ) -> Result<(), CalibrateError> {
+        let load = |path: Option<&Path>, side: &str| {
+            path.map(|path| {
+                lens_database::load_from_file(path).map_err(|e| {
+                    CalibrateError::InvalidConfig(format!("failed to load {side} profile: {e}"))
+                })
+            })
+            .transpose()
         };
-
-        self.left_params = Some(left_p.clone());
-        self.right_params = Some(right_p.clone());
-        Ok((left_p, right_p))
+        let left = load(left_path, "left")?;
+        let right = load(right_path, "right")?;
+        self.set_profiles(left, right);
+        Ok(())
     }
 
     // ---------------------------------------------------------------
@@ -286,16 +228,17 @@ impl CalibrationPipeline {
         self.sync_offset_frames
     }
 
-    /// Estimate sync offset and rotation seeds from IMU telemetry.
+    /// Estimate sync offset and rig framing from IMU telemetry.
     ///
     /// Reads gyroscope data from both video files and cross-correlates
-    /// to find the temporal offset. Also extracts differential orientation
-    /// (roll, pitch, tilt) for optimizer seeding.
+    /// to find the temporal offset. Also estimates rig tilt and roll.
     ///
     /// Returns the sync offset in frames, or `None` if telemetry is
     /// unavailable or cross-correlation fails.
     pub fn imu_sync(&mut self) -> Result<Option<i64>, CalibrateError> {
-        if !self.has_native_gyro {
+        if !*self.has_native_gyro.get_or_insert_with(|| {
+            telemetry::extract_metadata(&self.left_info.path).is_ok_and(|m| m.has_native_gyro)
+        }) {
             log::info!(
                 "IMU sync skipped: camera has no native gyroscope (quaternion-derived \
                  gyro produces unreliable sync). Falling back to audio sync."
@@ -327,7 +270,6 @@ impl CalibrationPipeline {
             log::info!("IMU sync offset: {off:.3}s = {frames} frames");
             frames
         });
-        let diff_orientation = telemetry::differential_orientation(left_telem, right_telem, skip);
         let rig_tilt_new = telemetry::rig_tilt(left_telem, skip);
         let left_roll = telemetry::gravity_vector(left_telem, skip).map(|g| g[2].atan2(g[0]));
         let right_roll = telemetry::gravity_vector(right_telem, skip).map(|g| g[2].atan2(g[0]));
@@ -335,22 +277,6 @@ impl CalibrationPipeline {
         // Telemetry borrows released here; safe to mutate self.
         if let Some(frames) = sync_computed {
             self.sync_offset_frames = frames;
-        }
-
-        if let Some((roll, pitch, tilt)) = diff_orientation {
-            log::info!(
-                "differential roll: {:.2} deg, pitch: {:.2} deg, tilt: {:.2} deg",
-                roll.to_degrees(),
-                pitch.to_degrees(),
-                tilt.to_degrees(),
-            );
-            self.imu_xrz_seed = Some(roll);
-            self.imu_zrx_seed = Some(tilt);
-            if pitch.abs() > 2.0_f64.to_radians() {
-                log::info!("pitch > 2 deg, enabling x_rx seeded at {pitch:.4} rad");
-                self.enable_x_rx = true;
-                self.imu_xrx_seed = Some(pitch);
-            }
         }
 
         // Rig tilt. Cap at 25 deg - beyond that the IMU reading is likely
@@ -420,12 +346,19 @@ impl CalibrationPipeline {
     /// Compute frame indices for both cameras with sync offset applied.
     ///
     /// Returns `(left_indices, right_indices)` that the app should use
-    /// to extract frame pairs from its video decoder.
+    /// to extract frame pairs from its video decoder. Sampling and start/end skips apply to the shared interval after synchronization. Returns empty vectors when the clips do not overlap.
     pub fn frame_indices(&self) -> (Vec<u64>, Vec<u64>) {
+        let offset = self.sync_offset_frames.unsigned_abs();
+        let (left_start, right_start) = if self.sync_offset_frames < 0 {
+            (offset, 0)
+        } else {
+            (0, offset)
+        };
         let total = self
             .left_info
             .total_frames
-            .min(self.right_info.total_frames);
+            .saturating_sub(left_start)
+            .min(self.right_info.total_frames.saturating_sub(right_start));
         let base_indices = sampling::select_frame_indices(
             total,
             self.left_info.fps,
@@ -434,16 +367,10 @@ impl CalibrationPipeline {
             self.config.skip_end_secs,
         );
 
-        let sync = self.sync_offset_frames;
-        if sync >= 0 {
-            let offset = sync as u64;
-            let right = base_indices.iter().map(|&i| i + offset).collect();
-            (base_indices, right)
-        } else {
-            let offset = (-sync) as u64;
-            let left = base_indices.iter().map(|&i| i + offset).collect();
-            (left, base_indices)
-        }
+        base_indices
+            .into_iter()
+            .map(|index| (index + left_start, index + right_start))
+            .unzip()
     }
 
     // ---------------------------------------------------------------
@@ -456,46 +383,24 @@ impl CalibrationPipeline {
     /// [`CalibrationPipeline::frame_indices`] and pass them here as `(left, right)` pairs.
     pub fn calibrate(
         &self,
-        gpu: &GpuContext,
+        interrupted: &std::sync::atomic::AtomicBool,
         frames: &[(Yuv420pFrame, Yuv420pFrame)],
     ) -> Result<CalibrationResult, CalibrateError> {
-        let left_params = self.left_params.as_ref().ok_or_else(|| {
-            CalibrateError::InvalidConfig(
-                "lens profiles not set - call detect_profiles() or set_profiles() first".into(),
-            )
-        })?;
-        let right_params = self.right_params.as_ref().ok_or_else(|| {
-            CalibrateError::InvalidConfig(
-                "lens profiles not set - call detect_profiles() or set_profiles() first".into(),
-            )
-        })?;
+        self.config.validate()?;
 
-        // Merge IMU seeds into config only when the toggle is on.
-        // When off, the optimizer uses its built-in start grid instead
-        // of IMU-derived orientation. Sync offset, rig_tilt, and
-        // rig_roll are always applied regardless of this flag.
-        let mut config = self.config.clone();
-        if config.use_imu_rotation_seeds {
-            if self.imu_xrz_seed.is_some() {
-                config.imu_xrz_seed = self.imu_xrz_seed;
-            }
-            if self.imu_xrx_seed.is_some() {
-                config.imu_xrx_seed = self.imu_xrx_seed;
-            }
-            if self.imu_zrx_seed.is_some() {
-                config.imu_zrx_seed = self.imu_zrx_seed;
-            }
-            if self.enable_x_rx {
-                config.optimizer.enable_x_rx = true;
-            }
-        }
-
-        let mut result = crate::calibrate(gpu, frames, left_params, right_params, &config)?;
+        let mut result = crate::direct::calibrate(
+            frames,
+            [self.left_params.as_ref(), self.right_params.as_ref()],
+            interrupted,
+        )?;
         result.calibration.framing.tilt = self.rig_tilt;
         result.calibration.framing.roll = self.rig_roll;
         result.calibration.sync_offset = self.sync_offset_frames;
-        result.left_lens_profile = self.left_profile_info.clone();
-        result.right_lens_profile = self.right_profile_info.clone();
+        result.left_lens_profile = self.left_profile_info.clone().or(result.left_lens_profile);
+        result.right_lens_profile = self
+            .right_profile_info
+            .clone()
+            .or(result.right_lens_profile);
         Ok(result)
     }
 
@@ -517,5 +422,82 @@ impl CalibrationPipeline {
     /// Get right video info.
     pub fn right_info(&self) -> &VideoInfo {
         &self.right_info
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires RECO_TEST_FOOTAGE with GoPro HERO10 source videos"]
+    fn manually_supplied_optics_do_not_disable_native_imu_sync() {
+        let footage = std::env::var_os("RECO_TEST_FOOTAGE").expect("set RECO_TEST_FOOTAGE");
+        let video = |side: &str| VideoInfo {
+            path: Path::new(&footage)
+                .join("gopro-hero10")
+                .join(format!("{side}_4k.mp4")),
+            width: 5312,
+            height: 2988,
+            fps: 30.0,
+            total_frames: 7500,
+        };
+        let mut pipeline =
+            CalibrationPipeline::new(video("left"), video("right"), CalibrationConfig::default());
+        assert!(pipeline.left_info.path.is_file() && pipeline.right_info.path.is_file());
+        let lens = Lens::fisheye(5312, 2988, 2500.0, 2500.0, 2656.0, 1494.0, [0.0; 4]);
+        pipeline.set_profiles(Some(lens.clone()), Some(lens));
+        pipeline.imu_sync().unwrap();
+        assert_eq!(pipeline.has_native_gyro, Some(true));
+        assert!(matches!(pipeline.left_telemetry, Some(Ok(_))));
+        assert!(matches!(pipeline.right_telemetry, Some(Ok(_))));
+    }
+
+    #[test]
+    fn explicit_profiles_are_independent_and_failed_loading_is_atomic() {
+        let info = VideoInfo {
+            path: "unused.mp4".into(),
+            width: 640,
+            height: 480,
+            fps: 30.0,
+            total_frames: 120,
+        };
+        let mut pipeline =
+            CalibrationPipeline::new(info.clone(), info, CalibrationConfig::default());
+        let lens = Lens::fisheye(640, 480, 300.0, 300.0, 320.0, 240.0, [0.0; 4]);
+        let json = serde_json::to_string(&lens).unwrap();
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("reco-profile-{}-{unique}.json", std::process::id()));
+        let mut file = std::fs::File::create_new(&path).unwrap();
+        std::io::Write::write_all(&mut file, json.as_bytes()).unwrap();
+        drop(file);
+
+        for right_only in [false, true] {
+            let (left, right) = if right_only {
+                (None, Some(path.as_path()))
+            } else {
+                (Some(path.as_path()), None)
+            };
+            pipeline.load_profiles(left, right).unwrap();
+            assert_eq!(pipeline.left_params().is_some(), !right_only);
+            assert_eq!(pipeline.right_params().is_some(), right_only);
+            let supplied = pipeline.left_params().or(pipeline.right_params()).unwrap();
+            assert_eq!(serde_json::to_string(supplied).unwrap(), json);
+        }
+        let missing = path.with_extension("missing");
+        assert!(pipeline.load_profiles(Some(&path), Some(&missing)).is_err());
+        assert!(pipeline.left_params().is_none());
+        assert_eq!(
+            serde_json::to_string(pipeline.right_params().unwrap()).unwrap(),
+            json
+        );
+        pipeline.load_profiles(None, None).unwrap();
+        assert!(pipeline.left_params().is_none() && pipeline.right_params().is_none());
+        assert!(pipeline.has_native_gyro.is_none());
+        std::fs::remove_file(path).unwrap();
     }
 }

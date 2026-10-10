@@ -20,14 +20,13 @@
 //!     &mut |p| eprintln!("{}: {}", p.step, p.detail),
 //!     &interrupted,
 //! )?;
-//! println!("Confidence: {:.1}%", result.confidence * 100.0);
+//! println!("Assessment: {:?}", result.assessment);
 //! ```
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use reco_core::calibration::Lens;
-use reco_core::gpu::{GpuContext, GpuError};
 use reco_io::ffmpeg::calibration_io::{self, CalibrationIoError};
 
 use crate::error::CalibrateError;
@@ -39,19 +38,20 @@ use crate::types::{CalibrationConfig, CalibrationProgress, CalibrationResult, Ca
 /// All fields are optional with sensible defaults.
 ///
 /// Lens profile resolution order (first match wins):
-/// 1. `left_params` + `right_params` (both must be set)
-/// 2. `left_profile` path (+ optional `right_profile`)
+/// 1. Supplied `left_params` / `right_params`, independently optional
+/// 2. Supplied `left_profile` / `right_profile` paths, independently optional
 /// 3. auto-detect from video metadata
 #[derive(Debug, Clone, Default)]
 pub struct CalibrateVideosOptions {
+    /// Estimate both optical models from image overlap, even when profiles are available.
+    pub estimate_optics: bool,
     /// Calibration algorithm config. Uses [`CalibrationConfig::default()`] if `None`.
     pub config: Option<CalibrationConfig>,
-    /// Path to the left lens profile. Auto-detects from video metadata if `None`.
+    /// Path to the left lens profile. A missing side is estimated when the other path is supplied; no paths means auto-detection.
     pub left_profile: Option<PathBuf>,
-    /// Path to the right lens profile. Uses left profile if `None`.
+    /// Path to the right lens profile. See [`Self::left_profile`].
     pub right_profile: Option<PathBuf>,
-    /// Pre-loaded left camera params. Wins over `left_profile` when both are
-    /// set. Must be set together with `right_params`.
+    /// Pre-loaded left camera params. Direct params take priority over profile paths; a missing side is estimated.
     ///
     /// Lets consumers that already resolved profiles (e.g. via
     /// `LensDatabase::candidates()`) skip the file round-trip.
@@ -71,16 +71,12 @@ pub enum CalibrateVideosError {
     #[error("I/O: {0}")]
     Io(#[from] CalibrationIoError),
 
-    /// GPU initialization error.
-    #[error("GPU: {0}")]
-    Gpu(#[from] GpuError),
-
     /// Calibration error.
     #[error("calibration: {0}")]
     Calibrate(#[from] CalibrateError),
 
-    /// No frames could be extracted from the videos.
-    #[error("no frames extracted from videos")]
+    /// No calibration frame pairs could be selected after synchronizing the clips.
+    #[error("no overlapping calibration frames could be selected from the videos")]
     NoFrames,
 
     /// Operation was cancelled via the interrupted flag.
@@ -166,8 +162,7 @@ fn emit_progress(
 /// Calibrate two video files with a single function call.
 ///
 /// Handles the full workflow: video probing, lens profile detection,
-/// sync estimation (IMU, then audio fallback), frame extraction, GPU
-/// initialization, and calibration.
+/// sync estimation (IMU, then audio fallback), frame extraction and native alignment.
 ///
 /// The `on_progress` callback is invoked before each major step so
 /// callers can display status. The `interrupted` flag is checked
@@ -188,6 +183,7 @@ pub fn calibrate_videos(
     reco_io::init();
 
     let config = options.config.unwrap_or_default();
+    config.validate()?;
 
     // Probe video metadata
     check_interrupted(interrupted)?;
@@ -218,32 +214,25 @@ pub fn calibrate_videos(
     let mut pipeline = CalibrationPipeline::new(left_info, right_info, config);
 
     // Lens profiles: direct params > path > auto-detect.
-    match (options.left_params.clone(), options.right_params.clone()) {
-        (Some(lp), Some(rp)) => pipeline.set_profiles(lp, rp),
-        (left_params, right_params) => {
-            if left_params.is_some() || right_params.is_some() {
-                log::warn!(
-                    "CalibrateVideosOptions: left_params/right_params must both \
-                     be set (got left={}, right={}); falling back to path / auto-detect",
-                    left_params.is_some(),
-                    right_params.is_some(),
-                );
-            }
-            if let Some(ref lp) = options.left_profile {
-                pipeline.load_profiles(lp, options.right_profile.as_deref())?;
-            } else {
-                // Distinct step label - telemetry parse dominates here on
-                // heavy sources (DJI Action 4, newer GoPro). Without this
-                // the UI stays on "Probing video metadata" for 30-60s.
-                check_interrupted(interrupted)?;
-                emit_progress(
-                    on_progress,
-                    CalibrationStep::DetectingProfiles,
-                    "Detecting lens profiles",
-                );
-                pipeline.detect_profiles()?;
-            }
-        }
+    if options.left_params.is_some() || options.right_params.is_some() {
+        pipeline.set_profiles(options.left_params, options.right_params);
+    } else if options.left_profile.is_some() || options.right_profile.is_some() {
+        pipeline.load_profiles(
+            options.left_profile.as_deref(),
+            options.right_profile.as_deref(),
+        )?;
+    } else {
+        check_interrupted(interrupted)?;
+        emit_progress(
+            on_progress,
+            CalibrationStep::DetectingProfiles,
+            "Finding available lens profiles",
+        );
+        pipeline.detect_profiles()?;
+    }
+
+    if options.estimate_optics {
+        pipeline.set_profiles(None, None);
     }
 
     // Sync: manual > IMU > audio > default (0)
@@ -282,6 +271,9 @@ pub fn calibrate_videos(
     // Extract frames at computed indices
     check_interrupted(interrupted)?;
     let (left_indices, right_indices) = pipeline.frame_indices();
+    if left_indices.is_empty() {
+        return Err(CalibrateVideosError::NoFrames);
+    }
     emit_progress(
         on_progress,
         CalibrationStep::ExtractingFrames,
@@ -296,23 +288,14 @@ pub fn calibrate_videos(
     let left_frames = calibration_io::extract_frames(left_video, &left_indices)?;
     let right_frames = calibration_io::extract_frames(right_video, &right_indices)?;
 
-    let pair_count = left_frames.len().min(right_frames.len());
-    if pair_count == 0 {
-        return Err(CalibrateVideosError::NoFrames);
-    }
-
     let frame_pairs: Vec<_> = left_frames.into_iter().zip(right_frames).collect();
 
-    // GPU init + calibrate
     check_interrupted(interrupted)?;
     emit_progress(
         on_progress,
-        CalibrationStep::FeatureMatching,
-        "GPU init and feature matching",
+        CalibrationStep::Optimizing,
+        "Fitting and verifying image alignment",
     );
-    let gpu = GpuContext::new_blocking()?;
-    log::info!("GPU: {}", gpu.gpu_name());
-
-    let result = pipeline.calibrate(&gpu, &frame_pairs)?;
+    let result = pipeline.calibrate(interrupted, &frame_pairs)?;
     Ok(result)
 }

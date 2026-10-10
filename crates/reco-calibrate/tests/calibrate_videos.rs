@@ -1,8 +1,7 @@
 //! Integration test for the `calibrate_videos` one-call API.
 //!
-//! Verifies that `calibrate_videos` produces results consistent with
-//! a known-good calibration from the same footage. Requires real video
-//! files and a GPU. Run with `cargo test -p reco-calibrate --features io -- --ignored`.
+//! Exercises native fitting and independent confirmation through the real decoder.
+//! Requires the named local footage, not a GPU. Run with `cargo test -p reco-calibrate --features io --test calibrate_videos -- --ignored`.
 
 #![cfg(feature = "io")]
 
@@ -11,105 +10,81 @@ use std::sync::atomic::AtomicBool;
 
 use reco_calibrate::video::{CalibrateVideosOptions, calibrate_videos};
 
-const LEFT_4K: &str = "/media/guelzim/HDD/reco-test-footage/gopro-hero10/left_4k.mp4";
-const RIGHT_4K: &str = "/media/guelzim/HDD/reco-test-footage/gopro-hero10/right_4k.mp4";
-const KNOWN_GOOD: &str = "/media/guelzim/HDD/reco-test-footage/gopro-hero10/match_4k.json";
-
-fn have_test_footage() -> bool {
-    Path::new(LEFT_4K).exists() && Path::new(KNOWN_GOOD).exists()
-}
-
 #[test]
-#[ignore]
-fn calibrate_videos_matches_known_good() {
-    if !have_test_footage() {
-        eprintln!("Skipping: test footage not available");
-        return;
+#[ignore = "requires RECO_TEST_FOOTAGE with synchronized reference fixtures"]
+fn calibrate_videos_confirms_real_decoded_overlap() {
+    let footage = std::env::var_os("RECO_TEST_FOOTAGE").expect("set RECO_TEST_FOOTAGE");
+    #[derive(serde::Deserialize)]
+    struct Expected {
+        sync_offset: i64,
+        skip_start_secs: f64,
+        skip_end_secs: f64,
     }
-
-    let interrupted = AtomicBool::new(false);
-    let result = calibrate_videos(
-        Path::new(LEFT_4K),
-        Path::new(RIGHT_4K),
-        CalibrateVideosOptions::default(),
-        &mut |p| eprintln!("[test] {}: {}", p.step, p.detail),
-        &interrupted,
+    let expected: Expected = serde_json::from_slice(
+        &std::fs::read(Path::new(&footage).join("expected.json")).unwrap(),
     )
-    .expect("calibrate_videos failed");
+    .unwrap();
+    let left = Path::new(&footage).join("left.mp4");
+    let right = Path::new(&footage).join("right.mp4");
+    assert!(
+        left.exists() && right.exists(),
+        "test footage is unavailable"
+    );
+    let interrupted = AtomicBool::new(false);
+    for estimate_optics in [false, true] {
+        let result = calibrate_videos(
+            &left,
+            &right,
+            CalibrateVideosOptions {
+                estimate_optics,
+                sync_offset: Some(expected.sync_offset),
+                config: Some(reco_calibrate::CalibrationConfig {
+                    num_frames: 4,
+                    skip_start_secs: expected.skip_start_secs,
+                    skip_end_secs: expected.skip_end_secs,
+                }),
+                ..Default::default()
+            },
+            &mut |p| eprintln!("[test] {}: {}", p.step, p.detail),
+            &interrupted,
+        )
+        .expect("calibrate_videos failed");
 
-    // Load known-good calibration for comparison
-    let known: reco_core::calibration::Calibration =
-        reco_core::calibration::Calibration::from_file(Path::new(KNOWN_GOOD))
-            .expect("failed to load known-good calibration");
+        result.calibration.validate().unwrap();
+        assert_eq!(result.calibration.sync_offset, expected.sync_offset);
+        if estimate_optics {
+            assert!(matches!(
+                result.assessment,
+                reco_calibrate::CalibrationAssessment::NeedsReview { .. }
+            ));
+            assert!(
+                result
+                    .overlap_checks
+                    .iter()
+                    .any(|check| check.bands.iter().any(|&n| n < 8))
+            );
+        } else {
+            assert_eq!(
+                result.assessment,
+                reco_calibrate::CalibrationAssessment::Confirmed
+            );
+        }
+        assert_eq!(result.frames_used, 1);
+        assert_eq!(result.overlap_checks.len(), 3);
+        assert!(
+            result.total_matches > 10,
+            "too few matches: {}",
+            result.total_matches
+        );
 
-    // Sync offset should match exactly (both use IMU)
-    assert_eq!(
-        result.calibration.sync_offset, known.sync_offset,
-        "sync offset mismatch"
-    );
-
-    // Placement parameters should be close (AKAZE/RANSAC have random elements)
-    let tol = 0.01;
-    let got = &result.calibration;
-    let exp = &known;
-
-    assert!(
-        (got.framing.axis_offset - exp.framing.axis_offset).abs() < tol,
-        "camera_axis_offset: got {}, expected {} (tol {tol})",
-        got.framing.axis_offset,
-        exp.framing.axis_offset,
-    );
-    assert!(
-        (got.projection.l_shape().unwrap().intersect - exp.projection.l_shape().unwrap().intersect)
-            .abs()
-            < tol,
-        "intersect: got {}, expected {} (tol {tol})",
-        got.projection.l_shape().unwrap().intersect,
-        exp.projection.l_shape().unwrap().intersect,
-    );
-    assert!(
-        (got.projection.l_shape().unwrap().x_ty - exp.projection.l_shape().unwrap().x_ty).abs()
-            < tol,
-        "x_ty: got {}, expected {} (tol {tol})",
-        got.projection.l_shape().unwrap().x_ty,
-        exp.projection.l_shape().unwrap().x_ty,
-    );
-    assert!(
-        (got.projection.l_shape().unwrap().x_rz - exp.projection.l_shape().unwrap().x_rz).abs()
-            < tol,
-        "x_rz: got {}, expected {} (tol {tol})",
-        got.projection.l_shape().unwrap().x_rz,
-        exp.projection.l_shape().unwrap().x_rz,
-    );
-    assert!(
-        (got.projection.l_shape().unwrap().z_rx - exp.projection.l_shape().unwrap().z_rx).abs()
-            < tol,
-        "z_rx: got {}, expected {} (tol {tol})",
-        got.projection.l_shape().unwrap().z_rx,
-        exp.projection.l_shape().unwrap().z_rx,
-    );
-
-    // Quality metrics
-    assert!(
-        result.confidence > 0.5,
-        "low confidence: {}",
-        result.confidence
-    );
-    assert!(result.frames_used > 0, "no frames used");
-    assert!(
-        result.total_matches > 10,
-        "too few matches: {}",
-        result.total_matches
-    );
-
-    println!("calibrate_videos passed:");
-    println!("  sync_offset: {}", result.calibration.sync_offset);
-    println!("  confidence: {:.1}%", result.confidence * 100.0);
-    println!("  frames_used: {}", result.frames_used);
-    println!("  matches: {}", result.total_matches);
-    println!("  cam_d: {:.4}", got.framing.axis_offset);
-    println!(
-        "  intersect: {:.4}",
-        got.projection.l_shape().unwrap().intersect
-    );
+        for profile in [result.left_lens_profile, result.right_lens_profile] {
+            assert_eq!(
+                matches!(
+                    profile.unwrap().source,
+                    reco_calibrate::ProfileSource::Estimated
+                ),
+                estimate_optics
+            );
+        }
+    }
 }

@@ -7,9 +7,7 @@
 //! θ_d = θ × (1 + k₁θ² + k₂θ⁴ + k₃θ⁶ + k₄θ⁸)
 //! ```
 //!
-//! The primary use case is CPU-side frame undistortion for the
-//! calibration pipeline, which needs to match features in rectilinear
-//! (undistorted) space.
+//! Shared optical mapping for rendering, source correspondence and calibration.
 
 #[cfg(feature = "gpu")]
 pub mod preview;
@@ -17,6 +15,17 @@ pub mod preview;
 pub mod undistort;
 
 use crate::calibration::Lens;
+
+pub(crate) mod inverse;
+
+/// Radial capacity remaining beyond the farthest sensor corner on the central KB4 branch.
+///
+/// A nonnegative margin reserves a radial derivative of at least 0.01 across the sensor.
+/// This is an invertibility constraint for fitting, not an optical accuracy measure.
+/// Invalid or nonfinite optical parameters return negative infinity.
+pub fn sensor_domain_margin(lens: &Lens) -> f64 {
+    inverse::sensor_margin(lens).unwrap_or(f64::NEG_INFINITY)
+}
 
 pub(crate) use kb4::kb4_forward_scale;
 
@@ -49,7 +58,7 @@ pub(crate) mod kb4 {
     /// d/dθ θ_d = 1 + 3 k₁ θ² + 5 k₂ θ⁴ + 7 k₃ θ⁶ + 9 k₄ θ⁸
     /// ```
     #[inline]
-    fn theta_d_prime(theta: f64, d: &[f64; 4]) -> f64 {
+    pub(super) fn theta_d_prime(theta: f64, d: &[f64; 4]) -> f64 {
         let t2 = theta * theta;
         let t4 = t2 * t2;
         let t6 = t4 * t2;
@@ -77,44 +86,30 @@ pub(crate) mod kb4 {
         let full = kb4_forward_scale(r, d);
         equidistant + (full - equidistant) * correction
     }
+}
 
-    /// Solve the correction-adjusted KB4 polynomial for a forward-facing ray angle in `[0, pi/2)`.
-    ///
-    /// Returns `None` if Newton iteration fails to converge to a finite root in the ray domain. Intermediate polynomial evaluations may leave that domain. Arbitrary coefficients need not be monotonic, so this does not guarantee a unique inverse or find every possible root.
-    pub fn inverse_theta_with_correction(
-        radius: f64,
-        d: &[f64; 4],
-        correction: f64,
-    ) -> Option<f64> {
-        const RESIDUAL_EPS: f64 = 1e-10;
-        const MAX_ITERATIONS: usize = 20;
-        let domain = 0.0..std::f64::consts::FRAC_PI_2;
-        if !radius.is_finite() || radius < 0.0 {
-            return None;
-        }
-        // mix(theta, theta_d(theta), correction) scales each non-constant coefficient.
-        let coefficients = d.map(|k| k * correction);
-        let mut theta = radius.min(std::f64::consts::FRAC_PI_2 - f64::EPSILON);
-        for iteration in 0..=MAX_ITERATIONS {
-            if !theta.is_finite() {
-                return None;
-            }
-            let residual = theta_d(theta, &coefficients) - radius;
-            if residual.abs() <= RESIDUAL_EPS {
-                return domain.contains(&theta).then_some(theta);
-            }
-            let derivative = theta_d_prime(theta, &coefficients);
-            if iteration == MAX_ITERATIONS
-                || !residual.is_finite()
-                || !derivative.is_finite()
-                || derivative.abs() < 1e-15
-            {
-                return None;
-            }
-            theta -= residual / derivative;
-        }
-        None
+/// Inverse KB4 fisheye: distorted camera pixel `[0,1]` to extended plane UV.
+pub(crate) fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &Lens) -> Option<(f64, f64)> {
+    let w = params.width as f64;
+    let h = params.height as f64;
+    let fx = params.fx / w;
+    let fy = params.fy / h;
+    let cx = params.cx / w;
+    let cy = params.cy / h;
+
+    let dx = (dist_x - cx) / fx;
+    let dy = (dist_y - cy) / fy;
+    let theta_d = dx.hypot(dy);
+    let theta = inverse::theta(theta_d, &params.distortion, params.correction as f64)?;
+
+    if theta_d < 1e-12 {
+        return Some((cx, cy));
     }
+
+    let scale = theta.tan() / theta_d;
+    let u = fx * dx * scale + cx;
+    let v = fy * dy * scale + cy;
+    (u.is_finite() && v.is_finite()).then_some((u, v))
 }
 
 /// Undistort a grayscale frame using the KB4 fisheye model.
@@ -296,9 +291,7 @@ mod tests {
                     let r = theta.tan();
                     let radius =
                         r * kb4::kb4_forward_scale_with_correction(r, &coefficients, correction);
-                    let recovered =
-                        kb4::inverse_theta_with_correction(radius, &coefficients, correction)
-                            .unwrap();
+                    let recovered = inverse::theta(radius, &coefficients, correction).unwrap();
                     assert!(
                         (recovered - theta).abs() < 1e-9,
                         "coefficients={coefficients:?}, correction={correction}, theta={theta}, recovered={recovered}"
@@ -309,19 +302,19 @@ mod tests {
     }
 
     #[test]
-    fn inverse_theta_allows_intermediate_domain_excursions() {
+    fn inverse_theta_recovers_a_wide_angle_without_leaving_the_domain() {
         let coefficients = [-0.25, -0.03, 0.074, -0.011];
         let expected = 1.5;
         let radius = kb4::theta_d(expected, &coefficients);
-        // The first Newton step exceeds pi/2, but subsequent steps reach this valid root.
-        let actual = kb4::inverse_theta_with_correction(radius, &coefficients, 1.0).unwrap();
+        // An unconstrained Newton step exceeds pi/2 for this finite forward-facing root.
+        let actual = inverse::theta(radius, &coefficients, 1.0).unwrap();
         assert!((actual - expected).abs() < 1e-9);
     }
 
     #[test]
     fn inverse_theta_rejects_converged_roots_outside_the_ray_domain() {
         // With zero coefficients the polynomial root is exactly the source radius.
-        assert!(kb4::inverse_theta_with_correction(2.0, &[0.0; 4], 1.0).is_none());
+        assert!(inverse::theta(2.0, &[0.0; 4], 1.0).is_none());
     }
 
     #[test]
@@ -332,7 +325,7 @@ mod tests {
             let coefficients = [k1, 0.0, 0.0, 0.0];
             for i in 0..=100 {
                 let radius = i as f64 * 1.5 / 100.0;
-                match kb4::inverse_theta_with_correction(radius, &coefficients, 1.0) {
+                match inverse::theta(radius, &coefficients, 1.0) {
                     Some(theta) => {
                         assert!((0.0..std::f64::consts::FRAC_PI_2).contains(&theta));
                         assert!((kb4::theta_d(theta, &coefficients) - radius).abs() <= 1e-10);

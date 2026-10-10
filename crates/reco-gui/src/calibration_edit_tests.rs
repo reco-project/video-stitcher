@@ -3,6 +3,7 @@
 use super::*;
 use reco_core::calibration::{Framing, Lens};
 use reco_core::projection::LShape;
+use slint::Model;
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
 
 #[test]
@@ -372,4 +373,304 @@ fn editor_rolls_back_invalid_controls_and_keeps_preview_and_document_together() 
         app.get_status_text()
             .contains("Could not reopen reordered inputs")
     );
+}
+
+fn pending_calibration(
+    state: &mut AppState,
+) -> (std::sync::mpsc::Sender<CalibrationResult>, Arc<AtomicBool>) {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let interrupted = Arc::new(AtomicBool::new(false));
+    state.calibration_job = Some(calibration_job::PendingCalibration::new(
+        state,
+        receiver,
+        Arc::clone(&interrupted),
+    ));
+    (sender, interrupted)
+}
+
+fn decoded_gpu_state() -> AppState {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        backends: reco_core::gpu::GpuContext::select_backends(),
+        ..Default::default()
+    });
+    let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
+    let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
+    let mut state = AppState::new(Default::default());
+    state.shared_gpu = Some(SharedGpu {
+        device,
+        queue,
+        adapter_info: adapter.get_info(),
+    });
+    let input =
+        reco_io::InputPath::Single(std::env::var("RECO_PLAYBACK_TEST_VIDEO").unwrap().into());
+    state.left_input = Some(input.clone());
+    state.right_input = Some(input);
+    state.use_constrained_look = false;
+    state
+}
+
+#[test]
+fn reviewable_calibration_does_not_replace_or_save_the_current_document() {
+    slint::platform::set_platform(Box::new(HeadlessPlatform)).unwrap();
+    let app = RecoApp::new().unwrap();
+    let mut state = AppState::new(Default::default());
+    let accepted = calibration();
+    state.calibration = Some(accepted.clone());
+    state.calibration_path = Some("accepted.json".into());
+    let mut candidate = accepted.clone();
+    candidate.framing.roll = 0.2;
+    handle_calibration_result(
+        Ok(CalibrationOutput {
+            calibration: candidate,
+            assessment: reco_calibrate::CalibrationAssessment::NeedsReview {
+                reason: "insufficient independent evidence".into(),
+            },
+            total_matches: 50,
+            left_lens_profile: None,
+            right_lens_profile: None,
+        }),
+        &mut state,
+        &app.as_weak(),
+        false,
+    );
+    assert_eq!(state.calibration.as_ref(), Some(&accepted));
+    assert_eq!(
+        state.calibration_path.as_deref(),
+        Some(std::path::Path::new("accepted.json"))
+    );
+    assert!(state.bridge.is_none());
+    assert!(app.get_calibration_needs_review());
+    let (_, snapshot) = state.review_calibration.as_ref().unwrap();
+    assert!(snapshot.matches(&state));
+    state.calibration.as_mut().unwrap().framing.roll = 0.1;
+    assert!(!state.review_calibration.as_ref().unwrap().1.matches(&state));
+}
+
+#[test]
+fn clearing_sources_discards_pending_calibration_results() {
+    let mut state = AppState::new(Default::default());
+    let (sender, interrupted) = pending_calibration(&mut state);
+    state.unload_pipeline();
+    assert!(interrupted.load(Ordering::Relaxed));
+    assert!(
+        state.calibration_job.is_some(),
+        "retain the worker until it stops"
+    );
+    assert!(!state.poll_calibration(&slint::Weak::default()));
+    sender
+        .send(Err(reco_calibrate::video::CalibrateVideosError::NoFrames))
+        .unwrap();
+    assert!(state.poll_calibration(&slint::Weak::default()));
+    assert!(state.calibration_job.is_none());
+    assert!(state.calibration.is_none());
+}
+
+#[test]
+fn calibration_result_requires_the_same_inputs_and_document() {
+    slint::platform::set_platform(Box::new(HeadlessPlatform)).unwrap();
+    let app = RecoApp::new().unwrap();
+    for change in 0..4 {
+        let mut state = AppState::new(Default::default());
+        state.calibration = Some(calibration());
+        state.calibration_path = Some("first.json".into());
+        state.left_input = Some(reco_io::InputPath::Chained(vec![
+            "first.mp4".into(),
+            "second.mp4".into(),
+        ]));
+        state.right_input = Some(reco_io::InputPath::Single("right.mp4".into()));
+        let (sender, _) = pending_calibration(&mut state);
+        match change {
+            0 => {
+                state.left_input = Some(reco_io::InputPath::Chained(vec![
+                    "first.mp4".into(),
+                    "new.mp4".into(),
+                ]))
+            }
+            1 => state.right_input = None,
+            2 => state.calibration_path = Some("second.json".into()),
+            _ => state.calibration.as_mut().unwrap().framing.roll = 0.2,
+        }
+        let current = state.calibration.clone();
+        sender
+            .send(Ok(CalibrationOutput {
+                calibration: calibration(),
+                assessment: reco_calibrate::CalibrationAssessment::Confirmed,
+                total_matches: 50,
+                left_lens_profile: None,
+                right_lens_profile: None,
+            }))
+            .unwrap();
+        app.set_calibrating(true);
+        assert!(state.poll_calibration(&app.as_weak()));
+        assert!(!app.get_calibrating());
+        assert_eq!(state.calibration, current);
+        assert!(
+            state.bridge.is_none(),
+            "stale results must not initialize a renderer"
+        );
+        assert_eq!(app.get_toasts().row_count(), 0);
+    }
+}
+
+#[test]
+fn recalibration_failure_and_worker_disconnect_preserve_the_current_document() {
+    slint::platform::set_platform(Box::new(HeadlessPlatform)).unwrap();
+    let app = RecoApp::new().unwrap();
+    for disconnect in [false, true] {
+        let mut state = AppState::new(Default::default());
+        state.calibration = Some(calibration());
+        let (sender, _) = pending_calibration(&mut state);
+        if !disconnect {
+            sender
+                .send(Err(reco_calibrate::video::CalibrateVideosError::NoFrames))
+                .unwrap();
+        }
+        drop(sender);
+        app.set_files_loaded(true);
+        app.set_calibrating(true);
+        assert!(state.poll_calibration(&app.as_weak()));
+        assert!(state.calibration_job.is_none());
+        assert!(!app.get_calibrating());
+        assert!(app.get_files_loaded());
+        assert_eq!(state.calibration, Some(calibration()));
+        assert!(app.get_toasts().row_count() > 0);
+    }
+}
+
+#[test]
+fn accepted_edits_and_shutdown_cancel_calibration() {
+    let mut state = AppState::new(Default::default());
+    let (_, interrupted) = pending_calibration(&mut state);
+    let mut invalid = calibration();
+    invalid.lenses[0].fx = 0.0;
+    assert!(state.apply_calibration(invalid).is_err());
+    assert!(!interrupted.load(Ordering::Relaxed));
+    state.apply_calibration(calibration()).unwrap();
+    assert!(interrupted.load(Ordering::Relaxed));
+    assert!(state.calibration_job.is_some());
+    drop(state);
+    let mut state = AppState::new(Default::default());
+    let (_, interrupted) = pending_calibration(&mut state);
+    drop(state);
+    assert!(interrupted.load(Ordering::Relaxed));
+}
+
+#[test]
+fn explicit_calibration_cancellation_keeps_the_current_preview() {
+    slint::platform::set_platform(Box::new(HeadlessPlatform)).unwrap();
+    let app = RecoApp::new().unwrap();
+    let mut state = AppState::new(Default::default());
+    state.calibration = Some(calibration());
+    let (sender, _) = pending_calibration(&mut state);
+    app.set_files_loaded(true);
+    app.set_calibrating(true);
+    state.cancel_calibration();
+    assert!(!state.poll_calibration(&app.as_weak()));
+    assert!(app.get_calibrating());
+    assert_eq!(app.get_calibration_step(), "Stopping…");
+    sender
+        .send(Err(reco_calibrate::video::CalibrateVideosError::Cancelled))
+        .unwrap();
+    assert!(state.poll_calibration(&app.as_weak()));
+    assert!(!app.get_calibrating());
+    assert!(app.get_files_loaded());
+    assert_eq!(state.calibration, Some(calibration()));
+    assert_eq!(app.get_status_text(), "Calibration cancelled");
+    assert_eq!(app.get_toasts().row_count(), 0);
+}
+
+#[test]
+#[ignore = "requires a GPU and RECO_PLAYBACK_TEST_VIDEO pointing to a readable video"]
+fn failed_automatic_save_keeps_the_new_document_dirty_and_does_not_target_the_old_file() {
+    slint::platform::set_platform(Box::new(HeadlessPlatform)).unwrap();
+    let app = RecoApp::new().unwrap();
+    let mut state = decoded_gpu_state();
+    let directory =
+        std::env::temp_dir().join(format!("reco-auto-save-failure-{}", std::process::id()));
+    std::fs::create_dir(&directory).unwrap();
+    let previous_path = directory.join("previous.json");
+    let destination = directory.join("left_calibration.json");
+    std::fs::create_dir(&destination).unwrap();
+    let baseline = calibration();
+    baseline.to_file(&previous_path).unwrap();
+    state.calibration_path = Some(previous_path.clone());
+    state.calibration = Some(baseline.clone());
+    state.cal_baseline = Some(baseline.clone());
+    state.left_path = Some(directory.join("left.mp4"));
+    let mut replacement = baseline.clone();
+    replacement.framing.roll = 0.2;
+    handle_calibration_result(
+        Ok(CalibrationOutput {
+            calibration: replacement.clone(),
+            assessment: reco_calibrate::CalibrationAssessment::Confirmed,
+            total_matches: 50,
+            left_lens_profile: None,
+            right_lens_profile: None,
+        }),
+        &mut state,
+        &app.as_weak(),
+        false,
+    );
+    assert_eq!(state.calibration.as_ref(), Some(&replacement));
+    assert!(app.get_files_loaded());
+    assert!(app.get_clip_duration_secs() > 0.0);
+    assert_eq!(app.get_export_end_secs(), app.get_clip_duration_secs());
+    assert!(
+        app.get_cal_dirty(),
+        "failed persistence must not claim a saved document"
+    );
+    assert_eq!(state.calibration_path.as_ref(), Some(&destination));
+    assert_eq!(Calibration::from_file(&previous_path).unwrap(), baseline);
+    assert!(
+        app.get_toasts()
+            .iter()
+            .any(|toast| toast.title == "Calibration not saved")
+    );
+    std::fs::remove_dir(&destination).unwrap();
+    state.save_calibration().unwrap();
+    assert_eq!(Calibration::from_file(&destination).unwrap(), replacement);
+    assert_eq!(Calibration::from_file(&previous_path).unwrap(), baseline);
+    std::fs::remove_file(destination).unwrap();
+    std::fs::remove_file(previous_path).unwrap();
+    std::fs::remove_dir(directory).unwrap();
+}
+
+#[test]
+#[ignore = "requires a GPU and RECO_PLAYBACK_TEST_VIDEO pointing to a readable video"]
+fn explicit_candidate_preview_does_not_save_until_requested() {
+    slint::platform::set_platform(Box::new(HeadlessPlatform)).unwrap();
+    let app = RecoApp::new().unwrap();
+    let mut state = decoded_gpu_state();
+    let directory =
+        std::env::temp_dir().join(format!("reco-candidate-preview-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    state.left_path = Some(directory.join("left.mp4"));
+    let destination = directory.join("left_calibration.json");
+    let previous = calibration();
+    previous.to_file(&destination).unwrap();
+    let mut candidate = previous.clone();
+    candidate.framing.roll = 0.2;
+    handle_calibration_result(
+        Ok(CalibrationOutput {
+            calibration: candidate.clone(),
+            assessment: reco_calibrate::CalibrationAssessment::NeedsReview {
+                reason: "insufficient evidence".into(),
+            },
+            total_matches: 50,
+            left_lens_profile: None,
+            right_lens_profile: None,
+        }),
+        &mut state,
+        &app.as_weak(),
+        true,
+    );
+    assert_eq!(state.calibration.as_ref(), Some(&candidate));
+    assert!(app.get_files_loaded());
+    assert!(app.get_cal_dirty());
+    assert_eq!(state.calibration_path.as_ref(), Some(&destination));
+    assert_eq!(Calibration::from_file(&destination).unwrap(), previous);
+    state.save_calibration().unwrap();
+    assert_eq!(Calibration::from_file(&destination).unwrap(), candidate);
+    std::fs::remove_file(destination).unwrap();
+    std::fs::remove_dir(directory).unwrap();
 }

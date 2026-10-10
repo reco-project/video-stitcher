@@ -1,8 +1,6 @@
 //! Lens profile database for automatic camera detection.
 //!
-//! Loads Gyroflow-format lens profiles from the bundled CBOR database
-//! (4200+ profiles across 50+ camera brands) and matches them against
-//! camera metadata extracted from video files.
+//! Loads Gyroflow-format lens profiles from the bundled CBOR database and matches them against camera metadata extracted from video files.
 //!
 //! ## Data source
 //!
@@ -67,8 +65,7 @@ pub struct LensDatabase {
 impl LensDatabase {
     /// Get the shared embedded profile database (cached singleton).
     ///
-    /// First call decompresses and parses the bundled CBOR (~50ms).
-    /// Subsequent calls return the same `&'static` reference instantly.
+    /// The first call decompresses and parses the bundled CBOR. Subsequent calls return the same reference.
     pub fn embedded() -> &'static LensDatabase {
         EMBEDDED_DB.get_or_init(Self::load_embedded)
     }
@@ -314,6 +311,46 @@ impl LensDatabase {
         self.find(camera_type, model, width, height, lens_info)
     }
 
+    /// Choose embedded optics, a camera-matched profile, or a resolution fallback from already-probed metadata.
+    pub(crate) fn find_for_metadata(
+        &self,
+        metadata: Option<&crate::telemetry::CameraMetadata>,
+        width: u32,
+        height: u32,
+    ) -> Option<(Lens, LensProfileInfo)> {
+        if let Some(metadata) = metadata {
+            if let Some(profile) = &metadata.lens_profile {
+                log::info!(
+                    "lens auto-detect: embedded profile from {} {}",
+                    metadata.camera_type,
+                    metadata.camera_model.as_deref().unwrap_or("?")
+                );
+                return Some((
+                    profile.clone(),
+                    LensProfileInfo {
+                        camera: metadata.camera_type.clone(),
+                        lens: metadata
+                            .camera_model
+                            .clone()
+                            .unwrap_or_else(|| "unknown".into()),
+                        source: ProfileSource::AutoDetected,
+                        path: None,
+                    },
+                ));
+            }
+            if let Some(found) = self.find_from_telemetry(
+                &metadata.camera_type,
+                metadata.camera_model.as_deref(),
+                width,
+                height,
+                metadata.lens_info.as_deref(),
+            ) {
+                return Some(found);
+            }
+        }
+        self.find_by_resolution(width, height)
+    }
+
     /// Find a profile by resolution only (no camera identification).
     ///
     /// Searches all profiles for an exact resolution match. If multiple
@@ -552,7 +589,7 @@ fn format_lens_name(lens_model: &str, camera_setting: &str) -> String {
 ///
 /// Accepts multiple formats:
 /// - v1 uniforms: `{fx, fy, cx, cy, d: [k1..k4], width, height}`
-/// - Gyroflow: `{camera_matrix: {fx,fy,cx,cy}, distortion_coeffs: [...], resolution: {w,h}}`
+/// - Gyroflow KB4: `{camera_matrix: {fx,fy,cx,cy}, distortion_coeffs: [...], resolution: {w,h}}`
 /// - Gyroflow with fisheye_params wrapper
 ///
 /// This is the standard way to load a manually-specified lens profile.
@@ -580,87 +617,15 @@ pub fn load_from_json(json_str: &str, source: &str) -> Result<Lens, LensLoadErro
         return serde_json::from_value::<Lens>(v).map_err(|e| LensLoadError::Parse(e.to_string()));
     }
 
-    // Gyroflow/reco profile format
-    if let Some(entry) = parse_profile_value(&v, source) {
-        return Ok(entry.params);
+    if let Some(lens) = parse_gyroflow_lens(&v) {
+        return Ok(lens);
     }
 
     Err(LensLoadError::UnrecognizedFormat(source.to_string()))
 }
 
-/// Auto-detect the camera profile from a video file.
-///
-/// Tries in order:
-/// 1. Embedded lens profile from video metadata (DJI cameras)
-/// 2. Camera identification + database lookup (GoPro, etc.)
-///
-/// When `cached_telemetry` is `Some`, the caller has already parsed the
-/// telemetry stream (e.g. for IMU sync) and is passing it through to
-/// avoid a second parse. When `None`, this function extracts telemetry
-/// itself and falls back gracefully if the file has none.
-///
-/// Returns `None` if the camera can't be identified or no profile matches.
-pub fn detect_profile(
-    video_path: &Path,
-    video_width: u32,
-    video_height: u32,
-    db: &LensDatabase,
-    cached_telemetry: Option<&crate::telemetry::TelemetryData>,
-) -> Option<(Lens, LensProfileInfo)> {
-    let extracted: Option<crate::telemetry::TelemetryData> = if cached_telemetry.is_some() {
-        None
-    } else {
-        match crate::telemetry::extract(video_path) {
-            Ok(t) => Some(t),
-            Err(e) => {
-                log::warn!("lens auto-detect: telemetry extraction failed: {e}");
-                None
-            }
-        }
-    };
-    let tel: Option<&crate::telemetry::TelemetryData> = cached_telemetry.or(extracted.as_ref());
-
-    if let Some(tel) = tel {
-        // 1. Embedded lens profile (DJI cameras embed in metadata)
-        if let Some(ref profile) = tel.lens_profile {
-            log::info!(
-                "lens auto-detect: embedded profile from {} {}",
-                tel.camera_type,
-                tel.camera_model.as_deref().unwrap_or("?")
-            );
-            let info = LensProfileInfo {
-                camera: tel.camera_type.clone(),
-                lens: tel.camera_model.clone().unwrap_or_else(|| "unknown".into()),
-                source: ProfileSource::AutoDetected,
-                path: None,
-            };
-            return Some((profile.clone(), info));
-        }
-
-        // 2. Database lookup by camera identification + FOV mode
-        if let Some(found) = db.find_from_telemetry(
-            &tel.camera_type,
-            tel.camera_model.as_deref(),
-            video_width,
-            video_height,
-            tel.lens_info.as_deref(),
-        ) {
-            return Some(found);
-        }
-    }
-
-    // 3. Fallback: resolution-only database search (no telemetry available)
-    log::info!(
-        "lens auto-detect: trying resolution-only lookup for {}x{}",
-        video_width,
-        video_height
-    );
-    db.find_by_resolution(video_width, video_height)
-}
-
 /// Errors from lens profile loading.
 #[derive(Debug, thiserror::Error)]
-/// Errors from lens profile loading.
 pub enum LensLoadError {
     /// File I/O error.
     #[error("cannot read lens profile: {0}")]
@@ -670,7 +635,7 @@ pub enum LensLoadError {
     Parse(String),
     /// Unrecognized format.
     #[error(
-        "unrecognized lens profile format in '{0}'. Expected v1 uniforms (fx/fy/cx/cy/d) or Gyroflow (camera_matrix/distortion_coeffs/resolution)."
+        "unsupported or malformed lens profile in '{0}'. Expected a Reco lens or Gyroflow opencv_fisheye profile with four distortion coefficients."
     )]
     UnrecognizedFormat(String),
 }
@@ -698,10 +663,42 @@ fn strip_model_variant(key: &str) -> Option<String> {
 fn parse_profile_value(v: &serde_json::Value, source: &str) -> Option<ProfileEntry> {
     let brand = v.get("camera_brand")?.as_str()?.to_string();
     let model = v.get("camera_model")?.as_str()?.to_string();
+    let params = parse_gyroflow_lens(v)?;
+    Some(ProfileEntry {
+        source: source.to_string(),
+        brand,
+        model,
+        lens_model: v
+            .get("lens_model")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        camera_setting: v
+            .get("camera_setting")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        width: params.width,
+        height: params.height,
+        params,
+    })
+}
+
+/// Read KB4 optics from a Gyroflow profile, independently of database labels.
+pub(crate) fn parse_gyroflow_lens(v: &serde_json::Value) -> Option<Lens> {
+    if v.get("distortion_model")
+        .filter(|model| !model.is_null())
+        .is_some_and(|model| model.as_str() != Some("opencv_fisheye"))
+    {
+        return None;
+    }
 
     let res = v.get("resolution").or_else(|| v.get("calib_dimension"))?;
-    let width = res.get("width").or_else(|| res.get("w"))?.as_u64()? as u32;
-    let height = res.get("height").or_else(|| res.get("h"))?.as_u64()? as u32;
+    let width = u32::try_from(res.get("width").or_else(|| res.get("w"))?.as_u64()?).ok()?;
+    let height = u32::try_from(res.get("height").or_else(|| res.get("h"))?.as_u64()?).ok()?;
+    if width == 0 || height == 0 {
+        return None;
+    }
 
     let cm = v.get("camera_matrix").or_else(|| {
         v.get("fisheye_params")
@@ -716,9 +713,21 @@ fn parse_profile_value(v: &serde_json::Value, source: &str) -> Option<ProfileEnt
             cm.get("cy")?.as_f64()?,
         )
     } else if let Some(arr) = cm.as_array() {
-        if arr.len() >= 3 {
+        if arr.len() == 3 {
             let r0 = arr[0].as_array()?;
             let r1 = arr[1].as_array()?;
+            let r2 = arr[2].as_array()?;
+            if r0.len() != 3
+                || r1.len() != 3
+                || r2.len() != 3
+                || r0[1].as_f64()? != 0.0
+                || r1[0].as_f64()? != 0.0
+                || r2[0].as_f64()? != 0.0
+                || r2[1].as_f64()? != 0.0
+                || r2[2].as_f64()? != 1.0
+            {
+                return None;
+            }
             (
                 r0.first()?.as_f64()?,
                 r1.get(1)?.as_f64()?,
@@ -731,6 +740,9 @@ fn parse_profile_value(v: &serde_json::Value, source: &str) -> Option<ProfileEnt
     } else {
         return None;
     };
+    if fx <= 0.0 || fy <= 0.0 {
+        return None;
+    }
 
     let dc = v
         .get("distortion_coeffs")
@@ -740,45 +752,23 @@ fn parse_profile_value(v: &serde_json::Value, source: &str) -> Option<ProfileEnt
         })?
         .as_array()?;
 
-    if dc.len() < 4 {
+    if dc.len() != 4 {
         return None;
     }
-
-    let lens_model = v
-        .get("lens_model")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    let camera_setting = v
-        .get("camera_setting")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    Some(ProfileEntry {
-        source: source.to_string(),
-        brand,
-        model,
-        lens_model,
-        camera_setting,
+    Some(Lens {
         width,
         height,
-        params: Lens {
-            width,
-            height,
-            fx,
-            fy,
-            cx,
-            cy,
-            distortion: [
-                dc[0].as_f64().unwrap_or(0.0),
-                dc[1].as_f64().unwrap_or(0.0),
-                dc[2].as_f64().unwrap_or(0.0),
-                dc[3].as_f64().unwrap_or(0.0),
-            ],
-            correction: 1.0,
-        },
+        fx,
+        fy,
+        cx,
+        cy,
+        distortion: [
+            dc[0].as_f64()?,
+            dc[1].as_f64()?,
+            dc[2].as_f64()?,
+            dc[3].as_f64()?,
+        ],
+        correction: 1.0,
     })
 }
 
@@ -814,6 +804,117 @@ fn load_dir_recursive(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn metadata_resolution_preserves_profile_priority_without_reopening_video() {
+        let mut value = gyroflow_profile();
+        value["camera_brand"] = serde_json::json!("Example");
+        value["camera_model"] = serde_json::json!("Camera");
+        let entry = parse_profile_value(&value, "fixture").unwrap();
+        let expected = entry.params.clone();
+        let db = LensDatabase {
+            profiles: vec![entry],
+            by_camera: [(normalize_camera_key("Example", "Camera"), vec![0])].into(),
+        };
+        let mut metadata = crate::telemetry::CameraMetadata {
+            camera_type: "Example".into(),
+            camera_model: Some("Camera".into()),
+            lens_profile: None,
+            lens_info: None,
+            has_native_gyro: false,
+        };
+        let (lens, info) = db.find_for_metadata(Some(&metadata), 1920, 1080).unwrap();
+        assert_eq!(lens, expected);
+        assert!(matches!(info.source, ProfileSource::Database));
+
+        let embedded = Lens {
+            fx: 950.,
+            ..expected.clone()
+        };
+        metadata.lens_profile = Some(embedded.clone());
+        let (lens, info) = db.find_for_metadata(Some(&metadata), 1920, 1080).unwrap();
+        assert_eq!(lens, embedded);
+        assert!(matches!(info.source, ProfileSource::AutoDetected));
+
+        metadata.lens_profile = None;
+        metadata.camera_model = Some("Unknown".into());
+        for metadata in [None, Some(&metadata)] {
+            let (lens, info) = db.find_for_metadata(metadata, 1920, 1080).unwrap();
+            assert_eq!(lens, expected);
+            assert!(matches!(info.source, ProfileSource::Fallback));
+            assert!(db.find_for_metadata(metadata, 2000, 1500).is_none());
+        }
+    }
+
+    fn gyroflow_profile() -> serde_json::Value {
+        serde_json::json!({
+            "calib_dimension": {"w": 1920, "h": 1080},
+            "fisheye_params": {
+                "camera_matrix": [[900., 0., 955.], [0., 910., 535.], [0., 0., 1.]],
+                "distortion_coeffs": [0.1, -0.01, 0.002, -0.0001]
+            }
+        })
+    }
+
+    #[test]
+    fn file_and_database_profiles_share_the_embedded_optical_parser() {
+        let mut profile = gyroflow_profile();
+        let expected = parse_gyroflow_lens(&profile).unwrap();
+        assert_eq!(
+            load_from_json(&profile.to_string(), "fixture").unwrap(),
+            expected
+        );
+        assert!(parse_profile_value(&profile, "fixture").is_none());
+        profile["camera_brand"] = serde_json::json!("Example");
+        profile["camera_model"] = serde_json::json!("Camera");
+        profile["distortion_model"] = serde_json::json!("opencv_fisheye");
+        assert_eq!(
+            parse_profile_value(&profile, "fixture").unwrap().params,
+            expected
+        );
+    }
+
+    #[test]
+    fn malformed_or_incompatible_gyroflow_optics_are_rejected() {
+        use serde_json::json;
+        for (path, value) in [
+            ("/calib_dimension/w", json!(0)),
+            ("/calib_dimension/h", json!(u64::from(u32::MAX) + 1)),
+            ("/fisheye_params/camera_matrix/0/0", json!(-1.)),
+            ("/fisheye_params/camera_matrix/1/1", json!(0.)),
+            ("/fisheye_params/camera_matrix/0/1", json!(1.)),
+            ("/fisheye_params/camera_matrix/2/2", json!(2.)),
+            ("/fisheye_params/camera_matrix/0/2", json!("missing")),
+            ("/fisheye_params/distortion_coeffs/2", json!(null)),
+            ("/fisheye_params/distortion_coeffs", json!([0., 0., 0.])),
+            (
+                "/fisheye_params/distortion_coeffs",
+                json!([0., 0., 0., 0., 0.]),
+            ),
+        ] {
+            let mut profile = gyroflow_profile();
+            *profile.pointer_mut(path).unwrap() = value;
+            assert!(parse_gyroflow_lens(&profile).is_none(), "{path}");
+            assert!(
+                load_from_json(&profile.to_string(), "fixture").is_err(),
+                "{path}"
+            );
+        }
+        for model in [json!("insta360"), json!("opencv_standard"), json!(false)] {
+            let mut profile = gyroflow_profile();
+            profile["distortion_model"] = model;
+            assert!(parse_gyroflow_lens(&profile).is_none());
+        }
+    }
+
+    #[test]
+    fn large_reference_profiles_remain_rescalable_before_rendering() {
+        let mut profile = gyroflow_profile();
+        profile["calib_dimension"] = serde_json::json!({"w": 12000, "h": 9000});
+        let lens = parse_gyroflow_lens(&profile).unwrap();
+        assert_eq!((lens.width, lens.height), (12000, 9000));
+        assert!(lens.rescaled(4000, 3000).is_ok());
+    }
 
     #[test]
     fn nearby_aspect_match_scales_intrinsics_on_both_axes() {

@@ -46,6 +46,35 @@ pub enum SourceMapError {
     NoDirection,
 }
 
+/// Prepared correspondence between two calibrated source images.
+///
+/// Maps normalized texture coordinates along the same modeled virtual-camera ray.
+/// This is not depth reconstruction and does not imply visibility at a particular
+/// output pose or after blending. Rebuild after changing the calibration.
+pub struct SourceCorrespondence {
+    map: Box<dyn Fn([f64; 2]) -> Option<[f64; 2]> + Send + Sync>,
+}
+
+impl SourceCorrespondence {
+    pub(crate) fn new(map: impl Fn([f64; 2]) -> Option<[f64; 2]> + Send + Sync + 'static) -> Self {
+        Self { map: Box::new(map) }
+    }
+
+    /// Map one source point, or return `None` outside either modeled source surface.
+    ///
+    /// Pixel index `(x, y)` corresponds to `[(x+.5)/width, (y+.5)/height]`.
+    /// Evaluation does not allocate or prepare calibration geometry.
+    pub fn map(&self, point: [f64; 2]) -> Option<[f64; 2]> {
+        if point
+            .iter()
+            .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
+        {
+            return None;
+        }
+        (self.map)(point)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The ProjectionGeometry trait: L1 geometry dispatch.
 // ---------------------------------------------------------------------------
@@ -69,6 +98,27 @@ pub(crate) struct ProjectionContext<'a> {
 }
 
 impl Calibration {
+    /// Prepare a source-to-source mapping without an output viewport or GPU.
+    ///
+    /// The calibration must be validated before use. Camera indices follow the
+    /// lens order. Framing tilt/roll, output dimensions, FOV and blend do not
+    /// affect source correspondence. Geometry and lens parameters are captured
+    /// once; rebuild this derived map after editing the document.
+    pub fn source_correspondence(
+        &self,
+        from: CameraIndex,
+        to: CameraIndex,
+    ) -> Result<SourceCorrespondence, SourceMapError> {
+        if [from, to]
+            .iter()
+            .any(|&i| i >= self.lenses.len() || i >= self.projection.camera_count())
+        {
+            return Err(SourceMapError::InvalidCamera);
+        }
+        self.projection
+            .geometry()
+            .source_correspondence(from, to, &self.lenses, &self.framing)
+    }
     /// Convert a world-reference request into a [`RenderPose`] using this calibration's virtual camera and rig tilt/roll. Preserves FOV and does not constrain coverage.
     pub fn world_to_render_pose(&self, world: WorldPose) -> RenderPose {
         let framing = &self.framing;
@@ -161,6 +211,14 @@ impl Calibration {
 ///
 /// `Send + Sync` allows implementations to be shared across processing threads.
 pub(crate) trait ProjectionGeometry: Send + Sync {
+    /// Prepare correspondence between two valid source indices.
+    fn source_correspondence(
+        &self,
+        from: CameraIndex,
+        to: CameraIndex,
+        lenses: &[Lens],
+        framing: &Framing,
+    ) -> Result<SourceCorrespondence, SourceMapError>;
     /// Short human-readable name for logs + diagnostic bundles.
     fn name(&self) -> &'static str;
 
@@ -196,10 +254,7 @@ pub(crate) trait ProjectionGeometry: Send + Sync {
     /// typed error instead of binding a placeholder that renders
     /// garbage.
     ///
-    /// The GPU dual of [`surface_maps`](Self::surface_maps). CPU/GPU
-    /// agreement is pinned by the stitch oracle, whose fixtures are
-    /// L-shape-only today: a projection growing a GPU program must
-    /// bring its own agreement test with it.
+    /// The GPU dual of [`surface_maps`](Self::surface_maps). CPU/GPU agreement is exercised by `cpu_matches_gpu_across_regimes` and `cylinder_gpu_matches_cpu_mapping_and_rejects_invalid_frames` in the stitch tests. New GPU programs require their own agreement fixtures.
     #[cfg(feature = "gpu")]
     fn gpu_program(&self) -> Option<crate::render::GpuProgram>;
 }

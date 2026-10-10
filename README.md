@@ -12,7 +12,7 @@ Stitch two camera feeds into a seamless panoramic sports view with AI-powered au
 - **GPU-first pipeline** - Real-time stitching via wgpu 28 (Vulkan / Metal / DX12), 500+ fps on modern desktop GPUs
 - **Zero-copy decode** - NVDEC (Linux/Windows) and VideoToolbox (macOS) frames go directly to GPU textures, no CPU bounce
 - **AI ball + player tracking** - YOLO detection on ONNX (CPU / CUDA / CoreML / NCNN) or native TensorRT `.engine`, with anticipatory lookahead smoothing and density-peak player clustering
-- **Automatic calibration** - AKAZE feature matching with IMU / audio cross-correlation for temporal sync, Gyroflow lens profiles
+- **Automatic calibration** - Direct image alignment with optional lens profiles, estimated optics, independent overlap checks and IMU / audio temporal sync
 - **Live production** - GStreamer camera ingest (Linux / Jetson CSI), push-based `StitchCore::submit_frame_*` for OBS and live streams, replay ring buffer, stacked-video pack/unpack
 - **Cross-platform** - Linux / macOS / Windows desktop, NVIDIA Jetson Orin, cloud workers; mobile (iOS / Android) trait points land in this release, concrete impls follow
 

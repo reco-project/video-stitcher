@@ -129,6 +129,15 @@ pub(crate) struct CylinderUniforms {
 }
 
 impl ProjectionGeometry for Cylinder {
+    fn source_correspondence(
+        &self,
+        _from: CameraIndex,
+        _to: CameraIndex,
+        _lenses: &[Lens],
+        _framing: &Framing,
+    ) -> Result<super::SourceCorrespondence, SourceMapError> {
+        Ok(super::SourceCorrespondence::new(Some))
+    }
     fn name(&self) -> &'static str {
         "cylindrical-mono-1camera"
     }

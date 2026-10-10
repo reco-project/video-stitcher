@@ -64,7 +64,7 @@ mod tests {
         let lens = crate::calibration::Lens::flat(32, 16);
         let y = vec![160; 32 * 16];
         let chroma = vec![128; 16 * 8];
-        let undistort = crate::lens::undistort::GpuUndistort::new(&gpu, 32, 16, 2.0);
+        let undistort = crate::lens::undistort::GpuUndistort::new(&gpu, 32, 16);
         let output = undistort.undistort(&gpu, &y, &chroma, &chroma, &lens);
         assert_eq!(output.len(), 32 * 16 * 4);
         assert!(output.chunks_exact(4).any(|p| p[0] > 100));

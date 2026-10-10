@@ -347,37 +347,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "argmin"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7ab7ca97779074715a402e5e8045fae27e7191acaec9b4c5653276316e9e404"
-dependencies = [
- "anyhow",
- "argmin-math",
- "num-traits",
- "paste",
- "rand 0.9.4",
- "rand_xoshiro",
- "thiserror 2.0.18",
- "web-time",
-]
-
-[[package]]
-name = "argmin-math"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba6958a87117ff5e1d0d7716856a4303752518012ec4a67a68446b6631a1a54d"
-dependencies = [
- "anyhow",
- "cfg-if",
- "num-complex",
- "num-integer",
- "num-traits",
- "rand 0.9.4",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "arrayref"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -711,6 +680,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
+name = "basin"
+version = "1.15.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "457347bdaf9524e3c3f715ec390b75f2ec104bf35756f951c5d41920c133a68e"
+dependencies = [
+ "num-traits",
+ "rand 0.10.2",
+ "rand_chacha 0.10.0",
+ "rand_distr",
+ "web-time",
+]
+
+[[package]]
 name = "bincode"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1007,17 +989,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chacha20"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d524456ba66e72eb8b115ff89e01e497f8e6d11d78b70b1aa13c0fbd97540a81"
-dependencies = [
- "cfg-if",
- "cpufeatures",
- "rand_core 0.10.1",
-]
-
-[[package]]
 name = "chrono"
 version = "0.4.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1287,15 +1258,6 @@ name = "countme"
 version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7704b5fdd17b18ae31c4c1da5a2e0305a2bf17b5249300a9ee9ed7b72114c636"
-
-[[package]]
-name = "cpufeatures"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b2a41393f66f16b0823bb79094d54ac5fbd34ab292ddafb9a0456ac9f87d201"
-dependencies = [
- "libc",
-]
 
 [[package]]
 name = "crc32fast"
@@ -2170,7 +2132,6 @@ dependencies = [
  "cfg-if",
  "libc",
  "r-efi 6.0.0",
- "rand_core 0.10.1",
  "wasip2",
  "wasip3",
 ]
@@ -5305,7 +5266,7 @@ version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "44c5af06bb1b7d3216d91932aed5265164bf384dc89cd6ba05cf59a35f5f76ea"
 dependencies = [
- "rand_chacha",
+ "rand_chacha 0.9.0",
  "rand_core 0.9.5",
 ]
 
@@ -5315,8 +5276,6 @@ version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7f5fa3a058cd35567ef9bfa5e75732bee0f9e4c55fa90477bef2dfcdbc4be80"
 dependencies = [
- "chacha20",
- "getrandom 0.4.2",
  "rand_core 0.10.1",
 ]
 
@@ -5328,6 +5287,16 @@ checksum = "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb"
 dependencies = [
  "ppv-lite86",
  "rand_core 0.9.5",
+]
+
+[[package]]
+name = "rand_chacha"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e6af7f3e25ded52c41df4e0b1af2d047e45896c2f3281792ed68a1c243daedb"
+dependencies = [
+ "ppv-lite86",
+ "rand_core 0.10.1",
 ]
 
 [[package]]
@@ -5346,12 +5315,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
 
 [[package]]
-name = "rand_xoshiro"
-version = "0.7.0"
+name = "rand_distr"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f703f4665700daf5512dcca5f43afa6af89f09db47fb56be587f80636bda2d41"
+checksum = "4d431c2703ccf129de4d45253c03f49ebb22b97d6ad79ee3ecfc7e3f4862c1d8"
 dependencies = [
- "rand_core 0.9.5",
+ "num-traits",
+ "rand 0.10.2",
 ]
 
 [[package]]
@@ -5388,7 +5358,7 @@ dependencies = [
  "paste",
  "profiling",
  "rand 0.9.4",
- "rand_chacha",
+ "rand_chacha 0.9.0",
  "simd_helpers",
  "thiserror 2.0.18",
  "v_frame",
@@ -5502,8 +5472,7 @@ name = "reco-calibrate"
 version = "0.5.3-beta.2"
 dependencies = [
  "approx",
- "argmin",
- "argmin-math",
+ "basin",
  "ciborium",
  "flate2",
  "float-ord",
@@ -5514,7 +5483,6 @@ dependencies = [
  "nshare",
  "pollster",
  "primal",
- "rand 0.10.2",
  "rayon",
  "realfft",
  "reco-core",

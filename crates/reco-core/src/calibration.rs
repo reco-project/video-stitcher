@@ -276,6 +276,13 @@ fn default_correction() -> f32 {
 }
 
 impl Lens {
+    /// Validate a standalone lens's reference dimensions and optical parameters.
+    ///
+    /// Errors identify this standalone lens as `lens[0]`. A complete [`Calibration`] validates each lens with its actual camera index.
+    pub fn validate(&self) -> Result<(), CalibrationError> {
+        validate_lens(self, 0)
+    }
+
     /// Rescale intrinsics for a resized image, independently along each axis.
     ///
     /// Distortion and correction are unchanged. This describes resizing, not cropping. Zero source dimensions or invalid resulting lens parameters return an error; the source is never modified. The source profile may exceed [`MAX_DIM`], but the resized lens must fit the calibration limits.
@@ -302,7 +309,7 @@ impl Lens {
             cy: self.cy * scale_y,
             ..self.clone()
         };
-        validate_lens(&lens, 0)?;
+        lens.validate()?;
         Ok(lens)
     }
 

@@ -15,7 +15,7 @@ use crate::geometry::{
     CameraIndex, FAR_PLANE, NEAR_PLANE, RenderPose, VirtualCamera, opengl_to_wgpu_matrix,
     view_matrix,
 };
-use crate::lens::kb4;
+use crate::lens::{inverse_fisheye, kb4};
 use crate::projection::{ProjectionContext, ProjectionGeometry, SourceMapError};
 use crate::render::viewport::ViewportSize;
 use crate::stitch::{BlendRule, SurfaceMap, SurfaceUv};
@@ -106,27 +106,31 @@ impl LShape {
     /// - Right plane: `position = [(w/2)(1 - intersect), x_ty, 0]`, `rotation = [x_rx, 0, x_rz]`
     /// - Virtual camera at `[axis_offset, 0, axis_offset]`.
     pub(crate) fn scene(&self, framing: &Framing, aspects: [f32; 2]) -> PlaneScene {
-        // Unit plane width: each plane is a 1.0-wide quad, so the
-        // intersect offset is half of what the overlap leaves.
-        let half_offset = 0.5 * (1.0 - self.intersect as f32);
-        // z_rx rolls around the final plane normal, after the base Y rotation and z_rz tilt.
-        let base =
-            UnitQuaternion::from_euler_angles(0.0, std::f32::consts::FRAC_PI_2, self.z_rz as f32);
-        let roll = UnitQuaternion::from_euler_angles(self.z_rx as f32, 0.0, 0.0);
-        let right_rotation =
-            UnitQuaternion::from_euler_angles(self.x_rx as f32, 0.0, self.x_rz as f32);
-        let scale = |aspect| Matrix4::new_nonuniform_scaling(&Vector3::new(1.0, 1.0 / aspect, 1.0));
         PlaneScene {
-            models: [
-                Translation3::new(0.0, 0.0, half_offset).to_homogeneous()
-                    * (roll * base).to_homogeneous()
-                    * scale(aspects[0]),
-                Translation3::new(half_offset, self.x_ty as f32, 0.0).to_homogeneous()
-                    * right_rotation.to_homogeneous()
-                    * scale(aspects[1]),
-            ],
+            models: self
+                .plane_models(aspects.map(f64::from))
+                .map(|model| model.cast()),
             camera: self.virtual_camera(framing),
         }
+    }
+
+    fn plane_models(&self, aspects: [f64; 2]) -> [Matrix4<f64>; 2] {
+        // Unit plane width: each plane is a 1.0-wide quad, so the
+        // intersect offset is half of what the overlap leaves.
+        let half_offset = 0.5 * (1.0 - self.intersect);
+        // z_rx rolls around the final plane normal, after the base Y rotation and z_rz tilt.
+        let base = UnitQuaternion::from_euler_angles(0.0, std::f64::consts::FRAC_PI_2, self.z_rz);
+        let roll = UnitQuaternion::from_euler_angles(self.z_rx, 0.0, 0.0);
+        let right_rotation = UnitQuaternion::from_euler_angles(self.x_rx, 0.0, self.x_rz);
+        let scale = |aspect| Matrix4::new_nonuniform_scaling(&Vector3::new(1.0, 1.0 / aspect, 1.0));
+        [
+            Translation3::new(0.0, 0.0, half_offset).to_homogeneous()
+                * (roll * base).to_homogeneous()
+                * scale(aspects[0]),
+            Translation3::new(half_offset, self.x_ty, 0.0).to_homogeneous()
+                * right_rotation.to_homogeneous()
+                * scale(aspects[1]),
+        ]
     }
 }
 
@@ -139,29 +143,67 @@ pub(crate) struct PlaneScene {
     pub(crate) camera: VirtualCamera,
 }
 
-/// Inverse KB4 fisheye: distorted camera pixel `[0,1]` to extended plane UV.
-fn inverse_fisheye(dist_x: f64, dist_y: f64, params: &Lens) -> Option<(f64, f64)> {
-    let w = params.width as f64;
-    let h = params.height as f64;
-    let fx = params.fx / w;
-    let fy = params.fy / h;
-    let cx = params.cx / w;
-    let cy = params.cy / h;
+/// Lens operations shared by raster sampling and source correspondence.
+struct NormalizedLens {
+    fx: f64,
+    fy: f64,
+    cx: f64,
+    cy: f64,
+    d: [f64; 4],
+    correction: f64,
+}
 
-    let dx = (dist_x - cx) / fx;
-    let dy = (dist_y - cy) / fy;
-    let theta_d = dx.hypot(dy);
-    let theta =
-        kb4::inverse_theta_with_correction(theta_d, &params.distortion, params.correction as f64)?;
-
-    if theta_d < 1e-12 {
-        return Some((cx, cy));
+impl NormalizedLens {
+    fn new(lens: &Lens) -> Self {
+        Self {
+            fx: lens.fx / lens.width as f64,
+            fy: lens.fy / lens.height as f64,
+            cx: lens.cx / lens.width as f64,
+            cy: lens.cy / lens.height as f64,
+            d: lens.distortion,
+            correction: lens.correction as f64,
+        }
     }
 
-    let scale = theta.tan() / theta_d;
-    let u = fx * dx * scale + cx;
-    let v = fy * dy * scale + cy;
-    (u.is_finite() && v.is_finite()).then_some((u, v))
+    fn unproject(
+        &self,
+        point: [f64; 2],
+        inverse: &crate::lens::inverse::Inverse,
+    ) -> Option<[f64; 2]> {
+        let dx = (point[0] - self.cx) / self.fx;
+        let dy = (point[1] - self.cy) / self.fy;
+        let radius = dx.hypot(dy);
+        let theta = inverse.theta(radius)?;
+        let scale = if radius < 1e-12 {
+            1.0
+        } else {
+            theta.tan() / radius
+        };
+        let u = self.fx * dx * scale + self.cx;
+        let v = self.fy * dy * scale + self.cy;
+        (u.is_finite() && v.is_finite()).then_some([(u - 0.5) / 2.0, (0.5 - v) / 2.0])
+    }
+
+    fn sample_plane(&self, [x, y]: [f64; 2]) -> Option<SurfaceUv> {
+        let uv_x = x + 0.5;
+        let uv_y = 0.5 - y;
+        if !(0.0..=1.0).contains(&uv_x) || !(0.0..=1.0).contains(&uv_y) {
+            return None;
+        }
+        let euv_x = uv_x * 2.0 - 0.5;
+        let euv_y = uv_y * 2.0 - 0.5;
+        let xn = (euv_x - self.cx) / self.fx;
+        let yn = (euv_y - self.cy) / self.fy;
+        let r = (xn * xn + yn * yn).sqrt();
+        let scale = kb4::kb4_forward_scale_with_correction(r, &self.d, self.correction);
+        let u = self.fx * xn * scale + self.cx;
+        let v = self.fy * yn * scale + self.cy;
+        ((0.0..=1.0).contains(&u) && (0.0..=1.0).contains(&v)).then_some(SurfaceUv {
+            u,
+            v,
+            edge: euv_x,
+        })
+    }
 }
 
 /// Convert extended plane UV to a point on the selected L-shape plane.
@@ -206,14 +248,7 @@ struct PlaneMap {
     z_row: (f64, f64, f64),
     /// Normalised intrinsics: `fx/w`, `fy/h`, `cx/w`, `cy/h` (by calibration
     /// resolution, so they are independent of the actual frame size).
-    fx_n: f64,
-    fy_n: f64,
-    cx_n: f64,
-    cy_n: f64,
-    /// KB4 distortion coefficients `[k1, k2, k3, k4]`.
-    d: [f64; 4],
-    /// Lens-correction amount in `[0, 1]` (`1` = full KB4, `0` = equidistant).
-    correction: f64,
+    optics: NormalizedLens,
     tan_half_h: f64,
     tan_half_v: f64,
 }
@@ -243,17 +278,12 @@ impl PlaneMap {
         let m3_inv = m3.try_inverse();
         // z-row of the MVP for the model-z=0 quad (x, y, translation columns).
         let z_row = (mvp[(2, 0)] as f64, mvp[(2, 1)] as f64, mvp[(2, 3)] as f64);
-        let w = cam.width as f64;
-        let h = cam.height as f64;
+        let mut optics = NormalizedLens::new(cam);
+        optics.correction = correction;
         Self {
             m3_inv,
             z_row,
-            fx_n: cam.fx / w,
-            fy_n: cam.fy / h,
-            cx_n: cam.cx / w,
-            cy_n: cam.cy / h,
-            d: cam.distortion,
-            correction,
+            optics,
             tan_half_h: 1.0
                 / (view_projection[(0, 0)] as f64)
                     .hypot(view_projection[(0, 1)] as f64)
@@ -310,8 +340,8 @@ impl SurfaceMap for PlaneMap {
         if !u.inside(1e-7, 1.0 - 1e-7) || !v.inside(1e-7, 1.0 - 1e-7) {
             return false;
         }
-        let xn = (u * I::point(2.0) - I::point(0.5 + self.cx_n)) / I::point(self.fx_n);
-        let yn = (v * I::point(2.0) - I::point(0.5 + self.cy_n)) / I::point(self.fy_n);
+        let xn = (u * I::point(2.0) - I::point(0.5 + self.optics.cx)) / I::point(self.optics.fx);
+        let yn = (v * I::point(2.0) - I::point(0.5 + self.optics.cy)) / I::point(self.optics.fy);
         let r = (xn.square() + yn.square()).sqrt();
         if !r.finite() {
             return false;
@@ -320,14 +350,14 @@ impl SurfaceMap for PlaneMap {
         let ratio = |r: f64| if r < 1e-10 { 1.0 } else { r.atan() / r };
         let base = I::new(ratio(r.hi) - 1e-12, ratio(r.lo.max(0.0)) + 1e-12);
         let t2 = I::new(r.lo.max(0.0).atan() - 1e-12, r.hi.atan() + 1e-12).square();
-        let mut polynomial = I::point(self.d[3] * self.correction);
-        for k in self.d[..3].iter().rev() {
-            polynomial = polynomial * t2 + I::point(k * self.correction);
+        let mut polynomial = I::point(self.optics.d[3] * self.optics.correction);
+        for k in self.optics.d[..3].iter().rev() {
+            polynomial = polynomial * t2 + I::point(k * self.optics.correction);
         }
         polynomial = polynomial * t2 + I::point(1.0);
         let scale = base * polynomial;
-        let du = I::point(self.fx_n) * xn * scale + I::point(self.cx_n);
-        let dv = I::point(self.fy_n) * yn * scale + I::point(self.cy_n);
+        let du = I::point(self.optics.fx) * xn * scale + I::point(self.optics.cx);
+        let dv = I::point(self.optics.fy) * yn * scale + I::point(self.optics.cy);
         du.inside(1e-7, 1.0 - 1e-7) && dv.inside(1e-7, 1.0 - 1e-7)
     }
 
@@ -357,43 +387,7 @@ impl SurfaceMap for PlaneMap {
             return None;
         }
 
-        // Plane-local -> texture UV (inverse of the quad vertex layout:
-        // `local_x = uv_x - 0.5`, `local_y = 0.5 - uv_y`).
-        let uv_x = local_x + 0.5;
-        let uv_y = 0.5 - local_y;
-
-        // The GPU rasterizes a FINITE quad (uv in [0,1]); the extended-UV remap
-        // below only widens the sampling domain, not the rasterized footprint.
-        // Reject pixels outside the quad so CPU coverage matches the GPU's.
-        if !(0.0..=1.0).contains(&uv_x) || !(0.0..=1.0).contains(&uv_y) {
-            return None;
-        }
-
-        // Shader's extended-UV remap (`uv * 2 - 0.5`) that widens the sampling
-        // domain so undistortion can reach past the plane edge.
-        let euv_x = uv_x * 2.0 - 0.5;
-        let euv_y = uv_y * 2.0 - 0.5;
-
-        // Forward KB4: extended-UV -> distorted (source) camera UV.
-        let xn = (euv_x - self.cx_n) / self.fx_n;
-        let yn = (euv_y - self.cy_n) / self.fy_n;
-        let r = (xn * xn + yn * yn).sqrt();
-        // The shader's per-pixel correction lerp between equidistant and full
-        // KB4, from the single canonical source in `lens::kb4`.
-        let scale = kb4::kb4_forward_scale_with_correction(r, &self.d, self.correction);
-        let du = self.fx_n * xn * scale + self.cx_n;
-        let dv = self.fy_n * yn * scale + self.cy_n;
-
-        // Outside the source frame -> this surface does not cover the pixel.
-        if !(0.0..=1.0).contains(&du) || !(0.0..=1.0).contains(&dv) {
-            return None;
-        }
-
-        Some(SurfaceUv {
-            u: du,
-            v: dv,
-            edge: euv_x,
-        })
+        self.optics.sample_plane([local_x, local_y])
     }
 }
 
@@ -448,6 +442,44 @@ fn l_shape_plane_maps(
 }
 
 impl ProjectionGeometry for LShape {
+    fn source_correspondence(
+        &self,
+        from: CameraIndex,
+        to: CameraIndex,
+        lenses: &[Lens],
+        framing: &Framing,
+    ) -> Result<super::SourceCorrespondence, SourceMapError> {
+        let models = self.plane_models([
+            f64::from(lenses[0].width) / f64::from(lenses[0].height),
+            f64::from(lenses[1].width) / f64::from(lenses[1].height),
+        ]);
+        let target_inverse = models[to]
+            .try_inverse()
+            .ok_or(SourceMapError::NoDirection)?;
+        let transfer = target_inverse * models[from];
+        let axis = framing.axis_offset;
+        let eye = target_inverse * nalgebra::Vector4::new(axis, 0.0, axis, 1.0);
+        if !eye.z.is_finite() || eye.z.abs() < 1e-12 {
+            return Err(SourceMapError::NoDirection);
+        }
+        let source = NormalizedLens::new(&lenses[from]);
+        let target = NormalizedLens::new(&lenses[to]);
+        let inverse = crate::lens::inverse::Inverse::new(&source.d, source.correction)
+            .ok_or(SourceMapError::NoDirection)?;
+        Ok(super::SourceCorrespondence::new(move |point| {
+            let local = source.unproject(point, &inverse)?;
+            source.sample_plane(local)?;
+            let p = transfer * nalgebra::Vector4::new(local[0], local[1], 0.0, 1.0);
+            let ray = p - eye;
+            let distance = -eye.z / ray.z;
+            if !distance.is_finite() || distance <= 0.0 {
+                return None;
+            }
+            let uv = target.sample_plane([eye.x + distance * ray.x, eye.y + distance * ray.y])?;
+            Some([uv.u, uv.v])
+        }))
+    }
+
     fn name(&self) -> &'static str {
         "l-shape-stereo-2camera"
     }
@@ -541,6 +573,174 @@ mod tests {
             tilt: 0.0,
             roll: 0.0,
         }
+    }
+
+    #[test]
+    fn correspondence_matches_rendered_overlap_in_both_directions() {
+        let mut lenses = vec![
+            Lens::fisheye(
+                3840,
+                2160,
+                1796.32,
+                1650.0,
+                1919.37,
+                1063.17,
+                [0.0342, 0.0677, -0.0741, 0.0299],
+            ),
+            Lens::fisheye(
+                3840,
+                2880,
+                1801.0,
+                1740.0,
+                1900.0,
+                1450.0,
+                [0.031, 0.061, -0.07, 0.028],
+            ),
+        ];
+        lenses[1].correction = 0.65;
+        let mut shape = topo(0.54);
+        shape.x_ty = 0.007;
+        shape.x_rz = 0.01;
+        shape.z_rx = -0.012;
+        shape.x_rx = 0.009;
+        shape.z_rz = -0.007;
+        let mut framing = framing(0.28);
+        let viewport = ViewportSize {
+            width: 640,
+            height: 480,
+        };
+        let maps = [
+            shape
+                .source_correspondence(0, 1, &lenses, &framing)
+                .unwrap(),
+            shape
+                .source_correspondence(1, 0, &lenses, &framing)
+                .unwrap(),
+        ];
+        let mut samples = 0;
+        for (tilt, roll) in [(0.0, 0.0), (0.17, -0.23)] {
+            framing.tilt = tilt;
+            framing.roll = roll;
+            for (yaw, pitch, fov_degrees) in
+                [(-0.3, -0.12, 100.0), (0.0, 0.0, 75.0), (0.3, 0.15, 110.0)]
+            {
+                let (left, right) = l_shape_plane_maps(
+                    &shape,
+                    &lenses,
+                    &framing,
+                    &viewport,
+                    RenderPose {
+                        yaw,
+                        pitch,
+                        fov_degrees,
+                    },
+                );
+                for y in (0..viewport.height).step_by(7) {
+                    for x in (0..viewport.width).step_by(7) {
+                        let ndc = viewport.pixel_ndc(x, y);
+                        if let (Some(a), Some(b)) = (left.sample_uv(ndc), right.sample_uv(ndc)) {
+                            for (map, source, target) in [(&maps[0], a, b), (&maps[1], b, a)] {
+                                let result = map.map([source.u, source.v]).unwrap();
+                                let error = (result[0] - target.u).hypot(result[1] - target.v);
+                                assert!(
+                                    error < 2e-6,
+                                    "source={source:?}, target={target:?}, error={error}"
+                                );
+                                samples += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(samples > 5000, "only {samples} comparisons");
+    }
+
+    #[test]
+    fn correspondence_preserves_small_placement_changes() {
+        let lenses = [
+            Lens::fisheye(1920, 1080, 1000.0, 1000.0, 960.0, 540.0, [0.0; 4]),
+            Lens::fisheye(1920, 1080, 1000.0, 1000.0, 960.0, 540.0, [0.0; 4]),
+        ];
+        let shape = topo(0.54);
+        let frame = framing(0.28);
+        let mut checked = 0;
+        for parameter in 0..7 {
+            for point in [[0.75, 0.4], [0.75, 0.6], [0.85, 0.5]] {
+                let derivative = |step: f64| -> Option<[f64; 2]> {
+                    let mut mapped = Vec::new();
+                    for sign in [-1.0, 1.0] {
+                        let mut shape = shape.clone();
+                        let mut frame = frame.clone();
+                        let value = match parameter {
+                            0 => &mut shape.intersect,
+                            1 => &mut shape.x_ty,
+                            2 => &mut shape.x_rz,
+                            3 => &mut shape.x_rx,
+                            4 => &mut shape.z_rx,
+                            5 => &mut shape.z_rz,
+                            _ => &mut frame.axis_offset,
+                        };
+                        *value += sign * step;
+                        mapped.push(
+                            shape
+                                .source_correspondence(0, 1, &lenses, &frame)
+                                .ok()?
+                                .map(point)?,
+                        );
+                    }
+                    Some(std::array::from_fn(|i| {
+                        (mapped[1][i] - mapped[0][i]) / (2.0 * step)
+                    }))
+                };
+                let coarse = derivative(1e-5).expect("interior overlap point");
+                let fine = derivative(1e-7).expect("interior overlap point");
+                for (a, b) in coarse.into_iter().zip(fine) {
+                    assert!(
+                        (a - b).abs() < 1e-5 * a.abs().max(1.0),
+                        "parameter={parameter}, coarse={a}, fine={b}"
+                    );
+                }
+                checked += 1;
+            }
+        }
+        assert_eq!(checked, 21);
+    }
+
+    #[test]
+    fn correspondence_rejects_invalid_points_and_camera_indices() {
+        let cal = crate::stitch::test_support::calib(1920, 1080);
+        for (from, to) in [(2, 0), (0, 2), (usize::MAX, 0)] {
+            assert!(matches!(
+                cal.source_correspondence(from, to),
+                Err(SourceMapError::InvalidCamera)
+            ));
+        }
+        let map = cal.source_correspondence(0, 0).unwrap();
+        for point in [
+            [f64::NAN, 0.5],
+            [0.5, f64::INFINITY],
+            [-0.01, 0.5],
+            [0.5, 1.01],
+        ] {
+            assert!(map.map(point).is_none());
+        }
+        let source = [0.5, 0.5];
+        let result = map.map(source).unwrap();
+        assert!((result[0] - source[0]).hypot(result[1] - source[1]) < 1e-9);
+    }
+
+    #[test]
+    fn correspondence_rejects_geometry_behind_source_ray() {
+        let lens = Lens::fisheye(1920, 1080, 1000.0, 1000.0, 960.0, 540.0, [0.0; 4]);
+        let shape = topo(0.5);
+        let lenses = [lens.clone(), lens];
+        // From the left plane centre (z=.25), this ray from (.1,0,.1)
+        // travels toward increasing z. The right plane lies behind it at z=0.
+        let map = shape
+            .source_correspondence(0, 1, &lenses, &framing(0.1))
+            .unwrap();
+        assert!(map.map([0.5, 0.5]).is_none());
     }
 
     #[test]

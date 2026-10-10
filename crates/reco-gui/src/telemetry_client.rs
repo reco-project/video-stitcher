@@ -187,11 +187,11 @@ impl TelemetryClient {
         );
     }
 
-    pub fn calibration_complete(&self, confidence: f64, matches: usize) {
+    pub fn calibration_complete(&self, confirmed: bool, matches: usize) {
         self.send(
             "calibration_complete",
             Some(serde_json::json!({
-                "confidence": confidence,
+                "confirmed": confirmed,
                 "matches": matches,
             })),
         );

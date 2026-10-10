@@ -1,7 +1,7 @@
 //! `reco calibrate` subcommand.
 //!
 //! Thin wrapper around [`reco_calibrate::pipeline::CalibrationPipeline`].
-//! Handles file I/O (video decode, audio extraction, debug output) while
+//! Handles file I/O (video decode, audio extraction, result publication) while
 //! all calibration logic lives in the library.
 
 use std::path::Path;
@@ -9,7 +9,6 @@ use std::path::Path;
 use reco_calibrate::CalibrationConfig;
 use reco_calibrate::pipeline::{CalibrationPipeline, VideoInfo};
 use reco_calibrate::types::Yuv420pFrame;
-use reco_core::gpu::GpuContext;
 use reco_io::ffmpeg::calibration_io;
 
 /// Run the calibrate subcommand.
@@ -25,18 +24,16 @@ pub fn run_calibrate(
     sync_offset: i64,
     skip_start: f64,
     skip_end: f64,
-    akaze_threshold: f64,
-    lowe_ratio: f64,
-    detect_x: f64,
-    detect_y_min: f64,
-    detect_y_max: f64,
-    lock_cam_d: bool,
-    lock_z_rx: bool,
-    trim: f64,
-    seam_sigma: f64,
-    debug_dir: Option<&str>,
     output: &str,
+    accept_unconfirmed: bool,
+    estimate_optics: bool,
 ) -> anyhow::Result<()> {
+    let config = CalibrationConfig {
+        num_frames,
+        skip_start_secs: skip_start,
+        skip_end_secs: skip_end,
+    };
+    config.validate()?;
     reco_io::init();
 
     // Probe video metadata
@@ -59,44 +56,36 @@ pub fn run_calibrate(
     };
     let fps = left_info.fps;
 
-    let config = CalibrationConfig {
-        num_frames,
-        skip_start_secs: skip_start,
-        skip_end_secs: skip_end,
-        akaze: reco_calibrate::AkazeConfig {
-            threshold: akaze_threshold,
-            detect_y_min,
-            detect_y_max,
-            ..Default::default()
-        },
-        matching: reco_calibrate::MatchConfig {
-            lowe_ratio,
-            spatial_x_threshold: detect_x,
-            ..Default::default()
-        },
-        optimizer: reco_calibrate::OptimizerConfig {
-            lock_cam_d,
-            lock_z_rx,
-            trim_fraction: trim,
-            seam_sigma,
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-
     let mut pipeline = CalibrationPipeline::new(left_info, right_info, config);
 
     // Step 1: Lens profiles
-    if let Some(lp) = left_profile {
-        let rp = right_profile.map(Path::new);
-        let (lp, rp) = pipeline.load_profiles(Path::new(lp), rp)?;
-        eprintln!("  left:  {}x{}", lp.width, lp.height);
-        eprintln!("  right: {}x{}", rp.width, rp.height);
+    if left_profile.is_some() || right_profile.is_some() {
+        pipeline.load_profiles(left_profile.map(Path::new), right_profile.map(Path::new))?;
+        eprintln!(
+            "  optics: left={}, right={}",
+            if pipeline.left_params().is_some() {
+                "profile"
+            } else {
+                "estimated"
+            },
+            if pipeline.right_params().is_some() {
+                "profile"
+            } else {
+                "estimated"
+            }
+        );
     } else {
         eprintln!("Auto-detecting lens profiles...");
         let (lp, rp) = pipeline.detect_profiles()?;
-        eprintln!("  left:  {}x{}", lp.width, lp.height);
-        eprintln!("  right: {}x{}", rp.width, rp.height);
+        eprintln!(
+            "  optics: left={}, right={}",
+            if lp.is_some() { "profile" } else { "estimated" },
+            if rp.is_some() { "profile" } else { "estimated" }
+        );
+    }
+
+    if estimate_optics {
+        pipeline.set_profiles(None, None);
     }
 
     // Step 2: Sync - priority: IMU > audio > manual
@@ -121,6 +110,10 @@ pub fn run_calibrate(
 
     // Step 3: Frame indices (sync already applied by pipeline)
     let (left_indices, right_indices) = pipeline.frame_indices();
+    anyhow::ensure!(
+        !left_indices.is_empty(),
+        "no overlapping calibration frames could be selected from the videos"
+    );
     log::info!(
         "extracting {} frames (fps: {fps:.1}, sync_offset: {})",
         left_indices.len(),
@@ -133,49 +126,42 @@ pub fn run_calibrate(
     eprintln!("Extracting frames from right video...");
     let right_frames = calibration_io::extract_frames(Path::new(right), &right_indices)?;
 
-    let pair_count = left_frames.len().min(right_frames.len());
-    anyhow::ensure!(pair_count > 0, "no frames could be extracted from videos");
-
-    // Init GPU
-    let gpu = GpuContext::new_blocking().map_err(|e| anyhow::anyhow!("GPU init failed: {e}"))?;
-    log::info!("GPU: {}", gpu.gpu_name());
-
-    // Debug: save GPU-undistorted frames
-    if let Some(dir) = debug_dir {
-        save_debug_frames(
-            &gpu,
-            &left_frames,
-            &right_frames,
-            pipeline
-                .left_params()
-                .ok_or_else(|| anyhow::anyhow!("lens params not available for left camera"))?,
-            pipeline
-                .right_params()
-                .ok_or_else(|| anyhow::anyhow!("lens params not available for right camera"))?,
-            dir,
-        )?;
-    }
-
     let frame_pairs: Vec<(Yuv420pFrame, Yuv420pFrame)> =
         left_frames.into_iter().zip(right_frames).collect();
 
     // Step 5: Calibrate
     eprintln!("Calibrating with {} frame pairs...", frame_pairs.len());
     let result = pipeline
-        .calibrate(&gpu, &frame_pairs)
+        .calibrate(&std::sync::atomic::AtomicBool::new(false), &frame_pairs)
         .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    publish_result(&result, Path::new(output), accept_unconfirmed)?;
+    print_results(&result, output, frame_pairs.len());
+    Ok(())
+}
+
+fn publish_result(
+    result: &reco_calibrate::CalibrationResult,
+    output: &Path,
+    accept_unconfirmed: bool,
+) -> anyhow::Result<()> {
+    if let reco_calibrate::CalibrationAssessment::NeedsReview { reason } = &result.assessment
+        && !accept_unconfirmed
+    {
+        // A report retains the candidate without publishing it as an active calibration.
+        let mut report = output.as_os_str().to_os_string();
+        report.push(".review.json");
+        let report = std::path::PathBuf::from(report);
+        std::fs::write(&report, serde_json::to_string_pretty(&result)?)?;
+        anyhow::bail!(
+            "{reason} Candidate and measurements: {}. Requested output was not modified.",
+            report.display()
+        );
+    }
 
     // Write output
     let json = serde_json::to_string_pretty(&result.calibration)?;
     std::fs::write(output, &json)?;
-
-    // Print diagnostics
-    print_results(&result, output, frame_pairs.len());
-
-    // Debug: save match visualizations
-    if let Some(dir) = debug_dir {
-        save_match_visualizations(&result, &frame_pairs, dir)?;
-    }
 
     Ok(())
 }
@@ -218,71 +204,12 @@ fn extract_and_sync_audio(
     Ok(frames)
 }
 
-// ---------------------------------------------------------------------------
-// Debug visualization (CLI only)
-// ---------------------------------------------------------------------------
-
-fn save_debug_frames(
-    gpu: &GpuContext,
-    left_frames: &[Yuv420pFrame],
-    right_frames: &[Yuv420pFrame],
-    left_params: &reco_core::calibration::Lens,
-    right_params: &reco_core::calibration::Lens,
-    dir: &str,
-) -> anyhow::Result<()> {
-    std::fs::create_dir_all(dir)?;
-    let (w, h) = (left_frames[0].width, left_frames[0].height);
-    let aspect = w as f32 / h as f32;
-    let undistort = reco_core::lens::undistort::GpuUndistort::new(gpu, w, h, aspect);
-    for (i, (lf, rf)) in left_frames.iter().zip(right_frames.iter()).enumerate() {
-        let l_rgba = undistort.undistort(gpu, &lf.y, &lf.u, &lf.v, left_params);
-        let r_rgba = undistort.undistort(gpu, &rf.y, &rf.u, &rf.v, right_params);
-        save_rgba_png(&l_rgba, w, h, &format!("{dir}/frame_{i:02}_left.png"))?;
-        save_rgba_png(&r_rgba, w, h, &format!("{dir}/frame_{i:02}_right.png"))?;
-    }
-    eprintln!("Debug frames saved to {dir}/ (GPU-undistorted)");
-    Ok(())
-}
-
-fn save_match_visualizations(
-    result: &reco_calibrate::CalibrationResult,
-    frame_pairs: &[(Yuv420pFrame, Yuv420pFrame)],
-    dir: &str,
-) -> anyhow::Result<()> {
-    let (w, h) = (frame_pairs[0].0.width, frame_pairs[0].0.height);
-    for (i, fm) in result.per_frame.iter().enumerate() {
-        let left_path = format!("{dir}/frame_{i:02}_left.png");
-        let right_path = format!("{dir}/frame_{i:02}_right.png");
-        if !Path::new(&left_path).exists() || !Path::new(&right_path).exists() {
-            continue;
-        }
-        let mut left_img = image::open(&left_path)?.to_rgba8();
-        let mut right_img = image::open(&right_path)?.to_rgba8();
-
-        for pt in &fm.points {
-            let rx = ((pt.left[0] + 0.5) * w as f64) as i32;
-            let ry = ((pt.left[1] / (h as f64 / w as f64)) + 0.5) * h as f64;
-            draw_cross(&mut right_img, rx, ry as i32, [0, 255, 0, 255]);
-
-            let lx = ((pt.right[0] + 0.5) * w as f64) as i32;
-            let ly = ((pt.right[1] / (h as f64 / w as f64)) + 0.5) * h as f64;
-            draw_cross(&mut left_img, lx, ly as i32, [255, 0, 0, 255]);
-        }
-
-        left_img.save(format!("{dir}/matches_{i:02}_left.png"))?;
-        right_img.save(format!("{dir}/matches_{i:02}_right.png"))?;
-    }
-    eprintln!("Match visualizations saved to {dir}/matches_*_{{left,right}}.png");
-    Ok(())
-}
-
 fn print_results(result: &reco_calibrate::CalibrationResult, output: &str, total_pairs: usize) {
     eprintln!("\nCalibration results:");
     eprintln!("  Output:          {output}");
     eprintln!("  Frames used:     {}/{total_pairs}", result.frames_used);
     eprintln!("  Total matches:   {}", result.total_matches);
-    eprintln!("  Confidence:      {:.1}%", result.confidence * 100.0);
-    eprintln!("  Residual error:  {:.6}", result.residual_error);
+    eprintln!("  Assessment:      {:?}", result.assessment);
     eprintln!("\nPlacement parameters:");
     let l = result
         .calibration
@@ -299,46 +226,87 @@ fn print_results(result: &reco_calibrate::CalibrationResult, output: &str, total
     eprintln!("  zRx:              {:.6}", l.z_rx);
     eprintln!("  zRz:              {:.6}", l.z_rz);
 
-    if !result.per_frame.is_empty() {
-        eprintln!("\nPer-frame statistics:");
-        for (i, fm) in result.per_frame.iter().enumerate() {
-            eprintln!(
-                "  frame {i}: {} keypoints (L:{}/R:{}), {} -> {} -> {} -> {} matches",
-                fm.points.len(),
-                fm.keypoints_left,
-                fm.keypoints_right,
-                fm.min_descriptors,
-                fm.post_ratio_test,
-                fm.post_spatial_filter,
-                fm.post_ransac,
-            );
-        }
+    for (i, check) in result.overlap_checks.iter().enumerate() {
+        eprintln!(
+            "  Independent pair {}: {} matches, median {:?}px, p95 {:?}px",
+            i + 1,
+            check.matches,
+            check.median_pixels,
+            check.p95_pixels
+        );
     }
 }
 
-fn draw_cross(img: &mut image::RgbaImage, cx: i32, cy: i32, color: [u8; 4]) {
-    let (w, h) = (img.width() as i32, img.height() as i32);
-    let size = 8;
-    let thickness = 2;
-    for d in -size..=size {
-        for t in -thickness..=thickness {
-            let x = cx + d;
-            let y = cy + t;
-            if x >= 0 && x < w && y >= 0 && y < h {
-                img.put_pixel(x as u32, y as u32, image::Rgba(color));
-            }
-            let x = cx + t;
-            let y = cy + d;
-            if x >= 0 && x < w && y >= 0 && y < h {
-                img.put_pixel(x as u32, y as u32, image::Rgba(color));
-            }
-        }
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reco_calibrate::{CalibrationAssessment, CalibrationResult};
+    use reco_core::calibration::{Calibration, Framing, Lens};
+    use reco_core::projection::LShape;
 
-fn save_rgba_png(rgba: &[u8], width: u32, height: u32, path: &str) -> anyhow::Result<()> {
-    let img = image::RgbaImage::from_raw(width, height, rgba.to_vec())
-        .ok_or_else(|| anyhow::anyhow!("invalid frame dimensions"))?;
-    img.save(path)?;
-    Ok(())
+    #[test]
+    fn review_report_preserves_active_file_until_explicit_acceptance() {
+        let directory = std::env::temp_dir().join(format!(
+            "reco-calibration-publication-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        let output = directory.join("calibration.json");
+        std::fs::write(&output, "original document").unwrap();
+        let mut result = CalibrationResult {
+            calibration: Calibration::new(
+                vec![Lens::fisheye(64, 64, 40.0, 40.0, 32.0, 32.0, [0.0; 4]); 2],
+                LShape {
+                    intersect: 0.6,
+                    x_ty: 0.0,
+                    x_rx: 0.0,
+                    x_rz: 0.0,
+                    z_rx: 0.0,
+                    z_rz: 0.0,
+                    blend_width: 0.05,
+                },
+                Framing {
+                    axis_offset: 0.23,
+                    tilt: 0.0,
+                    roll: 0.0,
+                },
+            ),
+            total_matches: 24,
+            frames_used: 1,
+            assessment: CalibrationAssessment::NeedsReview {
+                reason: "insufficient evidence".into(),
+            },
+            overlap_checks: vec![],
+            left_lens_profile: None,
+            right_lens_profile: None,
+        };
+        let error = publish_result(&result, &output, false).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Requested output was not modified")
+        );
+        assert_eq!(
+            std::fs::read_to_string(&output).unwrap(),
+            "original document"
+        );
+        let report = directory.join("calibration.json.review.json");
+        let candidate: CalibrationResult =
+            serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
+        assert_eq!(candidate.calibration, result.calibration);
+        assert_eq!(candidate.assessment, result.assessment);
+        publish_result(&result, &output, true).unwrap();
+        assert_eq!(Calibration::from_file(&output).unwrap(), result.calibration);
+        result.assessment = CalibrationAssessment::Confirmed;
+        result.calibration.framing.roll = 0.1;
+        publish_result(&result, &output, false).unwrap();
+        assert_eq!(Calibration::from_file(&output).unwrap(), result.calibration);
+        std::fs::remove_file(output).unwrap();
+        std::fs::remove_file(report).unwrap();
+        std::fs::remove_dir(directory).unwrap();
+    }
 }

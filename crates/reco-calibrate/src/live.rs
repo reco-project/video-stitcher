@@ -18,7 +18,7 @@
 //!   "Calibrate from current sources" workflow,
 //!   Jetson on-device calibration with the cameras already
 //!   streaming, mobile "re-calibrate" button.
-//! - `calibrate` / `calibrate_with` directly when you have your
+//! - `calibrate` directly when you have your
 //!   own capture policy and just want the core solver. Prefer
 //!   `calibrate_from_live` if the "collect N pairs with a
 //!   per-pair timeout" policy fits what you already want to
@@ -61,12 +61,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use reco_core::calibration::Lens;
-use reco_core::gpu::GpuContext;
 
 use crate::error::CalibrateError;
-use crate::types::{
-    CalibrationConfig, CalibrationProgress, CalibrationResult, CalibrationStep, Yuv420pFrame,
-};
+use crate::types::{CalibrationProgress, CalibrationResult, CalibrationStep, Yuv420pFrame};
 
 /// A source of synchronized YUV420P frame pairs for live calibration.
 ///
@@ -89,26 +86,20 @@ pub trait LiveFramePairSource: Send {
 #[derive(Debug, Clone)]
 pub struct CalibrateFromLiveOptions {
     /// Number of frame pairs to collect before running the solver.
-    /// Typical range: 10-40. More pairs tighten the fit but slow
-    /// capture; calibrate_videos defaults to 20.
+    /// Must be in 1..=16. The first pair fits; later pairs independently verify alignment.
     pub num_pairs: usize,
     /// Per-pair timeout. If a single pair takes longer than this to
     /// arrive, the whole call fails with
     /// [`CalibrateFromLiveError::Timeout`] (the live source is
     /// probably stalled).
     pub timeout_per_pair: Duration,
-    /// Calibration solver configuration. Defaults are fine for most
-    /// action-camera pairs; tune `akaze.threshold` lower for
-    /// low-texture scenes.
-    pub config: CalibrationConfig,
 }
 
 impl Default for CalibrateFromLiveOptions {
     fn default() -> Self {
         Self {
-            num_pairs: 20,
+            num_pairs: 4,
             timeout_per_pair: Duration::from_secs(5),
-            config: CalibrationConfig::default(),
         }
     }
 }
@@ -118,9 +109,9 @@ impl Default for CalibrateFromLiveOptions {
 /// channel to the UI thread.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum CalibrateFromLiveError {
-    /// `num_pairs == 0`; nothing to calibrate from.
-    #[error("insufficient frame pairs requested: {requested}")]
-    InsufficientPairsRequested {
+    /// The requested count is outside 1..=16.
+    #[error("expected 1 to 16 frame pairs, requested {requested}")]
+    InvalidPairCount {
         /// Requested count.
         requested: usize,
     },
@@ -153,18 +144,15 @@ pub enum CalibrateFromLiveError {
 /// `source`, then runs the calibration solver via
 /// [`crate::calibrate`]. Reports progress through `on_progress`
 /// using the standard [`CalibrationStep`] vocabulary
-/// (`ExtractingFrames` during capture, then whatever the solver
-/// emits).
+/// (`ExtractingFrames` during capture, then `Optimizing`).
 ///
 /// # Arguments
 ///
-/// - `gpu`: GPU context for the undistortion step (shared with
-///   whatever pipeline the caller already has).
 /// - `source`: live frame-pair source — the adapter the consumer
 ///   wrote around their upstream buffer.
 /// - `left_params` / `right_params`: per-camera intrinsics (from a
-///   lens-profile lookup or previous calibration).
-/// - `options`: pair count, timeout, solver config.
+///   lens-profile lookup or previous calibration). Missing optics are estimated.
+/// - `options`: pair count and timeout.
 /// - `on_progress`: per-step progress callback.
 /// - `interrupted`: caller can set this to abort capture early; the
 ///   function then returns [`CalibrateFromLiveError::Cancelled`].
@@ -174,16 +162,17 @@ pub enum CalibrateFromLiveError {
 /// See [`CalibrateFromLiveError`]. All variants are `Clone + Send + Sync`
 /// so the result can ship across a worker-thread channel.
 pub fn calibrate_from_live(
-    gpu: &GpuContext,
     source: &mut dyn LiveFramePairSource,
-    left_params: &Lens,
-    right_params: &Lens,
+    left_params: Option<&Lens>,
+    right_params: Option<&Lens>,
     options: &CalibrateFromLiveOptions,
     on_progress: &mut dyn FnMut(&CalibrationProgress),
     interrupted: &AtomicBool,
 ) -> Result<CalibrationResult, CalibrateFromLiveError> {
-    if options.num_pairs == 0 {
-        return Err(CalibrateFromLiveError::InsufficientPairsRequested { requested: 0 });
+    if options.num_pairs == 0 || options.num_pairs > 16 {
+        return Err(CalibrateFromLiveError::InvalidPairCount {
+            requested: options.num_pairs,
+        });
     }
 
     let start = Instant::now();
@@ -226,9 +215,12 @@ pub fn calibrate_from_live(
         }
     }
 
-    // Delegate to the standard solver. It emits its own
-    // Undistorting / FeatureMatching / Optimizing progress events.
-    let result = super::calibrate(gpu, &pairs, left_params, right_params, &options.config)?;
+    emit_progress(
+        on_progress,
+        CalibrationStep::Optimizing,
+        "Fitting and verifying image alignment",
+    );
+    let result = super::calibrate(&pairs, [left_params, right_params], interrupted)?;
     Ok(result)
 }
 
@@ -292,9 +284,7 @@ mod tests {
         }
     }
 
-    /// 64x64 grey YUV420P frame — enough to exercise the shape but
-    /// small enough that tests don't spend time on GPU work we can't
-    /// run here anyway (calibrate requires a real GpuContext).
+    /// A small valid frame for capture and rejection tests.
     fn dummy_yuv() -> Yuv420pFrame {
         let w = 64u32;
         let h = 64u32;
@@ -309,25 +299,28 @@ mod tests {
     }
 
     #[test]
-    fn rejects_zero_pair_request() {
+    fn rejects_invalid_pair_counts_before_capture() {
         let calls = Arc::new(AtomicU32::new(0));
         let mut src = FakeSource::new(5, calls.clone());
-        let opts = CalibrateFromLiveOptions {
-            num_pairs: 0,
-            ..Default::default()
-        };
-        // We can't actually call calibrate_from_live without a GPU,
-        // but the zero-pair validation runs before any GPU work — we
-        // hit it by constructing a bogus GpuContext is impossible, so
-        // verify the error construction directly:
-        let err = CalibrateFromLiveError::InsufficientPairsRequested { requested: 0 };
-        assert!(matches!(
-            err,
-            CalibrateFromLiveError::InsufficientPairsRequested { requested: 0 }
-        ));
-        // Fake source usage to quiet dead-code:
-        let _ = src.next_pair(Duration::from_millis(1));
-        let _ = opts.num_pairs;
+        for num_pairs in [0, 17, usize::MAX] {
+            let opts = CalibrateFromLiveOptions {
+                num_pairs,
+                ..Default::default()
+            };
+            let err = calibrate_from_live(
+                &mut src,
+                None,
+                None,
+                &opts,
+                &mut |_| {},
+                &AtomicBool::new(false),
+            )
+            .unwrap_err();
+            assert!(
+                matches!(err, CalibrateFromLiveError::InvalidPairCount { requested } if requested == num_pairs)
+            );
+        }
+        assert_eq!(calls.load(Ordering::Relaxed), 0);
     }
 
     #[test]
@@ -338,6 +331,32 @@ mod tests {
         assert!(src.next_pair(Duration::from_millis(1)).is_some());
         assert!(src.next_pair(Duration::from_millis(1)).is_none());
         assert_eq!(calls.load(Ordering::Relaxed), 3);
+    }
+
+    #[test]
+    fn capture_honors_cancellation_and_reports_partial_timeout() {
+        let calls = Arc::new(AtomicU32::new(0));
+        let mut source = FakeSource::new(1, calls.clone());
+        let options = CalibrateFromLiveOptions {
+            num_pairs: 2,
+            ..Default::default()
+        };
+        let interrupted = AtomicBool::new(true);
+        assert!(matches!(
+            calibrate_from_live(&mut source, None, None, &options, &mut |_| {}, &interrupted),
+            Err(CalibrateFromLiveError::Cancelled)
+        ));
+        assert_eq!(calls.load(Ordering::Relaxed), 0);
+        interrupted.store(false, Ordering::Relaxed);
+        assert!(matches!(
+            calibrate_from_live(&mut source, None, None, &options, &mut |_| {}, &interrupted),
+            Err(CalibrateFromLiveError::Timeout {
+                captured: 1,
+                requested: 2,
+                ..
+            })
+        ));
+        assert_eq!(calls.load(Ordering::Relaxed), 2);
     }
 
     #[test]
@@ -354,9 +373,9 @@ mod tests {
     }
 
     #[test]
-    fn default_options_match_plan_defaults() {
+    fn default_options_collect_fitting_and_confirmation_pairs() {
         let o = CalibrateFromLiveOptions::default();
-        assert_eq!(o.num_pairs, 20);
+        assert_eq!(o.num_pairs, 4);
         assert_eq!(o.timeout_per_pair, Duration::from_secs(5));
     }
 }

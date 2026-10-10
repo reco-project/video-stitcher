@@ -144,6 +144,7 @@ pub fn run_camera(
         }
         (None, _) => {}
     }
+    #[cfg(feature = "autocam")]
     let field_roi = cal.field_roi.clone();
 
     let viewport_size = ViewportSize { width, height };
@@ -227,8 +228,11 @@ pub fn run_camera(
         }
     }
     #[cfg(not(feature = "autocam"))]
-    if model_path.is_some() {
-        log::warn!("--model specified but autocam feature is disabled");
+    {
+        let _ = detection_interval;
+        if model_path.is_some() {
+            log::warn!("--model specified but autocam feature is disabled");
+        }
     }
 
     let ai_tracking = model_path.is_some() && tracking != "sweep";
@@ -765,36 +769,23 @@ pub fn run_live_calibrate(
         eprintln!("Lens profile: {p}");
         Ok(lens)
     };
-    let load_or_default = |path: Option<&str>, w: u32, h: u32| -> anyhow::Result<Lens> {
+    let load_or_default = |path: Option<&str>| -> anyhow::Result<Option<Lens>> {
         if let Some(p) = path {
-            return load(p);
+            return load(p).map(Some);
         }
         if let Ok(home) = std::env::var("HOME") {
             let convention = std::path::PathBuf::from(home).join("imx477_profile.json");
             if convention.exists() {
                 let lens = load(&convention.display().to_string())?;
                 eprintln!("  (auto-detected convention profile)");
-                return Ok(lens);
+                return Ok(Some(lens));
             }
         }
-        eprintln!("No lens profile found, using synthetic default (wide-angle)");
-        let fw = w as f64;
-        let fh = h as f64;
-        Ok(Lens::fisheye(
-            w,
-            h,
-            fw * 0.5,
-            fw * 0.5,
-            fw * 0.5,
-            fh * 0.5,
-            [0.0; 4],
-        ))
+        eprintln!("No lens profile found, estimating optics from overlap");
+        Ok(None)
     };
-    let left_params = load_or_default(left_profile, capture_width, capture_height)?;
-    let right_params = load_or_default(right_profile, capture_width, capture_height)?;
-
-    let gpu = reco_core::gpu::GpuContext::new_blocking()?;
-    eprintln!("GPU: {}", gpu.gpu_name());
+    let left_params = load_or_default(left_profile)?;
+    let right_params = load_or_default(right_profile)?;
 
     let source = reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(
         &cam_config,
@@ -813,33 +804,30 @@ pub fn run_live_calibrate(
     let options = reco_calibrate::live::CalibrateFromLiveOptions {
         num_pairs,
         timeout_per_pair: std::time::Duration::from_secs(10),
-        config: reco_calibrate::types::CalibrationConfig::default(),
     };
 
     let result = reco_calibrate::live::calibrate_from_live(
-        &gpu,
         &mut calib_source,
-        &left_params,
-        &right_params,
+        left_params.as_ref(),
+        right_params.as_ref(),
         &options,
         &mut |progress| {
             eprintln!("  [{}] {}", progress.step, progress.detail);
         },
         interrupted,
-    )?;
-
-    calib_source.source.stop()?;
-
-    let confidence_pct = result.confidence * 100.0;
-    eprintln!(
-        "Calibration complete: {} matches, confidence {confidence_pct:.0}%",
-        result.total_matches,
     );
 
-    if confidence_pct < 50.0 {
-        eprintln!(
-            "WARNING: Low confidence ({confidence_pct:.0}%). \
-             Try adjusting camera overlap or improving lighting.",
+    let stopped = calib_source.source.stop();
+    let result = result?;
+    stopped?;
+
+    eprintln!("Calibration complete: {} matches", result.total_matches,);
+
+    if let reco_calibrate::CalibrationAssessment::NeedsReview { reason } = &result.assessment {
+        let report = format!("{output_path}.review.json");
+        std::fs::write(&report, serde_json::to_string_pretty(&result)?)?;
+        anyhow::bail!(
+            "{reason} Candidate retained in {report}; current calibration was not changed."
         );
     }
 
@@ -890,7 +878,8 @@ pub fn run_live_calibrate(
 
     let summary = serde_json::json!({
         "status": "ok",
-        "confidence": result.confidence,
+        "assessment": result.assessment,
+        "overlap_checks": result.overlap_checks,
         "matches": result.total_matches,
         "path": output_path,
     });

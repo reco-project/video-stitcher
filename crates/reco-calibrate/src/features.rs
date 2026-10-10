@@ -16,12 +16,22 @@ const DESC_BYTES: usize = akaze::DESC_BYTES;
 /// A detected feature keypoint with pixel position and response strength.
 #[derive(Debug, Clone, Copy)]
 pub struct KeyPoint {
-    /// X position in pixels.
+    /// X position in pixels, with the first pixel center at zero.
     pub x: f32,
-    /// Y position in pixels.
+    /// Y position in pixels, with the first pixel center at zero.
     pub y: f32,
     /// Corner response strength.
     pub response: f32,
+}
+
+impl KeyPoint {
+    /// Texture coordinates relative to image edges, not pixel indices.
+    pub(crate) fn normalized(&self, width: u32, height: u32) -> [f64; 2] {
+        [
+            (f64::from(self.x) + 0.5) / f64::from(width),
+            (f64::from(self.y) + 0.5) / f64::from(height),
+        ]
+    }
 }
 
 /// A binary descriptor (512 bits, AKAZE M-LDB).
@@ -104,8 +114,8 @@ const CROP_MARGIN_PX: u32 = 32;
 /// Accepts RGBA pixel data (from GPU undistortion). When a detection
 /// region is specified, the image is cropped to that region (plus a
 /// margin for descriptor context) *before* running AKAZE. This avoids
-/// building the full scale space on pixels that will be discarded,
-/// saving 40-60% of computation. Keypoint coordinates are mapped back
+/// building the full scale space on pixels that will be discarded.
+/// Keypoint coordinates are mapped back
 /// to the original image space.
 ///
 /// Images wider than 1920px are downscaled before detection for
@@ -126,7 +136,10 @@ pub fn detect_with_border(
     threshold: f64,
     border_margin: i32,
 ) -> (Vec<KeyPoint>, Vec<Descriptor>) {
-    let expected = width as usize * height as usize * 4;
+    let expected = (width as usize)
+        .checked_mul(height as usize)
+        .and_then(|n| n.checked_mul(4))
+        .expect("RGBA dimensions overflow");
     assert!(
         rgba.len() >= expected,
         "RGBA buffer too small: {} < {} ({}x{}x4)",
@@ -136,10 +149,18 @@ pub fn detect_with_border(
         height,
     );
 
-    // If a region is specified, crop the RGBA image to it (with margin)
-    // before running AKAZE. This avoids building the full scale space on
-    // the entire image when only the overlap region matters.
-    let (detect_rgba, detect_w, detect_h, crop_x0, crop_y0) = if let Some(r) = region {
+    if width == 0 || height == 0 || max_keypoints == 0 {
+        return (Vec::new(), Vec::new());
+    }
+    let (crop_x0, crop_y0, detect_w, detect_h) = if let Some(r) = region {
+        if ![r.x_min, r.x_max, r.y_min, r.y_max]
+            .iter()
+            .all(|v| (0.0..=1.0).contains(v))
+            || r.x_min >= r.x_max
+            || r.y_min >= r.y_max
+        {
+            return (Vec::new(), Vec::new());
+        }
         let x_lo = (r.x_min * width as f32) as u32;
         let x_hi = ((r.x_max * width as f32).ceil() as u32).min(width);
         let y_lo = (r.y_min * height as f32) as u32;
@@ -148,20 +169,14 @@ pub fn detect_with_border(
         // Expand by margin, clamping to image bounds
         let cx0 = x_lo.saturating_sub(CROP_MARGIN_PX);
         let cy0 = y_lo.saturating_sub(CROP_MARGIN_PX);
-        let cx1 = (x_hi + CROP_MARGIN_PX).min(width);
-        let cy1 = (y_hi + CROP_MARGIN_PX).min(height);
+        let cx1 = x_hi.saturating_add(CROP_MARGIN_PX).min(width);
+        let cy1 = y_hi.saturating_add(CROP_MARGIN_PX).min(height);
 
         let cw = cx1 - cx0;
         let ch = cy1 - cy0;
 
         // Only crop if it actually reduces the image size meaningfully
         if (cw as u64 * ch as u64) < (width as u64 * height as u64 * 3 / 4) {
-            let mut cropped = Vec::with_capacity((cw * ch * 4) as usize);
-            for row in cy0..cy1 {
-                let start = (row * width + cx0) as usize * 4;
-                let end = (row * width + cx1) as usize * 4;
-                cropped.extend_from_slice(&rgba[start..end]);
-            }
             log::debug!(
                 "cropped {}x{} -> {}x{} for AKAZE (region + {}px margin)",
                 width,
@@ -170,35 +185,34 @@ pub fn detect_with_border(
                 ch,
                 CROP_MARGIN_PX,
             );
-            (cropped, cw, ch, cx0, cy0)
+            (cx0, cy0, cw, ch)
         } else {
-            (rgba.to_vec(), width, height, 0, 0)
+            (0, 0, width, height)
         }
     } else {
-        (rgba.to_vec(), width, height, 0, 0)
+        (0, 0, width, height)
     };
 
-    // Convert RGBA to RGB (AKAZE doesn't support RGBA directly)
-    let rgb_data: Vec<u8> = detect_rgba
-        .chunks_exact(4)
+    // Copy only the selected RGB pixels, without an intermediate RGBA image.
+    let rgb_data: Vec<u8> = rgba[..expected]
+        .chunks_exact(width as usize * 4)
+        .skip(crop_y0 as usize)
+        .take(detect_h as usize)
+        .flat_map(|row| {
+            let start = crop_x0 as usize * 4;
+            row[start..start + detect_w as usize * 4].chunks_exact(4)
+        })
         .flat_map(|px| [px[0], px[1], px[2]])
         .collect();
-    let Some(img) = image::RgbImage::from_raw(detect_w, detect_h, rgb_data) else {
-        log::error!(
-            "failed to create RgbImage from {}x{} buffer ({} bytes)",
-            detect_w,
-            detect_h,
-            detect_rgba.len(),
-        );
-        return (Vec::new(), Vec::new());
-    };
+    let img = image::RgbImage::from_raw(detect_w, detect_h, rgb_data)
+        .expect("selected RGB rows match the crop dimensions");
     let dynamic = image::DynamicImage::ImageRgb8(img);
 
     // Downscale if needed for performance
-    let (detect_img, scale) = if detect_w > DETECT_MAX_WIDTH {
+    let detect_img = if detect_w > DETECT_MAX_WIDTH {
         let s = DETECT_MAX_WIDTH as f32 / detect_w as f32;
         let new_w = DETECT_MAX_WIDTH;
-        let new_h = (detect_h as f32 * s) as u32;
+        let new_h = ((detect_h as f32 * s) as u32).max(1);
         let resized = dynamic.resize_exact(new_w, new_h, image::imageops::FilterType::Triangle);
         log::debug!(
             "downscaled {}x{} -> {}x{} for AKAZE",
@@ -207,10 +221,14 @@ pub fn detect_with_border(
             new_w,
             new_h
         );
-        (resized, s)
+        resized
     } else {
-        (dynamic, 1.0)
+        dynamic
     };
+    let scale = [
+        detect_w as f32 / detect_img.width() as f32,
+        detect_h as f32 / detect_img.height() as f32,
+    ];
 
     let detector = akaze::Akaze::new(threshold);
     let (akaze_kps, akaze_descs) = detector.extract(&detect_img);
@@ -219,15 +237,15 @@ pub fn detect_with_border(
 
     // Pair up keypoints with descriptors, convert types.
     // Map keypoint coords back to original resolution (undo downscale + crop offset).
-    let inv_scale = 1.0 / scale;
     let mut pairs: Vec<(KeyPoint, Descriptor)> = akaze_kps
         .iter()
         .zip(akaze_descs.iter())
         .map(|(kp, d)| {
+            let [x, y] = restore_keypoint([kp.point.0, kp.point.1], scale, [crop_x0, crop_y0]);
             (
                 KeyPoint {
-                    x: kp.point.0 * inv_scale + crop_x0 as f32,
-                    y: kp.point.1 * inv_scale + crop_y0 as f32,
+                    x,
+                    y,
                     response: kp.response,
                 },
                 *d,
@@ -237,11 +255,13 @@ pub fn detect_with_border(
 
     // Filter to ROI if specified (some keypoints in the margin may fall outside)
     if let Some(r) = region {
-        let x_lo = r.x_min * width as f32;
-        let x_hi = r.x_max * width as f32;
-        let y_lo = r.y_min * height as f32;
-        let y_hi = r.y_max * height as f32;
-        pairs.retain(|(kp, _)| kp.x >= x_lo && kp.x <= x_hi && kp.y >= y_lo && kp.y <= y_hi);
+        pairs.retain(|(kp, _)| {
+            let [x, y] = kp.normalized(width, height);
+            x >= f64::from(r.x_min)
+                && x <= f64::from(r.x_max)
+                && y >= f64::from(r.y_min)
+                && y <= f64::from(r.y_max)
+        });
     }
 
     // Apply border filter if margin > 0 and image is large enough
@@ -270,6 +290,12 @@ pub fn detect_with_border(
     );
 
     (keypoints, descriptors)
+}
+
+fn restore_keypoint(point: [f32; 2], scale: [f32; 2], origin: [u32; 2]) -> [f32; 2] {
+    // image::resize_exact aligns pixel centers. Rounded output height can make
+    // the vertical scale differ from the horizontal scale.
+    std::array::from_fn(|i| (point[i] + 0.5) * scale[i] - 0.5 + origin[i] as f32)
 }
 
 /// Reject keypoints near the undistortion border (black pincushion edges).
@@ -425,6 +451,50 @@ pub fn match_descriptors(left: &[Descriptor], right: &[Descriptor], ratio: f64) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restoring_cropped_resized_keypoints_preserves_pixel_centers() {
+        let original = [3001.0, 901.0];
+        let resized = [1920.0, 576.0];
+        let origin = [47, 83];
+        for point in [[0.0, 0.0], [713.25, 222.75], [1919.0, 575.0]] {
+            let restored = restore_keypoint(
+                point,
+                [original[0] / resized[0], original[1] / resized[1]],
+                origin,
+            );
+            for i in 0..2 {
+                let expected = (point[i] + 0.5) / resized[i];
+                let actual = (restored[i] - origin[i] as f32 + 0.5) / original[i];
+                assert!((expected - actual).abs() < 1e-6);
+            }
+        }
+        assert_eq!(
+            restore_keypoint([3.25, 4.75], [1.0; 2], [0; 2]),
+            [3.25, 4.75]
+        );
+    }
+
+    #[test]
+    fn invalid_regions_return_no_features() {
+        let image = vec![128; 64 * 48 * 4];
+        for (min, max) in [(f32::NAN, 1.0), (0.8, 0.2), (1.1, 2.0), (0.3, 0.3)] {
+            let (points, descriptors) = detect(
+                &image,
+                64,
+                48,
+                Some(DetectRegion {
+                    x_min: min,
+                    x_max: max,
+                    y_min: 0.0,
+                    y_max: 1.0,
+                }),
+                100,
+                0.001,
+            );
+            assert!(points.is_empty() && descriptors.is_empty());
+        }
+    }
 
     #[test]
     fn hamming_distance_identical_is_zero() {

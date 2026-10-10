@@ -24,6 +24,9 @@ pub enum CalibrationIoError {
     /// Frame-index selection requires usable video timing.
     #[error("video frame rate is unknown; cannot select calibration frames by time")]
     UnknownFrameRate,
+    /// No decoded image is within half a frame interval of the requested index's time.
+    #[error("calibration frame {0} is unavailable at its expected time")]
+    FrameUnavailable(u64),
     /// Video decode error.
     #[error("decode: {0}")]
     Decode(#[from] DecodeError),
@@ -78,8 +81,7 @@ pub fn probe_video(path: &Path) -> Result<VideoProbe, CalibrationIoError> {
 /// Extract YUV420P frames from a video at specific frame indices.
 ///
 /// Seeks to each frame index (converted to seconds via the video's
-/// frame rate) and decodes a single frame. Returns frames in the
-/// order of the given indices.
+/// frame rate) and decodes a single frame. Returns one frame per requested index in the same order, including duplicates. An index with no image within half a frame interval of its expected time returns [`CalibrationIoError::FrameUnavailable`], rather than substituting the last image or shifting subsequent pairs.
 ///
 /// This is the I/O complement to
 /// [`CalibrationPipeline::frame_indices()`](https://docs.rs/reco-calibrate).
@@ -95,17 +97,17 @@ pub fn extract_frames(
         let target_secs = target_idx as f64 / fps;
         decoder.seek_to_secs(target_secs)?;
 
-        let mut last_frame = None;
+        let mut selected = None;
         while let Some(yuv) = decoder.next_frame()? {
             let frame_time = yuv.timestamp_us as f64 / 1_000_000.0;
-            last_frame = Some(yuv);
             if frame_time >= target_secs - 0.5 / fps {
+                if frame_time <= target_secs + 0.5 / fps {
+                    selected = Some(yuv);
+                }
                 break;
             }
         }
-        if let Some(f) = last_frame {
-            frames.push(f);
-        }
+        frames.push(selected.ok_or(CalibrationIoError::FrameUnavailable(target_idx))?);
     }
 
     Ok(frames)

@@ -42,9 +42,9 @@ impl Vertex {
 }
 
 /// Same quad as the stitching renderer.
-fn quad_vertices(plane_aspect: f32) -> [Vertex; 6] {
+fn quad_vertices() -> [Vertex; 6] {
     let hw = 0.5;
-    let hh = 0.5 / plane_aspect;
+    let hh = 0.5;
     [
         Vertex {
             position: [-hw, -hh, 0.0],
@@ -91,16 +91,13 @@ pub struct GpuUndistort {
     readback_buffer: wgpu::Buffer,
     width: u32,
     height: u32,
-    /// Plane aspect ratio (width / height) for quad geometry and ortho projection.
-    plane_aspect: f32,
 }
 
 impl GpuUndistort {
     /// Create GPU resources for undistorting frames of the given dimensions.
     ///
-    /// `plane_aspect` is the camera aspect ratio (width / height), e.g.
-    /// `camera.width as f32 / camera.height as f32`.
-    pub fn new(gpu: &GpuContext, width: u32, height: u32, plane_aspect: f32) -> Self {
+    /// Output pixels cover the full normalized plane domain, independently of raster aspect. Physical plane proportions are a calibration concern, not an image-preprocessing transform.
+    pub fn new(gpu: &GpuContext, width: u32, height: u32) -> Self {
         let device = &gpu.device;
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -114,7 +111,7 @@ impl GpuUndistort {
             ),
         });
 
-        let vertices = quad_vertices(plane_aspect);
+        let vertices = quad_vertices();
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("undistort_quad"),
             contents: bytemuck::cast_slice(&vertices),
@@ -308,7 +305,6 @@ impl GpuUndistort {
             readback_buffer,
             width,
             height,
-            plane_aspect,
         }
     }
 
@@ -332,8 +328,7 @@ impl GpuUndistort {
         upload_plane(&gpu.queue, &self.v_texture, v, w / 2, h / 2);
 
         // Ortho MVP fills the viewport with the quad
-        let hh = 0.5 / self.plane_aspect;
-        let ortho = Orthographic3::new(-0.5, 0.5, -hh, hh, -1.0, 1.0);
+        let ortho = Orthographic3::new(-0.5, 0.5, -0.5, 0.5, -1.0, 1.0);
         let mvp = opengl_to_wgpu_matrix() * ortho.to_homogeneous();
 
         let uniforms =
