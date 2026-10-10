@@ -15,6 +15,10 @@ fn host_inference(model: &Path) {
     let (mut session, size, labels) = create_ort_session(model, vec!["object".into()]).unwrap();
     assert_eq!(size, 2);
     assert_eq!(labels, ["object"]);
+    assert_identity(&mut session);
+}
+
+fn assert_identity(session: &mut Session) {
     let values: Vec<f32> = (0..12).map(|n| n as f32).collect();
     let tensor = ort::value::Tensor::from_array(([1, 3, 2, 2], values.clone())).unwrap();
     let output = session.run(ort::inputs![tensor]).unwrap();
@@ -39,18 +43,64 @@ fn required_host_session_runs_identity() {
     host_session_runs_identity();
 }
 
-#[cfg(any(
-    feature = "load-dynamic",
-    all(target_os = "linux", any(feature = "tensorrt", feature = "cuda"))
-))]
+#[test]
+fn concurrent_sessions_run_independently() {
+    const CASE: &str = "concurrent_sessions_run_independently";
+    if !child_case(CASE) {
+        run_child(CASE, false);
+        return;
+    }
+    if ort_runtime_available().is_err() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let model = dir.path().join("identity.onnx");
+    std::fs::write(&model, IDENTITY).unwrap();
+    let barrier = std::sync::Barrier::new(2);
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..2)
+            .map(|_| {
+                scope.spawn(|| {
+                    barrier.wait();
+                    let result = create_ort_session(&model, vec!["object".into()]);
+                    // Both loads must finish before inference, including a failed load.
+                    barrier.wait();
+                    let (mut session, size, labels) = result.unwrap();
+                    assert_eq!(size, 2);
+                    assert_eq!(labels, ["object"]);
+                    assert_identity(&mut session);
+                })
+            })
+            .collect();
+        for worker in workers {
+            worker.join().unwrap();
+        }
+    });
+}
+
+#[test]
+fn failed_model_load_does_not_block_next_session() {
+    const CASE: &str = "failed_model_load_does_not_block_next_session";
+    if !child_case(CASE) {
+        run_child(CASE, false);
+        return;
+    }
+    if ort_runtime_available().is_err() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let model = dir.path().join("model.onnx");
+    assert!(create_ort_session(&model, vec![]).is_err());
+    std::fs::write(&model, b"not an ONNX model").unwrap();
+    assert!(create_ort_session(&model, vec![]).is_err());
+    std::fs::write(&model, IDENTITY).unwrap();
+    host_inference(&model);
+}
+
 fn child_case(case: &str) -> bool {
     std::env::var("RECO_ORT_TEST_CHILD").as_deref() == Ok(case)
 }
 
-#[cfg(any(
-    feature = "load-dynamic",
-    all(target_os = "linux", any(feature = "tensorrt", feature = "cuda"))
-))]
 fn run_child(case: &str, copy_binary: bool) {
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
@@ -204,6 +254,17 @@ fn missing_runtime_returns_errors() {
     if !child_case(CASE) {
         run_child(CASE, false);
         return;
+    }
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    for sizes in [vec![], vec![(0, 2)], vec![(3, 2)]] {
+        let error = crate::OrtGpuDetector::try_new("unused.onnx", &sizes, 0.1, vec![], false)
+            .err()
+            .expect("invalid dimensions must fail without loading the runtime");
+        assert!(error.to_string().contains(if sizes.is_empty() {
+            "at least one"
+        } else {
+            "positive and even"
+        }));
     }
     for _ in 0..2 {
         let report = crate::probe::probe_execution_providers();

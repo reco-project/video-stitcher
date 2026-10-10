@@ -282,7 +282,13 @@ fn create_session(
     cuda_input: bool,
 ) -> Result<(Session, u32, Vec<String>), SessionError> {
     let (mut builder, _) = session_builder(cuda_input)?;
-    let session = builder.commit_from_file(model_path)?;
+    let session = {
+        // ORT model loading registers custom-op domains in a global registry.
+        // Serialize our loads to avoid registration races, never inference.
+        static MODEL_LOAD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _load = MODEL_LOAD.lock().unwrap_or_else(|e| e.into_inner());
+        builder.commit_from_file(model_path)?
+    };
 
     // Extract input size from model metadata (BCHW layout).
     let input_size = match session.inputs()[0].dtype() {

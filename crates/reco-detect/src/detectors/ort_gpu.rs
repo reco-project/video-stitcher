@@ -107,18 +107,16 @@ impl OrtGpuDetector {
         is_10bit: bool,
     ) -> Result<Option<Self>, Box<dyn std::error::Error>> {
         if source_sizes.is_empty() {
-            return Err(ort::Error::new("at least one source size is required").into());
+            return Err("at least one source size is required".into());
         }
         let mut max_pixels = 0;
         for &(width, height) in source_sizes {
             if width == 0 || height == 0 || !width.is_multiple_of(2) || !height.is_multiple_of(2) {
-                return Err(
-                    ort::Error::new("NV12 frame dimensions must be positive and even").into(),
-                );
+                return Err("NV12 frame dimensions must be positive and even".into());
             }
             let pixels = (width as usize)
                 .checked_mul(height as usize)
-                .ok_or_else(|| ort::Error::new("frame dimensions overflow"))?;
+                .ok_or("frame dimensions overflow")?;
             max_pixels = max_pixels.max(pixels);
         }
         // GPU detection needs a CUDA-capable EP (TensorRT or CUDA) to
@@ -146,7 +144,7 @@ impl OrtGpuDetector {
             .checked_mul(input_size as usize)
             .and_then(|v| v.checked_mul(3))
             .and_then(|v| v.checked_mul(4))
-            .ok_or_else(|| ort::Error::new("input dimensions overflow for tensor_size"))?;
+            .ok_or("input dimensions overflow for tensor_size")?;
 
         let tensor_f32 = Allocation::new(tensor_size)?;
 
@@ -154,7 +152,7 @@ impl OrtGpuDetector {
         let p010_scratch = if is_10bit {
             let bytes = max_pixels
                 .checked_add(max_pixels / 2)
-                .ok_or_else(|| ort::Error::new("P010 scratch dimensions overflow"))?;
+                .ok_or("P010 scratch dimensions overflow")?;
             Some((Allocation::new(bytes)?, max_pixels))
         } else {
             None
