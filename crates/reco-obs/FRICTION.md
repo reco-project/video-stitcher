@@ -15,16 +15,6 @@ need new interop code. Known limit, not actionable without a specific target.
 
 **Impact**: Medium. Two independent OBS sources can return frames with mismatched timestamps. `reco_io::frame_sync::Selector` already supplies transport-independent bounded wait/reuse and capture-age checks, covered by its module tests. OBS still needs explicit timestamp-domain mapping, polling and retained-frame ownership to use it. The helper does not infer clock alignment or own OBS frame lifetimes.
 
-### A6. No source filtering by OBS_SOURCE_ASYNC_VIDEO
-
-**Impact**: Low. Source-picker shows every OBS source including scenes
-and audio-only. Fix: 5 lines of FFI + a conditional.
-
-### A7. No auto-resize on input dimension change
-
-**Impact**: Low. Dimension mismatch between properties and actual frames
-silently freezes output. Consumer-side rebuild works but isn't automatic.
-
 ### A9. obs_source_get_frame only sees async video sources
 
 **Impact**: High. Sync sources (Browser Source, screen capture) are
@@ -66,18 +56,7 @@ better but requires Qt bindings.
 **Impact**: Medium. See A10. Requires reco-autocam + reco-detect as
 deps with worker-thread inference.
 
-### A20. Replay toggle decoupled from OBS Record/Stream buttons
-
-**Impact**: Medium. The replay checkbox is independent of OBS's global
-recording state. Users expect OBS's Record button to control everything.
-
 ### A21. Live Matroska replay hard to scrub in players
 
 **Impact**: Low. Matroska files being written have unstable duration
 metadata. Finalized files scrub normally.
-
-### A22. Input dimensions declared, not detected
-
-**Impact**: High UX. User must manually set input W/H in properties.
-Mismatched dims silently freeze output. Should auto-detect from first
-frame and rebuild the pipeline.

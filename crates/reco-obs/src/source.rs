@@ -22,13 +22,12 @@ use std::ffi::CStr;
 use std::os::raw::{c_char, c_float, c_void};
 use std::path::Path;
 use std::ptr;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
 
-use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_core::calibration::Calibration;
 use reco_core::core::StitchCore;
 use reco_core::core::types::RenderOutcome;
-use reco_core::geometry::RenderPose;
 use reco_core::gpu::GpuContext;
 use reco_core::render::pipeline::{FramePlaneView, RgbaPlanes, StridedYuv420pPlanes};
 use reco_core::render::renderer::InputFormat;
@@ -36,6 +35,12 @@ use reco_core::render::viewport::ViewportSize;
 use reco_core::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 
 use crate::ffi;
+use crate::interaction::Interaction;
+use crate::resources::{SourceInput, Texture, accepts_source};
+
+#[cfg(test)]
+#[path = "source_tests.rs"]
+mod tests;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -51,8 +56,6 @@ const SOURCE_NAME: &CStr = c"Reco Panorama Stitcher";
 const PROP_CONFIG_PATH: &CStr = c"config_path";
 const PROP_OUTPUT_WIDTH: &CStr = c"output_width";
 const PROP_OUTPUT_HEIGHT: &CStr = c"output_height";
-const PROP_INPUT_WIDTH: &CStr = c"input_width";
-const PROP_INPUT_HEIGHT: &CStr = c"input_height";
 const PROP_YAW: &CStr = c"yaw";
 const PROP_PITCH: &CStr = c"pitch";
 const PROP_CONSTRAINED: &CStr = c"constrained_look";
@@ -96,10 +99,53 @@ const REPLAY_MODE_ALWAYS: &CStr = c"always";
 // Source state
 // ---------------------------------------------------------------------------
 
-/// Per-instance state for a Reco stitcher source.
-///
-/// Allocated in `create`, freed in `destroy`. OBS passes `*mut c_void`
-/// pointing to this through all callbacks.
+/// Callbacks only borrow this shared handle. The UI never borrows the engine or presentation state.
+struct SourceHandle {
+    engine: Mutex<RecoSource>,
+    interaction: Mutex<Interaction>,
+    presentation: Mutex<Presentation>,
+    width: AtomicU32,
+    height: AtomicU32,
+}
+
+impl Default for SourceHandle {
+    fn default() -> Self {
+        Self {
+            engine: Mutex::new(RecoSource::new()),
+            interaction: Mutex::new(Interaction::default()),
+            presentation: Mutex::new(Presentation::default()),
+            width: AtomicU32::new(1920),
+            height: AtomicU32::new(1080),
+        }
+    }
+}
+
+impl SourceHandle {
+    fn reset_presentation(&self, engine: &RecoSource) {
+        self.width.store(engine.output_width, Ordering::Relaxed);
+        self.height.store(engine.output_height, Ordering::Relaxed);
+        if let Ok(mut display) = self.presentation.lock() {
+            display.width = engine.output_width;
+            display.height = engine.output_height;
+            display.rgba.clear();
+            display.dirty = false;
+        }
+    }
+}
+
+/// CPU output and its OBS texture. Only rendering/destruction accesses the texture, under OBS graphics ownership.
+#[derive(Default)]
+struct Presentation {
+    rgba: Vec<u8>,
+    dirty: bool,
+    width: u32,
+    height: u32,
+    texture_width: u32,
+    texture_height: u32,
+    texture: Texture,
+}
+
+/// Stitching state, accessed only through the shared handle's engine mutex.
 struct RecoSource {
     /// Push-first stitch core (owns pipeline + RGBA readback).
     /// None until calibration is loaded and GPU is initialized. The
@@ -111,13 +157,9 @@ struct RecoSource {
     /// Upstream OBS source that feeds the left camera. Owned reference
     /// (obs_get_source_by_name increments refcount, we release in destroy
     /// or when the user picks a different source).
-    left_source: *mut ffi::obs_source_t,
+    left_source: SourceInput,
     /// Upstream OBS source that feeds the right camera. See [`Self::left_source`].
-    right_source: *mut ffi::obs_source_t,
-    /// Source name the user picked for the left camera (used to detect changes).
-    left_source_name: String,
-    /// Source name the user picked for the right camera.
-    right_source_name: String,
+    right_source: SourceInput,
     /// Reusable tight-pack buffers for `StridedYuv420pPlanes::copy_into`. One
     /// per side so the render loop never reallocates per frame.
     left_repack: Vec<u8>,
@@ -136,14 +178,6 @@ struct RecoSource {
     diag_missed_left: u64,
     diag_missed_right: u64,
     diag_submitted: u64,
-    /// Count of video_render invocations since source creation. Logged
-    /// alongside the regular diag heartbeat so we can distinguish
-    /// "stitching runs but OBS never asks us to draw" from
-    /// "render runs but the texture isn't repainting".
-    diag_render_calls: u64,
-    /// Count of texture uploads (gs_texture_set_image calls) - should
-    /// track diag_submitted when the display path is healthy.
-    diag_uploads: u64,
 
     /// Current calibration loaded from the config file.
     calibration: Option<Calibration>,
@@ -155,38 +189,12 @@ struct RecoSource {
     output_width: u32,
     output_height: u32,
 
-    /// Expected input frame dimensions (from the camera sources).
-    input_width: u32,
-    input_height: u32,
+    /// Last observed decoded dimensions, in left/right camera order.
+    input_sizes: Option<[(u32, u32); 2]>,
 
-    /// Direct render-space pan/zoom input, accepted through engine coverage before rendering.
-    pose: PoseControl,
     constrained_look: bool,
 
-    /// Interactive drag state. `true` between mouse-left-down and
-    /// mouse-left-up events. When true, mouse_move deltas translate to
-    /// yaw/pitch adjustments.
-    dragging: bool,
-    /// Last mouse x/y in source-local pixels, used to compute deltas
-    /// between consecutive mouse_move events.
-    last_mouse_x: i32,
-    last_mouse_y: i32,
-
-    /// CPU-side RGBA buffer from the last render (owned copy of the most
-    /// recent frame from `RgbaReadback`, so `video_render` can read it on
-    /// the OBS graphics thread without holding a borrow).
-    rgba_buffer: Vec<u8>,
-
-    /// Whether `rgba_buffer` has new data since the last `video_render`.
-    frame_ready: AtomicBool,
-
-    /// OBS graphics texture for uploading RGBA data.
-    /// Created/destroyed on the OBS graphics thread.
-    obs_texture: *mut ffi::gs_texture_t,
-
-    /// Replay-recording toggle state. Mirrors the OBS property;
-    /// kept here so `try_init_pipeline` can re-attach a recorder
-    /// after a session rebuild (dim / format change).
+    /// User intent, independent of OBS's record/stream trigger.
     #[cfg(feature = "replay")]
     replay_enabled: bool,
     /// Output path for the stacked-video replay file. Empty string
@@ -194,31 +202,23 @@ struct RecoSource {
     /// both `replay_enabled` is true and this is non-empty.
     #[cfg(feature = "replay")]
     replay_path: String,
-    /// Whether to follow OBS's Record/Stream state. `true` by
-    /// default (A20 resolution) - the checkbox expresses intent,
-    /// the actual recording only runs when OBS is also recording
-    /// or streaming. Flip to `false` via the hidden "Record
-    /// independently" mode for the pre-A20 behavior.
+    /// Follow OBS's record/stream state instead of recording independently.
     #[cfg(feature = "replay")]
     replay_follow_obs: bool,
-    /// Whether the `StitchCore` currently has a stacked-video
-    /// recorder attached. Tracked here because `StitchCore` does
-    /// not expose a getter (and shouldn't - attachment state is a
-    /// consumer concern, not a pipeline concern). Used to avoid
-    /// tearing down and re-attaching the recorder on every settings
-    /// update when the user changes an unrelated property.
+    /// The active file, so a path edit finalizes the previous recorder.
     #[cfg(feature = "replay")]
-    replay_recorder_attached: bool,
+    replay_recorder_path: Option<String>,
+    /// Latch each start attempt to avoid repeated file/encoder opens on the video thread.
+    #[cfg(feature = "replay")]
+    replay_attempted_path: Option<String>,
 }
 
 impl RecoSource {
     fn new() -> Self {
         Self {
             core: None,
-            left_source: ptr::null_mut(),
-            right_source: ptr::null_mut(),
-            left_source_name: String::new(),
-            right_source_name: String::new(),
+            left_source: SourceInput::default(),
+            right_source: SourceInput::default(),
             left_repack: Vec::new(),
             right_repack: Vec::new(),
             input_format: InputFormat::Yuv420p,
@@ -227,28 +227,12 @@ impl RecoSource {
             diag_missed_left: 0,
             diag_missed_right: 0,
             diag_submitted: 0,
-            diag_render_calls: 0,
-            diag_uploads: 0,
             calibration: None,
             config_path: String::new(),
             output_width: 1920,
             output_height: 1080,
-            input_width: 1920,
-            input_height: 1080,
-            // Preserve the source's PTZ-style horizontal drag convention.
-            pose: PoseControl::new(PoseControlConfig {
-                invert_drag_x: true,
-                invert_drag_y: false,
-                ..Default::default()
-            })
-            .expect("valid OBS pose controls"),
-            dragging: false,
+            input_sizes: None,
             constrained_look: true,
-            last_mouse_x: 0,
-            last_mouse_y: 0,
-            rgba_buffer: Vec::new(),
-            frame_ready: AtomicBool::new(false),
-            obs_texture: ptr::null_mut(),
             #[cfg(feature = "replay")]
             replay_enabled: false,
             #[cfg(feature = "replay")]
@@ -256,81 +240,9 @@ impl RecoSource {
             #[cfg(feature = "replay")]
             replay_follow_obs: true,
             #[cfg(feature = "replay")]
-            replay_recorder_attached: false,
-        }
-    }
-
-    /// Replace `slot` with a new OBS source reference (resolved from
-    /// `new_name` via `obs_get_source_by_name`). Releases the old ref if
-    /// one was held, and pairs `inc_showing` with `dec_showing` so the
-    /// upstream source (e.g. a Media Source) keeps its decoder running
-    /// while we're pulling frames from it - without that, OBS can
-    /// deactivate the source when it isn't visibly rendered anywhere,
-    /// which manifests as intermittent freezes in our stitched output.
-    ///
-    /// Safe to call with an empty name - that just releases the old ref.
-    unsafe fn set_source_slot(slot: &mut *mut ffi::obs_source_t, new_name: &str) {
-        unsafe {
-            if !slot.is_null() {
-                ffi::obs_source_dec_active(*slot);
-                ffi::obs_source_dec_showing(*slot);
-                ffi::obs_source_release(*slot);
-                *slot = ptr::null_mut();
-            }
-            if new_name.is_empty() {
-                return;
-            }
-            let cstr = match std::ffi::CString::new(new_name) {
-                Ok(s) => s,
-                Err(_) => {
-                    log::warn!("reco-obs: source name contains NUL, ignoring");
-                    return;
-                }
-            };
-            let ptr = ffi::obs_get_source_by_name(cstr.as_ptr());
-            if ptr.is_null() {
-                log::warn!("reco-obs: upstream source '{new_name}' not found (not yet created?)");
-            } else {
-                // Sanity-check the source's output_flags. We can only
-                // consume ASYNC video sources via obs_source_get_frame.
-                // Sync video sources (Browser Source, Screen Capture,
-                // Window Capture, Game Capture) need render-to-texture,
-                // which this plugin does not implement - they'd
-                // silently produce no output if we didn't warn here.
-                let flags = ffi::obs_source_get_output_flags(ptr);
-                let has_video = (flags & ffi::OBS_SOURCE_VIDEO) != 0;
-                let is_async = (flags & ffi::OBS_SOURCE_ASYNC) != 0;
-                if !has_video {
-                    log::warn!(
-                        "reco-obs: source '{new_name}' has no video output (flags={:#06x}); \
-                         it won't produce frames. Pick a video source (Media Source, V4L2 \
-                         Device, NDI).",
-                        flags
-                    );
-                } else if !is_async {
-                    log::warn!(
-                        "reco-obs: source '{new_name}' is a SYNC video source (flags={:#06x}); \
-                         reco-obs Tier 1 only consumes async sources. Browser Source, Screen \
-                         Capture, Window Capture, Game Capture all render this way - tracked \
-                         as FRICTION A9 (needs render-to-texture path). Workarounds: use \
-                         Media Source / V4L2 Device / NDI, or pipe the sync source through \
-                         v4l2loopback first.",
-                        flags
-                    );
-                } else {
-                    log::info!(
-                        "reco-obs: source '{new_name}' is async video (flags={:#06x}) - ok",
-                        flags
-                    );
-                }
-                // Hold both showing + active refs. Media Source's
-                // ffmpeg decode thread pauses on active==0 even when
-                // showing>0, so we need both to keep playback stable
-                // while the upstream isn't visibly rendered in the scene.
-                ffi::obs_source_inc_showing(ptr);
-                ffi::obs_source_inc_active(ptr);
-            }
-            *slot = ptr;
+            replay_recorder_path: None,
+            #[cfg(feature = "replay")]
+            replay_attempted_path: None,
         }
     }
 
@@ -338,6 +250,23 @@ impl RecoSource {
     ///
     /// Called after calibration is loaded or dimensions change.
     fn try_init_pipeline(&mut self) {
+        // A failed rebuild must not leave a renderer using the old dimensions or calibration.
+        if let Some(core) = &mut self.core {
+            core.clear_stacked_recorder();
+        }
+        self.core = None;
+        #[cfg(feature = "replay")]
+        {
+            if let Some(path) = self.replay_recorder_path.take() {
+                log::warn!(
+                    "reco-obs: replay stopped for input rebuild; preserved '{}'. Select a new output path to record again.",
+                    path
+                );
+            }
+        }
+        let Some(input_sizes) = self.input_sizes else {
+            return;
+        };
         let calibration = match &self.calibration {
             Some(cal) => cal.clone(),
             None => {
@@ -366,7 +295,7 @@ impl RecoSource {
             GpuExecutorConfig {
                 calibration,
                 viewport_size,
-                source_sizes: vec![(self.input_width, self.input_height); 2],
+                source_sizes: input_sizes.to_vec(),
                 input_format: self.input_format,
                 output_format: reco_core::wgpu::TextureFormat::Rgba8Unorm,
                 full_range: false,
@@ -376,141 +305,143 @@ impl RecoSource {
             Ok(executor) => executor,
             Err(e) => {
                 log::error!("reco-obs: failed to create executor: {e}");
-                self.core = None;
-                #[cfg(feature = "replay")]
-                {
-                    self.replay_recorder_attached = false;
-                }
                 return;
             }
         };
         match StitchCore::new(Executor::Gpu(Box::new(executor))) {
             Ok(session) => {
                 log::info!(
-                    "reco-obs: session initialized ({}x{} output, {}x{} input, format={:?})",
+                    "reco-obs: session initialized ({}x{} output, inputs={input_sizes:?}, format={:?})",
                     self.output_width,
                     self.output_height,
-                    self.input_width,
-                    self.input_height,
                     self.input_format,
                 );
                 self.core = Some(session);
-                let buf_size = (self.output_width * self.output_height * 4) as usize;
-                self.rgba_buffer.resize(buf_size, 0);
-                // A session rebuild drops any previously-attached
-                // recorder along with the old core, so the tracking
-                // flag must reset even if the recording was on
-                // moments ago. `update_replay_recorder` then
-                // re-attaches a fresh encoder if the user still has
-                // it enabled.
-                #[cfg(feature = "replay")]
-                {
-                    self.replay_recorder_attached = false;
-                }
-                self.update_replay_recorder();
+                self.update_replay_recorder(false);
             }
             Err(e) => {
                 log::error!("reco-obs: failed to create session: {e}");
-                self.core = None;
-                #[cfg(feature = "replay")]
-                {
-                    self.replay_recorder_attached = false;
-                }
             }
         }
     }
 
-    /// Re-align the stacked-video recorder with current settings.
-    ///
-    /// Called after `try_init_pipeline` (session rebuild) and from
-    /// `source_update` (property change). Attaches a recorder when
-    /// the user has ticked the toggle AND supplied a path AND the
-    /// session exists; detaches it otherwise. No-op when the target
-    /// state already matches the current state.
-    ///
-    /// Logging is story-telling per project convention: the user
-    /// should be able to read the log and know exactly when the
-    /// recorder started, stopped, or refused to start (missing
-    /// path, failed to open file, etc.).
+    /// Follow recording intent, but start only after a compatible input pair arrives.
     #[cfg(feature = "replay")]
-    fn update_replay_recorder(&mut self) {
-        // Gate 1: intent — user has ticked the checkbox and given a path.
-        let intent_on = self.replay_enabled && !self.replay_path.is_empty();
-        // Gate 2: trigger — follow-OBS mode waits for OBS to start
-        // recording/streaming; always-mode runs the moment the
-        // pipeline is up. Builds without frontend-api keep the
-        // always-on semantics (the global defaults to true there).
-        let trigger_on = if self.replay_follow_obs {
-            crate::OBS_RECORDING_OR_STREAMING.load(std::sync::atomic::Ordering::Relaxed)
-        } else {
-            true
-        };
-        let want_recording = intent_on && trigger_on && self.core.is_some();
-        if want_recording && !self.replay_recorder_attached {
-            // Transition: off -> on. Open the encoder and attach.
-            let Some(core) = self.core.as_mut() else {
-                return;
-            };
-            // Safety check: replay tiles are recorded at the raw
-            // input resolution (no downscale). For 5K cameras the
-            // composite is 5120x5760, and libx264 at that size can
-            // eat most of a modern CPU. Warn loudly so the user
-            // isn't surprised by the bitrate / file size / encoder
-            // stall. Threshold picked at "anything > 4K per tile".
-            if self.input_width > 3840 || self.input_height > 2160 {
-                log::warn!(
-                    "reco-obs: replay recording at {}x{} per tile -> {}x{} composite. \
-                     Software libx264 at this size may not keep up in real time; \
-                     file will be large. Future work: GPU pack + downscale option.",
-                    self.input_width,
-                    self.input_height,
-                    self.input_width,
-                    self.input_height * 2,
-                );
-            }
-            let path = std::path::PathBuf::from(&self.replay_path);
-            let cfg = reco_io::stacked_video::encoder::StackedEncoderConfig::default();
-            match reco_io::stacked_video::replay::session_recorder(
-                &path,
-                cfg,
-                self.input_width,
-                self.input_height,
-            ) {
-                Ok(recorder) => {
-                    if let Err(error) = core.set_stacked_recorder(recorder) {
-                        log::warn!("reco-obs: replay recorder rejected: {error}");
-                        return;
-                    }
-                    log::info!(
-                        "reco-obs: replay recording ENABLED -> {} ({}x{} per tile)",
-                        self.replay_path,
-                        self.input_width,
-                        self.input_height,
-                    );
-                    self.replay_recorder_attached = true;
-                }
-                Err(e) => {
-                    log::warn!(
-                        "reco-obs: replay recorder failed to open '{}' ({e}); \
-                         stitching continues without replay",
-                        self.replay_path,
-                    );
-                }
-            }
-        } else if !want_recording && self.replay_recorder_attached {
-            // Transition: on -> off. Finalize the file.
-            if let Some(core) = self.core.as_mut() {
-                log::info!("reco-obs: replay recording DISABLED (finalizing file)");
+    fn update_replay_recorder(&mut self, can_start: bool) {
+        let trigger_on = !self.replay_follow_obs
+            || crate::OBS_RECORDING_OR_STREAMING.load(std::sync::atomic::Ordering::Relaxed);
+        let want_recording = self.replay_enabled
+            && !self.replay_path.is_empty()
+            && trigger_on
+            && self.core.is_some();
+        if self
+            .replay_recorder_path
+            .as_ref()
+            .is_some_and(|path| !want_recording || path != &self.replay_path)
+        {
+            if let Some(core) = &mut self.core {
                 core.clear_stacked_recorder();
             }
-            self.replay_recorder_attached = false;
+            self.replay_recorder_path = None;
+        }
+        if !want_recording {
+            self.replay_attempted_path = None;
+            return;
+        }
+        if !can_start
+            || self.replay_recorder_path.is_some()
+            || self.replay_attempted_path.as_ref() == Some(&self.replay_path)
+        {
+            return;
+        }
+        let mut video = unsafe { std::mem::zeroed::<ffi::obs_video_info>() };
+        if !unsafe { ffi::obs_get_video_info(&mut video) } {
+            return;
+        }
+        self.replay_attempted_path = Some(self.replay_path.clone());
+        if self.input_format != InputFormat::Yuv420p {
+            log::warn!("reco-obs: stacked replay requires I420 camera inputs");
+            return;
+        }
+        let Some([left, right]) = self.input_sizes else {
+            return;
+        };
+        if left != right {
+            log::warn!(
+                "reco-obs: stacked replay requires equal camera dimensions; stitching continues"
+            );
+            return;
+        }
+        let (input_width, input_height) = left;
+        let (Ok(fps_num), Ok(fps_den)) =
+            (i32::try_from(video.fps_num), i32::try_from(video.fps_den))
+        else {
+            log::warn!("reco-obs: unsupported OBS frame rate for replay recording");
+            return;
+        };
+        let path = std::path::Path::new(&self.replay_path);
+        // Reserve a fresh path before FFmpeg opens it. Automatic restarts must not truncate an earlier recording.
+        let _reservation = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+        {
+            Ok(file) => file,
+            Err(error) => {
+                log::warn!(
+                    "reco-obs: cannot start replay at '{}' ({error}); select a new writable file path",
+                    path.display()
+                );
+                return;
+            }
+        };
+        let config = reco_io::stacked_video::encoder::StackedEncoderConfig {
+            fps: Some((fps_num, fps_den)),
+            ..Default::default()
+        };
+        let result = reco_io::stacked_video::replay::session_recorder(
+            path,
+            config,
+            input_width,
+            input_height,
+        );
+        match result {
+            Ok(recorder) => {
+                let core = self.core.as_mut().expect("recording requires an engine");
+                if let Err(error) = core.set_stacked_recorder(recorder) {
+                    log::warn!("reco-obs: replay recorder rejected: {error}");
+                    return;
+                }
+                self.replay_recorder_path = Some(self.replay_path.clone());
+                log::info!(
+                    "reco-obs: replay recording started at '{}' ({}x{} per tile, {fps_num}/{fps_den} fps)",
+                    path.display(),
+                    input_width,
+                    input_height
+                );
+            }
+            Err(error) => log::warn!(
+                "reco-obs: replay failed to open '{}' ({error}); stitching continues",
+                path.display()
+            ),
         }
     }
 
     /// No-op stub when the `replay` feature is disabled. Keeps the
     /// call sites unconditional without scattering `#[cfg]` around.
     #[cfg(not(feature = "replay"))]
-    fn update_replay_recorder(&mut self) {}
+    fn update_replay_recorder(&mut self, _can_start: bool) {}
+
+    /// Resize the existing output without replacing input resources or the replay recorder.
+    fn resize_output(&mut self) {
+        let Some(core) = self.core.as_mut() else {
+            return;
+        };
+        if core.resize(self.output_width, self.output_height).is_none() {
+            log::warn!("reco-obs: output resize rejected; retaining the accepted dimensions");
+            (self.output_width, self.output_height) = core.output_dims();
+        }
+    }
 
     /// Load calibration from the config file path.
     fn load_calibration(&mut self) {
@@ -541,10 +472,10 @@ impl RecoSource {
     /// stitch, and stash the RGBA result for `video_render`.
     ///
     /// Returns silently (no render) when either upstream source is unset,
-    /// has no current frame, or delivers a format other than I420. The
+    /// has no current frame, or delivers a format other than the selected input format. The
     /// `warned_unsupported_format` flag ensures unsupported-format warnings
     /// fire at most once per source instance.
-    fn render_and_readback(&mut self) {
+    fn render_and_readback(&mut self, shared: &SourceHandle) {
         self.diag_tick = self.diag_tick.wrapping_add(1);
 
         // Lazy re-resolve: on OBS startup, source_create for the Reco
@@ -553,16 +484,8 @@ impl RecoSource {
         // Retry every 30 ticks (~0.5s at 60fps) until we get non-null
         // refs. Cheap - obs_get_source_by_name is a hashmap lookup.
         if self.diag_tick.is_multiple_of(30) {
-            unsafe {
-                if self.left_source.is_null() && !self.left_source_name.is_empty() {
-                    let name = self.left_source_name.clone();
-                    RecoSource::set_source_slot(&mut self.left_source, &name);
-                }
-                if self.right_source.is_null() && !self.right_source_name.is_empty() {
-                    let name = self.right_source_name.clone();
-                    RecoSource::set_source_slot(&mut self.right_source, &name);
-                }
-            }
+            self.left_source.retry();
+            self.right_source.retry();
             // Also re-evaluate replay attachment state here (every
             // 0.5s). The global `OBS_RECORDING_OR_STREAMING` atomic
             // is flipped from the frontend event callback, which
@@ -571,18 +494,16 @@ impl RecoSource {
             // Cheap: one atomic load + one bool compare in the
             // common case where nothing changed.
             #[cfg(feature = "replay")]
-            self.update_replay_recorder();
+            self.update_replay_recorder(false);
         }
         // Every ~60 ticks (~1-2 seconds) flush a diagnostic heartbeat so
         // users can tell "plugin running but no render" from "plugin hung".
         if self.diag_tick.is_multiple_of(60) {
             log::info!(
-                "reco-obs: diag tick={} submitted={} uploads={} renders={} \
+                "reco-obs: diag tick={} submitted={} \
                  missed_left={} missed_right={} session={} left_src={} right_src={}",
                 self.diag_tick,
                 self.diag_submitted,
-                self.diag_uploads,
-                self.diag_render_calls,
                 self.diag_missed_left,
                 self.diag_missed_right,
                 if self.core.is_some() { "ok" } else { "none" },
@@ -599,7 +520,7 @@ impl RecoSource {
             );
         }
 
-        if self.core.is_none() {
+        if self.calibration.is_none() {
             return;
         }
         if self.left_source.is_null() || self.right_source.is_null() {
@@ -608,24 +529,20 @@ impl RecoSource {
 
         // Acquire frames (obs_source_get_frame increments the internal
         // ref; must pair with release_frame).
-        let left_frame = unsafe { ffi::obs_source_get_frame(self.left_source) };
-        let right_frame = unsafe { ffi::obs_source_get_frame(self.right_source) };
-        if left_frame.is_null() {
+        let left_frame = unsafe { AsyncFrame::acquire(self.left_source.pointer) };
+        let right_frame = unsafe { AsyncFrame::acquire(self.right_source.pointer) };
+        if left_frame.is_none() {
             self.diag_missed_left += 1;
         }
-        if right_frame.is_null() {
+        if right_frame.is_none() {
             self.diag_missed_right += 1;
         }
 
-        if !left_frame.is_null() && !right_frame.is_null() {
-            // SAFETY: both pointers non-null; OBS guarantees the frames
-            // are valid between get_frame and release_frame.
-            let l = unsafe { &*left_frame };
-            let r = unsafe { &*right_frame };
+        if let (Some(left_frame), Some(right_frame)) = (&left_frame, &right_frame) {
+            let l = left_frame.frame();
+            let r = right_frame.frame();
 
-            // Must match what the session was built with. Mismatch =>
-            // warn once and skip. Camera inputs (V4L2, Media Source) are
-            // I420; browser / screen capture / WebRTC are BGRA.
+            // A format mismatch cannot be submitted to the existing input textures.
             let format_ok = match self.input_format {
                 InputFormat::Yuv420p => {
                     l.format == ffi::video_format::VIDEO_FORMAT_I420
@@ -651,8 +568,7 @@ impl RecoSource {
                     log::warn!(
                         "reco-obs: upstream format doesn't match session ({:?}, configured \
                          for {:?}; got left={:?}, right={:?}). Change the plugin's 'Input \
-                         format' property to match the source type: I420 for V4L2 / Media \
-                         Source, BGRA for Browser Source / screen capture / WebRTC.",
+                         format' property to match the camera frames.",
                         self.input_format,
                         self.input_format,
                         l.format,
@@ -660,62 +576,34 @@ impl RecoSource {
                     );
                     self.warned_unsupported_format = true;
                 }
-            } else if l.width != r.width || l.height != r.height {
-                // Left and right disagree with each other — we can't
-                // stitch two different sizes in a single pipeline
-                // (the shader samples matched-size textures). One-shot
-                // warn; submission stays blocked until both sides match.
-                if !self.warned_unsupported_format {
-                    log::warn!(
-                        "reco-obs: asymmetric input dims (left={}x{}, right={}x{}). \
-                         Both upstream sources must have the same resolution. Switch one \
-                         of them or add a scale filter so both sides agree.",
-                        l.width,
-                        l.height,
-                        r.width,
-                        r.height,
-                    );
-                    self.warned_unsupported_format = true;
-                }
-            } else if l.width != self.input_width || l.height != self.input_height {
-                // Left and right match each other but differ from the
-                // declared Input W/H. Auto-detect and rebuild the
-                // pipeline (A22 fix). Story-telling log so the user
-                // sees the transition explicitly: what was configured,
-                // what was detected, what we're doing about it.
+            } else if self.input_sizes != Some([(l.width, l.height), (r.width, r.height)]) {
+                let sizes = [(l.width, l.height), (r.width, r.height)];
                 log::info!(
-                    "reco-obs: detected input {}x{} on both sources (Properties said {}x{}); \
-                     rebuilding pipeline to match. Stutter for one tick.",
-                    l.width,
-                    l.height,
-                    self.input_width,
-                    self.input_height,
+                    "reco-obs: camera dimensions changed from {:?} to {sizes:?}; rebuilding inputs",
+                    self.input_sizes,
                 );
-                self.input_width = l.width;
-                self.input_height = l.height;
-                // Drop the current session so `try_init_pipeline`
-                // rebuilds with the new dims on the next update path.
-                // Run the rebuild immediately so the very next tick
-                // can render rather than waiting another property
-                // change. This is expensive (~100ms GPU init) but
-                // only runs once per source change.
-                self.core = None;
-                #[cfg(feature = "replay")]
-                {
-                    // The old core dropped the recorder along with
-                    // itself; clear the tracking flag so
-                    // update_replay_recorder re-attaches on the
-                    // rebuild with the new tile dims.
-                    self.replay_recorder_attached = false;
-                }
+                self.input_sizes = Some(sizes);
                 self.try_init_pipeline();
                 self.warned_unsupported_format = false;
             } else {
+                if self.core.is_none() {
+                    return;
+                }
+                self.update_replay_recorder(true);
                 // Direct interaction is fitted once more before submission, including after geometry changes.
+                let Ok(mut interaction) = shared.interaction.lock() else {
+                    return;
+                };
+                let mut pose = interaction.take_request();
+                drop(interaction);
                 let engine = self.core.as_mut().expect("checked above");
                 engine.set_constrained_look(self.constrained_look);
-                let result = self.pose.constrain(engine).and_then(|()| {
-                    let current = self.pose.current_pose();
+                let fit = pose.constrain(engine);
+                if let Ok(mut interaction) = shared.interaction.lock() {
+                    interaction.finish_request(&pose, fit.is_ok());
+                }
+                let result = fit.and_then(|()| {
+                    let current = pose.current_pose();
                     match self.input_format {
                         InputFormat::Yuv420p => {
                             // Wrap OBS planes as StridedYuv420pPlanes and repack
@@ -749,8 +637,11 @@ impl RecoSource {
                 });
                 match result {
                     Ok(RenderOutcome::Rgba(rgba)) => {
-                        self.rgba_buffer.copy_from_slice(rgba);
-                        self.frame_ready.store(true, Ordering::Release);
+                        if let Ok(mut display) = shared.presentation.lock() {
+                            display.rgba.resize(rgba.len(), 0);
+                            display.rgba.copy_from_slice(rgba);
+                            display.dirty = true;
+                        }
                         if self.diag_submitted == 0 {
                             log::info!(
                                 "reco-obs: first stitched frame ready ({} bytes)",
@@ -766,50 +657,75 @@ impl RecoSource {
                 }
             }
         }
+    }
+}
 
-        // Always release frames we acquired.
-        if !left_frame.is_null() {
-            unsafe { ffi::obs_source_release_frame(self.left_source, left_frame) };
-        }
-        if !right_frame.is_null() {
-            unsafe { ffi::obs_source_release_frame(self.right_source, right_frame) };
-        }
+/// Acquired OBS frame, released on every return path, including a caught panic.
+struct AsyncFrame {
+    source: *mut ffi::obs_source_t,
+    frame: *mut ffi::obs_source_frame,
+}
+
+impl AsyncFrame {
+    unsafe fn acquire(source: *mut ffi::obs_source_t) -> Option<Self> {
+        let frame = unsafe { ffi::obs_source_get_frame(source) };
+        (!frame.is_null()).then_some(Self { source, frame })
     }
 
+    fn frame(&self) -> &ffi::obs_source_frame {
+        // The owned source reference outlives this guard, and OBS retains the frame until release.
+        unsafe { &*self.frame }
+    }
+}
+
+impl Drop for AsyncFrame {
+    fn drop(&mut self) {
+        unsafe { ffi::obs_source_release_frame(self.source, self.frame) };
+    }
+}
+
+impl Presentation {
     /// Destroy the OBS texture (must be called on the OBS graphics thread).
     unsafe fn destroy_obs_texture(&mut self) {
-        if !self.obs_texture.is_null() {
+        if !self.texture.is_null() {
             unsafe {
-                ffi::gs_texture_destroy(self.obs_texture);
+                ffi::gs_texture_destroy(self.texture.pointer);
             }
-            self.obs_texture = ptr::null_mut();
+            self.texture.pointer = ptr::null_mut();
         }
     }
 
     /// Ensure the OBS texture exists with the correct dimensions.
     /// Must be called on the OBS graphics thread.
     unsafe fn ensure_obs_texture(&mut self) {
-        if self.obs_texture.is_null() && self.output_width > 0 && self.output_height > 0 {
+        if (self.texture_width, self.texture_height) != (self.width, self.height) {
+            unsafe {
+                self.destroy_obs_texture();
+            }
+        }
+        if self.texture.is_null() && self.width > 0 && self.height > 0 {
             // GS_DYNAMIC is required for gs_texture_set_image to work;
             // without it the texture is static and all updates silently
             // fail with "Texture is not dynamic" spam in the OBS log.
-            self.obs_texture = unsafe {
+            self.texture.pointer = unsafe {
                 ffi::gs_texture_create(
-                    self.output_width,
-                    self.output_height,
+                    self.width,
+                    self.height,
                     ffi::gs_color_format::GS_RGBA,
                     1,
                     ptr::null_mut(),
                     ffi::GS_DYNAMIC,
                 )
             };
-            if self.obs_texture.is_null() {
+            if self.texture.is_null() {
                 log::error!("reco-obs: failed to create OBS texture");
             } else {
+                self.texture_width = self.width;
+                self.texture_height = self.height;
                 log::info!(
                     "reco-obs: OBS texture created ({}x{}, GS_RGBA, dynamic)",
-                    self.output_width,
-                    self.output_height
+                    self.width,
+                    self.height
                 );
             }
         }
@@ -833,16 +749,19 @@ unsafe extern "C" fn source_create(
     crate::ffi_catch!(ptr::null_mut(), {
         log::info!("reco-obs: creating source");
 
-        let mut src = Box::new(RecoSource::new());
+        let src = Box::new(SourceHandle::default());
+        let mut engine = src.engine.lock().expect("new source mutex");
 
         // Read initial settings.
         unsafe {
-            apply_settings(&mut src, settings);
+            apply_settings(&mut engine, settings, &src.interaction);
         }
 
         // Try to initialize the pipeline if calibration is available.
-        src.load_calibration();
-        src.try_init_pipeline();
+        engine.load_calibration();
+        engine.try_init_pipeline();
+        src.reset_presentation(&engine);
+        drop(engine);
 
         Box::into_raw(src) as *mut c_void
     })
@@ -856,34 +775,8 @@ unsafe extern "C" fn source_destroy(data: *mut c_void) {
         }
         log::info!("reco-obs: destroying source");
 
-        let mut src = unsafe { Box::from_raw(data as *mut RecoSource) };
-
-        // Release the upstream source refs we held. Must run before the Box
-        // is dropped - OBS tracks ref lifetime through these calls. Pair
-        // dec_showing with the inc_showing set_source_slot issued earlier.
-        unsafe {
-            if !src.left_source.is_null() {
-                ffi::obs_source_dec_active(src.left_source);
-                ffi::obs_source_dec_showing(src.left_source);
-                ffi::obs_source_release(src.left_source);
-                src.left_source = ptr::null_mut();
-            }
-            if !src.right_source.is_null() {
-                ffi::obs_source_dec_active(src.right_source);
-                ffi::obs_source_dec_showing(src.right_source);
-                ffi::obs_source_release(src.right_source);
-                src.right_source = ptr::null_mut();
-            }
-        }
-
-        // Destroy OBS texture on the graphics thread.
-        unsafe {
-            ffi::obs_enter_graphics();
-            src.destroy_obs_texture();
-            ffi::obs_leave_graphics();
-        }
-
-        // src is dropped here, which drops the pipeline and GPU context.
+        // OBS removes the instance from callbacks before destruction. Resource owners also clean up poisoned mutex contents.
+        drop(unsafe { Box::from_raw(data as *mut SourceHandle) });
     })
 }
 
@@ -893,8 +786,8 @@ unsafe extern "C" fn source_get_width(data: *mut c_void) -> u32 {
         if data.is_null() {
             return 0;
         }
-        let src = unsafe { &*(data as *const RecoSource) };
-        src.output_width
+        let src = unsafe { &*(data as *const SourceHandle) };
+        src.width.load(Ordering::Relaxed)
     })
 }
 
@@ -904,8 +797,8 @@ unsafe extern "C" fn source_get_height(data: *mut c_void) -> u32 {
         if data.is_null() {
             return 0;
         }
-        let src = unsafe { &*(data as *const RecoSource) };
-        src.output_height
+        let src = unsafe { &*(data as *const SourceHandle) };
+        src.height.load(Ordering::Relaxed)
     })
 }
 
@@ -916,8 +809,6 @@ unsafe extern "C" fn source_get_defaults(settings: *mut ffi::obs_data_t) {
             ffi::obs_data_set_default_int(settings, PROP_OUTPUT_WIDTH.as_ptr(), 1920);
             ffi::obs_data_set_default_bool(settings, PROP_CONSTRAINED.as_ptr(), true);
             ffi::obs_data_set_default_int(settings, PROP_OUTPUT_HEIGHT.as_ptr(), 1080);
-            ffi::obs_data_set_default_int(settings, PROP_INPUT_WIDTH.as_ptr(), 1920);
-            ffi::obs_data_set_default_int(settings, PROP_INPUT_HEIGHT.as_ptr(), 1080);
             ffi::obs_data_set_default_string(settings, PROP_CONFIG_PATH.as_ptr(), c"".as_ptr());
             #[cfg(feature = "replay")]
             {
@@ -981,7 +872,7 @@ unsafe extern "C" fn source_get_properties(_data: *mut c_void) -> *mut ffi::obs_
             );
             ffi::obs_property_list_add_string(
                 format_list,
-                c"BGRA (Browser Source, Screen Capture)".as_ptr(),
+                c"Packed RGB camera (BGRA / RGBA)".as_ptr(),
                 INPUT_FORMAT_BGRA.as_ptr(),
             );
 
@@ -1015,22 +906,6 @@ unsafe extern "C" fn source_get_properties(_data: *mut c_void) -> *mut ffi::obs_
                 4320,
                 1,
             );
-            ffi::obs_properties_add_int(
-                props,
-                PROP_INPUT_WIDTH.as_ptr(),
-                c"Input width (per camera)".as_ptr(),
-                320,
-                7680,
-                1,
-            );
-            ffi::obs_properties_add_int(
-                props,
-                PROP_INPUT_HEIGHT.as_ptr(),
-                c"Input height (per camera)".as_ptr(),
-                240,
-                4320,
-                1,
-            );
             ffi::obs_properties_add_float(
                 props,
                 PROP_YAW.as_ptr(),
@@ -1050,13 +925,6 @@ unsafe extern "C" fn source_get_properties(_data: *mut c_void) -> *mut ffi::obs_
 
             #[cfg(feature = "replay")]
             {
-                // Two-property pair: enable toggle + output path.
-                // The recorder only attaches when both are set, so
-                // toggling off halts recording without destroying
-                // the setting, and setting a path without checking
-                // the box is a no-op. Users usually configure the
-                // path once and flip the toggle around a recording
-                // session.
                 ffi::obs_properties_add_bool(
                     props,
                     PROP_REPLAY_ENABLED.as_ptr(),
@@ -1065,7 +933,7 @@ unsafe extern "C" fn source_get_properties(_data: *mut c_void) -> *mut ffi::obs_
                 ffi::obs_properties_add_path(
                     props,
                     PROP_REPLAY_PATH.as_ptr(),
-                    c"Replay output path (.mkv)".as_ptr(),
+                    c"New replay file (.mkv, no overwrite)".as_ptr(),
                     ffi::obs_path_type::OBS_PATH_FILE_SAVE,
                     c"Matroska video (*.mkv)".as_ptr(),
                     ptr::null(),
@@ -1100,14 +968,17 @@ unsafe extern "C" fn source_update(data: *mut c_void, settings: *mut ffi::obs_da
         if data.is_null() {
             return;
         }
-        let src = unsafe { &mut *(data as *mut RecoSource) };
+        let shared = unsafe { &*(data as *const SourceHandle) };
+        let Ok(mut locked) = shared.engine.lock() else {
+            return;
+        };
+        let src = &mut *locked;
 
         let old_config_path = src.config_path.clone();
         let old_output = (src.output_width, src.output_height);
-        let old_input = (src.input_width, src.input_height);
 
         unsafe {
-            apply_settings(src, settings);
+            apply_settings(src, settings, &shared.interaction);
         }
 
         // Reload calibration if the config path changed.
@@ -1115,35 +986,31 @@ unsafe extern "C" fn source_update(data: *mut c_void, settings: *mut ffi::obs_da
             src.load_calibration();
         }
 
-        // Rebuild pipeline if dimensions or calibration changed.
-        let dims_changed = (src.output_width, src.output_height) != old_output
-            || (src.input_width, src.input_height) != old_input;
         let config_changed = src.config_path != old_config_path;
         // apply_settings sets src.core to None when the input format
         // changes, so we can use that as our "needs rebuild" signal.
         let format_changed = src.core.is_none() && src.calibration.is_some();
 
-        if dims_changed || config_changed || format_changed {
-            // Destroy old OBS texture since dimensions may have changed.
-            unsafe {
-                ffi::obs_enter_graphics();
-                src.destroy_obs_texture();
-                ffi::obs_leave_graphics();
-            }
+        if config_changed || format_changed {
+            shared.reset_presentation(src);
             src.try_init_pipeline();
         } else {
+            if (src.output_width, src.output_height) != old_output {
+                src.resize_output();
+                shared.reset_presentation(src);
+            }
             // No pipeline rebuild needed, but replay settings may
             // have flipped. Update the recorder attachment state
             // so toggling the "Record replay" checkbox takes
             // effect immediately.
-            src.update_replay_recorder();
+            src.update_replay_recorder(false);
         }
     })
 }
 
 /// `video_tick`: called each frame on the OBS video thread.
 ///
-/// We perform the wgpu render + CPU readback here, off the graphics thread.
+/// Stitching and input resolution happen here; interaction callbacks only accumulate input.
 /// Hot path (30-60 Hz). `catch_unwind` here is the primary guard against
 /// a panic in the stitch pipeline crashing the OBS host.
 unsafe extern "C" fn source_video_tick(data: *mut c_void, _seconds: c_float) {
@@ -1151,8 +1018,11 @@ unsafe extern "C" fn source_video_tick(data: *mut c_void, _seconds: c_float) {
         if data.is_null() {
             return;
         }
-        let src = unsafe { &mut *(data as *mut RecoSource) };
-        src.render_and_readback();
+        let shared = unsafe { &*(data as *const SourceHandle) };
+        let Ok(mut src) = shared.engine.lock() else {
+            return;
+        };
+        src.render_and_readback(shared);
     })
 }
 
@@ -1165,10 +1035,11 @@ unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::g
         if data.is_null() {
             return;
         }
-        let src = unsafe { &mut *(data as *mut RecoSource) };
-        src.diag_render_calls = src.diag_render_calls.wrapping_add(1);
-
-        if src.core.is_none() {
+        let shared = unsafe { &*(data as *const SourceHandle) };
+        let Ok(mut src) = shared.presentation.lock() else {
+            return;
+        };
+        if src.rgba.is_empty() {
             return;
         }
 
@@ -1176,22 +1047,21 @@ unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::g
             src.ensure_obs_texture();
         }
 
-        if src.obs_texture.is_null() {
+        if src.texture.is_null() {
             return;
         }
 
         // Upload new frame data if available.
-        if src.frame_ready.load(Ordering::Acquire) {
+        if src.dirty {
             unsafe {
                 ffi::gs_texture_set_image(
-                    src.obs_texture,
-                    src.rgba_buffer.as_ptr(),
-                    src.output_width * 4,
+                    src.texture.pointer,
+                    src.rgba.as_ptr(),
+                    src.width * 4,
                     false,
                 );
             }
-            src.frame_ready.store(false, Ordering::Release);
-            src.diag_uploads = src.diag_uploads.wrapping_add(1);
+            src.dirty = false;
         }
 
         // Draw via OBS's helper, which respects the outer effect already
@@ -1199,14 +1069,7 @@ unsafe extern "C" fn source_video_render(data: *mut c_void, _effect: *mut ffi::g
         // `gs_effect_loop` here triggers "effect is already active" warnings
         // and no draw lands on screen.
         unsafe {
-            ffi::obs_source_draw(
-                src.obs_texture,
-                0,
-                0,
-                src.output_width,
-                src.output_height,
-                false,
-            );
+            ffi::obs_source_draw(src.texture.pointer, 0, 0, src.width, src.height, false);
         }
     })
 }
@@ -1243,19 +1106,15 @@ unsafe extern "C" fn source_mouse_click(
         if data.is_null() || event.is_null() {
             return;
         }
-        let src = unsafe { &mut *(data as *mut RecoSource) };
+        let shared = unsafe { &*(data as *const SourceHandle) };
         let ev = unsafe { &*event };
         // Only handle left-button for drag-to-pan. Middle/right reserved for
         // future features (e.g. double-click to reset pose).
         if r#type != ffi::obs_mouse_button_type::MOUSE_LEFT as i32 {
             return;
         }
-        if mouse_up {
-            src.dragging = false;
-        } else {
-            src.dragging = true;
-            src.last_mouse_x = ev.x;
-            src.last_mouse_y = ev.y;
+        if let Ok(mut input) = shared.interaction.lock() {
+            input.click(ev.x, ev.y, mouse_up);
         }
     })
 }
@@ -1270,33 +1129,15 @@ unsafe extern "C" fn source_mouse_move(
         if data.is_null() || event.is_null() {
             return;
         }
-        let src = unsafe { &mut *(data as *mut RecoSource) };
-        if mouse_leave {
-            // Treat leaving the source rect as dropping the drag to avoid
-            // a stale drag state if the user releases outside.
-            src.dragging = false;
-            return;
-        }
-        if !src.dragging {
-            return;
-        }
+        let shared = unsafe { &*(data as *const SourceHandle) };
         let ev = unsafe { &*event };
-        let dx = (ev.x - src.last_mouse_x) as f32;
-        let dy = (ev.y - src.last_mouse_y) as f32;
-        src.last_mouse_x = ev.x;
-        src.last_mouse_y = ev.y;
-
-        // Delegate to `reco_control::pose_control::PoseControl`. The
-        // per-axis invert flags were chosen at construction
-        // (invert_drag_x = true for PTZ-head feel, invert_drag_y =
-        // false for drag-scene Y). No local math or clamp logic to
-        // maintain.
-        src.pose.apply_drag(dx, dy, src.output_height as f32);
-        if let Some(core) = &mut src.core {
-            core.set_constrained_look(src.constrained_look);
-            if let Err(error) = src.pose.constrain(core) {
-                log::error!("reco-obs: cannot fit drag: {error}");
-            }
+        if let Ok(mut input) = shared.interaction.lock() {
+            input.move_pointer(
+                ev.x,
+                ev.y,
+                mouse_leave,
+                shared.height.load(Ordering::Relaxed),
+            );
         }
     })
 }
@@ -1312,7 +1153,7 @@ unsafe extern "C" fn source_mouse_wheel(
         if data.is_null() {
             return;
         }
-        let src = unsafe { &mut *(data as *mut RecoSource) };
+        let shared = unsafe { &*(data as *const SourceHandle) };
         // y_delta is in eighths of a degree of wheel rotation
         // (Qt's QWheelEvent::angleDelta convention, inherited
         // through OBS). Divide by 120 to normalize to "notches"
@@ -1320,12 +1161,8 @@ unsafe extern "C" fn source_mouse_wheel(
         // produce fractional notches. PoseControl handles sign
         // conventions, FOV sensitivity, and clamping internally.
         let notches = (y_delta as f32) / WHEEL_NOTCHES_PER_DELTA;
-        src.pose.apply_wheel(notches);
-        if let Some(core) = &mut src.core {
-            core.set_constrained_look(src.constrained_look);
-            if let Err(error) = src.pose.constrain(core) {
-                log::error!("reco-obs: cannot fit zoom: {error}");
-            }
+        if let Ok(mut input) = shared.interaction.lock() {
+            input.pose.apply_wheel(notches);
         }
     })
 }
@@ -1423,20 +1260,16 @@ fn strided_from_obs<'a>(frame: &'a ffi::obs_source_frame) -> StridedYuv420pPlane
     }
 }
 
-/// OBS enumeration callback: appends every source name to the dropdown
-/// list passed as `param`. Always returns `true` to continue iterating.
-///
-/// Filtering out sources that can't deliver async video (scenes,
-/// transitions, audio-only inputs) requires additional bindings
-/// (`obs_source_get_output_flags`). For Tier 1 we accept everything;
-/// picking a bad source just means `obs_source_get_frame` returns null
-/// and we skip.
+/// List only source types that the acquisition boundary can accept.
 unsafe extern "C" fn source_enum_proc_list(
     param: *mut c_void,
     source: *mut ffi::obs_source_t,
 ) -> bool {
     crate::ffi_catch!(true, {
         if param.is_null() || source.is_null() {
+            return true;
+        }
+        if !accepts_source(unsafe { ffi::obs_source_get_output_flags(source) }) {
             return true;
         }
         let prop = param as *mut ffi::obs_property_t;
@@ -1456,7 +1289,11 @@ unsafe extern "C" fn source_enum_proc_list(
 /// # Safety
 ///
 /// `settings` must be a valid pointer from OBS.
-unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
+unsafe fn apply_settings(
+    src: &mut RecoSource,
+    settings: *mut ffi::obs_data_t,
+    interaction: &Mutex<Interaction>,
+) {
     unsafe {
         // Config path.
         let c_str = ffi::obs_data_get_string(settings, PROP_CONFIG_PATH.as_ptr());
@@ -1473,14 +1310,6 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
         let h = ffi::obs_data_get_int(settings, PROP_OUTPUT_HEIGHT.as_ptr());
         if h > 0 {
             src.output_height = h as u32;
-        }
-        let iw = ffi::obs_data_get_int(settings, PROP_INPUT_WIDTH.as_ptr());
-        if iw > 0 {
-            src.input_width = iw as u32;
-        }
-        let ih = ffi::obs_data_get_int(settings, PROP_INPUT_HEIGHT.as_ptr());
-        if ih > 0 {
-            src.input_height = ih as u32;
         }
 
         // Input format choice. Parse string -> InputFormat. Unknown
@@ -1516,15 +1345,7 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
         } else {
             CStr::from_ptr(left_ptr).to_string_lossy().into_owned()
         };
-        // Always re-resolve when the slot is null and we have a name to
-        // try: the first apply_settings on source creation may have run
-        // before the upstream existed in the scene, caching a null ptr
-        // with a non-empty name. Later updates with the same name would
-        // skip the resolve and leave the slot permanently null.
-        if left_name != src.left_source_name || (src.left_source.is_null() && !left_name.is_empty())
-        {
-            RecoSource::set_source_slot(&mut src.left_source, &left_name);
-            src.left_source_name = left_name;
+        if src.left_source.select(&left_name) {
             src.warned_unsupported_format = false;
         }
 
@@ -1534,11 +1355,7 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
         } else {
             CStr::from_ptr(right_ptr).to_string_lossy().into_owned()
         };
-        if right_name != src.right_source_name
-            || (src.right_source.is_null() && !right_name.is_empty())
-        {
-            RecoSource::set_source_slot(&mut src.right_source, &right_name);
-            src.right_source_name = right_name;
+        if src.right_source.select(&right_name) {
             src.warned_unsupported_format = false;
         }
 
@@ -1546,13 +1363,9 @@ unsafe fn apply_settings(src: &mut RecoSource, settings: *mut ffi::obs_data_t) {
         let target_yaw_deg = ffi::obs_data_get_double(settings, PROP_YAW.as_ptr()) as f32;
         let target_pitch_deg = ffi::obs_data_get_double(settings, PROP_PITCH.as_ptr()) as f32;
         src.constrained_look = ffi::obs_data_get_bool(settings, PROP_CONSTRAINED.as_ptr());
-        src.pose.set_target(RenderPose {
-            yaw: target_yaw_deg.to_radians(),
-            pitch: target_pitch_deg.to_radians(),
-            // The sliders drive pan only; zoom keeps its current target
-            // (the wheel/hotkey path owns it).
-            ..src.pose.target_pose()
-        });
+        if let Ok(mut input) = interaction.lock() {
+            input.apply_property_angles(target_yaw_deg, target_pitch_deg);
+        }
 
         // Replay recording toggle + path. Recorder attachment itself
         // happens in `try_init_pipeline` / `update_replay_recorder` —

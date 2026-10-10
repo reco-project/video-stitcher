@@ -15,22 +15,23 @@
 //! ## Current status
 //!
 //! Shipped: async-frame ingestion from upstream
-//! OBS sources, BGRA input path, interactive pan / zoom via mouse + keyboard,
+//! OBS sources, I420 and packed RGB input, interactive pan/zoom via mouse,
 //! optional stacked-video replay recording. See
 //! [`FRICTION.md`](https://github.com/reco-project/video-stitcher/blob/main/crates/reco-obs/FRICTION.md)
 //! for active consumer pain points.
 //!
 //! ## Known limitations
 //!
-//! - BGRA is the only input format wired today. NV12 zero-copy from OBS
-//!   sources is open work.
+//! - NV12 input and GPU sharing with OBS sources are not wired.
 //! - RGBA readback from wgpu to CPU then re-upload to OBS texture incurs
 //!   one GPU-CPU-GPU round-trip per frame. Platform-specific zero-copy
 //!   interop (DMA-BUF on Linux, shared handles on Windows, IOSurface on
 //!   macOS) is tracked as a future optimization.
 
 mod ffi;
+mod interaction;
 mod obs_log;
+mod resources;
 mod source;
 
 use std::ptr;
