@@ -10,6 +10,7 @@ Pluggable frame I/O backends + end-to-end orchestration for `reco-core`.
 - **`StitchJob`** — one-call batch orchestrator: source, core, encoder, panner, replay, sinks. Consumed by reco-cli and reco-gui for file-to-file processing.
 - **Stacked-video** (`stacked-output` feature) — `GridLayout` + `pack_yuv420p` / `unpack_yuv420p` CPU primitives, `StackedEncoder` (ffmpeg-backed), `StackedSource` reader, `ReplayRecordingSource` decorator, `GpuAtlasRecorder` sink for GPU-resident replay.
 - **Settings persistence** (`config` feature) — opt-in per-user preferences via `directories` + serde.
+- **Capture selection**: `frame_sync::Selector` pairs timestamped image handles with explicit wait, skew and reuse limits. A caller can report a missing output slot and call `skip_pending` after its deadline without flushing future captures. Ordering, owner release and recovery are exercised in `src/frame_sync/tests.rs`; this does not change a source adapter's error policy.
 
 ## Dependencies
 

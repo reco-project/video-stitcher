@@ -64,6 +64,7 @@ pub struct Selector<T> {
     best: Vec<Option<usize>>,
     last_event: Option<i64>,
     emitted: Option<i64>,
+    skipped_slot: Option<i64>,
     pending: Option<i64>,
 }
 
@@ -89,6 +90,7 @@ impl<T> Selector<T> {
             best: vec![None; inputs],
             last_event: None,
             emitted: None,
+            skipped_slot: None,
             pending: None,
         })
     }
@@ -137,6 +139,7 @@ impl<T> Selector<T> {
         self.check_clock(now_us)?;
         if slot_us < 0
             || self.emitted.is_some_and(|last| slot_us <= last)
+            || self.skipped_slot.is_some_and(|last| slot_us <= last)
             || self.pending.is_some_and(|pending| pending != slot_us)
         {
             return Err(Error::Clock);
@@ -316,6 +319,29 @@ impl<T> Selector<T> {
                 .map(|capture| capture.as_ref().unwrap().clone())
                 .collect(),
         }))
+    }
+
+    /// Abandon a pending slot after its deadline, preserving queued captures at or after that slot. Release retained images so resumption requires fresh captures. The caller reports the output gap; this neither changes capture identity nor relaxes age, skew or arrival limits. A skipped slot cannot be polled again, and clock ordering remains intact.
+    pub fn skip_pending(&mut self) -> Result<(), Error> {
+        let slot = self.pending.ok_or(Error::Clock)?;
+        let deadline = slot.checked_add(self.config.wait_us).ok_or(Error::Clock)?;
+        if self.last_event.is_none_or(|now| now < deadline) {
+            return Err(Error::Clock);
+        }
+        for previous in &mut self.previous {
+            *previous = None;
+        }
+        for queue in &mut self.queues {
+            while queue
+                .front()
+                .is_some_and(|frame| frame.capture.time_us < slot)
+            {
+                queue.pop_front();
+            }
+        }
+        self.skipped_slot = Some(slot);
+        self.pending = None;
+        Ok(())
     }
 
     /// Whether an input still has unselected images queued, including images for later slots.

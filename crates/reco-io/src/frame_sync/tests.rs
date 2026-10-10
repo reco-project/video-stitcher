@@ -34,6 +34,140 @@ fn captures(set: &Selection<Arc<i64>>) -> Vec<i64> {
 }
 
 #[test]
+fn skipped_slot_preserves_future_captures_and_clock_guards() {
+    let mut s = selector(2);
+    assert_eq!(s.skip_pending(), Err(Error::Clock));
+    push(&mut s, 0, 10, 10);
+    push(&mut s, 1, 20, 20);
+    push(&mut s, 0, 30, 30);
+    push(&mut s, 1, 32, 32);
+    assert!(s.poll(10, 29).unwrap().is_none());
+    assert_eq!(s.skip_pending(), Err(Error::Clock));
+    assert!(matches!(s.poll(10, 32), Err(Error::Missing(1))));
+    s.skip_pending().unwrap();
+    assert_eq!(s.skip_pending(), Err(Error::Clock));
+    assert!(matches!(s.poll(10, 32), Err(Error::Clock)));
+    assert!(matches!(s.poll(30, 31), Err(Error::Clock)));
+    let next = s.poll(30, 32).unwrap().unwrap();
+    assert_eq!(captures(&next), vec![30, 32]);
+    assert_eq!(s.skip_pending(), Err(Error::Clock));
+    assert!(matches!(s.poll(30, 50), Err(Error::Clock)));
+}
+
+#[test]
+fn skipping_skew_failure_does_not_change_identity_or_limits() {
+    let mut s = selector(2);
+    seed(&mut s, 2);
+    push(&mut s, 0, 100, 100);
+    push(&mut s, 1, 90, 90);
+    push(&mut s, 0, 130, 130);
+    push(&mut s, 1, 131, 131);
+    assert!(matches!(s.poll(100, 120), Err(Error::Skew)));
+    s.skip_pending().unwrap();
+    assert_eq!(
+        captures(&s.poll(130, 150).unwrap().unwrap()),
+        vec![130, 131]
+    );
+    assert!(matches!(s.poll(200, 220), Err(Error::Expired(0))));
+    s.skip_pending().unwrap();
+    assert_eq!(
+        s.push(
+            0,
+            Capture {
+                time_us: 130,
+                image: Arc::new(130)
+            },
+            230
+        ),
+        Err(Error::Clock)
+    );
+    // Missing one deadline does not prevent use in a later admissible slot.
+    push(&mut s, 0, 230, 251);
+    push(&mut s, 1, 231, 251);
+    assert!(matches!(s.poll(230, 251), Err(Error::Expired(0))));
+    s.skip_pending().unwrap();
+    assert_eq!(
+        captures(&s.poll(260, 280).unwrap().unwrap()),
+        vec![230, 231]
+    );
+}
+
+#[test]
+fn skipping_releases_retained_and_obsolete_owners_without_flushing_future_images() {
+    let mut s = selector(2);
+    push(&mut s, 0, 0, 5);
+    push(&mut s, 1, 5, 5);
+    s.poll(0, 5).unwrap().unwrap();
+    let held = s.previous[1].as_ref().unwrap().image.clone();
+    let old = Arc::new(60);
+    let future = Arc::new(100);
+    s.push(
+        1,
+        Capture {
+            time_us: 60,
+            image: old.clone(),
+        },
+        60,
+    )
+    .unwrap();
+    s.push(
+        0,
+        Capture {
+            time_us: 100,
+            image: future.clone(),
+        },
+        100,
+    )
+    .unwrap();
+    assert_eq!(Arc::strong_count(&held), 2);
+    // Camera 0's previous image expires, but the other retained image is still age-valid.
+    assert!(s.poll(70, 89).unwrap().is_none());
+    assert_eq!(s.skip_pending(), Err(Error::Clock));
+    assert_eq!(Arc::strong_count(&old), 2);
+    assert_eq!(Arc::strong_count(&future), 2);
+    // The pending slot remains available after the caller observes a clock error.
+    assert!(matches!(s.poll(71, 90), Err(Error::Clock)));
+    assert_eq!(s.skip_pending(), Err(Error::Clock));
+    assert!(matches!(s.poll(70, 90), Err(Error::Expired(0))));
+    s.skip_pending().unwrap();
+    assert_eq!(Arc::strong_count(&held), 1);
+    assert_eq!(Arc::strong_count(&old), 1);
+    assert_eq!(Arc::strong_count(&future), 2);
+    push(&mut s, 1, 101, 101);
+    let next = s.poll(100, 101).unwrap().unwrap();
+    assert_eq!(captures(&next), vec![100, 101]);
+    assert!(Arc::ptr_eq(&next.captures[0].image, &future));
+}
+
+#[test]
+fn repeated_missing_slots_resume_from_queued_images_for_each_camera() {
+    for inputs in 1..=3 {
+        for missing in 0..inputs {
+            let mut s = selector(inputs);
+            seed(&mut s, inputs);
+            for cycle in 1..=1_000 {
+                let slot = cycle * 100;
+                for camera in 0..inputs {
+                    if camera != missing {
+                        push(&mut s, camera, slot, slot);
+                    }
+                    push(&mut s, camera, slot + 30 + camera as i64, slot + 32);
+                }
+                assert!(matches!(s.poll(slot, slot + 20), Err(Error::Expired(c)) if c == missing));
+                s.skip_pending().unwrap();
+                assert!(matches!(s.poll(slot, slot + 32), Err(Error::Clock)));
+                let selected = s.poll(slot + 30, slot + 32).unwrap().unwrap();
+                for (camera, capture) in selected.captures.iter().enumerate() {
+                    assert_eq!(capture.time_us, slot + 30 + camera as i64);
+                    assert_eq!(*capture.image, capture.time_us);
+                }
+                assert!(s.queues.iter().all(VecDeque::is_empty));
+            }
+        }
+    }
+}
+
+#[test]
 fn expired_owners_are_released_before_waiting_for_replacement() {
     let mut s = selector(1);
     push(&mut s, 0, 0, 0);
