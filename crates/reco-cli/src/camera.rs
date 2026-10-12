@@ -6,7 +6,7 @@
 
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 
 use reco_core::render::viewport::ViewportSize;
 use reco_io::gstreamer::camera::CameraConfig;
@@ -52,7 +52,7 @@ pub struct CameraRunConfig<'a> {
     /// the loop centered-smooths past+future poses. 0 disables it.
     /// Only effective with AI tracking (a model + non-sweep mode).
     pub lookahead: f64,
-    /// Optional retained-image byte allowance for buffered NVMM capture.
+    /// Optional retained-image byte allowance for buffered capture.
     pub lookahead_memory_bytes: Option<usize>,
     pub quality_value: Option<u8>,
     pub preset: Option<String>,
@@ -215,8 +215,10 @@ pub fn run_camera(
     }
 
     let ai_tracking = model_path.is_some() && tracking != "sweep";
-    if lookahead > 0.0 && !(ai_tracking && use_nvmm) {
-        log::warn!("capture lookahead requires NVMM with AI tracking (model, non-sweep)");
+    if lookahead > 0.0 && (!ai_tracking || v4l2_direct) {
+        log::warn!(
+            "capture lookahead requires AI tracking and is unavailable with raw Bayer capture"
+        );
     }
 
     let mode_str = if v4l2_direct {
@@ -359,6 +361,7 @@ pub fn run_camera(
         &enc_config,
     )?;
     println!("Encoder: {}", encoder.encoder_name());
+    let stream_monitor = encoder.stream_monitor();
 
     session.add_sink(
         Box::new(encoder),
@@ -386,12 +389,22 @@ pub fn run_camera(
         println!("Capturing up to {frame_limit} frames");
     }
 
-    let start = std::time::Instant::now();
-    let mut frame_count: u64 = 0;
-    #[cfg(target_os = "linux")]
-    let nvmm_summary = helpers::ProgressReporter::new(30);
+    let summary = helpers::ProgressReporter::new(30);
 
-    let progress = helpers::run_capture(&mut session, |session| {
+    let capture_result = helpers::run_capture(&mut session, |session| {
+        if lookahead > 0.0 && ai_tracking && !v4l2_direct {
+            let frames = (lookahead * capture_fps as f64).round() as usize;
+            let budget = if use_nvmm {
+                reco_io::lookahead::native_image_budget(
+                    session.core().gpu(),
+                    lookahead_memory_bytes,
+                )
+            } else {
+                reco_io::lookahead::image_budget(lookahead_memory_bytes)
+            }
+            .map_err(anyhow::Error::msg)?;
+            session.set_lookahead(frames, budget);
+        }
         if v4l2_direct {
             #[cfg(not(feature = "v4l2"))]
             anyhow::bail!("--v4l2-direct requires the `v4l2` feature flag");
@@ -400,7 +413,10 @@ pub fn run_camera(
             {
                 use reco_core::bayer::{AeController, AwbController, BayerDemosaic, IspParams};
                 use reco_io::v4l2::{V4l2CameraConfig, V4l2StereoCameraSource};
+                use std::sync::atomic::Ordering;
 
+                let start = std::time::Instant::now();
+                let mut frame_count = 0;
                 let make_v4l2_config = |device: String| V4l2CameraConfig {
                     device,
                     width: capture_width,
@@ -528,19 +544,9 @@ pub fn run_camera(
                 }
 
                 source.stop();
-                Ok(progress)
+                Ok((progress, frame_count))
             }
         } else if use_nvmm {
-            if lookahead > 0.0 && ai_tracking {
-                let frames = (lookahead * capture_fps as f64).round() as usize;
-                let budget = reco_io::lookahead::native_image_budget(
-                    session.core().gpu(),
-                    lookahead_memory_bytes,
-                )
-                .map_err(anyhow::Error::msg)?;
-                session.set_lookahead(frames, budget);
-                println!("Lookahead: {lookahead:.2}s buffer ({frames} frames @ {capture_fps} fps)");
-            }
             // NVMM zero-copy path: DMA-buf Vulkan import for rendering,
             // NvBufSurfTransform for detection. No CPU copies at all.
             //
@@ -551,106 +557,46 @@ pub fn run_camera(
 
                 let mut source = GstreamerNvmmCameraSource::open(&cam_config, interrupted.clone())?;
 
-                // Periodic "Processed N frames (… fps)" lines (parsed by gameday.py).
-                let reporter = helpers::ProgressReporter::new(30);
-                let on_progress: reco_core::session::types::ProgressCallback =
-                    Box::new(move |p: &reco_core::session::types::FrameProgress| {
-                        reporter.report_with_elapsed(p.frames_completed, p.elapsed);
-                    });
-
                 println!("Starting NVMM capture...");
-                frame_count = session
-                    .run(&mut source, frame_limit, interrupted, Some(on_progress))?
-                    .frames_processed;
-
+                let frame_count =
+                    helpers::run_capture_source(session, &mut source, frame_limit, interrupted)?
+                        .frames_processed;
                 source.stop()?;
-                Ok(nvmm_summary)
+                Ok((summary, frame_count))
             }
 
             #[cfg(not(target_os = "linux"))]
             anyhow::bail!("NVMM zero-copy is only available on Linux/Jetson");
         } else if use_nv12_capture {
             // NV12 path: skip nvvidconv format conversion, upload 2 planes
-            use reco_core::source::FrameSource;
             let mut source = reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(
                 &cam_config,
                 interrupted.clone(),
             )?;
 
-            // Warm up: render the first frame outside the progress loop so
-            // camera ISP + GPU pipeline init don't skew the reported rate.
-            if let Some(frames) = source.next_frame()? {
-                session.detect_and_update_world_pose(
-                    &frames.images,
-                    frames.capture.as_ref(),
-                    1.0 / capture_fps as f32,
-                    start.elapsed(),
-                )?;
-                let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
-                session.render_frame(&frames.images, pos, frames.pts_us)?;
-                println!("Warmup complete, starting capture...");
-            }
-
-            let progress = helpers::ProgressReporter::new(30);
-
-            while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
-                let frames = {
-                    reco_core::profile_scope!("wait_capture");
-                    match source.next_frame()? {
-                        Some(f) => f,
-                        None => break,
-                    }
-                };
-
-                session.detect_and_update_world_pose(
-                    &frames.images,
-                    frames.capture.as_ref(),
-                    1.0 / capture_fps as f32,
-                    start.elapsed(),
-                )?;
-                let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
-                session.render_frame(&frames.images, pos, frames.pts_us)?;
-                frame_count += 1;
-                progress.report(frame_count);
-            }
-
+            let frame_count =
+                helpers::run_capture_source(session, &mut source, frame_limit, interrupted)?
+                    .frames_processed;
             // Stop cameras before finishing the encoder.
             source.stop()?;
-            Ok(progress)
+            Ok((summary, frame_count))
         } else {
             // I420 path: standard YUV420P upload with 3 planes
-            use reco_core::source::FrameSource;
             let mut source = reco_io::gstreamer::camera::GstreamerCameraSource::open(
                 &cam_config,
                 interrupted.clone(),
             )?;
 
-            let progress = helpers::ProgressReporter::new(30);
-
-            while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
-                let frame = {
-                    reco_core::profile_scope!("wait_capture");
-                    match source.next_frame()? {
-                        Some(f) => f,
-                        None => break,
-                    }
-                };
-
-                session.detect_and_update_world_pose(
-                    &frame.images,
-                    frame.capture.as_ref(),
-                    1.0 / capture_fps as f32,
-                    start.elapsed(),
-                )?;
-                let pos = session.advance_render_pose(1.0 / capture_fps as f32)?;
-                session.render_frame(&frame.images, pos, frame.pts_us)?;
-                frame_count += 1;
-                progress.report(frame_count);
-            }
-
-            Ok(progress)
+            let frame_count =
+                helpers::run_capture_source(session, &mut source, frame_limit, interrupted)?
+                    .frames_processed;
+            Ok((summary, frame_count))
         }
-    })?;
+    });
+    if let Some(monitor) = stream_monitor {
+        eprintln!("Stream: {:?}", monitor.status());
+    }
+    let (progress, frame_count) = capture_result?;
     progress.finish(frame_count, output);
 
     Ok(())

@@ -9,6 +9,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
+pub mod input;
+
 /// Arguments for the stitch subcommand, collected from CLI parsing.
 ///
 /// `detection_interval`, `lookahead`, and `tracking_mode` are only
@@ -20,8 +22,12 @@ use std::sync::atomic::AtomicBool;
 pub struct StitchArgs<'a> {
     /// Input videos, one per camera in projection order.
     pub inputs: &'a [String],
+    /// Explicit live input cadence and synchronization controls.
+    pub live_input: input::LiveInputArgs,
+    pub audio_source: reco_io::output::AudioMode,
     pub calibration: &'a str,
     pub output: &'a str,
+    pub stream_url: Option<String>,
     pub width: u32,
     pub height: u32,
     pub blend: Option<f32>,
@@ -81,27 +87,38 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     );
 
     let progress = crate::helpers::ProgressReporter::new(30);
+    let stream = Arc::new(std::sync::OnceLock::<reco_io::ffmpeg::encoder::StreamMonitor>::new());
+    let stream_ready = stream.clone();
+    let stream_progress = stream.clone();
+    let mut last_stream_status = None;
 
     // Load and validate the accepted calibration.
     let cal = reco_core::calibration::Calibration::from_file(Path::new(args.calibration))?;
-    // Arity is not decided here: StitchJob::run validates the input
-    // count against the calibration's projection with a typed error.
-    // Each input accepts `a.mp4;b.mp4` segment chaining.
-    let inputs: Vec<reco_io::stitch_job::InputPath> = args
-        .inputs
-        .iter()
-        .map(|s| reco_io::stitch_job::InputPath::parse_segments(s))
-        .collect();
-    let mut job = reco_io::StitchJob::with_calibration(inputs, cal, args.output);
+    let mut job = args.live_input.job(args.inputs, cal, args.output)?;
     job = job
+        .audio(args.audio_source)
         .quality(args.quality.parse().map_err(anyhow::Error::msg)?)
         .resolution(args.width, args.height)
+        .on_stream_ready(move |monitor| {
+            let _ = stream_ready.set(monitor);
+        })
         .on_progress(move |p: &reco_core::session::types::FrameProgress| {
+            if let Some(monitor) = stream_progress.get() {
+                let status = monitor.status();
+                if last_stream_status.as_ref() != Some(&status) {
+                    eprintln!("Stream: {status:?}");
+                    last_stream_status = Some(status);
+                }
+            }
             // Use the session's own elapsed clock so the reported
             // rate excludes one-time GPU / encoder / ORT init and
             // reflects only the decode → stitch → encode loop.
             progress.report_with_elapsed(p.frames_completed, p.elapsed);
         });
+
+    if let Some(url) = args.stream_url {
+        job = job.stream_to(url);
+    }
 
     if let Some(b) = args.blend {
         job = job.blend_width(b);
@@ -327,7 +344,11 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         anyhow::bail!("AI tracking is unavailable in this build");
     }
 
-    let result = job.run(interrupted)?;
+    let result = job.run(interrupted);
+    if let Some(monitor) = stream.get() {
+        eprintln!("Stream: {:?}", monitor.status());
+    }
+    let result = result?;
     report_result(&result, args.output)
 }
 

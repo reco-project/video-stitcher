@@ -106,14 +106,21 @@ struct Cli {
 // is irrelevant.
 #[allow(clippy::large_enum_variant)]
 enum Commands {
-    /// Stitch camera video files into a panoramic output.
+    /// Stitch camera video files or RTSP feeds into a panoramic output.
     Stitch {
         /// Input videos, one per camera in projection order (two for
         /// L-shape calibrations, one pre-stitched panorama for the
         /// cylinder). Chain multi-segment recordings per input with
-        /// `;` (e.g. `a1.mp4;a2.mp4 b1.mp4;b2.mp4`).
+        /// `;` (e.g. `a1.mp4;a2.mp4 b1.mp4;b2.mp4`). RTSP inputs require --rtsp-fps and --rtsp-offsets-us.
         #[arg(required = true, num_args = 1..)]
         inputs: Vec<String>,
+
+        #[command(flatten)]
+        live_input: stitch::input::LiveInputArgs,
+
+        /// Copy audio from this zero-based input index, or 'none' to disable source audio. No mixing or transcoding.
+        #[arg(long, default_value = "0", value_parser = stitch::input::parse_audio_source)]
+        audio_source: reco_io::output::AudioMode,
 
         /// Path to the calibration JSON file.
         #[arg(short, long)]
@@ -122,6 +129,10 @@ enum Commands {
         /// Output file path.
         #[arg(short, long, default_value = "output.mp4")]
         output: String,
+
+        /// Also publish H.264 + AAC/MP3 to RTMP/RTMPS, paced at media speed. Keeps the recording if streaming fails.
+        #[arg(long)]
+        stream_url: Option<String>,
 
         /// Output width in pixels.
         #[arg(long, default_value_t = 1920)]
@@ -398,9 +409,9 @@ enum Commands {
         /// Lookahead buffer in seconds for the live camera path. The panner
         /// leads the play by this window and the loop centered-smooths the
         /// pose lag-free, the same as `stitch --lookahead`. Adds ~this much
-        /// latency and a VRAM pool sized to the window, so the live default
-        /// is modest. Only engages with AI tracking (needs --model,
-        /// non-sweep). 0 = off (immediate render).
+        /// latency and retained image storage. Only engages with AI tracking
+        /// (needs --model, non-sweep); unavailable with raw Bayer capture.
+        /// 0 = off (immediate render).
         #[arg(long, default_value_t = 0.75)]
         lookahead: f64,
 
@@ -735,8 +746,11 @@ fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Stitch {
             inputs,
+            live_input,
+            audio_source,
             calibration,
             output,
+            stream_url,
             width,
             height,
             start_time,
@@ -767,8 +781,11 @@ fn main() -> anyhow::Result<()> {
         } => stitch::run_stitch(
             stitch::StitchArgs {
                 inputs: &inputs,
+                live_input,
+                audio_source,
                 calibration: &calibration,
                 output: &output,
+                stream_url,
                 width,
                 height,
                 blend,
@@ -908,6 +925,7 @@ fn main() -> anyhow::Result<()> {
             camera::run_camera(
                 camera::CameraRunConfig {
                     cam_config,
+                    capture_fps,
                     calibration: &calibration,
                     output: &output,
                     width,
@@ -919,7 +937,6 @@ fn main() -> anyhow::Result<()> {
                     quality: &quality,
                     end_time,
                     max_frames,
-                    capture_fps,
                     model_path: model.as_deref(),
                     detection_interval,
                     #[cfg(feature = "snapshot")]
@@ -1002,7 +1019,6 @@ fn main() -> anyhow::Result<()> {
                     quality: &quality,
                     end_time,
                     max_frames,
-                    capture_fps,
                     model_path: model.as_deref(),
                     detection_interval,
                     quality_value,

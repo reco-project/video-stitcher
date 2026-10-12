@@ -139,7 +139,7 @@ impl ProgressReporter {
     }
 
     /// Print the final summary line.
-    #[cfg(any(feature = "gstreamer", feature = "libcamera"))]
+    #[cfg(feature = "gstreamer")]
     pub fn finish(&self, frame_count: u64, output_path: &str) {
         let elapsed = self.start.elapsed().as_secs_f64();
         let fps = frame_count as f64 / elapsed;
@@ -157,9 +157,29 @@ pub fn is_tegra() -> bool {
             .is_ok_and(|s| s.contains("nvidia,tegra"))
 }
 
+/// Process a capture source with shared timing, lookahead and progress reporting.
+/// The caller owns capture shutdown and output finalization.
+#[cfg(feature = "gstreamer")]
+pub fn run_capture_source(
+    session: &mut reco_core::session::StitchSession,
+    source: &mut dyn reco_core::source::FrameSource,
+    frame_limit: u64,
+    interrupted: &std::sync::atomic::AtomicBool,
+) -> Result<reco_core::session::types::RunResult, reco_core::session::types::SessionError> {
+    let reporter = ProgressReporter::new(30);
+    session.run(
+        source,
+        frame_limit,
+        interrupted,
+        Some(Box::new(move |progress| {
+            reporter.report_with_elapsed(progress.frames_completed, progress.elapsed);
+        })),
+    )
+}
+
 /// Prepare coverage, run capture, and finalize outputs while preserving the first error.
 /// Keep capture sources inside the callback so they stop before finalization.
-#[cfg(any(feature = "gstreamer", feature = "libcamera"))]
+#[cfg(feature = "gstreamer")]
 pub fn run_capture<T>(
     session: &mut reco_core::session::StitchSession,
     capture: impl FnOnce(&mut reco_core::session::StitchSession) -> anyhow::Result<T>,
@@ -183,7 +203,10 @@ pub fn run_capture<T>(
     Ok(value)
 }
 
-#[cfg(all(test, any(feature = "gstreamer", feature = "libcamera")))]
+#[cfg(all(test, feature = "gstreamer"))]
+mod capture_tests;
+
+#[cfg(all(test, feature = "gstreamer"))]
 mod tests {
     use super::*;
     use reco_core::calibration::{Calibration, Framing, Lens};
@@ -230,7 +253,11 @@ mod tests {
         }
     }
 
-    fn session(gpu: bool) -> StitchSession {
+    pub(super) fn session(gpu: bool) -> StitchSession {
+        session_with_format(gpu, false)
+    }
+
+    pub(super) fn session_with_format(gpu: bool, nv12: bool) -> StitchSession {
         let calibration = Calibration::new(
             vec![Lens::flat(64, 32)],
             Cylinder {
@@ -252,6 +279,11 @@ mod tests {
                 .calibration(calibration)
                 .source_sizes(vec![(64, 32)])
                 .viewport_size(size)
+                .input_format(if nv12 {
+                    reco_core::render::renderer::InputFormat::Nv12
+                } else {
+                    reco_core::render::renderer::InputFormat::Yuv420p
+                })
                 .build()
                 .unwrap()
         } else {
