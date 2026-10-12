@@ -27,7 +27,7 @@ pub enum Error {
     Missing(usize),
     /// An input's previous image is too old.
     Expired(usize),
-    /// Available new images do not admit a bounded-skew set.
+    /// No bounded-skew replacement or age-valid previous set is available.
     Skew,
 }
 
@@ -130,7 +130,8 @@ impl<T> Selector<T> {
         Ok(())
     }
 
-    /// Select a set, or ask the caller to wait. A pending slot cannot move its deadline.
+    /// Select the compatible set with the least total timestamp distance from the slot, preferring later captures on ties, or ask the caller to wait. A pending slot cannot move its deadline.
+    /// If no compatible replacement arrives by the deadline, an age-valid previous set may be held unchanged.
     /// `T::clone` must retain an image handle, not duplicate its pixels.
     pub fn poll(&mut self, slot_us: i64, now_us: i64) -> Result<Option<Selection<T>>, Error>
     where
@@ -170,7 +171,6 @@ impl<T> Selector<T> {
             return Ok(None);
         }
         self.best.fill(None);
-        // Sweep ordered queues, advancing only their earliest candidate.
         // Linear sweeps over queued and retained candidates; no Cartesian product of inputs.
         let eligible = |queued: &Queued<T>| {
             queued.capture.time_us <= upper
@@ -215,7 +215,7 @@ impl<T> Selector<T> {
                     .map(|f| &f.capture)
             }
         };
-        let mut found = false;
+        let mut best_distance = None;
         if active > 0 {
             loop {
                 let mut earliest = 0;
@@ -241,34 +241,47 @@ impl<T> Selector<T> {
                     break;
                 }
                 if max - min <= self.config.skew_us {
-                    found = true;
-                    self.best.clone_from(&self.cursor);
+                    let window_end = min.saturating_add(self.config.skew_us);
+                    let mut distance = 0u128;
+                    let mut advanced = false;
+                    for (camera, cursor) in self.cursor.iter_mut().enumerate() {
+                        let Some(cursor) = cursor else {
+                            continue;
+                        };
+                        let mut time = candidate(camera, *cursor).unwrap().time_us;
+                        // A closer admissible successor dominates its predecessor.
+                        while let Some(next) = candidate(camera, *cursor + 1) {
+                            if next.time_us > window_end
+                                || next.time_us.abs_diff(slot_us) > time.abs_diff(slot_us)
+                            {
+                                break;
+                            }
+                            *cursor += 1;
+                            advanced = true;
+                            time = next.time_us;
+                        }
+                        distance += u128::from(time.abs_diff(slot_us));
+                    }
+                    if best_distance.is_none_or(|best| distance <= best) {
+                        best_distance = Some(distance);
+                        self.best.clone_from(&self.cursor);
+                    }
+                    // Advancing the oldest capture may admit closer peers.
+                    if advanced {
+                        continue;
+                    }
                 }
                 *self.cursor[earliest].as_mut().unwrap() += 1;
             }
         }
-        if !found && active > 0 {
+        if best_distance.is_none() && active > 0 {
             if now_us < deadline {
                 return Ok(None);
             }
-            return Err(Error::Skew);
-        }
-        // Exhausting the earliest queue need not exclude later compatible peers.
-        if let Some(oldest) = self
-            .best
-            .iter()
-            .enumerate()
-            .filter_map(|(camera, cursor)| candidate(camera, (*cursor)?).map(|frame| frame.time_us))
-            .min()
-        {
-            for (camera, cursor) in self.best.iter_mut().enumerate() {
-                if let Some(cursor) = cursor {
-                    while candidate(camera, *cursor + 1)
-                        .is_some_and(|frame| frame.time_us - oldest <= self.config.skew_us)
-                    {
-                        *cursor += 1;
-                    }
-                }
+            // Prior per-camera reuse may leave a held set wider than skew.
+            // It can remain displayed, but cannot admit an incompatible replacement.
+            if self.previous.iter().any(Option::is_none) {
+                return Err(Error::Skew);
             }
         }
         if now_us < deadline

@@ -242,6 +242,41 @@ mod tests {
     }
 
     #[test]
+    fn queued_live_burst_keeps_both_due_frames() {
+        let mut pair = CapturePair::start(
+            [INPUT; 2],
+            |sample| Ok(Arc::new(sample.clone())),
+            Some((
+                Config {
+                    wait_us: 150_000,
+                    skew_us: 40_000,
+                    max_age_us: 500_000,
+                    capacity: 4,
+                },
+                30,
+            )),
+        )
+        .unwrap();
+        let inputs = pair.test_app_sources();
+        let start = clock_us(&pair.capture.pipeline).unwrap();
+        for input in &inputs {
+            push(input, start);
+        }
+        pair.next(&AtomicBool::new(false)).unwrap().unwrap();
+        wait_until(&pair, start + 80_000);
+        for input in &inputs {
+            push(input, start + 33_333);
+            push(input, start + 66_666);
+        }
+        for offset in [33_333, 66_666] {
+            let frame = pair.next(&AtomicBool::new(false)).unwrap().unwrap();
+            assert_eq!(frame.pts_us, offset);
+            assert_eq!(frame.capture.times_us, [start + offset; 2]);
+        }
+        pair.stop().unwrap();
+    }
+
+    #[test]
     fn live_drop_reuses_same_owner_and_recovers_in_both_directions() {
         for missing in 0..2 {
             let mut pair = pair();
@@ -280,6 +315,40 @@ mod tests {
             }
             assert!(pair.next(&AtomicBool::new(false)).unwrap().is_none());
             assert!(pair.is_stopped());
+        }
+    }
+
+    #[test]
+    fn delayed_live_backlog_holds_existing_owners_until_cameras_rejoin() {
+        for delayed in 0..2 {
+            let mut pair = pair();
+            let inputs = pair.test_app_sources();
+            let start = clock_us(&pair.capture.pipeline).unwrap();
+            for input in &inputs {
+                push(input, start);
+            }
+            pair.next(&AtomicBool::new(false)).unwrap().unwrap();
+            wait_until(&pair, start + 100_000);
+            push(&inputs[1 - delayed], start + 100_000);
+            let held = pair.next(&AtomicBool::new(false)).unwrap().unwrap();
+            assert_eq!(held.capture.times_us[delayed], start);
+            assert_eq!(held.capture.times_us[1 - delayed], start + 100_000);
+            wait_until(&pair, start + 200_000);
+            push(&inputs[delayed], start + 33_333);
+            push(&inputs[1 - delayed], start + 200_000);
+            let repeated = pair.next(&AtomicBool::new(false)).unwrap().unwrap();
+            assert_eq!(repeated.pts_us, 200_000);
+            assert_eq!(repeated.capture.times_us, held.capture.times_us);
+            for camera in 0..2 {
+                assert!(Arc::ptr_eq(&held.images[camera], &repeated.images[camera]));
+            }
+            wait_until(&pair, start + 300_000);
+            for input in &inputs {
+                push(input, start + 300_000);
+            }
+            let recovered = pair.next(&AtomicBool::new(false)).unwrap().unwrap();
+            assert_eq!(recovered.capture.times_us, [start + 300_000; 2]);
+            pair.stop().unwrap();
         }
     }
 

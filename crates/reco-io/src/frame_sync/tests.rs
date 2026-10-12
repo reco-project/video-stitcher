@@ -215,6 +215,90 @@ fn future_receipts_cannot_be_selected_early() {
 }
 
 #[test]
+fn delivery_bursts_preserve_the_due_frame_and_next_slot() {
+    for inputs in 1..=3 {
+        for origin in [0, 9_000_000_000_000, i64::MAX - 1_000_000] {
+            let mut s = Selector::new(
+                inputs,
+                Config {
+                    wait_us: 150_000,
+                    skew_us: 40_000,
+                    max_age_us: 500_000,
+                    capacity: 4,
+                },
+            )
+            .unwrap();
+            for camera in 0..inputs {
+                push(&mut s, camera, origin, origin);
+            }
+            s.poll(origin, origin).unwrap().unwrap();
+            let due = origin + 33_366;
+            let following = origin + 66_733;
+            let arrived = origin + 75_000;
+            for camera in 0..inputs {
+                push(&mut s, camera, due, arrived);
+                push(&mut s, camera, following, arrived);
+            }
+            let first = s.poll(due, arrived).unwrap().unwrap();
+            assert_eq!(captures(&first), vec![due; inputs]);
+            assert_eq!(first.at_us, due);
+            assert!(s.queues.iter().all(|queue| queue.len() == 1));
+            let second = s.poll(following, arrived).unwrap().unwrap();
+            assert_eq!(captures(&second), vec![following; inputs]);
+            assert_eq!(second.at_us, following);
+            assert!(s.queues.iter().all(VecDeque::is_empty));
+        }
+    }
+}
+
+#[test]
+fn nearest_set_is_neither_oldest_nor_newest_and_keeps_future_captures() {
+    let mut s = Selector::new(
+        2,
+        Config {
+            skew_us: 20,
+            ..config()
+        },
+    )
+    .unwrap();
+    for camera in 0..2 {
+        for time in [10, 29, 40] {
+            push(&mut s, camera, time, 40);
+        }
+    }
+    assert_eq!(captures(&s.poll(30, 40).unwrap().unwrap()), vec![29; 2]);
+    assert_eq!(captures(&s.poll(40, 40).unwrap().unwrap()), vec![40; 2]);
+}
+
+#[test]
+fn nearest_peer_is_found_when_the_earliest_queue_has_no_successor() {
+    let mut s = Selector::new(
+        2,
+        Config {
+            skew_us: 20,
+            ..config()
+        },
+    )
+    .unwrap();
+    push(&mut s, 0, 1, 19);
+    for time in [9, 10, 19] {
+        push(&mut s, 1, time, 19);
+    }
+    assert_eq!(captures(&s.poll(10, 19).unwrap().unwrap()), vec![1, 10]);
+}
+
+#[test]
+fn equal_timestamp_distance_prefers_the_later_compatible_set() {
+    let mut s = selector(2);
+    for camera in 0..2 {
+        for time in [25, 35] {
+            push(&mut s, camera, time, 35);
+        }
+    }
+    assert_eq!(captures(&s.poll(30, 35).unwrap().unwrap()), vec![35; 2]);
+}
+
+#[test]
 fn one_two_three_inputs_recover_in_every_camera_position() {
     for n in 1..=3 {
         for missing in 0..n {
@@ -304,6 +388,65 @@ fn incompatible_new_images_hold_the_previous_set_without_weakening_skew() {
     push(&mut s, 1, 35, 35);
     assert_eq!(captures(&s.poll(30, 50).unwrap().unwrap()), vec![0; 3]);
     assert!(matches!(s.poll(66, 86), Err(Error::Expired(_))));
+}
+
+#[test]
+fn delayed_backlog_preserves_an_age_valid_held_set_then_rejoins() {
+    for inputs in 2..=4 {
+        for delayed in 0..inputs {
+            for recover in [false, true] {
+                let mut s = Selector::new(
+                    inputs,
+                    Config {
+                        wait_us: 150_000,
+                        skew_us: 40_000,
+                        max_age_us: 500_000,
+                        capacity: 4,
+                    },
+                )
+                .unwrap();
+                seed(&mut s, inputs);
+                for camera in 0..inputs {
+                    if camera != delayed {
+                        push(&mut s, camera, 100_000, 100_000);
+                    }
+                }
+                let held = s.poll(100_000, 250_000).unwrap().unwrap();
+                assert_eq!(held.captures[delayed].time_us, 0);
+                for camera in 0..inputs {
+                    if camera == delayed {
+                        push(&mut s, camera, 33_333, 300_000);
+                    } else {
+                        assert_eq!(held.captures[camera].time_us, 100_000);
+                        push(&mut s, camera, 200_000, 200_000);
+                    }
+                }
+                assert!(s.poll(200_000, 349_999).unwrap().is_none());
+                let still_held = s.poll(200_000, 350_000).unwrap().unwrap();
+                assert_eq!(captures(&still_held), captures(&held));
+                assert_eq!(still_held.at_us, 200_000);
+                for camera in 0..inputs {
+                    assert!(Arc::ptr_eq(
+                        &held.captures[camera].image,
+                        &still_held.captures[camera].image
+                    ));
+                    assert_eq!(s.queues[camera].len(), 1);
+                }
+                if recover {
+                    for camera in 0..inputs {
+                        push(&mut s, camera, 333_333, 400_000);
+                    }
+                    let recovered = s.poll(333_333, 400_000).unwrap().unwrap();
+                    assert_eq!(captures(&recovered), vec![333_333; inputs]);
+                    assert!(s.queues.iter().all(VecDeque::is_empty));
+                } else {
+                    let last = s.poll(500_000, 650_000).unwrap().unwrap();
+                    assert_eq!(captures(&last), captures(&held));
+                    assert!(s.poll(500_001, 650_001).is_err());
+                }
+            }
+        }
+    }
 }
 
 #[test]
@@ -475,21 +618,49 @@ fn configuration_rejects_nonsensical_limits() {
     }
 }
 
-// Exhaustive existence oracle, intentionally different from the N-way sweep.
-fn has_match(queues: &[Vec<i64>], selected: &mut Vec<i64>, camera: usize) -> bool {
-    if camera == queues.len() {
-        return selected.iter().max().unwrap() - selected.iter().min().unwrap() <= 5;
+// Exhaustive Cartesian oracle, intentionally different from the ordered sweep.
+fn nearest_match(queues: &[Vec<i64>], slot: i64, skew: i64) -> Option<Vec<i64>> {
+    fn visit(
+        queues: &[Vec<i64>],
+        selected: &mut Vec<i64>,
+        slot: i64,
+        skew: i64,
+        best: &mut Option<(u128, Vec<i64>)>,
+    ) {
+        if let Some((queue, rest)) = queues.split_first() {
+            for &time in queue {
+                selected.push(time);
+                visit(rest, selected, slot, skew, best);
+                selected.pop();
+            }
+        } else if selected.iter().max().unwrap() - selected.iter().min().unwrap() <= skew {
+            let distance = selected
+                .iter()
+                .map(|&time| u128::from(time.abs_diff(slot)))
+                .sum();
+            match best {
+                Some((previous, values)) if *previous == distance => {
+                    for (value, &time) in values.iter_mut().zip(selected.iter()) {
+                        *value = (*value).max(time);
+                    }
+                }
+                _ if best
+                    .as_ref()
+                    .is_none_or(|(previous, _)| distance < *previous) =>
+                {
+                    *best = Some((distance, selected.clone()));
+                }
+                _ => {}
+            }
+        }
     }
-    queues[camera].iter().any(|&time| {
-        selected.push(time);
-        let found = has_match(queues, selected, camera + 1);
-        selected.pop();
-        found
-    })
+    let mut best = None;
+    visit(queues, &mut Vec::new(), slot, skew, &mut best);
+    best.map(|(_, values)| values)
 }
 
 #[test]
-fn three_input_sweep_matches_brute_force_existence() {
+fn three_input_sweep_matches_brute_force_nearest_set() {
     let possibilities: Vec<Vec<i64>> = (1u32..16)
         .map(|mask| {
             [0, 3, 7, 10]
@@ -503,7 +674,7 @@ fn three_input_sweep_matches_brute_force_existence() {
         for b in &possibilities {
             for c in &possibilities {
                 let queues = [a.clone(), b.clone(), c.clone()];
-                let expected = has_match(&queues, &mut Vec::new(), 0);
+                let expected = nearest_match(&queues, 5, 5);
                 let mut s = selector(3);
                 for (camera, times) in queues.iter().enumerate() {
                     for &time in times {
@@ -512,11 +683,9 @@ fn three_input_sweep_matches_brute_force_existence() {
                 }
                 match s.poll(5, 25) {
                     Ok(Some(set)) => {
-                        assert!(expected, "{queues:?}");
-                        let times = captures(&set);
-                        assert!(times.iter().max().unwrap() - times.iter().min().unwrap() <= 5);
+                        assert_eq!(Some(captures(&set)), expected, "{queues:?}");
                     }
-                    Err(Error::Skew) => assert!(!expected, "{queues:?}"),
+                    Err(Error::Skew) => assert!(expected.is_none(), "{queues:?}"),
                     other => panic!("unexpected result: {other:?}"),
                 }
             }
@@ -525,7 +694,7 @@ fn three_input_sweep_matches_brute_force_existence() {
 }
 
 #[test]
-fn retained_candidate_sweep_matches_exhaustive_latest_compatible_set() {
+fn retained_candidate_sweep_matches_exhaustive_nearest_compatible_set() {
     let possibilities: Vec<Vec<i64>> = (1u32..16)
         .map(|mask| {
             [6, 8, 12, 15]
@@ -555,20 +724,12 @@ fn retained_candidate_sweep_matches_exhaustive_latest_compatible_set() {
                             .collect()
                     })
                     .collect();
-                let mut expected = vec![0, 3, 5];
-                for &x in &queues[0] {
-                    for &y in &queues[1] {
-                        for &z in &queues[2] {
-                            if x.max(y).max(z) - x.min(y).min(z) <= 5 {
-                                for (best, value) in expected.iter_mut().zip([x, y, z]) {
-                                    *best = (*best).max(value);
-                                }
-                            }
-                        }
-                    }
-                }
                 let actual = s.poll(10, 30).unwrap().unwrap();
-                assert_eq!(captures(&actual), expected, "{queues:?}");
+                assert_eq!(
+                    Some(captures(&actual)),
+                    nearest_match(&queues, 10, 5),
+                    "{queues:?}"
+                );
                 assert!(
                     actual
                         .captures
@@ -576,6 +737,51 @@ fn retained_candidate_sweep_matches_exhaustive_latest_compatible_set() {
                         .all(|capture| *capture.image == capture.time_us)
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn varied_input_counts_and_windows_match_exhaustive_nearest_sets() {
+    let mut state = 42u64;
+    let mut next = || {
+        state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+        state >> 32
+    };
+    for _ in 0..4_000 {
+        let inputs = 1 + next() as usize % 5;
+        let slot = (next() % 60) as i64;
+        let skew = (next() % 40) as i64;
+        let mut s = Selector::new(
+            inputs,
+            Config {
+                wait_us: 100,
+                skew_us: skew,
+                max_age_us: 200,
+                capacity: 4,
+            },
+        )
+        .unwrap();
+        let mut queues = Vec::new();
+        for camera in 0..inputs {
+            let mut times = (0..4).map(|_| (next() % 81) as i64).collect::<Vec<_>>();
+            times.sort_unstable();
+            times.dedup();
+            for &time in &times {
+                push(&mut s, camera, time, 100);
+            }
+            times.retain(|&time| time <= slot + skew);
+            queues.push(times);
+        }
+        let expected = nearest_match(&queues, slot, skew);
+        match s.poll(slot, 200) {
+            Ok(Some(actual)) => assert_eq!(
+                Some(captures(&actual)),
+                expected,
+                "slot={slot}, skew={skew}, queues={queues:?}"
+            ),
+            Err(Error::Skew | Error::Missing(_)) => assert!(expected.is_none(), "{queues:?}"),
+            other => panic!("unexpected result: {other:?}"),
         }
     }
 }
