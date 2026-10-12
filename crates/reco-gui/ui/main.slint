@@ -22,6 +22,8 @@ import {
 } from "components.slint";
 export { Toast }
 
+export struct NetworkInputRow { url: string, offset: string }
+
 export component RecoApp inherits Window {
     title: "Reco Video Stitcher";
     preferred-width: 1280px;
@@ -51,6 +53,12 @@ export component RecoApp inherits Window {
     in-out property <image> preview-frame;
     in-out property <bool> playing: false;
     in-out property <bool> files-loaded: false;
+    in-out property <bool> network-active: false;
+    in-out property <bool> network-opening: false;
+    in-out property <bool> network-dialog-open: false;
+    in-out property <[NetworkInputRow]> network-inputs;
+    in-out property <string> network-fps: "30";
+    in-out property <string> network-message;
     in-out property <string> left-path: "";
     in-out property <string> right-path: "";
     in-out property <bool> is-l-shape: true;
@@ -102,6 +110,12 @@ export component RecoApp inherits Window {
     // Export dialog state.
     in-out property <bool> export-dialog-open: false;
     in-out property <string> export-output-path: "";
+    in-out property <bool> export-stream-enabled: false;
+    in-out property <string> export-stream-url: "";
+    in-out property <string> export-stream-status: "";
+    in-out property <bool> export-stream-failed: false;
+    in-out property <[string]> export-audio-options: ["No source audio", "Camera 1"];
+    in-out property <int> export-audio-choice: 1;
     in-out property <int> export-width: 1920;
     in-out property <int> export-height: 1080;
     in-out property <string> export-codec: "h264";
@@ -258,6 +272,10 @@ export component RecoApp inherits Window {
     // ── Callbacks into Rust ──
 
     callback pick-left-video();
+    callback open-network();
+    callback connect-network();
+    callback cancel-network();
+    callback disconnect-network();
     callback pick-right-video();
     callback pick-calibration();
     callback auto-calibrate();
@@ -383,7 +401,7 @@ export component RecoApp inherits Window {
             root.total-time-text = "0:00";
         }
     }
-    property <bool> overlay-open: root.recent-dialog-open || root.shortcuts-dialog-open || root.prefs-dialog-open || root.bug-dialog-open || root.export-dialog-open || root.lens-picker-open;
+    property <bool> overlay-open: root.recent-dialog-open || root.shortcuts-dialog-open || root.prefs-dialog-open || root.bug-dialog-open || root.export-dialog-open || root.lens-picker-open || root.network-dialog-open;
     property <bool> modal-open: root.overlay-open || root.file-dialog-open;
     changed modal-open => {
         if root.modal-open {
@@ -393,6 +411,7 @@ export component RecoApp inherits Window {
         }
     }
     function dismiss-dialogs() {
+        if root.network-opening { root.cancel-network(); } else { root.network-dialog-open = false; }
         root.recent-dialog-open = false;
         root.shortcuts-dialog-open = false;
         root.prefs-dialog-open = false;
@@ -571,7 +590,7 @@ export component RecoApp inherits Window {
                     }
 
                     Button {
-                        text: "Export…";
+                        text: root.network-active ? "Record / publish…" : "Export…";
                         description: root.recording ? "Stop quick recording before exporting" : "Export a stitched video";
                         primary: true;
                         enabled: root.files-loaded && !root.export-in-progress && !root.recording && !root.calibrating && !root.field-editing;
@@ -602,7 +621,7 @@ export component RecoApp inherits Window {
                         alignment: center;
                         spacing: 16px;
                         Text {
-                            text: "Your cameras.\nOne view.";
+                            text: root.network-active ? "Live preview is stopped" : "Your cameras.\nOne view.";
                             color: #edf3f5;
                             font-size: root.width > 1000px ? 34px : 26px;
                             font-weight: 600;
@@ -610,7 +629,7 @@ export component RecoApp inherits Window {
                         }
 
                         Text {
-                            text: "Add your footage, then load a calibration\nor align two cameras automatically.";
+                            text: root.network-active ? "Reconnect the selected RTSP cameras to preview again." : "Add your footage, then load a calibration\nor align two cameras automatically.";
                             color: #a6b8c4;
                             font-size: 14px;
                             horizontal-alignment: center;
@@ -621,10 +640,10 @@ export component RecoApp inherits Window {
                             alignment: center;
                             spacing: 10px;
                             Button {
-                                text: "Add video";
+                                text: root.network-active ? "Reconnect…" : "Add video";
                                 primary: true;
                                 clicked => {
-                                    root.pick-left-video();
+                                    if root.network-active { root.open-network(); } else { root.pick-left-video(); }
                                 }
                             }
 
@@ -674,7 +693,7 @@ export component RecoApp inherits Window {
                             height: 100%;
                             background: #000000bb;
                             Text {
-                                text: "Preview paused during export";
+                                text: root.network-active ? "Preview paused while recording / publishing" : "Preview paused during export";
                                 color: #dddddd;
                                 font-size: 14px;
                                 horizontal-alignment: center;
@@ -1061,6 +1080,19 @@ export component RecoApp inherits Window {
                                         root.recent-dialog-open = true;
                                     }
                                 }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Button {
+                                        text: root.network-active ? "RTSP inputs…" : "Connect RTSP…";
+                                        enabled: !root.export-in-progress && !root.recording && !root.calibrating && !root.network-opening;
+                                        clicked => { root.open-network(); }
+                                    }
+                                    if root.network-active: Button {
+                                        text: "Disconnect";
+                                        enabled: !root.export-in-progress;
+                                        clicked => { root.disconnect-network(); }
+                                    }
+                                }
                             }
                         }
                         if root.inspector-tab == 1 && root.files-loaded: ScrollView {
@@ -1148,7 +1180,7 @@ export component RecoApp inherits Window {
                                     }
                                 }
 
-                                if root.files-loaded && root.is-l-shape: HorizontalLayout {
+                                if root.files-loaded && root.is-l-shape && !root.network-active: HorizontalLayout {
                                     spacing: 4px;
                                     Text {
                                         text: "Sync offset";
@@ -1585,7 +1617,7 @@ export component RecoApp inherits Window {
 
                                     Button {
                                         text: root.recording ? "Stop recording" : "Start recording";
-                                        enabled: root.files-loaded && !root.export-in-progress && !root.lens-preview-active && !root.field-editing;
+                                        enabled: root.files-loaded && !root.network-active && !root.export-in-progress && !root.lens-preview-active && !root.field-editing;
                                         clicked => {
                                             root.toggle-recording(root.recording-codec, root.recording-quality);
                                         }
@@ -1705,7 +1737,7 @@ export component RecoApp inherits Window {
                 Button {
                         text: "|‹";
                         description: "Previous frame";
-                        enabled: root.files-loaded;
+                        enabled: root.files-loaded && !root.network-active;
                         clicked => {
                             root.step-backward();
                         }
@@ -1723,7 +1755,7 @@ export component RecoApp inherits Window {
                     Button {
                         text: "›|";
                         description: "Next frame";
-                        enabled: root.files-loaded;
+                        enabled: root.files-loaded && !root.network-active;
                         clicked => {
                             root.step-forward();
                         }
@@ -1759,7 +1791,7 @@ export component RecoApp inherits Window {
                             minimum: 1;
                             maximum: root.total-frames == 0 ? 1.0 : 1.0 * root.total-frames;
                             value: 1.0 * root.current-frame;
-                            enabled: root.files-loaded;
+                            enabled: root.files-loaded && !root.network-active;
                             released(val) => {
                                 if root.total-frames > 0 {
                                     root.seek-frame(round(val) - 1);
@@ -1810,6 +1842,8 @@ export component RecoApp inherits Window {
                     padding-right: 12px;
                     spacing: 8px;
 
+                    VerticalLayout {
+                        horizontal-stretch: 1;
                     if !root.export-in-progress: Text {
                         text: root.status-text;
                         color: Theme.text-muted;
@@ -1821,11 +1855,19 @@ export component RecoApp inherits Window {
                     }
 
                     if root.export-in-progress: Text {
-                        text: "Exporting: " + root.export-status-text;
+                        text: (root.network-active ? "Live output: " : "Exporting: ") + root.export-status-text;
                         color: Theme.accent;
                         font-size: 12px;
                         vertical-alignment: center;
                         font-weight: 600;
+                    }
+
+                    if root.export-stream-status != "": Text {
+                        text: root.export-stream-status;
+                        color: root.export-stream-failed ? Theme.accent-error : Theme.text-muted;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
                     }
 
                     if root.export-in-progress: ProgressIndicator {
@@ -1835,7 +1877,7 @@ export component RecoApp inherits Window {
                     }
 
                     if root.export-in-progress: Button {
-                        text: "Cancel";
+                        text: root.network-active ? "Stop and save" : "Cancel";
                         clicked => {
                             root.cancel-export();
                         }
@@ -2472,6 +2514,49 @@ export component RecoApp inherits Window {
                 }
             }
 
+        if root.network-dialog-open: Rectangle {
+            Rectangle {
+                width: 560px;
+                height: min(parent.height - 60px, 620px);
+                background: Theme.bg-surface;
+                border-radius: 12px;
+                TouchArea { }
+                VerticalLayout {
+                    padding: 24px; spacing: 14px;
+                    Text { text: "Live RTSP inputs"; color: Theme.text-primary; font-size: 18px; font-weight: 600; }
+                    ScrollView {
+                        horizontal-scrollbar-policy: always-off;
+                        vertical-stretch: 1;
+                        VerticalLayout {
+                            spacing: 12px;
+                            Text {
+                                text: "Use the loaded rig calibration. Camera timestamps must share a clock, or have measured offsets. Reco does not synchronize them from arrival time.";
+                                wrap: word-wrap; color: Theme.text-muted; font-size: 12px;
+                            }
+                            for row[index] in root.network-inputs: VerticalLayout {
+                                spacing: 4px;
+                                Text { text: "Camera " + (index + 1); color: Theme.text-primary; font-size: 12px; }
+                                LineEdit { text: row.url; edited(value) => { root.network-inputs[index] = {url: value, offset: row.offset}; } input-type: password; placeholder-text: "rtsp://host:port/camera"; enabled: !root.network-opening; }
+                                LineEdit { text: row.offset; edited(value) => { root.network-inputs[index] = {url: row.url, offset: value}; } placeholder-text: "Timestamp offset in µs (0 if aligned)"; enabled: !root.network-opening; }
+                            }
+                            Text { text: "Output frame rate"; color: Theme.text-primary; font-size: 12px; }
+                            LineEdit { text <=> root.network-fps; placeholder-text: "30 or 30000/1001"; enabled: !root.network-opening; }
+                            Text {
+                                text: "TCP transport · host-backed images · wait up to 150 ms · match within 30 ms · reuse up to 350 ms · 4 queued frames per camera. Stops on stale input or a changed clock. URLs stay in this session.";
+                                wrap: word-wrap; color: Theme.text-muted; font-size: 12px;
+                            }
+                            Text { text: root.network-message; wrap: word-wrap; color: Theme.accent-warn; font-size: 12px; }
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: end; spacing: 8px;
+                        Button { text: root.network-opening ? "Cancel connection" : "Close"; clicked => { if root.network-opening { root.cancel-network(); } else { root.network-dialog-open = false; } } }
+                        Button { text: "Connect"; primary: true; enabled: !root.network-opening && root.network-inputs.length > 0; clicked => { root.connect-network(); } }
+                    }
+                }
+            }
+        }
+
             // ── Export dialog ──
         if root.export-dialog-open: Rectangle {
 
@@ -2488,7 +2573,7 @@ export component RecoApp inherits Window {
                         spacing: 14px;
 
                         Text {
-                            text: "Export Stitched Video";
+                            text: root.network-active ? "Record / publish live video" : "Export Stitched Video";
                             color: Theme.text-primary;
                             font-size: 18px;
                             font-weight: 600;
@@ -2501,7 +2586,7 @@ export component RecoApp inherits Window {
                                 spacing: 14px;
 
                                 Text {
-                                    text: "Save a stitched video from the source timeline.";
+                                    text: root.network-active ? "Record the processed live feed until you stop it. Preview pauses while this job runs; AI tracking uses the settings below. Reconnect explicitly to preview again afterward." : "Save a stitched video from the source timeline.";
                                     color: Theme.text-muted;
                                     font-size: 12px;
                                     wrap: word-wrap;
@@ -2534,6 +2619,43 @@ export component RecoApp inherits Window {
                                             root.pick-export-output();
                                         }
                                     }
+                                }
+
+                                CheckBox {
+                                    text: "Also stream to RTMP / RTMPS";
+                                    checked <=> root.export-stream-enabled;
+                                    toggled => { if self.checked { root.export-codec = "h264"; } }
+                                }
+
+                                if root.export-stream-enabled: VerticalLayout {
+                                    spacing: 6px;
+                                    LineEdit {
+                                        text <=> root.export-stream-url;
+                                        input-type: password;
+                                        placeholder-text: "Complete publishing URL, including stream key";
+                                    }
+                                    Text {
+                                        text: "Shares the H.264 recording at playback speed. A stream failure does not stop recording. The URL stays only in this session.";
+                                        color: Theme.text-muted;
+                                        font-size: 12px;
+                                        wrap: word-wrap;
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 10px;
+                                    Text { text: "Source audio"; color: Theme.text-body; vertical-alignment: center; }
+                                    ComboBox {
+                                        model: root.export-audio-options;
+                                        current-index <=> root.export-audio-choice;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                                if root.export-stream-enabled: Text {
+                                    text: "Copies available AAC / MP3. Without source audio, the stream carries silence.";
+                                    color: Theme.text-muted;
+                                    font-size: 12px;
+                                    wrap: word-wrap;
                                 }
 
                                 // Resolution presets
@@ -2596,6 +2718,7 @@ export component RecoApp inherits Window {
 
                                         ComboBox {
                                             model: root.available-codecs;
+                                            enabled: !root.export-stream-enabled;
                                             current-index: root.export-codec == "hevc" ? 1 : root.export-codec == "av1" ? 2 : 0;
                                             selected(v) => {
                                                 root.export-codec = v;
@@ -2623,13 +2746,13 @@ export component RecoApp inherits Window {
                                 }
 
                                 // Processing range (start/end with sliders and manual input)
-                    Text {
+                    if !root.network-active: Text {
                                     text: "Processing range";
                                     color: Theme.text-body;
                                     font-size: 12px;
                                 }
 
-                                HorizontalBox {
+                                if !root.network-active: HorizontalBox {
                                     spacing: 8px;
                                     padding: 0;
 
@@ -3014,7 +3137,7 @@ export component RecoApp inherits Window {
                             // Block when AI tracking is on but no model is
                             // picked - otherwise the export runs with no
                             // tracking and no warning.
-                            enabled: root.export-output-path != "" && !(root.export-autocam-enabled && root.export-model-path == "");
+                            enabled: root.export-output-path != "" && !(root.export-stream-enabled && root.export-stream-url == "") && !(root.export-autocam-enabled && root.export-model-path == "");
                                 clicked => {
                                     root.start-export();
                                 }

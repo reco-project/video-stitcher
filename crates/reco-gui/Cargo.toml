@@ -72,3 +72,7 @@ reco-autocam = { path = "../reco-autocam", optional = true, default-features = f
 
 [build-dependencies]
 slint-build = "1.15"
+
+[dev-dependencies]
+ffmpeg-next = { version = "9", default-features = false, features = ["codec", "format", "software-scaling"] }
+tempfile = "3"

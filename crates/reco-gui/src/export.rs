@@ -4,13 +4,109 @@
 //! pumping progress back to the Slint UI via `invoke_from_event_loop`.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use reco_core::calibration::Calibration;
 
 use crate::RecoApp;
+use reco_io::ffmpeg::encoder::{StreamMonitor, StreamStatus};
+
+/// Settings snapshotted on the UI thread for one processed-output job.
+pub struct ExportRequest {
+    pub inputs: Inputs,
+    pub calibration: Calibration,
+    pub output: PathBuf,
+    pub stream_url: Option<String>,
+    pub audio: reco_io::output::AudioMode,
+    pub replay_enabled: bool,
+    pub events_path: Option<PathBuf>,
+    pub width: u32,
+    pub height: u32,
+    pub codec: String,
+    pub quality: String,
+    pub start_secs: f32,
+    pub end_secs: f32,
+    pub autocam: AutocamUiConfig,
+}
+
+/// Input opening remains owned by the shared job, not the interactive event loop.
+pub enum Inputs {
+    Files(Vec<reco_io::InputPath>),
+    Network(crate::network::Config),
+}
+
+/// Observes optional publishing independently of the output worker's progress.
+#[derive(Default)]
+pub struct StreamState {
+    monitor: Arc<OnceLock<StreamMonitor>>,
+    last: Option<StreamStatus>,
+}
+
+impl StreamState {
+    /// Share the job's eventual monitor without creating another transport worker.
+    pub fn monitor(&self) -> Arc<OnceLock<StreamMonitor>> {
+        self.monitor.clone()
+    }
+
+    /// Refresh only changed transport state, including idle and terminal failures.
+    pub fn update(&mut self, app: &RecoApp) {
+        let Some(monitor) = self.monitor.get() else {
+            return;
+        };
+        let status = monitor.status();
+        if self.last.as_ref() == Some(&status) {
+            return;
+        }
+        let (text, failed) = stream_status(&status);
+        app.set_export_stream_status(text.into());
+        app.set_export_stream_failed(failed);
+        self.last = Some(status);
+    }
+
+    /// Finalize visible status even when the job failed before creating an encoder.
+    pub fn finish(&mut self, app: &RecoApp) {
+        self.update(app);
+        if self.monitor.get().is_none() && !app.get_export_stream_status().is_empty() {
+            app.set_export_stream_status("Stream: not started".into());
+            app.set_export_stream_failed(false);
+        }
+    }
+}
+
+fn stream_status(status: &StreamStatus) -> (String, bool) {
+    match status {
+        StreamStatus::Connecting => ("Stream: connecting…".into(), false),
+        StreamStatus::Connected => (
+            "Stream: connected (check playback on your service)".into(),
+            false,
+        ),
+        StreamStatus::Finished => ("Stream: finished".into(), false),
+        StreamStatus::Cancelled => ("Stream: stopped".into(), false),
+        StreamStatus::Failed(error) => (format!("Stream failed: {error}"), true),
+    }
+}
+
+/// Validate optional publishing before opening resources, without exposing its URL in errors.
+pub fn validate_stream(url: Option<&str>, codec: &str) -> Result<(), String> {
+    if let Some(url) = url {
+        if !(url.starts_with("rtmp://") || url.starts_with("rtmps://"))
+            || url
+                .split_once("://")
+                .is_none_or(|(_, rest)| rest.is_empty())
+            || url
+                .bytes()
+                .any(|b| b.is_ascii_control() || b.is_ascii_whitespace())
+        {
+            return Err("Enter a complete RTMP or RTMPS publishing URL.".into());
+        }
+        if codec != "h264" {
+            return Err("Recording and streaming share one encode; select H.264 to stream.".into());
+        }
+    }
+    Ok(())
+}
 
 /// Result published by the export thread.
 #[derive(Debug)]
@@ -36,6 +132,7 @@ pub enum ExportOutcome {
 /// that configuration alone.
 #[cfg_attr(not(feature = "autocam"), allow(dead_code))]
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(Default))]
 pub struct AutocamUiConfig {
     /// Master toggle for the AI tracking pipeline.
     pub enabled: bool,
@@ -102,25 +199,33 @@ impl reco_core::telemetry::TelemetrySink for ExportTelemetrySink {
 }
 
 /// Run a StitchJob on the worker thread.
-#[allow(clippy::too_many_arguments)]
 pub fn run_export(
-    inputs: Vec<reco_io::InputPath>,
-    cal: Calibration,
-    output: PathBuf,
-    stream_url: Option<String>,
-    replay_enabled: bool,
-    events_path: Option<PathBuf>,
-    width: u32,
-    height: u32,
-    codec_str: String,
-    quality_str: String,
-    start_secs: f32,
-    end_secs: f32,
-    autocam: AutocamUiConfig,
+    request: ExportRequest,
+    stream_monitor: Arc<OnceLock<StreamMonitor>>,
     app_weak: slint::Weak<RecoApp>,
     interrupted: &Arc<AtomicBool>,
 ) -> ExportOutcome {
     use reco_io::output::{Codec, Quality};
+
+    let ExportRequest {
+        inputs,
+        calibration: cal,
+        output,
+        stream_url,
+        audio,
+        replay_enabled,
+        events_path,
+        width,
+        height,
+        codec: codec_str,
+        quality: quality_str,
+        start_secs,
+        end_secs,
+        autocam,
+    } = request;
+    if let Err(error) = validate_stream(stream_url.as_deref(), &codec_str) {
+        return ExportOutcome::Failed(reco_io::stitch_job::StitchError::Other(error));
+    }
 
     let (codec, quality) = match (codec_str.parse::<Codec>(), quality_str.parse::<Quality>()) {
         (Ok(codec), Ok(quality)) => (codec, quality),
@@ -142,52 +247,56 @@ pub fn run_export(
 
     let progress_weak = app_weak.clone();
     let progress_start = Instant::now();
-    let effective_output = stream_url
-        .as_ref()
-        .filter(|u| !u.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| output.clone());
-    let format = reco_io::output::Container::for_output(&effective_output.to_string_lossy());
-    if format.is_streaming() {
-        log::info!("Streaming to network output");
+    let format = reco_io::output::Container::for_output(&output.to_string_lossy());
+
+    let live = matches!(inputs, Inputs::Network(_));
+    let mut job = match inputs {
+        Inputs::Files(inputs) => reco_io::StitchJob::with_calibration(inputs, cal, &output),
+        Inputs::Network(config) => {
+            reco_io::StitchJob::from_rtsp(config.inputs, config.options, cal, &output)
+        }
     }
+    .audio(audio)
+    .on_stream_ready(move |monitor| {
+        let _ = stream_monitor.set(monitor);
+    })
+    .codec(codec)
+    .quality(quality)
+    .container(format)
+    .resolution(width, height)
+    .on_progress(move |p: &reco_core::session::types::FrameProgress| {
+        let frames = p.frames_completed;
+        let elapsed = progress_start.elapsed().as_secs_f64();
+        let fps = if elapsed > 0.0 {
+            frames as f64 / elapsed
+        } else {
+            0.0
+        };
 
-    let mut job = reco_io::StitchJob::with_calibration(inputs, cal, effective_output.clone())
-        .codec(codec)
-        .quality(quality)
-        .container(format)
-        .resolution(width, height)
-        .on_progress(move |p: &reco_core::session::types::FrameProgress| {
-            let frames = p.frames_completed;
-            let elapsed = progress_start.elapsed().as_secs_f64();
-            let fps = if elapsed > 0.0 {
-                frames as f64 / elapsed
-            } else {
-                0.0
-            };
-
-            let weak = progress_weak.clone();
-            let _ = slint::invoke_from_event_loop(move || {
-                if let Some(app) = weak.upgrade() {
-                    app.set_export_frames_done(frames as i32);
-                    let total = app.get_export_frames_total();
-                    if total > 0 {
-                        app.set_export_progress((frames as f32 / total as f32).min(1.0));
-                    }
-                    let eta = if total > 0 && fps > 0.0 {
-                        let remaining = (total as f64 - frames as f64) / fps;
-                        let mins = remaining as u64 / 60;
-                        let secs = remaining as u64 % 60;
-                        format!(" - ~{mins}:{secs:02} remaining")
-                    } else {
-                        String::new()
-                    };
-                    app.set_export_status_text(
-                        format!("Frame {frames} ({fps:.0} fps){eta}").into(),
-                    );
+        let weak = progress_weak.clone();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(app) = weak.upgrade() {
+                app.set_export_frames_done(frames as i32);
+                let total = app.get_export_frames_total();
+                if total > 0 {
+                    app.set_export_progress((frames as f32 / total as f32).min(1.0));
                 }
-            });
+                let eta = if total > 0 && fps > 0.0 {
+                    let remaining = (total as f64 - frames as f64) / fps;
+                    let mins = remaining as u64 / 60;
+                    let secs = remaining as u64 % 60;
+                    format!(" - ~{mins}:{secs:02} remaining")
+                } else {
+                    String::new()
+                };
+                app.set_export_status_text(format!("Frame {frames} ({fps:.0} fps){eta}").into());
+            }
         });
+    });
+
+    if let Some(url) = stream_url {
+        job = job.stream_to(url);
+    }
 
     if start_secs > 0.0 {
         post_status(format!("Seeking to {start_secs:.0}s..."));
@@ -198,7 +307,7 @@ pub fn run_export(
     }
 
     if replay_enabled {
-        let replay_path = effective_output.with_extension("replay.mkv");
+        let replay_path = output.with_extension("replay.mkv");
         log::info!("Replay recording: {}", replay_path.display());
         job = job.with_replay_recording(&replay_path);
     }
@@ -346,6 +455,11 @@ pub fn run_export(
             reco_core::session::types::RunCompletion::Completed => {
                 ExportOutcome::Ok(r.frames_processed, output)
             }
+            reco_core::session::types::RunCompletion::Cancelled
+                if live && r.frames_processed > 0 =>
+            {
+                ExportOutcome::Ok(r.frames_processed, output)
+            }
             reco_core::session::types::RunCompletion::Cancelled => ExportOutcome::Cancelled,
         },
         Err(
@@ -402,6 +516,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn publishing_validation_keeps_urls_out_of_errors() {
+        assert!(validate_stream(None, "hevc").is_ok());
+        assert!(validate_stream(Some("rtmps://127.0.0.1/live/key"), "h264").is_ok());
+        for url in [
+            "",
+            "https://private-key.invalid/",
+            "rtmp://",
+            "rtmp://private-key.invalid/\n",
+        ] {
+            let error = validate_stream(Some(url), "h264").unwrap_err();
+            assert!(!error.contains("private-key"));
+        }
+        assert!(validate_stream(Some("rtmp://127.0.0.1/live/key"), "hevc").is_err());
+        assert!(!stream_status(&StreamStatus::Connected).1);
+        assert!(stream_status(&StreamStatus::Failed("disconnected".into())).1);
+        assert!(
+            stream_status(&StreamStatus::Connected)
+                .0
+                .contains("check playback")
+        );
+    }
+
+    #[test]
     fn export_estimate_uses_aligned_source_count_and_rounded_trim() {
         let mut info = reco_core::source::SourceInfo {
             camera_sizes: vec![(128, 96); 2],
@@ -428,7 +565,17 @@ mod tests {
 
     #[test]
     #[ignore = "requires a GPU and RECO_EXPORT_TEST_VIDEO pointing to a readable video"]
-    fn export_worker_cancels_an_unanswered_network_handshake() {
+    fn export_worker_cancels_optional_handshake_and_keeps_recording() {
+        exercise_optional_stream(true);
+    }
+
+    #[test]
+    #[ignore = "requires a GPU, FFmpeg 8+ and RECO_EXPORT_TEST_VIDEO with at least two seconds of video"]
+    fn export_worker_keeps_recording_when_optional_peer_fails() {
+        exercise_optional_stream(false);
+    }
+
+    fn exercise_optional_stream(cancel_output: bool) {
         use reco_core::calibration::{Framing, Lens};
         use reco_core::projection::Cylinder;
         use std::io::Read;
@@ -438,6 +585,7 @@ mod tests {
 
         let input = PathBuf::from(std::env::var("RECO_EXPORT_TEST_VIDEO").unwrap());
         let source = reco_io::ffmpeg::decoder::VideoDecoder::open_software(&input).unwrap();
+        let expected_frames = (source.fps().unwrap() * 2.0).round() as u64;
         let cal = Calibration::new(
             vec![Lens::flat(source.width(), source.height())],
             Cylinder {
@@ -479,50 +627,83 @@ mod tests {
                 .set_read_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
             assert!(socket.read(&mut [0; 4096]).unwrap() > 0);
+            if !cancel_output {
+                return Duration::ZERO;
+            }
             let cancelled_at = Instant::now();
             cancel.store(true, Ordering::Relaxed);
             // Keep the unanswered connection open until the export reports cancellation.
             release_rx.recv_timeout(Duration::from_secs(5)).unwrap();
             cancelled_at.elapsed()
         });
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("recording.mp4");
+        let monitor = Arc::new(OnceLock::new());
         let outcome = run_export(
-            vec![reco_io::InputPath::Single(input)],
-            cal,
-            PathBuf::new(),
-            Some(url),
-            false,
-            None,
-            64,
-            36,
-            "h264".into(),
-            "fast".into(),
-            0.0,
-            0.1,
-            AutocamUiConfig {
-                enabled: false,
-                model_path: String::new(),
-                tracking_mode: "field".into(),
-                detection_interval: 1,
-                lookahead_secs: 0.0,
-                preset: String::new(),
-                framing: "action".into(),
-                lock_pitch: false,
-                cluster_mode: "density".into(),
-                cluster_bandwidth_rad: 0.0,
-                dead_zone_rad: 0.0,
-                ball_weight: 0.0,
-                fov_tight: 30.0,
-                fov_wide: 90.0,
-                fov_default: 60.0,
-                frame_all_margin_deg: 0.0,
+            ExportRequest {
+                inputs: Inputs::Files(vec![reco_io::InputPath::Single(input)]),
+                calibration: cal,
+                output: output.clone(),
+                stream_url: Some(url),
+                audio: reco_io::output::AudioMode::default(),
+                replay_enabled: false,
+                events_path: None,
+                width: 64,
+                height: 36,
+                codec: "h264".into(),
+                quality: "fast".into(),
+                start_secs: 0.0,
+                end_secs: 2.0,
+                autocam: AutocamUiConfig {
+                    enabled: false,
+                    model_path: String::new(),
+                    tracking_mode: "field".into(),
+                    detection_interval: 1,
+                    lookahead_secs: 0.0,
+                    preset: String::new(),
+                    framing: "action".into(),
+                    lock_pitch: false,
+                    cluster_mode: "density".into(),
+                    cluster_bandwidth_rad: 0.0,
+                    dead_zone_rad: 0.0,
+                    ball_weight: 0.0,
+                    fov_tight: 30.0,
+                    fov_wide: 90.0,
+                    fov_default: 60.0,
+                    frame_all_margin_deg: 0.0,
+                },
             },
+            monitor.clone(),
             slint::Weak::default(),
             &flag,
         );
         let _ = release_tx.send(());
         let cancel_latency = peer.join().unwrap();
-        assert!(matches!(outcome, ExportOutcome::Cancelled), "{outcome:?}");
-        assert!(cancel_latency < Duration::from_secs(2));
+        assert!(
+            matches!(outcome, ExportOutcome::Cancelled | ExportOutcome::Ok(..)),
+            "{outcome:?}"
+        );
+        if cancel_output {
+            assert_eq!(monitor.get().unwrap().status(), StreamStatus::Cancelled);
+            assert!(cancel_latency < Duration::from_secs(2));
+            assert!(std::fs::metadata(&output).unwrap().len() > 0);
+        } else {
+            let ExportOutcome::Ok(frames, path) = outcome else {
+                panic!("recording failed");
+            };
+            assert_eq!(path, output);
+            assert_eq!(frames, expected_frames);
+            assert!(matches!(
+                monitor.get().unwrap().status(),
+                StreamStatus::Failed(_)
+            ));
+            let mut recording =
+                reco_io::ffmpeg::decoder::VideoDecoder::open_software(&output).unwrap();
+            for _ in 0..expected_frames {
+                assert!(recording.next_frame().unwrap().is_some());
+            }
+            assert!(recording.next_frame().unwrap().is_none());
+        }
     }
 
     #[test]

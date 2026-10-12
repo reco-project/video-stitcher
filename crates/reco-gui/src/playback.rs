@@ -1,11 +1,10 @@
 //! Video playback controller.
 //!
-//! Wraps an `FfmpegFileSource` with play/pause/step/seek state and
-//! frame timing. Delivers YUV frame data on demand, paced by FPS.
+//! File timing and seeking, or non-blocking live frame selection.
 
 use std::time::{Duration, Instant};
 
-use reco_core::source::{FrameSet, FrameSource, SourceError, SourceInfo};
+use reco_core::source::{FrameSet, FrameSource, SourceError, SourceFrame, SourceInfo};
 use reco_io::adapters::FfmpegFileSource;
 use reco_io::stitch_job::InputPath;
 
@@ -27,6 +26,27 @@ struct PendingSeek {
     ready: Option<FrameSet>,
 }
 
+enum Source {
+    File(Box<FfmpegFileSource>),
+    Live(Box<reco_io::rtsp::RtspSource>),
+}
+
+impl Source {
+    fn frames(&self) -> &dyn FrameSource {
+        match self {
+            Self::File(source) => source.as_ref(),
+            Self::Live(source) => source.as_ref(),
+        }
+    }
+
+    fn frames_mut(&mut self) -> &mut dyn FrameSource {
+        match self {
+            Self::File(source) => source.as_mut(),
+            Self::Live(source) => source.as_mut(),
+        }
+    }
+}
+
 /// Controls video file playback for the GUI.
 ///
 /// Uses drift-free scheduling: frame advance timing is computed from a
@@ -35,7 +55,7 @@ struct PendingSeek {
 /// from snapping the anchor to actual advance times (which are always
 /// slightly late relative to the ideal frame boundary).
 pub struct Playback {
-    source: Option<FfmpegFileSource>,
+    source: Option<Source>,
     info: Option<SourceInfo>,
     state: PlayState,
     current_frame: Option<FrameSet>,
@@ -52,7 +72,9 @@ pub struct Playback {
 impl Playback {
     /// Range of the decoded source planes.
     pub fn is_full_range(&self) -> bool {
-        self.source.as_ref().is_some_and(FrameSource::is_full_range)
+        self.source
+            .as_ref()
+            .is_some_and(|source| source.frames().is_full_range())
     }
 
     /// Create an empty playback controller (no source loaded).
@@ -95,7 +117,7 @@ impl Playback {
         candidate.total_frames = source.total_frames();
         candidate.frame_duration = Duration::from_secs_f64(1.0 / fps);
         candidate.info = Some(info);
-        candidate.source = Some(source);
+        candidate.source = Some(Source::File(Box::new(source)));
         candidate.state = PlayState::Paused;
 
         // Keep the working source until the replacement can display a frame.
@@ -106,6 +128,28 @@ impl Playback {
         }
         *self = candidate;
         Ok(())
+    }
+
+    /// Adopt an opened live source and its first selected image without waiting on network I/O.
+    pub fn from_live(
+        mut source: reco_io::rtsp::RtspSource,
+        first: SourceFrame,
+        cleanup: &reco_io::DecoderCleanup,
+    ) -> Self {
+        source.defer_cleanup(cleanup);
+        Self {
+            info: Some(source.info()),
+            source: Some(Source::Live(Box::new(source))),
+            state: PlayState::Playing,
+            current_frame: Some(first.images),
+            frame_index: 1,
+            ..Self::new()
+        }
+    }
+
+    /// Whether selection follows a live source clock instead of a seekable file timeline.
+    pub fn is_live(&self) -> bool {
+        matches!(self.source, Some(Source::Live(_)))
     }
 
     /// Blocking read for initialization/restoration, completing a pending seek if present.
@@ -137,7 +181,7 @@ impl Playback {
 
     fn read_frame(&mut self, blocking: bool) -> Result<Option<FrameSet>, SourceError> {
         let source = match self.source.as_mut() {
-            Some(s) => s,
+            Some(s) => s.frames_mut(),
             None => return Ok(None),
         };
 
@@ -204,6 +248,10 @@ impl Playback {
             return Ok(false);
         }
 
+        if self.is_live() {
+            return self.advance(false);
+        }
+
         let now = Instant::now();
 
         // Anchor on the first tick after play/resume/seek.
@@ -265,7 +313,7 @@ impl Playback {
             {
                 return Ok(());
             }
-            source.seek(target)?;
+            source.frames_mut().seek(target)?;
             self.pending_seek = Some(PendingSeek {
                 target,
                 ready: None,
@@ -646,8 +694,11 @@ mod tests {
             .open(&[input.clone(), input.clone()], 0, &cleanup)
             .unwrap();
         if std::env::var_os("RECO_REQUIRE_CUDA").is_some() {
+            let Some(Source::File(source)) = &playback.source else {
+                panic!("file source")
+            };
             assert_eq!(
-                playback.source.as_ref().unwrap().decode_backend(),
+                source.decode_backend(),
                 reco_io::ffmpeg::decoder::DecodeBackend::Cuda
             );
         }

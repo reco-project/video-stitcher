@@ -18,6 +18,7 @@ mod calibration_edit_tests;
 mod calibration_job;
 mod export;
 mod field_editor;
+mod network;
 mod playback;
 mod preview;
 mod settings;
@@ -205,6 +206,7 @@ struct AppState {
     calibration_path: Option<PathBuf>,
     calibration: Option<Calibration>,
     playback: Playback,
+    network: network::State,
     // Playback cancels before this scope waits for all retired decoders.
     decoder_cleanup: reco_io::DecoderCleanup,
     bridge: Option<PreviewBridge>,
@@ -261,6 +263,7 @@ struct AppState {
     export_thread: Option<std::thread::JoinHandle<()>>,
     /// Receives export completion notifications from the worker.
     export_rx: Option<std::sync::mpsc::Receiver<ExportOutcome>>,
+    export_stream: crate::export::StreamState,
     /// Editor state retained while export releases the preview's GPU resources and decoders.
     export_preview: Option<PreviewBookmark>,
     /// Original Projection values — what auto-calibrate produced. Live
@@ -454,6 +457,7 @@ fn displayed_image_height(width: f32, height: f32, image: (u32, u32)) -> f32 {
 impl Drop for AppState {
     fn drop(&mut self) {
         self.cancel_calibration();
+        self.network.cancel();
         self.export_interrupted.store(true, Ordering::Relaxed);
         if let Some(worker) = self.export_thread.take() {
             let _ = worker.join();
@@ -472,6 +476,7 @@ impl AppState {
             calibration_path: None,
             calibration: None,
             playback: Playback::new(),
+            network: network::State::default(),
             decoder_cleanup: reco_io::DecoderCleanup::default(),
             bridge: None,
             recording_tx: None,
@@ -503,6 +508,7 @@ impl AppState {
             export_interrupted: Arc::new(AtomicBool::new(false)),
             export_thread: None,
             export_rx: None,
+            export_stream: crate::export::StreamState::default(),
             export_preview: None,
             cal_baseline: None,
             user_settings,
@@ -521,6 +527,7 @@ impl AppState {
     }
 
     fn reset_pipeline(&mut self) {
+        self.network.cancel();
         self.field_editor = None;
         self.displayed_view = None;
         self.cancel_calibration();
@@ -595,6 +602,9 @@ impl AppState {
     }
 
     fn restore_preview_after_export(&mut self) -> Result<(), String> {
+        if self.network.active.is_some() {
+            return Ok(());
+        }
         let Some(saved) = self.export_preview.take() else {
             return Ok(());
         };
@@ -801,7 +811,8 @@ impl AppState {
     fn load_calibration(&mut self, path: PathBuf) -> Result<bool, String> {
         let cal =
             Calibration::from_file(&path).map_err(|e| format!("Calibration load error: {e}"))?;
-        let ready = self.selected_inputs(&cal).is_some() && self.shared_gpu.is_some();
+        let ready = (self.selected_inputs(&cal).is_some() || self.playback.is_live())
+            && self.shared_gpu.is_some();
         if ready {
             self.init_with_calibration(cal)?;
         } else {
@@ -823,6 +834,16 @@ impl AppState {
 
     /// Replace playback and rendering together without changing the document or reset baseline.
     fn init_preview(&mut self, cal: &Calibration) -> Result<(), String> {
+        if self.playback.is_live() {
+            let sizes = self.playback.source_sizes().unwrap().to_vec();
+            if sizes.len() != cal.projection.camera_count() {
+                return Err("Disconnect live inputs before changing the camera count.".into());
+            }
+            let bridge = self.build_bridge(cal, sizes, self.playback.is_full_range())?;
+            self.bridge = Some(bridge);
+            self.reset_view();
+            return Ok(());
+        }
         let inputs = self
             .selected_inputs(cal)
             .ok_or("Select the calibration's video inputs")?;
@@ -855,6 +876,7 @@ impl AppState {
 
     /// Release preview resources and pending work while retaining the selected paths and calibration document.
     fn unload_pipeline(&mut self) {
+        self.network.active = None;
         self.field_editor = None;
         self.displayed_view = None;
         self.stop_recording();
@@ -1068,6 +1090,10 @@ impl AppState {
     }
 
     fn set_sync_offset(&mut self, app: &RecoApp, frames: i32) -> bool {
+        if self.playback.is_live() {
+            self.sync_calibration_controls(app);
+            return false;
+        }
         let offset = i64::from(frames);
         if self
             .playback
@@ -1404,8 +1430,16 @@ fn format_time(frame: u64, fps: f64) -> String {
 fn sync_frame_display(app: &RecoApp, frame: u64, total: u64, fps: f64) {
     app.set_current_frame(frame as i32);
     app.set_total_frames(total as i32);
-    app.set_current_time_text(format_time(frame, fps).into());
-    app.set_total_time_text(format_time(total, fps).into());
+    app.set_current_time_text(if app.get_network_active() {
+        "LIVE".into()
+    } else {
+        format_time(frame, fps).into()
+    });
+    app.set_total_time_text(if app.get_network_active() {
+        "".into()
+    } else {
+        format_time(total, fps).into()
+    });
 }
 
 fn display_name(path: &std::path::Path) -> String {
@@ -1817,6 +1851,8 @@ fn main() -> anyhow::Result<()> {
                 _ => {}
             }
         })?;
+
+    network::bind(&app, &state);
 
     // ── File picker callbacks ──
 
@@ -2652,7 +2688,7 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_step_forward(move || {
         let mut s = state_ref.borrow_mut();
-        if s.is_exporting() {
+        if s.is_exporting() || s.playback.is_live() {
             return;
         }
         if s.playback.state() == PlayState::Playing {
@@ -2671,7 +2707,7 @@ fn main() -> anyhow::Result<()> {
     let state_ref = Rc::clone(&state);
     app.on_step_backward(move || {
         let mut s = state_ref.borrow_mut();
-        if s.is_exporting() {
+        if s.is_exporting() || s.playback.is_live() {
             return;
         }
         if s.playback.state() == PlayState::Playing {
@@ -3151,8 +3187,20 @@ fn main() -> anyhow::Result<()> {
             // Seed from persisted user defaults first (codec, quality,
             // model path) so the dialog reflects the user's last
             // choices across sessions...
-            app.set_export_codec(s.user_settings.default_codec.clone().into());
+            app.set_export_codec(if app.get_export_stream_enabled() {
+                "h264".into()
+            } else {
+                s.user_settings.default_codec.clone().into()
+            });
             app.set_export_quality(s.user_settings.default_quality.clone().into());
+            let count = s.calibration.as_ref().map_or(0, |cal| cal.lenses.len());
+            let choices: Vec<slint::SharedString> = std::iter::once("No source audio".into())
+                .chain((1..=count).map(|index| format!("Camera {index}").into()))
+                .collect();
+            app.set_export_audio_options(std::rc::Rc::new(slint::VecModel::from(choices)).into());
+            if app.get_export_audio_choice() as usize > count {
+                app.set_export_audio_choice(0);
+            }
             if let Some(model_path) = s.user_settings.ai_model_path.as_ref() {
                 app.set_export_model_path(model_path.to_string_lossy().to_string().into());
             }
@@ -3278,6 +3326,10 @@ fn main() -> anyhow::Result<()> {
             app.set_export_error_text("Wait for calibration to finish before exporting.".into());
             return;
         }
+        if s.network.is_opening() {
+            app.set_export_error_text("Wait for the RTSP connection to finish or cancel it.".into());
+            return;
+        }
         let output_path = PathBuf::from(&output_str);
         if let Some(parent) = output_path.parent() {
             if !parent.exists() {
@@ -3301,7 +3353,11 @@ fn main() -> anyhow::Result<()> {
             log::error!("Cannot start export without calibration");
             return;
         };
-        let Some(inputs) = s.selected_inputs(&cal) else {
+        let inputs = if let Some(config) = &s.network.active {
+            crate::export::Inputs::Network(config.clone())
+        } else if let Some(inputs) = s.selected_inputs(&cal) {
+            crate::export::Inputs::Files(inputs)
+        } else {
             log::error!("Cannot start export without the calibrated inputs");
             return;
         };
@@ -3313,9 +3369,16 @@ fn main() -> anyhow::Result<()> {
         let height = app.get_export_height() as u32;
         let codec_str = app.get_export_codec().to_string();
         let quality_str = app.get_export_quality().to_string();
+        let stream_url = app.get_export_stream_enabled().then(|| app.get_export_stream_url().trim().to_string());
+        if let Err(error) = crate::export::validate_stream(stream_url.as_deref(), &codec_str) {
+            app.set_export_error_text(error.into());
+            return;
+        }
+        let audio = if app.get_export_audio_choice() == 0 { reco_io::output::AudioMode::Disabled }
+            else { reco_io::output::AudioMode::CopyFrom(app.get_export_audio_choice().saturating_sub(1) as usize) };
         let blend = app.get_blend_width();
-        let start_secs = app.get_export_start_secs();
-        let end_secs = app.get_export_end_secs();
+        let start_secs = if s.network.active.is_some() { 0.0 } else { app.get_export_start_secs() };
+        let end_secs = if s.network.active.is_some() { 0.0 } else { app.get_export_end_secs() };
         log::info!("Export range: start={start_secs:.1}s, end={end_secs:.1}s");
         let autocam = crate::export::AutocamUiConfig {
             enabled: app.get_export_autocam_enabled(),
@@ -3357,6 +3420,10 @@ fn main() -> anyhow::Result<()> {
         let interrupted = Arc::clone(&s.export_interrupted);
         let (tx, rx) = std::sync::mpsc::channel();
         s.export_rx = Some(rx);
+        s.export_stream = crate::export::StreamState::default();
+        let stream_monitor = s.export_stream.monitor();
+        app.set_export_stream_status(if stream_url.is_some() { "Stream: waiting for output…".into() } else { "".into() });
+        app.set_export_stream_failed(false);
 
         // Pause preview playback to avoid GPU contention with the
         // export pipeline. Preview rendering is also gated by
@@ -3368,6 +3435,7 @@ fn main() -> anyhow::Result<()> {
         // rebuilt on completion. run_export uses its own source.
         log::info!("Releasing preview GPU pipeline to free VRAM for export");
         s.suspend_preview_for_export();
+        let preview_cleanup = std::mem::take(&mut s.decoder_cleanup);
 
         app.set_export_error_text("".into());
         app.set_export_in_progress(true);
@@ -3382,20 +3450,15 @@ fn main() -> anyhow::Result<()> {
         let app_weak_bg = app_weak.clone();
         let output_for_thread = output.clone();
         let handle = std::thread::spawn(move || {
+            // Close the preview connections before opening output inputs, off the UI thread.
+            drop(preview_cleanup);
             let outcome = crate::export::run_export(
-                inputs,
-                cal,
-                output_for_thread,
-                None, // Interactive export writes to a local file.
-                replay_enabled,
-                events_path,
-                width,
-                height,
-                codec_str,
-                quality_str,
-                start_secs,
-                end_secs,
-                autocam,
+                crate::export::ExportRequest {
+                    inputs, calibration: cal, output: output_for_thread, stream_url, audio,
+                    replay_enabled, events_path, width, height, codec: codec_str, quality: quality_str,
+                    start_secs, end_secs, autocam,
+                },
+                stream_monitor,
                 app_weak_bg,
                 &interrupted,
             );
@@ -3415,6 +3478,9 @@ fn main() -> anyhow::Result<()> {
     let app_weak = app.as_weak();
     app.on_toggle_recording(move |codec, quality| {
         let mut s = state_ref.borrow_mut();
+        if s.network.active.is_some() {
+            return;
+        }
         if s.is_recording() {
             if let Some((path, frames)) = s.stop_recording()
                 && let Some(app) = app_weak.upgrade()
@@ -3559,6 +3625,12 @@ fn main() -> anyhow::Result<()> {
 
             let mut s = state_ref.borrow_mut();
 
+            network::poll(&mut s, &app_weak);
+            if let Some(app) = app_weak.upgrade() {
+                app.set_network_active(s.network.active.is_some());
+                app.set_network_opening(s.network.is_opening());
+            }
+
             // Seek readiness is independent of display cadence; paused seeks
             // must progress without submitting unchanged preview frames.
             if s.playback.is_seeking() {
@@ -3594,6 +3666,7 @@ fn main() -> anyhow::Result<()> {
             }
 
             // Poll the export worker for completion.
+            if let Some(app) = app_weak.upgrade() { s.export_stream.update(&app); }
             if let Some(rx) = &s.export_rx
                 && let Some(outcome) = crate::export::poll_export(rx)
             {
@@ -3614,6 +3687,12 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
                 if let Some(app) = app_weak.upgrade() {
+                    s.export_stream.finish(&app);
+                    if s.network.active.is_some() {
+                        app.set_files_loaded(false);
+                        app.set_preview_frame(slint::Image::default());
+                        app.set_playing(false);
+                    }
                     app.set_export_in_progress(false);
                     app.set_export_progress(0.0);
                     match outcome {
@@ -3631,8 +3710,8 @@ fn main() -> anyhow::Result<()> {
                                 t.export_complete(frames, dur, &codec);
                             }
                             s.toasts.push(
-                                Severity::Info,
-                                "Export complete",
+                                if app.get_export_stream_failed() { Severity::Warn } else { Severity::Info },
+                                if app.get_export_stream_failed() { "Recording saved; streaming failed" } else { "Export complete" },
                                 format!("{frames} frames to {}", path.display()),
                             );
                             crate::toast::sync_to_ui(&s.toasts, &app);

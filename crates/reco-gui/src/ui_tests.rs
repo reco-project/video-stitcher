@@ -36,6 +36,16 @@ fn draw(window: &MinimalSoftwareWindow, width: u32, height: u32) -> Vec<slint::R
     pixels
 }
 
+fn retain_export_screenshot(name: &str, pixels: &[slint::Rgb8Pixel]) {
+    if let Some(dir) = std::env::var_os("RECO_GUI_TEST_ARTIFACT_DIR") {
+        let path = std::path::Path::new(&dir).join(name).with_extension("ppm");
+        assert!(!path.exists());
+        let mut bytes = b"P6\n1280 820\n255\n".to_vec();
+        bytes.extend(pixels.iter().flat_map(|pixel| [pixel.r, pixel.g, pixel.b]));
+        std::fs::write(path, bytes).unwrap();
+    }
+}
+
 fn key(app: &RecoApp, text: impl Into<slint::SharedString>) {
     let text = text.into();
     app.window()
@@ -719,4 +729,107 @@ fn long_status_messages_do_not_collapse_the_preview() {
         app.get_preview_area_height() >= 350.0,
         "status text displaced the workspace"
     );
+}
+
+#[test]
+fn processed_output_exposes_publishing_without_replacing_the_recording() {
+    let (app, window) = workspace();
+    app.set_files_loaded(true);
+    app.set_export_dialog_open(true);
+    app.set_export_output_path("recording.mp4".into());
+    app.set_export_codec("hevc".into());
+    app.set_export_autocam_enabled(false);
+    app.set_clip_duration_secs(120.0);
+    app.set_export_end_secs(120.0);
+    let pixels = draw(&window, 1280, 820);
+    retain_export_screenshot("export-before", &pixels);
+    let started = Rc::new(Cell::new(0));
+    let counter = started.clone();
+    app.on_start_export(move || counter.set(counter.get() + 1));
+    click(&app, 393.0, 233.0);
+    assert!(app.get_export_stream_enabled());
+    assert_eq!(app.get_export_codec(), "h264");
+    draw(&window, 1280, 820);
+    click(&app, 842.0, 728.0);
+    assert_eq!(
+        started.get(),
+        0,
+        "an empty publishing URL cannot start output"
+    );
+    app.set_export_stream_url("rtmps://127.0.0.1/live/private-key".into());
+    let pixels = draw(&window, 1280, 820);
+    assert_eq!(app.get_export_output_path(), "recording.mp4");
+    retain_export_screenshot("export-publish", &pixels);
+    click(&app, 842.0, 728.0);
+    assert_eq!(started.get(), 1);
+    click(&app, 550.0, 357.0);
+    key(&app, slint::platform::Key::UpArrow);
+    key(&app, "\n");
+    assert_eq!(app.get_export_audio_choice(), 0);
+    app.set_export_dialog_open(false);
+    app.set_export_in_progress(true);
+    app.set_export_status_text("Frame 120 (30 fps)".into());
+    app.set_export_stream_status("Stream failed: peer disconnected".into());
+    app.set_export_stream_failed(true);
+    draw(&window, 800, 600);
+    assert!(app.get_preview_area_height() > 350.0);
+    app.set_export_in_progress(false);
+    app.set_status_text("Recording saved".into());
+    draw(&window, 800, 600);
+    assert_eq!(
+        app.get_export_stream_status(),
+        "Stream failed: peer disconnected"
+    );
+    let mut state = crate::export::StreamState::default();
+    state.finish(&app);
+    assert_eq!(app.get_export_stream_status(), "Stream: not started");
+    assert!(!app.get_export_stream_failed());
+}
+
+#[test]
+fn network_form_edits_camera_rows_and_keeps_cancellation_visible() {
+    let (app, window) = workspace();
+    app.set_network_inputs(
+        Rc::new(slint::VecModel::from(vec![
+            super::NetworkInputRow::default();
+            2
+        ]))
+        .into(),
+    );
+    app.set_network_dialog_open(true);
+    let pixels = draw(&window, 1280, 820);
+    retain_export_screenshot("network-inputs-empty", &pixels);
+    click(&app, 550.0, 264.0);
+    key(&app, "rtsp://127.0.0.1:8554/left");
+    click(&app, 550.0, 303.0);
+    key(&app, "0");
+    click(&app, 550.0, 376.0);
+    key(&app, "rtsp://127.0.0.1:8554/right");
+    click(&app, 550.0, 417.0);
+    key(&app, "-7000000");
+    assert_eq!(
+        app.get_network_inputs().row_data(0).unwrap().url,
+        "rtsp://127.0.0.1:8554/left"
+    );
+    assert_eq!(app.get_network_inputs().row_data(0).unwrap().offset, "0");
+    assert_eq!(
+        app.get_network_inputs().row_data(1).unwrap().url,
+        "rtsp://127.0.0.1:8554/right"
+    );
+    assert_eq!(
+        app.get_network_inputs().row_data(1).unwrap().offset,
+        "-7000000"
+    );
+    let pixels = draw(&window, 1280, 820);
+    retain_export_screenshot("network-inputs-configured", &pixels);
+    let cancelled = Rc::new(Cell::new(0));
+    let count = cancelled.clone();
+    app.on_cancel_network(move || count.set(count.get() + 1));
+    app.set_network_opening(true);
+    key(&app, slint::platform::Key::Escape);
+    assert_eq!(cancelled.get(), 1);
+    assert!(app.get_network_dialog_open());
+    app.set_network_opening(false);
+    key(&app, slint::platform::Key::Escape);
+    assert!(!app.get_network_dialog_open());
 }
