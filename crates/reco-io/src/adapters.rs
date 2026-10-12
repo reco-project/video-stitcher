@@ -817,24 +817,46 @@ impl FfmpegFileEncoder {
         fps: (i32, i32),
         config: &ffmpeg::encoder::EncoderConfig,
     ) -> Result<Self, SinkError> {
+        Self::with_live_audio(path, width, height, fps, config, None)
+    }
+
+    pub(crate) fn with_live_audio(
+        path: &std::path::Path,
+        width: u32,
+        height: u32,
+        fps: (i32, i32),
+        config: &ffmpeg::encoder::EncoderConfig,
+        audio: Option<ffmpeg::live_audio::LiveAudio>,
+    ) -> Result<Self, SinkError> {
         let fps_rational = ffmpeg_next::Rational(fps.0, fps.1);
-        let inner =
-            ffmpeg::encoder::VideoEncoder::new_rendered(path, width, height, fps_rational, config)
-                .map_err(|e| {
-                    if matches!(e, ffmpeg::encoder::EncodeError::Cancelled) {
-                        SinkError::Cancelled
-                    } else {
-                        SinkError::Init {
-                            reason: e.to_string(),
-                        }
-                    }
-                })?;
+        let inner = ffmpeg::encoder::VideoEncoder::new_rendered(
+            path,
+            width,
+            height,
+            fps_rational,
+            config,
+            audio,
+        )
+        .map_err(|e| {
+            if matches!(e, ffmpeg::encoder::EncodeError::Cancelled) {
+                SinkError::Cancelled
+            } else {
+                SinkError::Init {
+                    reason: e.to_string(),
+                }
+            }
+        })?;
         Ok(Self { inner })
     }
 
     /// The name of the active encoder (e.g. "libx264", "h264_nvenc").
     pub fn encoder_name(&self) -> &str {
         self.inner.encoder_name()
+    }
+
+    /// Observe optional streaming while this sink is owned by a session worker, or after finalization.
+    pub fn stream_monitor(&self) -> Option<ffmpeg::encoder::StreamMonitor> {
+        self.inner.stream_monitor()
     }
 }
 

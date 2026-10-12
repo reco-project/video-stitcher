@@ -371,6 +371,7 @@ mod tests {
             encoder_name: "test".into(),
             decode_mode: "test".into(),
             telemetry: None,
+            stream_status: None,
         };
         assert!(report_result(&result, "output.mp4").is_ok());
         result.completion = RunCompletion::Cancelled;

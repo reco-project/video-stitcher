@@ -48,6 +48,10 @@ pub enum DecodeError {
     #[error("no video stream found")]
     NoVideoStream,
 
+    /// A live decoder produced an image without presentation time.
+    #[error("live input frame has no presentation timestamp")]
+    MissingTimestamp,
+
     /// Video has odd width or height, incompatible with YUV420P.
     #[error("odd dimensions {width}x{height}: YUV420P requires even width and height")]
     OddDimensions {
@@ -241,6 +245,8 @@ pub struct VideoDecoder {
     #[cfg(feature = "gpu")]
     is_10bit: bool,
     is_full_range: bool,
+    require_timestamps: bool,
+    live_audio: Option<super::live_audio::LiveAudio>,
     decoded_frame: VideoFrame,
     sw_frame: VideoFrame,
     converted_frame: VideoFrame,
@@ -351,7 +357,7 @@ impl VideoDecoder {
     pub fn open_software(path: &Path) -> Result<Self, DecodeError> {
         crate::init();
         let ictx = input(path)?;
-        Self::from_input_context_inner(ictx, None, true)
+        Self::from_input_context_inner(ictx, None, true, false)
     }
 
     /// [`Self::open_input`] with software decode forced (see
@@ -401,20 +407,31 @@ impl VideoDecoder {
     }
 
     fn from_input_context(ictx: ffmpeg::format::context::Input) -> Result<Self, DecodeError> {
-        Self::from_input_context_inner(ictx, None, false)
+        Self::from_input_context_inner(ictx, None, false, false)
     }
 
     fn from_input_context_with_shared(
         ictx: ffmpeg::format::context::Input,
         shared: &SharedHwDevice,
     ) -> Result<Self, DecodeError> {
-        Self::from_input_context_inner(ictx, Some(shared), false)
+        Self::from_input_context_inner(ictx, Some(shared), false, false)
+    }
+
+    pub(crate) fn from_live_input(
+        input: ffmpeg::format::context::Input,
+        software: bool,
+        audio: Option<super::live_audio::LiveAudio>,
+    ) -> Result<Self, DecodeError> {
+        let mut decoder = Self::from_input_context_inner(input, None, software, true)?;
+        decoder.live_audio = audio;
+        Ok(decoder)
     }
 
     fn from_input_context_inner(
         ictx: ffmpeg::format::context::Input,
         shared_device: Option<&SharedHwDevice>,
         force_software: bool,
+        live: bool,
     ) -> Result<Self, DecodeError> {
         let stream = ictx
             .streams()
@@ -436,7 +453,13 @@ impl VideoDecoder {
             try_hwaccel(&mut context)
         };
 
-        let mut threading = ffmpeg::threading::Config::kind(ffmpeg::threading::Type::Frame);
+        // Frame threading adds one frame of latency per thread. Live input
+        // uses slice parallelism without changing file decode throughput.
+        let mut threading = ffmpeg::threading::Config::kind(if live {
+            ffmpeg::threading::Type::Slice
+        } else {
+            ffmpeg::threading::Type::Frame
+        });
         // FFmpeg reserves an extra decode surface per frame thread. NVDEC's H.264 32-surface limit must leave room for the stream's reference/reorder pool. Other codecs keep automatic threading.
         threading.count =
             if backend == DecodeBackend::Cuda && context.id() == ffmpeg::codec::Id::H264 {
@@ -449,6 +472,14 @@ impl VideoDecoder {
 
         let width = decoder.width();
         let height = decoder.height();
+
+        if live
+            && (width > reco_core::calibration::MAX_DIM || height > reco_core::calibration::MAX_DIM)
+        {
+            return Err(DecodeError::ConversionError(format!(
+                "invalid live input dimensions {width}x{height}"
+            )));
+        }
 
         // YUV420P chroma subsampling requires even dimensions.
         if width % 2 != 0 || height % 2 != 0 {
@@ -554,6 +585,8 @@ impl VideoDecoder {
             #[cfg(feature = "gpu")]
             is_10bit,
             is_full_range,
+            require_timestamps: live,
+            live_audio: None,
             decoded_frame: VideoFrame::empty(),
             sw_frame: VideoFrame::empty(),
             converted_frame: VideoFrame::empty(),
@@ -649,7 +682,7 @@ impl VideoDecoder {
             _ => return Err(DecodeError::Ffmpeg("expected input context".into())),
         };
 
-        let mut dec = Self::from_input_context_inner(ictx, shared, force_software)?;
+        let mut dec = Self::from_input_context_inner(ictx, shared, force_software, false)?;
         dec._manifest = Some(manifest);
         Ok(dec)
     }
@@ -768,6 +801,27 @@ impl VideoDecoder {
                 Ok(()) => {
                     let width = self.decoded_frame.width();
                     let height = self.decoded_frame.height();
+                    if self.require_timestamps && (self.width == 0 || self.height == 0) {
+                        if width == 0
+                            || height == 0
+                            || width > reco_core::calibration::MAX_DIM
+                            || height > reco_core::calibration::MAX_DIM
+                            || !width.is_multiple_of(2)
+                            || !height.is_multiple_of(2)
+                        {
+                            return Err(DecodeError::ConversionError(format!(
+                                "invalid initial live image dimensions {width}x{height}"
+                            )));
+                        }
+                        // SDP need not describe image dimensions. Freeze metadata
+                        // from the first actual image, before the source is published.
+                        self.width = width;
+                        self.height = height;
+                        self.is_full_range = is_full_range(
+                            self.decoded_frame.format(),
+                            self.decoded_frame.color_range(),
+                        );
+                    }
                     if width != self.width || height != self.height {
                         return Err(DecodeError::ConversionError(format!(
                             "decoded dimensions changed from {}x{} to {width}x{height}",
@@ -811,7 +865,14 @@ impl VideoDecoder {
                         self.decoder.send_packet(&packet)?;
                         break;
                     }
-                    Ok(()) => continue,
+                    Ok(()) => {
+                        if let Some(audio) = &self.live_audio
+                            && packet.stream() == audio.stream_index
+                        {
+                            audio.push(packet).map_err(DecodeError::Ffmpeg)?;
+                        }
+                        continue;
+                    }
                     Err(ffmpeg::Error::Eof) => {
                         self.decoder.send_eof()?;
                         self.eof_sent = true;
@@ -924,6 +985,9 @@ impl VideoDecoder {
             ));
         }
         if raw_pts == ffi::AV_NOPTS_VALUE {
+            if self.require_timestamps {
+                return Err(DecodeError::MissingTimestamp);
+            }
             return Ok(0);
         }
         let timestamp = raw_pts.rescale_with(
@@ -1530,6 +1594,12 @@ mod tests {
             decoder.time_base = time_base.into();
             assert_eq!(decoder.pts_to_us(pts).unwrap(), expected);
         }
+        decoder.require_timestamps = true;
+        assert!(matches!(
+            decoder.pts_to_us(ffmpeg::ffi::AV_NOPTS_VALUE),
+            Err(super::DecodeError::MissingTimestamp)
+        ));
+        decoder.require_timestamps = false;
         decoder.time_base = (1, 1).into();
         assert!(decoder.pts_to_us(i64::MAX).is_err());
         assert!(decoder.pts_to_us(i64::MIN + 1).is_err());

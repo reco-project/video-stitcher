@@ -2,8 +2,72 @@
 
 use super::encoder::EncodeError;
 use ffmpeg_next::Rational;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+use std::time::{Duration, Instant};
+
+use super::encoder::{StreamMonitor, StreamStatus};
 
 pub(super) const TIME_BASE: Rational = Rational(1, 1_000_000);
+
+/// One wall clock for shared encoded packets, never for ordinary offline output.
+pub(super) struct BroadcastClock {
+    origin: Option<(i64, Instant)>,
+    primary: bool,
+    stream: Option<StreamMonitor>,
+    interrupted: Option<Arc<AtomicBool>>,
+}
+
+impl BroadcastClock {
+    pub(super) fn new(
+        primary: bool,
+        stream: Option<StreamMonitor>,
+        interrupted: Option<Arc<AtomicBool>>,
+    ) -> Option<Self> {
+        (primary || stream.is_some()).then_some(Self {
+            origin: None,
+            primary,
+            stream,
+            interrupted,
+        })
+    }
+
+    fn remaining(&mut self, time_us: i64, now: Instant) -> Duration {
+        let (first_time, first_wall) = *self.origin.get_or_insert((time_us, now));
+        let media = Duration::from_micros(time_us.saturating_sub(first_time).max(0) as u64);
+        media.saturating_sub(now.duration_since(first_wall))
+    }
+
+    pub(super) fn wait(&mut self, time_us: i64) -> bool {
+        reco_core::profile_scope!("broadcast_wait");
+        loop {
+            if self
+                .interrupted
+                .as_ref()
+                .is_some_and(|flag| flag.load(Ordering::Relaxed))
+            {
+                return false;
+            }
+            if !self.primary
+                && !self.stream.as_ref().is_some_and(|stream| {
+                    matches!(
+                        stream.status(),
+                        StreamStatus::Connecting | StreamStatus::Connected
+                    )
+                })
+            {
+                return false;
+            }
+            let remaining = self.remaining(time_us, Instant::now());
+            if remaining.is_zero() {
+                return true;
+            }
+            std::thread::sleep(remaining.min(Duration::from_millis(10)));
+        }
+    }
+}
 
 pub(super) struct Timeline {
     frame_duration: Rational,
@@ -65,6 +129,41 @@ impl Timeline {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn broadcast_clock_preserves_gaps_without_restarting_after_lateness() {
+        let mut clock = BroadcastClock::new(true, None, None).unwrap();
+        let start = Instant::now();
+        assert_eq!(clock.remaining(-66_667, start), Duration::ZERO);
+        assert_eq!(
+            clock.remaining(33_333, start + Duration::from_millis(20)),
+            Duration::from_millis(80)
+        );
+        assert_eq!(
+            clock.remaining(66_666, start + Duration::from_secs(1)),
+            Duration::ZERO
+        );
+        assert_eq!(
+            clock.remaining(1_433_333, start + Duration::from_secs(1)),
+            Duration::from_millis(500)
+        );
+        assert!(BroadcastClock::new(false, None, None).is_none());
+    }
+
+    #[test]
+    fn cancellation_interrupts_a_large_presentation_gap() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let mut clock = BroadcastClock::new(true, None, Some(flag.clone())).unwrap();
+        clock.wait(0);
+        let worker = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(20));
+            flag.store(true, Ordering::Relaxed);
+        });
+        let start = Instant::now();
+        clock.wait(3_600_000_000);
+        assert!(start.elapsed() < Duration::from_secs(1));
+        worker.join().unwrap();
+    }
 
     #[test]
     fn explicit_times_preserve_gaps_and_origin() {

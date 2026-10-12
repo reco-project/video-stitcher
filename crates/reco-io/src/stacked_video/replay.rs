@@ -190,6 +190,11 @@ impl FrameSource for ReplayRecordingSource {
         self.inner.is_gpu_resident()
     }
 
+    #[cfg(feature = "gpu")]
+    fn input_format(&self) -> reco_core::render::renderer::InputFormat {
+        self.inner.input_format()
+    }
+
     fn is_exhausted(&self) -> bool {
         self.inner.is_exhausted()
     }
@@ -214,10 +219,9 @@ impl FrameSource for ReplayRecordingSource {
 
 impl Drop for ReplayRecordingSource {
     fn drop(&mut self) {
-        // Best-effort finalize on drop so callers who forget
-        // to call `finish()` still get a valid file (albeit
-        // without the final-log line).
-        let _ = self.finish();
+        if let Err(error) = self.finish() {
+            log::warn!("replay recording finalize failed: {error}");
+        }
     }
 }
 

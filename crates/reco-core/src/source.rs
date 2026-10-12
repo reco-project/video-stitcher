@@ -559,6 +559,18 @@ pub trait FrameSource: Send {
         false
     }
 
+    /// Plane layout used to configure the GPU renderer before reading images.
+    ///
+    /// Host NV12 sources must override the YUV420P default. Native sources use NV12 plane bindings; [`Self::gpu_pixel_format`] distinguishes their sample depth. The layout must remain fixed for the source's lifetime.
+    #[cfg(feature = "gpu")]
+    fn input_format(&self) -> crate::render::renderer::InputFormat {
+        if self.is_gpu_resident() {
+            crate::render::renderer::InputFormat::Nv12
+        } else {
+            crate::render::renderer::InputFormat::Yuv420p
+        }
+    }
+
     /// GPU pixel format for GPU-resident sources.
     ///
     /// Only meaningful when [`is_gpu_resident`](Self::is_gpu_resident) returns `true`.

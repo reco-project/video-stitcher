@@ -10,6 +10,7 @@ pub mod encoder;
 mod encoder_timing;
 mod hevc_color;
 mod hw_upload;
+pub(crate) mod live_audio;
 mod output_io;
 
 use std::sync::Once;

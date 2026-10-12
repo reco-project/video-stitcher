@@ -246,6 +246,7 @@ impl LibcameraCameraSource {
         if config.width == 0
             || config.height == 0
             || config.fps == 0
+            || config.fps > i32::MAX as u32
             || !config.width.is_multiple_of(2)
             || !config.height.is_multiple_of(2)
             || y_size
@@ -254,7 +255,7 @@ impl LibcameraCameraSource {
         {
             return Err(SourceError::Init {
                 path: "rpicam-vid".into(),
-                reason: "YUV420P capture requires positive even dimensions and a positive frame rate within addressable buffer size".into(),
+                reason: "YUV420P capture requires positive even dimensions within addressable buffer size and a frame rate in 1..=i32::MAX".into(),
             });
         }
         let mut source = Self {
@@ -262,7 +263,7 @@ impl LibcameraCameraSource {
             info: SourceInfo {
                 camera_sizes: vec![(config.width, config.height); 2],
                 fps: config.fps as f64,
-                fps_rational: None,
+                fps_rational: Some((config.fps as i32, 1)),
                 total_frames: None,
             },
             interrupted,
@@ -421,6 +422,66 @@ mod tests {
             assert!(camera.frames.is_none());
         }
         assert!(source.next_frame().unwrap().is_none());
+    }
+
+    #[cfg(all(feature = "ffmpeg", target_os = "linux"))]
+    #[test]
+    fn supplied_job_reaps_capture_before_output_finalization() {
+        use reco_core::calibration::{Calibration, Framing, Lens};
+        let interrupted = Arc::new(AtomicBool::new(false));
+        let source = source(
+            &["while :; do printf 'abcdefghUVxy'; done"; 2],
+            interrupted.clone(),
+        );
+        let children: Vec<_> = source
+            .cameras
+            .iter()
+            .map(|camera| camera.child.id())
+            .collect();
+        let lens = Lens::fisheye(4, 2, 2.0, 2.0, 2.0, 1.0, [0.0; 4]);
+        let calibration = Calibration::new(
+            vec![lens.clone(), lens],
+            reco_core::projection::LShape {
+                intersect: 0.5,
+                x_ty: 0.0,
+                x_rz: 0.0,
+                z_rx: 0.0,
+                x_rx: 0.0,
+                z_rz: 0.0,
+                blend_width: 0.0,
+            },
+            Framing {
+                axis_offset: 0.25,
+                tilt: 0.0,
+                roll: 0.0,
+            },
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("capture.mp4");
+        let result = crate::StitchJob::from_source(source, calibration, &output)
+            .cpu()
+            .resolution(64, 32)
+            .encoder_name("libx264")
+            .max_frames(2)
+            .on_session(|session, _| {
+                session.core_mut().set_constrained_look(false);
+                Ok(())
+            })
+            .on_finalizing(move || {
+                for child in children {
+                    assert!(
+                        !std::path::Path::new(&format!("/proc/{child}")).exists(),
+                        "capture child still alive during finalization"
+                    );
+                }
+            })
+            .run(&interrupted)
+            .unwrap();
+        assert_eq!(result.frames_processed, 2);
+        let mut decoder = crate::ffmpeg::decoder::VideoDecoder::open_software(&output).unwrap();
+        assert!(decoder.next_frame().unwrap().is_some());
+        assert!(decoder.next_frame().unwrap().is_some());
+        assert!(decoder.next_frame().unwrap().is_none());
     }
 
     fn bounded(run: impl FnOnce() + Send + 'static) {

@@ -6,7 +6,7 @@
 //! and libcamera (Raspberry Pi CSI cameras).
 //!
 //! Enable backends via feature flags:
-//! - `ffmpeg` (default): file decode/encode, RTMP/SRT/RTSP
+//! - `ffmpeg` (default): file decode/encode, RTSP video input, RTMP/RTMPS output (protocol availability depends on the FFmpeg build).
 //! - `gpu` (default): native texture sources and GPU stitching. FFmpeg hardware codecs remain available without this feature.
 //! - `gstreamer`: live camera capture (Jetson ISP, V4L2, etc.)
 //! - `libcamera`: RPi CSI camera capture via rpicam-vid
@@ -46,6 +46,9 @@ pub mod output;
 
 #[cfg(feature = "ffmpeg")]
 pub mod smart_source;
+
+#[cfg(feature = "ffmpeg")]
+pub mod rtsp;
 
 #[cfg(feature = "ffmpeg")]
 pub mod stitch_job;

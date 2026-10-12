@@ -5,6 +5,10 @@
 
 extern crate ffmpeg_next as ffmpeg;
 
+mod audio;
+use super::live_audio::LiveAudio;
+use audio::AudioPassthrough;
+
 use ffmpeg::format::Pixel;
 use ffmpeg::software::scaling::{context::Context as ScalingContext, flag::Flags as ScalingFlags};
 use ffmpeg::util::frame::video::Video as VideoFrame;
@@ -15,6 +19,7 @@ use thiserror::Error;
 use super::hevc_color::HevcColor;
 use super::hw_upload::{HardwareUpload, staging_pixel_format};
 use super::output_io::OutputIo;
+pub use super::output_io::{StreamMonitor, StreamStatus};
 use crate::output::{Codec, Container, Quality, QualityPreset};
 
 /// Errors from the video encoder.
@@ -374,6 +379,7 @@ pub struct EncoderConfig {
     ///
     /// Shares the primary encoded packets through a bounded 60-packet FIFO.
     /// Overflow skips to a keyframe; failures disable streaming without reconnecting or dropping recording frames.
+    /// Requires FFmpeg 8+ for video-keyframe recovery with audio. Observe rejection or transport failure with [`VideoEncoder::stream_monitor`].
     pub stream_url: Option<String>,
     /// Existing application cancellation signal. Interrupts network output, not local recording finalization.
     pub interrupted: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
@@ -427,6 +433,8 @@ pub struct VideoEncoder {
     audio: Option<AudioPassthrough>,
     /// Secondary output context for RTMP streaming (same encoded packets).
     stream: Option<StreamOutput>,
+    stream_monitor: Option<StreamMonitor>,
+    broadcast_clock: Option<super::encoder_timing::BroadcastClock>,
 }
 
 /// State for a secondary RTMP stream output that receives cloned packets
@@ -435,7 +443,12 @@ struct StreamOutput {
     octx: OutputIo,
     video_index: usize,
     video_time_base: Rational,
-    audio: Option<SilentAudio>,
+    audio: StreamAudio,
+}
+
+enum StreamAudio {
+    Copy { index: usize, time_base: Rational },
+    Silence(SilentAudio),
 }
 
 /// Generates a silent AAC track on the streamed video timeline.
@@ -447,43 +460,6 @@ struct SilentAudio {
     next_pts: Option<i64>,
     samples_per_frame: usize,
     sample_rate: u32,
-}
-
-/// State for copying audio from one or more input files to the output.
-///
-/// For a chained recording the segments are copied back-to-back: when the
-/// current segment's audio ends, the next opens and its timestamps are
-/// shifted by `segment_offset` so the output audio is gapless.
-struct AudioPassthrough {
-    ictx: format::context::Input,
-    /// Audio stream index in the current input file.
-    input_stream_index: usize,
-    /// Audio stream index in the output file.
-    output_stream_index: usize,
-    /// Current input audio stream time base (for rescaling).
-    input_time_base: Rational,
-    /// Output audio stream time base.
-    output_time_base: Rational,
-    /// Source timestamp where audio passthrough starts, in seconds. Applies to
-    /// the first segment only (the start-time trim is within file 1).
-    start_time_secs: f64,
-    /// Whether all segments have been read.
-    exhausted: bool,
-    /// Remaining chained segments to copy after the current one ends.
-    remaining_segments: std::collections::VecDeque<std::path::PathBuf>,
-    /// Output-timebase shift added to the current segment's timestamps so
-    /// audio is continuous across chained segments. Recomputed per segment
-    /// from its first packet (segments may not start at timestamp 0 - AAC
-    /// priming can even make the first DTS negative).
-    segment_offset: i64,
-    /// Highest packet end (pts + duration) written, in output ticks; the next
-    /// segment is rebased so its first packet lands here.
-    next_offset: i64,
-    /// When set, the next packet read is the first of a freshly opened segment;
-    /// its timestamp is rebased so the segment starts at this output position.
-    pending_start: Option<i64>,
-    /// True only while copying the first segment (start-time trim applies there).
-    first_segment: bool,
 }
 
 // SAFETY: VideoEncoder is only used from a single thread. The raw pointers
@@ -516,7 +492,15 @@ impl VideoEncoder {
         fps: Rational,
         config: &EncoderConfig,
     ) -> Result<Self, EncodeError> {
-        Self::new_with_color(path, width, height, fps, config, YuvColor::Unspecified)
+        Self::new_with_color(
+            path,
+            width,
+            height,
+            fps,
+            config,
+            YuvColor::Unspecified,
+            None,
+        )
     }
 
     pub(crate) fn new_rendered(
@@ -525,8 +509,17 @@ impl VideoEncoder {
         height: u32,
         fps: Rational,
         config: &EncoderConfig,
+        live_audio: Option<LiveAudio>,
     ) -> Result<Self, EncodeError> {
-        Self::new_with_color(path, width, height, fps, config, YuvColor::Bt709Limited)
+        Self::new_with_color(
+            path,
+            width,
+            height,
+            fps,
+            config,
+            YuvColor::Bt709Limited,
+            live_audio,
+        )
     }
 
     #[cfg(feature = "stacked-output")]
@@ -545,6 +538,7 @@ impl VideoEncoder {
             fps,
             config,
             YuvColor::SourceRange(full_range),
+            None,
         )
     }
 
@@ -555,6 +549,7 @@ impl VideoEncoder {
         fps: Rational,
         config: &EncoderConfig,
         color: YuvColor,
+        live_audio: Option<LiveAudio>,
     ) -> Result<Self, EncodeError> {
         if width == 0
             || height == 0
@@ -706,11 +701,7 @@ impl VideoEncoder {
                     }
 
                     // Set up audio passthrough before writing the header.
-                    let audio = if let Some(ref audio_paths) = config.audio_source {
-                        Self::setup_audio_stream(&mut octx, audio_paths, config.audio_start_time)?
-                    } else {
-                        None
-                    };
+                    let audio = AudioPassthrough::open(&mut octx, config, live_audio.clone())?;
 
                     // Fragmented MP4 needs `movflags` so the muxer
                     // writes an `empty_moov` up front and flushes
@@ -748,27 +739,26 @@ impl VideoEncoder {
                     // Update audio output time base after write_header
                     // (the muxer may adjust it).
                     let audio = audio.map(|mut a| {
-                        if let Some(s) = octx.stream(a.output_stream_index) {
-                            a.output_time_base = s.time_base();
-                        }
+                        a.refresh_time_base(&octx);
                         a
                     });
 
-                    let stream = if let Some(ref url) = config.stream_url {
+                    let (stream, stream_monitor) = if let Some(ref url) = config.stream_url {
                         match Self::open_stream_output(url, &octx, stream_index, config) {
                             Ok(s) => {
                                 log::info!("Optional stream output queued");
-                                Some(s)
+                                let monitor = s.octx.monitor();
+                                (Some(s), Some(monitor))
                             }
                             Err(e) => {
                                 log::warn!(
                                     "Failed to open stream output ({e}), recording without stream"
                                 );
-                                None
+                                (None, Some(StreamMonitor::failed(&e)))
                             }
                         }
                     } else {
-                        None
+                        (None, None)
                     };
 
                     let header_check = if codec.id() == codec::Id::HEVC {
@@ -776,6 +766,11 @@ impl VideoEncoder {
                     } else {
                         None
                     };
+                    let broadcast_clock = super::encoder_timing::BroadcastClock::new(
+                        crate::output::is_network_destination(path),
+                        stream_monitor.clone(),
+                        config.interrupted.clone(),
+                    );
                     return Ok(Self {
                         octx,
                         encoder: enc_opened,
@@ -795,6 +790,8 @@ impl VideoEncoder {
                         hardware_upload,
                         audio,
                         stream,
+                        stream_monitor,
+                        broadcast_clock,
                     });
                 }
                 Err(e) => {
@@ -965,6 +962,12 @@ impl VideoEncoder {
         &self.encoder_name
     }
 
+    /// Observe the optional stream independently of recording, including asynchronous and finalization failures.
+    /// Returns `None` only when streaming was not requested.
+    pub fn stream_monitor(&self) -> Option<StreamMonitor> {
+        self.stream_monitor.clone()
+    }
+
     /// Pick the best encoder for a secondary stream (replay) that
     /// runs concurrently with a primary encode.
     ///
@@ -981,122 +984,9 @@ impl VideoEncoder {
         }
     }
 
-    /// Set up audio passthrough by adding an audio stream to the output context.
-    ///
-    /// Called before `write_header`. Returns `None` if no audio stream found.
-    fn setup_audio_stream(
-        octx: &mut format::context::Output,
-        sources: &[PathBuf],
-        start_time_secs: f64,
-    ) -> Result<Option<AudioPassthrough>, EncodeError> {
-        let Some((source_path, rest)) = sources.split_first() else {
-            return Ok(None);
-        };
-        let mut ictx = format::input(source_path)?;
-        let start_time_secs = sanitize_audio_start_time(start_time_secs);
-
-        let audio_stream = ictx.streams().best(ffmpeg::media::Type::Audio);
-
-        let Some(audio_stream) = audio_stream else {
-            log::info!("No audio stream found in {}", source_path.display());
-            return Ok(None);
-        };
-
-        let input_stream_index = audio_stream.index();
-        let input_time_base = audio_stream.time_base();
-        let codec_params = audio_stream.parameters();
-
-        // Add an audio stream to the output with copied codec parameters.
-        let mut ost = octx.add_stream(ffmpeg::encoder::find(codec::Id::None))?;
-        ost.set_parameters(codec_params);
-        // SAFETY: set codec_tag to 0 so the muxer picks the right tag
-        // for the container format. codec_par is valid for the stream's lifetime.
-        unsafe {
-            (*ost.parameters().as_mut_ptr()).codec_tag = 0;
-        }
-
-        let output_stream_index = ost.index();
-        let output_time_base = ost.time_base();
-
-        if start_time_secs > 0.0 {
-            let seek_ts = (start_time_secs * f64::from(ffmpeg::ffi::AV_TIME_BASE)).round() as i64;
-            match ictx.seek(seek_ts, ..seek_ts) {
-                Ok(()) => {
-                    log::info!(
-                        "Audio passthrough: seeking {} to {start_time_secs:.3}s",
-                        source_path.display()
-                    );
-                }
-                Err(e) => {
-                    log::warn!(
-                        "Audio passthrough seek to {start_time_secs:.3}s failed for {} ({e}); \
-                         falling back to packet filtering from the beginning",
-                        source_path.display()
-                    );
-                }
-            }
-        }
-
-        log::info!(
-            "Audio passthrough from {} (stream {}, codec: {:?})",
-            source_path.display(),
-            input_stream_index,
-            ictx.stream(input_stream_index)
-                .map(|s| s.parameters().id())
-                .unwrap_or(codec::Id::None),
-        );
-
-        Ok(Some(AudioPassthrough {
-            ictx,
-            input_stream_index,
-            output_stream_index,
-            input_time_base,
-            output_time_base,
-            start_time_secs,
-            exhausted: false,
-            remaining_segments: rest.iter().cloned().collect(),
-            segment_offset: 0,
-            next_offset: 0,
-            pending_start: None,
-            first_segment: true,
-        }))
-    }
-
-    /// Open the next chained segment for audio copy, continuing the timeline.
-    ///
-    /// Skips segments with no audio stream. Returns `false` when none remain.
-    fn advance_segment(audio: &mut AudioPassthrough) -> Result<bool, EncodeError> {
-        loop {
-            let Some(next) = audio.remaining_segments.pop_front() else {
-                return Ok(false);
-            };
-            let ictx = format::input(&next)?;
-            let Some(stream) = ictx.streams().best(ffmpeg::media::Type::Audio) else {
-                log::warn!(
-                    "Chained audio: {} has no audio stream, skipping",
-                    next.display()
-                );
-                continue;
-            };
-            audio.input_stream_index = stream.index();
-            audio.input_time_base = stream.time_base();
-            audio.ictx = ictx;
-            // Rebase from this segment's first packet (computed in the loop).
-            audio.pending_start = Some(audio.next_offset);
-            audio.first_segment = false;
-            log::info!(
-                "Chained audio: continuing from {} at +{:.2}s",
-                next.display(),
-                audio.next_offset as f64 * f64::from(audio.output_time_base),
-            );
-            return Ok(true);
-        }
-    }
-
     /// Open a secondary FLV output context for RTMP streaming.
     ///
-    /// Copies codec parameters from the primary video stream and adds a
-    /// silent AAC audio track.
+    /// Shares video and selected audio packets. Without source audio, adds a silent AAC track.
     fn open_stream_output(
         url: &str,
         primary_octx: &format::context::Output,
@@ -1108,8 +998,21 @@ impl VideoEncoder {
                 "secondary output requires RTMP or RTMPS".into(),
             ));
         }
-        let mut octx = OutputIo::open(Path::new(url), "flv", config, true)?;
+        // Older FIFO versions resume on audio keyframes, corrupting predicted video after overflow.
+        if format::version() >> 16 < 62 {
+            return Err(EncodeError::InvalidConfig(
+                "optional RTMP streaming requires FFmpeg 8+ for audio/video queue recovery; use the bundled runtime".into(),
+            ));
+        }
+        let octx = OutputIo::open(Path::new(url), "flv", config, true)?;
+        Self::configure_stream_output(octx, primary_octx, primary_video_index)
+    }
 
+    fn configure_stream_output(
+        mut octx: OutputIo,
+        primary_octx: &format::context::Output,
+        primary_video_index: usize,
+    ) -> Result<StreamOutput, EncodeError> {
         let primary_video = primary_octx
             .stream(primary_video_index)
             .ok_or_else(|| EncodeError::CodecNotFound("primary video stream missing".into()))?;
@@ -1136,7 +1039,29 @@ impl VideoEncoder {
         }
         let video_index = ost.index();
 
-        let mut silent_audio = SilentAudio::new(&mut octx)?;
+        let mut audio = if let Some(source) = primary_octx
+            .streams()
+            .find(|s| s.parameters().medium() == ffmpeg::media::Type::Audio)
+        {
+            if !matches!(source.parameters().id(), codec::Id::AAC | codec::Id::MP3) {
+                return Err(EncodeError::InvalidConfig(
+                    "RTMP audio copy requires AAC or MP3 source audio".into(),
+                ));
+            }
+            let mut target = octx.add_stream(ffmpeg::encoder::find(codec::Id::None))?;
+            target.set_parameters(source.parameters());
+            target.set_time_base(source.time_base());
+            // SAFETY: the new stream owns writable codec parameters.
+            unsafe {
+                (*target.parameters().as_mut_ptr()).codec_tag = 0;
+            }
+            StreamAudio::Copy {
+                index: target.index(),
+                time_base: target.time_base(),
+            }
+        } else {
+            StreamAudio::Silence(SilentAudio::new(&mut octx)?)
+        };
 
         octx.write_header(ffmpeg::Dictionary::new())?;
 
@@ -1145,10 +1070,20 @@ impl VideoEncoder {
             .expect("stream we just added")
             .time_base();
 
-        silent_audio.output_time_base = octx
-            .stream(silent_audio.stream_index)
-            .expect("stream we just added")
-            .time_base();
+        match &mut audio {
+            StreamAudio::Copy { index, time_base } => {
+                *time_base = octx
+                    .stream(*index)
+                    .expect("audio stream we just added")
+                    .time_base()
+            }
+            StreamAudio::Silence(silent) => {
+                silent.output_time_base = octx
+                    .stream(silent.stream_index)
+                    .expect("audio stream we just added")
+                    .time_base()
+            }
+        }
 
         log::info!("Optional stream configured (video tb={video_time_base})");
 
@@ -1156,98 +1091,28 @@ impl VideoEncoder {
             octx,
             video_index,
             video_time_base,
-            audio: Some(silent_audio),
+            audio,
         })
     }
 
-    /// Forward audio packets up to the given video duration limit.
-    ///
-    /// Reads audio packets from the input and writes those whose timestamp
-    /// falls within `max_pts` (in the output time base). Stops when audio
-    /// is exhausted or exceeds the limit.
+    /// Forward available selected audio through the encoded video time.
     fn forward_audio_packets_until(&mut self, max_pts: i64) -> Result<(), EncodeError> {
-        let Some(ref mut audio) = self.audio else {
+        let Some(audio) = &mut self.audio else {
             return Ok(());
         };
-        if audio.exhausted {
-            return Ok(());
-        }
-        // Start-time trim is expressed in the (fixed) output time base.
-        let start_pts = seconds_to_pts(audio.start_time_secs, audio.output_time_base);
-
-        loop {
-            let mut packet = ffmpeg::Packet::empty();
-            match packet.read(&mut audio.ictx) {
-                Ok(()) => {
-                    if packet.stream() != audio.input_stream_index {
-                        continue; // skip video/subtitle packets
-                    }
-                    packet.set_stream(audio.output_stream_index);
-                    packet.rescale_ts(audio.input_time_base, audio.output_time_base);
-
-                    // The start-time trim applies to the first segment only.
-                    if audio.first_segment && start_pts > 0 {
-                        let packet_start = match (packet.pts(), packet.dts()) {
-                            (Some(pts), Some(dts)) => Some(pts.min(dts)),
-                            (Some(pts), None) => Some(pts),
-                            (None, Some(dts)) => Some(dts),
-                            (None, None) => None,
-                        };
-                        if packet_start.is_some_and(|ts| ts < start_pts) {
-                            continue;
-                        }
-                        if let Some(pts) = packet.pts() {
-                            packet.set_pts(Some(pts - start_pts));
-                        }
-                        if let Some(dts) = packet.dts() {
-                            packet.set_dts(Some(dts - start_pts));
-                        }
-                    }
-
-                    // First packet of a continuation segment: rebase it so the
-                    // segment starts exactly where the previous one ended,
-                    // regardless of the segment's own (possibly negative) start.
-                    if let Some(target) = audio.pending_start {
-                        let anchor = packet.dts().or_else(|| packet.pts()).unwrap_or(0);
-                        audio.segment_offset = target - anchor;
-                        audio.pending_start = None;
-                    }
-
-                    // Shift later segments so audio is gapless across the chain.
-                    if audio.segment_offset != 0 {
-                        if let Some(pts) = packet.pts() {
-                            packet.set_pts(Some(pts + audio.segment_offset));
-                        }
-                        if let Some(dts) = packet.dts() {
-                            packet.set_dts(Some(dts + audio.segment_offset));
-                        }
-                    }
-
-                    // Track the running end so the next segment continues from here.
-                    if let Some(pts) = packet.pts() {
-                        let end = pts + packet.duration().max(0);
-                        if end > audio.next_offset {
-                            audio.next_offset = end;
-                        }
-                    }
-
-                    // Stop if this audio packet is beyond the video duration.
-                    if packet.pts().is_some_and(|pts| pts > max_pts) {
-                        audio.exhausted = true;
-                        break;
-                    }
-
-                    self.octx.write_packet(&mut packet)?;
+        while let Some(mut packet) = audio.next_until(max_pts)? {
+            if let Some(ref mut stream) = self.stream
+                && let StreamAudio::Copy { index, time_base } = stream.audio
+            {
+                let mut copy = packet.clone();
+                copy.set_stream(index);
+                copy.rescale_ts(audio.time_base(), time_base);
+                if let Err(error) = stream.octx.write_packet(&mut copy) {
+                    log::warn!("RTMP audio write failed ({error}), disabling stream");
+                    self.stream = None;
                 }
-                Err(ffmpeg::Error::Eof) => {
-                    // Current segment done; continue with the next chained one.
-                    if !Self::advance_segment(audio)? {
-                        audio.exhausted = true;
-                        break;
-                    }
-                }
-                Err(_) => break,
             }
+            self.octx.write_packet(&mut packet)?;
         }
         Ok(())
     }
@@ -1260,11 +1125,14 @@ impl VideoEncoder {
         }
         let pts = self.timeline.next(pts_us)?;
         self.yuv_frame.set_pts(Some(pts));
-        if let Some(ref mut upload) = self.hardware_upload {
-            let frame = upload.upload(&self.yuv_frame)?;
-            self.encoder.send_frame(frame)?;
-        } else {
-            self.encoder.send_frame(&self.yuv_frame)?;
+        {
+            reco_core::profile_scope!("encoder_submit");
+            if let Some(ref mut upload) = self.hardware_upload {
+                let frame = upload.upload(&self.yuv_frame)?;
+                self.encoder.send_frame(frame)?;
+            } else {
+                self.encoder.send_frame(&self.yuv_frame)?;
+            }
         }
         self.timeline.accept(pts, pts_us.is_some());
         self.receive_and_write_packets()?;
@@ -1273,7 +1141,7 @@ impl VideoEncoder {
 
     /// Write an RGBA frame to the output file.
     ///
-    /// `pts_us` follows [`reco_core::sink::OutputFrame::pts_us`]. The output uses a microsecond encoder clock; the container may quantize it further. No frame pacing or duplication is performed.
+    /// `pts_us` follows [`reco_core::sink::OutputFrame::pts_us`]. The output uses a microsecond encoder clock; the container may quantize it further. Network destinations pace encoded packets on one wall clock; ordinary file output is unrestricted. Frames are not duplicated.
     ///
     /// `rgba_data` must be exactly `width * height * 4` bytes (tightly packed).
     #[cfg_attr(
@@ -1534,7 +1402,7 @@ impl VideoEncoder {
 
         // Forward audio packets trimmed to the video duration.
         if self.audio.is_some() {
-            let audio_tb = self.audio.as_ref().unwrap().output_time_base;
+            let audio_tb = self.audio.as_ref().unwrap().time_base();
             // SAFETY: pure rational rescaling into the copied audio stream's clock.
             let video_duration_pts = unsafe {
                 ffmpeg::sys::av_rescale_q(
@@ -1550,10 +1418,11 @@ impl VideoEncoder {
         let primary_result = self.octx.finish();
         // Finalize stream output (non-fatal).
         if let Some(ref mut stream) = self.stream {
-            if let Some(ref mut audio) = stream.audio
+            if let StreamAudio::Silence(ref mut audio) = stream.audio
                 && let Err(error) = audio.finish(&mut stream.octx, self.timeline.end_us())
             {
                 log::warn!("Silent audio finalization failed: {error}");
+                stream.octx.record_failure(&error);
             }
             if let Err(error) = stream.octx.finish() {
                 log::warn!("RTMP stream finalization failed: {error}");
@@ -1596,6 +1465,12 @@ impl VideoEncoder {
     }
 
     fn write_video_packet(&mut self, packet: &mut ffmpeg::Packet) -> Result<(), EncodeError> {
+        if let Some(clock) = &mut self.broadcast_clock
+            && let Some(time) = packet.dts().or_else(|| packet.pts())
+            && !clock.wait(time.rescale(self.encoder_time_base, super::encoder_timing::TIME_BASE))
+        {
+            self.broadcast_clock = None;
+        }
         packet.set_stream(self.stream_index);
         packet.rescale_ts(self.encoder_time_base, self.output_time_base);
         // Give the final sample a defined end when the encoder leaves duration unset.
@@ -1613,6 +1488,15 @@ impl VideoEncoder {
             packet.set_duration(one_frame.max(1));
         }
 
+        // Interleave source audio as encoded video advances, not only at finalization.
+        // DTS is ordered even when the video encoder reorders presentation times.
+        if let Some(audio) = &self.audio
+            && let Some(time) = packet.dts().or_else(|| packet.pts())
+        {
+            let limit = time.rescale(self.output_time_base, audio.time_base());
+            self.forward_audio_packets_until(limit)?;
+        }
+
         // Clone for stream BEFORE primary write (write_interleaved unrefs the packet).
         if let Some(ref mut stream) = self.stream {
             let mut clone = packet.clone();
@@ -1625,7 +1509,7 @@ impl VideoEncoder {
             if let Err(e) = stream.octx.write_packet(&mut clone) {
                 log::warn!("RTMP stream write failed ({e}), disabling stream");
                 self.stream = None;
-            } else if let Some(ref mut sa) = stream.audio
+            } else if let StreamAudio::Silence(ref mut sa) = stream.audio
                 && let Err(e) = sa.write_for_video(
                     &mut stream.octx,
                     video_pts,
@@ -1633,8 +1517,9 @@ impl VideoEncoder {
                     stream.video_time_base,
                 )
             {
-                log::warn!("Silent audio write failed ({e}), continuing without audio");
-                stream.audio = None;
+                log::warn!("Stream audio write failed ({e}), disabling stream");
+                stream.octx.record_failure(&e);
+                self.stream = None;
             }
         }
 
@@ -1919,6 +1804,7 @@ fn receive_encoded_packet(
     encoder: &mut ffmpeg::encoder::Encoder,
     packet: &mut ffmpeg::Packet,
 ) -> Result<bool, ffmpeg::Error> {
+    reco_core::profile_scope!("encoder_receive");
     match encoder.receive_packet(packet) {
         Ok(()) => Ok(true),
         Err(ffmpeg::Error::Eof) => Ok(false),
@@ -2200,6 +2086,8 @@ fn build_encoder_opts(
 mod tests {
     use super::*;
 
+    mod audio_copy;
+
     #[test]
     fn streaming_audio_samples_are_initialized_to_silence() {
         crate::init();
@@ -2261,7 +2149,7 @@ mod tests {
                     video_index,
                     video_time_base: output.stream(video_index).unwrap().time_base(),
                     octx: output,
-                    audio: Some(audio),
+                    audio: StreamAudio::Silence(audio),
                 });
                 for frame in 0..frames {
                     let pts = origin

@@ -1,11 +1,11 @@
-//! Scoped ownership of retired file decoders.
+//! Scoped ownership of retired decoders.
 
 use std::sync::{Arc, Mutex, Weak};
 use std::thread::JoinHandle;
 
-/// Defers file-source cleanup until this scope is dropped.
+/// Defers decoder cleanup until this scope is dropped.
 ///
-/// Pass to [`crate::adapters::FfmpegFileSource::defer_cleanup`] to keep source
+/// Pass to [`crate::adapters::FfmpegFileSource::defer_cleanup`] or [`crate::rtsp::RtspSource::defer_cleanup`] to keep source
 /// replacement and cancellation from waiting on native decoder teardown.
 /// Drop sources before this scope: its destructor waits for their retired
 /// workers. Sources that outlive the scope instead wait in their own destructor.

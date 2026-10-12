@@ -91,11 +91,11 @@ fn later_cancellation_does_not_replace_a_transport_error() {
         ..config()
     };
     let mut output = OutputIo::open(&dir.path().join("unused.mp4"), "mp4", &config, false).unwrap();
-    output.control.cancelled = Some(flag.clone());
+    Arc::get_mut(&mut output.control).unwrap().cancelled = Some(flag.clone());
     output.control.record(ffmpeg::Error::InvalidData.into());
     flag.store(true, Ordering::Relaxed);
     assert_eq!(
-        interrupted((&mut *output.control as *mut Control).cast()),
+        interrupted(Arc::as_ptr(&output.control).cast_mut().cast()),
         1
     );
     assert!(matches!(
@@ -104,14 +104,16 @@ fn later_cancellation_does_not_replace_a_transport_error() {
     ));
 }
 
-fn video(path: &Path, config: &EncoderConfig, count: usize) {
+fn video(path: &Path, config: &EncoderConfig, count: usize) -> Option<StreamMonitor> {
     let mut encoder = VideoEncoder::new(path, 64, 64, ffmpeg::Rational(30, 1), config).unwrap();
+    let monitor = encoder.stream_monitor();
     let mut pixels = vec![128; 64 * 64 * 3 / 2];
     for i in 0..count {
         pixels[..4096].fill(32 + (i % 160) as u8);
         encoder.write_nv12_frame(&pixels, None).unwrap();
     }
     encoder.finish().unwrap();
+    monitor
 }
 
 #[test]
@@ -150,13 +152,14 @@ fn optional_stalled_stream_preserves_every_recording_frame() {
     let peer = StalledPeer::new();
     let primary = dir.path().join("primary.mp4");
     let reference = dir.path().join("reference.mp4");
-    video(&reference, &config(), 900);
+    assert!(video(&reference, &config(), 900).is_none());
     let config = EncoderConfig {
         stream_url: Some(peer.url("rtmp")),
         ..config()
     };
     let start = Instant::now();
-    video(&primary, &config, 900);
+    let monitor = video(&primary, &config, 900).unwrap();
+    assert!(matches!(monitor.status(), StreamStatus::Failed(_)));
     assert!(start.elapsed() < Duration::from_secs(3));
     let mut expected = VideoDecoder::open_software(&reference).unwrap();
     let mut actual = VideoDecoder::open_software(&primary).unwrap();
@@ -169,6 +172,89 @@ fn optional_stalled_stream_preserves_every_recording_frame() {
         );
     }
     assert!(actual.next_frame().unwrap().is_none());
+}
+
+#[test]
+fn optional_stream_failure_is_observable_without_producing_video() {
+    for cancel in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let peer = StalledPeer::new();
+        let flag = Arc::new(AtomicBool::new(false));
+        let config = EncoderConfig {
+            stream_url: Some(peer.url("rtmp")),
+            interrupted: Some(flag.clone()),
+            network_timeout: Some(if cancel {
+                Duration::from_secs(10)
+            } else {
+                Duration::from_millis(250)
+            }),
+            ..config()
+        };
+        let mut encoder = VideoEncoder::new(
+            &dir.path().join("recording.mp4"),
+            64,
+            64,
+            ffmpeg::Rational(30, 1),
+            &config,
+        )
+        .unwrap();
+        let monitor = encoder.stream_monitor().unwrap();
+        if ffmpeg::format::version() >> 16 < 62 {
+            assert!(
+                matches!(monitor.status(), StreamStatus::Failed(reason) if reason.contains("FFmpeg 8+"))
+            );
+            encoder
+                .write_nv12_frame(&[128; 64 * 64 * 3 / 2], None)
+                .unwrap();
+            encoder.finish().unwrap();
+            continue;
+        }
+        if cancel {
+            flag.store(true, Ordering::Relaxed);
+        }
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while matches!(
+            monitor.status(),
+            StreamStatus::Connecting | StreamStatus::Connected
+        ) && Instant::now() < deadline
+        {
+            thread::sleep(Duration::from_millis(5));
+        }
+        let failure = monitor.status();
+        if cancel {
+            assert_eq!(failure, StreamStatus::Cancelled);
+        } else {
+            assert!(matches!(failure, StreamStatus::Failed(_)), "{failure:?}");
+        }
+        // A transport error must not stop local encoding or be replaced by successful recording finalization.
+        encoder
+            .write_nv12_frame(&[128; 64 * 64 * 3 / 2], None)
+            .unwrap();
+        encoder.finish().unwrap();
+        drop(encoder);
+        assert_eq!(monitor.status(), failure);
+    }
+}
+
+#[test]
+fn rejected_optional_stream_keeps_a_failure_monitor_and_recording() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = EncoderConfig {
+        stream_url: Some("rtsp://invalid.example/private-key".into()),
+        ..config()
+    };
+    let output = dir.path().join("recording.mp4");
+    let monitor = video(&output, &config, 3).unwrap();
+    let StreamStatus::Failed(reason) = monitor.status() else {
+        panic!("rejected stream must be visible")
+    };
+    assert!(!reason.contains("private-key"));
+    assert!(reason.contains("RTMP"));
+    let mut decoder = VideoDecoder::open_software(&output).unwrap();
+    for _ in 0..3 {
+        assert!(decoder.next_frame().unwrap().is_some());
+    }
+    assert!(decoder.next_frame().unwrap().is_none());
 }
 
 fn with_stream(output: &mut OutputIo, input: &format::context::Input) -> Result<(), EncodeError> {

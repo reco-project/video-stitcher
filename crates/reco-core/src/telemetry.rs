@@ -262,8 +262,7 @@ pub struct TelemetrySnapshot {
     pub avg_stitch_ms: f32,
     pub avg_readback_ms: f32,
     pub avg_submit_ms: f32,
-    /// Real overlapped encode cost on the async encode thread (per frame).
-    /// Zero if no async encoder is attached.
+    /// Overlapped output-worker consume time per frame, including encoding, muxing and any broadcast pacing. Zero without an async sink; not encoder compute time alone.
     pub avg_encode_worker_ms: f32,
     /// Times `submit` blocked on a full output channel.
     pub backpressure_stalls: u64,
@@ -336,7 +335,7 @@ impl std::fmt::Display for SessionSummary {
         if s.avg_encode_worker_ms > 0.0 || s.backpressure_stalls > 0 {
             writeln!(
                 f,
-                "  Encode:    {:.1} ms (overlapped); backpressure {} stalls / {:.1} ms",
+                "  Output:    {:.1} ms (worker, including pacing); backpressure {} stalls / {:.1} ms",
                 s.avg_encode_worker_ms, s.backpressure_stalls, s.backpressure_ms
             )?;
         }
@@ -463,11 +462,13 @@ mod tests {
                 ..Default::default()
             });
         }
-        let summary = SessionSummary {
-            snapshot: tc.snapshot(),
-        };
+        let mut snapshot = tc.snapshot();
+        snapshot.avg_encode_worker_ms = 12.0;
+        let summary = SessionSummary { snapshot };
         let text = format!("{summary}");
         assert!(text.contains("Session Summary"));
         assert!(text.contains("Test GPU"));
+        assert!(text.contains("12.0 ms (worker, including pacing)"));
+        assert!(!text.contains("Encode:"));
     }
 }

@@ -94,6 +94,9 @@ fn build_pipeline_string(
     format: CaptureFormat,
 ) -> Result<String, String> {
     validate_device_string(device)?;
+    if fps == 0 || fps > i32::MAX as u32 {
+        return Err("capture frame rate must be in 1..=i32::MAX".into());
+    }
 
     let fmt_str = match format {
         CaptureFormat::I420 => "I420",
@@ -232,7 +235,7 @@ impl<T: Send + Sync + 'static> HostCapture<T> {
             info: SourceInfo {
                 camera_sizes: vec![(config.width, config.height); 2],
                 fps: config.fps as f64,
-                fps_rational: None,
+                fps_rational: Some((config.fps as i32, 1)),
                 total_frames: None,
             },
             interrupted,
@@ -331,6 +334,11 @@ impl GstreamerNv12CameraSource {
 impl reco_core::source::FrameSource for GstreamerNv12CameraSource {
     fn info(&self) -> SourceInfo {
         self.capture.info.clone()
+    }
+
+    #[cfg(feature = "gpu")]
+    fn input_format(&self) -> reco_core::render::renderer::InputFormat {
+        reco_core::render::renderer::InputFormat::Nv12
     }
 
     fn next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {

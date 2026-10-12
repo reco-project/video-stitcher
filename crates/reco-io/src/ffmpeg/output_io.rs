@@ -1,11 +1,11 @@
 //! Owned muxer I/O cancellation and asynchronous transport failure retention.
 
-use std::ffi::{CString, c_char, c_int, c_void};
+use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use std::ptr;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU8, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use ffmpeg_next::{self as ffmpeg, Dictionary, Packet, format, sys};
@@ -14,6 +14,71 @@ use super::encoder::{EncodeError, EncoderConfig};
 
 // Native failures are negative; reserve a positive value for caller cancellation.
 const CANCELLED: i32 = 1;
+const CONNECTING: u8 = 0;
+const CONNECTED: u8 = 1;
+const FINISHED: u8 = 2;
+
+/// State of an optional encoded stream, independent of recording success.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StreamStatus {
+    /// The asynchronous transport has not completed its connection.
+    Connecting,
+    /// The transport connected. This is not a server-side receipt or playback guarantee.
+    Connected,
+    /// The muxer finalized without reporting a transport failure.
+    Finished,
+    /// The application cancelled the transport.
+    Cancelled,
+    /// Opening, writing or draining failed. No automatic reconnect is attempted.
+    Failed(String),
+}
+
+/// Read-only stream observation that remains usable while the encoder runs on another thread or after it is dropped.
+#[derive(Clone)]
+pub struct StreamMonitor(Monitoring);
+
+#[derive(Clone)]
+enum Monitoring {
+    Transport(Arc<Control>),
+    Terminal(StreamStatus),
+}
+
+impl StreamMonitor {
+    /// Read current transport state, including failures reported while no video frames arrive.
+    pub fn status(&self) -> StreamStatus {
+        match &self.0 {
+            Monitoring::Terminal(status) => status.clone(),
+            Monitoring::Transport(control) => {
+                let phase = control.phase.load(Ordering::Acquire);
+                match control.status() {
+                    Err(EncodeError::Cancelled) => StreamStatus::Cancelled,
+                    Err(error) => StreamStatus::Failed(error.to_string()),
+                    Ok(()) => match phase {
+                        FINISHED => StreamStatus::Finished,
+                        CONNECTED => StreamStatus::Connected,
+                        _ => StreamStatus::Connecting,
+                    },
+                }
+            }
+        }
+    }
+
+    pub(super) fn failed(error: &EncodeError) -> Self {
+        Self(Monitoring::Terminal(
+            if matches!(error, EncodeError::Cancelled) {
+                StreamStatus::Cancelled
+            } else {
+                StreamStatus::Failed(error.to_string())
+            },
+        ))
+    }
+}
+
+impl std::fmt::Debug for StreamMonitor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.status().fmt(f)
+    }
+}
 
 struct Control {
     cancelled: Option<Arc<AtomicBool>>,
@@ -23,6 +88,7 @@ struct Control {
     operation_deadline: AtomicU64,
     finish_deadline: AtomicU64,
     error: AtomicI32,
+    phase: AtomicU8,
 }
 
 impl Control {
@@ -55,7 +121,7 @@ impl Control {
 }
 
 extern "C" fn interrupted(opaque: *mut c_void) -> c_int {
-    // SAFETY: OutputIo owns the boxed control until the context and FIFO worker are destroyed.
+    // SAFETY: OutputIo retains the shared control until the context and FIFO worker are destroyed.
     let control = unsafe { &*opaque.cast::<Control>() };
     if control
         .cancelled
@@ -92,11 +158,31 @@ unsafe extern "C" fn open_io(
         control
             .operation_deadline
             .store(control.deadline(), Ordering::Relaxed);
-        let result = sys::avio_open2(io, url, flags, &(*context).interrupt_callback, options);
+        let mut local_options = ptr::null_mut();
+        let options = if options.is_null() {
+            &mut local_options
+        } else {
+            options
+        };
+        // TLS verification defaults differ across supported FFmpeg versions.
+        let configured = if CStr::from_ptr(url).to_bytes().starts_with(b"rtmps://") {
+            sys::av_dict_set(options, c"tls_verify".as_ptr(), c"1".as_ptr(), 0)
+        } else {
+            0
+        };
+        let result = if configured < 0 {
+            configured
+        } else {
+            sys::avio_open2(io, url, flags, &(*context).interrupt_callback, options)
+        };
+        sys::av_dict_free(&mut local_options);
         control
             .operation_deadline
             .store(u64::MAX, Ordering::Relaxed);
         control.record(result);
+        if result >= 0 {
+            control.phase.store(CONNECTED, Ordering::Release);
+        }
         result
     }
 }
@@ -120,7 +206,7 @@ unsafe extern "C" fn close_io(
 pub(super) struct OutputIo {
     // Drop order keeps callbacks alive through AVIO close and native worker teardown.
     context: format::context::Output,
-    control: Box<Control>,
+    control: Arc<Control>,
     network: bool,
     fifo: bool,
     header_written: bool,
@@ -140,7 +226,7 @@ impl OutputIo {
         let url = CString::new(path)
             .map_err(|_| EncodeError::InvalidConfig("output contains NUL".into()))?;
         let muxer = CString::new(if fifo { "fifo" } else { muxer }).expect("static muxer name");
-        let control = Box::new(Control {
+        let control = Arc::new(Control {
             cancelled: network.then(|| config.interrupted.clone()).flatten(),
             stopped: AtomicBool::new(false),
             start: Instant::now(),
@@ -148,6 +234,7 @@ impl OutputIo {
             operation_deadline: AtomicU64::new(u64::MAX),
             finish_deadline: AtomicU64::new(u64::MAX),
             error: AtomicI32::new(0),
+            phase: AtomicU8::new(CONNECTING),
         });
         // SAFETY: allocate a unique context, wrap immediately so failed opens also release it.
         unsafe {
@@ -161,7 +248,7 @@ impl OutputIo {
             if result < 0 {
                 return Err(ffmpeg::Error::from(result).into());
             }
-            let mut output = Self {
+            let output = Self {
                 context: format::context::Output::wrap(raw),
                 control,
                 network,
@@ -169,7 +256,7 @@ impl OutputIo {
                 header_written: false,
             };
             if network {
-                (*raw).opaque = (&mut *output.control as *mut Control).cast();
+                (*raw).opaque = Arc::as_ptr(&output.control).cast_mut().cast();
                 (*raw).interrupt_callback = sys::AVIOInterruptCB {
                     callback: Some(interrupted),
                     opaque: (*raw).opaque,
@@ -198,6 +285,22 @@ impl OutputIo {
             }
             Ok(output)
         }
+    }
+
+    pub(super) fn monitor(&self) -> StreamMonitor {
+        StreamMonitor(Monitoring::Transport(self.control.clone()))
+    }
+
+    pub(super) fn record_failure(&self, error: &EncodeError) {
+        let code = match error {
+            EncodeError::Ffmpeg(error) => (*error).into(),
+            EncodeError::Cancelled => CANCELLED,
+            _ => ffmpeg::Error::External.into(),
+        };
+        let _ = self
+            .control
+            .error
+            .compare_exchange(0, code, Ordering::Relaxed, Ordering::Relaxed);
     }
 
     fn operation<T>(
@@ -247,6 +350,9 @@ impl OutputIo {
         if let Err(error) = result {
             self.control.record(error.into());
         }
+        if self.header_written && !self.network {
+            self.control.phase.store(CONNECTED, Ordering::Release);
+        }
         self.control.status()
     }
 
@@ -289,6 +395,7 @@ impl OutputIo {
             if let Err(error) = self.context.write_trailer() {
                 self.control.record(error.into());
             }
+            self.control.phase.store(FINISHED, Ordering::Release);
         }
         self.control.status()
     }

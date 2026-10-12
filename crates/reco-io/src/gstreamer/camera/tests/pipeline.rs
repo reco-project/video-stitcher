@@ -78,6 +78,10 @@ impl FrameSource for ScriptedCapture {
     fn info(&self) -> SourceInfo {
         self.source.info()
     }
+    #[cfg(feature = "gpu")]
+    fn input_format(&self) -> reco_core::render::renderer::InputFormat {
+        self.source.input_format()
+    }
     fn next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {
         if self.index == TIMES.len() {
             for input in &self.inputs {
@@ -244,6 +248,56 @@ fn check_encoded(path: &Path) {
         verify_image(index, Some(frame.timestamp_us), &frame.y, 1).unwrap();
     }
     assert!(decoder.next_frame().unwrap().is_none());
+}
+
+fn supplied_capture_job(gpu: bool) {
+    for nv12 in [false, true] {
+        for lookahead in [0.0, 0.1] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("job.mp4");
+            let measurements = Measurements::default();
+            let detected = measurements.clone();
+            let mut job = crate::StitchJob::from_source(
+                ScriptedCapture::new(nv12),
+                session().core().calibration().clone(),
+                &path,
+            )
+            .resolution(W, H)
+            .encoder_name("libx264")
+            .quality(crate::output::Quality::Value(100))
+            .lookahead(lookahead)
+            .lookahead_memory_limit(1024 * 1024)
+            .on_session(move |session, _| {
+                session.core_mut().set_constrained_look(false);
+                session.set_detector(Box::new(RecordingDetector(detected)));
+                session.set_detection_interval(1);
+                Ok(())
+            });
+            if !gpu {
+                job = job.cpu();
+            }
+            let result = job.run(&Arc::new(AtomicBool::new(false))).unwrap();
+            assert_eq!(result.frames_processed, TIMES.len() as u64);
+            check_encoded(&path);
+            let expected: Vec<_> = MARKERS
+                .iter()
+                .flat_map(|pair| pair.iter().enumerate().map(|(camera, &y)| (camera, y)))
+                .collect();
+            assert_eq!(*measurements.lock().unwrap(), expected);
+        }
+    }
+}
+
+#[test]
+fn supplied_capture_uses_job_detection_lookahead_and_output() {
+    supplied_capture_job(false);
+}
+
+#[cfg(feature = "gpu")]
+#[test]
+#[ignore = "requires a working Vulkan/Metal/DX12 device"]
+fn supplied_capture_declares_host_nv12_to_the_gpu_job() {
+    supplied_capture_job(true);
 }
 
 #[test]

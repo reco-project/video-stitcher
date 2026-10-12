@@ -1,4 +1,4 @@
-//! One-shot file-to-file stitching (Layer 3 API).
+//! One-shot file or live-input stitching (Layer 3 API).
 //!
 //! [`StitchJob`] is the simplest way to stitch per-camera video files
 //! into a panoramic output. It handles all orchestration internally: GPU
@@ -31,7 +31,14 @@ use reco_core::session::StitchSession;
 use reco_core::session::types::FrameProgress;
 use reco_core::source::FrameSource;
 
-/// One-shot stitching job: video files in, encoded video out.
+mod input;
+#[cfg(test)]
+mod source_tests;
+use input::Inputs;
+#[cfg(all(feature = "gpu", target_os = "linux"))]
+use input::OpenedSource;
+
+/// One-shot stitching job: camera-ordered images in, encoded video out.
 ///
 /// Use the builder methods to configure output settings, then call
 /// [`run`](Self::run) to execute. All GPU, encoder, and decode lifecycle
@@ -41,7 +48,7 @@ pub struct StitchJob {
     /// `calibration.lenses[i]`). Arity is validated against the
     /// calibration's projection in [`run`](Self::run) before any decoder
     /// spins up.
-    inputs: Vec<InputPath>,
+    inputs: Inputs,
     calibration: CalibrationSource,
     output: PathBuf,
 
@@ -54,6 +61,7 @@ pub struct StitchJob {
     encoder_name: Option<String>,
     encoder_device: Option<String>,
     preset: Option<String>,
+    stream_url: Option<String>,
 
     // Processing window
     start_time: Option<f64>,
@@ -67,6 +75,7 @@ pub struct StitchJob {
     // Callbacks
     on_progress: Option<ProgressCallback>,
     on_finalizing: Option<Box<dyn FnOnce() + Send>>,
+    on_stream_ready: Option<Box<dyn FnOnce(crate::ffmpeg::encoder::StreamMonitor) + Send>>,
     // Vec so multiple consumers can hook the session (telemetry, autocam,
     // future dual-output). A trait-based hook system would be cleaner for
     // complex composition but Vec<FnOnce> is sufficient for now.
@@ -225,6 +234,8 @@ pub struct StitchResult {
     pub encoder_name: String,
     pub decode_mode: String,
     pub telemetry: Option<reco_core::telemetry::TelemetrySnapshot>,
+    /// Final optional-stream state. A failed stream does not imply that the recording failed.
+    pub stream_status: Option<crate::ffmpeg::encoder::StreamStatus>,
 }
 
 impl StitchResult {
@@ -289,7 +300,7 @@ impl StitchJob {
         output: impl AsRef<Path>,
     ) -> Self {
         Self {
-            inputs: inputs.into_iter().map(Into::into).collect(),
+            inputs: Inputs::Files(inputs.into_iter().map(Into::into).collect()),
             calibration: CalibrationSource::File(calibration.as_ref().to_path_buf()),
             output: output.as_ref().to_path_buf(),
             codec: None,
@@ -300,6 +311,7 @@ impl StitchJob {
             encoder_name: None,
             encoder_device: None,
             preset: None,
+            stream_url: None,
             start_time: None,
             end_time: None,
             max_frames: None,
@@ -307,6 +319,7 @@ impl StitchJob {
             blend_width: None,
             on_progress: None,
             on_finalizing: None,
+            on_stream_ready: None,
             session_hooks: Vec::new(),
             #[cfg(feature = "stacked-output")]
             replay_recording: None,
@@ -326,6 +339,36 @@ impl StitchJob {
     ) -> Self {
         let mut job = Self::new(inputs, Path::new(""), output);
         job.calibration = CalibrationSource::Memory(Box::new(calibration));
+        job
+    }
+
+    /// Create a job from RTSP video inputs using explicit media-clock mapping and bounded synchronization.
+    ///
+    /// The source is opened by [`Self::run`], after calibration arity validation. Images are host-backed even when FFmpeg uses hardware decoding. File seek and frame-offset options are rejected: RTSP synchronization belongs in each [`crate::rtsp::RtspInput`]. Selected audio is copied from the same RTSP connection and mapped onto the selected video timeline, without mixing or transcoding.
+    pub fn from_rtsp(
+        inputs: Vec<crate::rtsp::RtspInput>,
+        config: crate::rtsp::RtspConfig,
+        calibration: reco_core::calibration::Calibration,
+        output: impl AsRef<Path>,
+    ) -> Self {
+        let mut job = Self::with_calibration(Vec::<InputPath>::new(), calibration, output);
+        job.inputs = Inputs::Rtsp { inputs, config };
+        job
+    }
+
+    /// Create a job from a caller-owned host-backed image source.
+    ///
+    /// The job takes ownership and drops the source before finalizing its output. The source owns acquisition, timestamp mapping and cancellation; pass the same interruption flag to its opener and [`Self::run`]. Metadata and image layout must remain fixed. Native GPU sources require device-aware [`StitchSession`] setup and are rejected here.
+    ///
+    /// Audio is disabled because [`FrameSource`] delivers images only. File start-time and frame-offset settings are unavailable; [`Self::end_time`] converts duration to a frame limit using the source rate, and [`Self::max_frames`] limits the number of images processed.
+    pub fn from_source(
+        source: impl FrameSource + 'static,
+        calibration: reco_core::calibration::Calibration,
+        output: impl AsRef<Path>,
+    ) -> Self {
+        let mut job = Self::with_calibration(Vec::<InputPath>::new(), calibration, output);
+        job.inputs = Inputs::Supplied(Box::new(source));
+        job.audio = AudioMode::Disabled;
         job
     }
 
@@ -349,7 +392,7 @@ impl StitchJob {
         self
     }
 
-    /// Set the output resolution. Default: match input resolution.
+    /// Set the output resolution. Default: 1920x1080.
     pub fn resolution(mut self, width: u32, height: u32) -> Self {
         self.resolution = Some((width, height));
         self
@@ -376,6 +419,15 @@ impl StitchJob {
     /// Override the encoder preset string (passed through to the encoder).
     pub fn preset(mut self, preset: impl Into<String>) -> Self {
         self.preset = Some(preset.into());
+        self
+    }
+
+    /// Also publish the recording's encoded packets to RTMP/RTMPS at media speed.
+    /// Requires FFmpeg 8+, H.264 and AAC/MP3 source audio; absent audio produces a silent AAC track on the stream.
+    /// A bounded, lossy transport FIFO isolates network stalls from recording. Failures do not reconnect.
+    /// Observe failures with [`Self::on_stream_ready`] and [`StitchResult::stream_status`].
+    pub fn stream_to(mut self, url: impl Into<String>) -> Self {
+        self.stream_url = Some(url.into());
         self
     }
 
@@ -480,7 +532,7 @@ impl StitchJob {
 
     /// Deliver decoded frames in CPU memory instead of using GPU zero-copy, for consumers such as CPU detectors.
     ///
-    /// Hardware decoding may still be used with a transfer to CPU memory. [`Self::cpu`] selects software decoding and rendering together.
+    /// Hardware decoding may still be used with a transfer to CPU memory. [`Self::cpu`] selects software decoding and rendering together. This setting does not reconfigure a caller-supplied source.
     pub fn force_cpu_decode(mut self) -> Self {
         self.force_cpu_decode = true;
         self
@@ -489,6 +541,7 @@ impl StitchJob {
     /// Stitch on the CPU executor: software render + CPU decode, no
     /// GPU initialized. Implies [`Self::force_cpu_decode`] (there is
     /// no GPU to decode into).
+    /// A caller-supplied source keeps its own acquisition/decoder configuration.
     pub fn cpu(mut self) -> Self {
         self.cpu_stitch = true;
         self
@@ -560,6 +613,16 @@ impl StitchJob {
         self
     }
 
+    /// Receive a read-only stream monitor before processing starts, including if optional streaming could not open.
+    /// The hook runs on the job thread only when streaming was requested. The monitor can be polled from another thread.
+    pub fn on_stream_ready(
+        mut self,
+        cb: impl FnOnce(crate::ffmpeg::encoder::StreamMonitor) + Send + 'static,
+    ) -> Self {
+        self.on_stream_ready = Some(Box::new(cb));
+        self
+    }
+
     /// Hook called after the session is created but before output creation and the frame loop.
     /// An error aborts setup and prevents subsequent hooks from running.
     ///
@@ -619,8 +682,17 @@ impl StitchJob {
             }
             CalibrationSource::Memory(cal) => *cal,
         };
+        self.inputs.validate_options(
+            self.start_time,
+            self.end_time,
+            self.sync_offset,
+            &self.audio,
+        )?;
         let effective_sync = self.sync_offset.unwrap_or(cal.sync_offset);
-        if self.sync_offset.is_none() && cal.sync_offset != 0 {
+        if matches!(self.inputs, Inputs::Files(_))
+            && self.sync_offset.is_none()
+            && cal.sync_offset != 0
+        {
             log::info!("Sync offset: {} frames (from calibration)", effective_sync);
         }
 
@@ -636,24 +708,23 @@ impl StitchJob {
             )));
         }
         #[cfg(feature = "gpu")]
-        let (gpu, mut source) = if self.cpu_stitch {
+        let gpu = if self.cpu_stitch {
             log::info!("CPU stitch: software render + software decode");
-            (
-                None,
-                crate::SmartFileSource::open_cpu_only(&self.inputs, effective_sync, true)?,
-            )
+            None
         } else {
-            let gpu = reco_core::gpu::GpuContext::new_blocking()?;
-            let source = if self.force_cpu_decode {
-                crate::SmartFileSource::open_cpu_only(&self.inputs, effective_sync, false)?
-            } else {
-                crate::SmartFileSource::open(&self.inputs, &gpu, effective_sync)?
-            };
-            (Some(gpu), source)
+            Some(reco_core::gpu::GpuContext::new_blocking()?)
         };
-        #[cfg(not(feature = "gpu"))]
-        let mut source =
-            crate::SmartFileSource::open_cpu_only(&self.inputs, effective_sync, self.cpu_stitch)?;
+        let audio_source = self.inputs.audio_paths(&self.audio);
+        let opened = self.inputs.open(
+            effective_sync,
+            self.cpu_stitch,
+            self.force_cpu_decode,
+            #[cfg(feature = "gpu")]
+            gpu.as_ref(),
+            interrupted,
+            &self.audio,
+        )?;
+        let source = opened.frames();
         let info = source.info();
         let fps_rational = info.fps_rational.ok_or_else(|| StitchError::Other(
             "video frame rate is unknown for one or more inputs; cannot export with reliable timing".into()
@@ -663,7 +734,7 @@ impl StitchJob {
         if self.resolution.is_none() {
             log::info!("Output resolution not specified, defaulting to {out_w}x{out_h}");
         }
-        let decode_mode = source.decode_mode().to_string();
+        let decode_mode = opened.decode_mode().to_string();
 
         // Build session. Blend lives on the calibration; an explicit job
         // override replaces it, otherwise the saved value renders as-is.
@@ -707,19 +778,12 @@ impl StitchJob {
         let mut session = match gpu {
             Some(gpu) => {
                 gpu_name = gpu.gpu_name().to_string();
-                // Input format follows source capabilities: zero-copy
-                // decoders hand the pipeline NV12 textures.
-                let input_format = if source.is_gpu_resident() {
-                    reco_core::render::renderer::InputFormat::Nv12
-                } else {
-                    reco_core::render::renderer::InputFormat::Yuv420p
-                };
                 let session_config = reco_core::session::types::SessionConfig {
                     calibration: cal,
                     viewport_size,
                     source_sizes: info.camera_sizes.clone(),
                     output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
-                    input_format,
+                    input_format: source.input_format(),
                     left_rotation: source.left_rotation(),
                     right_rotation: source.right_rotation(),
                 };
@@ -742,12 +806,17 @@ impl StitchJob {
 
         // Configure GPU bind groups if source is GPU-resident
         #[cfg(all(feature = "gpu", target_os = "linux"))]
-        if let Some(shared) = source.shared_texture_set() {
+        if let OpenedSource::Files(files) = &opened
+            && let Some(shared) = files.shared_texture_set()
+        {
             session.setup_gpu_source(shared)?;
         }
 
+        let live_audio = opened.audio();
+        let mut source = opened.into_frames();
+
         for hook in self.session_hooks.drain(..) {
-            hook(&mut session, &source)?;
+            hook(&mut session, source.as_ref())?;
         }
 
         if session.core().constrained_look() {
@@ -779,22 +848,6 @@ impl StitchJob {
             .filter(|secs| secs.is_finite() && *secs > 0.0)
             .unwrap_or(0.0);
 
-        // Resolve audio source paths from AudioMode. All chained segments are
-        // included so passthrough spans the whole recording, not just file 1.
-        let audio_source = match &self.audio {
-            AudioMode::CopyFrom(n) => match self.inputs.get(*n) {
-                Some(input) => Some(input.all_paths()),
-                None => {
-                    log::warn!(
-                        "AudioMode::CopyFrom({n}) - this job has {} input(s)",
-                        self.inputs.len()
-                    );
-                    None
-                }
-            },
-            AudioMode::Disabled => None,
-        };
-
         let enc_config = crate::ffmpeg::encoder::EncoderConfig {
             encoder_name: self.encoder_name.clone(),
             device: self.encoder_device.clone(),
@@ -805,19 +858,29 @@ impl StitchJob {
             audio_source,
             audio_start_time: start_secs,
             container,
-            gop_size: None,
-            stream_url: None,
+            gop_size: self
+                .stream_url
+                .as_ref()
+                .map(|_| (fps * 2.0).round().max(1.0) as u32),
+            stream_url: self.stream_url.take(),
             interrupted: Some(interrupted.clone()),
             network_timeout: None,
         };
-        let encoder = crate::adapters::FfmpegFileEncoder::new(
+        let encoder = crate::adapters::FfmpegFileEncoder::with_live_audio(
             &self.output,
             out_w,
             out_h,
             (fps_rational.0, fps_rational.1),
             &enc_config,
+            live_audio,
         )?;
         let enc_name = encoder.encoder_name().to_string();
+        let stream_monitor = encoder.stream_monitor();
+        if let Some(monitor) = &stream_monitor
+            && let Some(callback) = self.on_stream_ready.take()
+        {
+            callback(monitor.clone());
+        }
         session.telemetry_mut().set_encoder_name(enc_name.clone());
         session.add_sink(
             Box::new(encoder),
@@ -909,30 +972,9 @@ impl StitchJob {
             (None, None) => u64::MAX,
         };
 
-        // Optional replay recording: wrap the source with a
-        // decorator that writes pre-stitch frames to a stacked-video
-        // file alongside the main encode. Replay starts from this
-        // point so the recording aligns with the exported window
-        // (frames skipped via `start_frame` are already past).
-        //
-        // Two arms so the replay branch can take ownership of
-        // `source` via `Box::new`, while the non-replay arm keeps
-        // the borrowed `&mut source` already set up.
+        // Replay starts after skipped frames, on the same output window.
         #[cfg(feature = "stacked-output")]
-        let replay_cfg = self.replay_recording.take();
-        #[cfg(not(feature = "stacked-output"))]
-        let replay_cfg: Option<()> = None;
-
-        let run_result;
-        // Tracks a CPU-path replay decorator when that arm is
-        // chosen; the finalizer below calls `finish()` after the
-        // run. GPU path finalizes via
-        // `session.clear_stacked_gpu_recorder()` below.
-        #[cfg(feature = "stacked-output")]
-        let mut replay_src: Option<crate::stacked_video::replay::ReplayRecordingSource> = None;
-
-        #[cfg(feature = "stacked-output")]
-        if let Some(cfg) = replay_cfg {
+        if let Some(cfg) = self.replay_recording.take() {
             if info.camera_sizes.windows(2).any(|pair| pair[0] != pair[1]) {
                 return Err(StitchError::Other(
                     "stacked replay requires equal camera dimensions".into(),
@@ -1010,12 +1052,6 @@ impl StitchJob {
                         scale_note,
                         cfg.path.display(),
                     );
-                    run_result = session.run(
-                        &mut source,
-                        frame_limit,
-                        interrupted,
-                        self.on_progress.take(),
-                    );
                 }
                 _ => {
                     if cfg.scale.is_some() {
@@ -1034,42 +1070,32 @@ impl StitchJob {
                         info.camera_sizes[0].1,
                         cfg.path.display(),
                     );
-                    let inner: Box<dyn FrameSource> = Box::new(source);
-                    let mut replay = crate::stacked_video::replay::ReplayRecordingSource::wrap(
-                        inner,
-                        &cfg.path,
-                        *cfg.encoder_config,
-                    )
-                    .map_err(|e| StitchError::Other(format!("replay recording open: {e}")))?;
-                    run_result = session.run(
-                        &mut replay,
-                        frame_limit,
-                        interrupted,
-                        self.on_progress.take(),
+                    source = Box::new(
+                        crate::stacked_video::replay::ReplayRecordingSource::wrap(
+                            source,
+                            &cfg.path,
+                            *cfg.encoder_config,
+                        )
+                        .map_err(|e| StitchError::Other(format!("replay recording open: {e}")))?,
                     );
-                    replay_src = Some(replay);
                 }
             }
+        }
+        let run_result = session.run(
+            source.as_mut(),
+            frame_limit,
+            interrupted,
+            self.on_progress.take(),
+        );
+
+        // Host images retain their own storage, so stop acquisition before output
+        // finalization. Native slots can still be referenced by pending GPU work.
+        let _native_source = if source.is_gpu_resident() {
+            Some(source)
         } else {
-            run_result = session.run(
-                &mut source,
-                frame_limit,
-                interrupted,
-                self.on_progress.take(),
-            );
-        }
-        #[cfg(not(feature = "stacked-output"))]
-        {
-            // Without the stacked-output feature, replay recording
-            // is unavailable and `replay_cfg` is always None.
-            let _ = replay_cfg;
-            run_result = session.run(
-                &mut source,
-                frame_limit,
-                interrupted,
-                self.on_progress.take(),
-            );
-        }
+            drop(source);
+            None
+        };
 
         if let Some(cb) = self.on_finalizing.take() {
             cb();
@@ -1083,13 +1109,6 @@ impl StitchJob {
         session.clear_stacked_gpu_recorder();
         let finish_result = session.finish();
         let telemetry_snap = session.telemetry_snapshot();
-
-        #[cfg(feature = "stacked-output")]
-        if let Some(mut replay) = replay_src.take()
-            && let Err(e) = replay.finish()
-        {
-            log::warn!("replay recording finalize failed ({e}); stitch output still valid");
-        }
 
         // A failed run can still have rendered frames awaiting delivery. Finalize
         // them before returning, retaining the run failure as the primary error.
@@ -1152,6 +1171,7 @@ impl StitchJob {
             encoder_name: enc_name,
             decode_mode,
             telemetry: Some(telemetry_snap),
+            stream_status: stream_monitor.map(|monitor| monitor.status()),
         })
     }
 }
