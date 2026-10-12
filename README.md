@@ -47,7 +47,21 @@ cargo build --release -p reco-cli
 ./target/release/reco camera --left-device 0 --right-device 1 \
     -c match.json -o live.mkv --container mkv \
     --model yolo.engine --tracking field
+
+# RTSP video inputs whose decoded media timestamps already share an origin
+./target/release/reco stitch rtsp://camera-a/live rtsp://camera-b/live \
+    -c match.json -o live.mkv --rtsp-fps 30 --rtsp-offsets-us=0,0
+
+# Keep a recording while publishing the same encoded feed at media speed
+./target/release/reco stitch left.mp4 right.mp4 -c match.json -o match.mp4 \
+    --codec h264 --stream-url rtmp://127.0.0.1/live/example
 ```
+
+RTSP input uses TCP and host-backed images. Supply one measured media timestamp offset per input; `0,0` is only correct for an already shared timeline, not independently started cameras. `stitch --help` exposes bounded wait, skew, reuse age and timeout controls. Unexpected disconnects, clock resets and expired images fail visibly instead of reconnecting or reporting success. `--audio-source 0` (the default) copies available audio from the first input; select another zero-based input index or `none`. Live audio uses that camera's existing connection and the selected video timeline, with bounded buffering and no mixing or transcoding. The output container must support the source audio codec; RTMP copy requires AAC or MP3. The loopback tests in `crates/reco-io/src/rtsp/tests.rs` cover source boundaries and A/V phase through startup and lookahead; its CLI integration test uses `RECO_TEST_CLI` to select the binary.
+
+Optional RTMP/RTMPS publishing requires FFmpeg 8+ for safe audio/video queue recovery; bundled builds include a suitable runtime. Recording continues if optional publishing fails, and the CLI reports stream state separately. H.264 video and selected AAC/MP3 source audio share compressed packets; without source audio the stream gets silent AAC, not microphone capture. Network output is paced; ordinary file exports remain unrestricted. The loopback workflow in `crates/reco-io/tests/streaming.rs` checks shared packets, A/V timing and pacing. The FIFO recovery regression is in `crates/reco-io/src/ffmpeg/output_io/tests/overflow.rs`. External-service authentication and playback are separate acceptance checks.
+
+In the GUI, load the rig calibration, then choose **Setup → Connect RTSP** and enter each camera's URL, timestamp offset and output frame rate. **Record / publish** uses the same processed-output job with optional source audio and RTMP/RTMPS publishing; file export also offers publishing. Preview pauses during output. **Stop and save** finalizes the live recording; reconnect explicitly to resume preview. Live input does not support seeking, file-frame sync offsets or quick recording. The GUI lifecycle tests in `crates/reco-gui/src/network/tests.rs` cover opening cancellation, stale results, polling and recorded audio; `crates/reco-gui/src/ui_tests.rs` covers form editing and publishing controls.
 
 ## Logging
 

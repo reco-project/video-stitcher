@@ -14,6 +14,28 @@ from bundle_macos import verify_loaded_libraries
 from fetch_windows_sources import digest, relative_path
 
 
+def verify_media_features(run, ffmpeg):
+    """Require the transport and codecs used by recording and live publishing."""
+    protocols = run(ffmpeg, "-hide_banner", "-protocols").decode().split()
+    for protocol in ("file", "tcp", "rtmp", "tls", "https", "rtmps"):
+        if protocol not in protocols:
+            raise ValueError(f"missing protocol: {protocol}")
+    for category, required in (
+        ("demuxers", ("rtsp", "mov")),
+        ("muxers", ("fifo", "flv", "mp4")),
+        ("decoders", ("h264", "aac")),
+        ("encoders", ("libx264", "aac")),
+    ):
+        available = set()
+        for line in run(ffmpeg, "-hide_banner", f"-{category}").decode().splitlines():
+            fields = line.split()
+            if len(fields) >= 2:
+                available.update(fields[1].split(","))
+        for name in required:
+            if name not in available:
+                raise ValueError(f"missing {category}: {name}")
+
+
 def verify(directory: Path):
     directory = directory.resolve(strict=True)
     windows = sys.platform == "win32"
@@ -75,10 +97,7 @@ def verify(directory: Path):
             version = run(binary, "-version").decode().splitlines()[0]
             if not version.startswith(f"{binary.stem if windows else binary.name} version {manifest['version']} "):
                 raise ValueError(f"unexpected runtime: {version}")
-    protocols = run(ffmpeg, "-hide_banner", "-protocols").decode().split()
-    for protocol in ("file", "tcp", "rtmp", "tls", "https", "rtmps"):
-        if protocol not in protocols:
-            raise ValueError(f"missing protocol: {protocol}")
+    verify_media_features(run, ffmpeg)
     png = run(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "color=size=8x8:color=red",
               "-frames:v", "1", "-c:v", "png", "-f", "image2pipe", "-")
     if not png.startswith(b"\x89PNG\r\n\x1a\n"):
