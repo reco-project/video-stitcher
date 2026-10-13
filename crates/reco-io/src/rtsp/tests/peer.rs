@@ -18,6 +18,10 @@ pub(super) struct Peer {
 }
 
 fn fixture(frames: usize) -> Vec<Vec<Vec<u8>>> {
+    fixture_filter(frames, "testsrc2=size=64x32:rate=10")
+}
+
+fn fixture_filter(frames: usize, filter: &str) -> Vec<Vec<Vec<u8>>> {
     let output = std::process::Command::new("ffmpeg")
         .args([
             "-v",
@@ -25,7 +29,7 @@ fn fixture(frames: usize) -> Vec<Vec<Vec<u8>>> {
             "-f",
             "lavfi",
             "-i",
-            "testsrc2=size=64x32:rate=10",
+            filter,
             "-frames:v",
             &frames.to_string(),
             "-c:v",
@@ -83,6 +87,19 @@ fn fixture(frames: usize) -> Vec<Vec<Vec<u8>>> {
 }
 
 impl Peer {
+    #[allow(dead_code)] // This fixture module is also reused by the GUI tests.
+    pub(super) fn ramp(frames: usize, offset_us: i64, missing: Option<usize>) -> Self {
+        Self::start(
+            Some(fixture_filter(
+                frames,
+                "nullsrc=size=128x96:rate=10,geq=lum='32+4*N':cb=128:cr=128",
+            )),
+            None,
+            offset_us,
+            missing,
+            None,
+        )
+    }
     pub(super) fn silent() -> Self {
         Self::start(None, None, 0, None, None)
     }

@@ -111,7 +111,7 @@ impl LiveInputArgs {
             })
             .collect();
         log::info!(
-            "RTSP host-backed video input: {}/{}, wait={} ms, skew={} ms, max age={} ms, queue={}; available selected audio follows the same connection",
+            "RTSP video input: {}/{}, wait={} ms, skew={} ms, max age={} ms, queue={}; available selected audio follows the same connection",
             fps.0,
             fps.1,
             self.rtsp_wait_ms,

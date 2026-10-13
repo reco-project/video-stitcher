@@ -90,11 +90,11 @@ impl From<ffmpeg::Error> for DecodeError {
     }
 }
 
-/// A decoded NV12 frame still on the GPU (CUDA device memory).
+/// A decoded NV12 or P010 frame still on the GPU (CUDA device memory).
 ///
-/// Contains CUDA device pointers and strides for the Y and UV planes.
-/// These pointers are only valid until the next decode call — the caller
-/// must copy the data (via `cuMemcpy2D`) before calling `next_frame_gpu()` again.
+/// Owns a reference to the decoded allocation. Its CUDA pointers remain valid
+/// across subsequent decode calls and decoder destruction until this frame is dropped.
+/// Consumers must finish GPU reads before releasing their last frame reference.
 #[cfg(feature = "gpu")]
 pub struct GpuFrame {
     /// CUDA device pointer to the Y (luma) plane.
@@ -114,6 +114,7 @@ pub struct GpuFrame {
     /// GPU pixel format (NV12 or P010). Determines shared texture formats
     /// and CUDA copy byte widths.
     pub pixel_format: reco_core::render::renderer::GpuPixelFormat,
+    _owner: VideoFrame,
 }
 
 /// A decoded frame from VideoToolbox, holding a `CVPixelBufferRef`.
@@ -921,8 +922,8 @@ impl VideoDecoder {
     ///
     /// Requires [`DecodeBackend::Cuda`] and CUDA-resident output frames;
     /// backend or residency mismatches return an error, not end-of-stream.
-    /// Returns `None` once the decoder is drained. The caller must copy the
-    /// planes via `cuMemcpy2D` before decoding again, as pointers are reused.
+    /// Returns `None` once the decoder is drained. The returned frame retains
+    /// its allocation independently of the decoder; no image data is copied.
     #[cfg_attr(
         feature = "profiling",
         tracing::instrument(skip_all, name = "decode_frame_gpu")
@@ -1073,6 +1074,28 @@ impl VideoDecoder {
                 ));
             }
             let frames = &*((*raw.hw_frames_ctx).data as *const ffi::AVHWFramesContext);
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            {
+                // FFmpeg's device-to-device transfer may still be queued on its own context.
+                // The frame pool retains this device while the producer stream is drained.
+                if frames.device_ctx.is_null() || (*frames.device_ctx).hwctx.is_null() {
+                    return Err(DecodeError::ConversionError(
+                        "CUDA frame has no device context".into(),
+                    ));
+                }
+                let device = &*((*frames.device_ctx).hwctx as *const ffi::AVCUDADeviceContext);
+                if device.cuda_ctx.is_null() {
+                    return Err(DecodeError::ConversionError(
+                        "CUDA frame has no CUDA context".into(),
+                    ));
+                }
+                profile_scope!("decode_cuda_ready");
+                reco_core::interop::cuda::cuda_wait_stream(
+                    device.cuda_ctx.cast(),
+                    device.stream.cast(),
+                )
+                .map_err(|error| DecodeError::ConversionError(error.to_string()))?;
+            }
             match frames.sw_format {
                 ffi::AVPixelFormat::AV_PIX_FMT_NV12 => {
                     reco_core::render::renderer::GpuPixelFormat::Nv12
@@ -1094,6 +1117,19 @@ impl VideoDecoder {
             self.width,
             self.height
         );
+        // Video::clone copies pixels. av_frame_ref retains the hardware buffers instead.
+        let mut owner = VideoFrame::empty();
+        unsafe {
+            if owner.as_ptr().is_null() {
+                return Err(DecodeError::ConversionError(
+                    "cannot allocate frame reference".into(),
+                ));
+            }
+            let result = ffi::av_frame_ref(owner.as_mut_ptr(), self.decoded_frame.as_ptr());
+            if result < 0 {
+                return Err(ffmpeg::Error::from(result).into());
+            }
+        }
         Ok(GpuFrame {
             y_ptr: raw.data[0] as u64,
             uv_ptr: raw.data[1] as u64,
@@ -1103,6 +1139,7 @@ impl VideoDecoder {
             height: self.height,
             timestamp_us,
             pixel_format,
+            _owner: owner,
         })
     }
 

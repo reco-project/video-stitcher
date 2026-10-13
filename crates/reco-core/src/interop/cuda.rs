@@ -152,6 +152,7 @@ struct CudaFunctions {
     cuda_get_device: unsafe extern "C" fn(*mut CUdevice) -> CUresult,
     cu_device_get_uuid: unsafe extern "C" fn(*mut CUuuid, CUdevice) -> CUresult,
     cu_ctx_synchronize: unsafe extern "C" fn() -> CUresult,
+    cu_stream_synchronize: unsafe extern "C" fn(*mut c_void) -> CUresult,
 
     // Context management
     cu_init: unsafe extern "C" fn(u32) -> CUresult,
@@ -159,9 +160,7 @@ struct CudaFunctions {
     cu_device_primary_ctx_retain: unsafe extern "C" fn(*mut CUcontext, CUdevice) -> CUresult,
     cu_ctx_get_current: unsafe extern "C" fn(*mut CUcontext) -> CUresult,
     cu_ctx_set_current: unsafe extern "C" fn(CUcontext) -> CUresult,
-    #[cfg(target_os = "linux")]
     cu_ctx_push_current: unsafe extern "C" fn(CUcontext) -> CUresult,
-    #[cfg(target_os = "linux")]
     cu_ctx_pop_current: unsafe extern "C" fn(*mut CUcontext) -> CUresult,
 
     // 2D copy
@@ -268,14 +267,13 @@ impl CudaFunctions {
                 cuda_get_device,
                 cu_device_get_uuid: load_sym!(lib_cuda, "cuDeviceGetUuid"),
                 cu_ctx_synchronize: load_sym!(lib_cuda, "cuCtxSynchronize"),
+                cu_stream_synchronize: load_sym!(lib_cuda, "cuStreamSynchronize"),
                 cu_init: load_sym!(lib_cuda, "cuInit"),
                 cu_device_get: load_sym!(lib_cuda, "cuDeviceGet"),
                 cu_device_primary_ctx_retain: load_sym!(lib_cuda, "cuDevicePrimaryCtxRetain"),
                 cu_ctx_get_current: load_sym!(lib_cuda, "cuCtxGetCurrent"),
                 cu_ctx_set_current: load_sym!(lib_cuda, "cuCtxSetCurrent"),
-                #[cfg(target_os = "linux")]
                 cu_ctx_push_current: load_sym!(lib_cuda, "cuCtxPushCurrent_v2"),
-                #[cfg(target_os = "linux")]
                 cu_ctx_pop_current: load_sym!(lib_cuda, "cuCtxPopCurrent_v2"),
                 cu_memcpy_2d_v2: load_sym!(lib_cuda, "cuMemcpy2D_v2"),
                 cu_mem_alloc_v2: load_sym!(lib_cuda, "cuMemAlloc_v2"),
@@ -476,6 +474,27 @@ pub fn cuda_synchronize() -> Result<(), CudaInteropError> {
         check_cuda("cuCtxSynchronize", (cuda.cu_ctx_synchronize)())?;
     }
     Ok(())
+}
+
+/// Wait for a producer's stream without replacing the caller's CUDA context.
+///
+/// # Safety
+/// `context` must be a live CUDA context and `stream` must belong to it (null
+/// selects its default stream). Both must remain valid until this call returns.
+pub unsafe fn cuda_wait_stream(
+    context: *mut c_void,
+    stream: *mut c_void,
+) -> Result<(), CudaInteropError> {
+    let cuda = cuda()?;
+    // Restore the previous context even when the producer reports an asynchronous error.
+    unsafe {
+        check_cuda("cuCtxPushCurrent", (cuda.cu_ctx_push_current)(context))?;
+        let result = (cuda.cu_stream_synchronize)(stream);
+        let mut popped = std::ptr::null_mut();
+        let restore = (cuda.cu_ctx_pop_current)(&mut popped);
+        check_cuda("cuStreamSynchronize", result)?;
+        check_cuda("cuCtxPopCurrent", restore)
+    }
 }
 
 /// Query (free, total) device memory in bytes via the CUDA driver.

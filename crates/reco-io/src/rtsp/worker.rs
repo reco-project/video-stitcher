@@ -89,8 +89,19 @@ pub(super) fn decode(
     shared.lock().inputs[camera].audio = audio.clone();
     let mut decoder = VideoDecoder::from_live_input(context, config.software_decode, audio)
         .map_err(|e| read_error(format!("RTSP input {camera} decoder: {e}")))?;
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
+    let layout = native::negotiate(&shared, camera, &decoder, || {
+        control.cancelled() || control.expired()
+    })?;
+    let delivery = "host YUV420P";
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
+    let delivery = if matches!(layout, native::Layout::Cuda(_)) {
+        "retained CUDA"
+    } else {
+        delivery
+    };
     log::info!(
-        "RTSP input {camera}: {} decode, host YUV420P delivery",
+        "RTSP input {camera}: {} decode, {delivery} delivery",
         decoder.backend()
     );
     let mut previous = None;
@@ -103,7 +114,42 @@ pub(super) fn decode(
         } else {
             config.read_timeout
         });
-        let frame = match decoder.next_frame() {
+        let mut decode_image = || {
+            #[cfg(all(feature = "gpu", target_os = "linux"))]
+            if let native::Layout::Cuda(format) = layout {
+                return decoder
+                    .next_frame_gpu()?
+                    .map(|frame| {
+                        if frame.pixel_format != format {
+                            return Err(DecodeError::ConversionError(
+                                "RTSP native plane format changed".into(),
+                            ));
+                        }
+                        Ok((
+                            frame.timestamp_us,
+                            (frame.width, frame.height),
+                            Image::Cuda(Arc::new(frame)),
+                        ))
+                    })
+                    .transpose();
+            }
+            decoder.next_frame().map(|frame| {
+                frame.map(|frame| {
+                    let size = (frame.width, frame.height);
+                    (
+                        frame.timestamp_us,
+                        size,
+                        Image::Host(Arc::new(Yuv420pData {
+                            size,
+                            y: frame.y,
+                            u: frame.u,
+                            v: frame.v,
+                        })),
+                    )
+                })
+            })
+        };
+        let frame = match decode_image() {
             Ok(frame) => frame,
             Err(_) if control.cancelled() => return Ok(()),
             // RTSP probing may leave an untimed bootstrap image. Wait for a
@@ -119,7 +165,7 @@ pub(super) fn decode(
                 )));
             }
         };
-        let Some(frame) = frame else {
+        let Some((timestamp_us, size, image)) = frame else {
             return if control.cancelled() {
                 Ok(())
             } else {
@@ -128,8 +174,7 @@ pub(super) fn decode(
                 )))
             };
         };
-        let time_us = frame
-            .timestamp_us
+        let time_us = timestamp_us
             .checked_add(input.timestamp_offset_us)
             .ok_or_else(|| read_error(format!("RTSP input {camera} timestamp overflow")))?;
         if previous.is_some_and(|last| time_us <= last) {
@@ -139,19 +184,14 @@ pub(super) fn decode(
         }
         previous = Some(time_us);
         let arrived_us = elapsed_us(start)?;
-        let image = Arc::new(Yuv420pData {
-            size: (frame.width, frame.height),
-            y: frame.y,
-            u: frame.u,
-            v: frame.v,
-        });
         let mut state = shared.lock();
         let state = &mut state.inputs[camera];
         state.metadata.get_or_insert(Metadata {
-            size: image.size,
+            size,
             full_range: decoder.is_full_range(),
             first_time_us: time_us,
             first_arrived_us: arrived_us,
+            rotation: decoder.rotation(),
         });
         // Validate before eviction: a clock reset must not disappear with its image.
         if state.images.len() == config.synchronization.capacity {

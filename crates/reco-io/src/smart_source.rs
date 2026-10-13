@@ -290,75 +290,22 @@ impl SmartFileSource {
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
-        use reco_core::interop::SharedTextureSet;
-        use reco_core::interop::vulkan::{Nv12Plane, create_nv12_shared_texture};
-        use reco_core::interop::zero_copy::GpuBufInfo;
-
-        let map_err = |msg: String| SourceError::Init {
-            path: inputs[0].first_path().display().to_string(),
-            reason: msg,
-        };
-
-        // NVIDIA driver workaround for R16Unorm: see issue #134
-        let _warmup = if pixel_format == GpuPixelFormat::P010 {
-            let y = create_nv12_shared_texture(gpu, 16, 16, Nv12Plane::Y, pixel_format)
-                .map_err(|e| map_err(format!("warmup Y: {e}")))?;
-            let uv = create_nv12_shared_texture(gpu, 16, 16, Nv12Plane::Uv, pixel_format)
-                .map_err(|e| map_err(format!("warmup UV: {e}")))?;
-            Some((y, uv))
-        } else {
-            None
-        };
-
-        // Create double-buffered shared textures
-        let create_pair = |label: &str, (input_width, input_height)| -> Result<_, SourceError> {
-            let y = create_nv12_shared_texture(
-                gpu,
-                input_width,
-                input_height,
-                Nv12Plane::Y,
-                pixel_format,
-            )
-            .map_err(|e| map_err(format!("{label} Y: {e}")))?;
-            let uv = create_nv12_shared_texture(
-                gpu,
-                input_width,
-                input_height,
-                Nv12Plane::Uv,
-                pixel_format,
-            )
-            .map_err(|e| map_err(format!("{label} UV: {e}")))?;
-            Ok((y, uv))
-        };
-
-        let mut cameras = Vec::with_capacity(inputs.len());
-        let mut decoders = Vec::with_capacity(inputs.len());
-        for (input, &size) in inputs.iter().zip(&info.camera_sizes) {
-            let (y0, uv0) = create_pair("slot0", size)?;
-            let (y1, uv1) = create_pair("slot1", size)?;
-            let buf = GpuBufInfo {
-                y_ptr: [y0.cuda_ptr, y1.cuda_ptr],
-                uv_ptr: [uv0.cuda_ptr, uv1.cuda_ptr],
-                y_pitch: [y0.pitch, y1.pitch],
-                uv_pitch: [uv0.pitch, uv1.pitch],
-                width: size.0,
-                height: size.1,
-                pixel_format,
-            };
-            let (tx, rx) = std::sync::mpsc::sync_channel(2);
-            tx.send(0).expect("seed slot");
-            tx.send(1).expect("seed slot");
-            decoders.push((input.clone(), buf.clone(), rx));
-            cameras.push(reco_core::interop::shared_textures::SharedCameraTextures {
-                textures: [y0, uv0, y1, uv1],
-                buf,
-                slot_free_tx: tx,
-            });
-        }
+        let (shared, receivers) =
+            crate::zero_copy::cuda::allocate(gpu, &info.camera_sizes, pixel_format).map_err(
+                |error| SourceError::Init {
+                    path: inputs[0].first_path().display().to_string(),
+                    reason: error.to_string(),
+                },
+            )?;
+        let decoders = inputs
+            .iter()
+            .zip(&shared.cameras)
+            .zip(receivers)
+            .map(|((input, camera), free)| (input.clone(), camera.buf.clone(), free))
+            .collect();
         let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let decode_handles =
             crate::zero_copy::spawn_decode_threads_gpu(decoders, sync_offset, shutdown.clone());
-        let shared = SharedTextureSet { cameras };
         log::info!(
             "SmartFileSource: GPU zero-copy ({:?}, {pixel_format:?})",
             info.camera_sizes

@@ -61,7 +61,7 @@ pub struct StitchArgs<'a> {
     /// Has no effect without [`Self::replay_path`]. GPU path only -
     /// CPU-resident sources log a warn and record at source dims.
     pub replay_scale: Option<(u32, u32)>,
-    /// Force CPU decode to enable ORT CPU detection without TensorRT.
+    /// Deliver host images for CPU preprocessing while allowing hardware decoding.
     pub no_zero_copy: bool,
     pub cpu: bool,
     /// Path for pipeline event JSONL output.
@@ -326,7 +326,7 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
                 Ok(false) => {
                     let msg = "Tracking requested but detection cannot run in zero-copy mode. \
                                Build with --features tensorrt for GPU detection, \
-                               or use CPU decode (--no-zero-copy).";
+                               or use host image delivery (--no-zero-copy).";
                     return Err(reco_io::stitch_job::StitchError::Other(msg.into()));
                 }
                 Err(e) => {

@@ -12,8 +12,15 @@ use reco_core::stitch::{CpuExecutor, Executor};
 #[test]
 fn opening_discovers_late_video_without_rebasing_early_audio() {
     let peer = Peer::delayed_video_with_audio(50, 6);
-    let mut source =
-        RtspSource::open_with_audio(vec![input(&peer)], config(), Arc::default(), Some(0)).unwrap();
+    let mut source = RtspSource::open_with_audio(
+        vec![input(&peer)],
+        config(),
+        Arc::default(),
+        Some(0),
+        #[cfg(feature = "gpu")]
+        None,
+    )
+    .unwrap();
     assert_eq!(source.info().camera_sizes, [(64, 32)]);
     let first = source.next_frame().unwrap().unwrap();
     assert_eq!(first.pts_us, Some(0));
@@ -92,8 +99,15 @@ fn selected_live_audio_survives_startup_trim_offsets_and_lookahead() {
         let mut inputs: Vec<_> = peers.iter().map(input).collect();
         inputs[1].timestamp_offset_us = -7_000_000;
         let stop = Arc::new(AtomicBool::new(false));
-        let mut source =
-            RtspSource::open_with_audio(inputs, config(), stop.clone(), Some(camera)).unwrap();
+        let mut source = RtspSource::open_with_audio(
+            inputs,
+            config(),
+            stop.clone(),
+            Some(camera),
+            #[cfg(feature = "gpu")]
+            None,
+        )
+        .unwrap();
         let audio = source.audio().expect("selected AAC track");
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("live-audio.mp4");

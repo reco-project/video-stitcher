@@ -1,8 +1,10 @@
-//! Host-backed RTSP inputs with bounded timestamp selection and cancellable TCP reads.
+//! RTSP inputs with bounded timestamp selection and cancellable TCP reads.
 //!
 //! Explicit per-input offsets map decoded media timestamps onto one common timeline. They must be measured or supplied by the producer; connection order and packet arrival do not establish camera synchronization. The playout clock is anchored once from initial receipt, so age limits concern that media timeline, not independently certified exposure age. Untimed startup images are discarded within the opening deadline. After startup, clock resets, missing timestamps, format changes, unexpected end-of-stream and expired inputs fail the source without automatic reconnection.
-//! Hardware decoding may be used, but images are retained in host memory. This adapter does not change native file/camera zero-copy paths.
+//! Direct opening delivers host images. GPU-aware jobs can retain CUDA images through pairing and stage selected images into existing CUDA/Vulkan surfaces without a host round trip.
 
+#[cfg(all(feature = "gpu", target_os = "linux"))]
+mod native;
 #[cfg(test)]
 mod tests;
 mod worker;
@@ -48,16 +50,26 @@ struct Metadata {
     full_range: bool,
     first_time_us: i64,
     first_arrived_us: i64,
+    rotation: i32,
+}
+
+#[derive(Clone)]
+enum Image {
+    Host(Arc<Yuv420pData>),
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
+    Cuda(Arc<crate::ffmpeg::decoder::GpuFrame>),
 }
 
 struct Decoded {
     time_us: i64,
     arrived_us: i64,
-    image: Arc<Yuv420pData>,
+    image: Image,
 }
 
 #[derive(Default)]
 struct InputState {
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
+    layout: Option<native::Layout>,
     metadata: Option<Metadata>,
     audio: Option<LiveAudio>,
     images: VecDeque<Decoded>,
@@ -66,9 +78,13 @@ struct InputState {
 
 struct State {
     inputs: Vec<InputState>,
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
+    delivery: Option<native::Layout>,
 }
 
 struct Shared {
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
+    native_requested: bool,
     state: Mutex<State>,
     wake: Condvar,
 }
@@ -90,7 +106,10 @@ pub struct RtspSource {
     config: RtspConfig,
     info: SourceInfo,
     full_range: bool,
-    selector: Selector<Arc<Yuv420pData>>,
+    selector: Selector<Image>,
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
+    native: Option<native::Delivery>,
+    rotations: [i32; 2],
     media_origin_us: i64,
     wall_shift_us: i64,
     slot: Option<i64>,
@@ -141,7 +160,14 @@ impl RtspSource {
         config: RtspConfig,
         interrupted: Arc<AtomicBool>,
     ) -> Result<Self, SourceError> {
-        Self::open_with_audio(inputs, config, interrupted, None)
+        Self::open_with_audio(
+            inputs,
+            config,
+            interrupted,
+            None,
+            #[cfg(feature = "gpu")]
+            None,
+        )
     }
 
     pub(crate) fn open_with_audio(
@@ -149,7 +175,10 @@ impl RtspSource {
         config: RtspConfig,
         interrupted: Arc<AtomicBool>,
         audio_camera: Option<usize>,
+        #[cfg(feature = "gpu")] gpu: Option<&reco_core::gpu::GpuContext>,
     ) -> Result<Self, SourceError> {
+        #[cfg(all(feature = "gpu", not(target_os = "linux")))]
+        let _ = gpu;
         let invalid = |reason: &str| SourceError::Init {
             path: "RTSP capture".into(),
             reason: reason.into(),
@@ -189,8 +218,14 @@ impl RtspSource {
             return Err(invalid("RTSP opening cancelled"));
         }
         let shared = Arc::new(Shared {
+            #[cfg(all(feature = "gpu", target_os = "linux"))]
+            native_requested: !config.software_decode
+                && matches!(inputs.len(), 1 | 2)
+                && gpu.is_some_and(|gpu| gpu.supports_zero_copy()),
             state: Mutex::new(State {
                 inputs: (0..inputs.len()).map(|_| InputState::default()).collect(),
+                #[cfg(all(feature = "gpu", target_os = "linux"))]
+                delivery: None,
             }),
             wake: Condvar::new(),
         });
@@ -209,6 +244,9 @@ impl RtspSource {
             },
             full_range: false,
             selector,
+            #[cfg(all(feature = "gpu", target_os = "linux"))]
+            native: None,
+            rotations: [0; 2],
             media_origin_us: 0,
             wall_shift_us: 0,
             slot: None,
@@ -291,6 +329,19 @@ impl RtspSource {
             return Err(invalid("RTSP camera color ranges differ"));
         }
         source.info.camera_sizes = metadata.iter().map(|info| info.size).collect();
+        for (rotation, info) in source.rotations.iter_mut().zip(&metadata) {
+            *rotation = info.rotation;
+        }
+        #[cfg(all(feature = "gpu", target_os = "linux"))]
+        let delivery = source.shared.lock().delivery;
+        #[cfg(all(feature = "gpu", target_os = "linux"))]
+        if let Some(native::Layout::Cuda(format)) = delivery {
+            source.native = Some(native::Delivery::new(
+                gpu.unwrap(),
+                &source.info.camera_sizes,
+                format,
+            )?);
+        }
         source.media_origin_us = metadata
             .iter()
             .map(|info| info.first_time_us)
@@ -440,6 +491,7 @@ impl RtspSource {
                 }
                 match self.selector.poll(slot, now).map_err(read_error)? {
                     Some(selection) => {
+                        drop(state);
                         self.waiting = false;
                         self.advance(selection.at_us)?;
                         let origin = *self.output_origin_us.get_or_insert(selection.at_us);
@@ -457,9 +509,7 @@ impl RtspSource {
                                 times_us: selection.captures.iter().map(|c| c.time_us).collect(),
                                 max_age_us: Some(self.config.synchronization.max_age_us as u64),
                             }),
-                            images: FrameSet::Yuv420p(
-                                selection.captures.into_iter().map(|c| c.image).collect(),
-                            ),
+                            images: self.deliver(selection.captures)?,
                         }));
                     }
                     None => {
@@ -514,6 +564,35 @@ impl RtspSource {
         }
         result
     }
+
+    fn deliver(&self, captures: Vec<Capture<Image>>) -> Result<FrameSet, SourceError> {
+        #[cfg(all(feature = "gpu", target_os = "linux"))]
+        if let Some(native) = &self.native {
+            return native.stage(&captures);
+        }
+        let images = captures
+            .into_iter()
+            .map(|capture| match capture.image {
+                Image::Host(image) => Ok(image),
+                #[cfg(all(feature = "gpu", target_os = "linux"))]
+                Image::Cuda(_) => Err(read_error("RTSP host image residency changed")),
+            })
+            .collect::<Result<_, _>>()?;
+        Ok(FrameSet::Yuv420p(images))
+    }
+
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
+    pub(crate) fn shared_texture_set(&self) -> Option<&reco_core::interop::SharedTextureSet> {
+        self.native.as_ref().map(|native| &native.shared)
+    }
+
+    pub(crate) fn decode_mode(&self) -> &'static str {
+        if self.is_gpu_resident() {
+            "RTSP CUDA/Vulkan"
+        } else {
+            "RTSP host YUV420P"
+        }
+    }
 }
 
 impl FrameSource for RtspSource {
@@ -524,7 +603,32 @@ impl FrameSource for RtspSource {
         self.read(true)
     }
     fn try_next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {
+        if self.is_gpu_resident() {
+            return Err(read_error(
+                "native RTSP delivery requires session-driven processing",
+            ));
+        }
         self.read(false)
+    }
+    fn is_gpu_resident(&self) -> bool {
+        #[cfg(all(feature = "gpu", target_os = "linux"))]
+        return self.native.is_some();
+        #[cfg(not(all(feature = "gpu", target_os = "linux")))]
+        false
+    }
+    #[cfg(feature = "gpu")]
+    fn gpu_pixel_format(&self) -> reco_core::render::renderer::GpuPixelFormat {
+        #[cfg(target_os = "linux")]
+        if let Some(native) = &self.native {
+            return native.format;
+        }
+        reco_core::render::renderer::GpuPixelFormat::Nv12
+    }
+    fn left_rotation(&self) -> i32 {
+        self.rotations[0]
+    }
+    fn right_rotation(&self) -> i32 {
+        self.rotations[1]
     }
     fn is_full_range(&self) -> bool {
         self.full_range

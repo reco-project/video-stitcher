@@ -71,6 +71,8 @@ impl Inputs {
         interrupted: &Arc<AtomicBool>,
         audio: &AudioMode,
     ) -> Result<OpenedSource, StitchError> {
+        #[cfg(not(feature = "gpu"))]
+        let _ = force_cpu_decode;
         match self {
             Self::Files(inputs) => {
                 #[cfg(feature = "gpu")]
@@ -89,7 +91,7 @@ impl Inputs {
             }
             Self::Rtsp { inputs, config } => {
                 let mut config = config;
-                config.software_decode |= software_only || force_cpu_decode;
+                config.software_decode |= software_only;
                 Ok(OpenedSource::Rtsp(Box::new(RtspSource::open_with_audio(
                     inputs,
                     config,
@@ -98,6 +100,8 @@ impl Inputs {
                         AudioMode::CopyFrom(camera) => Some(*camera),
                         AudioMode::Disabled => None,
                     },
+                    #[cfg(feature = "gpu")]
+                    gpu.filter(|_| !force_cpu_decode),
                 )?)))
             }
             Self::Supplied(source) => Ok(OpenedSource::Supplied(source)),
@@ -119,6 +123,14 @@ pub(super) enum OpenedSource {
 }
 
 impl OpenedSource {
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
+    pub(super) fn shared_texture_set(&self) -> Option<&reco_core::interop::SharedTextureSet> {
+        match self {
+            Self::Files(source) => source.shared_texture_set(),
+            Self::Rtsp(source) => source.shared_texture_set(),
+            Self::Supplied(_) => None,
+        }
+    }
     pub(super) fn audio(&self) -> Option<crate::ffmpeg::live_audio::LiveAudio> {
         match self {
             Self::Files(_) | Self::Supplied(_) => None,
@@ -145,7 +157,7 @@ impl OpenedSource {
     pub(super) fn decode_mode(&self) -> &'static str {
         match self {
             Self::Files(source) => source.decode_mode(),
-            Self::Rtsp(_) => "RTSP host YUV420P",
+            Self::Rtsp(source) => source.decode_mode(),
             Self::Supplied(_) => "supplied host source",
         }
     }

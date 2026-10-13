@@ -3,6 +3,9 @@
 //! Frame messages are followed by explicit EOF or failure. CUDA copies finish
 //! before a slot is published; Metal and D3D11 messages retain their surfaces.
 
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub(crate) mod cuda;
+
 #[cfg(all(test, target_os = "windows"))]
 mod windows_tests;
 
@@ -56,40 +59,7 @@ fn spawn_single_decoder_gpu(
                 let Some(frame) = dec.next_frame_gpu()? else {
                     break;
                 };
-                // Shared textures have a fixed layout. Never copy a changed frame
-                // using stale extents or sample widths.
-                if frame.width != buf.width
-                    || frame.height != buf.height
-                    || frame.pixel_format != buf.pixel_format
-                {
-                    return Err(DecodeError::ConversionError(
-                        "decoded frame layout does not match shared CUDA textures".into(),
-                    ));
-                }
-                let s = usize::from(slot);
-                reco_core::interop::cuda::cuda_ensure_context()
-                    .map_err(|e| DecodeError::ConversionError(e.to_string()))?;
-                let width_bytes = buf.width as usize * buf.pixel_format.bytes_per_sample();
-                reco_core::interop::cuda::cuda_2d_copy(
-                    buf.y_ptr[s],
-                    buf.y_pitch[s],
-                    frame.y_ptr,
-                    frame.y_pitch,
-                    width_bytes,
-                    buf.height as usize,
-                )
-                .map_err(|e| DecodeError::ConversionError(format!("CUDA Y copy: {e}")))?;
-                reco_core::interop::cuda::cuda_2d_copy(
-                    buf.uv_ptr[s],
-                    buf.uv_pitch[s],
-                    frame.uv_ptr,
-                    frame.uv_pitch,
-                    width_bytes,
-                    buf.height as usize / 2,
-                )
-                .map_err(|e| DecodeError::ConversionError(format!("CUDA UV copy: {e}")))?;
-                reco_core::interop::cuda::cuda_synchronize()
-                    .map_err(|e| DecodeError::ConversionError(e.to_string()))?;
+                cuda::stage(&frame, &buf, slot)?;
                 if tx.send(Ok(Some(slot))).is_err() {
                     break;
                 }

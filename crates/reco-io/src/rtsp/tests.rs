@@ -1,6 +1,8 @@
 //! Real loopback RTSP/TCP decode and source lifecycle checks.
 
 mod audio;
+#[cfg(all(feature = "gpu", target_os = "linux"))]
+mod native;
 mod peer;
 mod pipeline;
 use super::*;

@@ -35,8 +35,6 @@ mod input;
 #[cfg(test)]
 mod source_tests;
 use input::Inputs;
-#[cfg(all(feature = "gpu", target_os = "linux"))]
-use input::OpenedSource;
 
 /// One-shot stitching job: camera-ordered images in, encoded video out.
 ///
@@ -344,7 +342,7 @@ impl StitchJob {
 
     /// Create a job from RTSP video inputs using explicit media-clock mapping and bounded synchronization.
     ///
-    /// The source is opened by [`Self::run`], after calibration arity validation. Images are host-backed even when FFmpeg uses hardware decoding. File seek and frame-offset options are rejected: RTSP synchronization belongs in each [`crate::rtsp::RtspInput`]. Selected audio is copied from the same RTSP connection and mapped onto the selected video timeline, without mixing or transcoding.
+    /// The source is opened by [`Self::run`], after calibration arity validation. Compatible Linux CUDA/Vulkan jobs retain native images through pairing; other configurations deliver host images. File seek and frame-offset options are rejected: RTSP synchronization belongs in each [`crate::rtsp::RtspInput`]. Selected audio is copied from the same RTSP connection and mapped onto the selected video timeline, without mixing or transcoding.
     pub fn from_rtsp(
         inputs: Vec<crate::rtsp::RtspInput>,
         config: crate::rtsp::RtspConfig,
@@ -806,9 +804,7 @@ impl StitchJob {
 
         // Configure GPU bind groups if source is GPU-resident
         #[cfg(all(feature = "gpu", target_os = "linux"))]
-        if let OpenedSource::Files(files) = &opened
-            && let Some(shared) = files.shared_texture_set()
-        {
+        if let Some(shared) = opened.shared_texture_set() {
             session.setup_gpu_source(shared)?;
         }
 
