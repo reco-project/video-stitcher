@@ -242,6 +242,7 @@ export component ToastStack inherits Rectangle {
 // to preview where the segment will land.
 export component SegmentList inherits Rectangle {
     in property <[string]> segments;
+    in property <bool> enabled: true;
     callback remove(int);
     callback reorder(int /* from */, int /* to */);
 
@@ -251,6 +252,12 @@ export component SegmentList inherits Rectangle {
     property <length> row-gap: 4px;
     property <length> rowstep: root.row-h + root.row-gap;
     property <int> count: root.segments.length;
+    changed enabled => {
+        if !root.enabled {
+            root.drag-from = -1;
+            root.drag-to = -1;
+        }
+    }
 
     height: root.count > 0 ? root.count * root.rowstep - root.row-gap : 0px;
 
@@ -279,7 +286,7 @@ export component SegmentList inherits Rectangle {
                     }
 
                     grip := TouchArea {
-                        enabled: root.count > 1;
+                        enabled: root.enabled && root.count > 1;
                         mouse-cursor: grab;
                         pointer-event(e) => {
                             if (e.kind == PointerEventKind.down) {
@@ -329,6 +336,7 @@ export component SegmentList inherits Rectangle {
                     text: "×";
                     description: "Remove " + seg;
                     quiet: true;
+                    enabled: root.enabled;
                     clicked => {
                         root.remove(idx);
                     }

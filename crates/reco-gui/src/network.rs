@@ -285,7 +285,6 @@ pub fn poll(state: &mut AppState, weak: &slint::Weak<RecoApp>) {
                 app.set_network_active(true);
                 app.set_left_path("".into());
                 app.set_right_path("".into());
-                app.set_has_both_videos(false);
                 sync_segments(state, &app);
                 update_preview_ui(state, weak, Ok(true), None);
                 app.set_playing(true);

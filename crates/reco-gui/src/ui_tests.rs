@@ -9,6 +9,9 @@ use slint::{ComponentHandle, Model, PhysicalSize};
 
 use super::RecoApp;
 
+#[path = "ui_tests/workflow.rs"]
+mod workflow;
+
 struct TestPlatform(Rc<MinimalSoftwareWindow>);
 
 impl Platform for TestPlatform {
@@ -36,11 +39,12 @@ fn draw(window: &MinimalSoftwareWindow, width: u32, height: u32) -> Vec<slint::R
     pixels
 }
 
-fn retain_export_screenshot(name: &str, pixels: &[slint::Rgb8Pixel]) {
+fn retain_screenshot(name: &str, pixels: &[slint::Rgb8Pixel], width: u32, height: u32) {
     if let Some(dir) = std::env::var_os("RECO_GUI_TEST_ARTIFACT_DIR") {
         let path = std::path::Path::new(&dir).join(name).with_extension("ppm");
         assert!(!path.exists());
-        let mut bytes = b"P6\n1280 820\n255\n".to_vec();
+        assert_eq!(pixels.len(), (width * height) as usize);
+        let mut bytes = format!("P6\n{width} {height}\n255\n").into_bytes();
         bytes.extend(pixels.iter().flat_map(|pixel| [pixel.r, pixel.g, pixel.b]));
         std::fs::write(path, bytes).unwrap();
     }
@@ -185,14 +189,7 @@ fn export_waits_for_recording_and_calibration_to_stop() {
 fn calibration_action_cancels_then_waits_for_the_worker() {
     let (app, window) = workspace();
     app.set_files_loaded(true);
-    app.set_left_path("left.mp4".into());
-    app.set_right_path("right.mp4".into());
-    app.set_left_segments(slint::ModelRc::new(slint::VecModel::from(vec![
-        "left.mp4".into(),
-    ])));
-    app.set_right_segments(slint::ModelRc::new(slint::VecModel::from(vec![
-        "right.mp4".into(),
-    ])));
+    workflow::select_files(&app);
     let starts = Rc::new(Cell::new(0));
     let cancels = Rc::new(Cell::new(0));
     let count = starts.clone();
@@ -200,15 +197,15 @@ fn calibration_action_cancels_then_waits_for_the_worker() {
     let count = cancels.clone();
     app.on_cancel_calibration(move || count.set(count.get() + 1));
     draw(&window, 1280, 820);
-    click(&app, 1060.0, 418.0);
+    click(&app, 1060.0, 260.0);
     assert_eq!(starts.get(), 1);
     app.set_calibrating(true);
     draw(&window, 1280, 820);
-    click(&app, 1060.0, 418.0);
+    click(&app, 1060.0, 260.0);
     assert_eq!(cancels.get(), 1);
     app.set_calibration_step("Stopping…".into());
     draw(&window, 1280, 820);
-    click(&app, 1060.0, 418.0);
+    click(&app, 1060.0, 260.0);
     assert_eq!(starts.get(), 1);
     assert_eq!(cancels.get(), 1);
 }
@@ -233,6 +230,7 @@ fn error_toasts_are_visible_in_the_workspace_and_above_dialogs() {
                 },
             ])));
             let after = draw(&window, width, height);
+            retain_screenshot(&format!("toast-{width}-{modal}"), &after, width, height);
             let changed = before
                 .iter()
                 .zip(after.iter())
@@ -244,21 +242,32 @@ fn error_toasts_are_visible_in_the_workspace_and_above_dialogs() {
             );
             let mut top = height;
             let mut bottom = 0;
-            for (index, (a, b)) in before.iter().zip(after.iter()).enumerate() {
-                if a != b {
+            let inset = if modal { 0.0 } else { 332.0 };
+            let stripe_x = width - inset as u32 - 375;
+            // Locate the toast's error stripe, not unrelated layout or hover changes.
+            for (index, pixel) in after.iter().enumerate() {
+                if index % width as usize == stripe_x as usize
+                    && pixel.r == 255
+                    && pixel.g == 169
+                    && pixel.b == 159
+                {
                     let y = index as u32 / width;
                     top = top.min(y);
                     bottom = bottom.max(y);
                 }
             }
+            assert!(top < bottom, "the error stripe is missing");
             dismissed.set(0);
-            let inset = if modal { 0.0 } else { 332.0 };
             click(
                 &app,
                 width as f32 - inset - 43.0,
                 (top + bottom) as f32 / 2.0,
             );
-            assert_eq!(dismissed.get(), 7, "toast close action was not reachable");
+            assert_eq!(
+                dismissed.get(),
+                7,
+                "toast close action was not reachable at {width}x{height}, modal={modal}, bounds={top}..{bottom}"
+            );
         }
     }
 }
@@ -317,20 +326,22 @@ fn roi_vertices_follow_the_contained_image_not_its_letterbox() {
 fn field_setup_is_reachable_without_scrolling_and_gated_during_output() {
     let (app, window) = workspace();
     app.set_files_loaded(true);
+    workflow::select_files(&app);
+    app.set_calibration_path("pitch.json".into());
     let edits = Rc::new(Cell::new(0));
     let count = edits.clone();
     app.on_edit_field(move || count.set(count.get() + 1));
     draw(&window, 800, 600);
-    click(&app, 625.0, 160.0);
+    click(&app, 625.0, 468.0);
     assert_eq!(edits.get(), 1);
     app.set_recording(true);
     draw(&window, 800, 600);
-    click(&app, 625.0, 160.0);
+    click(&app, 625.0, 468.0);
     assert_eq!(edits.get(), 1);
     app.set_recording(false);
     app.set_export_in_progress(true);
     draw(&window, 800, 600);
-    click(&app, 625.0, 160.0);
+    click(&app, 625.0, 468.0);
     assert_eq!(edits.get(), 1);
 }
 
@@ -345,10 +356,8 @@ fn real_footage_field_selection_drag_and_pan() {
         stitch::CpuExecutor,
     };
     use std::{cell::RefCell, path::PathBuf};
-    let cal = Calibration::from_file(&PathBuf::from(
-        std::env::var("RECO_FIELD_TEST_CALIBRATION").unwrap(),
-    ))
-    .unwrap();
+    let calibration_path = PathBuf::from(std::env::var("RECO_FIELD_TEST_CALIBRATION").unwrap());
+    let cal = Calibration::from_file(&calibration_path).unwrap();
     let inputs: Vec<_> = std::env::var("RECO_FIELD_TEST_INPUTS")
         .unwrap()
         .split(';')
@@ -390,10 +399,18 @@ fn real_footage_field_selection_drag_and_pan() {
     let (app, window) = workspace();
     app.set_files_loaded(true);
     app.set_preview_frame(render(pose));
+    app.set_is_l_shape(cal.projection.l_shape().is_some());
+    app.set_calibration_path(super::display_name(&calibration_path).into());
+    app.set_left_path(super::display_name(inputs[0].first_path()).into());
+    if let Some(right) = inputs.get(1) {
+        app.set_right_path(super::display_name(right.first_path()).into());
+    }
+    app.set_status_text("Calibrated preview".into());
     let mut state = super::AppState::new(Default::default());
     state.calibration = Some(cal);
     state.left_input = inputs.first().cloned();
     state.right_input = inputs.get(1).cloned();
+    super::sync_segments(&state, &app);
     state.pose.set_pose(pose);
     state.displayed_view = Some((size.clone(), pose));
     let state = Rc::new(RefCell::new(state));
@@ -401,7 +418,8 @@ fn real_footage_field_selection_drag_and_pan() {
     let pan_count = Rc::new(Cell::new(0));
     let count = pan_count.clone();
     app.on_pan(move |_, _| count.set(count.get() + 1));
-    draw(&window, 1280, 820);
+    let pixels = draw(&window, 1280, 820);
+    retain_screenshot("real-footage-workspace", &pixels, 1280, 820);
     app.invoke_edit_field();
     draw(&window, 1280, 820);
     let w = app.get_preview_area_width();
@@ -742,7 +760,7 @@ fn processed_output_exposes_publishing_without_replacing_the_recording() {
     app.set_clip_duration_secs(120.0);
     app.set_export_end_secs(120.0);
     let pixels = draw(&window, 1280, 820);
-    retain_export_screenshot("export-before", &pixels);
+    retain_screenshot("export-before", &pixels, 1280, 820);
     let started = Rc::new(Cell::new(0));
     let counter = started.clone();
     app.on_start_export(move || counter.set(counter.get() + 1));
@@ -759,7 +777,7 @@ fn processed_output_exposes_publishing_without_replacing_the_recording() {
     app.set_export_stream_url("rtmps://127.0.0.1/live/private-key".into());
     let pixels = draw(&window, 1280, 820);
     assert_eq!(app.get_export_output_path(), "recording.mp4");
-    retain_export_screenshot("export-publish", &pixels);
+    retain_screenshot("export-publish", &pixels, 1280, 820);
     click(&app, 842.0, 728.0);
     assert_eq!(started.get(), 1);
     click(&app, 550.0, 357.0);
@@ -798,7 +816,7 @@ fn network_form_edits_camera_rows_and_keeps_cancellation_visible() {
     );
     app.set_network_dialog_open(true);
     let pixels = draw(&window, 1280, 820);
-    retain_export_screenshot("network-inputs-empty", &pixels);
+    retain_screenshot("network-inputs-empty", &pixels, 1280, 820);
     click(&app, 550.0, 264.0);
     key(&app, "rtsp://127.0.0.1:8554/left");
     click(&app, 550.0, 303.0);
@@ -821,7 +839,7 @@ fn network_form_edits_camera_rows_and_keeps_cancellation_visible() {
         "-7000000"
     );
     let pixels = draw(&window, 1280, 820);
-    retain_export_screenshot("network-inputs-configured", &pixels);
+    retain_screenshot("network-inputs-configured", &pixels, 1280, 820);
     let cancelled = Rc::new(Cell::new(0));
     let count = cancelled.clone();
     app.on_cancel_network(move || count.set(count.get() + 1));

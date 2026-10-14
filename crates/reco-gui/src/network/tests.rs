@@ -274,4 +274,12 @@ fn actual_live_preview_then_recording_stops_and_finalizes_audio() {
         "completion must not silently reconnect a live source"
     );
     assert!(state.bridge.is_none());
+    app.set_network_active(false);
+    app.set_files_loaded(false);
+    app.set_left_path("left.mp4".into());
+    app.set_right_path("right.mp4".into());
+    assert!(
+        app.get_has_both_videos(),
+        "a previous live connection must not disable two-file calibration"
+    );
 }

@@ -63,7 +63,7 @@ export component RecoApp inherits Window {
     in-out property <string> right-path: "";
     in-out property <bool> is-l-shape: true;
     in-out property <string> calibration-path: "";
-    in-out property <string> status-text: "Load left + right videos and calibration JSON to begin";
+    in-out property <string> status-text: "Open video files or connect live cameras to begin";
     in-out property <float> progress: 0.0;
     in-out property <int> current-frame: 0;
     in-out property <int> total-frames: 0;
@@ -74,7 +74,7 @@ export component RecoApp inherits Window {
     in-out property <bool> calibration-needs-review: false;
     in-out property <bool> calibration-estimate-optics: false;
     in-out property <string> calibration-step: "";
-    in-out property <bool> has-both-videos: left-path != "" && right-path != "";
+    out property <bool> has-both-videos: left-path != "" && right-path != "";
     in-out property <bool> has-roi: false;
     in-out property <[float]> roi-points-x: [];
     in-out property <[float]> roi-points-y: [];
@@ -390,6 +390,7 @@ export component RecoApp inherits Window {
     in-out property <bool> inspector-open: true;
     in-out property <int> inspector-tab: 0;
     property <length> inspector-width: 320px;
+    property <bool> setup-locked: root.export-in-progress || root.recording || root.calibrating || root.field-editing || root.network-opening;
     changed files-loaded => {
         if !root.files-loaded {
             root.inspector-tab = 0;
@@ -560,6 +561,7 @@ export component RecoApp inherits Window {
                     }
                     if root.cal-dirty || root.lens-dirty: Button {
                         text: "Save calibration";
+                        enabled: !root.field-editing && !root.calibrating;
                         clicked => {
                             root.save-calibration();
                         }
@@ -591,7 +593,7 @@ export component RecoApp inherits Window {
 
                     Button {
                         text: root.network-active ? "Record / publish…" : "Export…";
-                        description: root.recording ? "Stop quick recording before exporting" : "Export a stitched video";
+                        description: root.recording ? "Stop quick recording before exporting" : root.network-active ? "Record the processed live feed, with optional streaming" : "Export a stitched video";
                         primary: true;
                         enabled: root.files-loaded && !root.export-in-progress && !root.recording && !root.calibrating && !root.field-editing;
                         clicked => {
@@ -617,11 +619,12 @@ export component RecoApp inherits Window {
                     border-radius: 12px;
 
                     if !root.files-loaded: VerticalLayout {
+                        property <bool> can-calibrate: root.has-both-videos && root.is-l-shape;
                         padding: 32px;
                         alignment: center;
                         spacing: 16px;
                         Text {
-                            text: root.network-active ? "Live preview is stopped" : "Your cameras.\nOne view.";
+                            text: root.calibrating ? "Aligning your cameras" : root.network-active ? "Live preview is stopped" : parent.can-calibrate ? "Align your cameras" : root.left-path != "" && root.is-l-shape ? "Add the right camera" : "Your cameras.\nOne view.";
                             color: #edf3f5;
                             font-size: root.width > 1000px ? 34px : 26px;
                             font-weight: 600;
@@ -629,7 +632,7 @@ export component RecoApp inherits Window {
                         }
 
                         Text {
-                            text: root.network-active ? "Reconnect the selected RTSP cameras to preview again." : "Add your footage, then load a calibration\nor align two cameras automatically.";
+                            text: root.calibrating ? root.calibration-step : root.network-active ? "Reconnect the selected RTSP cameras to preview again." : parent.can-calibrate ? "Auto-calibrate these videos or load a saved calibration." : root.left-path != "" && root.is-l-shape ? "Then align the two views or load a saved calibration.\nFor a single panorama, load its cylindrical calibration." : "Open video files, or connect live cameras\nusing a saved rig calibration.";
                             color: #a6b8c4;
                             font-size: 14px;
                             horizontal-alignment: center;
@@ -640,17 +643,24 @@ export component RecoApp inherits Window {
                             alignment: center;
                             spacing: 10px;
                             Button {
-                                text: root.network-active ? "Reconnect…" : "Add video";
+                                text: root.calibrating ? "Cancel calibration" : root.network-active ? "Reconnect…" : root.has-both-videos && root.is-l-shape ? "Auto-calibrate" : root.left-path != "" && root.is-l-shape ? "Add right video" : "Open video…";
                                 primary: true;
+                                enabled: root.calibrating ? root.calibration-step != "Stopping…" : !root.setup-locked;
                                 clicked => {
-                                    if root.network-active { root.open-network(); } else { root.pick-left-video(); }
+                                    if root.calibrating { root.cancel-calibration(); }
+                                    else if root.network-active { root.open-network(); }
+                                    else if root.has-both-videos && root.is-l-shape { root.auto-calibrate(); }
+                                    else if root.left-path != "" && root.is-l-shape { root.pick-right-video(); }
+                                    else { root.pick-left-video(); }
                                 }
                             }
 
                             Button {
-                                text: "Load calibration";
+                                text: root.left-path != "" || root.right-path != "" || root.network-active ? "Load calibration…" : "Connect live…";
+                                enabled: !root.setup-locked;
                                 clicked => {
-                                    root.pick-calibration();
+                                    if root.left-path != "" || root.right-path != "" || root.network-active { root.pick-calibration(); }
+                                    else { root.open-network(); }
                                 }
                             }
                         }
@@ -813,6 +823,7 @@ export component RecoApp inherits Window {
                         padding: 8px;
                         spacing: 8px;
                         HorizontalLayout {
+                            height: 34px;
                             spacing: 6px;
                             Button {
                                 text: "Setup";
@@ -828,7 +839,7 @@ export component RecoApp inherits Window {
                                 text: "Adjust";
                                 selected: root.inspector-tab == 1;
                                 quiet: true;
-                                enabled: root.files-loaded;
+                                enabled: root.files-loaded && !root.field-editing;
                                 horizontal-stretch: 1;
                                 clicked => {
                                     root.inspector-tab = 1;
@@ -836,37 +847,55 @@ export component RecoApp inherits Window {
                             }
                         }
 
-                        if root.inspector-tab == 0: ScrollView {
+                        if root.field-editing: VerticalLayout {
+                            vertical-stretch: 1;
+                            padding: 8px;
+                            spacing: 12px;
+                            alignment: start;
+                            Text { text: "Field corners · " + root.field-corner-count + "/4"; color: Theme.text-primary; font-size: 14px; font-weight: 600; }
+                            Text { text: root.field-message; color: Theme.text-secondary; font-size: 12px; wrap: word-wrap; }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                Button { text: "Apply corners"; primary: true; enabled: root.field-can-apply; clicked => { root.finish-field(true); } }
+                                Button { text: "Cancel"; clicked => { root.finish-field(false); } }
+                                Button { text: "Reset"; enabled: root.field-corner-count > 0; clicked => { root.reset-field-draft(); } }
+                            }
+                            Text { text: "Apply updates the tracking region. Save calibration to keep it for next time."; color: Theme.text-muted; font-size: 12px; wrap: word-wrap; }
+                        }
+                        if root.inspector-tab == 0 && !root.field-editing: ScrollView {
                             horizontal-scrollbar-policy: always-off;
                             VerticalLayout {
                                 padding: 8px;
                                 spacing: 12px;
                                 alignment: start;
-                                if root.files-loaded: VerticalLayout {
+                                HorizontalLayout {
                                     spacing: 6px;
-                                    Text { text: root.field-editing ? "Field corners · " + root.field-corner-count + "/4" : root.has-roi ? "Tracking region is set" : "Tracking region"; color: Theme.text-primary; font-size: 13px; }
-                                    if !root.field-editing: HorizontalLayout {
-                                        Button {
-                                            text: root.has-roi ? "Edit four corners" : "Set four corners";
-                                            enabled: !root.export-in-progress && !root.recording && !root.calibrating && !root.lens-preview-active;
-                                            clicked => { root.edit-field(); }
-                                        }
-                                        if root.has-roi: Button {
-                                            text: "Remove";
-                                            enabled: !root.export-in-progress && !root.recording && !root.calibrating;
-                                            clicked => { root.remove-field(); }
-                                        }
-                                    }
-                                    if root.field-editing: Text {
-                                        text: root.field-message;
-                                        color: Theme.text-muted; font-size: 12px; wrap: word-wrap;
-                                    }
-                                    if root.field-editing: HorizontalLayout {
-                                        Button { text: "Apply"; enabled: root.field-can-apply; clicked => { root.finish-field(true); } }
-                                        Button { text: "Cancel"; clicked => { root.finish-field(false); } }
-                                        Button { text: "Reset"; enabled: root.field-corner-count > 0; clicked => { root.reset-field-draft(); } }
+                                    Text { text: "Sources"; color: Theme.text-primary; font-size: 14px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
+                                    Button {
+                                        text: root.network-active ? "RTSP inputs…" : "Connect live…";
+                                        enabled: !root.setup-locked;
+                                        clicked => { root.open-network(); }
                                     }
                                 }
+                                if root.network-active: VerticalLayout {
+                                    spacing: 8px;
+                                    Text { text: root.network-inputs.length + (root.network-inputs.length == 1 ? " live camera" : " live cameras") + " · RTSP"; color: Theme.text-secondary; font-size: 12px; }
+                                    Text { text: root.files-loaded ? "Preview connected. Record / publish starts a separate processed output." : "Preview stopped. Reconnect to continue."; color: Theme.text-muted; font-size: 12px; wrap: word-wrap; }
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Button { text: "Open files…"; enabled: !root.setup-locked; clicked => { root.pick-left-video(); } }
+                                        Button { text: "Disconnect"; enabled: !root.setup-locked; clicked => { root.disconnect-network(); } }
+                                    }
+                                }
+
+                        if !root.network-active: VerticalLayout {
+                            spacing: 10px;
+                            source-details := SectionHeader {
+                                title: root.is-l-shape ? "Video files · two cameras" : "Video file · panorama";
+                                expanded: !root.files-loaded;
+                            }
+                            if source-details.expanded: VerticalLayout {
+                                spacing: 10px;
 
                         // Left video section
                         HorizontalLayout {
@@ -882,6 +911,7 @@ export component RecoApp inherits Window {
 
                                     Button {
                                         text: "Add";
+                                        enabled: !root.setup-locked;
                                         clicked => {
                                             root.pick-left-video();
                                         }
@@ -889,7 +919,7 @@ export component RecoApp inherits Window {
 
                                     Button {
                                         text: "Clear";
-                                        enabled: root.left-path != "";
+                                        enabled: root.left-path != "" && !root.setup-locked;
                                         clicked => {
                                             root.clear-left();
                                         }
@@ -904,6 +934,7 @@ export component RecoApp inherits Window {
 
                                 SegmentList {
                                     segments: root.left-segments;
+                                    enabled: !root.setup-locked;
                                     remove(i) => {
                                         root.remove-left-segment(i);
                                     }
@@ -913,7 +944,7 @@ export component RecoApp inherits Window {
                                 }
 
                                 // Right video section
-                        if root.is-l-shape || !root.files-loaded: HorizontalLayout {
+                        if root.is-l-shape: HorizontalLayout {
                                     spacing: 6px;
                                     Text {
                                         text: "Right camera";
@@ -926,6 +957,7 @@ export component RecoApp inherits Window {
 
                                     Button {
                                         text: "Add";
+                                        enabled: !root.setup-locked;
                                         clicked => {
                                             root.pick-right-video();
                                         }
@@ -933,21 +965,22 @@ export component RecoApp inherits Window {
 
                                     Button {
                                         text: "Clear";
-                                        enabled: root.right-path != "";
+                                        enabled: root.right-path != "" && !root.setup-locked;
                                         clicked => {
                                             root.clear-right();
                                         }
                                     }
                                 }
 
-                                if (root.is-l-shape || !root.files-loaded) && root.right-segments.length == 0: Text {
+                                if root.is-l-shape && root.right-segments.length == 0: Text {
                                     text: "No video selected";
                                     color: Theme.text-muted;
                                     font-size: 12px;
                                 }
 
-                                if root.is-l-shape || !root.files-loaded: SegmentList {
+                                if root.is-l-shape: SegmentList {
                                     segments: root.right-segments;
+                                    enabled: !root.setup-locked;
                                     remove(i) => {
                                         root.remove-right-segment(i);
                                     }
@@ -955,17 +988,25 @@ export component RecoApp inherits Window {
                                         root.reorder-right-segment(f, t);
                                     }
                                 }
+                                Button {
+                                    text: "Recent files…";
+                                    quiet: true;
+                                    enabled: !root.setup-locked && (root.recent-left-paths.length > 0 || root.recent-right-paths.length > 0 || root.recent-calibration-paths.length > 0);
+                                    clicked => { root.recent-dialog-open = true; }
+                                }
+                            }
+                        }
 
                                 Text {
                                     text: "Calibration";
-                                    color: Theme.text-secondary;
-                                    font-size: 12px;
+                                    color: Theme.text-primary;
+                                    font-size: 14px;
                                     font-weight: 600;
                                 }
 
                                 HorizontalLayout {
                                     spacing: 4px;
-                                    if root.has-both-videos && (root.is-l-shape || !root.files-loaded): Button {
+                                    if root.has-both-videos && root.is-l-shape: Button {
                                         text: root.calibrating ? (root.calibration-step == "Stopping…" ? "Stopping…" : "Cancel calibration") : (root.files-loaded ? "Re-calibrate" : "Auto Calibrate");
                                         enabled: !root.export-in-progress && !root.recording && (!root.calibrating || root.calibration-step != "Stopping…");
                                         horizontal-stretch: 1;
@@ -979,13 +1020,21 @@ export component RecoApp inherits Window {
                                     }
                                     Button {
                                         text: "Load…";
+                                        enabled: !root.setup-locked;
                                         clicked => {
                                             root.pick-calibration();
                                         }
                                     }
                                 }
 
-                                if root.has-both-videos && (root.is-l-shape || !root.files-loaded): VerticalLayout {
+                                if root.calibration-path == "" && !root.files-loaded && !root.has-both-videos: Text {
+                                    text: "Load a saved calibration, or add two videos to auto-calibrate. Live inputs need a saved calibration first.";
+                                    color: Theme.text-muted;
+                                    font-size: 12px;
+                                    wrap: word-wrap;
+                                }
+
+                                if root.has-both-videos && root.is-l-shape: VerticalLayout {
                                     spacing: 6px;
 
                                     if root.calibration-needs-review: Button {
@@ -1066,6 +1115,7 @@ export component RecoApp inherits Window {
                                             text: "×";
                                             description: "Clear calibration";
                                             quiet: true;
+                                            enabled: !root.setup-locked;
                                             clicked => {
                                                 root.clear-calibration();
                                             }
@@ -1073,29 +1123,27 @@ export component RecoApp inherits Window {
                                     }
                                 }
 
-                                Button {
-                                    text: "Recent files…";
-                                    enabled: root.recent-left-paths.length > 0 || root.recent-right-paths.length > 0 || root.recent-calibration-paths.length > 0;
-                                    clicked => {
-                                        root.recent-dialog-open = true;
-                                    }
-                                }
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    Button {
-                                        text: root.network-active ? "RTSP inputs…" : "Connect RTSP…";
-                                        enabled: !root.export-in-progress && !root.recording && !root.calibrating && !root.network-opening;
-                                        clicked => { root.open-network(); }
-                                    }
-                                    if root.network-active: Button {
-                                        text: "Disconnect";
-                                        enabled: !root.export-in-progress;
-                                        clicked => { root.disconnect-network(); }
+                                if root.files-loaded: VerticalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Tracking region"; color: Theme.text-primary; font-size: 14px; font-weight: 600; }
+                                    Text { text: root.has-roi ? "Four corners are set. Tracking ignores action outside this region." : "Optional: mark four corners to keep tracking on the field."; color: Theme.text-muted; font-size: 12px; wrap: word-wrap; }
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        Button {
+                                            text: root.has-roi ? "Edit four corners" : "Set four corners";
+                                            enabled: !root.setup-locked && !root.lens-preview-active;
+                                            clicked => { root.edit-field(); }
+                                        }
+                                        if root.has-roi: Button {
+                                            text: "Remove";
+                                            enabled: !root.setup-locked;
+                                            clicked => { root.remove-field(); }
+                                        }
                                     }
                                 }
                             }
                         }
-                        if root.inspector-tab == 1 && root.files-loaded: ScrollView {
+                        if root.inspector-tab == 1 && root.files-loaded && !root.field-editing: ScrollView {
                             horizontal-scrollbar-policy: always-off;
                             VerticalLayout {
                                 padding: 8px;
@@ -1734,7 +1782,7 @@ export component RecoApp inherits Window {
                     spacing: 6px;
 
                     // Playback buttons
-                Button {
+                if !root.network-active: Button {
                         text: "|‹";
                         description: "Previous frame";
                         enabled: root.files-loaded && !root.network-active;
@@ -1744,15 +1792,15 @@ export component RecoApp inherits Window {
                     }
 
                     Button {
-                        text: root.playing ? "Pause" : "Play";
-                        description: root.playing ? "Pause playback" : "Start playback";
-                        enabled: root.files-loaded;
+                        text: root.network-active ? (root.playing ? "Pause preview" : "Resume preview") : (root.playing ? "Pause" : "Play");
+                        description: root.network-active ? "Pause or resume the preview; live cameras keep capturing" : root.playing ? "Pause playback" : "Start playback";
+                        enabled: root.files-loaded && !root.export-in-progress;
                         clicked => {
                             root.toggle-playback();
                         }
                     }
 
-                    Button {
+                    if !root.network-active: Button {
                         text: "›|";
                         description: "Next frame";
                         enabled: root.files-loaded && !root.network-active;
@@ -1761,7 +1809,7 @@ export component RecoApp inherits Window {
                         }
                     }
 
-                    Text {
+                    if !root.network-active: Text {
                         text: root.current-time-text;
                         color: Theme.text-secondary;
                         font-size: 12px;
@@ -1770,7 +1818,7 @@ export component RecoApp inherits Window {
                         horizontal-alignment: right;
                     }
 
-                    Rectangle {
+                    if !root.network-active: Rectangle {
                         horizontal-stretch: 1;
                         height: 24px;
 
@@ -1800,12 +1848,19 @@ export component RecoApp inherits Window {
                         }
                     }
 
-                    Text {
+                    if !root.network-active: Text {
                         text: root.total-time-text;
                         color: Theme.text-muted;
                         font-size: 12px;
                         vertical-alignment: center;
                         width: 44px;
+                    }
+                    if root.network-active: Text {
+                        text: root.export-in-progress ? "Preview paused during output" : root.files-loaded ? "Live · " + round(root.fps * 100) / 100 + " fps" : "Preview stopped";
+                        color: Theme.text-muted;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        overflow: elide;
                     }
 
                     if root.recording: Button {
@@ -1872,6 +1927,7 @@ export component RecoApp inherits Window {
 
                     if root.export-in-progress: ProgressIndicator {
                         progress: root.export-progress;
+                        indeterminate: root.network-active;
                         min-width: 120px;
                         horizontal-stretch: 1;
                     }
@@ -2533,6 +2589,11 @@ export component RecoApp inherits Window {
                                 text: "Use the loaded rig calibration. Camera timestamps must share a clock, or have measured offsets. Reco does not synchronize them from arrival time.";
                                 wrap: word-wrap; color: Theme.text-muted; font-size: 12px;
                             }
+                            if root.network-inputs.length == 0: Button {
+                                text: "Load calibration…";
+                                primary: true;
+                                clicked => { root.network-dialog-open = false; root.pick-calibration(); }
+                            }
                             for row[index] in root.network-inputs: VerticalLayout {
                                 spacing: 4px;
                                 Text { text: "Camera " + (index + 1); color: Theme.text-primary; font-size: 12px; }
@@ -2817,7 +2878,7 @@ export component RecoApp inherits Window {
                                     }
                                 }
 
-                                Text {
+                                if !root.network-active: Text {
                                     property <float> range-dur: root.export-end-secs - root.export-start-secs;
                                     text: range-dur <= 0 ? "Duration: 0s (nothing to export)" : "Duration: " + round(range-dur * 10) / 10 + "s";
                                     color: range-dur <= 0 ? Theme.accent-error : Theme.text-muted;
@@ -3132,7 +3193,7 @@ export component RecoApp inherits Window {
                             }
 
                             Button {
-                                text: "Start Export";
+                                text: root.network-active ? (root.export-stream-enabled ? "Record and stream" : "Start recording") : (root.export-stream-enabled ? "Export and stream" : "Start export");
                                 primary: true;
                             // Block when AI tracking is on but no model is
                             // picked - otherwise the export runs with no
