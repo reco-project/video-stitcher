@@ -843,6 +843,14 @@ impl StitchJob {
             .start_time
             .filter(|secs| secs.is_finite() && *secs > 0.0)
             .unwrap_or(0.0);
+        // File video synchronization skips the leading frames of one camera.
+        // Its passthrough audio must start at that same source moment.
+        let audio_sync_skip = match self.audio {
+            AudioMode::CopyFrom(0) if effective_sync < 0 => effective_sync.unsigned_abs(),
+            AudioMode::CopyFrom(1) if effective_sync > 0 => effective_sync as u64,
+            _ => 0,
+        };
+        let audio_start_time = start_secs + audio_sync_skip as f64 / fps;
 
         let enc_config = crate::ffmpeg::encoder::EncoderConfig {
             encoder_name: self.encoder_name.clone(),
@@ -852,7 +860,7 @@ impl StitchJob {
             quality: self.quality,
             preset: self.preset.clone(),
             audio_source,
-            audio_start_time: start_secs,
+            audio_start_time,
             container,
             gop_size: self
                 .stream_url
