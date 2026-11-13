@@ -66,6 +66,20 @@ pub use tracking_mode::TrackingMode;
 #[cfg(feature = "detectors")]
 pub use wgpu_detector::WgpuPreprocessingDetector;
 
+/// Check that a selected model exists before opening processing resources.
+///
+/// Accepts files and model directories. Loading and backend compatibility are
+/// checked separately by the detector; this check does not initialize a runtime.
+pub fn validate_model_path(path: &std::path::Path) -> std::io::Result<()> {
+    if path.as_os_str().is_empty() || !path.try_exists()? {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("AI model path does not exist: {}", path.display()),
+        ));
+    }
+    Ok(())
+}
+
 /// Set up automatic camera control on any [`DetectionTarget`](reco_core::detect::DetectionTarget).
 ///
 /// Configures the appropriate detector (CPU, GPU/CUDA, or Metal) based
@@ -159,6 +173,7 @@ pub fn setup_autocam(
         ));
         return Ok(true);
     }
+    validate_model_path(&config.model_path)?;
     #[cfg(any(feature = "ort", feature = "tensorrt-native", feature = "ncnn"))]
     {
         setup_detection(target, config, fps, source_is_gpu_resident)
@@ -389,3 +404,27 @@ fn roi_player_class(class_names: &[String]) -> Option<u16> {
     any(feature = "ort", feature = "tensorrt-native", feature = "ncnn")
 ))]
 mod setup_tests;
+
+#[cfg(test)]
+mod model_path_tests {
+    use super::validate_model_path;
+
+    #[test]
+    fn accepts_files_and_model_directories_without_loading_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let model = dir.path().join("model.onnx");
+        std::fs::write(&model, b"not a valid model").unwrap();
+        assert!(validate_model_path(&model).is_ok());
+        assert!(validate_model_path(dir.path()).is_ok());
+    }
+
+    #[test]
+    fn rejects_missing_and_empty_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        for path in [dir.path().join("missing.onnx"), std::path::PathBuf::new()] {
+            let error = validate_model_path(&path).unwrap_err();
+            assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+            assert!(error.to_string().contains("AI model path does not exist"));
+        }
+    }
+}

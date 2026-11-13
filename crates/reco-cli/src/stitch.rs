@@ -86,6 +86,14 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         args.height,
     );
 
+    #[cfg(feature = "autocam")]
+    if args.trajectory_path.is_none()
+        && tracking_mode != reco_autocam::TrackingMode::Sweep
+        && let Some(model_path) = args.model_path
+    {
+        reco_autocam::validate_model_path(Path::new(model_path))?;
+    }
+
     let progress = crate::helpers::ProgressReporter::new(30);
     let stream = Arc::new(std::sync::OnceLock::<reco_io::ffmpeg::encoder::StreamMonitor>::new());
     let stream_ready = stream.clone();

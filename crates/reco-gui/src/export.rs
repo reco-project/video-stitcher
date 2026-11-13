@@ -243,6 +243,16 @@ pub fn run_export(
         });
     };
 
+    #[cfg(feature = "autocam")]
+    if autocam.enabled
+        && autocam.tracking_mode != "sweep"
+        && !autocam.model_path.is_empty()
+        && let Err(error) =
+            reco_autocam::validate_model_path(std::path::Path::new(&autocam.model_path))
+    {
+        return ExportOutcome::Failed(reco_io::stitch_job::StitchError::Other(error.to_string()));
+    }
+
     post_status("Opening encoder and decoders...".into());
 
     let progress_weak = app_weak.clone();
@@ -514,6 +524,73 @@ pub fn poll_export(rx: &std::sync::mpsc::Receiver<ExportOutcome>) -> Option<Expo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(feature = "autocam")]
+    fn missing_model_fails_before_opening_inputs_or_touching_output() {
+        use reco_core::calibration::{Framing, Lens};
+        use reco_core::projection::Cylinder;
+
+        let dir = tempfile::tempdir().unwrap();
+        let model = dir.path().join("missing-model.onnx");
+        for existing in [false, true] {
+            let output = dir
+                .path()
+                .join(if existing { "existing.mp4" } else { "new.mp4" });
+            if existing {
+                std::fs::write(&output, b"keep existing output").unwrap();
+            }
+            let monitor = Arc::new(OnceLock::new());
+            let result = run_export(
+                ExportRequest {
+                    inputs: Inputs::Files(vec![reco_io::InputPath::Single(
+                        dir.path().join("unopened-input.mp4"),
+                    )]),
+                    calibration: Calibration::new(
+                        vec![Lens::flat(64, 36)],
+                        Cylinder::default(),
+                        Framing {
+                            axis_offset: 0.0,
+                            tilt: 0.0,
+                            roll: 0.0,
+                        },
+                    ),
+                    output: output.clone(),
+                    stream_url: None,
+                    audio: reco_io::output::AudioMode::default(),
+                    replay_enabled: false,
+                    events_path: None,
+                    width: 64,
+                    height: 36,
+                    codec: "h264".into(),
+                    quality: "fast".into(),
+                    start_secs: 0.0,
+                    end_secs: 0.0,
+                    autocam: AutocamUiConfig {
+                        enabled: true,
+                        model_path: model.to_string_lossy().into_owned(),
+                        tracking_mode: "field".into(),
+                        ..Default::default()
+                    },
+                },
+                monitor.clone(),
+                slint::Weak::default(),
+                &Arc::new(AtomicBool::new(false)),
+            );
+            let ExportOutcome::Failed(reco_io::stitch_job::StitchError::Other(error)) = result
+            else {
+                panic!("Expected model preflight failure, got {result:?}");
+            };
+            assert!(error.contains("AI model path does not exist"), "{error}");
+            assert!(error.contains(model.to_str().unwrap()), "{error}");
+            assert!(monitor.get().is_none());
+            if existing {
+                assert_eq!(std::fs::read(&output).unwrap(), b"keep existing output");
+            } else {
+                assert!(!output.exists());
+            }
+        }
+    }
 
     #[test]
     fn publishing_validation_keeps_urls_out_of_errors() {
