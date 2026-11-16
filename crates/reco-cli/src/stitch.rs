@@ -31,6 +31,8 @@ pub struct StitchArgs<'a> {
     pub width: u32,
     pub height: u32,
     pub blend: Option<f32>,
+    pub panorama_arc: Option<f64>,
+    pub panorama_vertical_fov: Option<f64>,
     pub start_time: Option<f64>,
     pub end_time: Option<f64>,
     pub max_frames: Option<u64>,
@@ -101,7 +103,33 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     let mut last_stream_status = None;
 
     // Load and validate the accepted calibration.
-    let cal = reco_core::calibration::Calibration::from_file(Path::new(args.calibration))?;
+    let mut cal = reco_core::calibration::Calibration::from_file(Path::new(args.calibration))?;
+    if let (Some(arc_deg), Some(vertical_fov_deg)) = (args.panorama_arc, args.panorama_vertical_fov)
+    {
+        let rig = cal
+            .projection
+            .l_shape()
+            .ok_or_else(|| anyhow::anyhow!("--panorama-arc requires an L-shape calibration"))?
+            .clone();
+        cal.projection = reco_core::projection::Panorama {
+            rig,
+            arc_deg,
+            vertical_fov_deg,
+        }
+        .into();
+        cal.validate()?;
+    }
+    if matches!(
+        cal.projection,
+        reco_core::calibration::Projection::Panorama(_)
+    ) {
+        anyhow::ensure!(
+            args.model_path.is_none()
+                && args.trajectory_path.is_none()
+                && args.tracking_mode != "sweep",
+            "fixed panorama output does not support autocam or trajectory pan/zoom"
+        );
+    }
     let mut job = args.live_input.job(args.inputs, cal, args.output)?;
     job = job
         .audio(args.audio_source)

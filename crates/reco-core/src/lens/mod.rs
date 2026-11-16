@@ -34,13 +34,13 @@ pub(crate) use kb4::kb4_forward_scale;
 /// Callers that need the polynomial (inverse-fisheye Newton-Raphson
 /// iteration and `kb4_forward_scale`) all delegate here
 /// so the formula lives in exactly one place Rust-side. The WGSL
-/// mirror at `shaders/fisheye.wgsl` lines 184-188 can't cross-
+/// mirror in `shaders/lens_mapping.wgsl` can't cross-
 /// language-link; the `wgsl_kb4_matches_rust_kb4_on_theta_grid`
 /// compute-dispatch test locks the two sides together numerically.
 pub(crate) mod kb4 {
     /// Evaluate `θ_d = θ * (1 + k₁θ² + k₂θ⁴ + k₃θ⁶ + k₄θ⁸)`.
     ///
-    /// SYNC_WITH `shaders/fisheye.wgsl` lines 184-188. Any edit here
+    /// SYNC_WITH `shaders/lens_mapping.wgsl`. Any edit here
     /// must stay numerically in agreement with the WGSL fragment; the
     /// `wgsl_kb4_matches_rust_kb4_on_theta_grid` test will catch
     /// f32-vs-f64 drift within 1e-5.
@@ -338,12 +338,7 @@ mod tests {
         assert!(solved > 0 && rejected > 0);
     }
 
-    // Step 1f: evaluate the KB4 polynomial on a real GPU via wgpu
-    // compute dispatch and compare against the f64 Rust canonical. The
-    // polynomial body in the compute shader below is a deliberate
-    // SYNC_WITH copy of `shaders/fisheye.wgsl` lines 184-188; Step 3
-    // will pull both behind a single `reco_core::lens::kb4` module
-    // so the duplication collapses.
+    // Exercise the actual shared optical shader against the f64 Rust model.
     #[test]
     #[cfg(feature = "gpu")]
     fn wgsl_kb4_matches_rust_kb4_on_theta_grid() {
@@ -394,20 +389,20 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.x;
     if (i >= u.count) { return; }
     let theta = theta_in[i];
-    let theta2 = theta * theta;
-    // SYNC_WITH shaders/fisheye.wgsl lines 184-188 (KB4 polynomial body)
-    let theta_d = theta * (1.0
-        + u.k.x * theta2
-        + u.k.y * theta2 * theta2
-        + u.k.z * theta2 * theta2 * theta2
-        + u.k.w * theta2 * theta2 * theta2 * theta2);
-    theta_d_out[i] = theta_d;
+    theta_d_out[i] = lens_uv(vec2(tan(theta), 0.0), vec4(1.0, 1.0, 0.0, 0.0), u.k, 1.0).x;
 }
 "#;
 
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("kb4_agreement_shader"),
-            source: wgpu::ShaderSource::Wgsl(shader_source.into()),
+            source: wgpu::ShaderSource::Wgsl(
+                format!(
+                    "{}\n{}",
+                    include_str!("../shaders/lens_mapping.wgsl"),
+                    shader_source
+                )
+                .into(),
+            ),
         });
 
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

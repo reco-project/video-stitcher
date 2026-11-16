@@ -737,7 +737,12 @@ impl StitchJob {
         // Build session. Blend lives on the calibration; an explicit job
         // override replaces it, otherwise the saved value renders as-is.
         // Seamless topologies (the mono cylinder) have no blend to set.
-        match (self.blend_width, cal.projection.l_shape_mut()) {
+        let seam = match &mut cal.projection {
+            reco_core::calibration::Projection::LShape(rig) => Some(rig),
+            reco_core::calibration::Projection::Panorama(panorama) => Some(&mut panorama.rig),
+            reco_core::calibration::Projection::Cylinder(_) => None,
+        };
+        match (self.blend_width, seam) {
             (Some(blend), Some(projection)) => {
                 log::info!(
                     "seam blend: overriding calibration value {} with {blend}",

@@ -20,6 +20,8 @@ pub(crate) enum GpuPass {
     Planes,
     /// One fullscreen ray-to-cylinder inverse map.
     Cylinder,
+    /// Two fullscreen ray-to-plane maps on a fixed cylindrical output chart.
+    Panorama,
 }
 
 /// Shader and draw configuration supplied by a projection.

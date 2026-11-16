@@ -69,9 +69,9 @@ pub struct SurfaceUv {
     pub u: f64,
     /// Normalised camera UV in `[0, 1]`.
     pub v: f64,
-    /// Extended-UV x of this surface (the shader's `uv.x * 2 - 0.5`). The
-    /// compositor uses it to compute the seam-blend alpha where surfaces
-    /// overlap.
+    /// Seam coordinate used by the compositor's blend rule. Normally extended
+    /// plane UV x; the panorama saturates it where no underlying source exists
+    /// so a singly supported pixel remains opaque.
     pub edge: f64,
 }
 

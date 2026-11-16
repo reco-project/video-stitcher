@@ -317,6 +317,7 @@ mod tests {
                         draft.framing.axis_offset = 0.3;
                     }
                     Projection::Cylinder(cylinder) => cylinder.arc_deg = 240.0,
+                    Projection::Panorama(panorama) => panorama.arc_deg = 240.0,
                 },
             }
             let mut fresh = make(draft.clone());

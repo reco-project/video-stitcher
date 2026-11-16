@@ -115,6 +115,7 @@ impl LensPreviewRenderer {
             source: wgpu::ShaderSource::Wgsl(
                 concat!(
                     include_str!("../shaders/video_sampling.wgsl"),
+                    include_str!("../shaders/lens_mapping.wgsl"),
                     include_str!("../shaders/fisheye.wgsl")
                 )
                 .into(),

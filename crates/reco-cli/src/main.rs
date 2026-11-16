@@ -109,7 +109,7 @@ enum Commands {
     /// Stitch camera video files or RTSP feeds into a panoramic output.
     Stitch {
         /// Input videos, one per camera in projection order (two for
-        /// L-shape calibrations, one pre-stitched panorama for the
+        /// L-shape or panorama calibrations, one pre-stitched panorama for the
         /// cylinder). Chain multi-segment recordings per input with
         /// `;` (e.g. `a1.mp4;a2.mp4 b1.mp4;b2.mp4`). RTSP inputs require --rtsp-fps and --rtsp-offsets-us.
         #[arg(required = true, num_args = 1..)]
@@ -174,6 +174,14 @@ enum Commands {
         /// calibration's saved value; when omitted, the calibration decides.
         #[arg(long, value_parser = parse_blend)]
         blend: Option<f32>,
+
+        /// Export a fixed cylindrical panorama from an L-shape calibration (horizontal degrees).
+        #[arg(long, requires = "panorama_vertical_fov")]
+        panorama_arc: Option<f64>,
+
+        /// Panorama vertical extent in degrees; requires --panorama-arc.
+        #[arg(long, requires = "panorama_arc")]
+        panorama_vertical_fov: Option<f64>,
 
         /// Frame offset for temporal sync between cameras.
         /// Positive: skip N right frames (right started first).
@@ -761,6 +769,8 @@ fn main() -> anyhow::Result<()> {
             codec,
             quality,
             blend,
+            panorama_arc,
+            panorama_vertical_fov,
             sync_offset,
             model,
             detection_interval,
@@ -789,6 +799,8 @@ fn main() -> anyhow::Result<()> {
                 width,
                 height,
                 blend,
+                panorama_arc,
+                panorama_vertical_fov,
                 start_time,
                 end_time,
                 max_frames,
@@ -1253,6 +1265,38 @@ mod tests {
             "an omitted codec must not conflict with the named encoder"
         );
         assert_eq!(encoder_device.as_deref(), Some("/dev/dri/renderD129"));
+    }
+
+    #[test]
+    fn panorama_cli_requires_both_extents() {
+        let base = [
+            "reco",
+            "stitch",
+            "left.mp4",
+            "right.mp4",
+            "-c",
+            "match.json",
+        ];
+        for flag in ["--panorama-arc", "--panorama-vertical-fov"] {
+            assert!(Cli::try_parse_from(base.into_iter().chain([flag, "90"])).is_err());
+        }
+        let parsed = Cli::try_parse_from(base.into_iter().chain([
+            "--panorama-arc",
+            "240",
+            "--panorama-vertical-fov",
+            "110",
+        ]))
+        .unwrap();
+        let Commands::Stitch {
+            panorama_arc,
+            panorama_vertical_fov,
+            ..
+        } = parsed.command
+        else {
+            panic!("wrong command");
+        };
+        assert_eq!(panorama_arc, Some(240.0));
+        assert_eq!(panorama_vertical_fov, Some(110.0));
     }
 
     #[cfg(feature = "gstreamer")]

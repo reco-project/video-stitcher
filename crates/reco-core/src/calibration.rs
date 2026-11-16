@@ -373,7 +373,7 @@ impl Lens {
 
 /// Scene geometry parameters: which shape the sources are painted on.
 ///
-/// Serialized with a mandatory `type` tag (`"l-shape"` / `"cylinder"`).
+/// Serialized with a mandatory `type` tag (`"l-shape"`, `"cylinder"`, or `"panorama"`).
 /// Each variant stores the shape-specific parameters and supplies its geometry implementation. The virtual camera is derived from this projection and [`Framing`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
@@ -382,6 +382,8 @@ pub enum Projection {
     LShape(projection::LShape),
     /// One pre-stitched panorama painted on the inside of a cylinder.
     Cylinder(projection::Cylinder),
+    /// Fixed cylindrical panorama gathered directly from a calibrated stereo rig.
+    Panorama(projection::Panorama),
 }
 
 impl Projection {
@@ -389,7 +391,7 @@ impl Projection {
     pub fn l_shape(&self) -> Option<&projection::LShape> {
         match self {
             Projection::LShape(t) => Some(t),
-            Projection::Cylinder(_) => None,
+            Projection::Cylinder(_) | Projection::Panorama(_) => None,
         }
     }
 
@@ -397,14 +399,14 @@ impl Projection {
     pub fn l_shape_mut(&mut self) -> Option<&mut projection::LShape> {
         match self {
             Projection::LShape(t) => Some(t),
-            Projection::Cylinder(_) => None,
+            Projection::Cylinder(_) | Projection::Panorama(_) => None,
         }
     }
 
     /// Cylinder parameters, when this is the cylinder projection.
     pub fn cylinder(&self) -> Option<&projection::Cylinder> {
         match self {
-            Projection::LShape(_) => None,
+            Projection::LShape(_) | Projection::Panorama(_) => None,
             Projection::Cylinder(t) => Some(t),
         }
     }
@@ -414,6 +416,7 @@ impl Projection {
         match self {
             Projection::LShape(t) => t,
             Projection::Cylinder(t) => t,
+            Projection::Panorama(t) => t,
         }
     }
 
@@ -428,6 +431,7 @@ impl Projection {
         match self {
             Projection::LShape(t) => t.blend_width,
             Projection::Cylinder(_) => 0.0,
+            Projection::Panorama(t) => t.rig.blend_width,
         }
     }
 }
@@ -435,6 +439,12 @@ impl Projection {
 impl From<projection::LShape> for Projection {
     fn from(t: projection::LShape) -> Self {
         Projection::LShape(t)
+    }
+}
+
+impl From<projection::Panorama> for Projection {
+    fn from(t: projection::Panorama) -> Self {
+        Self::Panorama(t)
     }
 }
 
@@ -585,6 +595,7 @@ impl Calibration {
         match &self.projection {
             Projection::LShape(t) => t.validate(&self.framing)?,
             Projection::Cylinder(t) => t.validate()?,
+            Projection::Panorama(t) => t.validate(&self.framing)?,
         }
         validate_framing(&self.framing)?;
         self.field_boundary()?;

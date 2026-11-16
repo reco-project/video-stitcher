@@ -114,7 +114,7 @@ impl LShape {
         }
     }
 
-    fn plane_models(&self, aspects: [f64; 2]) -> [Matrix4<f64>; 2] {
+    pub(crate) fn plane_models(&self, aspects: [f64; 2]) -> [Matrix4<f64>; 2] {
         // Unit plane width: each plane is a 1.0-wide quad, so the
         // intersect offset is half of what the overlap leaves.
         let half_offset = 0.5 * (1.0 - self.intersect);
@@ -144,7 +144,8 @@ pub(crate) struct PlaneScene {
 }
 
 /// Lens operations shared by raster sampling and source correspondence.
-struct NormalizedLens {
+#[derive(Clone)]
+pub(crate) struct NormalizedLens {
     fx: f64,
     fy: f64,
     cx: f64,
@@ -154,7 +155,7 @@ struct NormalizedLens {
 }
 
 impl NormalizedLens {
-    fn new(lens: &Lens) -> Self {
+    pub(crate) fn new(lens: &Lens) -> Self {
         Self {
             fx: lens.fx / lens.width as f64,
             fy: lens.fy / lens.height as f64,
@@ -184,7 +185,7 @@ impl NormalizedLens {
         (u.is_finite() && v.is_finite()).then_some([(u - 0.5) / 2.0, (0.5 - v) / 2.0])
     }
 
-    fn sample_plane(&self, [x, y]: [f64; 2]) -> Option<SurfaceUv> {
+    pub(crate) fn sample_plane(&self, [x, y]: [f64; 2]) -> Option<SurfaceUv> {
         let uv_x = x + 0.5;
         let uv_y = 0.5 - y;
         if !(0.0..=1.0).contains(&uv_x) || !(0.0..=1.0).contains(&uv_y) {
@@ -559,6 +560,7 @@ impl ProjectionGeometry for LShape {
         Some(crate::render::GpuProgram {
             wgsl: concat!(
                 include_str!("../shaders/video_sampling.wgsl"),
+                include_str!("../shaders/lens_mapping.wgsl"),
                 include_str!("../shaders/fisheye.wgsl")
             ),
             vs_entry: "vs_main",

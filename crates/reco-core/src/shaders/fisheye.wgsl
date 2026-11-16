@@ -77,40 +77,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(raw.rgb, 1.0);
     }
 
-    let fx = u.intrinsics.x;
-    let fy = u.intrinsics.y;
-    let cx = u.intrinsics.z;
-    let cy = u.intrinsics.w;
-
-    // KB4 fisheye undistortion: map from plane UV to video texture coordinate
-    let x = (uv.x - cx) / fx;
-    let y = (uv.y - cy) / fy;
-    let r = sqrt(x * x + y * y);
-    let theta = atan(r);
-    let theta2 = theta * theta;
-    let theta_d_full = theta * (1.0
-        + u.dist.x * theta2
-        + u.dist.y * theta2 * theta2
-        + u.dist.z * theta2 * theta2 * theta2
-        + u.dist.w * theta2 * theta2 * theta2 * theta2);
-
-    // Lens correction amount: 1.0 = full KB4, 0.0 = equidistant (zero polynomial).
-    // Split view: left half uncorrected, right half fully corrected.
     var correction = u.lens_preview.x;
     if u.lens_preview.y > 0.5 {
         correction = select(0.0, 1.0, uv.x > 0.5);
     }
-    let theta_d = mix(theta, theta_d_full, correction);
-
-    var scale = 1.0;
-    if r > 0.0 {
-        scale = theta_d / r;
-    }
-
-    let distorted_uv = vec2<f32>(
-        fx * x * scale + cx,
-        fy * y * scale + cy,
-    );
+    let distorted_uv = lens_uv(uv, u.intrinsics, u.dist, correction);
 
     // Bounds check — v2 uses separate textures (no stacking)
     if distorted_uv.x < 0.0 || distorted_uv.x > 1.0 ||

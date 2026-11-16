@@ -59,6 +59,14 @@ impl Controller {
         config: MapConfig,
         cancelled: Option<&std::sync::atomic::AtomicBool>,
     ) -> Result<Self, String> {
+        if matches!(
+            calibration.projection,
+            crate::calibration::Projection::Panorama(_)
+        ) {
+            return Err(
+                "fixed panorama output does not support perspective coverage constraints".into(),
+            );
+        }
         let started = std::time::Instant::now();
         let roof = roof::Roof::build_cancellable(
             calibration,

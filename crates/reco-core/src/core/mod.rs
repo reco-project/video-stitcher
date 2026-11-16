@@ -178,6 +178,10 @@ impl StitchCore {
             StitchExecutor::name(&executor)
         );
 
+        let constrained_look = !matches!(
+            executor.calibration().projection,
+            crate::calibration::Projection::Panorama(_)
+        );
         Ok(Self {
             executor,
             #[cfg(feature = "gpu")]
@@ -204,7 +208,7 @@ impl StitchCore {
             stacked_packer: None,
             #[cfg(feature = "gpu")]
             stacked_gpu_recorder: None,
-            constrained_look: true,
+            constrained_look,
             frame_count: 0,
             session_start: None,
         })
@@ -442,7 +446,7 @@ impl StitchCore {
     // -----------------------------------------------------------------
 
     /// Whether the render loop's pose resolution clamps through the
-    /// coverage boundary. `true` by default. Consumers
+    /// coverage boundary. `true` by default except for fixed panoramas. Consumers
     /// expose this as a UI toggle ("Constrained look") so users can
     /// choose between "never show black edges" (on) and "unrestricted
     /// panning" (off).

@@ -18,6 +18,8 @@ pub(crate) mod cylinder;
 pub mod field;
 pub(crate) mod interval;
 pub(crate) mod l_shape;
+pub(crate) mod panorama;
+pub use panorama::Panorama;
 
 pub use cylinder::Cylinder;
 pub use l_shape::{DEFAULT_BLEND_WIDTH, LShape};

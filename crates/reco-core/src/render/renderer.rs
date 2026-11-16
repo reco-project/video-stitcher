@@ -364,6 +364,10 @@ impl Renderer {
 
         let (camera_count, uniform_size) = match program.pass {
             super::GpuPass::Planes => (2, std::mem::size_of::<GpuUniforms>()),
+            super::GpuPass::Panorama => (
+                2,
+                std::mem::size_of::<crate::projection::panorama::PanoramaUniforms>(),
+            ),
             super::GpuPass::Cylinder => (
                 1,
                 std::mem::size_of::<crate::projection::cylinder::CylinderUniforms>(),
@@ -785,6 +789,23 @@ impl Renderer {
                 0,
                 bytemuck::bytes_of(&right_uniforms),
             );
+        } else if let crate::calibration::Projection::Panorama(panorama) = &calibration.projection {
+            let uniforms = panorama.gpu_uniforms(
+                &calibration.lenses,
+                &calibration.framing,
+                std::array::from_fn(|i| {
+                    [
+                        i as u32,
+                        self.input_format as u32,
+                        u32::from(self.flip_180[i]),
+                        u32::from(self.is_full_range),
+                    ]
+                }),
+            );
+            for (camera, uniform) in self.cameras.iter().zip(&uniforms) {
+                gpu.queue
+                    .write_buffer(&camera.uniform_buffer, 0, bytemuck::bytes_of(uniform));
+            }
         } else if let crate::calibration::Projection::Cylinder(cylinder) = &calibration.projection {
             let uniforms = cylinder.gpu_uniforms(
                 &calibration.framing,
