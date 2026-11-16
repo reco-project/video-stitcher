@@ -195,7 +195,7 @@ mod tests {
             fit: Ok(CoarseFit {
                 stages: vec![Solution {
                     calibration: template(),
-                    x: vec![0.0; 12],
+                    x: vec![0.0; crate::direct::solver::N],
                     cost: 0.0,
                     status: String::new(),
                     success,

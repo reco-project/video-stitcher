@@ -91,7 +91,7 @@ fn fit_pass(
         return Err("insufficient fitting patches".into());
     }
     let parameters = if estimate_optics.iter().any(|&v| v) {
-        12
+        super::solver::N
     } else {
         7
     };

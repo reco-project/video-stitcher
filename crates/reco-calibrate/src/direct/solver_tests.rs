@@ -101,12 +101,12 @@ fn positive_sensor_margin_does_not_hide_a_boundary_crossing_stencil() {
     model.difference_step = 0.00002;
     for shift in [-1e-8, 0.0, 1e-8] {
         let mut x = vec![0.0; N];
-        x[7] = shift;
+        x[12] = shift;
         assert!(model.margin(&x).unwrap() > 0.0);
         assert!(model.sensor_boundary_active(&x).unwrap());
     }
     let mut invalid = vec![0.0; N];
-    invalid[7] = -0.001;
+    invalid[12] = -0.001;
     assert!(model.margin(&invalid).unwrap() < 0.0);
     assert!(model.sensor_boundary_active(&invalid).unwrap());
 
@@ -630,4 +630,21 @@ fn typed_solver_shares_cancellation_and_does_not_renew_deadline() {
     interrupted.store(true, Ordering::Relaxed);
     assert_eq!(run(&control).unwrap_err(), "calibration cancelled");
     assert_eq!(control.deadline, deadline);
+}
+
+#[test]
+fn each_camera_has_independent_optical_parameters() {
+    let (seed, _) = fixture(1);
+    let seed: Calibration = serde_json::from_value(seed).unwrap();
+    for camera in 0..2 {
+        for parameter in 0..5 {
+            let mut x = vec![0.0; N];
+            x[7 + camera * 5 + parameter] = 0.2;
+            let fitted = decode_parameters(&seed, &x).unwrap();
+            assert_eq!(fitted.lenses[1 - camera], seed.lenses[1 - camera]);
+            assert_ne!(fitted.lenses[camera], seed.lenses[camera]);
+            assert_eq!(fitted.projection, seed.projection);
+            assert_eq!(fitted.framing, seed.framing);
+        }
+    }
 }

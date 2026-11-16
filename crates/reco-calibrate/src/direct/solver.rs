@@ -14,10 +14,10 @@ use std::time::{Duration, Instant};
 #[path = "solver_diagnostics.rs"]
 pub(crate) mod diagnostics;
 
-const N: usize = 12;
-const SCALE: [f64; N] = [
-    0.06, 0.03, 0.08, 0.08, 0.08, 0.08, 0.04, 0.2, 0.1, 0.1, 0.05, 0.02,
-];
+// Seven placement parameters, then focal scale and four KB4 terms per camera.
+pub(super) const N: usize = 7 + 2 * 5;
+const SCALE: [f64; 7] = [0.06, 0.03, 0.08, 0.08, 0.08, 0.08, 0.04];
+const OPTICS_SCALE: [f64; 5] = [0.2, 0.1, 0.1, 0.05, 0.02];
 
 pub(crate) struct Control<'a> {
     pub(crate) interrupted: &'a AtomicBool,
@@ -68,12 +68,13 @@ pub(crate) fn decode_parameters(seed: &Calibration, x: &[f64]) -> Result<Calibra
     }
     calibration.framing.axis_offset += x[6] * SCALE[6];
     if x.len() == N {
-        let factor = (x[7] * SCALE[7]).exp();
-        for lens in &mut calibration.lenses {
+        for (camera, lens) in calibration.lenses.iter_mut().enumerate() {
+            let offset = 7 + camera * 5;
+            let factor = (x[offset] * OPTICS_SCALE[0]).exp();
             lens.fx *= factor;
             lens.fy *= factor;
             for i in 0..4 {
-                lens.distortion[i] += x[8 + i] * SCALE[8 + i];
+                lens.distortion[i] += x[offset + 1 + i] * OPTICS_SCALE[1 + i];
             }
         }
     }

@@ -156,6 +156,7 @@ fn run(
             &control,
         )?);
     }
+    log::debug!("Independent overlap checks: {checks:?}");
     let assessment = confirmation::assess(&checks)?;
     control.check()?;
     log::info!(
