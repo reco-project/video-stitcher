@@ -47,6 +47,72 @@ const SIZE: ViewportSize = ViewportSize {
     height: 720,
 };
 
+#[test]
+fn touchline_camera_accepts_wide_field_and_contains_ground_points() {
+    // A 105 x 68 m pitch, with the camera 2 m high and 1 m inside the
+    // near touchline. The near corners are slightly behind the camera,
+    // so the field spans more than 180 degrees of horizontal bearing.
+    let mut cal = Calibration::new(
+        vec![Lens::flat(4096, 2048)],
+        Cylinder {
+            radius: 1.0,
+            arc_deg: 360.0,
+            surface_height: Some(8.0),
+        },
+        Framing {
+            axis_offset: 0.0,
+            tilt: 0.0,
+            roll: 0.0,
+        },
+    );
+    let source = |x: f64, z: f64| SourcePoint {
+        camera: 0,
+        position: [
+            0.5 + x.atan2(-z) / std::f64::consts::TAU,
+            0.5 + 2.0 / (8.0 * x.hypot(z)),
+        ],
+    };
+    let ground_corners = [(-52.5, -67.0), (52.5, -67.0), (52.5, 1.0), (-52.5, 1.0)];
+    let corners = ground_corners.map(|(x, z)| source(x, z));
+    assert!((corners[2].position[0] - corners[3].position[0]) * 360.0 > 180.0);
+    let map = cal
+        .projection
+        .geometry()
+        .source_rays(0, &cal.lenses, &cal.framing)
+        .unwrap();
+    let rays = corners.map(|point| map(point.position).unwrap());
+    for (ray, (x, z)) in rays.iter().zip(ground_corners) {
+        assert!((ray - Vector3::new(x, -2.0, z).normalize()).norm() < 1e-12);
+    }
+    let center = rays.iter().copied().sum::<Vector3<f64>>().normalize();
+    assert!(
+        rays.iter().any(|ray| ray.dot(&center) < 0.0),
+        "exercise the removed hemisphere restriction"
+    );
+    for reverse in [false, true] {
+        let mut corners = corners;
+        if reverse {
+            corners.reverse();
+        }
+        cal.field_roi = Some(FieldRoi { corners });
+        cal.validate().unwrap();
+        let boundary = cal.field_boundary().unwrap().unwrap();
+        for corner in corners {
+            assert!(boundary.contains(corner));
+        }
+        for x in [-60.0, -52.5, -50.0, -20.0, 0.0, 20.0, 50.0, 52.5, 60.0] {
+            for z in [-70.0, -67.0, -60.0, -10.0, -1.0, 1.0, 2.0, 5.0] {
+                let expected = (-52.5..=52.5).contains(&x) && (-67.0..=1.0).contains(&z);
+                assert_eq!(
+                    boundary.contains(source(x, z)),
+                    expected,
+                    "ground=({x},{z}), reversed={reverse}"
+                );
+            }
+        }
+    }
+}
+
 fn region(cal: &mut Calibration) -> RenderPose {
     let pose = cal.world_to_render_pose(WorldPose {
         yaw: 0.0,

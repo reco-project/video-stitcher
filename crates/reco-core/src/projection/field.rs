@@ -113,7 +113,7 @@ impl Calibration {
 
     /// Prepare the document's tracking boundary for allocation-free source-point tests.
     ///
-    /// Rebuild after changing corners, optics, projection, framing or blending. `None` means no region. Invalid, crossed, concave or hemisphere-spanning observations return an error instead of silently disabling the filter.
+    /// Rebuild after changing corners, optics, projection, framing or blending. `None` means no region. Invalid, crossed, concave or degenerate observations return an error instead of silently disabling the filter. Corners need not share the hemisphere centered on their mean ray.
     pub fn field_boundary(&self) -> Result<Option<FieldBoundary>, CalibrationError> {
         let Some(roi) = &self.field_roi else {
             return Ok(None);
@@ -146,9 +146,6 @@ impl Calibration {
             .sum::<Vector3<f64>>()
             .try_normalize(1e-9)
             .ok_or_else(|| invalid("corners do not enclose a finite region"))?;
-        if rays.iter().any(|ray| ray.dot(&center) <= 1e-6) {
-            return Err(invalid("corners must lie within one viewing hemisphere"));
-        }
         let mut normals = [Vector3::zeros(); 4];
         for i in 0..4 {
             let mut normal = rays[i]
