@@ -180,7 +180,8 @@ impl StitchSession {
         {
             self.gpu_pixel_format = source.gpu_pixel_format();
         }
-        self.core.set_full_range(source.is_full_range());
+        self.source_full_range = source.is_full_range();
+        self.core.set_full_range(self.source_full_range);
         // Apply rotation via shader UV flip ONLY for GPU-resident sources.
         // CPU sources handle rotation via buffer reversal in the decoder,
         // so applying the shader flip too would rotate 360 degrees (no-op but wrong).

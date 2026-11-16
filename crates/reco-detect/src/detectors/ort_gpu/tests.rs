@@ -110,6 +110,7 @@ fn mixed_sizes_reuse_storage_and_map_detections_after_real_inference() {
                 height,
                 rotation: 0,
                 is_10bit,
+                is_full_range: true,
             };
             let detections = detector
                 .detect(camera, &DetectorFrame::CudaNv12(frame))

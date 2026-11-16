@@ -234,9 +234,9 @@ fn check_tensor(sizes: &[(u32, u32)], y_pitch: u32, uv_pitch: u32, p010: bool) {
         let pad_x = (DST - content_w) / 2;
         let pad_y = (DST - content_h) / 2;
         for rotation in [0, 180] {
-            nv12_to_rgb_chw_fullrange(
+            nv12_to_rgb_chw(
                 y.0, uv.0, tensor.0, y_stride, uv_stride, width, height, DST, DST, pad_x, pad_y,
-                scale, rotation,
+                scale, rotation, true,
             )
             .unwrap();
             let result = tensor.floats(poison.len());
@@ -299,4 +299,46 @@ fn nv12_planes_have_independent_strides() {
 #[ignore = "requires NVIDIA CUDA"]
 fn p010_strides_and_shape_changes_preserve_tensor_pixels() {
     check_tensor(&[(8, 4), (4, 8), (8, 8), (6, 4), (4, 6)], 16, 24, true);
+}
+
+#[test]
+#[ignore = "requires NVIDIA CUDA"]
+fn nv12_range_expansion_matches_neutral_and_chromatic_samples() {
+    reco_core::interop::cuda::cuda_ensure_context().unwrap();
+    for (luma, u, v) in [(16u8, 128u8, 128u8), (235, 128, 128), (64, 96, 160)] {
+        let y = Buffer::bytes(&[luma; 8]);
+        let uv = Buffer::bytes(&[u, v, u, v]);
+        let output = Buffer::bytes(&vec![0; 3 * 8 * 8 * 4]);
+        for full_range in [false, true] {
+            nv12_to_rgb_chw(
+                y.0, uv.0, output.0, 4, 4, 4, 2, 8, 8, 0, 2, 2., 0, full_range,
+            )
+            .unwrap();
+            let actual = output.floats(3 * 8 * 8);
+            let y = if full_range {
+                f32::from(luma)
+            } else {
+                (f32::from(luma) - 16.) * 255. / 219.
+            };
+            let gain = if full_range { 1. } else { 255. / 224. };
+            let u = (f32::from(u) - 128.) * gain;
+            let v = (f32::from(v) - 128.) * gain;
+            let expected = [y + 1.5748 * v, y - 0.1873 * u - 0.4681 * v, y + 1.8556 * u];
+            for channel in 0..3 {
+                for py in 0..8 {
+                    for px in 0..8 {
+                        let value = if (2..6).contains(&py) {
+                            expected[channel].clamp(0., 255.) / 255.
+                        } else {
+                            114. / 255.
+                        };
+                        assert!(
+                            (actual[channel * 64 + py * 8 + px] - value).abs() < 0.000002,
+                            "range={full_range} channel={channel} pixel={px},{py}"
+                        );
+                    }
+                }
+            }
+        }
+    }
 }

@@ -225,6 +225,7 @@ fn missing_providers_reject_cuda_but_allow_host_inference() {
         height: 2,
         rotation: 0,
         is_10bit: false,
+        is_full_range: true,
     });
     assert!(matches!(
         detector.detect(0, &unsupported),

@@ -382,6 +382,7 @@ impl TrtGpuDetector {
                         height,
                         rotation: 0,
                         is_10bit: false,
+                        is_full_range: true,
                     },
                 )
             }

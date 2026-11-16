@@ -220,6 +220,7 @@ impl OrtGpuDetector {
             height,
             rotation,
             is_10bit,
+            is_full_range,
         } = *frame;
         reco_core::profile_scope!("gpu_yolo_detect");
 
@@ -292,13 +293,10 @@ impl OrtGpuDetector {
         };
 
         // Combined NV12 -> float32 RGB CHW in one kernel pass.
-        // Uses BT.709 full-range coefficients matching GoPro/action-cam
-        // yuvj420p output. Replaces the NPP NV12-to-RGB (BT.601
-        // video-range) + NPP resize + normalize pipeline that was
-        // producing a 10x detection count difference vs CPU ORT (#284).
+        // Expand limited-range input before the BT.709 conversion.
         {
             reco_core::profile_scope!("nv12_to_rgb_chw");
-            crate::cuda_kernels::nv12_to_rgb_chw_fullrange(
+            crate::cuda_kernels::nv12_to_rgb_chw(
                 nv12_y,
                 nv12_uv,
                 self.tensor_f32.0,
@@ -312,6 +310,7 @@ impl OrtGpuDetector {
                 input.pad_y,
                 input.scale,
                 rotation,
+                is_full_range,
             )
             .map_err(|e| DetectorError::InferenceFailed(format!("NV12->RGB CHW: {e}")))?;
         }

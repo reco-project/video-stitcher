@@ -133,6 +133,7 @@ fn reused_session_applies_both_full_and_limited_source_ranges() {
             &session.core.executor,
             crate::stitch::Executor::Cpu(executor) if executor.full_range == full_range
         ));
+        assert_eq!(session.source_full_range, full_range);
     }
 }
 

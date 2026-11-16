@@ -338,6 +338,8 @@ pub struct CudaNv12Frame {
     /// `nppiNV12ToRGB_8u_P2C3R`) must convert P010 to 8-bit first by
     /// right-shifting each sample by 8 bits.
     pub is_10bit: bool,
+    /// Whether YUV uses full-range quantization; false means video range.
+    pub is_full_range: bool,
 }
 
 #[cfg(test)]

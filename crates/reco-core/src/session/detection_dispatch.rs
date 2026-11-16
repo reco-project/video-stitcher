@@ -16,6 +16,34 @@ use crate::geometry::CameraIndex;
 use crate::session::types::SessionError;
 use crate::source::FrameSet;
 
+#[cfg(all(test, feature = "gpu", target_os = "linux"))]
+mod cuda_range_tests {
+    #[test]
+    fn source_range_is_retained_with_native_pointers() {
+        let buffer = crate::interop::zero_copy::GpuBufInfo {
+            y_ptr: [11, 22],
+            uv_ptr: [33, 44],
+            y_pitch: [1920, 2048],
+            uv_pitch: [1920, 2048],
+            width: 1920,
+            height: 1080,
+            pixel_format: crate::render::renderer::GpuPixelFormat::Nv12,
+        };
+        for full_range in [false, true] {
+            let frames =
+                super::cuda_nv12_frames(std::slice::from_ref(&buffer), &[1], [180, 0], full_range);
+            let crate::detect::detector::DetectorFrame::CudaNv12(frame) = &frames[0].1 else {
+                panic!("wrong residency")
+            };
+            assert_eq!(frame.is_full_range, full_range);
+            assert_eq!(
+                (frame.y_ptr, frame.uv_ptr, frame.y_pitch, frame.rotation),
+                (22, 44, 2048, 180)
+            );
+        }
+    }
+}
+
 /// Borrow native images without preparing model-specific pixels in the session.
 #[cfg(all(feature = "gpu", target_os = "linux"))]
 pub(super) fn nvmm_frames(
@@ -33,6 +61,7 @@ pub(super) fn cuda_nv12_frames(
     buffers: &[crate::interop::zero_copy::GpuBufInfo],
     slots: &[u8],
     rotations: [i32; 2],
+    full_range: bool,
 ) -> Vec<(CameraIndex, DetectorFrame<'static>)> {
     use crate::detect::detector::CudaNv12Frame;
     buffers
@@ -52,6 +81,7 @@ pub(super) fn cuda_nv12_frames(
                     height: buf.height,
                     rotation: rotations[camera],
                     is_10bit: buf.pixel_format == crate::render::renderer::GpuPixelFormat::P010,
+                    is_full_range: full_range,
                 }),
             )
         })
@@ -187,6 +217,7 @@ impl StitchSession {
                                 &bufs,
                                 slots,
                                 [self.left_rotation, self.right_rotation],
+                                self.source_full_range,
                             );
                             self.core.run_detection_frames(&frames, capture_times_us)?;
                         }

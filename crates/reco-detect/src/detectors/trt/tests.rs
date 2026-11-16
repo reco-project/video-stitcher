@@ -327,6 +327,7 @@ fn native_inference_preserves_layout_pixels_and_storage_across_cameras() {
             height,
             rotation: 0,
             is_10bit: false,
+            is_full_range: true,
         };
         close(
             &check_output(&mut detector, camera, &DetectorFrame::CudaNv12(frame)),
@@ -428,6 +429,7 @@ fn native_inference_preserves_layout_pixels_and_storage_across_cameras() {
             height: 4,
             rotation: 180,
             is_10bit: false,
+            is_full_range: true,
         }),
     );
     let reversed: Vec<u8> = y.into_iter().rev().collect();
@@ -475,6 +477,7 @@ fn native_inference_preserves_layout_pixels_and_storage_across_cameras() {
             height: 4,
             rotation: 0,
             is_10bit: true,
+            is_full_range: true,
         }),
         DetectorFrame::CudaRgba {
             ptr: 1,
@@ -514,6 +517,7 @@ fn native_inference_preserves_layout_pixels_and_storage_across_cameras() {
             height: 4,
             rotation: 0,
             is_10bit: false,
+            is_full_range: true,
         }),
         DetectorFrame::CudaNv12(CudaNv12Frame {
             y_ptr: 1,
@@ -524,6 +528,7 @@ fn native_inference_preserves_layout_pixels_and_storage_across_cameras() {
             height: 4,
             rotation: 90,
             is_10bit: false,
+            is_full_range: true,
         }),
     ] {
         assert!(letterboxed.detect(0, &frame).is_err());

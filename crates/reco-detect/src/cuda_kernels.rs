@@ -252,7 +252,7 @@ done:
 /// PTX for combined NV12 -> float32 RGB CHW conversion.
 ///
 /// Reads NV12 Y + interleaved UV planes, converts to RGB using
-/// BT.709 full-range coefficients (matching GoPro/action-cam `yuvj420p`
+/// BT.709 coefficients with explicit source range (including `yuvj420p`
 /// / `color_range=pc` output), normalizes to [0,1], and writes planar
 /// CHW float32 directly. Replaces the NPP NV12-to-RGB (which uses
 /// BT.601 video-range) + separate normalize kernel pipeline.
@@ -264,7 +264,7 @@ const NV12_TO_RGB_CHW_PTX: &[u8] = b"
 .target sm_50
 .address_size 64
 
-.visible .entry nv12_to_rgb_chw_fullrange(
+.visible .entry nv12_to_rgb_chw(
     .param .u64 y_ptr,
     .param .u64 uv_ptr,
     .param .u64 dst,
@@ -279,7 +279,8 @@ const NV12_TO_RGB_CHW_PTX: &[u8] = b"
     .param .u32 content_w,
     .param .u32 content_h,
     .param .f32 scale,
-    .param .u32 flip180
+    .param .u32 flip180,
+    .param .u32 full_range
 )
 {
     .reg .u32 %ox, %oy, %dw, %dh, %px, %py, %sw, %sh, %ypitch, %uvpitch;
@@ -394,6 +395,15 @@ const NV12_TO_RGB_CHW_PTX: &[u8] = b"
     sub.f32 %u_val, %u_val, %c128;
     sub.f32 %v_val, %v_val, %c128;
 
+    // Expand video-range luma/chroma before the shared BT.709 matrix.
+    ld.param.u32 %tmp, [full_range];
+    setp.ne.u32 %p, %tmp, 0;
+    @%p bra color_ready;
+    sub.f32 %y00, %y00, 0f41800000;
+    mul.f32 %y00, %y00, 0f3F950A85;
+    mul.f32 %u_val, %u_val, 0f3F91B6DB;
+    mul.f32 %v_val, %v_val, 0f3F91B6DB;
+color_ready:
     // R
     mov.f32 %t1, 0f3FC9930C;  // 1.5748
     fma.rn.f32 %r, %t1, %v_val, %y00;
@@ -461,10 +471,10 @@ static NV12_KERNEL: OnceLock<Result<CudaKernel, CudaInteropError>> = OnceLock::n
 
 fn get_nv12_kernel() -> Result<&'static CudaKernel, CudaInteropError> {
     NV12_KERNEL
-        .get_or_init(|| CudaKernel::from_ptx(NV12_TO_RGB_CHW_PTX, "nv12_to_rgb_chw_fullrange"))
+        .get_or_init(|| CudaKernel::from_ptx(NV12_TO_RGB_CHW_PTX, "nv12_to_rgb_chw"))
         .as_ref()
         .map_err(|e| CudaInteropError::CudaError {
-            function: "nv12_to_rgb_chw_fullrange_load",
+            function: "nv12_to_rgb_chw_load",
             code: match e {
                 CudaInteropError::CudaError { code, .. } => *code,
                 _ => -1,
@@ -474,9 +484,9 @@ fn get_nv12_kernel() -> Result<&'static CudaKernel, CudaInteropError> {
 
 /// Combined NV12 -> float32 RGB CHW conversion with letterbox placement.
 ///
-/// Replaces the NPP `nppiNV12ToRGB` (BT.601 video-range) + resize +
-/// normalize pipeline with a single kernel using BT.709 full-range
-/// coefficients matching GoPro/action-cam `yuvj420p` output.
+/// Uses the source range and BT.709 conversion in one fused kernel.
+/// Full-range sources retain their scale; video-range sources expand
+/// luma and chroma before conversion.
 ///
 /// Reads NV12 Y + UV planes at `(y_ptr, uv_ptr)` with independent byte strides,
 /// source dimensions `(src_w, src_h)`. Writes float32 CHW into `dst`
@@ -484,7 +494,7 @@ fn get_nv12_kernel() -> Result<&'static CudaKernel, CudaInteropError> {
 /// `(pad_x, pad_y)` at scale factor `scale`. The rounded content extent uses
 /// nearest sampling. Every padding pixel is written grey (114/255).
 #[allow(clippy::too_many_arguments)]
-pub fn nv12_to_rgb_chw_fullrange(
+pub fn nv12_to_rgb_chw(
     y_ptr: CUdeviceptr,
     uv_ptr: CUdeviceptr,
     dst: CUdeviceptr,
@@ -498,6 +508,7 @@ pub fn nv12_to_rgb_chw_fullrange(
     pad_y: u32,
     scale: f32,
     rotation: i32,
+    full_range: bool,
 ) -> Result<(), CudaInteropError> {
     reco_core::interop::cuda::cuda_ensure_context()?;
     let kernel = get_nv12_kernel()?;
@@ -521,7 +532,8 @@ pub fn nv12_to_rgb_chw_fullrange(
     let mut sc_val = scale;
     let mut flip_val: u32 = if rotation == 180 { 1 } else { 0 };
 
-    let mut args: [*mut c_void; 15] = [
+    let mut full_range_val = u32::from(full_range);
+    let mut args: [*mut c_void; 16] = [
         (&mut y_val as *mut u64).cast(),
         (&mut uv_val as *mut u64).cast(),
         (&mut dst_val as *mut u64).cast(),
@@ -537,6 +549,7 @@ pub fn nv12_to_rgb_chw_fullrange(
         (&mut ch_val as *mut u32).cast(),
         (&mut sc_val as *mut f32).cast(),
         (&mut flip_val as *mut u32).cast(),
+        (&mut full_range_val as *mut u32).cast(),
     ];
 
     unsafe {

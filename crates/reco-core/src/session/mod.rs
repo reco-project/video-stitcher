@@ -103,6 +103,8 @@ pub struct StitchSession {
     /// Right camera rotation from stream metadata.
     #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
     pub(crate) right_rotation: i32,
+    /// Source quantization range used by CUDA detection.
+    pub(crate) source_full_range: bool,
     /// GPU pixel format (NV12 or P010) for D3D11VA staging pool creation.
     #[cfg(feature = "gpu")]
     pub(crate) gpu_pixel_format: crate::render::renderer::GpuPixelFormat,
@@ -207,6 +209,7 @@ impl StitchSession {
             left_rotation: 0,
             #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
             right_rotation: 0,
+            source_full_range: false,
             #[cfg(feature = "gpu")]
             gpu_pixel_format: crate::render::renderer::GpuPixelFormat::Nv12,
         })

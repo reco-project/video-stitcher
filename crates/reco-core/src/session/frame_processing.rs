@@ -91,6 +91,7 @@ impl StitchSession {
                                     buffers,
                                     slots,
                                     [self.left_rotation, self.right_rotation],
+                                    self.source_full_range,
                                 );
                                 self.core.run_detection_frames(&frames, capture_times_us)?;
                             }
