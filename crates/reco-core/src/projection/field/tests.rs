@@ -47,6 +47,61 @@ const SIZE: ViewportSize = ViewportSize {
     height: 720,
 };
 
+fn corner_orders() -> Vec<[usize; 4]> {
+    let mut orders = Vec::new();
+    for a in 0..4 {
+        for b in 0..4 {
+            for c in 0..4 {
+                if a != b && b != c && a != c {
+                    let d = (0..4).find(|i| ![a, b, c].contains(i)).unwrap();
+                    orders.push([a, b, c, d]);
+                }
+            }
+        }
+    }
+    assert_eq!(orders.len(), 24);
+    orders
+}
+
+#[test]
+fn all_corner_orders_preserve_membership_outline_and_source_observations() {
+    for mut cal in calibrations() {
+        let pose = region(&mut cal);
+        let original = cal.field_roi.as_ref().unwrap().corners;
+        let baseline = cal.field_boundary().unwrap().unwrap();
+        let outline = baseline.outline(&cal, &SIZE, pose);
+        for order in corner_orders() {
+            let corners = order.map(|i| original[i]);
+            cal.field_roi = Some(FieldRoi { corners });
+            cal.validate().unwrap();
+            let boundary = cal.field_boundary().unwrap().unwrap();
+            for y in 1..10 {
+                for x in 1..10 {
+                    if let Some(point) =
+                        cal.pick_source_point(&SIZE, pose, [x as f64 / 10.0, y as f64 / 10.0])
+                    {
+                        assert_eq!(
+                            boundary.contains(point),
+                            baseline.contains(point),
+                            "{order:?}"
+                        );
+                    }
+                }
+            }
+            let actual = boundary.outline(&cal, &SIZE, pose);
+            assert_eq!(actual.len(), outline.len());
+            assert!(actual.iter().all(|p| {
+                outline
+                    .iter()
+                    .any(|q| (p[0] - q[0]).hypot(p[1] - q[1]) < 1e-6)
+            }));
+            let restored: Calibration = serde_json::from_str(&cal.to_json_pretty()).unwrap();
+            restored.validate().unwrap();
+            assert_eq!(restored.field_roi.unwrap().corners, corners);
+        }
+    }
+}
+
 #[test]
 fn touchline_camera_accepts_wide_field_and_contains_ground_points() {
     // A 105 x 68 m pitch, with the camera 2 m high and 1 m inside the
@@ -89,11 +144,8 @@ fn touchline_camera_accepts_wide_field_and_contains_ground_points() {
         rays.iter().any(|ray| ray.dot(&center) < 0.0),
         "exercise the removed hemisphere restriction"
     );
-    for reverse in [false, true] {
-        let mut corners = corners;
-        if reverse {
-            corners.reverse();
-        }
+    for order in corner_orders() {
+        let corners = order.map(|i| corners[i]);
         cal.field_roi = Some(FieldRoi { corners });
         cal.validate().unwrap();
         let boundary = cal.field_boundary().unwrap().unwrap();
@@ -106,7 +158,7 @@ fn touchline_camera_accepts_wide_field_and_contains_ground_points() {
                 assert_eq!(
                     boundary.contains(source(x, z)),
                     expected,
-                    "ground=({x},{z}), reversed={reverse}"
+                    "ground=({x},{z}), order={order:?}"
                 );
             }
         }
@@ -254,13 +306,14 @@ fn corners_are_source_attached_and_both_windings_work() {
 #[test]
 fn bad_regions_never_turn_into_unfiltered_or_clamped_regions() {
     let mut cal = calibrations()[0].clone();
-    region(&mut cal);
+    let pose = region(&mut cal);
     let good = cal.field_roi.clone();
+    let interior = cal.pick_source_point(&SIZE, pose, [0.55, 0.55]).unwrap();
     for case in 0..6 {
         cal.field_roi = good.clone();
         let corners = &mut cal.field_roi.as_mut().unwrap().corners;
         match case {
-            0 => corners.swap(1, 2),
+            0 => corners[0] = interior,
             1 => corners[1] = corners[0],
             2 => corners[0].position[0] = f64::NAN,
             3 => corners[0].position[1] = -0.1,
@@ -271,6 +324,37 @@ fn bad_regions_never_turn_into_unfiltered_or_clamped_regions() {
     }
     for raw in [r#"{"left":[],"right":[]}"#, r#"{"corners":[]}"#] {
         assert!(serde_json::from_str::<FieldRoi>(raw).is_err());
+    }
+}
+
+#[test]
+fn collinear_and_antipodal_selections_have_no_convex_quadrilateral() {
+    let mut cal = Calibration::new(
+        vec![Lens::flat(3840, 2160)],
+        Cylinder {
+            arc_deg: 360.0,
+            ..Default::default()
+        },
+        Framing {
+            axis_offset: 0.0,
+            tilt: 0.0,
+            roll: 0.0,
+        },
+    );
+    for positions in [
+        [[0.3, 0.5], [0.4, 0.5], [0.6, 0.5], [0.7, 0.5]],
+        [[0.0, 0.5], [0.5, 0.5], [0.3, 0.7], [0.7, 0.7]],
+        [[0.0, 0.5], [1.0, 0.5], [0.3, 0.7], [0.7, 0.7]],
+    ] {
+        for order in corner_orders() {
+            cal.field_roi = Some(FieldRoi {
+                corners: order.map(|i| SourcePoint {
+                    camera: 0,
+                    position: positions[i],
+                }),
+            });
+            assert!(cal.field_boundary().is_err(), "{positions:?} {order:?}");
+        }
     }
 }
 

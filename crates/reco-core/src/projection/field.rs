@@ -113,7 +113,7 @@ impl Calibration {
 
     /// Prepare the document's tracking boundary for allocation-free source-point tests.
     ///
-    /// Rebuild after changing corners, optics, projection, framing or blending. `None` means no region. Invalid, crossed, concave or degenerate observations return an error instead of silently disabling the filter. Corners need not share the hemisphere centered on their mean ray.
+    /// Rebuild after changing corners, optics, projection, framing or blending. `None` means no region. Four supported, distinct observations may be supplied in any order; all four must be vertices of a nondegenerate convex region. Corners need not share the hemisphere centered on their mean ray. The document's observation order is preserved.
     pub fn field_boundary(&self) -> Result<Option<FieldBoundary>, CalibrationError> {
         let Some(roi) = &self.field_roi else {
             return Ok(None);
@@ -146,22 +146,30 @@ impl Calibration {
             .sum::<Vector3<f64>>()
             .try_normalize(1e-9)
             .ok_or_else(|| invalid("corners do not enclose a finite region"))?;
-        let mut normals = [Vector3::zeros(); 4];
-        for i in 0..4 {
-            let mut normal = rays[i]
-                .cross(&rays[(i + 1) % 4])
-                .try_normalize(1e-9)
-                .ok_or_else(|| invalid("adjacent corners coincide"))?;
-            if normal.dot(&center) < 0.0 {
-                normal = -normal;
-            }
-            if (2..4).any(|offset| normal.dot(&rays[(i + offset) % 4]) <= 1e-8) {
-                return Err(invalid(
-                    "place four distinct corners in perimeter order around a convex region",
-                ));
-            }
-            normals[i] = normal;
-        }
+        // Four observations have only three distinct cycles up to rotation and
+        // reversal. Test supporting great-circle edges directly, without a
+        // perspective chart that would exclude wide fields. Every observation
+        // must remain a vertex; never turn an interior point into a triangle.
+        let (rays, normals) = [[0, 1, 2, 3], [0, 1, 3, 2], [0, 2, 1, 3]]
+            .into_iter()
+            .find_map(|order| {
+                let ordered = order.map(|i| rays[i]);
+                let mut normals = [Vector3::zeros(); 4];
+                for i in 0..4 {
+                    let mut normal = ordered[i]
+                        .cross(&ordered[(i + 1) % 4])
+                        .try_normalize(1e-9)?;
+                    if normal.dot(&center) < 0.0 {
+                        normal = -normal;
+                    }
+                    if (2..4).any(|offset| normal.dot(&ordered[(i + offset) % 4]) <= 1e-8) {
+                        return None;
+                    }
+                    normals[i] = normal;
+                }
+                Some((ordered, normals))
+            })
+            .ok_or_else(|| invalid("select four distinct corners enclosing a convex region"))?;
         let angles = self.virtual_camera().direction_to_yaw_pitch(&center.cast());
         let pose = self.world_to_render_pose(WorldPose {
             yaw: angles.yaw,

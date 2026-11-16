@@ -342,14 +342,35 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_and_crossed_corners_never_change_the_accepted_region() {
+    fn unordered_corners_apply_without_renumbering_observations() {
+        let (app, state) = editor();
+        app.invoke_edit_field();
+        for [x, y] in [[0.3, 0.65], [0.3, 0.35], [0.7, 0.65], [0.7, 0.35]] {
+            app.invoke_place_field_corner(-1, x, y);
+        }
+        assert!(app.get_field_can_apply());
+        assert!(!app.get_field_outline().is_empty());
+        let selected = state.borrow().field_editor.as_ref().unwrap().corners.clone();
+        app.invoke_finish_field(true);
+        assert!(!app.get_field_editing());
+        let state = state.borrow();
+        let cal = state.calibration.as_ref().unwrap();
+        assert_eq!(
+            cal.field_roi.as_ref().unwrap().corners.as_slice(),
+            selected.as_slice()
+        );
+        cal.validate().unwrap();
+    }
+
+    #[test]
+    fn unsupported_and_interior_corners_never_change_the_accepted_region() {
         let (app, state) = editor();
         app.invoke_edit_field();
         app.invoke_place_field_corner(-1, -0.1, 0.5);
         assert_eq!(app.get_field_corner_count(), 0);
         app.invoke_place_field_corner(-1, 0.5, f32::NAN);
         assert_eq!(app.get_field_corner_count(), 0);
-        for [x, y] in [[0.3, 0.35], [0.7, 0.65], [0.7, 0.35], [0.3, 0.65]] {
+        for [x, y] in [[0.55, 0.55], [0.7, 0.65], [0.7, 0.35], [0.3, 0.65]] {
             app.invoke_place_field_corner(-1, x, y);
         }
         assert!(!app.get_field_can_apply());

@@ -471,14 +471,14 @@ pub struct Framing {
     pub roll: f64,
 }
 
-/// Four field-boundary observations in perimeter order, clockwise or counterclockwise.
+/// Four field-boundary observations in any order; their convex perimeter is derived in calibrated ray space.
 ///
 /// Corners stay attached to their source images. Calibration derives the common region and its curved source-image edges.
 /// This is image support for tracking, not a metric ground-plane reconstruction.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FieldRoi {
-    /// Exactly four source observations around the boundary. No independently editable per-camera polygons.
+    /// Exactly four source observations, each a vertex of the boundary. Selection order is preserved; no independently editable per-camera polygons.
     pub corners: [crate::projection::SourcePoint; 4],
 }
 
