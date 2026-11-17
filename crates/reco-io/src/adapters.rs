@@ -15,19 +15,167 @@ use crate::ffmpeg;
 
 // -- FFmpeg File Source --
 
-/// Estimate complete frame sets after chaining and two-camera alignment. An unknown segment makes the total unknown; partial counts are not totals.
+/// Settings differences for one camera, relative to its first recording.
 #[cfg(feature = "ffmpeg")]
+#[derive(Default)]
+pub struct RecordingInspection {
+    /// Encoded dimensions of the first recording, if probing succeeded.
+    pub first_size: Option<(u32, u32)>,
+    /// Frame rate of the first recording as a numerator and denominator.
+    pub first_rate: Option<(i32, i32)>,
+    /// Human-readable inspection warnings, including cross-camera differences.
+    pub warnings: Vec<String>,
+    /// Diagnostic text for each recording, in input order. Empty entries have no reported issue.
+    pub recording_warnings: Vec<String>,
+    /// One flag per recording. Cross-camera differences mark the nonbaseline camera.
+    pub different: Vec<bool>,
+}
+
+/// Inspect every selected recording independently of decoder initialization.
+///
+/// Compares encoded dimensions, frame rate and display-matrix rotation within each camera's chain. Rotation differences between cameras are allowed.
+/// Different camera dimensions can be supported; differing frame rates are
+/// not resampled by the frame-pairing source. No warning certifies lens identity.
+#[cfg(feature = "ffmpeg")]
+pub fn inspect_recordings(inputs: &[crate::stitch_job::InputPath]) -> Vec<RecordingInspection> {
+    probe_recordings(inputs).1
+}
+
+/// Estimate complete frame sets after chaining and two-camera alignment. An unknown segment makes the total unknown; partial counts are not totals.
+#[cfg(all(feature = "ffmpeg", feature = "gpu"))]
 pub(crate) fn input_frame_count(
     inputs: &[crate::stitch_job::InputPath],
     sync_offset: i64,
 ) -> Option<u64> {
-    let mut shortest = None;
-    for (camera, input) in inputs.iter().enumerate() {
-        let mut total = 0u64;
-        for path in input.all_paths() {
-            total = total.checked_add(ffmpeg::decoder::probe_frame_count(&path).ok()??)?;
+    frame_set_count(&probe_recordings(inputs).0, sync_offset)
+}
+
+#[cfg(feature = "ffmpeg")]
+fn probe_recordings(
+    inputs: &[crate::stitch_job::InputPath],
+) -> (Vec<Option<Vec<u64>>>, Vec<RecordingInspection>) {
+    let mut warnings = Vec::new();
+    let mut cameras = Vec::new();
+    let counts = inputs
+        .iter()
+        .map(|input| {
+            let mut issues = RecordingInspection::default();
+            let mut baseline = None;
+            let counts = input
+                .all_paths()
+                .iter()
+                .enumerate()
+                .map(
+                    |(index, path)| match ffmpeg::decoder::probe_recording(path) {
+                        Ok(metadata) => {
+                            if index == 0 {
+                                issues.first_size = Some(metadata.size);
+                                issues.first_rate = metadata.rate.map(|rate| (rate.0, rate.1));
+                            }
+                            let settings = (metadata.size, metadata.rate, metadata.rotation);
+                            let first = *baseline.get_or_insert(settings);
+                            issues.different.push(first != settings);
+                            let mut warning = String::new();
+                            if first != settings {
+                                let mut differences = Vec::new();
+                                if first.0 != settings.0 {
+                                    differences.push(format!(
+                                        "resolution {} × {} (expected {} × {})",
+                                        settings.0.0, settings.0.1, first.0.0, first.0.1
+                                    ));
+                                }
+                                if first.1 != settings.1 {
+                                    differences.push(format!(
+                                        "frame rate {} (expected {})",
+                                        recording_rate(settings.1),
+                                        recording_rate(first.1)
+                                    ));
+                                }
+                                if first.2 != settings.2 {
+                                    differences.push(format!(
+                                        "rotation {}° (expected {}°)",
+                                        settings.2, first.2
+                                    ));
+                                }
+                                warning = format!(
+                                    "{}: {}.",
+                                    path.file_name()
+                                        .unwrap_or(path.as_os_str())
+                                        .to_string_lossy(),
+                                    differences.join("; ")
+                                );
+                                issues.warnings.push(warning.clone());
+                            }
+                            issues.recording_warnings.push(warning);
+                            metadata.frames
+                        }
+                        Err(error) => {
+                            issues.different.push(true);
+                            let warning = format!(
+                                "{}: recording settings could not be checked: {error}",
+                                path.display()
+                            );
+                            issues.warnings.push(warning.clone());
+                            issues.recording_warnings.push(warning);
+                            None
+                        }
+                    },
+                )
+                // Visit every file even after an unknown count.
+                .collect::<Vec<_>>()
+                .into_iter()
+                .collect();
+            warnings.push(issues);
+            cameras.push(baseline);
+            counts
+        })
+        .collect();
+    if let Some(Some(first)) = cameras.first() {
+        for (index, settings) in cameras.iter().enumerate().skip(1) {
+            if let Some(settings) = settings {
+                let mut differences = Vec::new();
+                if first.0 != settings.0 {
+                    differences.push(format!("Camera resolutions differ: {} × {} and {} × {}. Per-camera dimensions are supported; each camera needs its matching lens setup.", first.0.0, first.0.1, settings.0.0, settings.0.1));
+                }
+                if let (Some(left), Some(right)) = (first.1, settings.1)
+                    && left != right
+                {
+                    differences.push(format!("Camera frame rates differ: {:.3} and {:.3} fps. Reco pairs frames without resampling. Different rates can drift; use the same frame rate.", left.0 as f64 / left.1 as f64, right.0 as f64 / right.1 as f64));
+                }
+                if !differences.is_empty() {
+                    warnings[index].different.fill(true);
+                    for warning in &mut warnings[index].recording_warnings {
+                        if !warning.is_empty() {
+                            warning.push_str("\n\n");
+                        }
+                        warning.push_str(&differences.join("\n\n"));
+                    }
+                }
+                warnings[0].warnings.extend(differences.clone());
+                warnings[index].warnings.extend(differences);
+            }
         }
-        if inputs.len() == 2
+    }
+    (counts, warnings)
+}
+
+#[cfg(feature = "ffmpeg")]
+fn recording_rate(rate: Option<ffmpeg_next::Rational>) -> String {
+    rate.map_or_else(
+        || "unknown".into(),
+        |rate| format!("{:.3} fps", f64::from(rate.0) / f64::from(rate.1)),
+    )
+}
+
+#[cfg(feature = "ffmpeg")]
+fn frame_set_count(segments: &[Option<Vec<u64>>], sync_offset: i64) -> Option<u64> {
+    let mut shortest = None;
+    for (camera, counts) in segments.iter().enumerate() {
+        let mut total = counts
+            .as_ref()?
+            .iter()
+            .try_fold(0u64, |sum, count| sum.checked_add(*count))?;
+        if segments.len() == 2
             && ((sync_offset > 0 && camera == 1) || (sync_offset < 0 && camera == 0))
         {
             total = total.saturating_sub(sync_offset.unsigned_abs());
@@ -95,6 +243,7 @@ pub struct FfmpegFileSource {
     /// in projection order.
     rotations: Vec<i32>,
     inputs: Vec<crate::stitch_job::InputPath>,
+    segment_frames: Vec<Option<Vec<u64>>>,
     sync_offset: i64,
     /// Software decode forced at open; seek respawns must reuse it.
     software_decode: bool,
@@ -168,11 +317,18 @@ impl FfmpegFileSource {
         let fps_r = probe.frame_rate();
         let full_range = probe.is_full_range();
         let fps = probe.fps().unwrap_or(0.0);
+        let (segment_frames, recording_warnings) = probe_recordings(inputs);
+        for warning in recording_warnings
+            .iter()
+            .flat_map(|report| &report.warnings)
+        {
+            log::warn!("{warning}");
+        }
         let mut info = SourceInfo {
             camera_sizes: vec![(probe.width(), probe.height())],
             fps,
             fps_rational: fps_r.map(|r| (r.0, r.1)),
-            total_frames: input_frame_count(inputs, sync_offset),
+            total_frames: frame_set_count(&segment_frames, sync_offset),
         };
         let decode_backend = probe.backend();
         #[cfg(feature = "gpu")]
@@ -213,6 +369,7 @@ impl FfmpegFileSource {
             pixel_format,
             rotations,
             inputs,
+            segment_frames,
             sync_offset,
             software_decode,
             current_frame: 0,
@@ -225,6 +382,15 @@ impl FfmpegFileSource {
     /// The decode backend selected during probe (CUDA, VAAPI, or software).
     pub fn decode_backend(&self) -> ffmpeg::decoder::DecodeBackend {
         self.decode_backend
+    }
+
+    /// Per-recording frame-count estimates in input order, before synchronization.
+    ///
+    /// Uses the same cached metadata as the chain total. Returns `None` for an
+    /// invalid input index or if any recording count is unknown. These estimates
+    /// describe back-to-back recordings, not evidence of capture-time gaps.
+    pub fn segment_frame_counts(&self, input: usize) -> Option<&[u64]> {
+        self.segment_frames.get(input)?.as_deref()
     }
 
     /// Transfer the cleanup wait to an interactive consumer's lifetime scope.
@@ -455,6 +621,29 @@ impl Drop for FileDecoders {
 #[cfg(all(test, feature = "ffmpeg"))]
 mod decode_tests {
     use super::*;
+
+    #[test]
+    fn segment_counts_form_the_same_total_and_keep_unknowns_unknown() {
+        let counts = vec![Some(vec![10, 30, 20]), Some(vec![40, 30])];
+        assert_eq!(frame_set_count(&counts, 0), Some(60));
+        assert_eq!(frame_set_count(&counts, 20), Some(50));
+        assert_eq!(frame_set_count(&counts, -20), Some(40));
+        assert_eq!(frame_set_count(&[Some(vec![10]), None], 0), None);
+        assert_eq!(frame_set_count(&[Some(vec![u64::MAX, 1])], 0), None);
+        assert_eq!(frame_set_count(&[], 0), None);
+    }
+
+    #[test]
+    fn recording_metadata_is_cached_and_unknown_inputs_are_not_invented() {
+        let mut source = source(vec![]);
+        source.segment_frames = vec![Some(vec![100, 300, 200]), None];
+        assert_eq!(
+            source.segment_frame_counts(0),
+            Some([100, 300, 200].as_slice())
+        );
+        assert_eq!(source.segment_frame_counts(1), None);
+        assert_eq!(source.segment_frame_counts(2), None);
+    }
     use reco_core::source::FrameSource;
 
     fn source(messages: Vec<crate::decode_stream::Message<Vec<Yuv420pData>>>) -> FfmpegFileSource {
@@ -478,6 +667,7 @@ mod decode_tests {
             pixel_format: reco_core::render::renderer::GpuPixelFormat::Nv12,
             rotations: vec![0],
             inputs: vec![],
+            segment_frames: vec![],
             sync_offset: 0,
             software_decode: true,
             current_frame: 0,

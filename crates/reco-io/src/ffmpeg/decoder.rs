@@ -286,15 +286,56 @@ fn container_duration_secs(path: &Path) -> Result<Option<f64>, DecodeError> {
     }
 }
 
-/// Read a frame-count estimate through demuxer probing, without starting a Reco decoder pipeline.
-pub(crate) fn probe_frame_count(path: &Path) -> Result<Option<u64>, DecodeError> {
+/// Container metadata for chain compatibility checks, without decoding frames.
+pub(crate) struct RecordingMetadata {
+    pub frames: Option<u64>,
+    pub size: (u32, u32),
+    pub rate: Option<ffmpeg::Rational>,
+    pub rotation: i32,
+}
+
+fn stream_rotation(stream: &ffmpeg::Stream<'_>) -> i32 {
+    let Some(side_data) = stream
+        .side_data()
+        .find(|data| data.kind() == ffmpeg::codec::packet::side_data::Type::DisplayMatrix)
+    else {
+        return 0;
+    };
+    let Some(data) = side_data.data().get(..36) else {
+        return 0;
+    };
+    let mut matrix = [0i32; 9];
+    for (entry, bytes) in matrix.iter_mut().zip(data.chunks_exact(4)) {
+        *entry = i32::from_ne_bytes(bytes.try_into().expect("four-byte matrix entry"));
+    }
+    // SAFETY: matrix contains the nine aligned native-endian entries required by FFmpeg.
+    let angle = unsafe { ffi::av_display_rotation_get(matrix.as_ptr()) };
+    ((-angle).round() as i32).rem_euclid(360)
+}
+
+/// Read each recording independently, rather than trusting concat's first stream.
+pub(crate) fn probe_recording(path: &Path) -> Result<RecordingMetadata, DecodeError> {
     ffmpeg::init()?;
     let context = input(path)?;
     let stream = context
         .streams()
         .best(Type::Video)
         .ok_or(DecodeError::NoVideoStream)?;
-    Ok(video_frame_count(&stream, context.duration()))
+    let parameters = stream.parameters();
+    // SAFETY: parameters owns a live AVCodecParameters for this video stream.
+    let size = unsafe {
+        let parameters = &*parameters.as_ptr();
+        (
+            parameters.width.max(0) as u32,
+            parameters.height.max(0) as u32,
+        )
+    };
+    Ok(RecordingMetadata {
+        frames: video_frame_count(&stream, context.duration()),
+        size,
+        rate: pick_frame_rate(Some(stream.rate()), Some(stream.avg_frame_rate()), None),
+        rotation: stream_rotation(&stream),
+    })
 }
 
 fn video_frame_count(stream: &ffmpeg::Stream<'_>, container_duration: i64) -> Option<u64> {
@@ -491,26 +532,7 @@ impl VideoDecoder {
         // Common with DJI cameras that store upside-down video with rotation=-180.
         // Uses ffmpeg-next's safe side_data() iterator which handles both
         // FFmpeg <7 (stream side data) and FFmpeg 8+ (codecpar coded_side_data).
-        let rotation = ictx
-            .streams()
-            .best(Type::Video)
-            .and_then(|stream| {
-                stream
-                    .side_data()
-                    .find(|sd| sd.kind() == ffmpeg::codec::packet::side_data::Type::DisplayMatrix)
-                    .map(|sd| {
-                        let data = sd.data();
-                        if data.len() >= 36 {
-                            // Display matrix is 9 x int32 = 36 bytes
-                            let matrix_ptr = data.as_ptr() as *const i32;
-                            let angle = unsafe { ffi::av_display_rotation_get(matrix_ptr) };
-                            ((-angle).round() as i32 % 360 + 360) % 360
-                        } else {
-                            0
-                        }
-                    })
-            })
-            .unwrap_or(0);
+        let rotation = stream_rotation(&stream);
 
         if rotation != 0 {
             log::info!("Stream has rotation={rotation} degrees, will apply to decoded frames");

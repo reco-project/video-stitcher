@@ -13,6 +13,155 @@ const WIDTH: u32 = 128;
 const HEIGHT: u32 = 96;
 
 #[test]
+fn recording_rotation_changes_follow_the_camera_baseline_not_the_other_camera() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = dir.path().join("first.mp4");
+    fixture(&first);
+    for (angle, expected) in [(90, 270), (180, 180), (270, 90), (360, 0), (-180, 180)] {
+        let later = dir.path().join(format!("rotation-{angle}.mp4"));
+        let output = std::process::Command::new("ffmpeg")
+            .args([
+                "-v",
+                "error",
+                "-nostdin",
+                "-display_rotation",
+                &angle.to_string(),
+                "-i",
+            ])
+            .arg(&first)
+            .args(["-map", "0:v:0", "-c", "copy"])
+            .arg(&later)
+            .output()
+            .expect("ffmpeg fixture remuxer");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            VideoDecoder::open_software(&later).unwrap().rotation(),
+            expected
+        );
+        let reports = reco_io::adapters::inspect_recordings(&[InputPath::Chained(vec![
+            first.clone(),
+            later.clone(),
+        ])]);
+        assert_eq!(reports[0].different, [false, expected != 0]);
+        assert_eq!(reports[0].recording_warnings.len(), 2);
+        assert!(reports[0].recording_warnings[0].is_empty());
+        assert_eq!(reports[0].recording_warnings[1].is_empty(), expected == 0);
+        if expected == 0 {
+            assert!(reports[0].warnings.is_empty());
+        } else {
+            assert_eq!(
+                reports[0].warnings,
+                [format!(
+                    "rotation-{angle}.mp4: rotation {expected}° (expected 0°)."
+                )]
+            );
+            let reordered = reco_io::adapters::inspect_recordings(&[InputPath::Chained(vec![
+                later.clone(),
+                first.clone(),
+            ])]);
+            assert_eq!(reordered[0].different, [false, true]);
+            assert!(reordered[0].recording_warnings[0].is_empty());
+            assert_eq!(reordered[0].recording_warnings[1], reordered[0].warnings[0]);
+            assert_eq!(
+                reordered[0].warnings,
+                [format!("first.mp4: rotation 0° (expected {expected}°).")]
+            );
+        }
+        let cameras = reco_io::adapters::inspect_recordings(&[
+            InputPath::Single(first.clone()),
+            InputPath::Single(later),
+        ]);
+        assert!(
+            cameras
+                .iter()
+                .all(|report| report.warnings.is_empty() && report.different == [false])
+        );
+    }
+}
+
+#[test]
+fn chained_recordings_warn_on_later_settings_before_playback_reaches_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = dir.path().join("first.mp4");
+    let resized = dir.path().join("resized.mp4");
+    let faster = dir.path().join("faster.mp4");
+    fixture_size(&first, "libx264", 128, 96);
+    fixture_size(&resized, "libx264", 256, 192);
+    fixture_rate(&faster, "libx264", 128, 96, (60, 1));
+    for later in [&resized, &faster] {
+        let warnings = reco_io::adapters::inspect_recordings(&[InputPath::Chained(vec![
+            first.clone(),
+            later.clone(),
+        ])]);
+        assert_eq!(warnings[0].warnings.len(), 1);
+        assert_eq!(warnings[0].different, vec![false, true]);
+        assert!(warnings[0].recording_warnings[0].is_empty());
+        assert_eq!(warnings[0].recording_warnings[1], warnings[0].warnings[0]);
+        assert_eq!(warnings[0].first_size, Some((128, 96)));
+        assert_eq!(warnings[0].first_rate, Some((30, 1)));
+        assert!(warnings[0].warnings[0].contains(later.file_name().unwrap().to_str().unwrap()));
+        let reordered = reco_io::adapters::inspect_recordings(&[InputPath::Chained(vec![
+            later.clone(),
+            first.clone(),
+        ])]);
+        assert_eq!(
+            reordered[0].first_size,
+            Some(if later == &resized {
+                (256, 192)
+            } else {
+                (128, 96)
+            })
+        );
+        assert_eq!(
+            reordered[0].first_rate,
+            Some(if later == &faster { (60, 1) } else { (30, 1) })
+        );
+        assert_eq!(reordered[0].different, vec![false, true]);
+        assert!(reordered[0].warnings[0].contains("first.mp4"));
+    }
+    let matching = reco_io::adapters::inspect_recordings(&[InputPath::Chained(vec![
+        first.clone(),
+        first.clone(),
+    ])]);
+    assert!(matching[0].warnings.is_empty());
+    assert_eq!(matching[0].different, vec![false, false]);
+    let differences = reco_io::adapters::inspect_recordings(&[
+        InputPath::Single(first.clone()),
+        InputPath::Single(resized),
+    ]);
+    assert_eq!(differences[0].different, vec![false]);
+    assert_eq!(differences[1].different, vec![true]);
+    assert!(differences[0].recording_warnings[0].is_empty());
+    assert!(differences[1].recording_warnings[0].contains("resolutions differ"));
+    assert!(
+        differences.iter().all(|report| report.warnings.len() == 1
+            && report.warnings[0].contains("resolutions differ"))
+    );
+    let differences = reco_io::adapters::inspect_recordings(&[
+        InputPath::Single(first.clone()),
+        InputPath::Single(faster),
+    ]);
+    assert!(
+        differences.iter().all(|report| report.warnings.len() == 1
+            && report.warnings[0].contains("without resampling"))
+    );
+    let unreadable = reco_io::adapters::inspect_recordings(&[InputPath::Chained(vec![
+        dir.path().join("missing.mp4"),
+        first,
+    ])]);
+    assert!(unreadable[0].warnings[0].contains("could not be checked"));
+    assert_eq!(
+        unreadable[0].recording_warnings[0],
+        unreadable[0].warnings[0]
+    );
+    assert!(unreadable[0].recording_warnings[1].is_empty());
+}
+
+#[test]
 fn independent_input_dimensions_survive_decode_and_cpu_render() {
     use reco_core::calibration::{Calibration, Framing, Lens};
     use reco_core::geometry::RenderPose;
