@@ -16,6 +16,9 @@ pub(crate) mod diagnostics;
 
 // Seven placement parameters, then focal scale and four KB4 terms per camera.
 pub(super) const N: usize = 7 + 2 * 5;
+// SLSQP permits small feasibility violations at convergence. Keep its target
+// inside the strict sensor-domain boundary rather than weakening final validity.
+const SENSOR_INTERIOR_MARGIN: f64 = 1e-6;
 const SCALE: [f64; 7] = [0.06, 0.03, 0.08, 0.08, 0.08, 0.08, 0.04];
 const OPTICS_SCALE: [f64; 5] = [0.2, 0.1, 0.1, 0.05, 0.02];
 
@@ -110,17 +113,21 @@ pub(crate) fn parameter_bounds(
 }
 
 fn sensor_margin(calibration: &Calibration) -> Result<f64, String> {
-    calibration
-        .lenses
-        .iter()
-        .try_fold(f64::INFINITY, |minimum, lens| {
-            let margin = reco_core::lens::sensor_domain_margin(lens);
-            if margin.is_finite() {
-                Ok(minimum.min(margin))
-            } else {
-                Err("nonfinite optical domain".into())
-            }
-        })
+    Ok(sensor_margins(calibration)?
+        .into_iter()
+        .fold(f64::INFINITY, f64::min))
+}
+
+fn sensor_margins(calibration: &Calibration) -> Result<[f64; 2], String> {
+    let [left, right] = calibration.lenses.as_slice() else {
+        return Err("expected two optical models".into());
+    };
+    let margins = [left, right].map(reco_core::lens::sensor_domain_margin);
+    if margins.iter().all(|margin| margin.is_finite()) {
+        Ok(margins)
+    } else {
+        Err("nonfinite optical domain".into())
+    }
 }
 
 struct Model<'a> {
@@ -395,10 +402,22 @@ impl Gradient for Constrained<'_> {
 impl NonlinearConstraints for Constrained<'_> {
     type Matrix = DenseMatrix;
     fn num_nonlinear_constraints(&self) -> usize {
-        1
+        2
     }
     fn nonlinear_constraints(&self, x: &Vec<f64>) -> Result<Vec<f64>, String> {
-        Ok(vec![-self.0.margin(x)?])
+        let margins = sensor_margins(&self.0.calibration(x)?)?;
+        Ok(margins
+            .into_iter()
+            .enumerate()
+            .map(|(side, margin)| {
+                let reserve = if x.len() == N && self.0.optics[side] {
+                    SENSOR_INTERIOR_MARGIN
+                } else {
+                    0.0
+                };
+                reserve - margin
+            })
+            .collect())
     }
     fn lower(&self) -> Option<&Vec<f64>> {
         Some(&self.0.lower)
@@ -410,12 +429,16 @@ impl NonlinearConstraints for Constrained<'_> {
 
 impl ConstraintJacobian for Constrained<'_> {
     fn constraint_jacobian(&self, x: &Vec<f64>) -> Result<DenseMatrix, String> {
-        let mut gradient = Vec::with_capacity(x.len());
+        let mut columns = Vec::with_capacity(x.len());
         for i in 0..x.len() {
             let (hi, lo) = self.0.perturb(x, i);
-            gradient.push(-(self.0.margin(&hi)? - self.0.margin(&lo)?) / (hi[i] - lo[i]));
+            let a = sensor_margins(&self.0.calibration(&hi)?)?;
+            let b = sensor_margins(&self.0.calibration(&lo)?)?;
+            columns.push(std::array::from_fn::<_, 2, _>(|side| {
+                -(a[side] - b[side]) / (hi[i] - lo[i])
+            }));
         }
-        Ok(DenseMatrix::from_fn(1, x.len(), |_, i| gradient[i]))
+        Ok(DenseMatrix::from_fn(2, x.len(), |side, i| columns[i][side]))
     }
 }
 
@@ -559,14 +582,16 @@ pub(crate) fn solve_native(
         derivative_elapsed: Duration::from_nanos(model.derivative_nanos.load(Ordering::Relaxed)),
     };
     log::debug!(
-        "Direct fit {:?}: {} iterations, {} residuals, {} Jacobians, {:.3}s (derivatives {:.3}s), cost={}",
+        "Direct fit {:?}: {} iterations, {} residuals, {} Jacobians, {:.3}s (derivatives {:.3}s), cost={}, sensor_margin={:.12e}, status={}",
         options.method,
         solution.iterations,
         solution.residuals,
         solution.jacobians,
         solution.elapsed.as_secs_f64(),
         solution.derivative_elapsed.as_secs_f64(),
-        solution.cost
+        solution.cost,
+        solution.margin,
+        solution.status
     );
     Ok(solution)
 }

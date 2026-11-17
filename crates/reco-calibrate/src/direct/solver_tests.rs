@@ -146,6 +146,104 @@ fn interior_optics_do_not_request_constrained_refinement() {
 }
 
 #[test]
+fn constrained_convergence_preserves_strict_sensor_feasibility() {
+    let (value, _) = fixture(1);
+    let mut seed: Calibration = serde_json::from_value(value).unwrap();
+    let capacity = std::f64::consts::FRAC_PI_2 - 2e-6;
+    for lens in &mut seed.lenses {
+        lens.fx = 400.0 / (capacity + 2e-10);
+        lens.fy = lens.fx;
+    }
+    assert!(sensor_margin(&seed).unwrap() < 0.0);
+    let stage = consistent_stage(&seed);
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(1)
+        .build()
+        .unwrap();
+    let input = request(serde_json::to_value(seed).unwrap(), "slsqp");
+    let result = solve(&input, &stage, &pool, &AtomicBool::new(false)).unwrap();
+    assert_eq!(result["success"], true, "{result}");
+    assert!(
+        result["margin"].as_f64().unwrap() >= 0.0,
+        "Converged but rejected by the pipeline: {result}"
+    );
+}
+
+fn consistent_stage(calibration: &Calibration) -> Stage {
+    let points: Vec<_> = (0..49)
+        .map(|i| [0.80 + (i % 7) as f64 * 0.002, 0.4 + (i / 7) as f64 * 0.002])
+        .collect();
+    let right: Vec<_> = (0..64 * 48)
+        .map(|i| (i as f64 * 0.37).sin() * 0.1 + 0.4)
+        .collect();
+    let construct = |target| {
+        Stage::new(
+            64,
+            48,
+            49,
+            points.clone(),
+            vec![Pair {
+                target,
+                right: right.clone(),
+            }],
+        )
+        .unwrap()
+    };
+    let mut target = Vec::new();
+    assert_eq!(
+        construct(vec![0.0; 49])
+            .residual(calibration, &mut target)
+            .unwrap(),
+        0
+    );
+    construct(target)
+}
+
+#[test]
+fn constrained_interior_reserve_does_not_move_a_fixed_boundary_lens() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(1)
+        .build()
+        .unwrap();
+    for fixed in 0..2 {
+        let (value, _) = fixture(1);
+        let mut seed: Calibration = serde_json::from_value(value).unwrap();
+        for (side, lens) in seed.lenses.iter_mut().enumerate() {
+            let capacity = std::f64::consts::FRAC_PI_2 - 2e-6;
+            lens.fx = 400.0 / (capacity + if side == fixed { -5e-8 } else { 2e-10 });
+            lens.fy = lens.fx;
+        }
+        let stage = consistent_stage(&seed);
+        let interrupted = AtomicBool::new(false);
+        let control = Control {
+            interrupted: &interrupted,
+            deadline: Instant::now() + Duration::from_secs(5),
+        };
+        let mut optics = [true; 2];
+        optics[fixed] = false;
+        let result = solve_native(
+            seed.clone(),
+            vec![0.0; N],
+            SolveOptions {
+                method: Method::Constrained,
+                budget: 1000,
+                tolerance: 1e-5,
+                difference_step: 0.00002,
+                active_penalty: false,
+                optics,
+            },
+            &stage,
+            &pool,
+            &control,
+        )
+        .unwrap();
+        assert!(result.success, "{}", result.status);
+        assert!(result.margin >= 0.0, "{}", result.margin);
+        assert_eq!(result.calibration.lenses[fixed], seed.lenses[fixed]);
+    }
+}
+
+#[test]
 fn fixed_optics_solve_and_inspection_preserve_lenses() {
     let (seed, _) = fixture(1);
     let cal = serde_json::from_value(seed.clone()).unwrap();
