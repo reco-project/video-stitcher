@@ -89,8 +89,9 @@ pub fn correlate(
     let mut signal: Vec<f64> = right_samples.iter().map(|&s| s as f64).collect();
 
     // Normalize both
-    normalize(&mut template);
-    normalize(&mut signal);
+    if !normalize(&mut template) || !normalize(&mut signal) {
+        return Err(SyncError::NoSignal);
+    }
 
     log::info!(
         "audio sync: correlating {:.1}s template against {:.1}s signal at {}Hz",
@@ -132,6 +133,9 @@ pub enum SyncError {
     /// One or both audio signals are empty.
     #[error("empty audio signal")]
     EmptyAudio,
+    /// A constant signal has no temporal information.
+    #[error("audio has no varying signal for synchronization")]
+    NoSignal,
     /// FFT computation failed.
     #[error("FFT error: {0}")]
     FftError(String),
@@ -141,12 +145,15 @@ pub enum SyncError {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-fn normalize(v: &mut [f64]) {
+fn normalize(v: &mut [f64]) -> bool {
     let n = v.len() as f64;
     let mean = v.iter().sum::<f64>() / n;
     let std = (v.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n).sqrt();
     if std > 1e-10 {
         v.iter_mut().for_each(|x| *x = (*x - mean) / std);
+        true
+    } else {
+        false
     }
 }
 
@@ -197,4 +204,30 @@ fn fft_cross_correlate(signal: &[f64], template: &[f64]) -> Result<Vec<f64>, Syn
     result.iter_mut().for_each(|v| *v *= scale);
     result.truncate(n);
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constant_audio_on_either_camera_cannot_establish_timing() {
+        let varying = [0, 2, -4, 7, 1, -3, 8, -1];
+        for level in [0, 1234] {
+            let constant = [level; 8];
+            for (left, right) in [
+                (&constant, &varying),
+                (&varying, &constant),
+                (&constant, &constant),
+            ] {
+                assert!(matches!(
+                    correlate(left, right, 8, 1.0),
+                    Err(SyncError::NoSignal)
+                ));
+            }
+        }
+        let result = correlate(&varying, &varying, 8, 1.0).unwrap();
+        assert_eq!(result.offset_secs, 0.0);
+        assert!(result.confidence.is_finite() && result.confidence > 0.0);
+    }
 }
