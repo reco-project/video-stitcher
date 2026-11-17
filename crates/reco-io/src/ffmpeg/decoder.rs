@@ -794,12 +794,27 @@ impl VideoDecoder {
     /// caller should call `next_frame()` to advance to the exact frame.
     /// Flushes the decoder so that subsequent frames are decoded fresh.
     pub fn seek_to_secs(&mut self, secs: f64) -> Result<(), DecodeError> {
-        // Convert seconds to AV_TIME_BASE (microseconds)
-        let ts = (secs * f64::from(ffmpeg::ffi::AV_TIME_BASE)) as i64;
+        let ts = self.seek_timestamp_us(secs)?;
         self.input.seek(ts, ..ts)?;
         self.decoder.flush();
         self.eof_sent = false;
         Ok(())
+    }
+
+    /// Round a seek target to the stream's timestamp grid, then convert it exactly as decoded PTS.
+    pub(crate) fn seek_timestamp_us(&self, secs: f64) -> Result<i64, DecodeError> {
+        if self.time_base.0 <= 0 || self.time_base.1 <= 0 {
+            return Err(DecodeError::ConversionError(
+                "invalid stream time base".into(),
+            ));
+        }
+        let ticks = (secs * f64::from(self.time_base.1) / f64::from(self.time_base.0)).round();
+        if !ticks.is_finite() || ticks <= i64::MIN as f64 || ticks >= i64::MAX as f64 {
+            return Err(DecodeError::ConversionError(
+                "seek timestamp is outside the stream range".into(),
+            ));
+        }
+        self.pts_to_us(ticks as i64)
     }
 
     /// Receive one frame, supplying input only when the decoder requests it.
@@ -1626,6 +1641,38 @@ mod tests {
     const R30: ffmpeg::Rational = ffmpeg::Rational(30, 1);
     const NTSC: ffmpeg::Rational = ffmpeg::Rational(30000, 1001);
     const UNSET: ffmpeg::Rational = ffmpeg::Rational(0, 0);
+
+    #[test]
+    fn seek_targets_use_decoded_timestamp_precision() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("seek.mov");
+        write_mjpeg_60fps(&path);
+        let mut decoder = super::VideoDecoder::open_software(&path).unwrap();
+        for (base, seconds, expected) in [
+            ((1, 1000), 1.0 / 30.0, 33_000),
+            ((1, 1000), 2.0 / 30.0, 67_000),
+            ((1, 1000), 1.001 / 30.0, 33_000),
+            ((1, 15360), 1.0 / 30.0, 33_333),
+            ((1, 90000), 1.001 / 30.0, 33_366),
+            ((1, 1000), -1.0 / 30.0, -33_000),
+        ] {
+            decoder.time_base = base.into();
+            assert_eq!(decoder.seek_timestamp_us(seconds).unwrap(), expected);
+        }
+        for invalid in [
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::MAX,
+            f64::MIN,
+        ] {
+            assert!(decoder.seek_timestamp_us(invalid).is_err());
+        }
+        for base in [(0, 1), (1, 0), (-1, 1), (1, -1)] {
+            decoder.time_base = base.into();
+            assert!(decoder.seek_timestamp_us(0.0).is_err());
+        }
+    }
 
     #[test]
     fn decoded_timestamp_rescaling_handles_large_clock_origins() {

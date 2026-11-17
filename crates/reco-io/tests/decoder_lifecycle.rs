@@ -1462,6 +1462,40 @@ fn repeated_seek_replacements_deliver_only_the_requested_generation() {
 }
 
 #[test]
+fn seek_frame_respects_container_timestamp_precision() {
+    let dir = tempfile::tempdir().unwrap();
+    for (extension, codec) in [("mkv", "ffv1"), ("mp4", "libx264")] {
+        for rate in [(30, 1), (30000, 1001)] {
+            let path = dir.path().join(format!("seek-{}.{}", rate.1, extension));
+            fixture_rate(&path, codec, WIDTH, HEIGHT, rate);
+            let input = InputPath::Single(path);
+            for offset in [-3_i64, 0, 3] {
+                let mut source =
+                    FfmpegFileSource::open_inputs(&[input.clone(), input.clone()], offset, true)
+                        .unwrap();
+                // Cross the backward-seek worker replacement and forward-discard paths.
+                for target in [24, 1, 2, 4, 31, 7, 0, 13, 11] {
+                    source.seek(target).unwrap();
+                    let FrameSet::Yuv420p(images) = source.next_frame().unwrap().unwrap().images
+                    else {
+                        panic!("expected host frames");
+                    };
+                    for (camera, image) in images.iter().enumerate() {
+                        let skipped = if (camera == 0 && offset < 0) || (camera == 1 && offset > 0)
+                        {
+                            offset.unsigned_abs()
+                        } else {
+                            0
+                        };
+                        assert_pixels(&image.y, &image.u, &image.v, (target + skipped) as usize);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 #[ignore = "requires NVIDIA CUDA/NVDEC"]
 fn cuda_file_source_seek_replacements_deliver_requested_pixels() {
     assert_seek_replacements(false);

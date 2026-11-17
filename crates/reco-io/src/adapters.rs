@@ -511,9 +511,11 @@ impl FfmpegFileSource {
                 if let Some(secs) = seek_secs {
                     dec.seek_to_secs(secs)?;
                 }
-                // A seek lands at the preceding keyframe. Discard only frames
-                // before the requested timestamp; decoding failures propagate.
-                let mut target_us = seek_secs.map(|secs| (secs * 1_000_000.0) as i64);
+                // Compare on the stream's timestamp grid: e.g. frame 1 at 30fps
+                // is stored at 33ms in Matroska, not 33.333ms.
+                let mut target_us = seek_secs
+                    .map(|secs| dec.seek_timestamp_us(secs))
+                    .transpose()?;
                 while !stop.load(Ordering::Relaxed) {
                     let Some(f) = dec.next_frame()? else { break };
                     if target_us.is_some_and(|target| f.timestamp_us < target) {
