@@ -134,3 +134,82 @@ fn compare_outputs(preset: &str, start: f64, chained: bool, gaps: bool) {
     };
     assert!(recording.last().unwrap().0.abs_diff(expected_end) < 25_000);
 }
+
+#[test]
+fn silent_chapters_preserve_video_time_in_audio_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    let audible = dir.path().join("audible.mp4");
+    let silent = dir.path().join("silent.mp4");
+    for (path, audio) in [(&audible, true), (&silent, false)] {
+        let mut ffmpeg = std::process::Command::new("ffmpeg");
+        ffmpeg.args([
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=size=64x64:rate=25",
+        ]);
+        if audio {
+            ffmpeg.args(["-f", "lavfi", "-i", "sine=sample_rate=48000", "-c:a", "aac"]);
+        }
+        let result = ffmpeg
+            .args(["-t", "1", "-c:v", "mpeg4"])
+            .arg(path)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+    for (name, chapters, start, spans) in [
+        (
+            "middle",
+            vec![&audible, &silent, &audible],
+            0.0,
+            vec![(0.0, 1.0), (2.0, 3.0)],
+        ),
+        ("first", vec![&silent, &audible], 0.25, vec![(0.75, 1.75)]),
+        ("trim", vec![&silent, &audible], 1.25, vec![(0.0, 0.75)]),
+    ] {
+        let out = dir.path().join(format!("{name}.mp4"));
+        let cfg = EncoderConfig {
+            software_only: true,
+            encoder_name: Some("libx264".into()),
+            preset: Some("ultrafast".into()),
+            audio_source: Some(chapters.into_iter().cloned().collect()),
+            audio_start_time: start,
+            ..Default::default()
+        };
+        let mut encoder = VideoEncoder::new(&out, 64, 64, Rational(25, 1), &cfg).unwrap();
+        for _ in 0..75 {
+            encoder
+                .write_nv12_frame(&[128; 64 * 64 * 3 / 2], None)
+                .unwrap();
+        }
+        encoder.finish().unwrap();
+        drop(encoder);
+        let times: Vec<_> = packets(&out, ffmpeg::media::Type::Audio)
+            .into_iter()
+            .map(|(us, _)| us as f64 / 1e6)
+            .collect();
+        for &(a, b) in &spans {
+            assert!(
+                times.iter().any(|&t| (t - a).abs() < 0.03),
+                "{name}, start {a}"
+            );
+            assert!(
+                times.iter().any(|&t| (t - b).abs() < 0.03),
+                "{name}, end {b}"
+            );
+        }
+        assert!(
+            times
+                .iter()
+                .all(|&t| spans.iter().any(|&(a, b)| t >= a - 0.025 && t < b + 0.001)),
+            "{name}"
+        );
+    }
+}

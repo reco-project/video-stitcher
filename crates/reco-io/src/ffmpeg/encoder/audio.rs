@@ -90,9 +90,8 @@ impl AudioPassthrough {
 
 /// State for copying audio from one or more input files to the output.
 ///
-/// For a chained recording the segments are copied back-to-back: when the
-/// current segment's audio ends, the next opens and its timestamps are
-/// shifted by `segment_offset` so the output audio is gapless.
+/// Each chapter keeps its position on the video timeline, including chapters
+/// without audio. Packet times are translated only after the muxer fixes its time base.
 pub(super) struct FileAudio {
     ictx: format::context::Input,
     /// Audio stream index in the current input file.
@@ -103,28 +102,47 @@ pub(super) struct FileAudio {
     input_time_base: Rational,
     /// Output audio stream time base.
     output_time_base: Rational,
-    /// Source timestamp where audio passthrough starts, in seconds. Applies to
-    /// the first segment only (the start-time trim is within file 1).
     start_time_secs: f64,
-    /// Whether all segments have been read.
     exhausted: bool,
-    /// Remaining chained segments to copy after the current one ends.
-    remaining_segments: std::collections::VecDeque<std::path::PathBuf>,
-    /// Output-timebase shift added to the current segment's timestamps so
-    /// audio is continuous across chained segments. Recomputed per segment
-    /// from its first packet (segments may not start at timestamp 0 - AAC
-    /// priming can even make the first DTS negative).
-    segment_offset: i64,
-    /// Highest packet end (pts + duration) written, in output ticks; the next
-    /// segment is rebased so its first packet lands here.
-    next_offset: i64,
-    /// When set, the next packet read is the first of a freshly opened segment;
-    /// its timestamp is rebased so the segment starts at this output position.
-    pending_start: Option<i64>,
-    /// True only while copying the first segment (start-time trim applies there).
-    first_segment: bool,
+    remaining_segments: std::collections::VecDeque<PathBuf>,
+    /// Offset of the current file's presentation origin on the combined timeline.
+    shift_secs: f64,
+    chapter_start_secs: f64,
+    /// Next chapter's video start, in seconds from the start of the whole chain.
+    next_start_secs: f64,
+    chained: bool,
     /// One already-mapped packet beyond the current video decode time.
     pending: Option<ffmpeg::Packet>,
+}
+
+/// A chapter's video defines its place in the recording even when audio is absent.
+fn chapter_timing(ictx: &format::context::Input) -> Result<(f64, f64), EncodeError> {
+    let stream = ictx
+        .streams()
+        .best(ffmpeg::media::Type::Video)
+        .or_else(|| ictx.streams().best(ffmpeg::media::Type::Audio))
+        .ok_or_else(|| {
+            EncodeError::InvalidConfig("chapter has no audio or video timeline".into())
+        })?;
+    let tick = f64::from(stream.time_base());
+    let start = if stream.start_time() == ffmpeg::ffi::AV_NOPTS_VALUE {
+        0.0
+    } else {
+        stream.start_time() as f64 * tick
+    };
+    let duration = if stream.duration() > 0 {
+        stream.duration() as f64 * tick
+    } else if stream.frames() > 0 && stream.avg_frame_rate().0 > 0 {
+        stream.frames() as f64 / f64::from(stream.avg_frame_rate())
+    } else {
+        ictx.duration() as f64 / f64::from(ffmpeg::ffi::AV_TIME_BASE)
+    };
+    if !duration.is_finite() || duration <= 0.0 {
+        return Err(EncodeError::InvalidConfig(
+            "cannot determine chained video duration for audio copy".into(),
+        ));
+    }
+    Ok((start, duration))
 }
 
 impl FileAudio {
@@ -136,19 +154,34 @@ impl FileAudio {
         sources: &[PathBuf],
         start_time_secs: f64,
     ) -> Result<Option<FileAudio>, EncodeError> {
-        let Some((source_path, rest)) = sources.split_first() else {
-            return Ok(None);
-        };
-        let mut ictx = format::input(source_path)?;
+        let chained = sources.len() > 1;
+        let mut remaining_segments: std::collections::VecDeque<_> =
+            sources.iter().cloned().collect();
+        let mut next_start_secs = 0.0;
         let start_time_secs = sanitize_audio_start_time(start_time_secs);
-
-        let audio_stream = ictx.streams().best(ffmpeg::media::Type::Audio);
-
-        let Some(audio_stream) = audio_stream else {
-            log::info!("No audio stream found in {}", source_path.display());
-            return Ok(None);
+        let (source_path, mut ictx, shift_secs, chapter_start_secs) = loop {
+            let Some(path) = remaining_segments.pop_front() else {
+                return Ok(None);
+            };
+            let ictx = format::input(&path)?;
+            let chapter_start_secs = next_start_secs;
+            let mut shift = 0.0;
+            if chained {
+                let (origin, duration) = chapter_timing(&ictx)?;
+                shift = next_start_secs - origin;
+                next_start_secs += duration;
+                if next_start_secs <= start_time_secs {
+                    continue;
+                }
+            }
+            if ictx.streams().best(ffmpeg::media::Type::Audio).is_some() {
+                break (path, ictx, shift, chapter_start_secs);
+            }
         };
-
+        let audio_stream = ictx
+            .streams()
+            .best(ffmpeg::media::Type::Audio)
+            .expect("selected an audible chapter");
         let input_stream_index = audio_stream.index();
         let input_time_base = audio_stream.time_base();
         let codec_params = audio_stream.parameters();
@@ -165,8 +198,9 @@ impl FileAudio {
         let output_stream_index = ost.index();
         let output_time_base = ost.time_base();
 
-        if start_time_secs > 0.0 {
-            let seek_ts = (start_time_secs * f64::from(ffmpeg::ffi::AV_TIME_BASE)).round() as i64;
+        if start_time_secs > shift_secs {
+            let seek_ts = ((start_time_secs - shift_secs) * f64::from(ffmpeg::ffi::AV_TIME_BASE))
+                .round() as i64;
             match ictx.seek(seek_ts, ..seek_ts) {
                 Ok(()) => {
                     log::info!(
@@ -201,11 +235,11 @@ impl FileAudio {
             output_time_base,
             start_time_secs,
             exhausted: false,
-            remaining_segments: rest.iter().cloned().collect(),
-            segment_offset: 0,
-            next_offset: 0,
-            pending_start: None,
-            first_segment: true,
+            remaining_segments,
+            shift_secs,
+            chapter_start_secs,
+            next_start_secs,
+            chained,
             pending: None,
         }))
     }
@@ -219,6 +253,10 @@ impl FileAudio {
                 return Ok(false);
             };
             let ictx = format::input(&next)?;
+            let (origin, duration) = chapter_timing(&ictx)?;
+            audio.chapter_start_secs = audio.next_start_secs;
+            audio.shift_secs = audio.next_start_secs - origin;
+            audio.next_start_secs += duration;
             let Some(stream) = ictx.streams().best(ffmpeg::media::Type::Audio) else {
                 log::warn!(
                     "Chained audio: {} has no audio stream, skipping",
@@ -229,14 +267,6 @@ impl FileAudio {
             audio.input_stream_index = stream.index();
             audio.input_time_base = stream.time_base();
             audio.ictx = ictx;
-            // Rebase from this segment's first packet (computed in the loop).
-            audio.pending_start = Some(audio.next_offset);
-            audio.first_segment = false;
-            log::info!(
-                "Chained audio: continuing from {} at +{:.2}s",
-                next.display(),
-                audio.next_offset as f64 * f64::from(audio.output_time_base),
-            );
             return Ok(true);
         }
     }
@@ -262,50 +292,33 @@ impl FileAudio {
                         packet.set_stream(audio.output_stream_index);
                         packet.rescale_ts(audio.input_time_base, audio.output_time_base);
 
-                        // The start-time trim applies to the first segment only.
-                        if audio.first_segment && start_pts > 0 {
-                            let packet_start = match (packet.pts(), packet.dts()) {
-                                (Some(pts), Some(dts)) => Some(pts.min(dts)),
-                                (Some(pts), None) => Some(pts),
-                                (None, Some(dts)) => Some(dts),
-                                (None, None) => None,
-                            };
-                            if packet_start.is_some_and(|ts| ts < start_pts) {
+                        let shift =
+                            (audio.shift_secs / f64::from(audio.output_time_base)).round() as i64;
+                        let delta = shift - start_pts;
+                        packet.set_pts(packet.pts().map(|ts| ts + delta));
+                        packet.set_dts(packet.dts().map(|ts| ts + delta));
+                        // Skip pre-roll packets that would overlap the preceding chapter.
+                        if start_pts > 0 || audio.chapter_start_secs > 0.0 {
+                            let lower =
+                                seconds_to_pts(audio.chapter_start_secs, audio.output_time_base)
+                                    .saturating_sub(start_pts)
+                                    .max(0);
+                            if packet
+                                .dts()
+                                .or_else(|| packet.pts())
+                                .is_some_and(|ts| ts < lower)
+                            {
                                 continue;
                             }
-                            if let Some(pts) = packet.pts() {
-                                packet.set_pts(Some(pts - start_pts));
-                            }
-                            if let Some(dts) = packet.dts() {
-                                packet.set_dts(Some(dts - start_pts));
-                            }
                         }
-
-                        // First packet of a continuation segment: rebase it so the
-                        // segment starts exactly where the previous one ended,
-                        // regardless of the segment's own (possibly negative) start.
-                        if let Some(target) = audio.pending_start {
-                            let anchor = packet.dts().or_else(|| packet.pts()).unwrap_or(0);
-                            audio.segment_offset = target - anchor;
-                            audio.pending_start = None;
-                        }
-
-                        // Shift later segments so audio is gapless across the chain.
-                        if audio.segment_offset != 0 {
-                            if let Some(pts) = packet.pts() {
-                                packet.set_pts(Some(pts + audio.segment_offset));
-                            }
-                            if let Some(dts) = packet.dts() {
-                                packet.set_dts(Some(dts + audio.segment_offset));
-                            }
-                        }
-
-                        // Track the running end so the next segment continues from here.
-                        if let Some(pts) = packet.pts() {
-                            let end = pts + packet.duration().max(0);
-                            if end > audio.next_offset {
-                                audio.next_offset = end;
-                            }
+                        // Audio can extend past its own chapter's video end.
+                        if audio.chained
+                            && packet.pts().is_some_and(|pts| {
+                                pts >= seconds_to_pts(audio.next_start_secs, audio.output_time_base)
+                                    - start_pts
+                            })
+                        {
+                            continue;
                         }
                     }
                     Err(ffmpeg::Error::Eof) => {
