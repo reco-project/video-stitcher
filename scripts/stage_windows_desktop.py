@@ -102,6 +102,7 @@ def stage(binary, sdk, cache, output, offline=False):
                         shutil.copyfileobj(source, dest)
         shutil.copy2(MANIFEST, package / "notices")
         shutil.copy2(Path(__file__).resolve().parents[1] / "LICENSE", package / "LICENSE")
+        shutil.copy2(Path(__file__).resolve().parents[1] / "THIRD_PARTY_NOTICES.md", package / "THIRD_PARTY_NOTICES.md")
         (package / "files.json").write_text(json.dumps({
             path.relative_to(package).as_posix(): digest(path)
             for path in sorted(package.rglob("*")) if path.is_file()

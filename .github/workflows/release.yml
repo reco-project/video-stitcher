@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -259,7 +259,7 @@ jobs:
               cp "$ORT_LIB" "$staging/libonnxruntime.so"
             fi
           fi
-          cp LICENSE "$staging/"
+          cp LICENSE THIRD_PARTY_NOTICES.md "$staging/"
           tar czf "$staging.tar.gz" "$staging"
 
       - name: Package GUI (Unix)
@@ -279,7 +279,7 @@ jobs:
                 cp "$ORT_LIB" "$staging/libonnxruntime.so"
               fi
             fi
-            cp LICENSE "$staging/"
+            cp LICENSE THIRD_PARTY_NOTICES.md "$staging/"
             tar czf "$staging.tar.gz" "$staging"
           fi
 
@@ -338,9 +338,10 @@ jobs:
   # Create the GitHub Release and attach all platform binaries
   # ====================================================================
   release:
+    permissions:
+      contents: write
     name: Create Release
     needs: build
-    if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -353,6 +354,16 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
+          tag="$GITHUB_REF_NAME"
+          for platform in linux-x86_64 linux-arm64 macos-arm64 macos-x86_64 windows-x86_64; do
+            ext=tar.gz
+            if [ "$platform" = windows-x86_64 ]; then ext=zip; fi
+            test -s "reco-cli-$tag-$platform.$ext"
+            # The ARM64 cross build ships the GUI only when available.
+            if [ "$platform" != linux-arm64 ]; then test -s "reco-gui-$tag-$platform.$ext"; fi
+          done
+          test -s "reco-sources-$tag-linux-x86_64.tar.gz"
+          test -s "reco-ffmpeg-sources-$tag-windows-x86_64.tar.gz"
           sha256sum reco-* > SHA256SUMS
 
       - name: Create GitHub Release

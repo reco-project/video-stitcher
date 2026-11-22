@@ -54,6 +54,7 @@ def stage(binary: Path, sdk: Path, ort_archive: Path, directories: list[Path], o
             shutil.copy2(ort / name, notices / "onnxruntime" / name)
         shutil.copy2(MANIFEST, notices)
         shutil.copy2(Path(__file__).resolve().parents[1] / "LICENSE", package / "LICENSE")
+        shutil.copy2(Path(__file__).resolve().parents[1] / "THIRD_PARTY_NOTICES.md", package / "THIRD_PARTY_NOTICES.md")
         # Exact distribution sources must be acquired before publishing this staging.
         sources = sorted({(p["source_package"], p["source_version"]) for p in receipt["packages"].values()})
         (notices / "required-sources.json").write_text(json.dumps([
