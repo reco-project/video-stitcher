@@ -338,26 +338,6 @@ impl super::StitchCore {
         Ok(gpu.pipeline.render_to_view(frames, pose, view)?)
     }
 
-    /// Submit imported NV12/P010 camera views directly to a caller-owned GPU target, without uploading or reading back pixels.
-    ///
-    /// Does not run detection or advance tracking/coverage. The pose is already in render space. Target requirements and the returned completion marker are those of [`Self::render_to_view`].
-    ///
-    /// Each camera supplies complete Y/UV planes on this engine's device: R8/Rg8 or R16/Rg16 Unorm textures, or Plane0/Plane1 views of one NV12/P010 texture. Backing textures must be single-layer, single-mip, single-sampled and match the configured camera size. All cameras use the same format. Camera count and backing layouts are checked before changing bindings; view aspects and device compatibility remain the caller's responsibility.
-    ///
-    /// Retaining wgpu handles does not prevent a native producer from reusing its allocation. Keep native input and output owners alive and prevent reuse until this submission completes. Imported bindings apply only to this submission; later host frames use their own upload textures.
-    #[cfg(feature = "gpu")]
-    pub fn render_imported_nv12_to_view(
-        &mut self,
-        cameras: &[(&wgpu::TextureView, &wgpu::TextureView)],
-        pose: RenderPose,
-        view: &wgpu::TextureView,
-    ) -> Result<wgpu::SubmissionIndex, StitchCoreError> {
-        let Executor::Gpu(gpu) = &mut self.executor else {
-            return Err(StitchCoreError::RequiresGpu);
-        };
-        Ok(gpu.pipeline.render_imported_to_view(cameras, pose, view)?)
-    }
-
     /// Render a CPU-resident frame set and read back NV12 bytes for encoding - the
     /// preview-mode recording tap. Triple-buffered: `None` on the first
     /// two calls, then data from two frames ago. Drain the tail with
@@ -425,7 +405,7 @@ impl super::StitchCore {
         Ok(gpu.pipeline.render_frame_set(frames, pose)?)
     }
 
-    /// Encode imported input under [`Self::render_imported_nv12_to_view`]'s layout and ownership contract. Submit before another render changes the shared uniforms. Encoded commands retain wgpu bindings, not native producer-reuse protection.
+    /// Encode imported NV12/P010 camera planes. Submit before another render changes the shared uniforms. Encoded commands retain wgpu bindings, not native producer-reuse protection.
     #[cfg(feature = "gpu")]
     pub(crate) fn render_imported_nv12_at_pose(
         &mut self,

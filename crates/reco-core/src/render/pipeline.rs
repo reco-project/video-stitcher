@@ -391,20 +391,6 @@ impl StitchPipeline {
         Ok(())
     }
 
-    /// Submit imported camera views directly to a caller-owned render target.
-    pub fn render_imported_to_view(
-        &mut self,
-        cameras: &[(&wgpu::TextureView, &wgpu::TextureView)],
-        pose: RenderPose,
-        target: &wgpu::TextureView,
-    ) -> Result<wgpu::SubmissionIndex, PipelineError> {
-        self.validate_target(target)?;
-        self.bind_imported_views(cameras)?;
-        let submission = self.render_bound_to_view(pose, target);
-        self.clear_imported_bind_groups();
-        Ok(submission)
-    }
-
     /// Process a CPU-resident frame set and return the render command buffer.
     ///
     /// Handles YUV420P vs NV12 format differences internally.

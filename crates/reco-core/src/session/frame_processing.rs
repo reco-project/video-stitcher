@@ -325,7 +325,7 @@ impl StitchSession {
 
     /// Render camera-ordered imported Y/UV views and deliver the output to sinks.
     ///
-    /// Input layout and lifetime requirements are those of [`StitchCore::render_imported_nv12_to_view`](crate::core::StitchCore::render_imported_nv12_to_view). Native owners must remain alive until GPU completion, not just until this method returns. Stereo replay uses the supplied views directly. `pts_us` follows [`crate::sink::OutputFrame::pts_us`].
+    /// Each input supplies full-size Y and half-size UV views on this device in matching NV12 or P010 format. Views must select the correct planes. Keep native owners alive and prevent producer reuse through GPU completion. Stereo replay uses the supplied views directly. `pts_us` follows [`crate::sink::OutputFrame::pts_us`].
     #[cfg(feature = "gpu")]
     pub fn render_frame_imported_nv12(
         &mut self,
