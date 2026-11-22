@@ -1,117 +1,89 @@
-//! `reco calibrate` subcommand.
-//!
-//! Thin wrapper around [`reco_calibrate::pipeline::CalibrationPipeline`].
-//! Handles file I/O (video decode, audio extraction, result publication) while
-//! all calibration logic lives in the library.
+//! CLI arguments and publication policy for the shared video-calibration workflow.
 
-use std::path::Path;
+use reco_calibrate::{
+    CalibrationConfig,
+    video::{CalibrateVideosOptions, calibrate_videos},
+};
+use std::{path::Path, sync::atomic::AtomicBool};
 
-use reco_calibrate::CalibrationConfig;
-use reco_calibrate::pipeline::{CalibrationPipeline, VideoInfo};
-use reco_calibrate::types::Yuv420pFrame;
-use reco_io::ffmpeg::calibration_io;
+/// File-calibration inputs and explicit overrides.
+#[derive(clap::Args)]
+pub(crate) struct Args {
+    /// Path to the left camera video file.
+    left: String,
 
-/// Run the calibrate subcommand.
-#[allow(clippy::too_many_arguments)]
-pub fn run_calibrate(
-    left: &str,
-    right: &str,
-    left_profile: Option<&str>,
-    right_profile: Option<&str>,
-    num_frames: usize,
-    no_auto_imu: bool,
-    auto_sync: bool,
-    sync_offset: i64,
+    /// Path to the right camera video file.
+    right: String,
+
+    /// Path to the left camera lens profile JSON.
+    /// Missing profiles are estimated from footage; supplied lenses stay fixed.
+    /// With only one supplied, estimates the other camera's optics.
+    #[arg(long)]
+    left_profile: Option<String>,
+
+    /// Path to the right camera lens profile JSON.
+    /// Independent of --left-profile; a missing side is estimated.
+    #[arg(long)]
+    right_profile: Option<String>,
+
+    /// Number of frame pairs (1..=16). The first fits; the rest verify alignment.
+    #[arg(long, default_value_t = 4)]
+    frames: usize,
+
+    /// Frame offset for temporal sync between cameras.
+    /// Right frame index minus left frame index for the same event.
+    /// Omit to measure timing automatically. Use 0 for synchronized videos.
+    #[arg(long, allow_hyphen_values = true)]
+    sync_offset: Option<i64>,
+
+    /// Seconds to skip from the start of the recording.
+    #[arg(long, default_value_t = 0.0)]
     skip_start: f64,
+
+    /// Seconds to skip from the end of the video (e.g. teardown).
+    #[arg(long, default_value_t = 0.0)]
     skip_end: f64,
-    output: &str,
+
+    /// Save a candidate even when independent checks require visual review. Invalid fits still fail.
+    #[arg(long)]
     accept_unconfirmed: bool,
-) -> anyhow::Result<()> {
-    let config = CalibrationConfig {
-        num_frames,
-        skip_start_secs: skip_start,
-        skip_end_secs: skip_end,
-    };
-    config.validate()?;
-    reco_io::init();
 
-    // Probe video metadata
-    let left_probe = calibration_io::probe_video(Path::new(left))?;
-    let right_probe = calibration_io::probe_video(Path::new(right))?;
+    /// Output calibration JSON file path.
+    #[arg(short, long, default_value = "match.json")]
+    output: String,
+}
 
-    let left_info = VideoInfo {
-        path: left.into(),
-        width: left_probe.width,
-        height: left_probe.height,
-        fps: left_probe.fps,
-        total_frames: left_probe.total_frames,
-    };
-    let right_info = VideoInfo {
-        path: right.into(),
-        width: right_probe.width,
-        height: right_probe.height,
-        fps: right_probe.fps,
-        total_frames: right_probe.total_frames,
-    };
-    let fps = left_info.fps;
-
-    let mut pipeline = CalibrationPipeline::new(left_info, right_info, config);
-
-    let load = |path: Option<&str>| {
+/// Fit through the same workflow as the desktop consumer.
+pub(crate) fn run_calibrate(args: Args, interrupted: &AtomicBool) -> anyhow::Result<()> {
+    let load = |path: Option<&str>| -> anyhow::Result<_> {
         path.map(|path| reco_calibrate::lens_database::load_from_file(Path::new(path)))
             .transpose()
+            .map_err(Into::into)
     };
-    pipeline.set_profiles(load(left_profile)?, load(right_profile)?);
-
-    // Step 2: Sync - priority: IMU > audio > manual
-    if !no_auto_imu {
-        eprintln!("Extracting IMU telemetry...");
-        match pipeline.imu_sync() {
-            Ok(Some(frames)) => {
-                eprintln!("  IMU sync: {frames} frames @ {fps:.1}fps");
-            }
-            Ok(None) => {
-                eprintln!("  IMU telemetry available but sync failed, trying audio...");
-                try_audio_sync(&mut pipeline, left, right, fps, auto_sync, sync_offset)?;
-            }
-            Err(e) => {
-                eprintln!("  IMU extraction failed: {e}");
-                try_audio_sync(&mut pipeline, left, right, fps, auto_sync, sync_offset)?;
-            }
-        }
-    } else {
-        try_audio_sync(&mut pipeline, left, right, fps, auto_sync, sync_offset)?;
-    }
-
-    // Step 3: Frame indices (sync already applied by pipeline)
-    let (left_indices, right_indices) = pipeline.frame_indices();
-    anyhow::ensure!(
-        !left_indices.is_empty(),
-        "no overlapping calibration frames could be selected from the videos"
-    );
-    log::info!(
-        "extracting {} frames (fps: {fps:.1}, sync_offset: {})",
-        left_indices.len(),
-        pipeline.sync_offset(),
-    );
-
-    // Step 4: Extract frames
-    eprintln!("Extracting frames from left video...");
-    let left_frames = calibration_io::extract_frames(Path::new(left), &left_indices)?;
-    eprintln!("Extracting frames from right video...");
-    let right_frames = calibration_io::extract_frames(Path::new(right), &right_indices)?;
-
-    let frame_pairs: Vec<(Yuv420pFrame, Yuv420pFrame)> =
-        left_frames.into_iter().zip(right_frames).collect();
-
-    // Step 5: Calibrate
-    eprintln!("Calibrating with {} frame pairs...", frame_pairs.len());
-    let result = pipeline
-        .calibrate(&std::sync::atomic::AtomicBool::new(false), &frame_pairs)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
-
-    publish_result(&result, Path::new(output), accept_unconfirmed)?;
-    print_results(&result, output, frame_pairs.len());
+    let result = calibrate_videos(
+        Path::new(&args.left),
+        Path::new(&args.right),
+        CalibrateVideosOptions {
+            left_params: load(args.left_profile.as_deref())?,
+            right_params: load(args.right_profile.as_deref())?,
+            config: Some(CalibrationConfig {
+                num_frames: args.frames,
+                skip_start_secs: args.skip_start,
+                skip_end_secs: args.skip_end,
+            }),
+            sync_offset: args.sync_offset,
+        },
+        &mut |progress| eprintln!("[{}] {}", progress.step, progress.detail),
+        interrupted,
+    )
+    .map_err(|error| match error {
+        reco_calibrate::video::CalibrateVideosError::TimingRequired => anyhow::anyhow!(
+            "Could not determine synchronization from IMU or audio. Rerun with --sync-offset <frames> (right frame minus left frame for the same event). Use 0 if the videos are synchronized."
+        ),
+        other => other.into(),
+    })?;
+    publish_result(&result, Path::new(&args.output), args.accept_unconfirmed)?;
+    print_results(&result, &args.output, args.frames);
     Ok(())
 }
 
@@ -139,44 +111,6 @@ fn publish_result(
     std::fs::write(output, &json)?;
 
     Ok(())
-}
-
-/// Try audio sync, falling back to manual offset.
-fn try_audio_sync(
-    pipeline: &mut CalibrationPipeline,
-    left: &str,
-    right: &str,
-    fps: f64,
-    auto_sync: bool,
-    manual_offset: i64,
-) -> anyhow::Result<()> {
-    if auto_sync {
-        eprintln!("Auto-detecting sync from audio...");
-        match extract_and_sync_audio(pipeline, left, right) {
-            Ok(frames) => {
-                eprintln!("  Audio sync: {frames} frames @ {fps:.1}fps");
-                return Ok(());
-            }
-            Err(e) => {
-                eprintln!("  Audio sync failed: {e}, using manual offset {manual_offset}");
-            }
-        }
-    }
-    pipeline.set_sync_offset(manual_offset);
-    Ok(())
-}
-
-/// Extract audio and run sync through the pipeline.
-fn extract_and_sync_audio(
-    pipeline: &mut CalibrationPipeline,
-    left: &str,
-    right: &str,
-) -> anyhow::Result<i64> {
-    let sample_rate = 44100u32;
-    let left_samples = calibration_io::extract_audio_pcm(Path::new(left), sample_rate)?;
-    let right_samples = calibration_io::extract_audio_pcm(Path::new(right), sample_rate)?;
-    let frames = pipeline.audio_sync(&left_samples, &right_samples, sample_rate)?;
-    Ok(frames)
 }
 
 fn print_results(result: &reco_calibrate::CalibrationResult, output: &str, total_pairs: usize) {
@@ -218,6 +152,30 @@ mod tests {
     use reco_calibrate::{CalibrationAssessment, CalibrationResult};
     use reco_core::calibration::{Calibration, Framing, Lens};
     use reco_core::projection::LShape;
+
+    #[test]
+    fn explicit_zero_is_distinct_from_automatic_timing() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct Command {
+            #[command(flatten)]
+            args: Args,
+        }
+        let defaults = Command::try_parse_from(["calibrate", "left.mp4", "right.mp4"])
+            .unwrap()
+            .args;
+        assert_eq!(defaults.sync_offset, None);
+        let explicit =
+            Command::try_parse_from(["calibrate", "left.mp4", "right.mp4", "--sync-offset", "0"])
+                .unwrap()
+                .args;
+        assert_eq!(explicit.sync_offset, Some(0));
+        for obsolete in ["--estimate-optics", "--no-auto-imu"] {
+            assert!(
+                Command::try_parse_from(["calibrate", "left.mp4", "right.mp4", obsolete]).is_err()
+            );
+        }
+    }
 
     #[test]
     fn review_report_preserves_active_file_until_explicit_acceptance() {

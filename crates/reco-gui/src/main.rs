@@ -2532,24 +2532,24 @@ fn main() -> anyhow::Result<()> {
         };
         drop(s);
 
-        let (cal_frames, skip_end) = app_weak
-            .upgrade()
-            .map(|a| {
-                (
-                    a.get_calibration_frames()
-                        .to_string()
-                        .parse::<usize>()
-                        .unwrap_or(4),
-                    a.get_cal_skip_end_secs() as f64,
-                )
-            })
-            .unwrap_or((4, 0.0));
-        if let Some(app) = app_weak.upgrade() {
-            app.set_calibrating(true);
-            app.set_calibration_needs_review(false);
-            app.set_calibration_step("Starting...".into());
-            app.set_status_text("Auto-calibrating...".into());
-        }
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        let cal_frames = app.get_calibration_frames() as usize;
+        let skip_end = app.get_cal_skip_end_secs() as f64;
+        let input = app.get_calibration_offset_input();
+        let sync_offset = if input.trim().is_empty() {
+            None
+        } else if let Ok(offset) = input.trim().parse::<i64>() {
+            Some(offset)
+        } else {
+            app.set_status_text("Enter a whole number for the synchronization offset.".into());
+            return;
+        };
+        app.set_calibrating(true);
+        app.set_calibration_needs_review(false);
+        app.set_calibration_step("Starting...".into());
+        app.set_status_text("Auto-calibrating...".into());
 
         let interrupted = Arc::new(AtomicBool::new(false));
         let (tx, rx) = std::sync::mpsc::channel();
@@ -2561,9 +2561,6 @@ fn main() -> anyhow::Result<()> {
                 .as_ref()
                 .map(|c| c.lenses.as_slice())
                 .unwrap_or_default();
-            let Some(app) = app_weak.upgrade() else {
-                return;
-            };
             (
                 lenses
                     .first()
@@ -2603,7 +2600,7 @@ fn main() -> anyhow::Result<()> {
                     config: Some(config),
                     left_params: existing_left_params,
                     right_params: existing_right_params,
-                    ..Default::default()
+                    sync_offset,
                 },
                 &mut |progress| {
                     let step_name = format!("{:?}", progress.step);
@@ -4358,6 +4355,11 @@ fn handle_calibration_result(
                         crate::toast::sync_to_ui(&state.toasts, &app);
                     }
                 }
+            }
+        }
+        Err(reco_calibrate::video::CalibrateVideosError::TimingRequired) => {
+            if let Some(app) = app_weak.upgrade() {
+                app.set_status_text("Match an event in both recordings. Enter the right frame minus the left frame, then calibrate again.".into());
             }
         }
         Err(e) => {

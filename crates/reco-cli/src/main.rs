@@ -599,61 +599,7 @@ enum Commands {
     },
 
     /// Align overlapping camera images and verify the fit on unused frames.
-    Calibrate {
-        /// Path to the left camera video file.
-        left: String,
-
-        /// Path to the right camera video file.
-        right: String,
-
-        /// Path to the left camera lens profile JSON.
-        /// With neither profile supplied, estimates both lenses from overlap.
-        /// With only one supplied, estimates the other camera's optics.
-        #[arg(long)]
-        left_profile: Option<String>,
-
-        /// Path to the right camera lens profile JSON.
-        /// Independent of --left-profile; a missing side is estimated.
-        #[arg(long)]
-        right_profile: Option<String>,
-
-        /// Number of frame pairs (1..=16). The first fits; the rest verify alignment.
-        #[arg(long, default_value_t = 4)]
-        frames: usize,
-
-        /// Disable IMU telemetry extraction (sync offset and rig tilt/roll).
-        /// Use when IMU data is unavailable or unreliable.
-        #[arg(long, default_value_t = false)]
-        no_auto_imu: bool,
-
-        /// Auto-detect sync offset from audio cross-correlation.
-        /// Used as fallback when IMU sync fails. Enabled by default;
-        /// use --auto-sync false to disable.
-        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
-        auto_sync: bool,
-
-        /// Frame offset for temporal sync between cameras.
-        /// Positive: right video is ahead by N frames.
-        /// Negative: left video is ahead by N frames.
-        #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
-        sync_offset: i64,
-
-        /// Seconds to skip from the start of the video (e.g. camera setup).
-        #[arg(long, default_value_t = 0.0)]
-        skip_start: f64,
-
-        /// Seconds to skip from the end of the video (e.g. teardown).
-        #[arg(long, default_value_t = 0.0)]
-        skip_end: f64,
-
-        /// Save a candidate even when independent checks require visual review. Invalid fits still fail.
-        #[arg(long)]
-        accept_unconfirmed: bool,
-
-        /// Output calibration JSON file path.
-        #[arg(short, long, default_value = "match.json")]
-        output: String,
-    },
+    Calibrate(calibrate::Args),
 
     /// Display information about the GPU and system capabilities.
     Info,
@@ -1041,33 +987,7 @@ fn main() -> anyhow::Result<()> {
             )
         }
 
-        Commands::Calibrate {
-            left,
-            right,
-            left_profile,
-            right_profile,
-            frames,
-            no_auto_imu,
-            auto_sync,
-            sync_offset,
-            skip_start,
-            skip_end,
-            output,
-            accept_unconfirmed,
-        } => calibrate::run_calibrate(
-            &left,
-            &right,
-            left_profile.as_deref(),
-            right_profile.as_deref(),
-            frames,
-            no_auto_imu,
-            auto_sync,
-            sync_offset,
-            skip_start,
-            skip_end,
-            &output,
-            accept_unconfirmed,
-        ),
+        Commands::Calibrate(args) => calibrate::run_calibrate(args, &interrupted),
 
         Commands::Info => {
             let gpu = reco_core::gpu::GpuContext::new_blocking()?;

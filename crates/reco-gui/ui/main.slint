@@ -74,8 +74,9 @@ export component RecoApp inherits Window {
     in-out property <bool> calibration-needs-review: false;
     in-out property <bool> fix-left-optics: false;
     in-out property <bool> fix-right-optics: false;
-    changed left-path => { root.fix-left-optics = false; }
-    changed right-path => { root.fix-right-optics = false; }
+    in-out property <string> calibration-offset-input;
+    changed left-path => { root.fix-left-optics = false; root.calibration-offset-input = ""; }
+    changed right-path => { root.fix-right-optics = false; root.calibration-offset-input = ""; }
     in-out property <string> calibration-step: "";
     out property <bool> has-both-videos: left-path != "" && right-path != "";
     in-out property <bool> has-roi: false;
@@ -1031,6 +1032,13 @@ export component RecoApp inherits Window {
 
                                 if root.has-both-videos && root.is-l-shape: VerticalLayout {
                                     spacing: 6px;
+
+                                    LineEdit {
+                                        text <=> root.calibration-offset-input;
+                                        placeholder-text: "Sync offset in frames (blank for auto)";
+                                        accessible-label: "Synchronization offset, right frame minus left frame";
+                                        enabled: !root.setup-locked;
+                                    }
 
                                     if root.calibration-needs-review: Button {
                                         text: "Preview candidate (not saved)";

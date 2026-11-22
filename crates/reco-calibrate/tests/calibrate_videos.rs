@@ -93,3 +93,51 @@ fn calibrate_videos_confirms_real_decoded_overlap() {
         }
     }
 }
+
+#[test]
+#[ignore = "requires RECO_UNTIMED_TEST_VIDEO, a short video without audio or camera telemetry"]
+fn unresolved_timing_stops_before_optics_and_explicit_zero_resumes() {
+    use reco_calibrate::CalibrationStep;
+    use reco_calibrate::video::CalibrateVideosError;
+    let path = std::env::var_os("RECO_UNTIMED_TEST_VIDEO").expect("set RECO_UNTIMED_TEST_VIDEO");
+    let path = Path::new(&path);
+    let interrupted = AtomicBool::new(false);
+    let mut steps = Vec::new();
+    let result = calibrate_videos(
+        path,
+        path,
+        Default::default(),
+        &mut |p| steps.push(p.step),
+        &interrupted,
+    );
+    assert!(matches!(result, Err(CalibrateVideosError::TimingRequired)));
+    assert_eq!(
+        steps,
+        [CalibrationStep::Probing, CalibrationStep::AudioSync]
+    );
+    steps.clear();
+    let result = calibrate_videos(
+        path,
+        path,
+        CalibrateVideosOptions {
+            sync_offset: Some(0),
+            ..Default::default()
+        },
+        &mut |p| {
+            steps.push(p.step);
+            if matches!(p.step, CalibrationStep::ExtractingFrames) {
+                interrupted.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        },
+        &interrupted,
+    );
+    assert!(matches!(result, Err(CalibrateVideosError::Cancelled)));
+    assert_eq!(
+        steps,
+        [
+            CalibrationStep::Probing,
+            CalibrationStep::AudioSync,
+            CalibrationStep::ExtractingFrames
+        ]
+    );
+}
