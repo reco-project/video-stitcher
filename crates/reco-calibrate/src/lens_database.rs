@@ -1,27 +1,14 @@
-//! Lens profile database for automatic camera detection.
+//! Explicit lens-profile search and file loading.
 //!
-//! Loads Gyroflow-format lens profiles from the bundled CBOR database and matches them against camera metadata extracted from video files.
-//!
-//! ## Data source
-//!
-//! The primary database is the [Gyroflow lens_profiles](https://github.com/gyroflow/lens_profiles)
-//! bundle (CC0-1.0, public domain), converted to `profiles.cbor.gz` and
-//! embedded at compile time. The JSON format is defined by the Gyroflow
-//! project. Additional profiles can be loaded from a directory at runtime.
-//!
-//! ## Matching strategy
-//!
-//! 1. Exact: brand + model + resolution
-//! 2. Aspect ratio: brand + model + same aspect ratio, closest resolution
-//! 3. Any: brand + model, any resolution (with scaling)
+//! The bundled Gyroflow database is an optional manual picker. Calibration never
+//! selects a profile from camera metadata or falls back to a resolution match.
 
 use reco_core::calibration::Lens;
-use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
 use std::sync::OnceLock;
 
-use crate::types::{LensProfileInfo, LensProfileSummary, ProfileSource};
+use crate::types::LensProfileSummary;
 
 static EMBEDDED_DB: OnceLock<LensDatabase> = OnceLock::new();
 
@@ -34,8 +21,6 @@ static PROFILES_CBOR_GZ: &[u8] = include_bytes!(concat!(
 /// A loaded lens profile entry.
 #[derive(Debug, Clone)]
 struct ProfileEntry {
-    /// Source identifier for diagnostics.
-    source: String,
     /// Camera brand (lowercase).
     brand: String,
     /// Camera model (lowercase).
@@ -54,12 +39,9 @@ struct ProfileEntry {
 
 /// Lens profile database.
 ///
-/// Loads profiles from the embedded CBOR bundle and optional directory
-/// overrides, then provides lookup by camera brand, model, and resolution.
+/// Loads profiles from the embedded CBOR bundle for explicit user selection.
 pub struct LensDatabase {
     profiles: Vec<ProfileEntry>,
-    /// Index: normalized "brand/model" -> list of profile indices.
-    by_camera: HashMap<String, Vec<usize>>,
 }
 
 impl LensDatabase {
@@ -74,10 +56,9 @@ impl LensDatabase {
     ///
     /// Prefer [`embedded()`](Self::embedded) for the cached singleton.
     /// This allocates a fresh database each call.
-    pub fn load_embedded() -> Self {
+    fn load_embedded() -> Self {
         let mut db = Self {
             profiles: Vec::new(),
-            by_camera: HashMap::new(),
         };
 
         // Decompress gzip
@@ -102,328 +83,13 @@ impl LensDatabase {
             if filename.starts_with("__") {
                 continue; // skip metadata entries
             }
-            if let Some(entry) = parse_profile_value(&value, &filename) {
-                let key = normalize_camera_key(&entry.brand, &entry.model);
-                let idx = db.profiles.len();
-                db.by_camera.entry(key).or_default().push(idx);
+            if let Some(entry) = parse_profile_value(&value) {
                 db.profiles.push(entry);
             }
         }
 
-        log::info!(
-            "lens database: {} profiles from {} cameras (embedded)",
-            db.profiles.len(),
-            db.by_camera.len()
-        );
+        log::info!("lens database: {} profiles (embedded)", db.profiles.len());
         db
-    }
-
-    /// Load additional profiles from a directory (custom/override profiles).
-    ///
-    /// Profiles loaded this way take priority over embedded ones for
-    /// the same camera/resolution combination.
-    pub fn load_directory(&mut self, dir: &Path) -> Result<usize, std::io::Error> {
-        let before = self.profiles.len();
-        load_dir_recursive(dir, &mut self.profiles, &mut self.by_camera)?;
-        let added = self.profiles.len() - before;
-        if added > 0 {
-            log::info!(
-                "lens database: loaded {added} additional profiles from {}",
-                dir.display()
-            );
-        }
-        Ok(added)
-    }
-
-    /// Find the best matching profile for a camera.
-    ///
-    /// Returns `None` if no profile matches the brand/model.
-    pub fn find(
-        &self,
-        brand: &str,
-        model: &str,
-        width: u32,
-        height: u32,
-        lens_info: Option<&str>,
-    ) -> Option<(Lens, LensProfileInfo)> {
-        let key = normalize_camera_key(brand, model);
-        // Try exact model first, then strip variant suffixes to find the
-        // parent model (e.g. "HERO11 Black Mini" -> "HERO11 Black").
-        // Gyroflow's profiles often cover the base model but not every variant.
-        let indices = if let Some(idx) = self.by_camera.get(&key) {
-            idx
-        } else {
-            // Try parent model by stripping common suffixes
-            let parent = strip_model_variant(&key);
-            if let Some(idx) = parent.as_ref().and_then(|p| self.by_camera.get(p)) {
-                log::info!(
-                    "lens auto-detect: no profiles for {key}, using parent {}",
-                    parent.unwrap()
-                );
-                idx
-            } else {
-                return None;
-            }
-        };
-
-        // Filter candidates by FOV mode when available.
-        // If lens_info is provided (e.g. "Wide"), only consider profiles
-        // whose lens_model matches (case-insensitive). If no FOV-filtered
-        // profiles match, fall back to all candidates.
-        let fov_filtered: Vec<usize> = if let Some(info) = lens_info {
-            let info_lower = info.to_ascii_lowercase();
-            indices
-                .iter()
-                .copied()
-                .filter(|&idx| {
-                    let p = &self.profiles[idx];
-                    // Match FOV mode exactly, exclude third-party lens attachments
-                    p.lens_model.to_ascii_lowercase() == info_lower && p.camera_setting.is_empty()
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
-
-        // If no FOV match on the exact model, try the parent model's
-        // profiles for the same FOV before falling back to any profile.
-        // E.g. "HERO11 Black Mini" has no Wide profile, but "HERO11 Black" does.
-        let parent_fov_filtered: Vec<usize> = if fov_filtered.is_empty() && lens_info.is_some() {
-            strip_model_variant(&key)
-                .and_then(|parent| self.by_camera.get(&parent))
-                .map(|parent_indices| {
-                    let info_lower = lens_info.unwrap().to_ascii_lowercase();
-                    let matches: Vec<usize> = parent_indices
-                        .iter()
-                        .copied()
-                        .filter(|&idx| {
-                            let p = &self.profiles[idx];
-                            p.lens_model.to_ascii_lowercase() == info_lower
-                                && p.camera_setting.is_empty()
-                        })
-                        .collect();
-                    if !matches.is_empty() {
-                        log::info!(
-                            "lens auto-detect: using parent model for FOV '{}'",
-                            lens_info.unwrap()
-                        );
-                    }
-                    matches
-                })
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-
-        let candidates = if !fov_filtered.is_empty() {
-            fov_filtered.as_slice()
-        } else if !parent_fov_filtered.is_empty() {
-            parent_fov_filtered.as_slice()
-        } else {
-            if lens_info.is_some() {
-                log::debug!(
-                    "lens auto-detect: no FOV '{}' match for {key} or parent, using all",
-                    lens_info.unwrap_or("?")
-                );
-            }
-            indices.as_slice()
-        };
-
-        // 1. Exact resolution match
-        for &idx in candidates {
-            let p = &self.profiles[idx];
-            if p.width == width && p.height == height {
-                log::info!(
-                    "lens auto-detect: exact match {key} {width}x{height} FOV={} ({})",
-                    p.lens_model,
-                    p.source
-                );
-                let info = LensProfileInfo {
-                    camera: format_camera_name(&p.brand, &p.model),
-                    lens: format_lens_name(&p.lens_model, &p.camera_setting),
-                    source: ProfileSource::Database,
-                    path: None,
-                };
-                return Some((p.params.clone(), info));
-            }
-        }
-
-        // 2. Same aspect ratio, closest resolution - scale intrinsics
-        let target_aspect = width as f64 / height as f64;
-        let mut best: Option<(usize, f64)> = None;
-        for &idx in candidates {
-            let p = &self.profiles[idx];
-            let aspect = p.width as f64 / p.height as f64;
-            if (aspect - target_aspect).abs() < 0.05 {
-                let scale_diff = (p.width as f64 - width as f64).abs();
-                if best.is_none() || scale_diff < best.unwrap().1 {
-                    best = Some((idx, scale_diff));
-                }
-            }
-        }
-
-        if let Some((idx, _)) = best {
-            let p = &self.profiles[idx];
-            let scale = width as f64 / p.width as f64;
-            log::info!(
-                "lens auto-detect: scaling {key} {}x{} -> {width}x{height} FOV={} (scale={scale:.3}, {})",
-                p.width,
-                p.height,
-                p.lens_model,
-                p.source
-            );
-            let params = match p.params.rescaled(width, height) {
-                Ok(params) => params,
-                Err(error) => {
-                    log::warn!("lens auto-detect: cannot resize {key} profile: {error}");
-                    return None;
-                }
-            };
-            let info = LensProfileInfo {
-                camera: format_camera_name(&p.brand, &p.model),
-                lens: format_lens_name(&p.lens_model, &p.camera_setting),
-                source: ProfileSource::Database,
-                path: None,
-            };
-            return Some((params, info));
-        }
-
-        log::warn!(
-            "lens auto-detect: no match for {key} {width}x{height} FOV={}",
-            lens_info.unwrap_or("?")
-        );
-        None
-    }
-
-    /// Find a profile using telemetry-parser camera identification.
-    ///
-    /// Convenience wrapper that uses the camera_type and camera_model
-    /// strings from telemetry extraction.
-    pub fn find_from_telemetry(
-        &self,
-        camera_type: &str,
-        camera_model: Option<&str>,
-        width: u32,
-        height: u32,
-        lens_info: Option<&str>,
-    ) -> Option<(Lens, LensProfileInfo)> {
-        let model = camera_model.unwrap_or(camera_type);
-        self.find(camera_type, model, width, height, lens_info)
-    }
-
-    /// Choose embedded optics, a camera-matched profile, or a resolution fallback from already-probed metadata.
-    pub(crate) fn find_for_metadata(
-        &self,
-        metadata: Option<&crate::telemetry::CameraMetadata>,
-        width: u32,
-        height: u32,
-    ) -> Option<(Lens, LensProfileInfo)> {
-        if let Some(metadata) = metadata {
-            if let Some(profile) = &metadata.lens_profile {
-                log::info!(
-                    "lens auto-detect: embedded profile from {} {}",
-                    metadata.camera_type,
-                    metadata.camera_model.as_deref().unwrap_or("?")
-                );
-                return Some((
-                    profile.clone(),
-                    LensProfileInfo {
-                        camera: metadata.camera_type.clone(),
-                        lens: metadata
-                            .camera_model
-                            .clone()
-                            .unwrap_or_else(|| "unknown".into()),
-                        source: ProfileSource::AutoDetected,
-                        path: None,
-                    },
-                ));
-            }
-            if let Some(found) = self.find_from_telemetry(
-                &metadata.camera_type,
-                metadata.camera_model.as_deref(),
-                width,
-                height,
-                metadata.lens_info.as_deref(),
-            ) {
-                return Some(found);
-            }
-        }
-        self.find_by_resolution(width, height)
-    }
-
-    /// Find a profile by resolution only (no camera identification).
-    ///
-    /// Searches all profiles for an exact resolution match. If multiple
-    /// cameras share the same resolution, returns the first match.
-    /// This is the last-resort fallback when telemetry extraction fails.
-    pub fn find_by_resolution(&self, width: u32, height: u32) -> Option<(Lens, LensProfileInfo)> {
-        for p in &self.profiles {
-            if p.width == width && p.height == height {
-                log::warn!(
-                    "lens auto-detect: no camera match for {}x{}; falling back to a \
-                     GENERIC resolution-only profile from {} ({}). Its distortion model \
-                     may not match your lens, which can make calibration inaccurate or \
-                     fail. If results look wrong, supply a lens profile or tune the Lens \
-                     sliders manually.",
-                    width,
-                    height,
-                    p.brand,
-                    p.source
-                );
-                let info = LensProfileInfo {
-                    camera: format_camera_name(&p.brand, &p.model),
-                    lens: format_lens_name(&p.lens_model, &p.camera_setting),
-                    source: ProfileSource::Fallback,
-                    path: None,
-                };
-                return Some((p.params.clone(), info));
-            }
-        }
-        None
-    }
-
-    /// Number of loaded profiles.
-    pub fn len(&self) -> usize {
-        self.profiles.len()
-    }
-
-    /// Whether the database is empty.
-    pub fn is_empty(&self) -> bool {
-        self.profiles.is_empty()
-    }
-
-    /// Iterate over all profiles in the database as summaries.
-    ///
-    /// Returns one [`LensProfileSummary`] per entry, suitable for
-    /// populating a picker/dropdown in the GUI. Profiles are in the
-    /// order they were loaded (grouped by camera brand/model).
-    pub fn iter_profiles(&self) -> impl Iterator<Item = LensProfileSummary> + '_ {
-        self.profiles.iter().map(|p| LensProfileSummary {
-            camera: format_camera_name(&p.brand, &p.model),
-            lens: format_lens_name(&p.lens_model, &p.camera_setting),
-            width: p.width,
-            height: p.height,
-        })
-    }
-
-    /// Return profiles matching a given resolution, optionally sorted
-    /// for a picker UI.
-    ///
-    /// Filters by exact width and height. If `width` or `height` is 0,
-    /// that dimension is not filtered (wildcard). Returns an owned
-    /// `Vec` rather than an iterator so the caller can group, sort, or
-    /// dedup freely.
-    pub fn candidates(&self, width: u32, height: u32) -> Vec<LensProfileSummary> {
-        self.profiles
-            .iter()
-            .filter(|p| (width == 0 || p.width == width) && (height == 0 || p.height == height))
-            .map(|p| LensProfileSummary {
-                camera: format_camera_name(&p.brand, &p.model),
-                lens: format_lens_name(&p.lens_model, &p.camera_setting),
-                width: p.width,
-                height: p.height,
-            })
-            .collect()
     }
 
     /// Full-text search across all profiles.
@@ -473,41 +139,7 @@ impl LensDatabase {
         hits.iter().map(|&(i, _)| self.summary_at(i)).collect()
     }
 
-    /// Unique camera brands in the database, sorted alphabetically.
-    pub fn brands(&self) -> Vec<String> {
-        let mut seen: Vec<String> = self
-            .by_camera
-            .keys()
-            .filter_map(|k| k.split('/').next())
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
-            .map(title_case)
-            .collect();
-        seen.sort();
-        seen
-    }
-
-    /// Models for a given brand with their profile counts, sorted.
-    pub fn models_for_brand(&self, brand: &str) -> Vec<(String, u32)> {
-        let prefix = brand.to_lowercase().replace(' ', "-");
-        let mut models: Vec<(String, u32)> = self
-            .by_camera
-            .iter()
-            .filter_map(|(key, indices)| {
-                let parts: Vec<&str> = key.splitn(2, '/').collect();
-                if parts.len() == 2 && parts[0] == prefix {
-                    Some((title_case(parts[1]), indices.len() as u32))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        models.sort_by(|a, b| a.0.cmp(&b.0));
-        models
-    }
-
-    /// Load the full `Lens` for a profile identified by its
-    /// summary fields. Returns `None` if no exact match is found.
+    /// Load the profile explicitly selected by a consumer.
     pub fn load_by_summary(&self, summary: &LensProfileSummary) -> Option<Lens> {
         self.profiles
             .iter()
@@ -529,24 +161,6 @@ impl LensDatabase {
             height: p.height,
         }
     }
-}
-
-fn title_case(s: &str) -> String {
-    s.split('-')
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                Some(c) => {
-                    let mut out = String::new();
-                    out.extend(c.to_uppercase());
-                    out.extend(chars);
-                    out
-                }
-                None => String::new(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 /// Format "Brand Model" with title case from the lowercase internal storage.
@@ -594,14 +208,15 @@ fn format_lens_name(lens_model: &str, camera_setting: &str) -> String {
 ///
 /// This is the standard way to load a manually-specified lens profile.
 pub fn load_from_file(path: &Path) -> Result<Lens, LensLoadError> {
-    let json_str = std::fs::read_to_string(path).map_err(|e| LensLoadError::Io(e.to_string()))?;
+    let json_str = std::fs::read_to_string(path)
+        .map_err(|e| LensLoadError::Io(format!("{}: {e}", path.display())))?;
     load_from_json(&json_str, path.display().to_string().as_str())
 }
 
 /// Load a camera profile from a JSON string.
 pub fn load_from_json(json_str: &str, source: &str) -> Result<Lens, LensLoadError> {
-    let v: serde_json::Value =
-        serde_json::from_str(json_str).map_err(|e| LensLoadError::Parse(e.to_string()))?;
+    let v: serde_json::Value = serde_json::from_str(json_str)
+        .map_err(|e| LensLoadError::Parse(format!("{source}: {e}")))?;
 
     // Flat lens format (fx/fy/cx/cy + distortion). This branch is the
     // designated adapter for the legacy wire shape too: old profile files
@@ -614,7 +229,8 @@ pub fn load_from_json(json_str: &str, source: &str) -> Result<Lens, LensLoadErro
         {
             obj.entry("distortion").or_insert(d);
         }
-        return serde_json::from_value::<Lens>(v).map_err(|e| LensLoadError::Parse(e.to_string()));
+        return serde_json::from_value::<Lens>(v)
+            .map_err(|e| LensLoadError::Parse(format!("{source}: {e}")));
     }
 
     if let Some(lens) = parse_gyroflow_lens(&v) {
@@ -640,32 +256,11 @@ pub enum LensLoadError {
     UnrecognizedFormat(String),
 }
 
-/// Normalize brand/model for lookup key.
-fn normalize_camera_key(brand: &str, model: &str) -> String {
-    let b = brand.to_lowercase().replace(' ', "-");
-    let m = model.to_lowercase().replace(' ', "-").replace("--", "-");
-    format!("{b}/{m}")
-}
-
-/// Strip variant suffixes to find the parent model key.
-/// E.g. "gopro/hero11-black-mini" -> "gopro/hero11-black".
-fn strip_model_variant(key: &str) -> Option<String> {
-    // Common GoPro/DJI variant suffixes
-    for suffix in &["-mini", "-max", "-session", "-bones", "-creator-edition"] {
-        if let Some(parent) = key.strip_suffix(suffix) {
-            return Some(parent.to_string());
-        }
-    }
-    None
-}
-
-/// Parse a profile from a serde_json::Value (CBOR or JSON source).
-fn parse_profile_value(v: &serde_json::Value, source: &str) -> Option<ProfileEntry> {
+fn parse_profile_value(v: &serde_json::Value) -> Option<ProfileEntry> {
     let brand = v.get("camera_brand")?.as_str()?.to_string();
     let model = v.get("camera_model")?.as_str()?.to_string();
     let params = parse_gyroflow_lens(v)?;
     Some(ProfileEntry {
-        source: source.to_string(),
         brand,
         model,
         lens_model: v
@@ -773,78 +368,9 @@ pub(crate) fn parse_gyroflow_lens(v: &serde_json::Value) -> Option<Lens> {
 }
 
 /// Recursively load JSON profiles from a directory.
-fn load_dir_recursive(
-    dir: &Path,
-    profiles: &mut Vec<ProfileEntry>,
-    by_camera: &mut HashMap<String, Vec<usize>>,
-) -> Result<(), std::io::Error> {
-    if !dir.is_dir() {
-        return Ok(());
-    }
-    for entry in std::fs::read_dir(dir)? {
-        let path = entry?.path();
-        if path.is_dir() {
-            load_dir_recursive(&path, profiles, by_camera)?;
-        } else if path.extension().is_some_and(|e| e == "json") {
-            let parsed = std::fs::read_to_string(&path)
-                .ok()
-                .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-                .and_then(|v| parse_profile_value(&v, &path.display().to_string()));
-            if let Some(entry) = parsed {
-                let key = normalize_camera_key(&entry.brand, &entry.model);
-                let idx = profiles.len();
-                by_camera.entry(key).or_default().push(idx);
-                profiles.push(entry);
-            }
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn metadata_resolution_preserves_profile_priority_without_reopening_video() {
-        let mut value = gyroflow_profile();
-        value["camera_brand"] = serde_json::json!("Example");
-        value["camera_model"] = serde_json::json!("Camera");
-        let entry = parse_profile_value(&value, "fixture").unwrap();
-        let expected = entry.params.clone();
-        let db = LensDatabase {
-            profiles: vec![entry],
-            by_camera: [(normalize_camera_key("Example", "Camera"), vec![0])].into(),
-        };
-        let mut metadata = crate::telemetry::CameraMetadata {
-            camera_type: "Example".into(),
-            camera_model: Some("Camera".into()),
-            lens_profile: None,
-            lens_info: None,
-            has_native_gyro: false,
-        };
-        let (lens, info) = db.find_for_metadata(Some(&metadata), 1920, 1080).unwrap();
-        assert_eq!(lens, expected);
-        assert!(matches!(info.source, ProfileSource::Database));
-
-        let embedded = Lens {
-            fx: 950.,
-            ..expected.clone()
-        };
-        metadata.lens_profile = Some(embedded.clone());
-        let (lens, info) = db.find_for_metadata(Some(&metadata), 1920, 1080).unwrap();
-        assert_eq!(lens, embedded);
-        assert!(matches!(info.source, ProfileSource::AutoDetected));
-
-        metadata.lens_profile = None;
-        metadata.camera_model = Some("Unknown".into());
-        for metadata in [None, Some(&metadata)] {
-            let (lens, info) = db.find_for_metadata(metadata, 1920, 1080).unwrap();
-            assert_eq!(lens, expected);
-            assert!(matches!(info.source, ProfileSource::Fallback));
-            assert!(db.find_for_metadata(metadata, 2000, 1500).is_none());
-        }
-    }
 
     fn gyroflow_profile() -> serde_json::Value {
         serde_json::json!({
@@ -864,14 +390,11 @@ mod tests {
             load_from_json(&profile.to_string(), "fixture").unwrap(),
             expected
         );
-        assert!(parse_profile_value(&profile, "fixture").is_none());
+        assert!(parse_profile_value(&profile).is_none());
         profile["camera_brand"] = serde_json::json!("Example");
         profile["camera_model"] = serde_json::json!("Camera");
         profile["distortion_model"] = serde_json::json!("opencv_fisheye");
-        assert_eq!(
-            parse_profile_value(&profile, "fixture").unwrap().params,
-            expected
-        );
+        assert_eq!(parse_profile_value(&profile).unwrap().params, expected);
     }
 
     #[test]
@@ -917,30 +440,6 @@ mod tests {
     }
 
     #[test]
-    fn nearby_aspect_match_scales_intrinsics_on_both_axes() {
-        let params = Lens::fisheye(3840, 2160, 1800.0, 1820.0, 1910.0, 1070.0, [0.03; 4]);
-        let db = LensDatabase {
-            profiles: vec![ProfileEntry {
-                source: "test".into(),
-                brand: "test".into(),
-                model: "camera".into(),
-                lens_model: "wide".into(),
-                camera_setting: String::new(),
-                width: params.width,
-                height: params.height,
-                params: params.clone(),
-            }],
-            by_camera: HashMap::from([("test/camera".into(), vec![0])]),
-        };
-        for height in [1080, 1088] {
-            let (scaled, _) = db.find("test", "camera", 1920, height, None).unwrap();
-            assert_eq!(scaled, params.rescaled(1920, height).unwrap());
-            assert_eq!(scaled.fx, 900.0);
-            assert_eq!(scaled.cy, 1070.0 * f64::from(height) / 2160.0);
-        }
-    }
-
-    #[test]
     fn flat_profile_loads_current_and_legacy_key() {
         // Current shape names the array `distortion`; legacy profile files
         // named it `d`. Both must load through the flat branch (the GUI
@@ -962,7 +461,7 @@ mod tests {
         let a = LensDatabase::embedded();
         let b = LensDatabase::embedded();
         assert!(std::ptr::eq(a, b));
-        assert!(!a.is_empty());
+        assert!(!a.profiles.is_empty());
     }
 
     #[test]
@@ -1004,25 +503,6 @@ mod tests {
         let db = LensDatabase::embedded();
         let results = db.search("a", 0, 0);
         assert!(results.len() <= 100);
-    }
-
-    #[test]
-    fn brands_non_empty_sorted() {
-        let db = LensDatabase::embedded();
-        let brands = db.brands();
-        assert!(brands.len() > 10);
-        let mut sorted = brands.clone();
-        sorted.sort();
-        assert_eq!(brands, sorted);
-    }
-
-    #[test]
-    fn models_for_brand_gopro() {
-        let db = LensDatabase::embedded();
-        let models = db.models_for_brand("GoPro");
-        assert!(!models.is_empty());
-        assert!(models.iter().any(|(m, _)| m.contains("Hero")));
-        assert!(models.iter().all(|&(_, count)| count > 0));
     }
 
     #[test]

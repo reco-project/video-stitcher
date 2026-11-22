@@ -72,7 +72,10 @@ export component RecoApp inherits Window {
     in-out property <float> fps: 0.0;
     in-out property <bool> calibrating: false;
     in-out property <bool> calibration-needs-review: false;
-    in-out property <bool> calibration-estimate-optics: false;
+    in-out property <bool> fix-left-optics: false;
+    in-out property <bool> fix-right-optics: false;
+    changed left-path => { root.fix-left-optics = false; }
+    changed right-path => { root.fix-right-optics = false; }
     in-out property <string> calibration-step: "";
     out property <bool> has-both-videos: left-path != "" && right-path != "";
     in-out property <bool> has-roi: false;
@@ -171,23 +174,15 @@ export component RecoApp inherits Window {
     in-out property <string> version: "";
     in-out property <string> last-output-path: "";
 
-    // Lens profile info. Populated after auto-calibration so the user
-    // can see which lens the detector resolved to. Empty strings render
-    // as "Unknown" via the Lens card below; `lens-info-available` flips
-    // when there's anything worth showing.
+    // Lens information from the latest fit or manual selection.
     in-out property <string> lens-left-camera: "";
     in-out property <string> lens-left-lens: "";
     in-out property <string> lens-left-source: "";
     in-out property <string> lens-right-camera: "";
     in-out property <string> lens-right-lens: "";
     in-out property <string> lens-right-source: "";
-    in-out property <int> lens-candidates-count: 0;
     in-out property <bool> lens-info-available: false;
 
-    // Opt-in use of IMU-derived camera orientation as initial seeds
-    // for the bundle-adjustment optimizer. Helpful on clips whose first
-    // frame is pointed off-axis; harmful if the IMU is noisy. Default
-    // off because the feature-matching seed is reliable on most footage.
     in-out property <int> calibration-frames: 4;
     in-out property <float> cal-skip-end-secs: 0.0;
 
@@ -1051,9 +1046,15 @@ export component RecoApp inherits Window {
                                     if cal-advanced.expanded: VerticalLayout {
                                         spacing: 4px;
 
-                                        CheckBox {
-                                            text: "Estimate optics from images";
-                                            checked <=> root.calibration-estimate-optics;
+                                        if root.calibration-path != "": CheckBox {
+                                            text: "Keep current left lens fixed";
+                                            checked <=> root.fix-left-optics;
+                                            enabled: !root.calibrating;
+                                        }
+
+                                        if root.calibration-path != "": CheckBox {
+                                            text: "Keep current right lens fixed";
+                                            checked <=> root.fix-right-optics;
                                             enabled: !root.calibrating;
                                         }
 

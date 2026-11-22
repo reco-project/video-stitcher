@@ -26,7 +26,6 @@ pub fn run_calibrate(
     skip_end: f64,
     output: &str,
     accept_unconfirmed: bool,
-    estimate_optics: bool,
 ) -> anyhow::Result<()> {
     let config = CalibrationConfig {
         num_frames,
@@ -58,35 +57,11 @@ pub fn run_calibrate(
 
     let mut pipeline = CalibrationPipeline::new(left_info, right_info, config);
 
-    // Step 1: Lens profiles
-    if left_profile.is_some() || right_profile.is_some() {
-        pipeline.load_profiles(left_profile.map(Path::new), right_profile.map(Path::new))?;
-        eprintln!(
-            "  optics: left={}, right={}",
-            if pipeline.left_params().is_some() {
-                "profile"
-            } else {
-                "estimated"
-            },
-            if pipeline.right_params().is_some() {
-                "profile"
-            } else {
-                "estimated"
-            }
-        );
-    } else {
-        eprintln!("Auto-detecting lens profiles...");
-        let (lp, rp) = pipeline.detect_profiles()?;
-        eprintln!(
-            "  optics: left={}, right={}",
-            if lp.is_some() { "profile" } else { "estimated" },
-            if rp.is_some() { "profile" } else { "estimated" }
-        );
-    }
-
-    if estimate_optics {
-        pipeline.set_profiles(None, None);
-    }
+    let load = |path: Option<&str>| {
+        path.map(|path| reco_calibrate::lens_database::load_from_file(Path::new(path)))
+            .transpose()
+    };
+    pipeline.set_profiles(load(left_profile)?, load(right_profile)?);
 
     // Step 2: Sync - priority: IMU > audio > manual
     if !no_auto_imu {

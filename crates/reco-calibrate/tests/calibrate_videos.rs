@@ -31,19 +31,23 @@ fn calibrate_videos_confirms_real_decoded_overlap() {
         "test footage is unavailable"
     );
     let interrupted = AtomicBool::new(false);
+    let reference = reco_core::calibration::Calibration::from_file(
+        &Path::new(&footage).join("reference.json"),
+    )
+    .unwrap();
     for estimate_optics in [false, true] {
         let result = calibrate_videos(
             &left,
             &right,
             CalibrateVideosOptions {
-                estimate_optics,
+                left_params: (!estimate_optics).then(|| reference.lenses[0].clone()),
+                right_params: (!estimate_optics).then(|| reference.lenses[1].clone()),
                 sync_offset: Some(expected.sync_offset),
                 config: Some(reco_calibrate::CalibrationConfig {
                     num_frames: 4,
                     skip_start_secs: expected.skip_start_secs,
                     skip_end_secs: expected.skip_end_secs,
                 }),
-                ..Default::default()
             },
             &mut |p| eprintln!("[test] {}: {}", p.step, p.detail),
             &interrupted,
@@ -64,6 +68,7 @@ fn calibrate_videos_confirms_real_decoded_overlap() {
                     .any(|check| check.bands.iter().any(|&n| n < 8))
             );
         } else {
+            assert_eq!(result.calibration.lenses, reference.lenses);
             assert_eq!(
                 result.assessment,
                 reco_calibrate::CalibrationAssessment::Confirmed

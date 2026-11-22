@@ -64,8 +64,6 @@ pub struct CalibrationProgress {
 pub enum CalibrationStep {
     /// Probing video metadata.
     Probing,
-    /// Detecting lens profiles from metadata and the database.
-    DetectingProfiles,
     /// Extracting audio for temporal sync.
     AudioSync,
     /// Extracting video frames.
@@ -78,7 +76,6 @@ impl std::fmt::Display for CalibrationStep {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Probing => write!(f, "Probing"),
-            Self::DetectingProfiles => write!(f, "DetectingProfiles"),
             Self::AudioSync => write!(f, "AudioSync"),
             Self::ExtractingFrames => write!(f, "ExtractingFrames"),
             Self::Optimizing => write!(f, "Optimizing"),
@@ -93,21 +90,15 @@ impl std::fmt::Display for CalibrationStep {
 pub enum ProfileSource {
     /// Estimated from overlap for this calibration, not a reusable physical lens profile.
     Estimated,
-    /// Matched from the embedded Gyroflow-derived database.
-    Database,
-    /// Loaded from a user-supplied file on disk.
-    File(PathBuf),
-    /// Auto-detected from camera telemetry embedded in the video.
-    AutoDetected,
-    /// Fallback profile when no exact match was found.
-    Fallback,
+    /// Explicitly supplied by the caller and held fixed during fitting.
+    Supplied,
 }
 
 /// Identifies the lens profile used for one camera during calibration.
 ///
 /// Returned on [`CalibrationResult::left_lens_profile`] and
 /// [`CalibrationResult::right_lens_profile`] so the GUI can display
-/// "Auto-detected: GoPro HERO10 Linear 4K" without parsing logs.
+/// the optical provenance without parsing logs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LensProfileInfo {
     /// Camera brand and model (e.g. "GoPro HERO10").
@@ -122,8 +113,7 @@ pub struct LensProfileInfo {
 
 /// Summary of a lens profile in the embedded database.
 ///
-/// Returned by [`LensDatabase::iter_profiles`](crate::lens_database::LensDatabase::iter_profiles)
-/// and [`LensDatabase::candidates`](crate::lens_database::LensDatabase::candidates)
+/// Returned by [`LensDatabase::search`](crate::lens_database::LensDatabase::search)
 /// for populating a picker/dropdown in the GUI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LensProfileSummary {
@@ -177,9 +167,8 @@ pub struct CalibrationResult {
     pub assessment: CalibrationAssessment,
     /// Per-pair independent measurements. These images never participate in fitting.
     pub overlap_checks: Vec<OverlapCheck>,
-    /// Lens profile used for the left camera. `None` if the profile was
-    /// set manually via `set_profiles()` rather than auto-detected.
+    /// Optical provenance for the left camera.
     pub left_lens_profile: Option<LensProfileInfo>,
-    /// Lens profile used for the right camera.
+    /// Optical provenance for the right camera.
     pub right_lens_profile: Option<LensProfileInfo>,
 }

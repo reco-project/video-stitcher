@@ -23,7 +23,7 @@
 //! println!("Assessment: {:?}", result.assessment);
 //! ```
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use reco_core::calibration::Lens;
@@ -33,30 +33,15 @@ use crate::error::CalibrateError;
 use crate::pipeline::{CalibrationPipeline, VideoInfo};
 use crate::types::{CalibrationConfig, CalibrationProgress, CalibrationResult, CalibrationStep};
 
-/// Options for [`calibrate_videos`].
-///
-/// All fields are optional with sensible defaults.
-///
-/// Lens profile resolution order (first match wins):
-/// 1. Supplied `left_params` / `right_params`, independently optional
-/// 2. Supplied `left_profile` / `right_profile` paths, independently optional
-/// 3. auto-detect from video metadata
+/// Options for [`calibrate_videos`]. Missing optics are estimated from footage.
+/// Explicit lenses are fixed independently; no profile lookup or optical fallback runs.
 #[derive(Debug, Clone, Default)]
 pub struct CalibrateVideosOptions {
-    /// Estimate both optical models from image overlap, even when profiles are available.
-    pub estimate_optics: bool,
-    /// Calibration algorithm config. Uses [`CalibrationConfig::default()`] if `None`.
+    /// Sampling config. Uses [`CalibrationConfig::default()`] if `None`.
     pub config: Option<CalibrationConfig>,
-    /// Path to the left lens profile. A missing side is estimated when the other path is supplied; no paths means auto-detection.
-    pub left_profile: Option<PathBuf>,
-    /// Path to the right lens profile. See [`Self::left_profile`].
-    pub right_profile: Option<PathBuf>,
-    /// Pre-loaded left camera params. Direct params take priority over profile paths; a missing side is estimated.
-    ///
-    /// Lets consumers that already resolved profiles (e.g. via
-    /// `LensDatabase::candidates()`) skip the file round-trip.
+    /// Fixed left camera optics; `None` estimates them from image overlap.
     pub left_params: Option<Lens>,
-    /// Pre-loaded right camera params. See [`Self::left_params`].
+    /// Fixed right camera optics; `None` estimates them from image overlap.
     pub right_params: Option<Lens>,
     /// Manual sync offset in frames. Auto-detects via IMU/audio if `None`.
     pub sync_offset: Option<i64>,
@@ -161,7 +146,7 @@ fn emit_progress(
 
 /// Calibrate two video files with a single function call.
 ///
-/// Handles the full workflow: video probing, lens profile detection,
+/// Handles the full workflow: video probing, optional supplied optics,
 /// sync estimation (IMU, then audio fallback), frame extraction and native alignment.
 ///
 /// The `on_progress` callback is invoked before each major step so
@@ -213,27 +198,7 @@ pub fn calibrate_videos(
 
     let mut pipeline = CalibrationPipeline::new(left_info, right_info, config);
 
-    // Lens profiles: direct params > path > auto-detect.
-    if options.left_params.is_some() || options.right_params.is_some() {
-        pipeline.set_profiles(options.left_params, options.right_params);
-    } else if options.left_profile.is_some() || options.right_profile.is_some() {
-        pipeline.load_profiles(
-            options.left_profile.as_deref(),
-            options.right_profile.as_deref(),
-        )?;
-    } else {
-        check_interrupted(interrupted)?;
-        emit_progress(
-            on_progress,
-            CalibrationStep::DetectingProfiles,
-            "Finding available lens profiles",
-        );
-        pipeline.detect_profiles()?;
-    }
-
-    if options.estimate_optics {
-        pipeline.set_profiles(None, None);
-    }
+    pipeline.set_profiles(options.left_params, options.right_params);
 
     // Sync: manual > IMU > audio > default (0)
     check_interrupted(interrupted)?;

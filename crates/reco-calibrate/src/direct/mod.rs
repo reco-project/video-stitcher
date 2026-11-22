@@ -169,16 +169,25 @@ fn run(
         frames_used: 1,
         assessment,
         overlap_checks: checks,
-        left_lens_profile: optics[0].then(estimated_profile),
-        right_lens_profile: optics[1].then(estimated_profile),
+        left_lens_profile: Some(optical_provenance(optics[0])),
+        right_lens_profile: Some(optical_provenance(optics[1])),
     })
 }
 
-fn estimated_profile() -> crate::LensProfileInfo {
+fn optical_provenance(estimated: bool) -> crate::LensProfileInfo {
     crate::LensProfileInfo {
         camera: "".into(),
-        lens: "Estimated from overlap".into(),
-        source: crate::ProfileSource::Estimated,
+        lens: if estimated {
+            "Estimated from overlap"
+        } else {
+            "Supplied optics"
+        }
+        .into(),
+        source: if estimated {
+            crate::ProfileSource::Estimated
+        } else {
+            crate::ProfileSource::Supplied
+        },
         path: None,
     }
 }
@@ -231,7 +240,10 @@ mod tests {
                 };
                 assert_eq!(result.calibration.lenses[fixed], known.lenses[fixed]);
                 let provenance = [result.left_lens_profile, result.right_lens_profile];
-                assert!(provenance[fixed].is_none());
+                assert!(matches!(
+                    provenance[fixed].as_ref().unwrap().source,
+                    crate::ProfileSource::Supplied
+                ));
                 assert!(matches!(
                     provenance[1 - fixed].as_ref().unwrap().source,
                     crate::ProfileSource::Estimated

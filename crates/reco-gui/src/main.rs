@@ -75,10 +75,7 @@ const TICK_INTERVAL_MS: i64 = 2;
 const FOV_MIN: f32 = 1.0;
 const FOV_MAX: f32 = 150.0;
 
-/// Calibration payload sent from the background worker: the computed
-/// match calibration plus the lens profile info each side resolved to,
-/// so the GUI can tell the user "we auto-detected GoPro HERO10 Linear 4K"
-/// without re-running detection.
+/// Fitted calibration with the assessment and optical source for each camera.
 struct CalibrationOutput {
     calibration: Calibration,
     assessment: reco_calibrate::CalibrationAssessment,
@@ -1361,27 +1358,16 @@ fn set_lens_sliders(app: &RecoApp, lenses: &[reco_core::calibration::Lens]) {
 /// Human-readable description of how a lens profile was resolved.
 fn profile_source_label(info: &LensProfileInfo) -> &'static str {
     match info.source {
-        ProfileSource::AutoDetected => "Auto-detected",
         ProfileSource::Estimated => "Stitching estimate",
-        ProfileSource::Database => "Database match",
-        ProfileSource::File(_) => "File",
-        ProfileSource::Fallback => "Fallback",
+        ProfileSource::Supplied => "Supplied optics",
     }
 }
 
-/// Populate the Slint lens-profile properties from calibration output.
-///
-/// Stamps the detected camera/lens/source for left and right, plus the
-/// count of alternate profiles in the embedded database that match the
-/// current video resolution (`in_w` x `in_h`). The candidate count lets
-/// the user tell at a glance whether they could reasonably override the
-/// auto-detected profile - zero means the picker has nothing new to offer.
+/// Display the optical provenance reported by the fitter.
 fn set_lens_profile_props(
     app: &RecoApp,
     left: Option<LensProfileInfo>,
     right: Option<LensProfileInfo>,
-    in_w: u32,
-    in_h: u32,
 ) {
     if let Some(info) = &left {
         app.set_lens_left_camera(info.camera.clone().into());
@@ -1390,7 +1376,7 @@ fn set_lens_profile_props(
     } else {
         app.set_lens_left_camera("Unknown".into());
         app.set_lens_left_lens("".into());
-        app.set_lens_left_source("Not detected".into());
+        app.set_lens_left_source("Unknown".into());
     }
     if let Some(info) = &right {
         app.set_lens_right_camera(info.camera.clone().into());
@@ -1399,22 +1385,10 @@ fn set_lens_profile_props(
     } else {
         app.set_lens_right_camera("Unknown".into());
         app.set_lens_right_lens("".into());
-        app.set_lens_right_source("Not detected".into());
+        app.set_lens_right_source("Unknown".into());
     }
 
-    refresh_lens_candidates(app, in_w, in_h);
     app.set_lens_info_available(left.is_some() || right.is_some());
-}
-
-fn refresh_lens_candidates(app: &RecoApp, in_w: u32, in_h: u32) {
-    // Reuse the shared database when refreshing resolution-specific alternatives.
-    let candidates = if in_w > 0 && in_h > 0 {
-        let db = reco_calibrate::lens_database::LensDatabase::embedded();
-        db.candidates(in_w, in_h).len() as i32
-    } else {
-        0
-    };
-    app.set_lens_candidates_count(candidates);
 }
 
 fn format_time(frame: u64, fps: f64) -> String {
@@ -2570,10 +2544,6 @@ fn main() -> anyhow::Result<()> {
                 )
             })
             .unwrap_or((4, 0.0));
-        let estimate_optics = app_weak
-            .upgrade()
-            .is_some_and(|a| a.get_calibration_estimate_optics());
-
         if let Some(app) = app_weak.upgrade() {
             app.set_calibrating(true);
             app.set_calibration_needs_review(false);
@@ -2584,20 +2554,26 @@ fn main() -> anyhow::Result<()> {
         let interrupted = Arc::new(AtomicBool::new(false));
         let (tx, rx) = std::sync::mpsc::channel();
 
-        // Preserve the user's current lens (a picked profile or slider edits)
-        // across recalibration. `self.calibration` is the source of truth -
-        // the lens picker and sliders write it - so the optimizer is handed
-        // the lens the user is actually looking at, not a stale fallback that
-        // only `self.calibration` retained before the picker wrote it.
         let (existing_left_params, existing_right_params) = {
             let s = state_ref.borrow();
             let lenses = s
                 .calibration
                 .as_ref()
-                .or(s.cal_baseline.as_ref())
                 .map(|c| c.lenses.as_slice())
                 .unwrap_or_default();
-            (lenses.first().cloned(), lenses.get(1).cloned())
+            let Some(app) = app_weak.upgrade() else {
+                return;
+            };
+            (
+                lenses
+                    .first()
+                    .filter(|_| app.get_fix_left_optics())
+                    .cloned(),
+                lenses
+                    .get(1)
+                    .filter(|_| app.get_fix_right_optics())
+                    .cloned(),
+            )
         };
 
         {
@@ -2620,14 +2596,10 @@ fn main() -> anyhow::Result<()> {
                 skip_start_secs: current_time_secs,
                 skip_end_secs: skip_end,
             };
-            if existing_left_params.is_some() {
-                log::info!("Re-calibrating with user-picked lens profiles");
-            }
             let result = reco_calibrate::video::calibrate_videos(
                 &left,
                 &right,
                 reco_calibrate::video::CalibrateVideosOptions {
-                    estimate_optics,
                     config: Some(config),
                     left_params: existing_left_params,
                     right_params: existing_right_params,
@@ -3033,10 +3005,12 @@ fn main() -> anyhow::Result<()> {
                 }
                 if let Some(app) = app_ref.as_ref() {
                     if side_str != "right" {
+                        app.set_fix_left_optics(true);
                         app.set_lens_left_camera(summary.camera.clone().into());
                         app.set_lens_left_source("Picker".into());
                     }
                     if side_str != "left" {
+                        app.set_fix_right_optics(true);
                         app.set_lens_right_camera(summary.camera.clone().into());
                         app.set_lens_right_source("Picker".into());
                     }
@@ -3070,6 +3044,8 @@ fn main() -> anyhow::Result<()> {
                     if !s.apply_lens_profile(&app, &params, "both") {
                         return;
                     }
+                    app.set_fix_left_optics(true);
+                    app.set_fix_right_optics(true);
                     if let Some(app) = app_weak.upgrade() {
                         s.sync_calibration_controls(&app);
                         app.set_lens_dirty(true);
@@ -4112,8 +4088,9 @@ fn load_calibration_and_update(
                 app.set_lens_dirty(false);
                 app.set_files_loaded(ready);
                 s.sync_calibration_controls(&app);
-                let (in_w, in_h) = s.playback.input_dimensions().unwrap_or((0, 0));
-                set_lens_profile_props(&app, None, None, in_w, in_h);
+                app.set_fix_left_optics(false);
+                app.set_fix_right_optics(false);
+                set_lens_profile_props(&app, None, None);
                 sync_recent_paths(&s.user_settings, &app);
                 sync_segments(&s, &app);
             }
@@ -4149,8 +4126,6 @@ fn update_preview_ui(
             s.clamp_targets();
             let clamped_fov = s.pose.current_fov_deg();
             let img = s.render_current();
-            let (in_w, in_h) = s.playback.input_dimensions().unwrap_or((0, 0));
-
             if let Some(app) = app_weak.upgrade() {
                 app.set_files_loaded(true);
                 app.set_has_roi(
@@ -4189,7 +4164,6 @@ fn update_preview_ui(
                     field_editor::sync(s, &app);
                 }
                 app.set_fov(clamped_fov);
-                refresh_lens_candidates(&app, in_w, in_h);
                 // Lens fine-tune sliders are seeded from the loaded
                 // calibration's camera params either way; the Lens
                 // fine-tune section is gated on `files-loaded` in Slint.
@@ -4319,7 +4293,6 @@ fn handle_calibration_result(
                 Ok(()) => {
                     let fps = state.playback.fps();
                     let total = state.playback.total_frames().unwrap_or(0);
-                    let (in_w, in_h) = state.playback.input_dimensions().unwrap_or((0, 0));
 
                     // Keep the intended destination on failure so Save cannot overwrite an older document.
                     state.calibration_path = state.left_path.as_ref().map(|left| {
@@ -4362,7 +4335,7 @@ fn handle_calibration_result(
                         app.set_status_text(
                             format!("Auto-calibrated - {:.0} fps - {total} frames", fps,).into(),
                         );
-                        set_lens_profile_props(&app, left_profile, right_profile, in_w, in_h);
+                        set_lens_profile_props(&app, left_profile, right_profile);
                         app.set_cal_dirty(!saved);
                         app.set_lens_dirty(false);
                         crate::toast::sync_to_ui(&state.toasts, &app);

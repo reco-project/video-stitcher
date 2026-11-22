@@ -45,8 +45,7 @@ pub struct TelemetryData {
     pub quaternions: Vec<(f64, [f64; 4])>,
     /// FOV mode detected from GPMF metadata (e.g. "Wide", "Narrow", "Linear").
     ///
-    /// Used to match the correct Gyroflow lens profile. GoPro cameras embed
-    /// a VFOV tag in the GPMF stream indicating the FOV mode at recording time.
+    /// GoPro records this mode in the GPMF VFOV tag.
     pub lens_info: Option<String>,
 }
 

@@ -273,11 +273,6 @@ def run_calibration():
         "--calibrate-frames", "8",
     ]
 
-    # Lens profile (auto-loaded by reco if ~/imx477_profile.json exists).
-    lens = Path.home() / "imx477_profile.json"
-    if lens.exists():
-        cmd.extend(["--left-profile", str(lens)])
-
     try:
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

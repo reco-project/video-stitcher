@@ -682,35 +682,13 @@ pub fn run_live_calibrate(
         "Live calibration: capturing {num_pairs} frame pairs at {capture_width}x{capture_height}",
     );
 
-    // One loader for every profile shape (current flat, legacy flat with
-    // `d`, gyroflow) - the lens database owns format detection. A broken
-    // profile file is a hard error: silently calibrating with the wrong
-    // lens is worse than aborting.
-    let load = |p: &str| -> anyhow::Result<Lens> {
-        let json = std::fs::read_to_string(p)
-            .map_err(|e| anyhow::anyhow!("cannot read lens profile '{p}': {e}"))?;
-        let lens = reco_calibrate::lens_database::load_from_json(&json, p)
-            .map_err(|e| anyhow::anyhow!("cannot parse lens profile '{p}': {e}"))?;
-        eprintln!("Lens profile: {p}");
+    let load = |path: &str| -> anyhow::Result<Lens> {
+        let lens = reco_calibrate::lens_database::load_from_file(std::path::Path::new(path))?;
+        eprintln!("Lens profile: {path}");
         Ok(lens)
     };
-    let load_or_default = |path: Option<&str>| -> anyhow::Result<Option<Lens>> {
-        if let Some(p) = path {
-            return load(p).map(Some);
-        }
-        if let Ok(home) = std::env::var("HOME") {
-            let convention = std::path::PathBuf::from(home).join("imx477_profile.json");
-            if convention.exists() {
-                let lens = load(&convention.display().to_string())?;
-                eprintln!("  (auto-detected convention profile)");
-                return Ok(Some(lens));
-            }
-        }
-        eprintln!("No lens profile found, estimating optics from overlap");
-        Ok(None)
-    };
-    let left_params = load_or_default(left_profile)?;
-    let right_params = load_or_default(right_profile)?;
+    let left_params = left_profile.map(load).transpose()?;
+    let right_params = right_profile.map(load).transpose()?;
 
     let source = reco_io::gstreamer::camera::GstreamerNv12CameraSource::open(
         &cam_config,

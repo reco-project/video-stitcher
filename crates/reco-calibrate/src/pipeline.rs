@@ -1,7 +1,7 @@
 //! High-level calibration pipeline orchestrator.
 //!
 //! [`CalibrationPipeline`] handles the full calibration workflow:
-//! profile detection, sync estimation, frame selection, and optimization.
+//! explicit optics, sync estimation, frame selection, and optimization.
 //! The app is only responsible for providing video metadata and decoded
 //! frames - all orchestration logic lives here.
 //!
@@ -14,8 +14,7 @@
 //!
 //! let mut pipeline = CalibrationPipeline::new(left_info, right_info, CalibrationConfig::default());
 //!
-//! // Auto-detect lens profiles from embedded database + video metadata
-//! pipeline.detect_profiles()?;
+//! // Missing optics are estimated; optionally supply fixed lenses with set_profiles.
 //!
 //! // Sync: try IMU first, then audio, then manual
 //! if pipeline.imu_sync().ok().flatten().is_none() {
@@ -34,24 +33,22 @@
 //! let result = pipeline.calibrate(&std::sync::atomic::AtomicBool::new(false), &frames)?;
 //! ```
 
-use std::path::Path;
-
 use reco_core::calibration::Lens;
 
 use crate::error::CalibrateError;
 use crate::telemetry::TelemetryData;
-use crate::types::{CalibrationConfig, CalibrationResult, LensProfileInfo, Yuv420pFrame};
-use crate::{audio_sync, lens_database, sampling, telemetry};
+use crate::types::{CalibrationConfig, CalibrationResult, Yuv420pFrame};
+use crate::{audio_sync, sampling, telemetry};
 
 /// Video metadata that the app provides from its decoder.
 ///
 /// reco-calibrate never opens video files directly - the app is
 /// responsible for decoding. This struct carries the metadata
-/// needed for frame selection, sync, and profile detection.
+/// needed for frame selection and sync.
 #[derive(Debug, Clone)]
 pub struct VideoInfo {
     /// Path to the video file (used for metadata extraction only -
-    /// telemetry, lens profiles - not for frame decoding).
+    /// telemetry, not for frame decoding).
     pub path: std::path::PathBuf,
     /// Frame width in pixels.
     pub width: u32,
@@ -74,16 +71,12 @@ pub struct CalibrationPipeline {
     config: CalibrationConfig,
     left_params: Option<Lens>,
     right_params: Option<Lens>,
-    /// Lens profile metadata for the left camera (populated by detect_profiles).
-    left_profile_info: Option<LensProfileInfo>,
-    /// Lens profile metadata for the right camera.
-    right_profile_info: Option<LensProfileInfo>,
     /// Cached parsed telemetry for the left video, lazily populated when IMU data is requested. `Some(Ok(..))` after a successful parse, `Some(Err(()))` after a failure, `None` before first use.
     left_telemetry: Option<Result<TelemetryData, ()>>,
     /// Cached parsed telemetry for the right video. See [`Self::left_telemetry`].
     right_telemetry: Option<Result<TelemetryData, ()>>,
     sync_offset_frames: i64,
-    /// Whether the camera has native gyroscope data (set by detect_profiles).
+    /// Whether the camera has native gyroscope data (queried lazily for sync).
     /// When false, the full telemetry parse is skipped because derived
     /// quaternion data produces unreliable sync and rig tilt.
     has_native_gyro: Option<bool>,
@@ -102,8 +95,6 @@ impl CalibrationPipeline {
             config,
             left_params: None,
             right_params: None,
-            left_profile_info: None,
-            right_profile_info: None,
             left_telemetry: None,
             right_telemetry: None,
             sync_offset_frames: 0,
@@ -121,41 +112,6 @@ impl CalibrationPipeline {
     pub fn set_profiles(&mut self, left: Option<Lens>, right: Option<Lens>) {
         self.left_params = left;
         self.right_params = right;
-        self.left_profile_info = None;
-        self.right_profile_info = None;
-    }
-
-    /// Auto-detect lens profiles from video metadata and the embedded database.
-    ///
-    /// Reads telemetry from the video files to identify camera model,
-    /// then looks up the matching profile in the embedded Gyroflow database.
-    /// Missing profiles remain absent so calibration can estimate that camera's optics.
-    ///
-    /// Reads only camera metadata here. Full telemetry is parsed and cached by [`imu_sync`](Self::imu_sync) when needed. The embedded lens database is shared across calls.
-    ///
-    /// Returns the detected profiles for logging/display.
-    pub fn detect_profiles(&mut self) -> Result<(Option<Lens>, Option<Lens>), CalibrateError> {
-        let db = lens_database::LensDatabase::embedded();
-
-        // Use the fast metadata-only path for lens detection. The full
-        // telemetry parse (quaternion derivation, IMU normalization) is
-        // deferred until IMU data is needed for sync or rig orientation.
-        let left_meta = telemetry::extract_metadata(&self.left_info.path).ok();
-        let right_meta = telemetry::extract_metadata(&self.right_info.path).ok();
-
-        self.has_native_gyro = Some(left_meta.as_ref().is_some_and(|m| m.has_native_gyro));
-
-        let resolve = |metadata: Option<&telemetry::CameraMetadata>, info: &VideoInfo| {
-            db.find_for_metadata(metadata, info.width, info.height)
-                .filter(|(_, profile)| !matches!(profile.source, crate::ProfileSource::Fallback))
-        };
-        let left = resolve(left_meta.as_ref(), &self.left_info);
-        let right = resolve(right_meta.as_ref(), &self.right_info);
-        self.left_params = left.as_ref().map(|(lens, _)| lens.clone());
-        self.right_params = right.as_ref().map(|(lens, _)| lens.clone());
-        self.left_profile_info = left.map(|(_, info)| info);
-        self.right_profile_info = right.map(|(_, info)| info);
-        Ok((self.left_params.clone(), self.right_params.clone()))
     }
 
     /// Lazily populate the left-video telemetry cache for IMU processing; subsequent calls are no-ops.
@@ -192,26 +148,6 @@ impl CalibrationPipeline {
                 }
             });
         }
-    }
-
-    /// Load independently supplied lens profiles. A missing side remains estimated.
-    pub fn load_profiles(
-        &mut self,
-        left_path: Option<&Path>,
-        right_path: Option<&Path>,
-    ) -> Result<(), CalibrateError> {
-        let load = |path: Option<&Path>, side: &str| {
-            path.map(|path| {
-                lens_database::load_from_file(path).map_err(|e| {
-                    CalibrateError::InvalidConfig(format!("failed to load {side} profile: {e}"))
-                })
-            })
-            .transpose()
-        };
-        let left = load(left_path, "left")?;
-        let right = load(right_path, "right")?;
-        self.set_profiles(left, right);
-        Ok(())
     }
 
     // ---------------------------------------------------------------
@@ -396,32 +332,7 @@ impl CalibrationPipeline {
         result.calibration.framing.tilt = self.rig_tilt;
         result.calibration.framing.roll = self.rig_roll;
         result.calibration.sync_offset = self.sync_offset_frames;
-        result.left_lens_profile = self.left_profile_info.clone().or(result.left_lens_profile);
-        result.right_lens_profile = self
-            .right_profile_info
-            .clone()
-            .or(result.right_lens_profile);
         Ok(result)
-    }
-
-    /// Get the left camera lens profile (if set).
-    pub fn left_params(&self) -> Option<&Lens> {
-        self.left_params.as_ref()
-    }
-
-    /// Get the right camera lens profile (if set).
-    pub fn right_params(&self) -> Option<&Lens> {
-        self.right_params.as_ref()
-    }
-
-    /// Get left video info.
-    pub fn left_info(&self) -> &VideoInfo {
-        &self.left_info
-    }
-
-    /// Get right video info.
-    pub fn right_info(&self) -> &VideoInfo {
-        &self.right_info
     }
 }
 
@@ -434,7 +345,7 @@ mod tests {
     fn manually_supplied_optics_do_not_disable_native_imu_sync() {
         let footage = std::env::var_os("RECO_TEST_FOOTAGE").expect("set RECO_TEST_FOOTAGE");
         let video = |side: &str| VideoInfo {
-            path: Path::new(&footage)
+            path: std::path::Path::new(&footage)
                 .join("gopro-hero10")
                 .join(format!("{side}_4k.mp4")),
             width: 5312,
@@ -454,7 +365,7 @@ mod tests {
     }
 
     #[test]
-    fn explicit_profiles_are_independent_and_failed_loading_is_atomic() {
+    fn explicit_optics_are_independent() {
         let info = VideoInfo {
             path: "unused.mp4".into(),
             width: 640,
@@ -464,40 +375,25 @@ mod tests {
         };
         let mut pipeline =
             CalibrationPipeline::new(info.clone(), info, CalibrationConfig::default());
-        let lens = Lens::fisheye(640, 480, 300.0, 300.0, 320.0, 240.0, [0.0; 4]);
-        let json = serde_json::to_string(&lens).unwrap();
-        let unique = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let path =
-            std::env::temp_dir().join(format!("reco-profile-{}-{unique}.json", std::process::id()));
-        let mut file = std::fs::File::create_new(&path).unwrap();
-        std::io::Write::write_all(&mut file, json.as_bytes()).unwrap();
-        drop(file);
-
-        for right_only in [false, true] {
-            let (left, right) = if right_only {
-                (None, Some(path.as_path()))
-            } else {
-                (Some(path.as_path()), None)
-            };
-            pipeline.load_profiles(left, right).unwrap();
-            assert_eq!(pipeline.left_params().is_some(), !right_only);
-            assert_eq!(pipeline.right_params().is_some(), right_only);
-            let supplied = pipeline.left_params().or(pipeline.right_params()).unwrap();
-            assert_eq!(serde_json::to_string(supplied).unwrap(), json);
+        let lens = Lens::flat(640, 480);
+        for fixed in 0..2 {
+            let mut lenses = [None, None];
+            lenses[fixed] = Some(lens.clone());
+            let [left, right] = lenses;
+            pipeline.set_profiles(left, right);
+            assert_eq!(pipeline.left_params.as_ref().is_some(), fixed == 0);
+            assert_eq!(pipeline.right_params.as_ref().is_some(), fixed == 1);
+            assert_eq!(
+                pipeline
+                    .left_params
+                    .as_ref()
+                    .or(pipeline.right_params.as_ref()),
+                Some(&lens)
+            );
         }
-        let missing = path.with_extension("missing");
-        assert!(pipeline.load_profiles(Some(&path), Some(&missing)).is_err());
-        assert!(pipeline.left_params().is_none());
-        assert_eq!(
-            serde_json::to_string(pipeline.right_params().unwrap()).unwrap(),
-            json
+        pipeline.set_profiles(None, None);
+        assert!(
+            pipeline.left_params.as_ref().is_none() && pipeline.right_params.as_ref().is_none()
         );
-        pipeline.load_profiles(None, None).unwrap();
-        assert!(pipeline.left_params().is_none() && pipeline.right_params().is_none());
-        assert!(pipeline.has_native_gyro.is_none());
-        std::fs::remove_file(path).unwrap();
     }
 }

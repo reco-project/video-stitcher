@@ -503,9 +503,13 @@ enum Commands {
         calibrate_frames: usize,
 
         /// Left camera lens profile JSON (for calibration).
-        /// Falls back to ~/imx477_profile.json if not specified.
+        /// Missing optics are estimated from captured images.
         #[arg(long)]
         left_lens_profile: Option<String>,
+
+        /// Fixed right camera lens profile JSON; omitted optics are estimated.
+        #[arg(long)]
+        right_lens_profile: Option<String>,
     },
 
     /// Stitch live RPi CSI camera feeds via libcamera (rpicam-vid).
@@ -603,7 +607,7 @@ enum Commands {
         right: String,
 
         /// Path to the left camera lens profile JSON.
-        /// With neither profile supplied, auto-detects both from metadata.
+        /// With neither profile supplied, estimates both lenses from overlap.
         /// With only one supplied, estimates the other camera's optics.
         #[arg(long)]
         left_profile: Option<String>,
@@ -612,10 +616,6 @@ enum Commands {
         /// Independent of --left-profile; a missing side is estimated.
         #[arg(long)]
         right_profile: Option<String>,
-
-        /// Estimate optics from image overlap even when lens profiles are available.
-        #[arg(long)]
-        estimate_optics: bool,
 
         /// Number of frame pairs (1..=16). The first fits; the rest verify alignment.
         #[arg(long, default_value_t = 4)]
@@ -899,6 +899,7 @@ fn main() -> anyhow::Result<()> {
             live_calibrate,
             calibrate_frames,
             left_lens_profile,
+            right_lens_profile,
         } => {
             use reco_io::gstreamer::camera::CameraConfig;
 
@@ -929,7 +930,7 @@ fn main() -> anyhow::Result<()> {
                     capture_height,
                     calibrate_frames,
                     left_lens_profile.as_deref(),
-                    None,
+                    right_lens_profile.as_deref(),
                     &interrupted,
                 );
             }
@@ -1045,7 +1046,6 @@ fn main() -> anyhow::Result<()> {
             right,
             left_profile,
             right_profile,
-            estimate_optics,
             frames,
             no_auto_imu,
             auto_sync,
@@ -1067,7 +1067,6 @@ fn main() -> anyhow::Result<()> {
             skip_end,
             &output,
             accept_unconfirmed,
-            estimate_optics,
         ),
 
         Commands::Info => {
