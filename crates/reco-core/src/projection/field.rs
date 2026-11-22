@@ -186,6 +186,22 @@ impl Calibration {
             rays,
             normals,
             reference,
+            panorama: if let crate::calibration::Projection::Panorama(pan) = &self.projection {
+                Some((
+                    view_matrix(
+                        &self.virtual_camera(),
+                        0.0,
+                        0.0,
+                        self.framing.tilt as f32,
+                        self.framing.roll as f32,
+                    )
+                    .cast(),
+                    pan.arc_deg.to_radians() * 0.5,
+                    (pan.vertical_fov_deg.to_radians() * 0.5).tan(),
+                ))
+            } else {
+                None
+            },
             surfaces: self
                 .projection
                 .geometry()
@@ -206,6 +222,7 @@ pub struct FieldBoundary {
     rays: [Vector3<f64>; 4],
     normals: [Vector3<f64>; 4],
     reference: Matrix4<f64>,
+    panorama: Option<(Matrix4<f64>, f64, f64)>,
     surfaces: Vec<(Box<dyn SurfaceMap>, BlendRule)>,
 }
 
@@ -224,11 +241,22 @@ impl FieldBoundary {
         else {
             return false;
         };
-        let Some(p) = project_ray(&self.reference, &ray) else {
-            return false;
+        if self.maps.len() == 1 {
+            return true;
+        }
+        let ndc = if let Some((view, half_arc, tan_half_v)) = &self.panorama {
+            let local = view * ray.push(0.0);
+            [
+                local.x.atan2(-local.z) / half_arc,
+                local.y / (local.x.hypot(local.z) * tan_half_v),
+            ]
+        } else {
+            let Some(p) = project_ray(&self.reference, &ray) else {
+                return false;
+            };
+            [2.0 * p[0] - 1.0, 1.0 - 2.0 * p[1]]
         };
-        dominant_source(&self.surfaces, [2.0 * p[0] - 1.0, 1.0 - 2.0 * p[1]])
-            .is_some_and(|owner| owner.camera == point.camera)
+        dominant_source(&self.surfaces, ndc).is_some_and(|owner| owner.camera == point.camera)
     }
 
     /// Test a source observation against all four calibrated edges, including the boundary itself.

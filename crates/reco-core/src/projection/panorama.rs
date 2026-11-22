@@ -354,6 +354,33 @@ mod tests {
     }
 
     #[test]
+    fn field_retains_dominant_camera_from_rendered_panorama() {
+        let mut cal = calibration();
+        let size = ViewportSize {
+            width: 320,
+            height: 180,
+        };
+        let pose = RenderPose::default();
+        let corners = [[0.4, 0.45], [0.6, 0.45], [0.6, 0.55], [0.4, 0.55]]
+            .map(|p| cal.pick_source_point(&size, pose, p).unwrap());
+        cal.field_roi = Some(crate::calibration::FieldRoi { corners });
+        let boundary = cal.field_boundary().unwrap().unwrap();
+        let mut checked = [0; 2];
+        for y in 45..55 {
+            for x in 40..60 {
+                if let Some(p) =
+                    cal.pick_source_point(&size, pose, [x as f64 / 100.0, y as f64 / 100.0])
+                    && boundary.contains(p)
+                {
+                    assert!(boundary.owns(p), "panorama pixel ({x}, {y}), source {p:?}");
+                    checked[p.camera] += 1;
+                }
+            }
+        }
+        assert!(checked.iter().all(|n| *n > 0), "{checked:?}");
+    }
+
+    #[test]
     fn panorama_fixed_extent_support_and_overlap() {
         let cal = calibration();
         let size = ViewportSize {

@@ -2,14 +2,14 @@
 
 ## 1. Download & Open
 
-Download the latest **GUI** release for your platform from the [Releases page](https://github.com/reco-project/video-stitcher/releases). Also download `yolo26n.onnx` from the same release (needed for AI tracking).
+Download the latest **GUI** release for your platform from the [Releases page](https://github.com/reco-project/video-stitcher/releases).
 
 Extract and run `reco-gui`.
 
 - **Windows**: If SmartScreen blocks the app, right-click the exe > Properties > check "Unblock" > OK, then run again.
 - **Mac**: Right-click > Open the first time (unsigned app).
 
-For AI tracking, also download `yolo26n.onnx` (1280, higher accuracy) or `yolo26n_640.onnx` (640, faster on integrated GPUs) from the same release.
+For AI tracking, select a compatible ONNX detector. For a release that includes model downloads, start with the model supplied alongside the GUI.
 
 ## 2. Import & Calibrate
 
@@ -30,10 +30,7 @@ If the image looks warped (curved lines that should be straight):
 
 ## 4. Set the Field Area
 
-- Click **Set ROI** - a browser page opens after a few seconds
-- Draw a polygon covering the field visible in the **left camera**
-- Switch to **Right Camera** in the dropdown and do the same for the right
-- Click **Copy ROI**, go back to the app, click **Paste ROI**
+Open the four-corner field editor in file preview. Place the four corners on the stitched image, check the outline, apply the region and save the calibration. The region limits tracking to the selected field.
 
 ## 5. Export
 
@@ -41,7 +38,7 @@ If the image looks warped (curved lines that should be straight):
 - Pick resolution (1080p recommended) and output location
 - To enable AI tracking:
   - Toggle **AI Tracking**
-  - Select the `yolo26n.onnx` model you downloaded
+  - Select your ONNX model
   - Set mode to **Field** and detection interval to **15**
 - Click **Start**
 
@@ -57,13 +54,13 @@ python3 scripts/visualize_detections.py export detections.jsonl left.mp4 right.m
     -c cal.json -o annotated.mp4
 ```
 
-This produces a side-by-side video with detection boxes, ROI boundaries, tracking state, and panner decisions overlaid.
+This produces a side-by-side video with detection boxes, source-attached field corners, tracking state, and panner decisions overlaid.
 
 ## Tips
 
 - Try a short clip first (set start/end times) before exporting the full video
 - For football, use **Field** tracking mode with detection interval **10-15** for smooth panning
-- Use the **Sync offset** slider in Stitching to fine-tune camera alignment after calibration
+- Use **Sync offset** to adjust the frame difference between the two recordings
 - Share your calibration file with us if something looks wrong
 - Can't find a lens profile for your camera? Let us know
 - Join the community at [forum.reco-project.org](https://forum.reco-project.org)

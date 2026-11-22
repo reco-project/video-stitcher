@@ -101,7 +101,12 @@ fn malformed_regions_error_and_unsupported_observations_are_rejected() {
     boxes[3].center_x = -0.1;
     policy.retain(&cal, &mut boxes).unwrap();
     assert_eq!(boxes.len(), 1);
-    cal.field_roi.as_mut().unwrap().corners.swap(1, 2);
+    let corners = &mut cal.field_roi.as_mut().unwrap().corners;
+    corners.swap(1, 2);
+    policy.retain(&cal, &mut boxes).unwrap();
+    assert_eq!(boxes.len(), 1);
+    let corners = &mut cal.field_roi.as_mut().unwrap().corners;
+    corners[1] = corners[0];
     assert!(policy.retain(&cal, &mut boxes).is_err());
     assert_eq!(
         boxes.len(),

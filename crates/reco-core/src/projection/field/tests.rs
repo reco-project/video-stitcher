@@ -151,6 +151,7 @@ fn touchline_camera_accepts_wide_field_and_contains_ground_points() {
         let boundary = cal.field_boundary().unwrap().unwrap();
         for corner in corners {
             assert!(boundary.contains(corner));
+            assert!(boundary.owns(corner));
         }
         for x in [-60.0, -52.5, -50.0, -20.0, 0.0, 20.0, 50.0, 52.5, 60.0] {
             for z in [-70.0, -67.0, -60.0, -10.0, -1.0, 1.0, 2.0, 5.0] {

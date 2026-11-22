@@ -52,15 +52,14 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 
 def load_calibration(cal_path):
-    """Load ROI polygons and sync_offset from a calibration JSON."""
+    """Load field corners and sync_offset from a calibration JSON."""
     if not cal_path:
         return None, None, 0
     try:
         with open(cal_path) as f:
             cal = json.load(f)
-        roi = cal.get("field_roi", {})
-        left = np.array(roi["left"], dtype=np.float32) if roi.get("left") else None
-        right = np.array(roi["right"], dtype=np.float32) if roi.get("right") else None
+        corners = (cal.get("field_roi") or {}).get("corners", [])
+        left, right = ([p["position"] for p in corners if p["camera"] == camera] or None for camera in (0, 1))
         sync_offset = cal.get("sync_offset", 0)
         return left, right, sync_offset
     except (json.JSONDecodeError, FileNotFoundError, KeyError):
@@ -68,11 +67,12 @@ def load_calibration(cal_path):
 
 
 def draw_roi(img, roi_points, h, w):
-    """Draw ROI polygon boundary on the image."""
+    """Mark the corners observed by this camera."""
     if roi_points is None:
         return
-    pts = (roi_points * np.array([w, h])).astype(np.int32)
-    cv2.polylines(img, [pts], isClosed=True, color=(255, 200, 0), thickness=2)
+    pts = (np.asarray(roi_points) * np.array([w, h])).astype(np.int32)
+    for x, y in pts:
+        cv2.circle(img, (x, y), 4, (255, 200, 0), 2)
     cv2.putText(img, "ROI", (pts[0][0], pts[0][1] - 8),
                 FONT, 0.4, (255, 200, 0), 1, cv2.LINE_AA)
 
@@ -547,7 +547,7 @@ def main():
     exp.add_argument("--max-frames", type=int, default=0,
                      help="Limit frames (0 = all)")
     exp.add_argument("-c", "--calibration", type=Path, default=None,
-                     help="Calibration JSON (for ROI polygon overlay)")
+                     help="Calibration JSON (for field corner overlay)")
     exp.add_argument("--hstack", action="store_true",
                      help="Side-by-side layout instead of vertical stack")
 
@@ -557,7 +557,7 @@ def main():
     brw.add_argument("right_video", type=Path, nargs="?", default=None,
                      help="Right camera video (omit for single camera)")
     brw.add_argument("-c", "--calibration", type=Path, default=None,
-                     help="Calibration JSON (for ROI polygon overlay)")
+                     help="Calibration JSON (for field corner overlay)")
     brw.add_argument("--hstack", action="store_true",
                      help="Side-by-side layout instead of vertical stack")
 
