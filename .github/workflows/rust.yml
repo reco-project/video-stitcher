@@ -27,7 +27,7 @@ env:
     libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev
     libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base
     libfontconfig1-dev libobs-dev
-    pkg-config clang
+    pkg-config clang libclang-dev
 
 jobs:
   ffmpeg-sdk:
@@ -94,6 +94,15 @@ jobs:
       - uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
         with:
           packages: ${{ env.APT_PACKAGES }}
+      - &configure-libclang
+        name: Match bindgen to the system Clang headers
+        shell: bash
+        run: |
+          clang=$(readlink -f /usr/bin/clang)
+          libdir=$(dirname "$(dirname "$clang")")/lib
+          test -f "$libdir/libclang.so"
+          echo "CLANG_PATH=$clang" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$libdir" >> "$GITHUB_ENV"
       - name: Format check
         run: cargo fmt --all -- --check
       - name: Clippy (default features)
@@ -159,6 +168,7 @@ jobs:
       - uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
         with:
           packages: ${{ env.APT_PACKAGES }}
+      - *configure-libclang
       - name: Install software Vulkan (lavapipe) for GPU-execution tests
         run: |
           sudo apt-get update
@@ -232,6 +242,7 @@ jobs:
       - uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
         with:
           packages: ${{ env.APT_PACKAGES }}
+      - *configure-libclang
       - name: Build docs (profiling + gstreamer + load-dynamic + stacked-output + gopro)
         run: cargo doc --workspace --no-deps --features profiling,gstreamer,load-dynamic,stacked-output,gopro
         env:
@@ -307,6 +318,7 @@ jobs:
       - uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
         with:
           packages: ${{ env.APT_PACKAGES }}
+      - *configure-libclang
       - name: Check MSRV
         run: cargo check --workspace
 
@@ -374,6 +386,7 @@ jobs:
       - uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
         with:
           packages: ${{ env.APT_PACKAGES }}
+      - *configure-libclang
       - name: Build benches (no-run)
         run: cargo bench --workspace --no-run
 
