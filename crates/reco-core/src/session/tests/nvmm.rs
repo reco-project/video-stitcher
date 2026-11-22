@@ -174,7 +174,25 @@ fn nvmm_staged_pixels_survive_capture_reuse() {
         .gpu_exec()
         .create_lookahead_pool(1, crate::render::renderer::GpuPixelFormat::Nv12)
         .unwrap();
+    use crate::gpu::yuv_stack_packer::{OutputTileSize, StackGridLayout, StackedAtlas};
+    struct Recorder(Arc<Mutex<Vec<(u8, u8)>>>);
+    impl crate::core::types::StackedReplayGpuRecorder for Recorder {
+        fn record_atlas(&mut self, atlas: &StackedAtlas) {
+            self.0
+                .lock()
+                .unwrap()
+                .push((atlas.y[0], atlas.y[(W * H) as usize]));
+        }
+    }
     for staged in [false, true] {
+        let recorded = Arc::new(Mutex::new(Vec::new()));
+        session
+            .enable_gpu_stacked_replay(
+                StackGridLayout::vstack(W, H, 2).unwrap(),
+                OutputTileSize::unscaled(W, H),
+            )
+            .unwrap();
+        session.set_stacked_gpu_recorder(Box::new(Recorder(recorded.clone())));
         session
             .add_sink(
                 Box::new(Pixels(pixels.clone())),
@@ -221,7 +239,13 @@ fn nvmm_staged_pixels_survive_capture_reuse() {
                     .unwrap();
             }
         }
+        session.clear_stacked_gpu_recorder();
         session.finish().unwrap();
+        assert_eq!(
+            *recorded.lock().unwrap(),
+            [(64, 180), (84, 170), (104, 160), (124, 150)],
+            "staged={staged}"
+        );
     }
     let pixels = pixels.lock().unwrap();
     assert_eq!(pixels.len(), 8);

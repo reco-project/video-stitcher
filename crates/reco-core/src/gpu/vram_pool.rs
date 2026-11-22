@@ -18,6 +18,7 @@ struct VramSlot {
 
 /// Pool of VRAM-resident per-input NV12 textures for frame buffering.
 pub(crate) struct VramPool {
+    pub(crate) pixel_format: crate::render::renderer::GpuPixelFormat,
     slots: Vec<VramSlot>,
     free: VecDeque<usize>,
 }
@@ -112,7 +113,11 @@ impl VramPool {
 
         log::info!("VramPool: {n_slots} per-input NV12 slots, ~{vram_mb:.0} MB VRAM");
 
-        Ok(Self { slots, free })
+        Ok(Self {
+            slots,
+            free,
+            pixel_format,
+        })
     }
 
     /// Take a free slot. Returns None if the pool is exhausted.
@@ -176,6 +181,17 @@ impl VramPool {
         }
 
         gpu.queue.submit(std::iter::once(encoder.finish()));
+    }
+
+    pub(crate) fn stereo_views(&self, slot: usize) -> Option<[[wgpu::TextureView; 2]; 2]> {
+        let [left, right] = self.slots[slot].textures.as_slice() else {
+            return None;
+        };
+        Some([left, right].map(|planes| {
+            planes
+                .each_ref()
+                .map(|t| t.create_view(&Default::default()))
+        }))
     }
 
     /// Per-input bind groups for rendering a pool slot.

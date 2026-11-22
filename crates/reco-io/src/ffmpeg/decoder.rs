@@ -1070,7 +1070,11 @@ impl VideoDecoder {
         let raw = unsafe { &*self.decoded_frame.as_ptr() };
         let timestamp_us = self.pts_to_us(raw.pts)?;
         let frame_ref = unsafe { ffi::av_frame_clone(self.decoded_frame.as_ptr()) };
-        assert!(!frame_ref.is_null(), "av_frame_clone failed (OOM?)");
+        if frame_ref.is_null() {
+            return Err(DecodeError::Ffmpeg(
+                "failed to retain decoded D3D11 frame".into(),
+            ));
+        }
 
         Ok(D3d11Frame {
             texture: raw.data[0] as *mut std::ffi::c_void,

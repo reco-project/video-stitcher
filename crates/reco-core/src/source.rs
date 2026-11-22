@@ -252,12 +252,30 @@ impl Nv12Data {
 /// underlying decode slice alive (until the session has staged the
 /// frame into shared textures).
 #[cfg(target_os = "windows")]
-#[derive(Debug, Clone, Copy)]
 pub struct D3d11CameraFrame {
-    /// D3D11 array texture pointer (ID3D11Texture2D*).
-    pub texture: *mut std::ffi::c_void,
-    /// Array slice index within the D3D11VA decode pool.
-    pub slice: usize,
+    pub(crate) texture: *mut std::ffi::c_void,
+    pub(crate) slice: usize,
+    _owner: Box<dyn Send>,
+}
+
+#[cfg(target_os = "windows")]
+impl D3d11CameraFrame {
+    /// Attach the owner that pins the decoded texture slice until staging completes.
+    ///
+    /// # Safety
+    /// A non-null pointer must denote a live ID3D11Texture2D on the decode device.
+    /// The owner must prevent reuse of the slice for the entire lifetime of this frame.
+    pub unsafe fn from_raw(
+        texture: *mut std::ffi::c_void,
+        slice: usize,
+        owner: impl Send + 'static,
+    ) -> Self {
+        Self {
+            texture,
+            slice,
+            _owner: Box::new(owner),
+        }
+    }
 }
 #[cfg(target_os = "linux")]
 mod nvmm;

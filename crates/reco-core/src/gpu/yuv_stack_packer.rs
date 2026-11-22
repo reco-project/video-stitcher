@@ -767,12 +767,18 @@ impl YuvStackPacker {
     /// lost (a pure non-blocking poll records zero atlases once
     /// the ring saturates).
     pub fn poll_ready(&mut self, gpu: &GpuContext) -> Option<StackedAtlas> {
-        // Read slot lags the write slot by 2 (current_slot already
-        // advanced post-copy). Equivalent to `(current_slot + 1) % 3`.
         if self.pending_count < STAGING_SLOTS as u8 {
             return None;
         }
-        let read_slot = (self.current_slot + 1) % STAGING_SLOTS;
+        self.read_oldest(gpu)
+    }
+
+    pub(crate) fn read_oldest(&mut self, gpu: &GpuContext) -> Option<StackedAtlas> {
+        if self.pending_count == 0 {
+            return None;
+        }
+        let read_slot =
+            (self.current_slot + STAGING_SLOTS - usize::from(self.pending_count)) % STAGING_SLOTS;
         let buffer = &self.staging_buffers[read_slot];
         let slice = buffer.slice(..);
         let tx = self.map_tx.clone();
@@ -814,6 +820,7 @@ impl YuvStackPacker {
         dst.extend_from_slice(&mapped);
         drop(mapped);
         buffer.unmap();
+        self.pending_count -= 1;
 
         Some(StackedAtlas {
             y: dst[..y_end].to_vec(),

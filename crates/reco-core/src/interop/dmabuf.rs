@@ -12,6 +12,24 @@ use ash::vk;
 use thiserror::Error;
 use wgpu::hal::api::Vulkan;
 
+// Own partial imports until Vulkan setup succeeds. Null Vulkan handles are
+// valid arguments to the corresponding destroy/free functions.
+struct PendingImport<'a> {
+    device: &'a ash::Device,
+    image: vk::Image,
+    memory: vk::DeviceMemory,
+    pool: vk::CommandPool,
+}
+impl Drop for PendingImport<'_> {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.destroy_command_pool(self.pool, None);
+            self.device.destroy_image(self.image, None);
+            self.device.free_memory(self.memory, None);
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum DmaBufImportError {
     #[error("wgpu backend is not Vulkan")]
@@ -183,19 +201,9 @@ pub fn import_dmabuf_nv12_tiling(
     };
 
     {
-        let y_fd = unsafe { libc::dup(fd) };
-        if y_fd < 0 {
-            return Err(DmaBufImportError::DupFd(std::io::Error::last_os_error()));
-        }
-        let uv_fd = unsafe { libc::dup(fd) };
-        if uv_fd < 0 {
-            unsafe { libc::close(y_fd) };
-            return Err(DmaBufImportError::DupFd(std::io::Error::last_os_error()));
-        }
-
         let y_texture = import_single_plane(
             gpu,
-            y_fd,
+            fd,
             width,
             height,
             wgpu::TextureFormat::R8Unorm,
@@ -206,7 +214,7 @@ pub fn import_dmabuf_nv12_tiling(
         )?;
         let uv_texture = import_single_plane(
             gpu,
-            uv_fd,
+            fd,
             width / 2,
             height / 2,
             wgpu::TextureFormat::Rg8Unorm,
@@ -232,26 +240,12 @@ pub fn import_dmabuf_plane(
     format: wgpu::TextureFormat,
     linear: bool,
 ) -> Result<wgpu::Texture, DmaBufImportError> {
-    let dup_fd = unsafe { libc::dup(fd) };
-    if dup_fd < 0 {
-        return Err(DmaBufImportError::DupFd(std::io::Error::last_os_error()));
-    }
     let tiling = if linear {
         vk::ImageTiling::LINEAR
     } else {
         vk::ImageTiling::OPTIMAL
     };
-    import_single_plane(
-        gpu,
-        dup_fd,
-        width,
-        height,
-        format,
-        0,
-        0,
-        tiling,
-        "dmabuf_plane",
-    )
+    import_single_plane(gpu, fd, width, height, format, 0, 0, tiling, "dmabuf_plane")
 }
 
 /// Cache for individually-imported DMA-BUF plane textures.
@@ -319,6 +313,14 @@ fn import_single_plane(
     tiling: vk::ImageTiling,
     label: &'static str,
 ) -> Result<wgpu::Texture, DmaBufImportError> {
+    use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd};
+    let duplicate = unsafe { libc::dup(fd) };
+    if duplicate < 0 {
+        return Err(DmaBufImportError::DupFd(std::io::Error::last_os_error()));
+    }
+    // SAFETY: dup returned a new descriptor owned exclusively by this call.
+    let owned = unsafe { OwnedFd::from_raw_fd(duplicate) };
+    let fd = owned.as_raw_fd();
     let (vk_image, device_memory) = unsafe {
         let hal_device_guard = gpu
             .device
@@ -360,6 +362,12 @@ fn import_single_plane(
             .create_image(&image_info, None)
             .map_err(|e| DmaBufImportError::Vulkan(format!("vkCreateImage: {e:?}")))?;
 
+        let mut pending = PendingImport {
+            device: raw_device,
+            image: vk_image,
+            memory: vk::DeviceMemory::null(),
+            pool: vk::CommandPool::null(),
+        };
         let mem_reqs = raw_device.get_image_memory_requirements(vk_image);
 
         // Query the driver's expected row pitch for LINEAR tiling
@@ -434,6 +442,9 @@ fn import_single_plane(
             DmaBufImportError::Vulkan(format!("vkAllocateMemory (DMA-buf fd={fd}): {e:?}"))
         })?;
 
+        // Successful import transferred ownership to Vulkan.
+        pending.memory = device_memory;
+        let _ = owned.into_raw_fd();
         raw_device
             .bind_image_memory(vk_image, device_memory, offset as u64)
             .map_err(|e| DmaBufImportError::Vulkan(format!("vkBindImageMemory: {e:?}")))?;
@@ -468,6 +479,7 @@ fn import_single_plane(
             .create_command_pool(&pool_info, None)
             .map_err(|e| DmaBufImportError::Vulkan(format!("cmd pool: {e:?}")))?;
 
+        pending.pool = cmd_pool;
         let alloc_cmd = vk::CommandBufferAllocateInfo::default()
             .command_pool(cmd_pool)
             .level(vk::CommandBufferLevel::PRIMARY)
@@ -504,7 +516,8 @@ fn import_single_plane(
             .queue_wait_idle(raw_queue)
             .map_err(|e| DmaBufImportError::Vulkan(format!("queue wait: {e:?}")))?;
 
-        raw_device.destroy_command_pool(cmd_pool, None);
+        pending.image = vk::Image::null();
+        pending.memory = vk::DeviceMemory::null();
         log::info!(
             "DMA-BUF import {label}: foreign queue family transfer done (foreign -> qf={queue_family})"
         );

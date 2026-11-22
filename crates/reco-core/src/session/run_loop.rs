@@ -457,10 +457,12 @@ impl StitchSession {
                 .residency
                 .pool
                 .as_ref()
-                .is_some_and(|p| p.capacity() != pool_size)
+                .is_some_and(|p| {
+                    p.capacity() != pool_size || p.pixel_format != self.gpu_pixel_format
+                })
             {
                 return Err(SessionError::Config(
-                    "lookahead pool size changed; create a new session".into(),
+                    "lookahead pool size or pixel format changed; create a new session".into(),
                 ));
             }
 
@@ -613,6 +615,10 @@ impl StitchSession {
             #[cfg(all(feature = "gpu", target_os = "linux"))]
             let frame = super::frame_buffer::release_staged_nvmm(frame, vram_slot);
 
+            #[cfg(all(feature = "gpu", target_os = "windows"))]
+            let frame = frame.filter(|f| {
+                !(vram_slot.is_some() && matches!(f, crate::source::FrameSet::D3d11Resident(_)))
+            });
             timing.decode = Some(decode_time);
             timing.upload = Some(staging_time);
             timing.total = Some(frame_t0.elapsed());

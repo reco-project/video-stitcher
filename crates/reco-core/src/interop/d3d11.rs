@@ -598,9 +598,8 @@ mod tests {
                     ));
                     let null_frames: Vec<_> = sizes
                         .iter()
-                        .map(|_| crate::source::D3d11CameraFrame {
-                            texture: std::ptr::null_mut(),
-                            slice: 0,
+                        .map(|_| unsafe {
+                            crate::source::D3d11CameraFrame::from_raw(std::ptr::null_mut(), 0, ())
                         })
                         .collect();
                     // Null pointers are rejected before attempting to borrow a COM reference.

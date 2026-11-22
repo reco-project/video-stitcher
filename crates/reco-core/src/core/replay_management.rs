@@ -152,10 +152,10 @@ impl super::StitchCore {
     /// is finalized. No-op when the path was not enabled.
     #[cfg(feature = "gpu")]
     pub fn disable_gpu_stacked_replay(&mut self) {
+        self.clear_stacked_gpu_recorder();
         if self.stacked_packer.take().is_some() {
             log::info!("StitchCore: GPU stacked replay disabled");
         }
-        self.clear_stacked_gpu_recorder();
     }
 
     /// Attach a GPU-pack atlas recorder. Must be called after
@@ -185,6 +185,7 @@ impl super::StitchCore {
     /// output file is finalized. No-op if no recorder is attached.
     #[cfg(feature = "gpu")]
     pub fn clear_stacked_gpu_recorder(&mut self) {
+        self.flush_stacked_gpu_recorder();
         if let Some(mut recorder) = self.stacked_gpu_recorder.take() {
             recorder.finish();
             log::info!("StitchCore: GPU stacked-replay recorder detached");
@@ -196,6 +197,11 @@ impl super::StitchCore {
     #[cfg(feature = "gpu")]
     pub fn flush_stacked_gpu_recorder(&mut self) {
         if let Some(ref mut recorder) = self.stacked_gpu_recorder {
+            if let (Some(packer), Some(exec)) = (&mut self.stacked_packer, self.executor.gpu()) {
+                while let Some(atlas) = packer.read_oldest(exec.pipeline.gpu()) {
+                    recorder.record_atlas(&atlas);
+                }
+            }
             recorder.flush();
         }
     }

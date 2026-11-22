@@ -206,7 +206,12 @@ impl StitchSession {
                 self.render_gpu_resident(&[], pos, pts_us)?;
             }
             #[cfg(all(feature = "gpu", target_os = "windows"))]
-            Some(FrameSet::D3d11Resident(..)) => {
+            frame
+                if matches!(frame, Some(FrameSet::D3d11Resident(_)))
+                    || (frame.is_none()
+                        && self.current_vram_slot.is_some()
+                        && ctx.tracking_complete) =>
+            {
                 let slot = self
                     .current_vram_slot
                     .or_else(|| self.gpu_exec_ref().d3d11_slot(self.frame_count))
@@ -377,6 +382,20 @@ impl StitchSession {
                 .render_pool_slot(vram_idx, pose)
                 .map_err(crate::core::types::StitchCoreError::from)?;
             self.submit_render_output(render_buf, pts_us)?;
+            if self.core.stacked_atlas_dims().is_some()
+                && let Some([[ly, lu], [ry, ru]]) = self
+                    .gpu_exec_ref()
+                    .residency
+                    .pool
+                    .as_ref()
+                    .and_then(|p| p.stereo_views(vram_idx))
+            {
+                use crate::gpu::yuv_stack_packer::StackedPackSource::Nv12;
+                self.core.pack_gpu_stacked_replay_from_views(
+                    Nv12 { y: &ly, uv: &lu },
+                    Nv12 { y: &ry, uv: &ru },
+                );
+            }
             return Ok(());
         }
 

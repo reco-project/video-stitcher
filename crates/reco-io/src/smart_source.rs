@@ -85,18 +85,6 @@ enum WindowsDecodeState {
 
 #[cfg(all(feature = "gpu", target_os = "windows"))]
 struct WindowsZeroCopyState {
-    /// Holds the D3d11Frames from the most recent `next_frame()` call.
-    ///
-    /// The `_frame_ref` inside each D3d11Frame pins the decode pool slice
-    /// in FFmpeg's surface allocator. Without this, the slice is recycled
-    /// as soon as the raw pointers are extracted into `FrameSet::D3d11Resident`,
-    /// and the decoder thread can overwrite the surface before `stage_frames`
-    /// copies it - causing frame reordering glitches on Intel and NVIDIA.
-    ///
-    /// Dropped when the next frame set arrives (or the source is dropped),
-    /// which is always after `stage_frames` has completed for these frames.
-    live_frame_guard: Option<Vec<crate::ffmpeg::decoder::D3d11Frame>>,
-    // Release the displayed surfaces before cancelling and joining workers.
     decode: WindowsDecodeState,
 }
 
@@ -383,7 +371,6 @@ impl SmartFileSource {
                     inputs: inputs.to_vec(),
                     sync_offset,
                 },
-                live_frame_guard: None,
             })),
             info,
             pixel_format,
@@ -496,19 +483,19 @@ impl FrameSource for SmartFileSource {
                     Some(decoded) => {
                         let frames = FrameSet::D3d11Resident(
                             decoded
-                                .iter()
-                                .map(|frame| reco_core::source::D3d11CameraFrame {
-                                    texture: frame.texture,
-                                    slice: frame.array_slice,
+                                .into_iter()
+                                .map(|frame| {
+                                    // SAFETY: the decoded AVFrame owns the texture and pins this slice.
+                                    unsafe {
+                                        reco_core::source::D3d11CameraFrame::from_raw(
+                                            frame.texture,
+                                            frame.array_slice,
+                                            frame,
+                                        )
+                                    }
                                 })
                                 .collect(),
                         );
-                        // Keep the D3d11Frames alive so FFmpeg doesn't
-                        // recycle the decode pool slices before stage_frames
-                        // copies them. The previous guard is dropped here,
-                        // which is safe because its staging copy already
-                        // completed in the previous loop iteration.
-                        state.live_frame_guard = Some(decoded);
                         Ok(Some(SourceFrame::untimed(frames)))
                     }
                     None => {
