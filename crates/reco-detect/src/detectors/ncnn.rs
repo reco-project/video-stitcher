@@ -326,13 +326,25 @@ impl NcnnYoloDetector {
         let mut keep: Vec<Detection> = Vec::new();
         for candidate in candidates {
             if keep.iter().all(|other| {
-                other.class_id != candidate.class_id || super::box_iou(other, &candidate) <= 0.45
+                other.class_id != candidate.class_id || box_iou(other, &candidate) <= 0.45
             }) {
                 keep.push(candidate);
             }
         }
         Ok(keep)
     }
+}
+
+fn box_iou(a: &Detection, b: &Detection) -> f32 {
+    let (ax1, ay1) = (a.center_x - a.width / 2.0, a.center_y - a.height / 2.0);
+    let (ax2, ay2) = (a.center_x + a.width / 2.0, a.center_y + a.height / 2.0);
+    let (bx1, by1) = (b.center_x - b.width / 2.0, b.center_y - b.height / 2.0);
+    let (bx2, by2) = (b.center_x + b.width / 2.0, b.center_y + b.height / 2.0);
+    let iw = (ax2.min(bx2) - ax1.max(bx1)).max(0.0);
+    let ih = (ay2.min(by2) - ay1.max(by1)).max(0.0);
+    let inter = iw * ih;
+    let union = a.width * a.height + b.width * b.height - inter;
+    if union <= 0.0 { 0.0 } else { inter / union }
 }
 
 impl Detector for NcnnYoloDetector {
