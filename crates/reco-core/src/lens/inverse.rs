@@ -229,16 +229,8 @@ mod tests {
     #[test]
     fn recovers_central_root_when_newton_chooses_a_negative_or_later_root() {
         for (coefficients, radius, expected) in [
-            (
-                [0.75, 0.0, -0.125, 0.0],
-                1.625,
-                1.0,
-            ),
-            (
-                [0.5, 0.0, -0.08, 0.0],
-                1.42,
-                1.0,
-            ),
+            ([0.75, 0.0, -0.125, 0.0], 1.625, 1.0),
+            ([0.5, 0.0, -0.08, 0.0], 1.42, 1.0),
         ] {
             assert!((theta(radius, &coefficients, 1.0).unwrap() - expected).abs() < 1e-9);
         }

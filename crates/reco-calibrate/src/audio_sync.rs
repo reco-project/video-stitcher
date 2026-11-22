@@ -25,7 +25,7 @@ use realfft::RealFftPlanner;
 /// Result of audio cross-correlation.
 #[derive(Debug, Clone, Copy)]
 pub struct SyncResult {
-    /// Offset in seconds. Positive means right recording started later
+    /// Offset in seconds. Positive means the matching sound occurs later in the right recording
     /// (right needs to advance more to sync with left).
     pub offset_secs: f64,
     /// Peak cross-correlation value (higher = more confident).
@@ -71,6 +71,9 @@ pub fn correlate(
         return Err(SyncError::EmptyAudio);
     }
 
+    if sample_rate == 0 || !chunk_secs.is_finite() || chunk_secs <= 0.0 {
+        return Err(SyncError::EmptyAudio);
+    }
     let sr = sample_rate as f64;
 
     // Use shorter clip's length to bound the chunk
@@ -109,10 +112,46 @@ pub fn correlate(
         .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
         .unwrap_or((0, &0.0));
 
+    // A maximum exists even for unrelated noise. Require correlation above
+    // the multiple-lag noise floor, plus a distinct peak outside the same
+    // 10 ms acoustic transient. Do not invent an offset for repeating audio.
+    let noise_floor = (2.0 * (corr.len() as f64).ln() * template.len() as f64).sqrt();
+    let competing_peak = corr
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| i.abs_diff(peak_idx) > (sample_rate as usize / 100).max(1))
+        .map(|(_, &v)| v)
+        .fold(0.0, f64::max);
+    if *peak_val <= noise_floor || competing_peak >= 0.9 * peak_val {
+        return Err(SyncError::Ambiguous);
+    }
+
     // Offset calculation:
     // Template is reversed in fft_cross_correlate (convolution with reversed template = correlation).
     // Peak at index P means right[P - (template_len-1)] aligns with left[tpl_start].
     let match_in_right = peak_idx as i64 - (template.len() as i64 - 1);
+    // Independent portions should identify the same delay. A loud transient
+    // or a coincidental noise peak can otherwise dominate the whole template.
+    let split = template.len() / 2;
+    if split == 0 {
+        return Err(SyncError::NoSignal);
+    }
+    for (start, part) in [(0, &template[..split]), (split, &template[split..])] {
+        let mut part = part.to_vec();
+        if !normalize(&mut part) {
+            return Err(SyncError::Ambiguous);
+        }
+        let correlation = fft_cross_correlate(&signal, &part)?;
+        let (peak, _) = correlation
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.total_cmp(b.1))
+            .unwrap();
+        let lag = peak as i64 - (part.len() - 1) as i64 - start as i64;
+        if lag.abs_diff(match_in_right) > (sample_rate as u64 / 100).max(1) {
+            return Err(SyncError::Ambiguous);
+        }
+    }
     let offset_samples = match_in_right - tpl_start as i64;
     let offset_secs = offset_samples as f64 / sr;
 
@@ -136,6 +175,9 @@ pub enum SyncError {
     /// A constant signal has no temporal information.
     #[error("audio has no varying signal for synchronization")]
     NoSignal,
+    /// Cross-correlation does not identify a distinct shared event.
+    #[error("audio correlation has no distinct matching offset")]
+    Ambiguous,
     /// FFT computation failed.
     #[error("FFT error: {0}")]
     FftError(String),
@@ -209,6 +251,31 @@ fn fft_cross_correlate(signal: &[f64], template: &[f64]) -> Result<Vec<f64>, Syn
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unrelated_and_periodic_audio_do_not_supply_an_offset() {
+        let noise = |mut x: u32| -> Vec<i16> {
+            (0..8192)
+                .map(|_| {
+                    x = x.wrapping_mul(1664525).wrapping_add(1013904223);
+                    (x >> 16) as i16
+                })
+                .collect()
+        };
+        let left = noise(1);
+        assert!(matches!(
+            correlate(&left, &noise(19), 1000, 3.0),
+            Err(SyncError::Ambiguous)
+        ));
+        let periodic: Vec<_> = left[..100].iter().copied().cycle().take(8192).collect();
+        assert!(matches!(
+            correlate(&periodic, &periodic, 1000, 3.0),
+            Err(SyncError::Ambiguous)
+        ));
+        let mut delayed = vec![0; 250];
+        delayed.extend(&left);
+        assert!((correlate(&left, &delayed, 1000, 3.0).unwrap().offset_secs - 0.25).abs() < 1e-6);
+    }
 
     #[test]
     fn constant_audio_on_either_camera_cannot_establish_timing() {

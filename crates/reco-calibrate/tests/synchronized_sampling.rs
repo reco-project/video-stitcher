@@ -15,7 +15,8 @@ fn indices(left_count: u64, right_count: u64, offset: i64) -> (Vec<u64>, Vec<u64
         info(left_count),
         info(right_count),
         CalibrationConfig::default(),
-    );
+    )
+    .unwrap();
     pipeline.set_sync_offset(offset);
     pipeline.frame_indices()
 }

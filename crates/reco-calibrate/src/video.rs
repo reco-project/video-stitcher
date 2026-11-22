@@ -163,7 +163,6 @@ pub fn calibrate_videos(
     let left_probe = calibration_io::probe_video(left_video)?;
     let right_probe = calibration_io::probe_video(right_video)?;
     let fps = left_probe.fps;
-
     let left_info = VideoInfo {
         path: left_video.into(),
         width: left_probe.width,
@@ -179,7 +178,7 @@ pub fn calibrate_videos(
         total_frames: right_probe.total_frames,
     };
 
-    let mut pipeline = CalibrationPipeline::new(left_info, right_info, config);
+    let mut pipeline = CalibrationPipeline::new(left_info, right_info, config)?;
 
     pipeline.set_profiles(options.left_params, options.right_params);
 
@@ -220,7 +219,9 @@ pub fn calibrate_videos(
     log::info!(
         "extracting {} frames (fps: {fps:.1}, sync_offset: {})",
         left_indices.len(),
-        pipeline.sync_offset(),
+        pipeline
+            .sync_offset()
+            .ok_or(CalibrateVideosError::TimingRequired)?,
     );
 
     let left_frames = calibration_io::extract_frames(left_video, &left_indices)?;

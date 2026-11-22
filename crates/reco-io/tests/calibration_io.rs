@@ -8,27 +8,22 @@ use std::path::Path;
 
 use reco_io::ffmpeg::calibration_io;
 
-const LEFT_4K: &str = "/media/guelzim/HDD/reco-test-footage/gopro-hero10/left_4k.mp4";
-
-fn have_test_footage() -> bool {
-    Path::new(LEFT_4K).exists()
+fn fixture() -> std::path::PathBuf {
+    std::env::var_os("RECO_TEST_VIDEO")
+        .expect("set RECO_TEST_VIDEO to a video with audio")
+        .into()
 }
 
 #[test]
 #[ignore]
 fn probe_video_returns_valid_metadata() {
-    if !have_test_footage() {
-        eprintln!("Skipping: test footage not available");
-        return;
-    }
     reco_io::init();
 
-    let probe = calibration_io::probe_video(Path::new(LEFT_4K)).unwrap();
+    let probe = calibration_io::probe_video(&fixture()).unwrap();
 
-    // GoPro Hero 10 "4K" is actually 5312x2988 (5.3K sensor)
     assert!(probe.width > 0);
     assert!(probe.height > 0);
-    assert!(probe.fps > 29.0 && probe.fps < 31.0, "fps: {}", probe.fps);
+    assert!(probe.fps > 0.0, "fps: {}", probe.fps);
     assert!(
         probe.total_frames > 100,
         "total_frames: {}",
@@ -39,14 +34,10 @@ fn probe_video_returns_valid_metadata() {
 #[test]
 #[ignore]
 fn extract_frames_returns_correct_dimensions() {
-    if !have_test_footage() {
-        eprintln!("Skipping: test footage not available");
-        return;
-    }
     reco_io::init();
 
     let indices = vec![30, 60, 90];
-    let frames = calibration_io::extract_frames(Path::new(LEFT_4K), &indices).unwrap();
+    let frames = calibration_io::extract_frames(&fixture(), &indices).unwrap();
 
     assert_eq!(frames.len(), 3);
     for frame in &frames {
@@ -62,12 +53,7 @@ fn extract_frames_returns_correct_dimensions() {
 #[test]
 #[ignore]
 fn extract_audio_returns_samples() {
-    if !have_test_footage() {
-        eprintln!("Skipping: test footage not available");
-        return;
-    }
-
-    let samples = calibration_io::extract_audio_pcm(Path::new(LEFT_4K), 44100).unwrap();
+    let samples = calibration_io::extract_audio_pcm(&fixture(), 44100).unwrap();
 
     // 60 seconds at 44100 Hz = 2_646_000 samples max
     assert!(!samples.is_empty());

@@ -34,7 +34,11 @@ pub fn select_frame_indices(
     let usable = end.saturating_sub(start);
 
     if usable == 0 {
-        return vec![total_frames / 2];
+        return if total_frames == 1 && skip_start_secs == 0.0 && skip_end_secs == 0.0 {
+            vec![0]
+        } else {
+            Vec::new()
+        };
     }
 
     let n = num_samples.min(usable as usize);

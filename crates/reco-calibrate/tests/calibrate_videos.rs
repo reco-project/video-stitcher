@@ -1,7 +1,7 @@
 //! Integration test for the `calibrate_videos` one-call API.
 //!
 //! Exercises native fitting and independent confirmation through the real decoder.
-//! Requires the named local footage, not a GPU. Run with `cargo test -p reco-calibrate --features io --test calibrate_videos -- --ignored`.
+//! Set `RECO_TEST_FOOTAGE` to a directory with `left.mp4`, `right.mp4`, `reference.json` and the timing values in `expected.json`. Run with `cargo test -p reco-calibrate --features io --test calibrate_videos -- --ignored`.
 
 #![cfg(feature = "io")]
 
@@ -20,10 +20,9 @@ fn calibrate_videos_confirms_real_decoded_overlap() {
         skip_start_secs: f64,
         skip_end_secs: f64,
     }
-    let expected: Expected = serde_json::from_slice(
-        &std::fs::read(Path::new(&footage).join("expected.json")).unwrap(),
-    )
-    .unwrap();
+    let expected: Expected =
+        serde_json::from_slice(&std::fs::read(Path::new(&footage).join("expected.json")).unwrap())
+            .unwrap();
     let left = Path::new(&footage).join("left.mp4");
     let right = Path::new(&footage).join("right.mp4");
     assert!(
@@ -31,10 +30,9 @@ fn calibrate_videos_confirms_real_decoded_overlap() {
         "test footage is unavailable"
     );
     let interrupted = AtomicBool::new(false);
-    let reference = reco_core::calibration::Calibration::from_file(
-        &Path::new(&footage).join("reference.json"),
-    )
-    .unwrap();
+    let reference =
+        reco_core::calibration::Calibration::from_file(&Path::new(&footage).join("reference.json"))
+            .unwrap();
     for estimate_optics in [false, true] {
         let result = calibrate_videos(
             &left,

@@ -12,7 +12,7 @@
 //! let left_info = VideoInfo { path: "left.mp4".into(), width: 3840, height: 2160, fps: 30.0, total_frames: 1800 };
 //! let right_info = VideoInfo { path: "right.mp4".into(), width: 3840, height: 2160, fps: 30.0, total_frames: 1800 };
 //!
-//! let mut pipeline = CalibrationPipeline::new(left_info, right_info, CalibrationConfig::default());
+//! let mut pipeline = CalibrationPipeline::new(left_info, right_info, CalibrationConfig::default()).unwrap();
 //!
 //! // Missing optics are estimated; optionally supply fixed lenses with set_profiles.
 //!
@@ -75,7 +75,7 @@ pub struct CalibrationPipeline {
     left_telemetry: Option<Result<TelemetryData, ()>>,
     /// Cached parsed telemetry for the right video. See [`Self::left_telemetry`].
     right_telemetry: Option<Result<TelemetryData, ()>>,
-    sync_offset_frames: i64,
+    sync_offset_frames: Option<i64>,
     /// Whether the camera has native gyroscope data (queried lazily for sync).
     /// When false, the full telemetry parse is skipped because derived
     /// quaternion data produces unreliable sync and rig tilt.
@@ -88,8 +88,18 @@ pub struct CalibrationPipeline {
 
 impl CalibrationPipeline {
     /// Create a new pipeline from video metadata and configuration.
-    pub fn new(left_info: VideoInfo, right_info: VideoInfo, config: CalibrationConfig) -> Self {
-        Self {
+    pub fn new(
+        left_info: VideoInfo,
+        right_info: VideoInfo,
+        config: CalibrationConfig,
+    ) -> Result<Self, CalibrateError> {
+        let fps = left_info.fps;
+        if !fps.is_finite() || fps <= 0.0 || fps != right_info.fps {
+            return Err(CalibrateError::InvalidConfig(
+                "frame-index synchronization requires matching frame rates".into(),
+            ));
+        }
+        Ok(Self {
             left_info,
             right_info,
             config,
@@ -97,11 +107,11 @@ impl CalibrationPipeline {
             right_params: None,
             left_telemetry: None,
             right_telemetry: None,
-            sync_offset_frames: 0,
+            sync_offset_frames: None,
             has_native_gyro: None,
             rig_tilt: 0.0,
             rig_roll: 0.0,
-        }
+        })
     }
 
     // ---------------------------------------------------------------
@@ -156,11 +166,11 @@ impl CalibrationPipeline {
 
     /// Set sync offset manually (in frames).
     pub fn set_sync_offset(&mut self, frames: i64) {
-        self.sync_offset_frames = frames;
+        self.sync_offset_frames = Some(frames);
     }
 
     /// Current sync offset in frames.
-    pub fn sync_offset(&self) -> i64 {
+    pub fn sync_offset(&self) -> Option<i64> {
         self.sync_offset_frames
     }
 
@@ -212,7 +222,7 @@ impl CalibrationPipeline {
 
         // Telemetry borrows released here; safe to mutate self.
         if let Some(frames) = sync_computed {
-            self.sync_offset_frames = frames;
+            self.sync_offset_frames = Some(frames);
         }
 
         // Rig tilt. Cap at 25 deg - beyond that the IMU reading is likely
@@ -271,7 +281,7 @@ impl CalibrationPipeline {
             frames,
             result.confidence,
         );
-        self.sync_offset_frames = frames;
+        self.sync_offset_frames = Some(frames);
         Ok(frames)
     }
 
@@ -284,12 +294,11 @@ impl CalibrationPipeline {
     /// Returns `(left_indices, right_indices)` that the app should use
     /// to extract frame pairs from its video decoder. Sampling and start/end skips apply to the shared interval after synchronization. Returns empty vectors when the clips do not overlap.
     pub fn frame_indices(&self) -> (Vec<u64>, Vec<u64>) {
-        let offset = self.sync_offset_frames.unsigned_abs();
-        let (left_start, right_start) = if self.sync_offset_frames < 0 {
-            (offset, 0)
-        } else {
-            (0, offset)
+        let Some(frames) = self.sync_offset_frames else {
+            return (vec![], vec![]);
         };
+        let offset = frames.unsigned_abs();
+        let (left_start, right_start) = if frames < 0 { (offset, 0) } else { (0, offset) };
         let total = self
             .left_info
             .total_frames
@@ -324,6 +333,9 @@ impl CalibrationPipeline {
     ) -> Result<CalibrationResult, CalibrateError> {
         self.config.validate()?;
 
+        let offset = self.sync_offset_frames.ok_or_else(|| {
+            CalibrateError::InvalidConfig("video sync offset is unresolved".into())
+        })?;
         let mut result = crate::direct::calibrate(
             frames,
             [self.left_params.as_ref(), self.right_params.as_ref()],
@@ -331,7 +343,7 @@ impl CalibrationPipeline {
         )?;
         result.calibration.framing.tilt = self.rig_tilt;
         result.calibration.framing.roll = self.rig_roll;
-        result.calibration.sync_offset = self.sync_offset_frames;
+        result.calibration.sync_offset = offset;
         Ok(result)
     }
 }
@@ -354,7 +366,8 @@ mod tests {
             total_frames: 7500,
         };
         let mut pipeline =
-            CalibrationPipeline::new(video("left"), video("right"), CalibrationConfig::default());
+            CalibrationPipeline::new(video("left"), video("right"), CalibrationConfig::default())
+                .unwrap();
         assert!(pipeline.left_info.path.is_file() && pipeline.right_info.path.is_file());
         let lens = Lens::fisheye(5312, 2988, 2500.0, 2500.0, 2656.0, 1494.0, [0.0; 4]);
         pipeline.set_profiles(Some(lens.clone()), Some(lens));
@@ -374,7 +387,7 @@ mod tests {
             total_frames: 120,
         };
         let mut pipeline =
-            CalibrationPipeline::new(info.clone(), info, CalibrationConfig::default());
+            CalibrationPipeline::new(info.clone(), info, CalibrationConfig::default()).unwrap();
         let lens = Lens::flat(640, 480);
         for fixed in 0..2 {
             let mut lenses = [None, None];
