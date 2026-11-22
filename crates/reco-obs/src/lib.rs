@@ -48,14 +48,8 @@ use std::sync::atomic::{AtomicPtr, Ordering};
 /// thread (the frontend event loop) and readers are source ticks;
 /// relaxed ordering is fine since the worst-case miss is one
 /// recorder tick of stale state.
-#[cfg(all(feature = "replay", have_frontend_api))]
+#[cfg(feature = "replay")]
 pub(crate) static OBS_RECORDING_OR_STREAMING: AtomicBool = AtomicBool::new(false);
-
-/// Stub constant for builds without the frontend-api. In that case
-/// the replay recorder always falls through to its "independent"
-/// mode regardless of what the source thinks.
-#[cfg(all(feature = "replay", not(have_frontend_api)))]
-pub(crate) static OBS_RECORDING_OR_STREAMING: AtomicBool = AtomicBool::new(true);
 
 /// Wrap the body of an `unsafe extern "C"` callback with
 /// `std::panic::catch_unwind` so a panic inside the callback cannot
@@ -231,10 +225,7 @@ pub unsafe extern "C" fn obs_module_load() -> bool {
 /// module's `obs_module_load` has returned).
 ///
 /// Only compiled when bindgen found `obs-frontend-api.h`; builds
-/// against bare libobs skip the auto-follow and leave
-/// `OBS_RECORDING_OR_STREAMING` pinned `true` so the replay
-/// recorder always runs when enabled (fallback behavior preserves
-/// the pre-A20 UX).
+/// against bare libobs can record independently when explicitly selected.
 #[cfg(all(feature = "replay", have_frontend_api))]
 #[unsafe(no_mangle)]
 pub extern "C" fn obs_module_post_load() {

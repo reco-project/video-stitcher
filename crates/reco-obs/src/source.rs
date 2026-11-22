@@ -945,11 +945,19 @@ unsafe extern "C" fn source_get_properties(_data: *mut c_void) -> *mut ffi::obs_
                     ffi::obs_combo_type::OBS_COMBO_TYPE_LIST,
                     ffi::obs_combo_format::OBS_COMBO_FORMAT_STRING,
                 );
-                ffi::obs_property_list_add_string(
+                let follow_index = ffi::obs_property_list_add_string(
                     mode_list,
-                    c"Follow OBS Record / Stream".as_ptr(),
+                    if cfg!(have_frontend_api) {
+                        c"Follow OBS Record / Stream"
+                    } else {
+                        c"Follow unavailable (no OBS frontend)"
+                    }
+                    .as_ptr(),
                     REPLAY_MODE_FOLLOW_OBS.as_ptr(),
                 );
+                if !cfg!(have_frontend_api) {
+                    ffi::obs_property_list_item_disable(mode_list, follow_index, true);
+                }
                 ffi::obs_property_list_add_string(
                     mode_list,
                     c"Record independently (advanced)".as_ptr(),
