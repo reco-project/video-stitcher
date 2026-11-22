@@ -360,6 +360,15 @@ impl StitchSession {
             stats.1 += stalls;
             stats.2 += ms;
         });
+        let events = self
+            .core
+            .event_sink
+            .as_mut()
+            .map(|sink| sink.flush())
+            .transpose()
+            .map_err(|e| crate::sink::SinkError::Finish {
+                reason: format!("event output: {e}"),
+            });
         self.publish_telemetry(true);
         // Finalize every attached sink even when pending delivery failed.
         if delivery_result.is_err()
@@ -369,6 +378,7 @@ impl StitchSession {
         }
         delivery_result?;
         result?;
+        events?;
 
         Ok(())
     }

@@ -5523,6 +5523,7 @@ dependencies = [
  "libc",
  "log",
  "reco-core",
+ "same-file",
  "serde",
  "serde_json",
  "socket2",

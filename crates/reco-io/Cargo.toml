@@ -11,7 +11,7 @@ repository = "https://github.com/reco-project/video-stitcher"
 [features]
 default = ["ffmpeg", "gpu"]
 gpu = ["reco-core/gpu"]
-ffmpeg = ["dep:ffmpeg-next", "dep:tempfile"]
+ffmpeg = ["dep:same-file", "dep:ffmpeg-next", "dep:tempfile"]
 rpi = ["ffmpeg", "ffmpeg-next/rpi"]
 gstreamer = ["dep:gstreamer", "dep:gstreamer-app"]
 libcamera = ["dep:libc"]
@@ -25,6 +25,7 @@ config = ["dep:directories"]
 stacked-output = ["ffmpeg"]
 
 [dependencies]
+same-file = { version = "1", optional = true }
 reco-core = { path = "../reco-core", default-features = false }
 log = "0.4"
 thiserror = "2"

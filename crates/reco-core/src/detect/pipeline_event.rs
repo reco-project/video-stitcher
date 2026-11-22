@@ -161,6 +161,16 @@ impl PipelineEvent {
 pub trait PipelineEventSink: Send {
     /// Record one event.
     fn emit(&mut self, event: PipelineEvent);
+
+    /// Finish writing events already accepted by this sink and report delivery errors.
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+enum SinkMessage {
+    Event(PipelineEvent),
+    Flush(std::sync::mpsc::Sender<std::io::Result<()>>),
 }
 
 /// Non-blocking wrapper around an arbitrary [`PipelineEventSink`].
@@ -187,7 +197,7 @@ pub trait PipelineEventSink: Send {
 /// channel so already-queued events reach the inner sink before the
 /// process exits.
 pub struct BackpressuredSink {
-    tx: Option<std::sync::mpsc::SyncSender<PipelineEvent>>,
+    tx: Option<std::sync::mpsc::SyncSender<SinkMessage>>,
     thread: Option<std::thread::JoinHandle<()>>,
     dropped: u64,
     every_n_frames: Option<u32>,
@@ -206,12 +216,17 @@ impl BackpressuredSink {
         capacity: usize,
         every_n_frames: Option<u32>,
     ) -> Self {
-        let (tx, rx) = std::sync::mpsc::sync_channel::<PipelineEvent>(capacity);
+        let (tx, rx) = std::sync::mpsc::sync_channel::<SinkMessage>(capacity);
         let thread = std::thread::Builder::new()
             .name("pipeline-event-sink".into())
             .spawn(move || {
-                while let Ok(event) = rx.recv() {
-                    inner.emit(event);
+                while let Ok(message) = rx.recv() {
+                    match message {
+                        SinkMessage::Event(event) => inner.emit(event),
+                        SinkMessage::Flush(reply) => {
+                            let _ = reply.send(inner.flush());
+                        }
+                    }
                 }
             })
             .expect("spawn background event-sink thread");
@@ -243,7 +258,7 @@ impl PipelineEventSink for BackpressuredSink {
         let Some(tx) = self.tx.as_ref() else {
             return;
         };
-        match tx.try_send(event) {
+        match tx.try_send(SinkMessage::Event(event)) {
             Ok(()) => {}
             Err(std::sync::mpsc::TrySendError::Full(_)) => {
                 self.dropped += 1;
@@ -258,6 +273,17 @@ impl PipelineEventSink for BackpressuredSink {
                 // Background thread exited; silently ignore.
             }
         }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        let stopped = || std::io::Error::other("event writer stopped");
+        let (reply, result) = std::sync::mpsc::channel();
+        self.tx
+            .as_ref()
+            .ok_or_else(stopped)?
+            .send(SinkMessage::Flush(reply))
+            .map_err(|_| stopped())?;
+        result.recv().map_err(|_| stopped())?
     }
 }
 

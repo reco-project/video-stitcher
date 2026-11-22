@@ -89,9 +89,7 @@ pub struct StitchJob {
     /// CPU detection is wanted but TensorRT is not available.
     force_cpu_decode: bool,
 
-    /// Stitch on the CPU executor: software render, CPU decode, no
-    /// GPU touched at all. The GPU-less path (headless boxes, CI,
-    /// X5-class boards).
+    /// Use software rendering and decoding on systems without a GPU.
     cpu_stitch: bool,
 
     /// Lookahead buffer depth in seconds. When > 0, the session
@@ -663,6 +661,45 @@ impl StitchJob {
     /// This is a blocking call that processes all frames (or until the
     /// interrupt flag is set). Returns a [`StitchResult`] with statistics.
     pub fn run(mut self, interrupted: &Arc<AtomicBool>) -> Result<StitchResult, StitchError> {
+        if self.start_time.is_some_and(|t| !t.is_finite() || t < 0.0)
+            || self
+                .end_time
+                .is_some_and(|t| !t.is_finite() || t <= self.start_time.unwrap_or(0.0))
+        {
+            return Err(StitchError::Other("invalid export time window".into()));
+        }
+        // FFmpeg accepts file: URLs as well as paths. Resolve the spelling it
+        // will open before comparing it with files written directly by Rust.
+        let output = self
+            .output
+            .to_str()
+            .and_then(|s| s.strip_prefix("file:"))
+            .map(|p| Path::new(p.strip_prefix("//").unwrap_or(p)))
+            .unwrap_or(&self.output);
+        let mut destinations = vec![output];
+        destinations.extend(self.events_path.as_deref());
+        #[cfg(feature = "stacked-output")]
+        destinations.extend(self.replay_recording.as_ref().map(|cfg| cfg.path.as_path()));
+        let mut sources = Vec::new();
+        if let Inputs::Files(inputs) = &self.inputs {
+            sources.extend(inputs.iter().flat_map(InputPath::all_paths));
+        }
+        if let CalibrationSource::File(path) = &self.calibration {
+            sources.push(path.clone());
+        }
+        for (index, destination) in destinations.iter().enumerate() {
+            for other in destinations[..index]
+                .iter()
+                .copied()
+                .chain(sources.iter().map(|p| p.as_path()))
+            {
+                if paths_collide(destination, other) {
+                    return Err(StitchError::Other(
+                        "input, event, replay and output paths must be distinct".into(),
+                    ));
+                }
+            }
+        }
         let container = self.resolved_container();
         if self.encoder_device.is_some() && self.encoder_name.is_none() {
             return Err(StitchError::Other(
@@ -728,6 +765,24 @@ impl StitchJob {
             "video frame rate is unknown for one or more inputs; cannot export with reliable timing".into()
         ))?;
         let fps = info.fps;
+        let start_secs = self.start_time.unwrap_or(0.0);
+        if let Some(end) = self.end_time {
+            let end_frames = ((end - start_secs) * fps).round() as i64;
+            if end_frames <= 0 {
+                return Err(StitchError::Other(format!(
+                    "end_time ({end:.2}s) must be greater than start_time ({start_secs:.2}s)"
+                )));
+            }
+        }
+
+        #[cfg(feature = "stacked-output")]
+        if self.replay_recording.is_some()
+            && info.camera_sizes.windows(2).any(|pair| pair[0] != pair[1])
+        {
+            return Err(StitchError::Other(
+                "stacked replay requires equal camera dimensions".into(),
+            ));
+        }
         let (out_w, out_h) = self.resolution.unwrap_or((1920, 1080));
         if self.resolution.is_none() {
             log::info!("Output resolution not specified, defaulting to {out_w}x{out_h}");
@@ -832,22 +887,13 @@ impl StitchJob {
 
         // Attach JSONL event sink if requested.
         if let Some(ref events_path) = self.events_path {
-            match crate::jsonl_sink::JsonlSink::create(events_path) {
-                Ok(sink) => {
-                    log::info!("Pipeline events -> {}", events_path.display());
-                    session.set_event_sink(Box::new(sink));
-                }
-                Err(e) => {
-                    log::warn!("Failed to open events file {}: {e}", events_path.display());
-                }
-            }
+            let sink = crate::jsonl_sink::JsonlSink::create(events_path).map_err(|e| {
+                StitchError::Other(format!("could not create requested event file: {e}"))
+            })?;
+            session.set_event_sink(Box::new(sink));
         }
 
         // Create encoder with optional audio passthrough.
-        let start_secs = self
-            .start_time
-            .filter(|secs| secs.is_finite() && *secs > 0.0)
-            .unwrap_or(0.0);
         // File video synchronization skips the leading frames of one camera.
         // Its passthrough audio must start at that same source moment.
         let audio_sync_skip = match self.audio {
@@ -932,15 +978,6 @@ impl StitchJob {
         // Resolve processing window (start_time / end_time / max_frames).
         let skip_frames = (start_secs * fps).round() as u64;
 
-        if let Some(end) = self.end_time {
-            let end_frames = ((end - start_secs) * fps).round() as i64;
-            if end_frames <= 0 {
-                return Err(StitchError::Other(format!(
-                    "end_time ({end:.2}s) must be greater than start_time ({start_secs:.2}s)"
-                )));
-            }
-        }
-
         // Skip frames to reach start position.
         if skip_frames > 0 {
             log::info!("skipping {skip_frames} frames (start_time={start_secs:.2}s)");
@@ -984,11 +1021,6 @@ impl StitchJob {
         // Replay starts after skipped frames, on the same output window.
         #[cfg(feature = "stacked-output")]
         if let Some(cfg) = self.replay_recording.take() {
-            if info.camera_sizes.windows(2).any(|pair| pair[0] != pair[1]) {
-                return Err(StitchError::Other(
-                    "stacked replay requires equal camera dimensions".into(),
-                ));
-            }
             // Pack-path selection. GPU-resident sources (NVDEC
             // zero-copy, future Metal / Jetson ISP) send frames
             // through `submit_render_output`; the session's
@@ -1185,9 +1217,53 @@ impl StitchJob {
     }
 }
 
+fn paths_collide(first: &Path, second: &Path) -> bool {
+    if first == second || same_file::is_same_file(first, second).unwrap_or(false) {
+        return true;
+    }
+    // A destination may not exist yet. Compare its filename and resolved parent.
+    fn resolved_parent(path: &Path) -> Option<PathBuf> {
+        std::path::absolute(path)
+            .ok()?
+            .parent()?
+            .canonicalize()
+            .ok()
+    }
+    first.file_name() == second.file_name()
+        && resolved_parent(first).is_some_and(|dir| Some(dir) == resolved_parent(second))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn invalid_window_leaves_output_intact() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("export.mp4");
+        std::fs::write(&output, b"original").unwrap();
+        for (start, end) in [(1.0, 0.5), (0.0, f64::INFINITY), (f64::NAN, 2.0)] {
+            let job = StitchJob::new(["missing.mp4"], "missing.json", &output)
+                .start_time(start)
+                .end_time(end);
+            let error = job.run(&Arc::new(AtomicBool::new(false))).unwrap_err();
+            assert!(error.to_string().contains("window"));
+        }
+        assert_eq!(std::fs::read(&output).unwrap(), b"original");
+    }
+
+    #[test]
+    fn colliding_outputs_preserve_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("output.mp4");
+        std::fs::write(&output, b"sentinel").unwrap();
+        let alias = dir.path().join("events.jsonl");
+        std::fs::hard_link(&output, &alias).unwrap();
+        let job = StitchJob::new(["missing.mp4"], "missing.json", &output).events(alias);
+        let err = job.run(&Arc::new(AtomicBool::new(false))).unwrap_err();
+        assert!(err.to_string().contains("distinct"), "{err}");
+        assert_eq!(std::fs::read(&output).unwrap(), b"sentinel");
+    }
 
     #[test]
     fn omitted_container_follows_destination_explicit_container_wins() {

@@ -26,13 +26,11 @@ use std::path::Path;
 
 /// JSON Lines file sink. One [`PipelineEvent`] per line.
 ///
-/// Internally holds a [`BufWriter<File>`]; the buffer flushes on drop
-/// so no events are lost even when the process exits mid-stream. A
-/// write error logs once per power-of-two failure count; the sink does
-/// not panic the render thread.
+/// Buffers writes until the session flushes the sink. A failed write is
+/// reported on finalization, even if it happened earlier in the frame loop.
 pub struct JsonlSink {
     writer: BufWriter<File>,
-    write_failures: u64,
+    error: Option<io::Error>,
 }
 
 impl JsonlSink {
@@ -44,7 +42,7 @@ impl JsonlSink {
         log::info!("JsonlSink: writing pipeline events to {}", path.display());
         Ok(Self {
             writer: BufWriter::new(file),
-            write_failures: 0,
+            error: None,
         })
     }
 
@@ -56,23 +54,17 @@ impl JsonlSink {
 
 impl PipelineEventSink for JsonlSink {
     fn emit(&mut self, event: PipelineEvent) {
-        if let Err(e) = self.write_event(&event) {
-            self.write_failures += 1;
-            if self.write_failures.is_power_of_two() {
-                log::warn!(
-                    "JsonlSink: write failed ({} total): {e}",
-                    self.write_failures
-                );
-            }
+        if self.error.is_none() {
+            self.error = self.write_event(&event).err();
         }
     }
-}
 
-impl Drop for JsonlSink {
-    fn drop(&mut self) {
-        if let Err(e) = self.writer.flush() {
-            log::warn!("JsonlSink: final flush failed: {e}");
+    fn flush(&mut self) -> io::Result<()> {
+        let flushed = self.writer.flush();
+        if let Some(error) = &self.error {
+            return Err(io::Error::new(error.kind(), error.to_string()));
         }
+        flushed
     }
 }
 
@@ -112,6 +104,14 @@ mod tests {
             assert_eq!(parsed["kind"], "frame_start");
             assert_eq!(parsed["frame_index"], i as u64);
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn requested_event_output_reports_flush_failure() {
+        let mut sink = JsonlSink::create("/dev/full").unwrap();
+        sink.emit(mk_frame(0));
+        assert!(sink.flush().is_err());
     }
 
     #[test]
