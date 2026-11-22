@@ -323,12 +323,6 @@ impl GstreamerNv12CameraSource {
     pub fn info(&self) -> SourceInfo {
         self.capture.info.clone()
     }
-
-    /// Get the next pair, or `None` after EOS or cancellation.
-    /// For stereo calibration; pipeline consumers use `FrameSource::next_frame`.
-    pub fn next_pair(&mut self) -> Result<Option<[Arc<Nv12Data>; 2]>, SourceError> {
-        self.capture.next().map(|pair| pair.map(|pair| pair.images))
-    }
 }
 
 impl reco_core::source::FrameSource for GstreamerNv12CameraSource {
@@ -470,7 +464,7 @@ mod tests {
             "capture failure must not be successful EOF"
         );
         let result = GstreamerNv12CameraSource::open(&config, Arc::new(AtomicBool::new(false)))
-            .and_then(|mut source| source.next_pair());
+            .and_then(|mut source| source.next_frame());
         assert!(
             result.is_err(),
             "capture failure must not be successful EOF"

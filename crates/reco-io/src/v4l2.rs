@@ -2,12 +2,12 @@
 //!
 //! Bypasses GStreamer and NVIDIA's nvargus ISP. Captures raw 10-bit
 //! RGGB Bayer frames from `/dev/videoN` using kernel MMAP buffers.
-//! Designed for the patched IMX477 driver at 4032x3040@30fps.
+//! Both devices must negotiate tightly packed RG10 at the requested dimensions.
 
 use std::fs::{File, OpenOptions};
 use std::io;
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 // V4L2 ioctl helpers. We compute ioctl request codes using the Linux
@@ -114,7 +114,7 @@ impl Default for V4l2CameraConfig {
 }
 
 /// Raw V4L2 camera capturing 10-bit RGGB Bayer via MMAP.
-pub struct V4l2Camera {
+struct V4l2Camera {
     file: File,
     buffers: Vec<MappedBuffer>,
     width: u32,
@@ -136,10 +136,11 @@ impl V4l2Camera {
     ///
     /// Sets format, controls, allocates MMAP buffers. Does NOT start
     /// streaming - call [`Self::start`] when ready.
-    pub fn open(config: &V4l2CameraConfig) -> io::Result<Self> {
+    fn open(config: &V4l2CameraConfig) -> io::Result<Self> {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
+            .custom_flags(libc::O_NONBLOCK)
             .open(&config.device)?;
         let fd = file.as_raw_fd();
 
@@ -151,6 +152,14 @@ impl V4l2Camera {
         fmt.pixelformat = V4L2_PIX_FMT_SRGGB10;
         unsafe { v4l2_ioctl(fd, VIDIOC_S_FMT, &mut fmt as *mut _ as *mut _)? };
 
+        if (fmt.width, fmt.height, fmt.pixelformat)
+            != (config.width, config.height, V4L2_PIX_FMT_SRGGB10)
+            || fmt.bytesperline != config.width.saturating_mul(2)
+        {
+            return Err(io::Error::other(
+                "camera did not accept the requested tightly packed RG10 format",
+            ));
+        }
         let sizeimage = fmt.sizeimage as usize;
         log::info!(
             "V4L2 format set: {}x{} RG10, sizeimage={}",
@@ -258,7 +267,7 @@ impl V4l2Camera {
     }
 
     /// Start streaming. Queues all buffers and enables capture.
-    pub fn start(&mut self) -> io::Result<()> {
+    fn start(&mut self) -> io::Result<()> {
         let fd = self.file.as_raw_fd();
 
         for i in 0..self.buffers.len() as u32 {
@@ -313,11 +322,20 @@ impl V4l2Camera {
         unsafe { v4l2_ioctl(fd, VIDIOC_DQBUF, &mut buf as *mut _ as *mut _)? };
 
         let idx = buf.index as usize;
-        let mb = &self.buffers[idx];
-        let byte_count = (self.width * self.height * 2) as usize;
+        let mb = self
+            .buffers
+            .get(idx)
+            .ok_or_else(|| io::Error::other("invalid capture buffer index"))?;
+        let byte_count = (self.width as usize)
+            .checked_mul(self.height as usize)
+            .and_then(|n| n.checked_mul(2))
+            .ok_or_else(|| io::Error::other("capture frame size overflow"))?;
+        if byte_count > mb.length || byte_count > buf.bytesused as usize {
+            return Err(io::Error::other("short RG10 capture buffer"));
+        }
 
         // Bulk memcpy from MMAP buffer (no per-pixel conversion)
-        let src = unsafe { std::slice::from_raw_parts(mb.ptr, byte_count.min(mb.length)) };
+        let src = unsafe { std::slice::from_raw_parts(mb.ptr, byte_count) };
         dst.clear();
         dst.extend_from_slice(src);
 
@@ -328,7 +346,7 @@ impl V4l2Camera {
     }
 
     /// Stop streaming.
-    pub fn stop(&mut self) -> io::Result<()> {
+    fn stop(&mut self) -> io::Result<()> {
         if self.streaming {
             let fd = self.file.as_raw_fd();
             let mut type_ = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -338,168 +356,107 @@ impl V4l2Camera {
         }
         Ok(())
     }
-
-    /// Frame dimensions.
-    pub fn width(&self) -> u32 {
-        self.width
-    }
-
-    pub fn height(&self) -> u32 {
-        self.height
-    }
 }
 
 impl Drop for V4l2Camera {
     fn drop(&mut self) {
         let _ = self.stop();
-        for mb in &self.buffers {
-            unsafe {
-                libc::munmap(mb.ptr as *mut libc::c_void, mb.length);
-            }
+    }
+}
+
+impl Drop for MappedBuffer {
+    fn drop(&mut self) {
+        unsafe {
+            libc::munmap(self.ptr.cast(), self.length);
         }
     }
 }
 
-// Safety: the MMAP pointers are only accessed via &mut self methods,
-// and the File fd is Send.
-unsafe impl Send for V4l2Camera {}
-
-/// A left+right pair of raw Bayer frames, Arc-shared between the capture
-/// threads and the consumer (no per-frame allocation or copy).
-pub type BayerFramePair = (Arc<Vec<u8>>, Arc<Vec<u8>>);
-
-/// Stereo pair of V4L2 cameras for raw Bayer capture.
-///
-/// Each camera runs in its own thread (parallel DQBUF, no phase-offset
-/// penalty). A pairing thread zips left+right into stereo pairs using
-/// Arc-shared buffers (no per-frame allocation or copy in the hot path).
+/// Two independently streaming RG10 devices, paired in dequeue order.
 pub struct V4l2StereoCameraSource {
-    rx: std::sync::mpsc::Receiver<BayerFramePair>,
-    info: reco_core::source::SourceInfo,
-    stop: Arc<AtomicBool>,
-}
-
-fn spawn_v4l2_capture_thread(
-    config: V4l2CameraConfig,
-    label: &'static str,
-    stop: Arc<AtomicBool>,
-) -> std::sync::mpsc::Receiver<Arc<Vec<u8>>> {
-    let (tx, rx) = std::sync::mpsc::sync_channel::<Arc<Vec<u8>>>(2);
-    let frame_bytes = (config.width * config.height * 2) as usize;
-
-    std::thread::Builder::new()
-        .name(format!("v4l2_{label}"))
-        .spawn(move || {
-            let mut cam = match V4l2Camera::open(&config) {
-                Ok(c) => c,
-                Err(e) => {
-                    log::error!("V4L2 {label} open failed: {e}");
-                    return;
-                }
-            };
-            if let Err(e) = cam.start() {
-                log::error!("V4L2 {label} start failed: {e}");
-                return;
-            }
-
-            let mut buf = Vec::with_capacity(frame_bytes);
-
-            while !stop.load(Ordering::Relaxed) {
-                if let Err(e) = cam.next_frame_into(&mut buf) {
-                    log::error!("V4L2 {label} capture: {e}");
-                    break;
-                }
-                // Arc::new takes ownership; buf gets a fresh allocation
-                // on next iteration only if Arc refcount > 1 (i.e. the
-                // consumer hasn't dropped the previous frame yet).
-                // In steady state with the channel buffering, this
-                // stabilizes to zero allocations per frame.
-                let frame = Arc::new(std::mem::take(&mut buf));
-                if tx.send(frame).is_err() {
-                    break;
-                }
-                // Reclaim capacity for next frame if possible
-                if buf.capacity() < frame_bytes {
-                    buf = Vec::with_capacity(frame_bytes);
-                }
-            }
-
-            let _ = cam.stop();
-        })
-        .expect("spawn v4l2 capture thread");
-
-    rx
+    cameras: [V4l2Camera; 2],
+    pixels: [Vec<u8>; 2],
 }
 
 impl V4l2StereoCameraSource {
-    /// Open and start stereo capture from two V4L2 devices.
-    ///
-    /// Each camera runs in its own capture thread for parallel DQBUF.
-    pub fn open(
-        left_config: &V4l2CameraConfig,
-        right_config: &V4l2CameraConfig,
-    ) -> io::Result<Self> {
-        let stop = Arc::new(AtomicBool::new(false));
+    /// Open both devices before starting capture.
+    pub fn open(left: &V4l2CameraConfig, right: &V4l2CameraConfig) -> io::Result<Self> {
+        let mut cameras = [V4l2Camera::open(left)?, V4l2Camera::open(right)?];
+        for camera in &mut cameras {
+            camera.start()?;
+        }
+        Ok(Self {
+            cameras,
+            pixels: Default::default(),
+        })
+    }
 
-        let left_rx = spawn_v4l2_capture_thread(left_config.clone(), "left", stop.clone());
-        let right_rx = spawn_v4l2_capture_thread(right_config.clone(), "right", stop.clone());
-
-        let (tx, rx) = std::sync::mpsc::sync_channel::<(Arc<Vec<u8>>, Arc<Vec<u8>>)>(2);
-
-        std::thread::Builder::new()
-            .name("v4l2_pair".into())
-            .spawn(move || {
-                while let (Ok(left), Ok(right)) = (left_rx.recv(), right_rx.recv()) {
-                    if tx.send((left, right)).is_err() {
-                        break;
+    /// Return one raw Bayer image per camera. Cancellation also interrupts warmup.
+    pub fn next_pair(&mut self, interrupted: &AtomicBool) -> io::Result<Option<(&[u8], &[u8])>> {
+        let mut ready = [false; 2];
+        while !interrupted.load(Ordering::Relaxed) {
+            let mut fds = std::array::from_fn::<_, 2, _>(|i| libc::pollfd {
+                fd: self.cameras[i].file.as_raw_fd(),
+                events: if ready[i] { 0 } else { libc::POLLIN },
+                revents: 0,
+            });
+            // A finite wait also checks cancellation if both cameras stop delivering.
+            if unsafe { libc::poll(fds.as_mut_ptr(), 2, 50) } < 0 {
+                let error = io::Error::last_os_error();
+                if error.kind() == io::ErrorKind::Interrupted {
+                    continue;
+                }
+                return Err(error);
+            }
+            for (i, fd) in fds.iter().enumerate() {
+                if fd.revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL) != 0 {
+                    return Err(io::Error::other(format!(
+                        "camera {i} stopped delivering capture buffers"
+                    )));
+                }
+                if fd.revents & libc::POLLIN != 0 {
+                    match self.cameras[i].next_frame_into(&mut self.pixels[i]) {
+                        Ok(()) => ready[i] = true,
+                        Err(e)
+                            if matches!(
+                                e.kind(),
+                                io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                            ) => {}
+                        Err(e) => return Err(e),
                     }
                 }
-            })
-            .expect("spawn v4l2 pairing thread");
-
-        let info = reco_core::source::SourceInfo {
-            camera_sizes: vec![(left_config.width, left_config.height); 2],
-            fps: left_config.fps as f64,
-            fps_rational: None,
-            total_frames: None,
-        };
-
-        log::info!(
-            "V4L2 stereo source ready: {}x{} @ {} fps (RGGB, parallel capture)",
-            left_config.width,
-            left_config.height,
-            left_config.fps,
-        );
-
-        Ok(Self { rx, info, stop })
-    }
-
-    /// Signal capture threads to stop.
-    pub fn stop(&self) {
-        self.stop.store(true, Ordering::Relaxed);
-    }
-
-    /// Source metadata.
-    pub fn info(&self) -> reco_core::source::SourceInfo {
-        self.info.clone()
-    }
-
-    /// Get the next stereo frame pair as raw Bayer bytes.
-    ///
-    /// Each `Arc<Vec<u8>>` is `width * height * 2` bytes of little-endian
-    /// u16 (R16Uint). Arc-shared to avoid copying between threads.
-    pub fn next_pair(&mut self) -> io::Result<Option<BayerFramePair>> {
-        match self.rx.recv() {
-            Ok(pair) => Ok(Some(pair)),
-            Err(_) => Ok(None),
+            }
+            if ready == [true, true] {
+                return Ok(Some((&self.pixels[0], &self.pixels[1])));
+            }
         }
+        Ok(None)
     }
 }
 
-impl Drop for V4l2StereoCameraSource {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-        while self.rx.try_recv().is_ok() {}
-        std::thread::sleep(std::time::Duration::from_millis(500));
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::fd::OwnedFd;
+    use std::os::unix::net::UnixStream;
+
+    #[test]
+    fn disconnected_camera_errors_even_if_peer_is_stalled() {
+        let (left, _writer) = UnixStream::pair().unwrap();
+        let (right, writer) = UnixStream::pair().unwrap();
+        let cameras = [left, right].map(|s| V4l2Camera {
+            file: File::from(OwnedFd::from(s)),
+            buffers: Vec::new(),
+            width: 2,
+            height: 2,
+            streaming: false,
+        });
+        let mut source = V4l2StereoCameraSource {
+            cameras,
+            pixels: Default::default(),
+        };
+        assert!(source.next_pair(&AtomicBool::new(true)).unwrap().is_none());
+        drop(writer);
+        assert!(source.next_pair(&AtomicBool::new(false)).is_err());
     }
 }

@@ -129,7 +129,7 @@ pub fn run_camera(
     // Reject FFmpeg network URLs as output to prevent data exfiltration (#64).
     anyhow::ensure!(
         !output.contains("://"),
-        "Output path looks like a network URL ({output}). Only local file paths are supported.",
+        "Output path looks like a network URL. Only local file paths are supported.",
     );
 
     let mut cal = reco_core::calibration::Calibration::from_file(Path::new(calibration))?;
@@ -198,10 +198,10 @@ pub fn run_camera(
             ) {
                 Ok(true) => println!("Autocam: {tracking_mode:?} panner attached"),
                 Ok(false) => {
-                    eprintln!("Warning: tracking unavailable in current capture mode")
+                    anyhow::bail!("tracking unavailable in current capture mode")
                 }
                 Err(e) => {
-                    eprintln!("Warning: autocam setup failed ({e}), continuing without tracking")
+                    anyhow::bail!("autocam setup failed: {e}")
                 }
             }
         }
@@ -210,7 +210,7 @@ pub fn run_camera(
     {
         let _ = detection_interval;
         if model_path.is_some() {
-            log::warn!("--model specified but autocam feature is disabled");
+            anyhow::bail!("--model requires the autocam feature");
         }
     }
 
@@ -297,24 +297,7 @@ pub fn run_camera(
         )
         .map_err(|e| anyhow::anyhow!("open GPU replay recorder: {e}"))?;
         session.set_stacked_gpu_recorder(recorder);
-        let scale_note = if replay_scale.is_some() {
-            format!(
-                " [A19 downscale: source {}x{} -> tile {}x{}]",
-                capture_width, capture_height, out_w, out_h
-            )
-        } else {
-            String::new()
-        };
-        log::info!(
-            "reco-cli: camera replay pack path = GPU (tile {}x{}, N=2, atlas {}x{}){} -> {}",
-            out_w,
-            out_h,
-            atlas_w,
-            atlas_h,
-            scale_note,
-            replay_path,
-        );
-        println!("Replay recording: {replay_path}");
+        log::info!("GPU replay recording: {out_w}x{out_h} tiles, {atlas_w}x{atlas_h} atlas");
         true
     } else {
         false
@@ -449,7 +432,7 @@ pub fn run_camera(
                 );
 
                 let mut source = V4l2StereoCameraSource::open(&left_v4l2, &right_v4l2)?;
-                if source.next_pair()?.is_some() {
+                if source.next_pair(interrupted)?.is_some() {
                     println!("Warmup complete, starting V4L2 Bayer capture...");
                 }
 
@@ -458,19 +441,19 @@ pub fn run_camera(
                 while frame_count < frame_limit && !interrupted.load(Ordering::Relaxed) {
                     let (left_bytes, right_bytes) = {
                         reco_core::profile_scope!("wait_capture");
-                        match source.next_pair()? {
+                        match source.next_pair(interrupted)? {
                             Some(p) => p,
                             None => break,
                         }
                     };
 
-                    if let Some((r, b)) = awb.update(&left_bytes, capture_width, capture_height) {
+                    if let Some((r, b)) = awb.update(left_bytes, capture_width, capture_height) {
                         isp.wb_r = r;
                         isp.wb_b = b;
                         demosaic_left.update_params(session.gpu(), &isp);
                         demosaic_right.update_params(session.gpu(), &isp);
                     }
-                    ae.update(&left_bytes, capture_width, capture_height);
+                    ae.update(left_bytes, capture_width, capture_height);
 
                     {
                         reco_core::profile_scope!("demosaic");
@@ -480,8 +463,8 @@ pub fn run_camera(
                                 label: Some("bayer_demosaic"),
                             },
                         );
-                        demosaic_left.encode_demosaic(gpu, &mut encoder, &left_bytes);
-                        demosaic_right.encode_demosaic(gpu, &mut encoder, &right_bytes);
+                        demosaic_left.encode_demosaic(gpu, &mut encoder, left_bytes);
+                        demosaic_right.encode_demosaic(gpu, &mut encoder, right_bytes);
                         gpu.queue().submit(std::iter::once(encoder.finish()));
                     }
 
@@ -543,7 +526,7 @@ pub fn run_camera(
                     progress.report(frame_count);
                 }
 
-                source.stop();
+                drop(source);
                 Ok((progress, frame_count))
             }
         } else if use_nvmm {
@@ -604,6 +587,7 @@ pub fn run_camera(
 
 fn nv12_to_yuv(
     nv12: &reco_core::source::Nv12Data,
+    timestamp_us: i64,
     width: u32,
     height: u32,
 ) -> reco_calibrate::types::Yuv420pFrame {
@@ -619,7 +603,7 @@ fn nv12_to_yuv(
         v,
         width,
         height,
-        timestamp_us: 0,
+        timestamp_us,
     }
 }
 
@@ -644,15 +628,25 @@ impl reco_calibrate::live::LiveFramePairSource for Nv12CameraCalibSource {
             if std::time::Instant::now() >= deadline {
                 return None;
             }
-            match self.source.next_pair() {
-                Ok(Some([left, right])) => {
+            match reco_core::source::FrameSource::next_frame(&mut self.source) {
+                Ok(Some(frame)) => {
+                    let reco_core::source::FrameSet::Nv12(images) = frame.images else {
+                        return None;
+                    };
+                    let capture = frame.capture?;
+                    let [left, right] = images.as_slice() else {
+                        return None;
+                    };
+                    let [left_time, right_time] = capture.times_us.as_slice() else {
+                        return None;
+                    };
                     self.frame_count += 1;
                     if self.frame_count < self.fps && self.frame_count > 1 {
                         continue;
                     }
                     return Some((
-                        nv12_to_yuv(&left, self.width, self.height),
-                        nv12_to_yuv(&right, self.width, self.height),
+                        nv12_to_yuv(left, *left_time, self.width, self.height),
+                        nv12_to_yuv(right, *right_time, self.width, self.height),
                     ));
                 }
                 Ok(None) => return None,

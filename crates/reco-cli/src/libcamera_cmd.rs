@@ -60,7 +60,7 @@ pub fn run_libcamera(
     } = config;
     anyhow::ensure!(
         !output.contains("://"),
-        "Output path looks like a network URL ({output}). Only local file paths are supported.",
+        "Output path looks like a network URL. Only local file paths are supported.",
     );
 
     let cal = reco_core::calibration::Calibration::from_file(Path::new(calibration))?;
@@ -111,10 +111,14 @@ pub fn run_libcamera(
             ) {
                 Ok(true) => println!("Autocam: YOLO ball tracking enabled"),
                 Ok(false) => {
-                    eprintln!("Warning: ball tracking unavailable in current capture mode")
+                    return Err(reco_io::stitch_job::StitchError::Other(
+                        "tracking unavailable in current capture mode".into(),
+                    ));
                 }
                 Err(e) => {
-                    eprintln!("Warning: autocam setup failed ({e}), continuing without tracking")
+                    return Err(reco_io::stitch_job::StitchError::Other(format!(
+                        "autocam setup failed: {e}"
+                    )));
                 }
             }
             Ok(())
@@ -124,7 +128,7 @@ pub fn run_libcamera(
     {
         let _ = detection_interval;
         if model_path.is_some() {
-            log::warn!("--model specified but autocam feature is disabled");
+            anyhow::bail!("--model requires the autocam feature");
         }
     }
 

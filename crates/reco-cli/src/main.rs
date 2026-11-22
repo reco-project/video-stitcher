@@ -186,8 +186,8 @@ enum Commands {
         /// Frame offset for temporal sync between cameras.
         /// Positive: skip N right frames (right started first).
         /// Negative: skip N left frames (left started first).
-        #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
-        sync_offset: i64,
+        #[arg(long, allow_hyphen_values = true)]
+        sync_offset: Option<i64>,
 
         /// Path to a YOLO ONNX model for ball detection and auto-panning.
         /// When provided, enables automatic camera direction that follows the ball.
@@ -311,8 +311,8 @@ enum Commands {
         /// Frame offset to sync left/right videos.
         /// Positive: skip N right frames (right started first).
         /// Negative: skip N left frames (left started first).
-        #[arg(long, default_value_t = 0, allow_hyphen_values = true)]
-        sync_offset: i64,
+        #[arg(long, allow_hyphen_values = true)]
+        sync_offset: Option<i64>,
 
         /// Seam blend width (0.0 = hard cut). Overrides the calibration's
         /// saved value; when omitted, the calibration decides.
@@ -857,7 +857,7 @@ fn main() -> anyhow::Result<()> {
                 height,
             );
 
-            log::info!("Camera capture: {left_device} + {right_device} -> {output}");
+            log::info!("Camera capture: {left_device} + {right_device}");
 
             let cam_config = CameraConfig {
                 width: capture_width,
@@ -954,7 +954,7 @@ fn main() -> anyhow::Result<()> {
                 height,
             );
 
-            log::info!("libcamera capture: cam{left_camera} + cam{right_camera} -> {output}");
+            log::info!("libcamera capture: cam{left_camera} + cam{right_camera}");
 
             let cam_config = LibcameraConfig {
                 width: capture_width,

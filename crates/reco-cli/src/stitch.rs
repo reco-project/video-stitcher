@@ -41,7 +41,7 @@ pub struct StitchArgs<'a> {
     pub encoder_device: Option<String>,
     pub codec: Option<&'a str>,
     pub quality: &'a str,
-    pub sync_offset: i64,
+    pub sync_offset: Option<i64>,
     pub model_path: Option<&'a str>,
     pub detection_interval: u64,
     pub lookahead: f64,
@@ -168,8 +168,8 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     if let Some(n) = args.max_frames {
         job = job.max_frames(n);
     }
-    if args.sync_offset != 0 {
-        job = job.sync_offset(args.sync_offset);
+    if let Some(offset) = args.sync_offset {
+        job = job.sync_offset(offset);
     }
     if args.no_zero_copy {
         job = job.force_cpu_decode();
@@ -358,7 +358,7 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
                 info.fps as f32,
                 source.is_gpu_resident(),
             ) {
-                Ok(true) => println!("Autocam: tracking enabled (model: {model_path})"),
+                Ok(true) => println!("Autocam: tracking enabled"),
                 Ok(false) => {
                     let msg = "Tracking requested but detection cannot run in zero-copy mode. \
                                Build with --features tensorrt for GPU detection, \
@@ -389,6 +389,11 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
 }
 
 fn report_result(result: &reco_io::StitchResult, output: &str) -> anyhow::Result<()> {
+    let output = if output.contains("://") {
+        "network output"
+    } else {
+        output
+    };
     anyhow::ensure!(
         result.completion != reco_core::session::types::RunCompletion::Cancelled,
         "stitch cancelled after {} frames; finalized output: {}",

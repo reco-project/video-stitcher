@@ -58,7 +58,7 @@ pub struct PreviewConfig<'a> {
     pub calibration_path: &'a str,
     pub width: u32,
     pub height: u32,
-    pub sync_offset: i64,
+    pub sync_offset: Option<i64>,
     /// Overrides the calibration's saved seam blend when set.
     pub blend_width: Option<f32>,
     pub rig_tilt_degrees: f32,
@@ -102,11 +102,7 @@ pub fn run_preview(
     }
 
     // Use calibration's sync offset unless the user explicitly overrode it
-    let effective_sync = if sync_offset != 0 {
-        sync_offset
-    } else {
-        cal.sync_offset
-    };
+    let effective_sync = sync_offset.unwrap_or(cal.sync_offset);
     // Use calibration's rig tilt unless the user explicitly overrode it.
     // User provides degrees, calibration stores radians.
     let rig_tilt_degrees = if rig_tilt_degrees.abs() > 1e-6 {
@@ -345,9 +341,10 @@ impl App {
             eprintln!("Seek failed: {e}");
             return;
         }
-        self.frame_count = frame;
-        // Blocking: wait for the first decoded frame at the new position.
-        self.step_frame();
+        if !self.step_frame() {
+            return;
+        }
+        self.frame_count = frame + 1;
         let secs = frame as f64 / self.fps;
         println!("Seeked to frame {frame} ({secs:.1}s)");
     }
@@ -391,23 +388,26 @@ impl App {
     }
 
     /// Blocking advance for step mode (N key, P key).
-    fn step_frame(&mut self) {
+    fn step_frame(&mut self) -> bool {
         let Some(ref mut source) = self.source else {
-            return;
+            return false;
         };
         match source.next_frame() {
             Ok(Some(frame)) => {
                 self.current_frame = frame.images;
                 self.frame_count += 1;
                 self.needs_redraw = true;
+                true
             }
             Ok(None) => {
                 self.playing = false;
                 println!("End of video");
+                false
             }
             Err(error) => {
                 self.playing = false;
                 eprintln!("Playback failed: {error}");
+                false
             }
         }
     }
@@ -601,7 +601,9 @@ impl ApplicationHandler for App {
                             PhysicalKey::Code(KeyCode::KeyP) => {
                                 // Skip 30 frames (blocking - waits for decode)
                                 for _ in 0..FRAME_SKIP_COUNT {
-                                    self.step_frame();
+                                    if !self.step_frame() {
+                                        break;
+                                    }
                                 }
                             }
                             PhysicalKey::Code(
@@ -701,9 +703,10 @@ impl ApplicationHandler for App {
                             }
                             PhysicalKey::Code(KeyCode::BracketRight) => {
                                 let step = (SEEK_STEP_SECS * self.fps) as u64;
-                                let max = self.total_frames.unwrap_or(u64::MAX);
+                                let max =
+                                    self.total_frames.map_or(u64::MAX, |n| n.saturating_sub(1));
                                 let base = self.pending_seek.unwrap_or(self.frame_count);
-                                self.pending_seek = Some((base + step).min(max));
+                                self.pending_seek = Some(base.saturating_add(step).min(max));
                             }
                             PhysicalKey::Code(KeyCode::Home) => {
                                 self.pending_seek = Some(0);
