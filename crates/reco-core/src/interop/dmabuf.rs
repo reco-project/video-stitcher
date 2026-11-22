@@ -200,34 +200,32 @@ pub fn import_dmabuf_nv12_tiling(
         vk::ImageTiling::OPTIMAL
     };
 
-    {
-        let y_texture = import_single_plane(
-            gpu,
-            fd,
-            width,
-            height,
-            wgpu::TextureFormat::R8Unorm,
-            y_offset,
-            total_size,
-            tiling,
-            "dmabuf_y",
-        )?;
-        let uv_texture = import_single_plane(
-            gpu,
-            fd,
-            width / 2,
-            height / 2,
-            wgpu::TextureFormat::Rg8Unorm,
-            uv_offset,
-            total_size,
-            tiling,
-            "dmabuf_uv",
-        )?;
-        Ok(DmaBufNv12Textures {
-            y_texture,
-            uv_texture,
-        })
-    }
+    let y_texture = import_single_plane(
+        gpu,
+        fd,
+        width,
+        height,
+        wgpu::TextureFormat::R8Unorm,
+        y_offset,
+        total_size,
+        tiling,
+        "dmabuf_y",
+    )?;
+    let uv_texture = import_single_plane(
+        gpu,
+        fd,
+        width / 2,
+        height / 2,
+        wgpu::TextureFormat::Rg8Unorm,
+        uv_offset,
+        total_size,
+        tiling,
+        "dmabuf_uv",
+    )?;
+    Ok(DmaBufNv12Textures {
+        y_texture,
+        uv_texture,
+    })
 }
 
 /// Import a single DMA-BUF plane as a wgpu texture.
@@ -370,34 +368,10 @@ fn import_single_plane(
         };
         let mem_reqs = raw_device.get_image_memory_requirements(vk_image);
 
-        // Query the driver's expected row pitch for LINEAR tiling
-        let subresource = vk::ImageSubresource {
-            aspect_mask: vk::ImageAspectFlags::COLOR,
-            mip_level: 0,
-            array_layer: 0,
-        };
-        let layout = raw_device.get_image_subresource_layout(vk_image, subresource);
-        log::info!(
-            "DMA-BUF import {label}: {}x{} {format:?} tiling={tiling:?} \
-             mreq.size={} mreq.align={} mreq.type_bits=0x{:x} \
-             layout: offset={} size={} rowPitch={} arrayPitch={} depthPitch={}",
-            width,
-            height,
-            mem_reqs.size,
-            mem_reqs.alignment,
-            mem_reqs.memory_type_bits,
-            layout.offset,
-            layout.size,
-            layout.row_pitch,
-            layout.array_pitch,
-            layout.depth_pitch,
-        );
-
-        let mem_props = {
-            let instance = hal_device.shared_instance().raw_instance();
-            instance.get_physical_device_memory_properties(physical_device)
-        };
-
+        let mem_props = hal_device
+            .shared_instance()
+            .raw_instance()
+            .get_physical_device_memory_properties(physical_device);
         let memory_type_index = (0..mem_props.memory_type_count)
             .find(|&i| (mem_reqs.memory_type_bits & (1 << i)) != 0)
             .ok_or_else(|| {
@@ -591,6 +565,34 @@ fn import_single_plane(
 mod identity_tests {
     use super::*;
     use std::os::fd::AsRawFd;
+
+    #[test]
+    #[ignore = "requires a GPU backend"]
+    fn nvmm_rejected_import_releases_duplicated_descriptor() {
+        let gpu = GpuContext::new_blocking().unwrap();
+        let file = tempfile::NamedTempFile::new().unwrap();
+        for _ in 0..8 {
+            // An unsupported format fails before any Vulkan memory import.
+            assert!(
+                import_dmabuf_plane(
+                    &gpu,
+                    file.as_raw_fd(),
+                    64,
+                    32,
+                    wgpu::TextureFormat::Rgba8Unorm,
+                    true
+                )
+                .is_err()
+            );
+        }
+        let descriptors = std::fs::read_dir("/proc/self/fd")
+            .unwrap()
+            .flatten()
+            .filter_map(|fd| fd.path().read_link().ok())
+            .filter(|path| path == file.path())
+            .count();
+        assert_eq!(descriptors, 1);
+    }
 
     #[test]
     fn nvmm_cache_identity_detects_fd_reuse_and_layout_changes() {
