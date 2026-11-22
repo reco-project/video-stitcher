@@ -9,12 +9,12 @@ Stitch two camera feeds into a seamless panoramic sports view with AI-powered au
 
 ## Features
 
-- **GPU-first pipeline** - Real-time stitching via wgpu 28 (Vulkan / Metal / DX12), 500+ fps on modern desktop GPUs
-- **Zero-copy decode** - NVDEC (Linux/Windows) and VideoToolbox (macOS) frames go directly to GPU textures, no CPU bounce
+- **GPU-first pipeline** - Real-time stitching via wgpu 28 (Vulkan / Metal / DX12)
+- **Zero-copy decode** - Supported batch paths share native decode surfaces with the GPU. Interactive file preview uploads host frames.
 - **AI ball + player tracking** - YOLO detection on ONNX (CPU / CUDA / CoreML / NCNN) or native TensorRT `.engine`, with anticipatory lookahead smoothing and density-peak player clustering
 - **Automatic calibration** - Direct image alignment with optional lens profiles, estimated optics, independent overlap checks and IMU / audio temporal sync
 - **Live production** - GStreamer camera ingest (Linux / Jetson CSI), push-based `StitchCore::submit_frame_*` for OBS and live streams, replay ring buffer, stacked-video pack/unpack
-- **Cross-platform** - Linux / macOS / Windows desktop, NVIDIA Jetson Orin, cloud workers; mobile (iOS / Android) trait points land in this release, concrete impls follow
+- **Cross-platform** - Linux / macOS / Windows desktop, NVIDIA Jetson Orin, cloud workers
 
 ## Quick start
 
@@ -43,7 +43,7 @@ cargo build --release -p reco-cli
 # Preview a pre-stitched panorama using a cylinder calibration
 ./target/release/reco preview panorama.mp4 -c cylinder.json
 
-# Live camera stitching (GStreamer, Jetson CSI)
+# Live camera stitching (build reco-cli with --features gstreamer)
 ./target/release/reco camera --left-device 0 --right-device 1 \
     -c match.json -o live.mkv --container mkv \
     --model yolo.engine --tracking field
@@ -123,7 +123,7 @@ Prerequisites: Rust **1.92+** (workspace MSRV), FFmpeg development libraries, pk
 # Ubuntu / Debian (apt)
 sudo apt install libavcodec-dev libavformat-dev libavutil-dev \
     libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev \
-    pkg-config clang
+    pkg-config clang libobs-dev
 
 # macOS (Homebrew)
 brew install ffmpeg pkg-config
@@ -173,7 +173,7 @@ cargo run --release -p reco-cli --features profiling -- \
 
 ## Privacy
 
-Reco collects no usage data, sends no telemetry, and makes no network requests except those you explicitly configure (RTMP streaming, etc.). All performance statistics shown in the Stats panel are computed locally in memory and never leave your machine.
+The desktop app checks GitHub for updates. Usage reporting is optional and disabled by default. Submitting a bug report sends that report. Camera connections and publishing use the destinations you configure.
 
 ## License
 

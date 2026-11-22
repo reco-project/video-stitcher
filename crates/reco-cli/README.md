@@ -1,6 +1,6 @@
 # reco-cli
 
-Terminal consumer binary. Proves the workspace API is thin enough for each command to stay ~100 lines.
+Command-line tools for calibration, stitching and preview.
 
 ## Commands
 

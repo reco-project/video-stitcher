@@ -29,18 +29,16 @@ pub struct IspParams {
     pub saturation: f32,
     /// Overall brightness scale (applied in linear space before gamma).
     /// 1.0 = no change. <1.0 darkens, >1.0 brightens.
-    /// Replaces the vault's adaptive p99.5 tonemap with a manual knob.
     pub brightness: f32,
     _pad: [f32; 2],
 }
 
 impl IspParams {
-    /// Default ISP parameters matching the fieldkit preview server recipe.
+    /// Default ISP parameters for an IMX477 sensor.
     ///
     /// Raw values are 16-bit (10-bit left-shifted by 6). The shader
     /// right-shifts internally, so black_level and white_level are in
-    /// 10-bit space (0-1023). white_level=400 matches the fieldkit's
-    /// proven tonemap white point (not the full sensor range).
+    /// 10-bit space (0-1023).
     pub fn imx477_default(width: u32, height: u32) -> Self {
         Self {
             width,
@@ -60,7 +58,7 @@ impl IspParams {
         }
     }
 
-    /// Indoor warm LED preset (from the vault's verified pipeline).
+    /// Indoor warm LED preset.
     pub fn imx477_indoor(width: u32, height: u32) -> Self {
         Self {
             wb_r: 1.18,
