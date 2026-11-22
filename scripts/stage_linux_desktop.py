@@ -8,7 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
-import tarfile
+import zipfile
 
 from bundle_linux import bundle
 from linux_notices import collect
@@ -35,23 +35,25 @@ def stage(binary: Path, sdk: Path, ort_archive: Path, directories: list[Path], o
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".desktop-", dir=output.parent) as scratch:
         work = Path(scratch)
-        with tarfile.open(ort_archive) as archive:
-            archive.extractall(work, filter="data")
-        ort = work / f"onnxruntime-linux-x64-{manifest['onnxruntime']['version']}"
-        # ort dlopens this exact unversioned filename.
+        version = manifest["onnxruntime"]["version"]
         ort_library = work / "libonnxruntime.so"
-        shutil.copy2(ort / "lib/libonnxruntime.so", ort_library)
+        with zipfile.ZipFile(ort_archive) as wheel:
+            # The CPU wheel carries the standalone C runtime. Only the library and its notices are needed.
+            with wheel.open(f"onnxruntime/capi/libonnxruntime.so.{version}") as library, ort_library.open("xb") as target:
+                shutil.copyfileobj(library, target)
+            ort_notices = work / "ort-notices"
+            ort_notices.mkdir()
+            for name in ("LICENSE", "ThirdPartyNotices.txt"):
+                (ort_notices / name).write_bytes(wheel.read(f"onnxruntime/{name}"))
         roots = [binary, ort_library, sdk / "bin/ffmpeg", sdk / "bin/ffprobe"]
         package = work / "package"
-        inputs = bundle(roots, [sdk / "lib", ort / "lib", *directories], package, manifest["glibc_ceiling"])
+        inputs = bundle(roots, [sdk / "lib", *directories], package, manifest["glibc_ceiling"])
         supplied = {binary: "reco", ort_library.resolve(): "onnxruntime"}
         supplied.update({path: "ffmpeg" for path in inputs.values() if path.is_relative_to(sdk)})
         notices = package / "notices"
         receipt = collect(inputs, supplied, notices)
         shutil.copytree(sdk / "share/reco-ffmpeg", notices / "ffmpeg")
-        (notices / "onnxruntime").mkdir()
-        for name in ("LICENSE", "ThirdPartyNotices.txt", "VERSION_NUMBER", "GIT_COMMIT_ID"):
-            shutil.copy2(ort / name, notices / "onnxruntime" / name)
+        ort_notices.rename(notices / "onnxruntime")
         shutil.copy2(MANIFEST, notices)
         shutil.copy2(Path(__file__).resolve().parents[1] / "LICENSE", package / "LICENSE")
         shutil.copy2(Path(__file__).resolve().parents[1] / "THIRD_PARTY_NOTICES.md", package / "THIRD_PARTY_NOTICES.md")
@@ -75,5 +77,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     try:
         stage(args.binary, args.sdk, args.ort_archive, args.library_dir, args.output)
-    except (OSError, ValueError, subprocess.CalledProcessError, tarfile.TarError) as error:
+    except (OSError, ValueError, subprocess.CalledProcessError, zipfile.BadZipFile, KeyError) as error:
         parser.exit(1, f"Desktop staging failed: {error}\n")

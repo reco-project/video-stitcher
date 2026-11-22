@@ -62,8 +62,8 @@ jobs:
           cp "$test_binary" "$RUNNER_TEMP/reco-detect-tests"
       - name: Stage desktop CLI notices and dependency sources
         run: |
-          curl -fL --max-time 120 "$(jq -r '.onnxruntime.source' scripts/linux-desktop.json)" -o "$RUNNER_TEMP/onnxruntime.tgz"
-          python3 scripts/stage_linux_desktop.py --sdk "$FFMPEG_DIR" --ort-archive "$RUNNER_TEMP/onnxruntime.tgz" \
+          curl -fL --max-time 120 "$(jq -r '.onnxruntime.source' scripts/linux-desktop.json)" -o "$RUNNER_TEMP/onnxruntime.whl"
+          python3 scripts/stage_linux_desktop.py --sdk "$FFMPEG_DIR" --ort-archive "$RUNNER_TEMP/onnxruntime.whl" \
             --library-dir /usr/lib/x86_64-linux-gnu --output "$RUNNER_TEMP/desktop-cli" target/debug/reco
           python3 scripts/fetch_linux_sources.py "$RUNNER_TEMP/desktop-cli/notices/required-sources.json" --output "$RUNNER_TEMP/dependency-sources"
       - name: Relocate and exercise native runtime

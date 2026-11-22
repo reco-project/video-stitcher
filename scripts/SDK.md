@@ -22,12 +22,12 @@ The receipt also records each staged ELF's glibc version references. `--max-glib
 
 When `reco` is staged, the verifier also runs an actual CPU cylindrical export of 12 distinct solid-colour frames. The generated input explicitly uses BT.709 limited-range YUV. Every decoded RGB channel must match its frame's expected colour within 8/255, checking ordering, frame count and exterior black pixels without treating codec rounding as a geometry failure. This is a packaging smoke test, not general source-colour, projection, ONNX Runtime or GUI acceptance.
 
-`stage_linux_desktop.py` stages one CLI or GUI executable, FFmpeg tools/libraries and the Linux x86-64 CPU ONNX Runtime selected by `linux-desktop.json`. It verifies the ONNX archive checksum and the SDK recipe/source archive, then reuses the ELF bundler. ONNX keeps the exact `libonnxruntime.so` name used by dynamic loading. The application license, FFmpeg source/build recipe/licenses and ONNX license/third-party notices are retained. Outputs must be fresh; failed collection does not publish partial staging.
+`stage_linux_desktop.py` stages one CLI or GUI executable, FFmpeg tools/libraries and the Linux x86-64 CPU ONNX Runtime selected by `linux-desktop.json`. It verifies the CPU wheel and SDK source checksums, then bundles the native library without installing Python bindings. ONNX keeps the exact `libonnxruntime.so` name used by dynamic loading. The application license, FFmpeg source/build recipe/licenses and ONNX license/third-party notices are retained. Outputs must be fresh; failed collection does not publish partial staging.
 
 `linux_notices.py` identifies every other copied native library through the installed Debian package database, checking the library against its package checksum before attributing notices or source versions. Unknown owners, diversions and modified libraries are rejected. `notices/dependencies.json` maps the copied closure to components and package identities; `notices/required-sources.json` lists exact distribution source versions. `test_linux_notices.py` covers rejection and source-download failure paths. The SDK and ONNX receipts are separate from distribution package ownership.
 
 ```sh
-python3 scripts/stage_linux_desktop.py --sdk /tmp/reco-ffmpeg-sdk --ort-archive /tmp/onnxruntime.tgz --library-dir /usr/lib/x86_64-linux-gnu --output /tmp/reco-desktop target/release/reco
+python3 scripts/stage_linux_desktop.py --sdk /tmp/reco-ffmpeg-sdk --ort-archive /tmp/onnxruntime.whl --library-dir /usr/lib/x86_64-linux-gnu --output /tmp/reco-desktop target/release/reco
 python3 scripts/fetch_linux_sources.py /tmp/reco-desktop/notices/required-sources.json --output /tmp/reco-dependency-sources
 ```
 

@@ -103,7 +103,7 @@ class NoticeTests(unittest.TestCase):
         provenance.mkdir(parents=True)
         manifest = Path(__file__).resolve().parents[1] / "ffmpeg-sdk.json"
         (provenance / "ffmpeg-sdk.json").write_bytes(manifest.read_bytes())
-        archive = root / "ort.tgz"
+        archive = root / "ort.whl"
         archive.write_bytes(b"wrong runtime")
         with self.assertRaisesRegex(ValueError, "archive checksum mismatch"):
             stage(self.library, root / "sdk", archive, [], root / "output")

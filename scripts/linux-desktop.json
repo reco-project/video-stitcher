@@ -2,7 +2,7 @@
   "glibc_ceiling": "2.39",
   "onnxruntime": {
     "version": "1.24.4",
-    "source": "https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-linux-x64-1.24.4.tgz",
-    "sha256": "3a211fbea252c1e66290658f1b735b772056149f28321e71c308942cdb54b747"
+    "source": "https://files.pythonhosted.org/packages/d5/b6/7a4df417cdd01e8f067a509e123ac8b31af450a719fa7ed81787dd6057ec/onnxruntime-1.24.4-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+    "sha256": "e54ad52e61d2d4618dcff8fa1480ac66b24ee2eab73331322db1049f11ccf330"
   }
 }
