@@ -16,20 +16,63 @@ struct Grid {
     margin: f64,
 }
 
-/// Select textured patches whose complete footprint maps into the other sensor.
-/// The spatial split is fixed before matching or fitting, not chosen from residuals.
+/// Local search and confirmation use the expected seam side of the source sensor.
 pub(crate) fn select(
     seed: &Calibration,
     source: &Image,
     check: impl Fn() -> Result<(), String>,
 ) -> Result<Vec<Patch>, String> {
+    let left_flipped = seed.projection.l_shape().is_some_and(|p| p.z_rx.cos() < 0.);
     select_models(
         std::slice::from_ref(seed),
         source,
         Grid {
             count: [14, 28],
-            start: [0.50, 0.025],
+            start: [if left_flipped { 0.045 } else { 0.50 }, 0.025],
             step: [0.035, 0.035],
+            margin: 0.005,
+        },
+        check,
+    )
+}
+
+/// Select textured patches whose complete footprint maps into the other sensor.
+/// The spatial split is fixed before matching or fitting, not chosen from residuals.
+pub(crate) fn select_overlap(
+    seed: &Calibration,
+    source: &Image,
+    check: impl Fn() -> Result<(), String>,
+) -> Result<Vec<Patch>, String> {
+    check()?;
+    seed.validate().map_err(|e| e.to_string())?;
+    let map = seed
+        .source_correspondence(0, 1)
+        .map_err(|e| e.to_string())?;
+    let mut lo = [1.0_f64; 2];
+    let mut hi = [0.0_f64; 2];
+    for row in 0..24 {
+        check()?;
+        for col in 0..32 {
+            let uv = [(f64::from(col) + 0.5) / 32., (f64::from(row) + 0.5) / 24.];
+            if map.map(uv).is_some() {
+                for i in 0..2 {
+                    lo[i] = lo[i].min(uv[i]);
+                    hi[i] = hi[i].max(uv[i]);
+                }
+            }
+        }
+    }
+    if hi[0] <= lo[0] || hi[1] <= lo[1] {
+        return Ok(Vec::new());
+    }
+    let count = [24, 48];
+    select_models(
+        std::slice::from_ref(seed),
+        source,
+        Grid {
+            count,
+            start: lo,
+            step: std::array::from_fn(|i| (hi[i] - lo[i]) / (count[i] - 1) as f64),
             margin: 0.005,
         },
         check,

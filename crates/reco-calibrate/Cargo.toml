@@ -6,15 +6,10 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Stereo camera calibration for reco: feature matching and position optimization"
+description = "Stereo camera calibration from pixel overlap"
 
 [dependencies]
 reco-core = { path = "../reco-core" }
-# Vendored AKAZE dependencies (was: akaze git dep, vendored for bug fixes)
-ndarray = { version = "0.16", features = ["rayon"] }
-nshare = { version = "0.10", features = ["ndarray", "image"] }
-primal = "0.3"
-float-ord = "0.3"
 basin = { version = "=1.15.1", default-features = false }
 image = { version = "0.25", default-features = false }
 telemetry-parser = { git = "https://github.com/AdrianEddy/telemetry-parser.git", rev = "2f4218b" }
@@ -32,8 +27,3 @@ reco-io = { path = "../reco-io", optional = true }
 [features]
 profiling = ["reco-core/profiling"]
 io = ["dep:reco-io"]
-
-[dev-dependencies]
-approx = "0.5"
-pollster = "0.4"
-reco-io = { path = "../reco-io" }

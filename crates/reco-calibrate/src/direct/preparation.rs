@@ -10,6 +10,15 @@ pub(crate) struct CoarseFit {
     pub(crate) training_rmse: f64,
 }
 
+impl CoarseFit {
+    pub(super) fn into_calibration(mut self) -> Result<Calibration, String> {
+        self.stages
+            .pop()
+            .map(|s| s.calibration)
+            .ok_or("missing coarse fit".into())
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Pass {
     Coarse,
@@ -101,10 +110,11 @@ fn fit_pass(
     } else {
         Method::LeastSquares
     };
-    let sigmas: &[f64] = if method == Method::Constrained {
-        &[2.0, 0.7]
-    } else {
+    // Placement has already been initialized from bidirectional pixel matches at refinement.
+    let sigmas: &[f64] = if pass == Pass::Coarse {
         &[8.0, 4.0, 2.0, 0.7]
+    } else {
+        &[2.0, 0.7]
     };
     let mut x = vec![0.0; parameters];
     let mut training_rmse = f64::INFINITY;

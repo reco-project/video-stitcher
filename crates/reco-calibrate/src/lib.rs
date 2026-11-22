@@ -1,17 +1,15 @@
 //! Native stereo calibration from overlapping images.
 //!
-//! Pixel matching initializes direct image alignment, with AKAZE used when initialization lacks support.
+//! Pixel correspondences in the overlap initialize direct image alignment.
 //! Supplied optics are preserved; missing optics are estimated for stitching, not certified as reusable lens profiles.
 //! The first synchronized pair fits the model. Later pairs independently check the overlap before automatic application.
 //! Consumers must explicitly accept a needs-review candidate before applying or saving it.
 
 #![deny(unsafe_code)]
 
-pub(crate) mod akaze;
 pub mod audio_sync;
 mod direct;
 pub mod error;
-pub mod features;
 pub mod lens_database;
 /// Live calibration — drive the calibration pipeline from a live
 /// frame-pair source (OBS, V4L2, WebRTC, etc.). See the `live` module's
@@ -29,7 +27,7 @@ pub mod video;
 pub use error::CalibrateError;
 pub use types::{
     CalibrationAssessment, CalibrationConfig, CalibrationProgress, CalibrationResult,
-    CalibrationStep, GrayFrame, LensProfileInfo, LensProfileSummary, OverlapCheck, ProfileSource,
+    CalibrationStep, LensProfileInfo, LensProfileSummary, OverlapCheck, ProfileSource,
     Yuv420pFrame,
 };
 

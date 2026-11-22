@@ -7,8 +7,7 @@ reco-core and reco-io.
 
 ### A5-residual. No intra-step heartbeat during very slow steps
 
-**Impact**: Low. Individual calibration steps can run 20-60s silently
-(AKAZE on dense scenes, optimizer on 100+ pairs, audio PCM extraction).
+**Impact**: Low. The GUI receives no intermediate progress while the engine fits the overlap or extracts audio for synchronization.
 A consumer can't distinguish "making progress" from "hung."
 
 ### N8. Slint wgpu 28 rendering notifier does not expose AdapterInfo

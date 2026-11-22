@@ -1,26 +1,19 @@
 //! Training-only generic optical starts; never a reusable lens-profile estimate.
 
-use super::features::Correspondences;
-use super::initialization::initialize_native;
 use super::matching::Image;
 use super::preparation::{CoarseFit, coarse};
 use super::solver::Control;
 use super::support::{Patch, select_generic};
 use reco_core::calibration::Calibration;
 
-const FOCALS: [f64; 3] = [0.4, 0.65, 1.0];
+pub(super) const FOCALS: [f64; 3] = [0.4, 0.65, 1.0];
 
 pub(crate) struct Hypothesis {
     pub(crate) focal: f64,
     pub(crate) fit: Result<CoarseFit, String>,
 }
 
-pub(crate) struct GenericStart {
-    pub(crate) selected: usize,
-    pub(crate) hypotheses: Vec<Hypothesis>,
-}
-
-fn guess(
+pub(super) fn guess(
     template: &Calibration,
     focal: f64,
     distortion: [f64; 4],
@@ -83,11 +76,10 @@ pub(crate) fn support(
 pub(crate) fn discover(
     template: &Calibration,
     images: &[Image; 2],
-    features: Option<&Correspondences>,
     optics: [bool; 2],
     pool: &rayon::ThreadPool,
     control: &Control<'_>,
-) -> Result<GenericStart, String> {
+) -> Result<Calibration, String> {
     let patches: Vec<_> = support(template, &images[0], optics, control)?
         .into_iter()
         .filter(|p| p.fitting)
@@ -100,17 +92,7 @@ pub(crate) fn discover(
     for focal in FOCALS {
         control.check()?;
         let fit = (|| {
-            let mut seed = guess(template, focal, [0.0; 4], optics)?;
-            if let Some(features) = features {
-                seed = initialize_native(
-                    seed,
-                    &features.source,
-                    &features.target,
-                    [images[0].dimensions(), images[1].dimensions()],
-                    control,
-                )?
-                .calibration;
-            }
+            let seed = guess(template, focal, [0.0; 4], optics)?;
             coarse(seed, images, &patches, optics, pool, control)
         })();
         // Cancellation/expiry belongs to the whole call, not just one hypothesis.
@@ -118,10 +100,9 @@ pub(crate) fn discover(
         hypotheses.push(Hypothesis { focal, fit });
     }
     let selected = select_best(&hypotheses)?;
-    Ok(GenericStart {
-        selected,
-        hypotheses,
-    })
+    let chosen = hypotheses.swap_remove(selected);
+    log::debug!("Optical discovery: focal={}", chosen.focal);
+    chosen.fit?.into_calibration()
 }
 
 fn select_best(hypotheses: &[Hypothesis]) -> Result<usize, String> {
@@ -245,7 +226,7 @@ mod tests {
             .build()
             .unwrap();
         assert!(
-            matches!(discover(&template(), &images, None, [true;2], &pool, &control), Err(e) if e == "calibration cancelled")
+            matches!(discover(&template(), &images, [true;2], &pool, &control), Err(e) if e == "calibration cancelled")
         );
         let active = AtomicBool::new(false);
         let expired = Control {
@@ -253,14 +234,14 @@ mod tests {
             deadline: Instant::now() - Duration::from_millis(1),
         };
         assert!(
-            matches!(discover(&template(), &images, None, [true;2], &pool, &expired), Err(e) if e == "calibration time limit reached")
+            matches!(discover(&template(), &images, [true;2], &pool, &expired), Err(e) if e == "calibration time limit reached")
         );
         let active_control = Control {
             interrupted: &active,
             deadline: Instant::now() + Duration::from_secs(10),
         };
         assert!(
-            matches!(discover(&template(), &images, None, [true;2], &pool, &active_control), Err(e) if e == "insufficient textured generic support")
+            matches!(discover(&template(), &images, [true;2], &pool, &active_control), Err(e) if e == "insufficient textured generic support")
         );
     }
 }

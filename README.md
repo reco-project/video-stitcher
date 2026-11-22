@@ -22,7 +22,7 @@ Stitch two camera feeds into a seamless panoramic sports view with AI-powered au
 # Build the CLI
 cargo build --release -p reco-cli
 
-# Calibrate two cameras (AKAZE features + IMU/audio sync)
+# Calibrate two cameras (pixel overlap and IMU/audio sync)
 ./target/release/reco calibrate left.mp4 right.mp4 -o match.json
 
 # Stitch a panoramic video
@@ -102,7 +102,7 @@ reco-core        GPU stitching engine (wgpu). No I/O, no domain logic.
 reco-io          FFmpeg decode/encode, GStreamer cameras, StitchJob API, stacked-video pack/unpack.
 reco-detect      Inference backends: ORT (CPU/CUDA/CoreML), NCNN, native TensorRT.
 reco-autocam     Panners (field, ball, sweep), lookahead smoothing, ROI filters.
-reco-calibrate   AKAZE features, stereo optimization, lens database, live-calibration source trait.
+reco-calibrate   Direct pixel alignment, stereo optimization, lens database, live-calibration source trait.
 reco-control     Operator intent vocabulary (keyboard today; gopro/mobile/websocket scaffolds).
 reco-cli         Terminal consumer: stitch / calibrate / preview / camera / analyze / info.
 reco-gui         Slint desktop consumer with wgpu preview + export UI.

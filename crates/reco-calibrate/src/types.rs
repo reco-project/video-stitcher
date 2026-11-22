@@ -7,17 +7,6 @@ use std::path::PathBuf;
 use reco_core::calibration::Calibration;
 use serde::{Deserialize, Serialize};
 
-/// A grayscale image frame for feature detection (8-bit, row-major, tightly packed).
-#[derive(Clone)]
-pub struct GrayFrame {
-    /// Pixel data, row-major, one byte per pixel.
-    pub data: Vec<u8>,
-    /// Width in pixels.
-    pub width: u32,
-    /// Height in pixels.
-    pub height: u32,
-}
-
 /// Re-export the canonical YUV frame type from reco-core.
 ///
 /// Tightly packed YUV420P shared by calibration and source consumers.

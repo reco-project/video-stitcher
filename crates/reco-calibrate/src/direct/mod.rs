@@ -1,12 +1,12 @@
 //! Direct alignment of decoded luma, with independent-frame overlap verification.
 
 mod confirmation;
-mod features;
 mod generic;
 mod initialization;
 mod intake;
 mod kernel;
 mod matching;
+mod overlap;
 mod preparation;
 mod solver;
 mod support;
@@ -107,31 +107,18 @@ fn run(
     let images = prepare(&frames[0])?;
     let prepared_at = started.elapsed();
     let optics = profiles.map(|p| p.is_none());
-    let discover = |seed: &Calibration| -> Result<_, String> {
-        let discovered = workflow::discover_and_propose(seed, optics, &images, &pool, &control)?;
-        log::debug!(
-            "Optical discovery: focal={}, features={}",
-            discovered.focal,
-            discovered.used_features
-        );
-        Ok(discovered.proposal)
-    };
-    let proposal = if optics.iter().all(|&v| v) {
-        discover(&seed)?
-    } else {
-        if optics[0] != optics[1] {
-            let fixed = usize::from(optics[0]);
-            let free = 1 - fixed;
-            let [w, h] = dimensions[free];
-            // A supplied lens is a starting estimate for its peer, never a fixed substitute.
-            seed.lenses[free] = seed.lenses[fixed]
-                .rescaled(w, h)
-                .map_err(|e| e.to_string())?;
-        }
-        workflow::from_optics(seed, optics, &images, &pool, &control).map_err(|error| {
-            format!("{error}. Supplied optics were kept fixed; check the image order and sync, or explicitly estimate optics.")
-        })?
-    };
+    if optics[0] != optics[1] {
+        let fixed = usize::from(optics[0]);
+        let free = 1 - fixed;
+        let [w, h] = dimensions[free];
+        seed.lenses[free] = seed.lenses[fixed]
+            .rescaled(w, h)
+            .map_err(|e| e.to_string())?;
+    }
+    if optics != [true; 2] {
+        overlap::center_planes(&mut seed)?;
+    }
+    let proposal = workflow::fit(seed, &images, optics, &pool, &control)?;
     drop(images);
     let solution = proposal
         .refinement

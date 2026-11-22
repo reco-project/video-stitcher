@@ -14,9 +14,5 @@ repository, which is released under CC0-1.0 (public domain).
 [telemetry-parser](https://github.com/AdrianEddy/telemetry-parser) crate
 by Adrian Eddy (MIT OR Apache-2.0).
 
-**AKAZE** - Feature detection is based on
-[Christopher22/akaze](https://github.com/Christopher22/akaze) (MIT),
-with local bug fixes.
-
 **Lens Distortion** - The Kannala-Brandt fisheye model follows the
 published paper and OpenCV documentation.

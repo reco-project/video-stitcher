@@ -1,6 +1,4 @@
-//! Frame sampling and image utilities for calibration.
-
-use crate::types::GrayFrame;
+//! Select synchronized frames for fitting and verifying calibration.
 
 /// Compute frame indices to sample from a video.
 ///
@@ -50,45 +48,6 @@ pub fn select_frame_indices(
         .collect()
 }
 
-/// Downscale a grayscale frame by an integer factor using box filtering.
-///
-/// Used to reduce large 4K frames to ~1920px width for faster feature
-/// detection. Returns the original frame if no downscaling is needed.
-pub fn downscale_if_needed(frame: &GrayFrame, target_width: u32) -> GrayFrame {
-    if frame.width <= target_width {
-        return frame.clone();
-    }
-
-    let factor = (frame.width / target_width).max(1);
-    let new_w = frame.width / factor;
-    let new_h = frame.height / factor;
-
-    let mut data = vec![0u8; (new_w * new_h) as usize];
-    let factor_sq = factor as u64 * factor as u64;
-
-    for out_y in 0..new_h {
-        for out_x in 0..new_w {
-            let mut sum: u64 = 0;
-            for dy in 0..factor {
-                for dx in 0..factor {
-                    let src_x = out_x * factor + dx;
-                    let src_y = out_y * factor + dy;
-                    let idx = (src_y * frame.width + src_x) as usize;
-                    sum += frame.data[idx] as u64;
-                }
-            }
-            let out_idx = (out_y * new_w + out_x) as usize;
-            data[out_idx] = (sum / factor_sq) as u8;
-        }
-    }
-
-    GrayFrame {
-        data,
-        width: new_w,
-        height: new_h,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,34 +91,5 @@ mod tests {
     fn select_frame_indices_zero() {
         assert!(select_frame_indices(0, 30.0, 5, 0.0, 0.0).is_empty());
         assert!(select_frame_indices(100, 30.0, 0, 0.0, 0.0).is_empty());
-    }
-
-    #[test]
-    fn downscale_identity_when_small() {
-        let frame = GrayFrame {
-            data: vec![128; 100 * 100],
-            width: 100,
-            height: 100,
-        };
-        let result = downscale_if_needed(&frame, 1920);
-        assert_eq!(result.width, 100);
-        assert_eq!(result.height, 100);
-    }
-
-    #[test]
-    fn downscale_4k_to_1920() {
-        let w = 3840u32;
-        let h = 2160u32;
-        let frame = GrayFrame {
-            data: vec![200; (w * h) as usize],
-            width: w,
-            height: h,
-        };
-        let result = downscale_if_needed(&frame, 1920);
-        // factor = 3840/1920 = 2
-        assert_eq!(result.width, 1920);
-        assert_eq!(result.height, 1080);
-        // All pixels were 200, so downscaled should still be 200
-        assert!(result.data.iter().all(|&p| p == 200));
     }
 }

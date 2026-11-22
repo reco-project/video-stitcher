@@ -4,7 +4,7 @@ Stereo camera calibration for the reco L-shape projection.
 
 ## What it owns
 
-- Direct image alignment on bounded luma images, using canonical core geometry. Pixel matching initializes placement; AKAZE provides a fallback when initialization lacks support.
+- Direct image alignment on bounded luma images, using canonical core geometry. Placement starts with local pixel matching. When local alignment fails, the fitter scores upright and inverted left-camera placements on low-resolution luminance, then refines a candidate using bidirectional pixel matches. The search is bounded and checks later synchronized pairs separately. See [overlap search](src/direct/overlap.rs) and [proposal fitting](src/direct/workflow.rs).
 - Fixed supplied optics and estimation of missing optics. Estimates describe stitching alignment, not independently certified lens profiles. Native ownership is exercised by `direct::solver::tests::fitting_parameters_never_modify_a_supplied_lens`.
 - Independent-frame overlap checks produce `Confirmed` or `NeedsReview`; contradictory measured alignment fails. `direct::confirmation::tests` exercises the assessment rule. An application must obtain explicit acceptance before applying or saving a reviewable result.
 - Lens profile loading from Gyroflow-style JSON, embedded camera metadata and the bundled database. No profile is required.
