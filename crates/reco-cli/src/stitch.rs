@@ -131,6 +131,17 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
         );
     }
     let mut job = args.live_input.job(args.inputs, cal, args.output)?;
+    for path in [
+        Some(args.calibration),
+        args.model_path,
+        args.trajectory_path,
+        args.panner_config_path,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        job = job.protect_input(path);
+    }
     job = job
         .audio(args.audio_source)
         .quality(args.quality.parse().map_err(anyhow::Error::msg)?)

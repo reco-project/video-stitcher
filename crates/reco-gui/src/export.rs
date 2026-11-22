@@ -17,6 +17,7 @@ use reco_io::ffmpeg::encoder::{StreamMonitor, StreamStatus};
 pub struct ExportRequest {
     pub inputs: Inputs,
     pub calibration: Calibration,
+    pub calibration_path: Option<PathBuf>,
     pub output: PathBuf,
     pub stream_url: Option<String>,
     pub audio: reco_io::output::AudioMode,
@@ -210,6 +211,7 @@ pub fn run_export(
     let ExportRequest {
         inputs,
         calibration: cal,
+        calibration_path,
         output,
         stream_url,
         audio,
@@ -304,6 +306,12 @@ pub fn run_export(
         });
     });
 
+    if let Some(path) = calibration_path {
+        job = job.protect_input(path);
+    }
+    if autocam.enabled && !autocam.model_path.is_empty() {
+        job = job.protect_input(&autocam.model_path);
+    }
     if let Some(url) = stream_url {
         job = job.stream_to(url);
     }
@@ -546,6 +554,7 @@ mod tests {
                     inputs: Inputs::Files(vec![reco_io::InputPath::Single(
                         dir.path().join("unopened-input.mp4"),
                     )]),
+                    calibration_path: None,
                     calibration: Calibration::new(
                         vec![Lens::flat(64, 36)],
                         Cylinder::default(),
@@ -720,6 +729,7 @@ mod tests {
             ExportRequest {
                 inputs: Inputs::Files(vec![reco_io::InputPath::Single(input)]),
                 calibration: cal,
+                calibration_path: None,
                 output: output.clone(),
                 stream_url: Some(url),
                 audio: reco_io::output::AudioMode::default(),

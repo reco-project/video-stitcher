@@ -3431,12 +3431,13 @@ fn main() -> anyhow::Result<()> {
 
         let app_weak_bg = app_weak.clone();
         let output_for_thread = output.clone();
+        let calibration_path = s.calibration_path.clone();
         let handle = std::thread::spawn(move || {
             // Close the preview connections before opening output inputs, off the UI thread.
             drop(preview_cleanup);
             let outcome = crate::export::run_export(
                 crate::export::ExportRequest {
-                    inputs, calibration: cal, output: output_for_thread, stream_url, audio,
+                    inputs, calibration: cal, calibration_path, output: output_for_thread, stream_url, audio,
                     replay_enabled, events_path, width, height, codec: codec_str, quality: quality_str,
                     start_secs, end_secs, autocam,
                 },

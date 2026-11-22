@@ -48,6 +48,7 @@ pub struct StitchJob {
     /// spins up.
     inputs: Inputs,
     calibration: CalibrationSource,
+    auxiliary_inputs: Vec<PathBuf>,
     output: PathBuf,
 
     // Output settings
@@ -298,6 +299,7 @@ impl StitchJob {
         Self {
             inputs: Inputs::Files(inputs.into_iter().map(Into::into).collect()),
             calibration: CalibrationSource::File(calibration.as_ref().to_path_buf()),
+            auxiliary_inputs: Vec::new(),
             output: output.as_ref().to_path_buf(),
             codec: None,
             quality: Quality::default(),
@@ -558,6 +560,12 @@ impl StitchJob {
         self
     }
 
+    /// Protect an application input such as a loaded calibration or detector model from export writers.
+    pub fn protect_input(mut self, path: impl AsRef<Path>) -> Self {
+        self.auxiliary_inputs.push(path.as_ref().to_owned());
+        self
+    }
+
     /// Record pipeline events (detections, filter decisions, pan
     /// decisions) to a JSONL file for offline analysis.
     pub fn events(mut self, path: impl AsRef<Path>) -> Self {
@@ -668,26 +676,29 @@ impl StitchJob {
         {
             return Err(StitchError::Other("invalid export time window".into()));
         }
-        // FFmpeg accepts file: URLs as well as paths. Resolve the spelling it
-        // will open before comparing it with files written directly by Rust.
-        let output = self
-            .output
-            .to_str()
-            .and_then(|s| s.strip_prefix("file:"))
-            .map(|p| Path::new(p.strip_prefix("//").unwrap_or(p)))
-            .unwrap_or(&self.output);
-        let mut destinations = vec![output];
+        let mut destinations = vec![ffmpeg_file_path(&self.output)];
         destinations.extend(self.events_path.as_deref());
         #[cfg(feature = "stacked-output")]
-        destinations.extend(self.replay_recording.as_ref().map(|cfg| cfg.path.as_path()));
-        let mut sources = Vec::new();
+        destinations.extend(
+            self.replay_recording
+                .as_ref()
+                .map(|cfg| ffmpeg_file_path(&cfg.path)),
+        );
+        let mut sources = std::mem::take(&mut self.auxiliary_inputs);
         if let Inputs::Files(inputs) = &self.inputs {
-            sources.extend(inputs.iter().flat_map(InputPath::all_paths));
+            for path in inputs.iter().flat_map(InputPath::all_paths) {
+                sources.push(ffmpeg_file_path(&path).to_owned());
+            }
         }
         if let CalibrationSource::File(path) = &self.calibration {
             sources.push(path.clone());
         }
         for (index, destination) in destinations.iter().enumerate() {
+            if destination.is_symlink() && !destination.exists() {
+                return Err(StitchError::Other(
+                    "output symlink has no accessible target".into(),
+                ));
+            }
             for other in destinations[..index]
                 .iter()
                 .copied()
@@ -1217,6 +1228,14 @@ impl StitchJob {
     }
 }
 
+// libavformat's file protocol opens the filename after the prefix verbatim.
+fn ffmpeg_file_path(path: &Path) -> &Path {
+    path.to_str()
+        .and_then(|s| s.strip_prefix("file:"))
+        .map(Path::new)
+        .unwrap_or(path)
+}
+
 fn paths_collide(first: &Path, second: &Path) -> bool {
     if first == second || same_file::is_same_file(first, second).unwrap_or(false) {
         return true;
@@ -1263,6 +1282,33 @@ mod tests {
         let err = job.run(&Arc::new(AtomicBool::new(false))).unwrap_err();
         assert!(err.to_string().contains("distinct"), "{err}");
         assert_eq!(std::fs::read(&output).unwrap(), b"sentinel");
+    }
+
+    #[cfg(feature = "stacked-output")]
+    #[test]
+    fn replay_file_url_cannot_replace_a_chapter() {
+        let dir = tempfile::tempdir().unwrap();
+        let chapter = dir.path().join("second.mkv");
+        std::fs::write(&chapter, b"preserve chapter").unwrap();
+        let input = InputPath::Chained(vec![dir.path().join("first.mkv"), chapter.clone()]);
+        let job = StitchJob::new([input], "missing.json", dir.path().join("out.mp4"))
+            .with_replay_recording(format!("file:{}", chapter.display()));
+        let error = job.run(&Arc::new(AtomicBool::new(false))).unwrap_err();
+        assert!(error.to_string().contains("distinct"), "{error}");
+        assert_eq!(std::fs::read(chapter).unwrap(), b"preserve chapter");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dangling_event_symlink_cannot_create_an_alias_for_a_new_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("new.mp4");
+        let alias = dir.path().join("events");
+        std::os::unix::fs::symlink(&target, &alias).unwrap();
+        let job = StitchJob::new(["missing.mp4"], "missing.json", &target).events(alias);
+        let error = job.run(&Arc::new(AtomicBool::new(false))).unwrap_err();
+        assert!(error.to_string().contains("symlink"), "{error}");
+        assert!(!target.exists());
     }
 
     #[test]

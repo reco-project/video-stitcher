@@ -72,9 +72,13 @@ pub fn run_libcamera(
     let source = reco_io::libcamera::LibcameraCameraSource::open(&cam_config, interrupted.clone())?;
     let progress = helpers::ProgressReporter::new(30);
     let mut job = reco_io::StitchJob::from_source(source, cal, output)
+        .protect_input(calibration)
         .resolution(width, height)
         .quality(quality_value.map_or(out_quality, reco_io::output::Quality::Value))
         .on_progress(move |p| progress.report_with_elapsed(p.frames_completed, p.elapsed));
+    if let Some(model) = model_path {
+        job = job.protect_input(model);
+    }
     if let Some(blend) = blend {
         job = job.blend_width(blend);
     }

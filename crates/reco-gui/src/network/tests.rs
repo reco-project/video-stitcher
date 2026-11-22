@@ -220,6 +220,7 @@ fn actual_live_preview_then_recording_stops_and_finalizes_audio() {
     let path = dir.path().join("live.mp4");
     let outcome = crate::export::run_export(
         crate::export::ExportRequest {
+            calibration_path: None,
             inputs: crate::export::Inputs::Network(config(&peer.url)),
             calibration: calibration(),
             output: path.clone(),
