@@ -341,7 +341,7 @@ impl OrtGpuDetector {
         let (shape, slice) = outputs[0]
             .try_extract_tensor::<f32>()
             .map_err(|e| DetectorError::InferenceFailed(format!("output extract: {e}")))?;
-        let n = shape[1] as usize;
+        let n = super::detection_count(shape)?;
 
         let detections = postprocess(
             slice,

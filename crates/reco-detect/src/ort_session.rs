@@ -22,6 +22,9 @@ use crate::probe::AiProbeResult;
 /// (#446), so no `ort::Error` may exist for this case.
 #[derive(Debug, thiserror::Error)]
 pub enum SessionError {
+    /// Unsupported model input or output contract.
+    #[error("{0}")]
+    UnsupportedModel(String),
     #[error("{0}")]
     RuntimeUnavailable(String),
     #[error(transparent)]
@@ -291,28 +294,37 @@ fn create_session(
     };
 
     // Extract input size from model metadata (BCHW layout).
+    if session.inputs().len() != 1 || session.outputs().len() != 1 {
+        return Err(SessionError::UnsupportedModel(
+            "expected one image input and one detection output".into(),
+        ));
+    }
     let input_size = match session.inputs()[0].dtype() {
-        ort::value::ValueType::Tensor { shape, .. } => {
-            let h = shape[2];
-            if h > 0 {
-                h as u32
-            } else {
-                log::warn!("Model input has dynamic height, defaulting to 1280");
-                1280
+        ort::value::ValueType::Tensor {
+            shape,
+            ty: ort::value::TensorElementType::Float32,
+            ..
+        } => match &shape[..] {
+            [1 | -1, 3, h, w] if h == w && *h > 0 => u32::try_from(*h).map_err(|_| {
+                SessionError::UnsupportedModel("input dimension exceeds supported range".into())
+            })?,
+            [1 | -1, 3, -1, -1] => 1280,
+            _ => {
+                return Err(SessionError::UnsupportedModel(format!(
+                    "expected square RGB input [1, 3, H, H], got {shape:?}"
+                )));
             }
-        }
+        },
         _ => {
-            log::warn!("Could not determine model input size from metadata, defaulting to 1280");
-            1280
+            return Err(SessionError::UnsupportedModel(
+                "expected a float32 input tensor".into(),
+            ));
         }
     };
 
     // Auto-detect labels from model metadata if not provided.
     let labels = if fallback_labels.is_empty() {
-        parse_onnx_names(&session).unwrap_or_else(|| {
-            log::warn!("No class names in model metadata, assuming single-class 'ball' model");
-            vec!["ball".into()]
-        })
+        parse_onnx_names(&session).unwrap_or_default()
     } else {
         fallback_labels
     };
