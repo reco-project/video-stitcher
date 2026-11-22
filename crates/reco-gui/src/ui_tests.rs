@@ -331,9 +331,15 @@ fn field_setup_is_reachable_without_scrolling_and_gated_during_output() {
     let edits = Rc::new(Cell::new(0));
     let count = edits.clone();
     app.on_edit_field(move || count.set(count.get() + 1));
+    let pixels = draw(&window, 800, 600);
+    retain_screenshot("field-setup", &pixels, 800, 600);
+    click(&app, 625.0, 468.0);
+    assert_eq!(edits.get(), 1);
+    app.set_network_active(true);
     draw(&window, 800, 600);
     click(&app, 625.0, 468.0);
     assert_eq!(edits.get(), 1);
+    app.set_network_active(false);
     app.set_recording(true);
     draw(&window, 800, 600);
     click(&app, 625.0, 468.0);

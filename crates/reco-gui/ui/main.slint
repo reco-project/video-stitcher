@@ -1135,20 +1135,20 @@ export component RecoApp inherits Window {
                                 if root.files-loaded: VerticalLayout {
                                     spacing: 8px;
                                     Text { text: "Tracking region"; color: Theme.text-primary; font-size: 14px; font-weight: 600; }
-                                    Text { text: root.has-roi ? "Four corners are set. Tracking ignores action outside this region." : "Optional: mark four corners to keep tracking on the field."; color: Theme.text-muted; font-size: 12px; wrap: word-wrap; }
                                     HorizontalLayout {
                                         spacing: 6px;
                                         Button {
                                             text: root.has-roi ? "Edit four corners" : "Set four corners";
-                                            enabled: !root.setup-locked && !root.lens-preview-active;
+                                            enabled: !root.network-active && !root.setup-locked && !root.lens-preview-active;
                                             clicked => { root.edit-field(); }
                                         }
                                         if root.has-roi: Button {
                                             text: "Remove";
-                                            enabled: !root.setup-locked;
+                                            enabled: !root.network-active && !root.setup-locked;
                                             clicked => { root.remove-field(); }
                                         }
                                     }
+                                    Text { text: root.has-roi ? "Four corners are set. Tracking ignores action outside this region." : "Optional: mark four corners to keep tracking on the field."; color: Theme.text-muted; font-size: 12px; wrap: word-wrap; }
                                 }
                             }
                         }

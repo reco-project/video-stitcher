@@ -1092,20 +1092,6 @@ impl AppState {
             return false;
         }
         let offset = i64::from(frames);
-        if self
-            .playback
-            .total_frames()
-            .is_some_and(|total| offset.unsigned_abs() >= total)
-        {
-            self.sync_calibration_controls(app);
-            self.toasts.push(
-                Severity::Error,
-                "Sync unchanged",
-                "Offset exceeds video length",
-            );
-            crate::toast::sync_to_ui(&self.toasts, app);
-            return false;
-        }
         let mut playback = None;
         if let (Some(left), Some(right)) = (&self.left_input, &self.right_input) {
             let mut candidate = Playback::new();
@@ -1114,6 +1100,17 @@ impl AppState {
                 offset,
                 &self.decoder_cleanup,
             ) {
+                self.sync_calibration_controls(app);
+                self.toasts
+                    .push(Severity::Error, "Sync unchanged", error.to_string());
+                crate::toast::sync_to_ui(&self.toasts, app);
+                return false;
+            }
+            let target = self.playback.frame_index().saturating_sub(1);
+            if target > 0
+                && candidate.total_frames().is_some_and(|total| target < total)
+                && let Err(error) = candidate.seek_frame(target)
+            {
                 self.sync_calibration_controls(app);
                 self.toasts
                     .push(Severity::Error, "Sync unchanged", error.to_string());
@@ -2524,6 +2521,18 @@ fn main() -> anyhow::Result<()> {
             (Some(l), Some(r)) => (l.clone(), r.clone()),
             _ => return,
         };
+        if [&s.left_input, &s.right_input]
+            .into_iter()
+            .flatten()
+            .any(|input| matches!(input, reco_io::InputPath::Chained(_)))
+        {
+            if let Some(app) = app_weak.upgrade() {
+                app.set_status_text(
+                    "Select one file per camera to calibrate a segmented recording.".into(),
+                );
+            }
+            return;
+        }
         // Capture current playback position as calibration start time
         let current_time_secs = if s.playback.fps() > 0.0 {
             s.playback.frame_index() as f64 / s.playback.fps()
@@ -3536,11 +3545,11 @@ fn main() -> anyhow::Result<()> {
             .telemetry_client_id
             .clone()
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        let client = s.telemetry.get_or_insert_with(|| {
-            log::info!("Creating one-shot telemetry client for bug report");
-            telemetry_client::TelemetryClient::new(cid)
-        });
-        client.bug_report(&report);
+        if let Some(client) = &s.telemetry {
+            client.bug_report(&report);
+        } else {
+            telemetry_client::TelemetryClient::new(cid).bug_report(&report);
+        }
 
         // Save contact for next time
         if !contact_str.trim().is_empty() {
@@ -3554,8 +3563,8 @@ fn main() -> anyhow::Result<()> {
 
         s.toasts.push(
             crate::toast::Severity::Info,
-            "Report sent",
-            "Thank you! Your report has been sent to the developer.",
+            "Report queued",
+            "The report has been queued for delivery.",
         );
 
         if let Some(app) = app_weak.upgrade() {

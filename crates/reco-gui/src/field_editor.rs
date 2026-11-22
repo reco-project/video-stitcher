@@ -350,7 +350,13 @@ mod tests {
         }
         assert!(app.get_field_can_apply());
         assert!(!app.get_field_outline().is_empty());
-        let selected = state.borrow().field_editor.as_ref().unwrap().corners.clone();
+        let selected = state
+            .borrow()
+            .field_editor
+            .as_ref()
+            .unwrap()
+            .corners
+            .clone();
         app.invoke_finish_field(true);
         assert!(!app.get_field_editing());
         let state = state.borrow();
