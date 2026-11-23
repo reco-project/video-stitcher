@@ -13,7 +13,7 @@ links = "tensorrt_wrapper"
 default = ["ort"]
 ort = ["dep:ort", "dep:dirs"]
 cuda = ["ort", "ort/cuda"]
-tensorrt = ["ort", "ort/tensorrt"]
+tensorrt = ["ort", "ort/tensorrt", "dep:hmac-sha256"]
 coreml = ["ort", "ort/coreml"]
 directml = ["ort", "ort/directml"]
 load-dynamic = ["ort", "ort/load-dynamic", "dep:libloading"]
@@ -25,6 +25,7 @@ profiling = ["reco-core/profiling"]
 reco-core = { path = "../reco-core" }
 ort = { version = "2.0.0-rc.12", optional = true }
 dirs = { version = "6", optional = true }
+hmac-sha256 = { version = "1.1.14", optional = true }
 libloading = { version = "0.9", optional = true }
 wgpu = "28"
 bytemuck = { version = "1", features = ["derive"] }

@@ -97,6 +97,44 @@ fn failed_model_load_does_not_block_next_session() {
     host_inference(&model);
 }
 
+#[cfg(all(feature = "tensorrt", target_os = "linux"))]
+#[test]
+#[ignore = "requires TensorRT and an NVIDIA GPU"]
+fn cached_models_keep_their_static_dimensions() {
+    const CASE: &str = "cached_models_keep_their_static_dimensions";
+    if !child_case(CASE) {
+        run_child(CASE, false);
+        return;
+    }
+    let (_, report) = session_builder(true, None).unwrap();
+    assert!(report.providers.iter().any(|name| name == "TensorRT"));
+    let dir = tempfile::tempdir().unwrap();
+    let model = dir.path().join("identity.onnx");
+    for (size, expected_engines) in [(2_u8, 1), (4, 2), (2, 2)] {
+        let mut bytes = IDENTITY.to_vec();
+        // Both input and output spatial dimensions, leaving graph names unchanged.
+        for index in 0..bytes.len() - 3 {
+            if bytes[index..index + 4] == [10, 2, 8, 2] {
+                bytes[index + 3] = size;
+            }
+        }
+        std::fs::write(&model, bytes).unwrap();
+        let (mut session, actual, _) = create_ort_session(&model, vec![]).unwrap();
+        assert_eq!(actual, u32::from(size));
+        let size = usize::from(size);
+        let values: Vec<f32> = (0..3 * size * size).map(|n| n as f32).collect();
+        let input = ort::value::Tensor::from_array(([1, 3, size, size], values.clone())).unwrap();
+        let output = session.run(ort::inputs![input]).unwrap();
+        assert_eq!(output[0].try_extract_tensor::<f32>().unwrap().1, values);
+        let engines = std::fs::read_dir(reco_cache_dir("trt-cache"))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "engine"))
+            .count();
+        assert_eq!(engines, expected_engines);
+    }
+}
+
 fn child_case(case: &str) -> bool {
     std::env::var("RECO_ORT_TEST_CHILD").as_deref() == Ok(case)
 }
@@ -139,6 +177,9 @@ fn run_child(case: &str, copy_binary: bool) {
         .stderr(Stdio::from(log));
     if case == "missing_runtime_returns_errors" {
         command.env("ORT_DYLIB_PATH", dir.path().join("missing-runtime"));
+    }
+    if case == "cached_models_keep_their_static_dimensions" {
+        command.env("XDG_CACHE_HOME", dir.path().join("cache"));
     }
     let mut child = command.spawn().unwrap();
     let deadline = Instant::now() + Duration::from_secs(30);
@@ -282,7 +323,9 @@ fn missing_runtime_returns_errors() {
 #[test]
 fn host_providers_do_not_admit_cuda_input() {
     if ort_runtime_available().is_ok() {
-        let error = session_builder(true).err().expect("CUDA input must fail");
+        let error = session_builder(true, None)
+            .err()
+            .expect("CUDA input must fail");
         assert!(
             error
                 .to_string()

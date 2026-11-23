@@ -26,7 +26,7 @@ impl AiProbeResult {
 /// Model compilation and inference can still fail after successful registration.
 /// This probe does not initialize or certify native TensorRT engine files.
 pub fn probe_execution_providers() -> AiProbeResult {
-    match crate::ort_session::session_builder(false) {
+    match crate::ort_session::session_builder(false, None) {
         Ok((_, report)) => report,
         Err(error) => AiProbeResult {
             providers: Vec::new(),
