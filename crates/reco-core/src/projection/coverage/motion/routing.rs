@@ -10,6 +10,11 @@ pub(in super::super) struct Route {
 }
 
 impl Route {
+    pub(in super::super) fn reset(&mut self) {
+        self.key = None;
+        self.path.clear();
+    }
+
     pub(in super::super) fn new(cal: &Calibration, roof: &roof::Roof) -> Self {
         let views = roof
             .vertices()

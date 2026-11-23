@@ -112,6 +112,9 @@ impl Controller {
 
     pub(crate) fn reset(&mut self) {
         self.state = None;
+        if let Some(route) = &mut self.route {
+            route.reset();
+        }
     }
 
     pub(crate) fn matches_viewport(&self, size: &ViewportSize) -> bool {
