@@ -170,10 +170,10 @@ jobs:
         with:
           packages: ${{ env.APT_PACKAGES }}
       - *configure-libclang
-      - name: Install software Vulkan (lavapipe) for GPU-execution tests
+      - name: Install FFmpeg and lavapipe for workspace tests
         run: |
           sudo apt-get update
-          sudo apt-get install -y mesa-vulkan-drivers vulkan-tools
+          sudo apt-get install -y ffmpeg mesa-vulkan-drivers vulkan-tools
           vulkaninfo --summary
       - name: Run tests (default)
         run: cargo test --workspace

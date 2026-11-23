@@ -780,16 +780,19 @@ fn processed_output_exposes_publishing_without_replacing_the_recording() {
         0,
         "an empty publishing URL cannot start output"
     );
-    app.set_export_stream_url("rtmps://127.0.0.1/live/private-key".into());
+    click(&app, 550.0, 266.0);
+    let url = "rtmps://127.0.0.1/live/test";
+    key(&app, url);
+    assert_eq!(app.get_export_stream_url(), url);
+    // Tab reaches the audio selector regardless of how the publishing hint wraps.
+    key(&app, slint::platform::Key::Tab);
+    key(&app, slint::platform::Key::UpArrow);
+    assert_eq!(app.get_export_audio_choice(), 0);
     let pixels = draw(&window, 1280, 820);
     assert_eq!(app.get_export_output_path(), "recording.mp4");
     retain_screenshot("export-publish", &pixels, 1280, 820);
     click(&app, 842.0, 728.0);
     assert_eq!(started.get(), 1);
-    click(&app, 550.0, 357.0);
-    key(&app, slint::platform::Key::UpArrow);
-    key(&app, "\n");
-    assert_eq!(app.get_export_audio_choice(), 0);
     app.set_export_dialog_open(false);
     app.set_export_in_progress(true);
     app.set_export_status_text("Frame 120 (30 fps)".into());
