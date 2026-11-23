@@ -898,10 +898,12 @@ mod tests {
     }
 
     #[test]
-    fn parse_calibration_with_field_roi() {
+    fn field_roi_round_trips_exactly() {
         let mut cal: Calibration = serde_json::from_str(sample_json()).unwrap();
+        // The default JSON parser rounds this coordinate to the adjacent f64.
+        let left = 1.0 / 11.0;
         cal.field_roi = Some(FieldRoi {
-            corners: [[0.3, 0.3], [0.7, 0.3], [0.7, 0.7], [0.3, 0.7]].map(|position| {
+            corners: [[left, 0.3], [0.7, 0.3], [0.7, 0.7], [left, 0.7]].map(|position| {
                 crate::projection::SourcePoint {
                     camera: 0,
                     position,
@@ -910,9 +912,7 @@ mod tests {
         });
         let json = cal.to_json_pretty();
         let back: Calibration = serde_json::from_str(&json).unwrap();
-        let roi = back.field_roi.as_ref().unwrap();
-        assert_eq!(roi.corners.len(), 4);
-        assert_eq!(roi.corners[1].position, [0.7, 0.3]);
+        assert_eq!(back.field_roi, cal.field_roi);
     }
 
     fn valid_cal() -> Calibration {
