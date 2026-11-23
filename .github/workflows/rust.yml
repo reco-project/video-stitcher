@@ -161,6 +161,7 @@ jobs:
     # CI loudly rather than letting the agreement tests pass vacuously.
     env:
       RECO_REQUIRE_GPU: "1"
+      VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.json
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: dtolnay/rust-toolchain@stable
@@ -173,8 +174,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y mesa-vulkan-drivers vulkan-tools
-          echo "--- vulkaninfo --summary ---"
-          vulkaninfo --summary 2>&1 | head -40 || true
+          vulkaninfo --summary
       - name: Run tests (default)
         run: cargo test --workspace
       - name: Run tests (with profiling)
