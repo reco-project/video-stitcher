@@ -620,3 +620,63 @@ fn manual_stereo_drag_and_zoom_are_supported_and_stationary_on_release() {
         p = q;
     }
 }
+
+#[test]
+fn reset_starts_automatic_motion_with_fresh_guidance() {
+    let cal = stereo();
+    let size = ViewportSize {
+        width: 640,
+        height: 360,
+    };
+    let make_controller = || {
+        // A gap across the lower part of the map forces a detour on the first run.
+        let cells: Vec<_> = (0..100)
+            .map(|i| {
+                if (4..6).contains(&(i % 10)) && i / 10 < 7 {
+                    0.0
+                } else {
+                    80.0
+                }
+            })
+            .collect();
+        Controller {
+            config: MapConfig::default(),
+            size: size.clone(),
+            roof: roof::Roof::from_cells(
+                roof::Grid {
+                    yaw: [-1.0, 1.0],
+                    pitch: [-0.5, 0.5],
+                    columns: 10,
+                    rows: 10,
+                },
+                10.0,
+                &cells,
+            ),
+            cap: 80.0,
+            state: None,
+            route: None,
+        }
+    };
+    let request = |yaw, pitch| WorldPose {
+        yaw,
+        pitch,
+        fov_degrees: 30.0,
+    };
+    let target = request(0.75, -0.27);
+    let dt = 1.0 / 30.0;
+    let mut reset = make_controller();
+    reset
+        .advance(&cal, &size, request(-0.8, -0.3), 0, dt)
+        .unwrap();
+    reset.advance(&cal, &size, target, 1, dt).unwrap();
+    reset.reset();
+
+    // Restart on the target's side of the gap, where it can be approached directly.
+    let mut fresh = make_controller();
+    for (index, pose) in [request(0.6, -0.1), target].into_iter().enumerate() {
+        assert_eq!(
+            reset.advance(&cal, &size, pose, index as u64, dt).unwrap(),
+            fresh.advance(&cal, &size, pose, index as u64, dt).unwrap()
+        );
+    }
+}
