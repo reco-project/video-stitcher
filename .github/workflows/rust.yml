@@ -346,8 +346,8 @@ jobs:
           packages: ${{ env.APT_PACKAGES }} valgrind
       - name: Check reco-detect (cuda + load-dynamic)
         run: cargo check -p reco-detect --features cuda,load-dynamic
-      - name: Check reco-detect (tensorrt + load-dynamic)
-        run: cargo check -p reco-detect --features tensorrt,load-dynamic
+      - name: Test TensorRT cache keys
+        run: cargo test -p reco-detect --features tensorrt,load-dynamic --lib ort_session::cache::tests
       - name: Build NCNN CPU runtime
         shell: bash
         run: |

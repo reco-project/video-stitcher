@@ -14,6 +14,9 @@ use ort::session::builder::SessionBuilder;
 use crate::detectors::cpu::parse_onnx_names;
 use crate::probe::AiProbeResult;
 
+#[cfg(feature = "tensorrt")]
+mod cache;
+
 /// Errors from ORT session creation.
 ///
 /// `RuntimeUnavailable` deliberately carries a plain `String`: with
@@ -29,6 +32,15 @@ pub enum SessionError {
     RuntimeUnavailable(String),
     #[error(transparent)]
     Ort(#[from] ort::Error),
+    /// Reading the ONNX file for the TensorRT engine cache key failed.
+    #[cfg(feature = "tensorrt")]
+    #[error("Cannot read model {}: {source}", path.display())]
+    ModelRead {
+        /// Selected model file.
+        path: std::path::PathBuf,
+        /// Underlying filesystem failure.
+        source: std::io::Error,
+    },
 }
 
 /// One-shot verdict on whether the ONNX Runtime library can be loaded.
@@ -204,6 +216,7 @@ pub(crate) fn create_cuda_ort_session(
 /// Register providers with explicit failures, before any model or device input is used.
 pub(crate) fn session_builder(
     cuda_input: bool,
+    model_path: Option<&Path>,
 ) -> Result<(SessionBuilder, AiProbeResult), SessionError> {
     // Session::builder() must not run when the runtime cannot load: ort's
     // failing init self-deadlocks building its own error (#446), so the
@@ -221,7 +234,7 @@ pub(crate) fn session_builder(
         providers: Vec::new(),
         errors: Vec::new(),
     };
-    for (name, supports_cuda, provider) in configured_providers() {
+    for (name, supports_cuda, provider) in configured_providers(model_path)? {
         if cuda_input && !supports_cuda {
             continue;
         }
@@ -249,20 +262,33 @@ pub(crate) fn session_builder(
     Ok((builder, report))
 }
 
-fn configured_providers() -> Vec<(&'static str, bool, ort::ep::ExecutionProviderDispatch)> {
-    vec![
+fn configured_providers(
+    model_path: Option<&Path>,
+) -> Result<Vec<(&'static str, bool, ort::ep::ExecutionProviderDispatch)>, SessionError> {
+    #[cfg(not(feature = "tensorrt"))]
+    let _ = model_path;
+    Ok(vec![
         #[cfg(feature = "tensorrt")]
         ("TensorRT", true, {
             let cache = reco_cache_dir("trt-cache");
             let path = cache.to_string_lossy();
-            ort::ep::TensorRT::default()
+            let mut provider = ort::ep::TensorRT::default()
                 .with_fp16(true)
-                .with_engine_cache(true)
+                .with_engine_cache(model_path.is_some())
                 .with_engine_cache_path(&path)
                 .with_timing_cache(true)
                 .with_timing_cache_path(&path)
-                .with_builder_optimization_level(3)
-                .build()
+                .with_builder_optimization_level(3);
+            if let Some(model) = model_path {
+                let prefix = cache::engine_prefix(model, ort::info()).map_err(|source| {
+                    SessionError::ModelRead {
+                        path: model.to_owned(),
+                        source,
+                    }
+                })?;
+                provider = provider.with_engine_cache_prefix(prefix);
+            }
+            provider.build()
         }),
         #[cfg(feature = "cuda")]
         ("CUDA", true, ort::ep::CUDA::default().build()),
@@ -276,7 +302,7 @@ fn configured_providers() -> Vec<(&'static str, bool, ort::ep::ExecutionProvider
         }),
         #[cfg(target_os = "windows")]
         ("DirectML", false, ort::ep::DirectML::default().build()),
-    ]
+    ])
 }
 
 fn create_session(
@@ -284,7 +310,7 @@ fn create_session(
     fallback_labels: Vec<String>,
     cuda_input: bool,
 ) -> Result<(Session, u32, Vec<String>), SessionError> {
-    let (mut builder, _) = session_builder(cuda_input)?;
+    let (mut builder, _) = session_builder(cuda_input, Some(model_path))?;
     let session = {
         // ORT model loading registers custom-op domains in a global registry.
         // Serialize our loads to avoid registration races, never inference.
