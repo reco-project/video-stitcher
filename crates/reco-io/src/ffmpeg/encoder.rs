@@ -495,6 +495,10 @@ pub struct VideoEncoder {
     height: u32,
     finished: bool,
     encoder_name: String,
+    /// Container this encoder writes to; selects the flush strategy in
+    /// [`Self::flush_to_disk`] (Matroska needs an explicit cluster commit,
+    /// fragmented MP4 must never see a NULL write).
+    container: Container,
     /// Reusable frame buffers to avoid per-frame allocation.
     rgba_frame: VideoFrame,
     yuv_frame: VideoFrame,
@@ -748,6 +752,7 @@ impl VideoEncoder {
                         height,
                         finished: false,
                         encoder_name: name.to_string(),
+                        container: config.container,
                         rgba_frame: VideoFrame::new(Pixel::RGBA, width, height),
                         yuv_frame: VideoFrame::new(staging_pixel_format(*pixel_fmt), width, height),
                         hardware_upload,
@@ -1418,11 +1423,30 @@ impl VideoEncoder {
         // `new`, never dropped until `Drop` runs). `avio_flush` is
         // safe on any live AVIO and doesn't alter muxer state -
         // just forces the output-layer buffer to the file
-        // descriptor. We intentionally avoid
-        // `av_write_frame(ctx, NULL)` because fMP4's
-        // `frag_keyframe` mode treats that as "close current
-        // fragment" which clashes with the subsequent
-        // `write_trailer` on finish (observed as AVERROR -105).
+        // descriptor.
+        //
+        // Matroska buffers the *entire in-progress cluster* in a
+        // memory-side dynamic buffer and only writes it to the AVIO
+        // layer when ffmpeg closes the cluster (1 s time limit, size
+        // limit, or keyframe past 4 KiB). Until then `avio_flush`
+        // flushes nothing and a concurrent reader sees only the
+        // header. `av_write_frame(ctx, NULL)` invokes the muxer's
+        // flush hook (`mkv_write_flush_packet`), which commits the
+        // buffered cluster to the AVIO layer so the following
+        // `avio_flush` actually makes those bytes readable.
+        //
+        // We still avoid the NULL write for fragmented MP4:
+        // `frag_keyframe` mode treats it as "close current fragment"
+        // which clashes with the subsequent `write_trailer` on
+        // finish (observed as AVERROR -105).
+        if self.container == Container::Matroska {
+            let ret = unsafe {
+                ffmpeg::sys::av_write_frame(self.octx.as_mut_ptr(), std::ptr::null_mut())
+            };
+            if ret < 0 {
+                return Err(EncodeError::Ffmpeg(ffmpeg::Error::from(ret)));
+            }
+        }
         unsafe {
             let pb = (*self.octx.as_mut_ptr()).pb;
             if !pb.is_null() {
