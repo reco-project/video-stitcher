@@ -14,20 +14,6 @@ use std::ptr;
 
 use super::encoder::EncodeError;
 
-/// CPU staging pixel format for a given encoder input format.
-///
-/// VAAPI encoders declare `Pixel::VAAPI` (an opaque GPU surface), but the
-/// swscale target and the reusable CPU frame must be a real software
-/// format. Map VAAPI to its NV12 `sw_format`; every other format is its
-/// own staging format.
-pub(super) fn staging_pixel_format(encoder_pixel_format: Pixel) -> Pixel {
-    if encoder_pixel_format == Pixel::VAAPI {
-        Pixel::NV12
-    } else {
-        encoder_pixel_format
-    }
-}
-
 /// Owns a VAAPI hwframe context and uploads CPU NV12 frames to GPU surfaces.
 pub(super) struct HardwareUpload {
     frame: VideoFrame,
