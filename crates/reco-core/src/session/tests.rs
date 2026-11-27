@@ -163,7 +163,7 @@ fn reused_session_replaces_source_rotation_without_double_flipping_host_frames()
             self.rotation
         }
     }
-    fn image(session: &StitchSession) -> Vec<u8> {
+    fn image(session: &mut StitchSession) -> Vec<u8> {
         let mut frames = solid_frame();
         let FrameSet::Yuv420p(cameras) = &mut frames else {
             unreachable!()
@@ -173,19 +173,19 @@ fn reused_session_replaces_source_rotation_without_double_flipping_host_frames()
                 *y = 32 + (i % W as usize * 3) as u8;
             }
         }
-        let pipeline = &session.gpu_exec_ref().pipeline;
-        let gpu = pipeline.gpu();
+        let pipeline = &mut session.gpu_exec().pipeline;
+        let gpu = pipeline.gpu().clone();
         let cmd = pipeline
             .render_frame_set(&frames, crate::geometry::RenderPose::default())
             .unwrap();
-        let mut readback = crate::gpu::rgba_readback::RgbaReadback::new(gpu, W, H).unwrap();
+        let mut readback = crate::gpu::rgba_readback::RgbaReadback::new(&gpu, W, H).unwrap();
         readback
-            .readback(gpu, pipeline.render_target(), cmd)
+            .readback(&gpu, pipeline.render_target(), cmd)
             .unwrap();
-        readback.flush_pending(gpu).unwrap().unwrap().to_vec()
+        readback.flush_pending(&gpu).unwrap().unwrap().to_vec()
     }
     let mut session = build_test_session(None, None, 1).unwrap();
-    let baseline = image(&session);
+    let baseline = image(&mut session);
     for (native, rotation) in [(true, 180), (true, 0), (true, 180), (false, 180)] {
         session
             .run(
@@ -197,7 +197,7 @@ fn reused_session_replaces_source_rotation_without_double_flipping_host_frames()
             .unwrap();
         let flipped = native && rotation == 180;
         assert_eq!(
-            image(&session) != baseline,
+            image(&mut session) != baseline,
             flipped,
             "native={native}, rotation={rotation}"
         );

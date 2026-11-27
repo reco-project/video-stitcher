@@ -15,8 +15,14 @@ use crate::calibration::Calibration;
 use crate::geometry::RenderPose;
 use crate::gpu::{GpuContext, GpuError};
 use crate::projection::l_shape::PlaneScene;
+use crate::source::{Nv12Data, Yuv420pData};
+use std::sync::{Arc, Weak};
 
 use thiserror::Error;
+
+#[cfg(test)]
+#[path = "pipeline/upload_tests.rs"]
+mod upload_tests;
 
 pub use super::planes::{
     FramePlaneView, Nv12Planes, RgbaPlanes, StridedYuv420pPlanes, Yuv420pPlanes,
@@ -75,6 +81,14 @@ pub(crate) struct StitchPipeline {
     renderer: Renderer,
     /// Input frame dimensions, in projection order.
     source_sizes: Vec<(u32, u32)>,
+    /// Weak identity keeps allocations distinct without retaining decoded pixels. `Arc::make_mut` dissociates weak references, so edited images upload again.
+    uploaded: Vec<Option<UploadedImage>>,
+}
+
+#[derive(Clone)]
+enum UploadedImage {
+    Yuv420p(Weak<Yuv420pData>),
+    Nv12(Weak<Nv12Data>),
 }
 
 /// Pre-built bind groups for GPU-resident zero-copy sources.
@@ -172,6 +186,7 @@ impl StitchPipeline {
             calibration,
             viewport_size,
             renderer,
+            uploaded: vec![None; source_sizes.len()],
             source_sizes,
         })
     }
@@ -398,7 +413,7 @@ impl StitchPipeline {
     ///
     /// Validates camera count and pixel format before uploading.
     pub fn render_frame_set(
-        &self,
+        &mut self,
         frames: &crate::source::FrameSet,
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
@@ -406,27 +421,49 @@ impl StitchPipeline {
         self.render_to_target_gpu(pose)
     }
 
-    fn upload_frame_set(&self, frames: &crate::source::FrameSet) -> Result<(), PipelineError> {
+    fn upload_frame_set(
+        &mut self,
+        frames: &crate::source::FrameSet,
+    ) -> Result<usize, PipelineError> {
         frames
             .validate_host_images(self.source_sizes())
             .map_err(|reason| PipelineError::InvalidConfig { reason })?;
         use crate::source::FrameSet;
+        let mut uploads = 0;
         match frames {
             FrameSet::Yuv420p(cams) => {
                 self.check_inputs(cams.len(), InputFormat::Yuv420p)?;
+                self.renderer.clear_imported_bind_groups();
                 for (camera, data) in cams.iter().enumerate() {
+                    let identity = Arc::downgrade(data);
+                    if matches!(&self.uploaded[camera], Some(UploadedImage::Yuv420p(old)) if old.ptr_eq(&identity))
+                    {
+                        continue;
+                    }
+                    self.uploaded[camera] = None;
                     self.renderer
                         .upload_yuv(&self.gpu, camera, &data.as_planes())?;
+                    self.uploaded[camera] = Some(UploadedImage::Yuv420p(identity));
+                    uploads += 1;
                 }
-                Ok(())
+                Ok(uploads)
             }
             FrameSet::Nv12(cams) => {
                 self.check_inputs(cams.len(), InputFormat::Nv12)?;
+                self.renderer.clear_imported_bind_groups();
                 for (camera, data) in cams.iter().enumerate() {
+                    let identity = Arc::downgrade(data);
+                    if matches!(&self.uploaded[camera], Some(UploadedImage::Nv12(old)) if old.ptr_eq(&identity))
+                    {
+                        continue;
+                    }
+                    self.uploaded[camera] = None;
                     self.renderer
                         .upload_nv12(&self.gpu, camera, &data.as_planes())?;
+                    self.uploaded[camera] = Some(UploadedImage::Nv12(identity));
+                    uploads += 1;
                 }
-                Ok(())
+                Ok(uploads)
             }
             _ => Err(PipelineError::UnsupportedFrameVariant {
                 reason: "resident frames require their platform render path",
@@ -448,11 +485,13 @@ impl StitchPipeline {
     }
 
     pub(crate) fn render_nv12(
-        &self,
+        &mut self,
         cameras: &[Nv12Planes<'_>],
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
         self.check_inputs(cameras.len(), InputFormat::Nv12)?;
+        self.uploaded.fill(None);
+        self.renderer.clear_imported_bind_groups();
         for (camera, data) in cameras.iter().enumerate() {
             self.renderer.upload_nv12(&self.gpu, camera, data)?;
         }
@@ -464,7 +503,7 @@ impl StitchPipeline {
     /// Unlike the encode path, this does NOT read back to CPU — the result
     /// stays on the GPU and is presented to the surface.
     pub fn render_to_view(
-        &self,
+        &mut self,
         frames: &crate::source::FrameSet,
         pose: RenderPose,
         target_view: &wgpu::TextureView,
@@ -521,7 +560,7 @@ impl StitchPipeline {
         tracing::instrument(skip_all, name = "render_to_target")
     )]
     pub fn render_to_target(
-        &self,
+        &mut self,
         left: &Yuv420pPlanes<'_>,
         right: &Yuv420pPlanes<'_>,
         pose: RenderPose,
@@ -529,6 +568,8 @@ impl StitchPipeline {
         let Some(scene) = &self.scene else {
             return Err(PipelineError::NoPlaneScene);
         };
+        self.uploaded.fill(None);
+        self.renderer.clear_imported_bind_groups();
         self.renderer
             .upload_left_yuv(&self.gpu, left.y, left.u, left.v)?;
         self.renderer
@@ -554,7 +595,7 @@ impl StitchPipeline {
         tracing::instrument(skip_all, name = "render_to_target_rgba")
     )]
     pub fn render_to_target_rgba(
-        &self,
+        &mut self,
         left: &RgbaPlanes<'_>,
         right: &RgbaPlanes<'_>,
         pose: RenderPose,
@@ -562,6 +603,8 @@ impl StitchPipeline {
         let Some(scene) = &self.scene else {
             return Err(PipelineError::NoPlaneScene);
         };
+        self.uploaded.fill(None);
+        self.renderer.clear_imported_bind_groups();
         self.renderer.upload_left_rgba(&self.gpu, left.rgba)?;
         self.renderer.upload_right_rgba(&self.gpu, right.rgba)?;
 
@@ -581,7 +624,7 @@ impl StitchPipeline {
     /// The caller submits the demosaic encoder first, then this one.
     /// Requires `InputFormat::Rgba`.
     pub fn render_from_gpu_rgba(
-        &self,
+        &mut self,
         left_rgba: &wgpu::Texture,
         right_rgba: &wgpu::Texture,
         pose: RenderPose,
@@ -589,6 +632,8 @@ impl StitchPipeline {
         if self.scene.is_none() {
             return Err(PipelineError::NoPlaneScene);
         }
+        self.uploaded.fill(None);
+        self.renderer.clear_imported_bind_groups();
 
         // Copy demosaiced textures into stitch pipeline input planes
         let mut copy_encoder =

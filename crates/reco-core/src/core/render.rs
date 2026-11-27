@@ -123,7 +123,7 @@ impl super::StitchCore {
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         let cmd = self
             .executor
-            .gpu()
+            .gpu_mut()
             .expect("GPU submit")
             .pipeline
             .render_frame_set(frames, pose)?;
@@ -175,7 +175,7 @@ impl super::StitchCore {
         right: &Yuv420pPlanes<'_>,
         pose: RenderPose,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
-        let Executor::Gpu(gpu) = &self.executor else {
+        let Executor::Gpu(gpu) = &mut self.executor else {
             unreachable!("routed from the GPU arm");
         };
         let cmd = gpu.pipeline.render_to_target(left, right, pose)?;
@@ -274,7 +274,7 @@ impl super::StitchCore {
         pose: RenderPose,
     ) -> Result<RenderOutcome<'_>, StitchCoreError> {
         self.anchor_session_start();
-        let Executor::Gpu(gpu) = &self.executor else {
+        let Executor::Gpu(gpu) = &mut self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
         let cmd = gpu.pipeline.render_to_target_rgba(left, right, pose)?;
@@ -332,7 +332,7 @@ impl super::StitchCore {
         pose: RenderPose,
         view: &wgpu::TextureView,
     ) -> Result<wgpu::SubmissionIndex, StitchCoreError> {
-        let Executor::Gpu(gpu) = &self.executor else {
+        let Executor::Gpu(gpu) = &mut self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
         Ok(gpu.pipeline.render_to_view(frames, pose, view)?)
@@ -379,12 +379,12 @@ impl super::StitchCore {
     /// render command buffer for `submit_render_output`.
     #[cfg(feature = "gpu")]
     pub(crate) fn render_gpu_rgba_at_pose(
-        &self,
+        &mut self,
         left_rgba: &wgpu::Texture,
         right_rgba: &wgpu::Texture,
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
-        let Executor::Gpu(gpu) = &self.executor else {
+        let Executor::Gpu(gpu) = &mut self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
         Ok(gpu
@@ -395,11 +395,11 @@ impl super::StitchCore {
     /// Encode host YUV420P/NV12 input at an explicit pose. Submit the returned commands before another render changes the shared uniforms or upload textures.
     #[cfg(feature = "gpu")]
     pub(crate) fn render_frame_set_at_pose(
-        &self,
+        &mut self,
         frames: &crate::source::FrameSet,
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, StitchCoreError> {
-        let Executor::Gpu(gpu) = &self.executor else {
+        let Executor::Gpu(gpu) = &mut self.executor else {
             return Err(StitchCoreError::RequiresGpu);
         };
         Ok(gpu.pipeline.render_frame_set(frames, pose)?)

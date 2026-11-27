@@ -516,6 +516,42 @@ fn imported_planes_match_host_pixels_and_timestamps_across_shape_and_residency_c
 }
 
 #[test]
+fn returning_to_the_same_host_image_after_import_does_not_use_imported_pixels() {
+    let Some(gpu) = gpu() else { return };
+    for sizes in [vec![(64, 32)], vec![(64, 32); 2], vec![(64, 32), (128, 64)]] {
+        let (mut session, captured) = session(&gpu, &sizes, InputFormat::Nv12);
+        let host = FrameSet::Nv12(
+            sizes
+                .iter()
+                .enumerate()
+                .map(|(camera, &size)| image(size, camera, 0))
+                .collect(),
+        );
+        let other: Vec<_> = sizes
+            .iter()
+            .enumerate()
+            .map(|(camera, &size)| image(size, camera, 3))
+            .collect();
+        let planes: Vec<_> = other
+            .iter()
+            .map(|data| views(&gpu, data, GpuPixelFormat::Nv12))
+            .collect();
+        let refs: Vec<_> = planes.iter().map(|(y, uv)| (y, uv)).collect();
+        let pose = RenderPose::default();
+        session.render_frame(&host, pose, Some(0)).unwrap();
+        session
+            .render_frame_imported_nv12(&refs, pose, Some(33_333))
+            .unwrap();
+        session.render_frame(&host, pose, Some(66_667)).unwrap();
+        session.finish().unwrap();
+        let output = captured.lock().unwrap();
+        assert_eq!(output.len(), 3);
+        assert_ne!(output[0].0, output[1].0);
+        assert_eq!(output[0].0, output[2].0);
+    }
+}
+
+#[test]
 fn imported_planes_reject_wrong_count_shape_and_format_without_submission() {
     let Some(gpu) = gpu() else { return };
     let (mut session, output) = session(&gpu, &[(64, 32); 2], InputFormat::Nv12);

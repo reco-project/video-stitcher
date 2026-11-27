@@ -526,7 +526,7 @@ mod tests {
                             (width, height)
                         );
                     }
-                    let batch_executor = GpuExecutor::new(
+                    let mut batch_executor = GpuExecutor::new(
                         gpu.clone(),
                         GpuExecutorConfig {
                             viewport_size: ViewportSize { width, height },

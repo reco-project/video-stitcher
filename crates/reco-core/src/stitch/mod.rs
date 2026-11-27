@@ -376,7 +376,7 @@ mod tests {
 
         // GPU render -> RGBA. The readback is triple-buffered (N-2 latency), so
         // render the same frame three times to drain one result.
-        let pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
+        let mut pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
             gpu,
             &calib
                 .projection
@@ -473,7 +473,7 @@ mod tests {
             ..Default::default()
         };
 
-        let pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
+        let mut pipeline = crate::render::pipeline::StitchPipeline::with_gpu(
             gpu,
             &calib
                 .projection
