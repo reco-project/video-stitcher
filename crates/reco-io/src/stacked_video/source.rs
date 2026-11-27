@@ -89,6 +89,11 @@ impl StackedSource {
         self.decoder.fps()
     }
 
+    /// Colourimetry metadata probed from the underlying stacked video stream.
+    pub fn color_metadata(&self) -> crate::ffmpeg::ColorMetadata {
+        self.decoder.color_metadata()
+    }
+
     /// Decode the next packed frame and split it into N tiles,
     /// or `None` at end of stream.
     pub fn next_tuple(&mut self) -> Result<Option<Vec<Yuv420pFrame>>, StackedDecodeError> {

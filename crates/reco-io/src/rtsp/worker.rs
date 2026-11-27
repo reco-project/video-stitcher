@@ -189,6 +189,7 @@ pub(super) fn decode(
         state.metadata.get_or_insert(Metadata {
             size,
             full_range: decoder.is_full_range(),
+            color_metadata: decoder.color_metadata(),
             first_time_us: time_us,
             first_arrived_us: arrived_us,
             rotation: decoder.rotation(),

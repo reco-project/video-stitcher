@@ -20,8 +20,8 @@ impl HevcColor {
 
     pub(super) fn new(
         encoder: &ffmpeg::encoder::video::Encoder,
-        matrix: Option<ffmpeg::color::Space>,
-        full_range: bool,
+        color: super::ColorMetadata,
+        full_range: Option<bool>,
     ) -> Result<Self, ffmpeg::Error> {
         // SAFETY: the filter name is static; allocation returns an exclusively owned context.
         let mut context = ptr::null_mut();
@@ -33,6 +33,7 @@ impl HevcColor {
             check(ffi::av_bsf_alloc(filter, &mut context))?;
         }
         let mut this = Self(NonNull::new(context).ok_or(ffmpeg::Error::Bug)?);
+        let color = color.normalized();
         // SAFETY: this owns the allocated context, whose parameter and private storage are live.
         // FFmpeg copies the encoder parameters; no borrowed encoder storage is retained.
         unsafe {
@@ -42,12 +43,24 @@ impl HevcColor {
                 encoder.as_ptr(),
             ))?;
             context.time_base_in = encoder.time_base().into();
-            let matrix = matrix
+            let primaries = color
+                .primaries
+                .map(|p| ffi::AVColorPrimaries::from(p) as i64)
+                .unwrap_or(-1);
+            let transfer = color
+                .transfer
+                .map(|t| ffi::AVColorTransferCharacteristic::from(t) as i64)
+                .unwrap_or(-1);
+            let matrix = color
+                .space
                 .map(|space| ffi::AVColorSpace::from(space) as i64)
                 .unwrap_or(-1);
+            let range = full_range.map(i64::from).unwrap_or(-1);
             for (name, value) in [
+                (c"colour_primaries", primaries),
+                (c"transfer_characteristics", transfer),
                 (c"matrix_coefficients", matrix),
-                (c"video_full_range_flag", i64::from(full_range)),
+                (c"video_full_range_flag", range),
             ] {
                 check(ffi::av_opt_set_int(
                     context.priv_data,
@@ -119,9 +132,53 @@ fn check(result: i32) -> Result<(), ffmpeg::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ffmpeg::ColorMetadata;
 
     #[test]
     fn global_and_repeated_headers_change_labels_without_changing_pixels_or_timing() {
+        check_hevc_labels(
+            ColorMetadata {
+                primaries: None,
+                transfer: None,
+                space: Some(ffmpeg::color::Space::BT709),
+            },
+            Some(false),
+            ffmpeg::color::Primaries::Unspecified,
+            ffmpeg::color::TransferCharacteristic::Unspecified,
+            ffmpeg::color::Space::BT709,
+            ffmpeg::color::Range::MPEG,
+        );
+    }
+
+    #[test]
+    fn global_and_repeated_headers_tag_hdr_hlg_and_pq_bt2020() {
+        for transfer in [
+            ffmpeg::color::TransferCharacteristic::ARIB_STD_B67,
+            ffmpeg::color::TransferCharacteristic::SMPTE2084,
+        ] {
+            check_hevc_labels(
+                ColorMetadata {
+                    primaries: Some(ffmpeg::color::Primaries::BT2020),
+                    transfer: Some(transfer),
+                    space: Some(ffmpeg::color::Space::BT2020NCL),
+                },
+                Some(false),
+                ffmpeg::color::Primaries::BT2020,
+                transfer,
+                ffmpeg::color::Space::BT2020NCL,
+                ffmpeg::color::Range::MPEG,
+            );
+        }
+    }
+
+    fn check_hevc_labels(
+        color: ColorMetadata,
+        full_range: Option<bool>,
+        expected_primaries: ffmpeg::color::Primaries,
+        expected_transfer: ffmpeg::color::TransferCharacteristic,
+        expected_space: ffmpeg::color::Space,
+        expected_range: ffmpeg::color::Range,
+    ) {
         crate::init();
         for global in [false, true] {
             let codec = ffmpeg::encoder::find_by_name("libx265").unwrap();
@@ -143,8 +200,7 @@ mod tests {
             options.set("x265-params", "log-level=error:pools=none");
             let mut encoder = video.open_with(options).unwrap();
             let original_parameters = ffmpeg::codec::Parameters::from(&encoder);
-            let mut filter =
-                HevcColor::new(&encoder, Some(ffmpeg::color::Space::BT709), false).unwrap();
+            let mut filter = HevcColor::new(&encoder, color, full_range).unwrap();
             let mut original =
                 ffmpeg::codec::context::Context::from_parameters(original_parameters)
                     .unwrap()
@@ -193,16 +249,10 @@ mod tests {
             assert_eq!(after.len(), 4);
             for (before, after) in before.iter().zip(&after) {
                 assert_eq!(before.color_space(), ffmpeg::color::Space::Unspecified);
-                assert_eq!(after.color_space(), ffmpeg::color::Space::BT709);
-                assert_eq!(after.color_range(), ffmpeg::color::Range::MPEG);
-                assert_eq!(
-                    after.color_primaries(),
-                    ffmpeg::color::Primaries::Unspecified
-                );
-                assert_eq!(
-                    after.color_transfer_characteristic(),
-                    ffmpeg::color::TransferCharacteristic::Unspecified
-                );
+                assert_eq!(after.color_space(), expected_space);
+                assert_eq!(after.color_range(), expected_range);
+                assert_eq!(after.color_primaries(), expected_primaries);
+                assert_eq!(after.color_transfer_characteristic(), expected_transfer);
                 assert_eq!(before.pts(), after.pts());
                 for plane in 0..3 {
                     for row in 0..before.plane_height(plane) as usize {

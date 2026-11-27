@@ -325,17 +325,25 @@ impl Container {
     }
 }
 
-/// Matrix and range of YUV values, independent of primaries and transfer function.
+/// Resolved VUI and container colour configuration for an opened encoder.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-enum YuvColor {
-    /// No known source interpretation. Do not assign rendered-output metadata to raw camera planes.
-    #[default]
-    Unspecified,
-    /// Known camera range, without assigning the renderer's matrix to raw planes.
-    SourceRange(bool),
-    /// BT.709 matrix with limited-range YUV, as produced by the renderer.
-    /// This specifies neither colour primaries nor a transfer function.
-    Bt709Limited,
+struct OutputColor {
+    /// Colour primaries, transfer characteristics, and matrix coefficients to tag.
+    metadata: super::ColorMetadata,
+    /// Full/limited YUV range to tag, if known (`Some(true)` = full/JPEG, `Some(false)` = limited/MPEG).
+    full_range: Option<bool>,
+    /// Configure CPU `swscale` RGBA->YUV conversion for the renderer's BT.709 limited-range path.
+    ///
+    /// Kept on BT.709 even when propagating non-BT.709 source VUI metadata because the render
+    /// shaders decode source YUV with the BT.709 matrix; matching matrices cancel on round-trip
+    /// and keep RGBA and NV12 output paths identical.
+    rendered_rgba_scaler: bool,
+}
+
+impl OutputColor {
+    fn has_tags(self) -> bool {
+        !self.metadata.is_empty() || self.full_range.is_some()
+    }
 }
 
 /// Configuration for the video encoder.
@@ -386,6 +394,13 @@ pub struct EncoderConfig {
     /// Network open, synchronous I/O and final-drain deadline. `None` selects ten seconds.
     /// Cooperative FFmpeg interruption does not bound native DNS resolution. Optional FIFO writes are isolated, not timed by producer activity.
     pub network_timeout: Option<std::time::Duration>,
+    /// Source colourimetry metadata (primaries, transfer characteristics, matrix) to tag on the output stream.
+    ///
+    /// When empty (default), rendered output uses BT.709 limited-range matrix with unspecified
+    /// primaries and transfer, and generic encoding leaves VUI colour fields unspecified.
+    /// When populated (for example from an HLG or PQ BT.2020 source), the encoder propagates the
+    /// metadata to the codec context, container headers, and HEVC VUI headers.
+    pub color_metadata: super::ColorMetadata,
 }
 
 type OpenedVideoEncoder = (
@@ -498,7 +513,11 @@ impl VideoEncoder {
             height,
             fps,
             config,
-            YuvColor::Unspecified,
+            OutputColor {
+                metadata: config.color_metadata.normalized(),
+                full_range: None,
+                rendered_rgba_scaler: false,
+            },
             None,
         )
     }
@@ -511,13 +530,18 @@ impl VideoEncoder {
         config: &EncoderConfig,
         live_audio: Option<LiveAudio>,
     ) -> Result<Self, EncodeError> {
+        let metadata = config.color_metadata.for_rendered_output();
         Self::new_with_color(
             path,
             width,
             height,
             fps,
             config,
-            YuvColor::Bt709Limited,
+            OutputColor {
+                metadata,
+                full_range: Some(false),
+                rendered_rgba_scaler: true,
+            },
             live_audio,
         )
     }
@@ -537,7 +561,11 @@ impl VideoEncoder {
             height,
             fps,
             config,
-            YuvColor::SourceRange(full_range),
+            OutputColor {
+                metadata: config.color_metadata.normalized(),
+                full_range: Some(full_range),
+                rendered_rgba_scaler: false,
+            },
             None,
         )
     }
@@ -548,7 +576,7 @@ impl VideoEncoder {
         height: u32,
         fps: Rational,
         config: &EncoderConfig,
-        color: YuvColor,
+        color: OutputColor,
         live_audio: Option<LiveAudio>,
     ) -> Result<Self, EncodeError> {
         if width == 0
@@ -640,10 +668,7 @@ impl VideoEncoder {
                 None => continue,
             };
 
-            if color != YuvColor::Unspecified
-                && codec.id() == codec::Id::HEVC
-                && !HevcColor::available()
-            {
+            if color.has_tags() && codec.id() == codec::Id::HEVC && !HevcColor::available() {
                 last_err = Some(ffmpeg::Error::BsfNotFound.into());
                 continue;
             }
@@ -655,27 +680,22 @@ impl VideoEncoder {
                 &mut octx, codec, *pixel_fmt, *is_hw, width, height, fps, config, name, color,
             ) {
                 Ok((enc_opened, scaler, stream_index, encoder_time_base, _, hardware_upload)) => {
-                    let hevc_color =
-                        if color != YuvColor::Unspecified && codec.id() == codec::Id::HEVC {
-                            let filter = match HevcColor::new(
-                                &enc_opened,
-                                (color == YuvColor::Bt709Limited)
-                                    .then_some(ffmpeg::color::Space::BT709),
-                                color == YuvColor::SourceRange(true),
-                            ) {
+                    let hevc_color = if color.has_tags() && codec.id() == codec::Id::HEVC {
+                        let filter =
+                            match HevcColor::new(&enc_opened, color.metadata, color.full_range) {
                                 Ok(filter) => filter,
                                 Err(error) => {
                                     last_err = Some(error.into());
                                     continue;
                                 }
                             };
-                            octx.stream_mut(stream_index)
-                                .expect("video stream we just added")
-                                .set_parameters(filter.parameters()?);
-                            Some(filter)
-                        } else {
-                            None
-                        };
+                        octx.stream_mut(stream_index)
+                            .expect("video stream we just added")
+                            .set_parameters(filter.parameters()?);
+                        Some(filter)
+                    } else {
+                        None
+                    };
                     let hw_tag = if *is_hw { " (hardware)" } else { " (software)" };
                     log::info!(
                         "Encoder: {}x{} {}{} @ {}/{} fps",
@@ -713,9 +733,9 @@ impl VideoEncoder {
                     if config.container == Container::Mp4Fragmented {
                         movflags.extend(["empty_moov", "frag_keyframe"]);
                     }
-                    // Preserve known matrix/range even when primaries and transfer are unspecified.
+                    // Preserve known colour metadata/range even when some fields are unspecified.
                     // Some hardware encoders omit these labels from their bitstream headers.
-                    if color != YuvColor::Unspecified
+                    if color.has_tags()
                         && matches!(
                             config.container,
                             Container::Mp4 | Container::Mp4Fragmented | Container::Mov
@@ -823,7 +843,7 @@ impl VideoEncoder {
         fps: Rational,
         config: &EncoderConfig,
         name: &str,
-        color: YuvColor,
+        color: OutputColor,
     ) -> Result<OpenedVideoEncoder, EncodeError> {
         let needs_global_header = octx.format().flags().contains(format::Flags::GLOBAL_HEADER);
 
@@ -837,11 +857,16 @@ impl VideoEncoder {
         enc.set_width(width);
         enc.set_height(height);
         enc.set_format(pixel_fmt);
-        if color == YuvColor::Bt709Limited {
-            enc.set_colorspace(ffmpeg::color::Space::BT709);
-            enc.set_color_range(ffmpeg::color::Range::MPEG);
+        if let Some(primaries) = color.metadata.primaries {
+            enc.set_color_primaries(primaries);
         }
-        if let YuvColor::SourceRange(full_range) = color {
+        if let Some(transfer) = color.metadata.transfer {
+            enc.set_color_transfer_characteristic(transfer);
+        }
+        if let Some(space) = color.metadata.space {
+            enc.set_colorspace(space);
+        }
+        if let Some(full_range) = color.full_range {
             enc.set_color_range(if full_range {
                 ffmpeg::color::Range::JPEG
             } else {
@@ -927,7 +952,7 @@ impl VideoEncoder {
             height,
             ScalingFlags::BILINEAR,
         )?;
-        if color == YuvColor::Bt709Limited {
+        if color.rendered_rgba_scaler {
             // SAFETY: the scaler is live and uniquely borrowed; FFmpeg owns the static coefficient table.
             let result = unsafe {
                 let coefficients = ffmpeg::sys::sws_getCoefficients(ffmpeg::sys::SWS_CS_ITU709);

@@ -48,6 +48,7 @@ pub struct RtspConfig {
 struct Metadata {
     size: (u32, u32),
     full_range: bool,
+    color_metadata: crate::ffmpeg::ColorMetadata,
     first_time_us: i64,
     first_arrived_us: i64,
     rotation: i32,
@@ -106,6 +107,7 @@ pub struct RtspSource {
     config: RtspConfig,
     info: SourceInfo,
     full_range: bool,
+    color_metadata: crate::ffmpeg::ColorMetadata,
     selector: Selector<Image>,
     #[cfg(all(feature = "gpu", target_os = "linux"))]
     native: Option<native::Delivery>,
@@ -243,6 +245,7 @@ impl RtspSource {
                 total_frames: None,
             },
             full_range: false,
+            color_metadata: crate::ffmpeg::ColorMetadata::default(),
             selector,
             #[cfg(all(feature = "gpu", target_os = "linux"))]
             native: None,
@@ -328,6 +331,8 @@ impl RtspSource {
         {
             return Err(invalid("RTSP camera color ranges differ"));
         }
+        let camera_colors: Vec<_> = metadata.iter().map(|info| info.color_metadata).collect();
+        source.color_metadata = crate::ffmpeg::ColorMetadata::reconcile(&camera_colors);
         source.info.camera_sizes = metadata.iter().map(|info| info.size).collect();
         for (rotation, info) in source.rotations.iter_mut().zip(&metadata) {
             *rotation = info.rotation;
@@ -369,6 +374,11 @@ impl RtspSource {
         for worker in &mut self.workers {
             worker.defer_to(cleanup);
         }
+    }
+
+    /// Reconciled source colourimetry metadata across all RTSP cameras.
+    pub fn color_metadata(&self) -> crate::ffmpeg::ColorMetadata {
+        self.color_metadata
     }
 
     pub(crate) fn audio(&self) -> Option<LiveAudio> {

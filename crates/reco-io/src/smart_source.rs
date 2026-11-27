@@ -47,6 +47,7 @@ pub struct SmartFileSource {
     #[cfg(feature = "gpu")]
     pixel_format: GpuPixelFormat,
     full_range: bool,
+    color_metadata: crate::ffmpeg::ColorMetadata,
     left_rotation: i32,
     right_rotation: i32,
     /// Human-readable description of the active decode path.
@@ -194,12 +195,14 @@ impl SmartFileSource {
         };
         let pixel_format = probe.pixel_format();
         let full_range = probe.is_full_range();
+        let first_color = probe.color_metadata();
         let left_rotation = probe.rotation();
         let decode_backend = probe.backend();
         drop(probe);
 
         let mut right_rotation = 0;
         let mut matching_layout = true;
+        let mut camera_colors = vec![first_color];
         for (camera, input) in inputs.iter().enumerate().skip(1) {
             let probe =
                 crate::ffmpeg::decoder::VideoDecoder::open(input.first_path()).map_err(|e| {
@@ -221,7 +224,9 @@ impl SmartFileSource {
             if camera == 1 {
                 right_rotation = probe.rotation();
             }
+            camera_colors.push(probe.color_metadata());
         }
+        let color_metadata = crate::ffmpeg::ColorMetadata::reconcile(&camera_colors);
         // Automatic Windows/Metal native selection is restricted to validated layouts.
         let native_input_count = if cfg!(target_os = "linux") {
             matches!(inputs.len(), 1 | 2)
@@ -259,6 +264,7 @@ impl SmartFileSource {
                 info,
                 pixel_format,
                 full_range,
+                color_metadata,
                 left_rotation,
                 right_rotation,
             )
@@ -279,6 +285,7 @@ impl SmartFileSource {
         #[cfg(feature = "gpu")]
         let pixel_format = source.pixel_format();
         let full_range = source.is_full_range();
+        let color_metadata = source.color_metadata();
         log::info!(
             "SmartFileSource: host-backed frames ({} camera(s), {}x{}{})",
             inputs.len(),
@@ -294,6 +301,7 @@ impl SmartFileSource {
             #[cfg(feature = "gpu")]
             pixel_format,
             full_range,
+            color_metadata,
             left_rotation,
             right_rotation,
             decode_mode: "Host YUV420P",
@@ -311,6 +319,7 @@ impl SmartFileSource {
         info: SourceInfo,
         pixel_format: GpuPixelFormat,
         full_range: bool,
+        color_metadata: crate::ffmpeg::ColorMetadata,
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
@@ -345,6 +354,7 @@ impl SmartFileSource {
             info,
             pixel_format,
             full_range,
+            color_metadata,
             left_rotation,
             right_rotation,
             decode_mode: "GPU zero-copy (CUDA/Vulkan)",
@@ -362,6 +372,7 @@ impl SmartFileSource {
         info: SourceInfo,
         pixel_format: GpuPixelFormat,
         full_range: bool,
+        color_metadata: crate::ffmpeg::ColorMetadata,
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
@@ -379,6 +390,7 @@ impl SmartFileSource {
             info,
             pixel_format,
             full_range,
+            color_metadata,
             left_rotation,
             right_rotation,
             decode_mode: "Metal zero-copy (VideoToolbox)",
@@ -396,6 +408,7 @@ impl SmartFileSource {
         info: SourceInfo,
         pixel_format: GpuPixelFormat,
         full_range: bool,
+        color_metadata: crate::ffmpeg::ColorMetadata,
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
@@ -412,6 +425,7 @@ impl SmartFileSource {
             info,
             pixel_format,
             full_range,
+            color_metadata,
             left_rotation,
             right_rotation,
             decode_mode: "D3D11VA zero-copy",
@@ -430,6 +444,7 @@ impl SmartFileSource {
         _info: SourceInfo,
         _pixel_format: GpuPixelFormat,
         _full_range: bool,
+        _color_metadata: crate::ffmpeg::ColorMetadata,
         _left_rotation: i32,
         _right_rotation: i32,
     ) -> Result<Self, SourceError> {
@@ -440,6 +455,11 @@ impl SmartFileSource {
     /// Human-readable description of the active decode path.
     pub fn decode_mode(&self) -> &'static str {
         self.decode_mode
+    }
+
+    /// Reconciled source colourimetry metadata across all cameras.
+    pub fn color_metadata(&self) -> crate::ffmpeg::ColorMetadata {
+        self.color_metadata
     }
 
     /// Access the shared texture set (GPU zero-copy only).

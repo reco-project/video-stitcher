@@ -880,6 +880,10 @@ impl StitchJob {
         }
 
         let live_audio = opened.audio();
+        let source_color = opened.color_metadata();
+        if !source_color.is_empty() {
+            log::info!("Source colour metadata: {source_color}");
+        }
         let mut source = opened.into_frames();
 
         for hook in self.session_hooks.drain(..) {
@@ -931,6 +935,7 @@ impl StitchJob {
             stream_url: self.stream_url.take(),
             interrupted: Some(interrupted.clone()),
             network_timeout: None,
+            color_metadata: source_color,
         };
         let encoder = crate::adapters::FfmpegFileEncoder::with_live_audio(
             &self.output,
@@ -976,6 +981,9 @@ impl StitchJob {
                         .map(String::from);
             }
             cfg.encoder_config.full_range = source.is_full_range();
+            if cfg.encoder_config.inner.color_metadata.is_empty() {
+                cfg.encoder_config.inner.color_metadata = source_color;
+            }
             if cfg.encoder_config.fps.is_none() {
                 cfg.encoder_config.fps = Some(fps_rational);
                 log::info!(
