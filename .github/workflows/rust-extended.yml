@@ -81,7 +81,7 @@ jobs:
       - name: Clippy (reco-io wgpu-free)
         run: |
           cargo clippy -p reco-io --all-targets --no-default-features -- -D warnings
-          cargo clippy -p reco-io --all-targets --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling -- -D warnings
+          cargo clippy -p reco-io --all-targets --no-default-features --features ffmpeg,gstreamer,libcamera,v4l2,profiling -- -D warnings
       - name: Clippy (reco-control CPU-only)
         run: cargo clippy -p reco-control --all-targets --no-default-features -- -D warnings
       - name: Clippy (reco-autocam control-only)
@@ -152,8 +152,8 @@ jobs:
         run: |
           cargo test -p reco-io --no-default-features
           cargo test -p reco-io --no-default-features --features ffmpeg
-          cargo test -p reco-io --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling
-          io_graph="$(cargo tree -p reco-io --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling -e normal --prefix none)"
+          cargo test -p reco-io --no-default-features --features ffmpeg,gstreamer,libcamera,v4l2,profiling
+          io_graph="$(cargo tree -p reco-io --no-default-features --features ffmpeg,gstreamer,libcamera,v4l2,profiling -e normal --prefix none)"
           if [[ "$io_graph" == *"wgpu v"* ]]; then
             echo "Host I/O unexpectedly enables wgpu" >&2
             exit 1
@@ -199,12 +199,12 @@ jobs:
           shared-key: doc
           save-if: ${{ github.event_name == 'push' }}
       - uses: ./.github/actions/linux-build-deps
-      - name: Build docs (profiling + gstreamer + load-dynamic + stacked-output + gopro)
-        run: cargo doc --workspace --no-deps --features profiling,gstreamer,load-dynamic,stacked-output,gopro
+      - name: Build docs (profiling + gstreamer + load-dynamic + gopro)
+        run: cargo doc --workspace --no-deps --features profiling,gstreamer,load-dynamic,gopro
         env:
           RUSTDOCFLAGS: "-D warnings"
       - name: Build docs (reco-io wgpu-free)
-        run: cargo doc -p reco-io --no-deps --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling
+        run: cargo doc -p reco-io --no-deps --no-default-features --features ffmpeg,gstreamer,libcamera,v4l2,profiling
         env:
           RUSTDOCFLAGS: "-D warnings"
       - name: Build docs (reco-autocam control-only)

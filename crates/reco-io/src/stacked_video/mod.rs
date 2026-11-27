@@ -44,13 +44,13 @@
 //!
 //! # Recording paths
 //!
-//! The pack/unpack primitives operate on host YUV420P planes. With `stacked-output`, `replay::ReplayRecordingSource` records host frames and `replay::GpuAtlasRecorder` accepts atlases packed by the core GPU executor (also requiring `gpu`). Both feed the FFmpeg encoder. The replay round-trip tests in `tests/stacked_video_roundtrip.rs` exercise the host path.
+//! The pack/unpack primitives operate on host YUV420P planes. With `ffmpeg`, `replay::ReplayRecordingSource` records host frames and `replay::GpuAtlasRecorder` accepts atlases packed by the core GPU executor (also requiring `gpu`). Both feed the FFmpeg encoder. The replay round-trip tests in `tests/stacked_video_roundtrip.rs` exercise the host path.
 
-#[cfg(feature = "stacked-output")]
+#[cfg(feature = "ffmpeg")]
 pub mod encoder;
-#[cfg(feature = "stacked-output")]
+#[cfg(feature = "ffmpeg")]
 pub mod replay;
-#[cfg(feature = "stacked-output")]
+#[cfg(feature = "ffmpeg")]
 pub mod source;
 
 use reco_core::source::Yuv420pFrame;

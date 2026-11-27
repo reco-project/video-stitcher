@@ -19,14 +19,14 @@ path = "src/main.rs"
 default = ["autocam", "ort"]
 autocam = ["dep:reco-autocam"]
 ort = ["autocam", "reco-autocam/ort"]
-tensorrt = ["autocam", "reco-autocam/tensorrt"]
-tensorrt-native = ["autocam", "reco-autocam/tensorrt-native"]
-ncnn = ["autocam", "reco-autocam/ncnn"]
 cuda = ["autocam", "reco-autocam/cuda"]
+tensorrt = ["autocam", "reco-autocam/tensorrt"]
 coreml = ["autocam", "reco-autocam/coreml"]
 directml = ["autocam", "reco-autocam/directml"]
 load-dynamic = ["autocam", "reco-autocam/load-dynamic"]
-profiling = ["reco-core/profiling", "reco-io/profiling", "reco-calibrate/profiling"]
+tensorrt-native = ["autocam", "reco-autocam/tensorrt-native"]
+ncnn = ["autocam", "reco-autocam/ncnn"]
+profiling = ["reco-core/profiling", "reco-io/profiling", "reco-calibrate/profiling", "reco-detect/profiling", "reco-autocam?/profiling"]
 # Headless dev/test preload + auto-export hook (RECO_AUTOLOAD/RECO_AUTOEXPORT).
 # Off by default so the hook is compiled out of release binaries; CI and dev
 # builds enable it for Xvfb screenshots and smoke tests.
@@ -35,7 +35,7 @@ automation = []
 [dependencies]
 reco-core = { path = "../reco-core" }
 reco-control = { path = "../reco-control" }
-reco-io = { path = "../reco-io", features = ["ffmpeg", "config", "stacked-output"] }
+reco-io = { path = "../reco-io", features = ["ffmpeg"] }
 serde = { version = "1", features = ["derive"] }
 reco-calibrate = { path = "../reco-calibrate", features = ["io"] }
 # default-features = false so autocam's own default (ort) doesn't

@@ -13,7 +13,7 @@ mod libcamera_cmd;
 mod preview;
 #[cfg(feature = "profiling")]
 mod profiling;
-#[cfg(feature = "snapshot")]
+#[cfg(feature = "gstreamer")]
 mod snapshot;
 mod stitch;
 
@@ -237,7 +237,6 @@ enum Commands {
 
         /// Record pre-stitch source frames to this path as a
         /// stacked-video file for later replay or cloud upload.
-        /// Requires building with `--features replay`.
         #[arg(long)]
         replay: Option<String>,
 
@@ -397,15 +396,12 @@ enum Commands {
         detection_interval: u64,
 
         /// Directory for periodic JPEG snapshots of the stitched output
-        /// (live preview for the gameday web panel). Requires the
-        /// `snapshot` build feature.
-        #[cfg(feature = "snapshot")]
+        /// (live preview for the gameday web panel).
         #[arg(long)]
         snapshot_dir: Option<String>,
 
         /// Write a snapshot every N frames (default: 30). Only effective
         /// when --snapshot-dir is set.
-        #[cfg(feature = "snapshot")]
         #[arg(long, default_value_t = 30)]
         snapshot_interval: u64,
 
@@ -455,7 +451,7 @@ enum Commands {
 
         /// Record pre-stitch source frames to this path as a
         /// stacked-video file. Same replay feature as
-        /// `stitch --replay`. Requires `--features replay`.
+        /// `stitch --replay`.
         #[arg(long)]
         replay: Option<String>,
 
@@ -815,9 +811,7 @@ fn main() -> anyhow::Result<()> {
             end_time,
             model,
             detection_interval,
-            #[cfg(feature = "snapshot")]
             snapshot_dir,
-            #[cfg(feature = "snapshot")]
             snapshot_interval,
             lookahead,
             lookahead_memory_bytes,
@@ -888,9 +882,7 @@ fn main() -> anyhow::Result<()> {
                     max_frames,
                     model_path: model.as_deref(),
                     detection_interval,
-                    #[cfg(feature = "snapshot")]
                     snapshot_dir: snapshot_dir.as_deref(),
-                    #[cfg(feature = "snapshot")]
                     snapshot_interval,
                     lookahead,
                     lookahead_memory_bytes,

@@ -95,7 +95,7 @@ pub struct ReplayFrame {
 ///
 /// reco-core doesn't know about ffmpeg or the stacked-video file
 /// format - this trait is the abstraction boundary so a concrete
-/// implementation in reco-io (under the `stacked-output` feature)
+/// implementation in reco-io (under the `ffmpeg` feature)
 /// can be plugged into [`super::StitchCore`] without pulling I/O types
 /// into core. Consumers who only care about the pull API and go
 /// through `StitchSession` plus a

@@ -12,7 +12,6 @@ use reco_core::render::viewport::ViewportSize;
 use reco_io::gstreamer::camera::CameraConfig;
 
 use crate::helpers;
-#[cfg(feature = "snapshot")]
 use crate::snapshot::SnapshotWriter;
 
 /// Run live camera stitching.
@@ -42,11 +41,9 @@ pub struct CameraRunConfig<'a> {
     pub model_path: Option<&'a str>,
     pub detection_interval: u64,
     /// Directory for periodic JPEG snapshots of the stitched output
-    /// (live preview). `snapshot` build feature only.
-    #[cfg(feature = "snapshot")]
+    /// (live preview).
     pub snapshot_dir: Option<&'a str>,
     /// Write a snapshot every N frames (only with `snapshot_dir`).
-    #[cfg(feature = "snapshot")]
     pub snapshot_interval: u64,
     /// Maximum future input for the panner, in seconds. Zero disables lookahead.
     /// Only effective with AI tracking (a model + non-sweep mode).
@@ -64,9 +61,8 @@ pub struct CameraRunConfig<'a> {
     /// Disable coverage-boundary clamp on the panner output.
     /// Useful in sweep mode to cover the full panorama width.
     pub unconstrained: bool,
-    /// Optional path for stacked-replay recording. Same feature
-    /// as `StitchJob::with_replay_recording`. Requires the `replay`
-    /// feature flag on reco-cli.
+    /// Optional path for stacked-replay recording. Same replay
+    /// feature as `StitchJob::with_replay_recording`.
     pub replay_path: Option<&'a str>,
     /// Optional downscaled replay tile dims `(width, height)`.
     /// GPU-pack path only; no-op when replay_path is None.
@@ -104,9 +100,7 @@ pub fn run_camera(
         capture_fps,
         model_path,
         detection_interval,
-        #[cfg(feature = "snapshot")]
         snapshot_dir,
-        #[cfg(feature = "snapshot")]
         snapshot_interval,
         lookahead,
         lookahead_memory_bytes,
@@ -246,7 +240,6 @@ pub fn run_camera(
     // renderer's internal plane textures (populated by
     // `queue.write_texture` on each frame), so replay works
     // regardless of whether the source is NV12 or I420.
-    #[cfg(feature = "replay")]
     let _replay_attached = if let Some(replay_path) = replay_path {
         let (out_w, out_h, is_scaled) = if let Some((w, h)) = replay_scale {
             (w, h, true)
@@ -301,14 +294,6 @@ pub fn run_camera(
     } else {
         false
     };
-    #[cfg(not(feature = "replay"))]
-    {
-        let _ = replay_path;
-        let _ = replay_scale;
-        if replay_path.is_some() {
-            log::warn!("--replay specified but `replay` feature is disabled.");
-        }
-    }
 
     reco_io::init();
     let out_quality: reco_io::output::Quality = quality.parse().map_err(anyhow::Error::msg)?;
@@ -352,9 +337,7 @@ pub fn run_camera(
 
     // Snapshot sink for live preview (gameday panel): writes a JPEG
     // every N frames on a background thread. Inline delivery - its
-    // consume never blocks the frame loop. Gated behind the
-    // `snapshot` build feature.
-    #[cfg(feature = "snapshot")]
+    // consume never blocks the frame loop.
     if let Some(dir) = snapshot_dir {
         let writer = SnapshotWriter::new(Path::new(dir), snapshot_interval)?;
         session.add_sink(

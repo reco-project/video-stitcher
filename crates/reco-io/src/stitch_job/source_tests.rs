@@ -171,9 +171,7 @@ fn lifecycle(gpu: bool) {
                         );
                         finalizing.store(true, Ordering::SeqCst);
                     });
-                #[cfg(feature = "stacked-output")]
                 let replay = dir.path().join("replay.mkv");
-                #[cfg(feature = "stacked-output")]
                 if !nv12 && lookahead > 0.0 {
                     job = job.with_replay_recording(&replay);
                 }
@@ -207,7 +205,6 @@ fn lifecycle(gpu: bool) {
                         );
                     }
                 }
-                #[cfg(feature = "stacked-output")]
                 if !nv12 && lookahead > 0.0 {
                     let mut replay =
                         crate::ffmpeg::decoder::VideoDecoder::open_software(&replay).unwrap();

@@ -19,8 +19,6 @@
 //! ## Example
 //!
 //! ```no_run
-//! # #[cfg(feature = "config")]
-//! # {
 //! use serde::{Deserialize, Serialize};
 //!
 //! #[derive(Serialize, Deserialize, Default)]
@@ -34,7 +32,6 @@
 //!
 //! s.window_width = 1600;
 //! reco_io::settings::save("gui", &s).expect("save settings");
-//! # }
 //! ```
 
 use std::path::{Path, PathBuf};

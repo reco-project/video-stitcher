@@ -190,7 +190,6 @@ pub fn run_capture<T>(
         }
         capture(session)
     })();
-    #[cfg(feature = "replay")]
     session.clear_stacked_gpu_recorder();
     let finished = session.finish();
     if result.is_err()

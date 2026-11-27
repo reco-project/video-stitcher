@@ -80,10 +80,7 @@ pub struct StitchJob {
     // complex composition but Vec<FnOnce> is sufficient for now.
     session_hooks: Vec<SessionCallback>,
 
-    // Replay recording (stacked-video). Opt-in, gated by the
-    // `stacked-output` feature so consumers not building it pay
-    // nothing.
-    #[cfg(feature = "stacked-output")]
+    // Optional replay recording (stacked-video).
     replay_recording: Option<ReplayRecordingConfig>,
 
     /// Force CPU decode instead of GPU zero-copy. Needed when ORT
@@ -108,7 +105,6 @@ pub struct StitchJob {
 /// [`StitchJob::with_replay_recording`]). Stored rather than eagerly
 /// opened so `StitchJob::run` is the single allocation / error
 /// boundary for the replay file.
-#[cfg(feature = "stacked-output")]
 struct ReplayRecordingConfig {
     path: PathBuf,
     encoder_config: Box<crate::stacked_video::encoder::StackedEncoderConfig>,
@@ -319,7 +315,6 @@ impl StitchJob {
             on_finalizing: None,
             on_stream_ready: None,
             session_hooks: Vec::new(),
-            #[cfg(feature = "stacked-output")]
             replay_recording: None,
             force_cpu_decode: false,
             cpu_stitch: false,
@@ -516,7 +511,6 @@ impl StitchJob {
     ///     .with_replay_recording("replay.mkv")
     ///     .run(&interrupted)?;
     /// ```
-    #[cfg(feature = "stacked-output")]
     pub fn with_replay_recording(mut self, path: impl AsRef<Path>) -> Self {
         self.replay_recording = Some(ReplayRecordingConfig {
             path: path.as_ref().to_path_buf(),
@@ -575,7 +569,6 @@ impl StitchJob {
 
     /// Downscale replay recording on the GPU. Width must be divisible by four and height even.
     /// The CPU executor ignores this setting. Call after [`Self::with_replay_recording`].
-    #[cfg(feature = "stacked-output")]
     pub fn with_replay_scale(mut self, width: u32, height: u32) -> Self {
         if let Some(ref mut cfg) = self.replay_recording {
             cfg.scale = Some((width, height));
@@ -590,7 +583,6 @@ impl StitchJob {
 
     /// Override the encoder configuration used for replay recording.
     /// Only meaningful in combination with [`Self::with_replay_recording`].
-    #[cfg(feature = "stacked-output")]
     pub fn replay_recording_config(
         mut self,
         config: crate::stacked_video::encoder::StackedEncoderConfig,
@@ -678,7 +670,6 @@ impl StitchJob {
         }
         let mut destinations = vec![ffmpeg_file_path(&self.output)];
         destinations.extend(self.events_path.as_deref());
-        #[cfg(feature = "stacked-output")]
         destinations.extend(
             self.replay_recording
                 .as_ref()
@@ -786,7 +777,6 @@ impl StitchJob {
             }
         }
 
-        #[cfg(feature = "stacked-output")]
         if self.replay_recording.is_some()
             && info.camera_sizes.windows(2).any(|pair| pair[0] != pair[1])
         {
@@ -973,7 +963,6 @@ impl StitchJob {
             session.set_lookahead(frames, budget);
         }
 
-        #[cfg(feature = "stacked-output")]
         if let Some(ref mut cfg) = self.replay_recording {
             if cfg.encoder_config.inner.encoder_name.is_none() {
                 cfg.encoder_config.inner.encoder_name =
@@ -1038,7 +1027,6 @@ impl StitchJob {
         };
 
         // Replay starts after skipped frames, on the same output window.
-        #[cfg(feature = "stacked-output")]
         if let Some(cfg) = self.replay_recording.take() {
             // Pack-path selection. GPU-resident sources (NVDEC
             // zero-copy, future Metal / Jetson ISP) send frames
@@ -1165,7 +1153,7 @@ impl StitchJob {
         // closes the encoder file) before `session.finish()` so
         // the replay file lands before the main encoder's trailer.
         // No-op when the GPU path wasn't selected.
-        #[cfg(all(feature = "stacked-output", feature = "gpu"))]
+        #[cfg(feature = "gpu")]
         session.clear_stacked_gpu_recorder();
         let finish_result = session.finish();
         let telemetry_snap = session.telemetry_snapshot();
@@ -1292,7 +1280,6 @@ mod tests {
         assert_eq!(std::fs::read(&output).unwrap(), b"sentinel");
     }
 
-    #[cfg(feature = "stacked-output")]
     #[test]
     fn replay_file_url_cannot_replace_a_chapter() {
         let dir = tempfile::tempdir().unwrap();
