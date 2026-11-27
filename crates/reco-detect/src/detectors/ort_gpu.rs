@@ -5,18 +5,6 @@
 //! and inference (ORT TensorRT/CUDA EP). Only the small detection output
 //! (~7KB for `[1, 300, 6]`) is read back to CPU.
 
-/// `MemoryInfo` wrapper with manual `Send` impl.
-///
-/// ORT's `MemoryInfo` holds `*mut OrtMemoryInfo` and is therefore not
-/// `Send` by default. But a `MemoryInfo` is immutable descriptor state
-/// (device / allocator type / memtype) — ORT's C layer treats it as
-/// read-only config. Detector requires `Send`, so wrap with an
-/// opt-in unsafe impl for the "we only read it" use case.
-struct SendMemoryInfo(ort::memory::MemoryInfo);
-// SAFETY: MemoryInfo is read-only descriptor state; no interior mutation
-// crosses thread boundaries.
-unsafe impl Send for SendMemoryInfo {}
-
 use std::ffi::c_void;
 use std::path::Path;
 
@@ -87,7 +75,7 @@ pub struct OrtGpuDetector {
     // Cached CUDA device MemoryInfo. Constant for the detector's
     // lifetime; constructing one per inference is measurable
     // per-frame allocation churn.
-    cuda_memory_info: SendMemoryInfo,
+    cuda_memory_info: MemoryInfo<'static>,
 }
 
 impl OrtGpuDetector {
@@ -168,15 +156,13 @@ impl OrtGpuDetector {
             is_10bit,
         );
 
-        let cuda_memory_info = SendMemoryInfo(
-            MemoryInfo::new(
-                AllocationDevice::CUDA,
-                0,
-                AllocatorType::Device,
-                MemoryType::Default,
-            )
-            .map_err(|e| format!("CUDA MemoryInfo: {e}"))?,
-        );
+        let cuda_memory_info = MemoryInfo::new(
+            AllocationDevice::CUDA,
+            0,
+            AllocatorType::Device,
+            MemoryType::Default,
+        )
+        .map_err(|e| format!("CUDA MemoryInfo: {e}"))?;
 
         let mut detector = Self {
             session,
@@ -322,7 +308,7 @@ impl OrtGpuDetector {
             let sz = self.input_size as i64;
             let tensor: TensorRefMut<'_, f32> = unsafe {
                 TensorRefMut::from_raw(
-                    self.cuda_memory_info.0.clone(),
+                    self.cuda_memory_info.clone(),
                     self.tensor_f32.0 as *mut c_void,
                     Shape::new([1i64, 3, sz, sz]),
                 )
