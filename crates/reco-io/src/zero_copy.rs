@@ -9,8 +9,10 @@ pub(crate) mod cuda;
 #[cfg(all(test, target_os = "windows"))]
 mod windows_tests;
 
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+use crate::decode_stream::Message;
 #[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))]
-use crate::decode_stream::{Message, spawn};
+use crate::decode_stream::spawn;
 #[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))]
 use crate::ffmpeg::decoder::{DecodeError, VideoDecoder};
 
@@ -131,16 +133,19 @@ pub(crate) fn spawn_vt_decode_frames(
                     }
                     let mut dec = VideoDecoder::open_input(&input)?;
                     log::info!("VT decode thread {camera}: backend={}", dec.backend());
-                    while !stop.load(Ordering::Relaxed) {
-                        let Some(vt) = dec.next_frame_vt()? else {
-                            break;
-                        };
-                        let retained = unsafe { RetainedCVPixelBuffer::retain(vt.cv_pixel_buffer) };
-                        if tx.send(Ok(Some(retained))).is_err() {
-                            break;
-                        }
+                    crate::decode_stream::DecodeStream {
+                        label: &format!("VT decode thread {camera}"),
+                        start_secs: None,
+                        stop: &stop,
+                        tx,
                     }
-                    Ok(())
+                    .run(
+                        &mut dec,
+                        VideoDecoder::next_frame_vt,
+                        |frame| frame.timestamp_us,
+                        // SAFETY: `frame.cv_pixel_buffer` stays valid until the next `next_frame_vt` call.
+                        |frame| unsafe { RetainedCVPixelBuffer::retain(frame.cv_pixel_buffer) },
+                    )
                 },
             );
             (rx, crate::decoder_cleanup::DecoderTask::new(worker))
@@ -173,34 +178,18 @@ fn spawn_d3d11_decode_thread_shared(
                 return Ok(());
             }
             log::info!("D3D11VA decode thread {label}: backend={}", dec.backend());
-            // Seek to the nearest keyframe before `start_secs`, then decode-discard
-            // only the remaining GOP gap until the target PTS on the stream grid.
-            // Mirrors `FfmpegFileSource::spawn_single_decoder_at`.
-            if let Some(secs) = start_secs {
-                dec.seek_to_secs(secs)?;
+            crate::decode_stream::DecodeStream {
+                label: &format!("D3D11VA decode thread {label}"),
+                start_secs,
+                stop: &stop,
+                tx,
             }
-            let mut target_us = start_secs
-                .map(|secs| dec.seek_timestamp_us(secs))
-                .transpose()?;
-            let mut skipped = 0u64;
-            while !stop.load(Ordering::Relaxed) {
-                let Some(frame) = dec.next_frame_d3d11()? else {
-                    break;
-                };
-                if target_us.is_some_and(|target| frame.timestamp_us < target) {
-                    skipped += 1;
-                    continue;
-                }
-                if target_us.take().is_some() {
-                    log::debug!(
-                        "D3D11VA decode thread {label}: seek skipped {skipped} frames to reach target"
-                    );
-                }
-                if tx.send(Ok(Some(frame))).is_err() {
-                    break;
-                }
-            }
-            Ok(())
+            .run(
+                &mut dec,
+                VideoDecoder::next_frame_d3d11,
+                |frame| frame.timestamp_us,
+                |frame| frame,
+            )
         },
     );
     (rx, crate::decoder_cleanup::DecoderTask::new(worker))
