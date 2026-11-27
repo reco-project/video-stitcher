@@ -6,13 +6,13 @@
 //! and libcamera (Raspberry Pi CSI cameras).
 //!
 //! Enable backends via feature flags:
-//! - `ffmpeg` (default): file decode/encode, RTSP video input, RTMP/RTMPS output (protocol availability depends on the FFmpeg build).
-//! - `gpu` (default): native texture sources and GPU stitching. FFmpeg hardware codecs remain available without this feature.
+//! - `ffmpeg` (default): file decode/encode, RTSP video input, RTMP/RTMPS output, and stacked-video replay wrappers (protocol availability depends on the FFmpeg build).
+//! - `gpu` (default): native texture sources, GPU stitching, and GPU atlas replay recording. FFmpeg hardware codecs remain available without this feature.
 //! - `gstreamer`: live camera capture (Jetson ISP, V4L2, etc.)
 //! - `libcamera`: RPi CSI camera capture via rpicam-vid
-//! - `config`: opt-in user-preference persistence (via the `settings`
-//!   module) for consumers like reco-gui that need to remember
-//!   recent files and defaults across sessions.
+//! - `v4l2`: direct Linux V4L2 Bayer capture
+//! - `rpi`: Raspberry Pi FFmpeg hardware codec hooks
+//! - `profiling`: tracing spans (forwards `reco-core/profiling`)
 
 #[cfg(feature = "ffmpeg")]
 pub mod ffmpeg;
@@ -56,10 +56,9 @@ pub mod stitch_job;
 #[cfg(all(feature = "ffmpeg", feature = "gpu"))]
 pub mod zero_copy;
 
-#[cfg(feature = "config")]
 pub mod settings;
 
-/// Pack N YUV420P camera tiles into one grid-layout frame and unpack them again. CPU primitives are unconditional; FFmpeg replay requires `stacked-output`, and native GPU recording additionally requires `gpu`.
+/// Pack N YUV420P camera tiles into one grid-layout frame and unpack them again. CPU primitives are unconditional; FFmpeg replay requires `ffmpeg`, and native GPU recording additionally requires `gpu`.
 pub mod stacked_video;
 
 #[cfg(feature = "ffmpeg")]

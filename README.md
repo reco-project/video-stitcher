@@ -136,21 +136,32 @@ cargo build --release
 
 ### Feature flags
 
-| Feature | Crate | Purpose |
+Workspace feature flags exist only at real external, platform, or packaging dependency boundaries.
+
+| Feature | Crates | Purpose |
 |---|---|---|
-| `ort` (default) | reco-detect | ONNX Runtime inference (CPU + CUDA + CoreML EPs) |
-| `tensorrt-native` | reco-detect | Native TensorRT for `.engine` files (Jetson, no ORT glibc dep) |
-| `ncnn` | reco-detect | NCNN backend for mobile / embedded |
-| `load-dynamic` | reco-detect | Dynamically load `libonnxruntime.so` at runtime |
-| `gstreamer` | reco-io | GStreamer camera ingest (Linux / Jetson CSI) |
-| `stacked-output` | reco-io | FFmpeg-backed stacked-video encoder / source |
-| `profiling` | workspace | `tracing` + `tracing-chrome` instrumentation, zero-cost when off |
-| `gopro` | reco-control | Optional OpenGoPro device helper (recording control) |
+| `gpu` (default) | `reco-core`, `reco-io` | `wgpu` GPU stitching, native texture interop, GPU atlas replay; disable for wgpu-free / Android CPU builds |
+| `ffmpeg` (default) | `reco-io` | FFmpeg decode/encode, RTSP/RTMP, `StitchJob`, and stacked-video replay wrappers |
+| `gstreamer` | `reco-io`, `reco-cli` | GStreamer live camera ingest (Linux / Jetson CSI) and live JPEG snapshots |
+| `libcamera` | `reco-io`, `reco-cli` | Raspberry Pi CSI camera capture via `rpicam-vid` |
+| `v4l2` | `reco-io`, `reco-cli` | Direct Linux V4L2 raw Bayer capture |
+| `rpi` | `reco-io`, `reco-cli` | Raspberry Pi FFmpeg hardware codec hooks |
+| `autocam` (default) / `detectors` | `reco-cli`, `reco-gui` / `reco-autocam` | Opt-out boundary separating pure CPU panning/tracking from `reco-detect` + `wgpu` |
+| `ort` (default) | `reco-detect`, `reco-autocam`, `reco-cli`, `reco-gui` | ONNX Runtime inference (CPU default) |
+| `cuda`, `tensorrt`, `coreml`, `directml` | `reco-detect`, `reco-autocam`, `reco-cli`, `reco-gui` | Hardware execution providers on top of `ort` |
+| `load-dynamic` | `reco-detect`, `reco-autocam`, `reco-cli`, `reco-gui` | Dynamically load `libonnxruntime` at runtime (desktop bundles) |
+| `tensorrt-native` | `reco-detect`, `reco-autocam`, `reco-cli`, `reco-gui` | Native TensorRT for `.engine` files (Jetson, no ORT glibc dep) |
+| `ncnn` | `reco-detect`, `reco-autocam`, `reco-cli`, `reco-gui` | NCNN inference backend for mobile / embedded |
+| `io` | `reco-calibrate` | File-based calibration via `reco-io` |
+| `gopro` | `reco-control`, `reco-cli` | Optional OpenGoPro HTTP device helper (`reqwest`) |
+| `replay` | `reco-obs` | Optional `reco-io` stacked-video replay recorder (keeps OBS plugin `.so` smaller when off) |
+| `automation` | `reco-gui` | Dev/CI headless preload and auto-export hook (`RECO_AUTOLOAD` / `RECO_AUTOEXPORT`) |
+| `profiling` | workspace | `tracing` (+ `tracing-chrome` in `reco-cli`) instrumentation, zero-cost when off |
 
 Example combined build:
 
 ```bash
-cargo build --release -p reco-cli --features tensorrt-native,gstreamer,profiling
+cargo build --release -p reco-cli --no-default-features --features autocam,tensorrt-native,gstreamer,profiling
 ```
 
 ## Development

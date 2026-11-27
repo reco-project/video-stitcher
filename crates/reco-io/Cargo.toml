@@ -17,12 +17,6 @@ gstreamer = ["dep:gstreamer", "dep:gstreamer-app"]
 libcamera = ["dep:libc"]
 v4l2 = ["dep:libc"]
 profiling = ["tracing", "reco-core/profiling"]
-# Opt-in user-preference persistence for consumers. Serde +
-# serde_json are unconditional (JsonlSink uses them); this flag
-# only gates the `directories` crate and the config plumbing.
-config = ["dep:directories"]
-# FFmpeg replay wrappers; CPU pack/unpack primitives are unconditional.
-stacked-output = ["ffmpeg"]
 
 [dependencies]
 same-file = { version = "1", optional = true }
@@ -38,12 +32,12 @@ ffmpeg-next = { version = "9", default-features = false, features = ["codec", "f
 gstreamer = { version = "0.25", optional = true }
 gstreamer-app = { version = "0.25", optional = true }
 
-# Serde + serde_json are unconditional because `JsonlSink` (the
-# default shipping `PipelineEventSink`) serializes events to JSON
-# Lines. `config` also uses them.
+# Serde + serde_json + directories are unconditional: `JsonlSink`
+# serializes events to JSON Lines, and `settings` persists per-consumer
+# preferences with zero native/system library dependencies.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-directories = { version = "6", optional = true }
+directories = "6"
 libc = { version = "0.2", optional = true }
 tempfile = { version = "3", optional = true }
 sysinfo = { version = "0.38.4", default-features = false, features = ["system"] }

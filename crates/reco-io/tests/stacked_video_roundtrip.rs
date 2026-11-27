@@ -2,14 +2,14 @@
 //!
 //! Covers replay-during-recording's load-bearing requirement: a reader
 //! opened on the same path while the writer is still writing must see
-//! already-flushed fragments. Enabled only when the `stacked-output`
-//! feature is on; run with:
+//! already-flushed fragments. Enabled whenever the `ffmpeg` feature
+//! is on (default); run directly with:
 //!
 //! ```bash
-//! cargo test -p reco-io --features stacked-output --test stacked_video_roundtrip
+//! cargo test -p reco-io --test stacked_video_roundtrip
 //! ```
 
-#![cfg(feature = "stacked-output")]
+#![cfg(feature = "ffmpeg")]
 
 use reco_core::source::Yuv420pFrame;
 use reco_io::output::{Container, Quality, QualityPreset};

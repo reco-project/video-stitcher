@@ -237,7 +237,6 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     // Opt-in replay recording. The builder call is all the
     // consumer needs - StitchJob owns the encoder lifecycle, the
     // per-frame tap, and the finalize.
-    #[cfg(feature = "replay")]
     if let Some(replay_path) = args.replay_path {
         job = job.with_replay_recording(replay_path);
         if let Some((w, h)) = args.replay_scale {
@@ -247,16 +246,8 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
             println!("Replay recording: {replay_path}");
         }
     }
-    #[cfg(feature = "replay")]
     if args.replay_scale.is_some() && args.replay_path.is_none() {
         log::warn!("--replay-scale specified without --replay; ignoring.");
-    }
-    #[cfg(not(feature = "replay"))]
-    if args.replay_path.is_some() {
-        log::warn!(
-            "--replay specified but `replay` feature is disabled. \
-             Build with --features replay to enable."
-        );
     }
 
     // Precomputed trajectory file overrides all AI tracking.

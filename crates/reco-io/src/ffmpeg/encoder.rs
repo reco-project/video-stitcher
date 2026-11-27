@@ -546,7 +546,6 @@ impl VideoEncoder {
         )
     }
 
-    #[cfg(feature = "stacked-output")]
     pub(crate) fn new_source(
         path: &Path,
         width: u32,
@@ -1289,7 +1288,7 @@ impl VideoEncoder {
     /// `(width / 2) * (height / 2)`. Odd dimensions are rejected
     /// because 4:2:0 chroma subsampling requires even width/height.
     ///
-    /// The stacked-video replay encoder (`stacked-output` feature) produces YUV420P directly. Feeding RGBA through [`Self::write_frame`] would add a YUV→RGBA→YUV roundtrip; this path avoids that conversion and its rounding loss.
+    /// The stacked-video replay encoder produces YUV420P directly. Feeding RGBA through [`Self::write_frame`] would add a YUV→RGBA→YUV roundtrip; this path avoids that conversion and its rounding loss.
     ///
     /// Adapts to the encoder's staging pixel format: writes separate
     /// U and V planes for YUV420P (software encoders), or interleaves

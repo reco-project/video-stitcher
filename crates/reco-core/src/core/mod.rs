@@ -131,7 +131,7 @@ pub struct StitchCore {
     /// Optional stacked-video replay recorder attached via
     /// [`Self::set_stacked_recorder`]. Runs before rendering stereo YUV420P submits (not RGBA - see [`StackedReplayRecorder`] docs).
     /// Decouples reco-core from the actual encoder implementation
-    /// (lives in reco-io under `stacked-output`) so mobile / wasm
+    /// (lives in reco-io under `ffmpeg`) so mobile / wasm
     /// builds that skip reco-io see no replay-recording code.
     pub(crate) stacked_recorder: Option<Box<dyn StackedReplayRecorder>>,
 

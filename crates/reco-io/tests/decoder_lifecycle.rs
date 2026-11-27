@@ -732,7 +732,6 @@ fn assert_source_rates(native: bool) {
         reco_io::ffmpeg::calibration_io::extract_frames(&path, &[0]),
         Err(reco_io::ffmpeg::calibration_io::CalibrationIoError::UnknownFrameRate)
     ));
-    #[cfg(feature = "stacked-output")]
     {
         let layout = reco_io::stacked_video::GridLayout::vstack(WIDTH, HEIGHT / 2, 2).unwrap();
         let mut source =
