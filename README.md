@@ -11,7 +11,7 @@ Stitch two camera feeds into a seamless panoramic sports view with AI-powered au
 
 - **GPU-first pipeline** - Real-time stitching via wgpu 28 (Vulkan / Metal / DX12)
 - **Zero-copy decode** - Supported batch paths share native decode surfaces with the GPU. Interactive file preview uploads host frames.
-- **AI ball + player tracking** - YOLO detection on ONNX (CPU / CUDA / CoreML / NCNN) or native TensorRT `.engine`, with anticipatory lookahead smoothing and density-peak player clustering
+- **AI ball + player tracking** - YOLO detection on ONNX (CPU / CUDA / CoreML / NCNN) or native TensorRT `.engine`, with lookahead and density-peak player clustering
 - **Automatic calibration** - Direct image alignment with optional lens profiles, estimated optics, independent overlap checks and IMU / audio temporal sync
 - **Live production** - GStreamer camera ingest (Linux / Jetson CSI), push-based `StitchCore::submit_frame_*` for OBS and live streams, replay ring buffer, stacked-video pack/unpack
 - **Cross-platform** - Linux / macOS / Windows desktop, NVIDIA Jetson Orin, cloud workers
@@ -101,7 +101,7 @@ Nine Rust crates. Strict dependency direction keeps the engine reusable as a lib
 reco-core        GPU stitching engine (wgpu). No I/O, no domain logic.
 reco-io          FFmpeg decode/encode, GStreamer cameras, StitchJob API, stacked-video pack/unpack.
 reco-detect      Inference backends: ORT (CPU/CUDA/CoreML), NCNN, native TensorRT.
-reco-autocam     Panners (field, ball, sweep), lookahead smoothing, ROI filters.
+reco-autocam     Panners (field, ball, sweep), ROI filters.
 reco-calibrate   Direct pixel alignment, stereo optimization, lens database, live-calibration source trait.
 reco-control     Operator intent vocabulary (keyboard today; gopro/mobile/websocket scaffolds).
 reco-cli         Terminal consumer: stitch / calibrate / preview / camera / analyze / info.

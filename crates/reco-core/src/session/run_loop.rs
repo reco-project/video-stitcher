@@ -78,44 +78,6 @@ fn accept_capture_timing(
     Ok(())
 }
 
-/// Centered moving-average of a pose over the past + current + ahead
-/// window. Averages yaw, pitch, AND fov, so the zoom is smoothed the
-/// same lag-free way the angles are - otherwise FOV jitter survives the
-/// lookahead untouched.
-///
-/// The window is symmetric only in steady state. At the stream head the
-/// `past` side is short (it grows from empty during warm-up) and in the
-/// drain tail the `ahead` side shrinks, so the average is computed over a
-/// lopsided window at both boundaries - the first/last ~`post_smooth_half`
-/// rendered poses are smoothed slightly differently from the middle. On a
-/// clip shorter than the lookahead window the entire output is in this
-/// boundary regime. This is acceptable (no future data exists past EOF);
-/// it is documented so the boundary behavior is not mistaken for a bug.
-fn centered_smooth(
-    raw_pose: WorldPose,
-    ahead: impl Iterator<Item = WorldPose>,
-    past: impl Iterator<Item = WorldPose>,
-) -> WorldPose {
-    let mut sum_yaw = raw_pose.yaw;
-    let mut sum_pitch = raw_pose.pitch;
-    let mut sum_fov = raw_pose.fov_degrees;
-    let mut n = 1u32;
-    for p in ahead.chain(past) {
-        // Average neighboring directions on the current pose's angular branch.
-        let delta = (p.yaw - raw_pose.yaw + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU)
-            - std::f32::consts::PI;
-        sum_yaw += raw_pose.yaw + delta;
-        sum_pitch += p.pitch;
-        sum_fov += p.fov_degrees;
-        n += 1;
-    }
-    WorldPose {
-        yaw: sum_yaw / n as f32,
-        pitch: sum_pitch / n as f32,
-        fov_degrees: sum_fov / n as f32,
-    }
-}
-
 impl StitchSession {
     fn validate_source_frame(&self, frame: &crate::source::FrameSet) -> Result<(), SessionError> {
         frame
@@ -327,7 +289,7 @@ impl StitchSession {
         result
     }
 
-    /// Render one buffered frame at the post-smoothed pose.
+    /// Render one buffered frame at the requested pose.
     ///
     /// Emit per-frame trace events, set the pose/skip-detection/slot state,
     /// render via `process_frame_any`, release the VRAM-pool slot, and
@@ -336,7 +298,7 @@ impl StitchSession {
     fn render_buffered_frame(
         &mut self,
         oldest: super::frame_buffer::BufferedFrame,
-        smoothed_pose: crate::geometry::WorldPose,
+        pose: WorldPose,
         start: std::time::Instant,
         ctx: &crate::session::types::FrameLoopContext,
         on_progress: &mut Option<ProgressCallback>,
@@ -370,11 +332,10 @@ impl StitchSession {
             });
             sink.emit(crate::detect::pipeline_event::PipelineEvent::PanDecision {
                 frame_index: self.frame_count,
-                pose: smoothed_pose,
+                pose,
             });
         }
 
-        self.core.set_requested_world_pose(smoothed_pose);
         #[cfg(feature = "gpu")]
         {
             self.current_vram_slot = oldest.vram_slot;
@@ -638,107 +599,14 @@ impl StitchSession {
             Ok(true)
         };
 
-        let mut pose_queue = std::collections::VecDeque::new();
+        let first_output = self.frame_count;
         let result = (|| {
-            // ── Pre-fill: decode + detect N frames, no rendering ──────
-            log::info!("Lookahead: pre-filling {} frames...", n);
-            for _ in 0..n {
-                if !continue_run(&mut completion, self.frame_count, frame_limit, interrupted) {
-                    break;
-                }
-                if !produce_one(
-                    self,
-                    source,
-                    &mut buffer,
-                    &mut image_budget,
-                    &mut produce_count,
-                    start,
-                    &mut completion,
-                )? {
-                    break;
-                }
-            }
-            log::info!(
-                "Lookahead: pre-filled {} frames, starting render",
-                buffer.len()
-            );
-
-            // Centered post-smooth: the panner runs AHEAD of rendering
-            // so we can average past + future poses symmetrically.
-            let post_smooth_half: usize = (n / 2).max(1);
-
-            // Production schedules detection independently of rendered output.
-            let mut past_poses: std::collections::VecDeque<crate::geometry::WorldPose> =
-                std::collections::VecDeque::new();
-            let mut panner_frame_idx: u64 = 0;
-
-            // Helper: run the panner on the oldest buffered frame, push
-            // the (frame, pose) pair into the pose queue. The engine owns
-            // the panner; the buffer supplies the future WorldState window.
-            let run_panner_once = |session: &mut StitchSession,
-                                   buffer: &mut FrameBuffer,
-                                   pose_queue: &mut std::collections::VecDeque<(
-                BufferedFrame,
-                crate::geometry::WorldPose,
-            )>,
-                                   panner_frame_idx: &mut u64| {
-                if let Some(mut frame) = buffer.pop() {
-                    let panner_t0 = std::time::Instant::now();
-                    let futures = buffer.future_world_states();
-                    let pose = session.core.decide_pose_with_lookahead(
-                        &frame.world_state,
-                        &futures,
-                        *panner_frame_idx,
-                        frame.elapsed_ms,
-                    );
-                    *panner_frame_idx += 1;
-                    let panner_time = panner_t0.elapsed();
-                    frame.timing.tracking =
-                        Some(frame.timing.tracking.unwrap_or_default() + panner_time);
-                    frame.timing.total = Some(frame.timing.total.unwrap_or_default() + panner_time);
-                    pose_queue.push_back((frame, pose));
-                    true
-                } else {
-                    false
-                }
-            };
-
-            // ── Panner warm-up: run panner post_smooth_half frames ahead ──
-            let mut eof = buffer.len() < n;
-            for _ in 0..post_smooth_half {
-                if buffer.is_empty()
-                    || !continue_run(&mut completion, self.frame_count, frame_limit, interrupted)
-                {
-                    break;
-                }
-                if !eof
-                    && !buffer.is_full()
-                    && !produce_one(
-                        self,
-                        source,
-                        &mut buffer,
-                        &mut image_budget,
-                        &mut produce_count,
-                        start,
-                        &mut completion,
-                    )?
-                {
-                    eof = true;
-                }
-                if !continue_run(&mut completion, self.frame_count, frame_limit, interrupted) {
-                    break;
-                }
-                run_panner_once(self, &mut buffer, &mut pose_queue, &mut panner_frame_idx);
-            }
-
-            // ── Steady state: produce, run panner ahead, render with centered smooth ──
-            while !(eof && buffer.is_empty() && pose_queue.is_empty())
+            let mut eof = false;
+            while (!eof || !buffer.is_empty())
                 && continue_run(&mut completion, self.frame_count, frame_limit, interrupted)
             {
-                // Produce: decode + detect next frame
-                if !eof
-                    && !buffer.is_full()
-                    && !produce_one(
+                if !eof && !buffer.is_full() {
+                    eof = !produce_one(
                         self,
                         source,
                         &mut buffer,
@@ -746,47 +614,24 @@ impl StitchSession {
                         &mut produce_count,
                         start,
                         &mut completion,
-                    )?
-                {
-                    eof = true;
+                    )?;
+                    continue;
                 }
 
-                // Run panner on next buffered frame (stays ahead of rendering)
-                if !continue_run(&mut completion, self.frame_count, frame_limit, interrupted) {
-                    break;
-                }
-                if !buffer.is_empty() {
-                    run_panner_once(self, &mut buffer, &mut pose_queue, &mut panner_frame_idx);
-                }
-
-                // Render: consume from pose queue when we have enough context
-                if pose_queue.len() > post_smooth_half || (eof && !pose_queue.is_empty()) {
-                    let (mut oldest, raw_pose) = pose_queue.pop_front().unwrap();
-                    let smooth_t0 = std::time::Instant::now();
-
-                    // Centered post-smooth: average past + current + future
-                    // poses (yaw/pitch/fov) so zoom is smoothed like the angles.
-                    let smoothed_pose = centered_smooth(
-                        raw_pose,
-                        pose_queue.iter().take(post_smooth_half).map(|(_, p)| *p),
-                        past_poses.iter().copied(),
-                    );
-                    past_poses.push_back(raw_pose);
-                    if past_poses.len() > post_smooth_half {
-                        past_poses.pop_front();
-                    }
-
-                    let smooth_time = smooth_t0.elapsed();
-                    oldest.timing.tracking =
-                        Some(oldest.timing.tracking.unwrap_or_default() + smooth_time);
-                    oldest.timing.total =
-                        Some(oldest.timing.total.unwrap_or_default() + smooth_time);
-                    let retained_bytes = oldest.retained_bytes;
-                    let rendered =
-                        self.render_buffered_frame(oldest, smoothed_pose, start, &ctx, on_progress);
-                    image_budget.release(retained_bytes);
-                    rendered?;
-                }
+                let Some(mut frame) = buffer.pop() else { break };
+                let panner_start = std::time::Instant::now();
+                let pose = self.core.decide_pose_with_lookahead(
+                    &frame.world_state,
+                    &buffer.future_world_states(),
+                    self.frame_count - first_output,
+                    frame.elapsed_ms,
+                );
+                let elapsed = panner_start.elapsed();
+                frame.timing.tracking = Some(frame.timing.tracking.unwrap_or_default() + elapsed);
+                frame.timing.total = Some(frame.timing.total.unwrap_or_default() + elapsed);
+                let retained_bytes = frame.retained_bytes;
+                self.render_buffered_frame(frame, pose, start, &ctx, on_progress)?;
+                image_budget.release(retained_bytes);
             }
 
             Ok(super::types::RunResult {
@@ -796,12 +641,6 @@ impl StitchSession {
         })();
         #[cfg(feature = "gpu")]
         while let Some(frame) = buffer.pop() {
-            if let Some(slot) = frame.vram_slot {
-                self.gpu_exec().release_pool_slot(slot);
-            }
-        }
-        #[cfg(feature = "gpu")]
-        for (frame, _) in pose_queue {
             if let Some(slot) = frame.vram_slot {
                 self.gpu_exec().release_pool_slot(slot);
             }
@@ -917,30 +756,7 @@ fn continue_run(
 
 #[cfg(test)]
 mod frame_rate_tests {
-    use super::{centered_smooth, frame_seconds};
-    use crate::geometry::WorldPose;
-
-    #[test]
-    fn centered_yaw_average_uses_the_local_angular_branch() {
-        for sign in [-1.0, 1.0] {
-            let raw = WorldPose {
-                yaw: sign * 179.0_f32.to_radians(),
-                pitch: 0.2,
-                fov_degrees: 60.0,
-            };
-            for turns in [-2.0, 0.0, 3.0] {
-                let neighbor = WorldPose {
-                    yaw: -raw.yaw + turns * std::f32::consts::TAU,
-                    pitch: 0.4,
-                    fov_degrees: 80.0,
-                };
-                let result = centered_smooth(raw, [neighbor].into_iter(), [].into_iter());
-                assert!(result.yaw.cos() < -0.9999);
-                assert!((result.pitch - 0.3).abs() < 1e-6);
-                assert_eq!(result.fov_degrees, 70.0);
-            }
-        }
-    }
+    use super::frame_seconds;
 
     #[test]
     fn session_clock_rejects_unknown_or_unrepresentable_rates() {

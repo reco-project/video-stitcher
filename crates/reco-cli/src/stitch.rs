@@ -188,12 +188,9 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
     if args.cpu {
         job = job.cpu();
     }
-    // Lookahead only helps when an AI panner drives the camera: it buffers
-    // future frames so the panner can lead and the loop can centered-smooth.
-    // For a plain stitch (no model) or sweep mode it would only add latency
-    // and VRAM, so skip it and say why.
-    let tracking_active = args.trajectory_path.is_some()
-        || (args.model_path.is_some() && args.tracking_mode != "sweep");
+    let tracking_active = args.trajectory_path.is_none()
+        && args.model_path.is_some()
+        && args.tracking_mode != "sweep";
     if let Some(bytes) = args.lookahead_memory_bytes {
         job = job.lookahead_memory_limit(bytes);
     }
@@ -206,7 +203,7 @@ pub fn run_stitch(args: StitchArgs<'_>, interrupted: &Arc<AtomicBool>) -> anyhow
             );
         } else {
             log::debug!(
-                "Lookahead {:.1}s ignored: no tracking (needs --trajectory or --model, non-sweep); \
+                "Lookahead {:.1}s ignored: no tracking (needs --model with field or ball tracking); \
                  a plain stitch needs none",
                 args.lookahead
             );

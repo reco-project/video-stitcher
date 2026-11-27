@@ -24,7 +24,7 @@
 //! 1. [`FrameStart`](crate::detect::pipeline_event::PipelineEvent::FrameStart) - the frame loop picked up a new frame.
 //! 2. [`MappedDetections`](crate::detect::pipeline_event::PipelineEvent::MappedDetections) - mapped detections used for this frame's tracking.
 //! 3. [`WorldState`](crate::detect::pipeline_event::PipelineEvent::WorldState) - trackers produced the per-frame world.
-//! 4. [`PanDecision`](crate::detect::pipeline_event::PipelineEvent::PanDecision) - world-space pose request, including lookahead smoothing when enabled.
+//! 4. [`PanDecision`](crate::detect::pipeline_event::PipelineEvent::PanDecision) - world-space pose request.
 //! 5. [`RenderPoseResolved`](crate::detect::pipeline_event::PipelineEvent::RenderPoseResolved) - render-space pose resolved before rendering.
 
 use super::mapped_detection::MappedDetection;
@@ -68,7 +68,7 @@ pub enum PipelineEvent {
         ball: Option<TrackedEntity>,
     },
 
-    /// World-space request before rig correction and coverage constraints. Includes lookahead smoothing in the buffered path.
+    /// World-space request before rig correction and coverage constraints.
     PanDecision {
         /// Monotonic frame counter.
         frame_index: u64,

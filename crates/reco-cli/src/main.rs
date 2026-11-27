@@ -200,12 +200,7 @@ enum Commands {
         #[arg(long, default_value_t = 1)]
         detection_interval: u64,
 
-        /// Lookahead buffer in seconds. Decodes N frames ahead so the
-        /// panner can lead the play and the loop can centered-smooth the
-        /// pose lag-free. The validated dead-zone/reactivity defaults
-        /// assume this is on, so it defaults to 1.5. Only engages with AI
-        /// tracking (needs --model, non-sweep); ignored for a plain
-        /// stitch. Retains source images on their selected storage path. 0 = off.
+        /// Maximum future input in seconds for AI panning. Zero disables buffering.
         #[arg(long, default_value_t = 1.5)]
         lookahead: f64,
 
@@ -414,12 +409,7 @@ enum Commands {
         #[arg(long, default_value_t = 30)]
         snapshot_interval: u64,
 
-        /// Lookahead buffer in seconds for the live camera path. The panner
-        /// leads the play by this window and the loop centered-smooths the
-        /// pose lag-free, the same as `stitch --lookahead`. Adds ~this much
-        /// latency and retained image storage. Only engages with AI tracking
-        /// (needs --model, non-sweep); unavailable with raw Bayer capture.
-        /// 0 = off (immediate render).
+        /// Maximum future input in seconds for live AI panning. Zero disables buffering. Unavailable with raw Bayer capture.
         #[arg(long, default_value_t = 0.75)]
         lookahead: f64,
 

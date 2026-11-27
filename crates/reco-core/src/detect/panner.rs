@@ -11,9 +11,7 @@
 //! Implementations (shipped in `reco-autocam`):
 //! - `FieldPanner` - the production player+ball panner: trimmed-robust
 //!   cluster centroid, ball-only follow when no cluster, dynamic FOV,
-//!   ball-presence hysteresis, velocity-clamped chase. Lookahead is not
-//!   a separate panner - the buffered run loop centered-smooths this
-//!   panner's pose stream over past + future frames.
+//!   ball-presence hysteresis, velocity-clamped chase, and optional anticipation.
 //! - `SweepPanner` - debug-only, ignores world state and slowly pans
 //!   left-right within coverage bounds.
 //! - `FilePanner` - replays a precomputed pose trajectory from CSV.
@@ -35,7 +33,7 @@ pub struct PanContext<'a> {
     pub frame_index: u64,
     /// Elapsed milliseconds since the start of processing.
     pub timestamp_ms: f64,
-    /// Stored world-space request, initially the default pose. In lookahead mode this can be the smoothed request for an earlier rendered frame, not the immediately preceding panner decision. It is never the coverage-constrained render pose.
+    /// Previous world-space request before coverage constraints, initially the default pose.
     pub previous_pose: WorldPose,
     /// Shared calibration for source-to-world mapping and coverage queries.
     /// Borrowed for the duration of the [`decide`](Panner::decide)

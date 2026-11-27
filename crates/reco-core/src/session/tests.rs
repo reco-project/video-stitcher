@@ -13,6 +13,7 @@ use super::StitchSession;
 mod capture_identity;
 mod coverage;
 mod cpu_detection;
+mod lookahead;
 #[cfg(all(feature = "gpu", target_os = "linux"))]
 mod nvmm;
 mod telemetry;

@@ -133,9 +133,7 @@ export component RecoApp inherits Window {
     in-out property <string> export-tracking-mode: "field";
     in-out property <int> export-detection-interval: 3;
     in-out property <bool> export-autocam-enabled: false;
-    // Panner tuning (mapped onto FieldPannerConfig in export.rs). Defaults
-    // mirror the validated football defaults; lookahead defaults on because
-    // dead-zone assumes it is active to absorb its latency.
+    // Panner tuning mapped onto FieldPannerConfig in export.rs.
     in-out property <string> export-panner-preset: "broadcast";
     in-out property <float> export-lookahead-secs: 1.5;
     in-out property <string> export-framing: "action";
