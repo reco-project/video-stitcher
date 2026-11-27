@@ -38,7 +38,10 @@ fn macos_available_memory(available: u64, total: u64, used: u64) -> u64 {
     available.min(total.saturating_sub(used))
 }
 
-/// Choose a native image allowance from driver memory, falling back to host policy when unavailable. An explicit override still applies and does not bypass native admission checks.
+/// Choose a native image allowance from GPU memory (clamped by host RAM on
+/// unified-memory systems such as Apple Silicon), falling back to host policy
+/// when unavailable. An explicit override still applies and does not bypass
+/// native admission checks.
 #[cfg(feature = "gpu")]
 pub fn native_image_budget(
     gpu: &reco_core::gpu::GpuContext,
@@ -47,10 +50,8 @@ pub fn native_image_budget(
     if let Some(bytes) = explicit_bytes {
         return nonzero(bytes);
     }
-    match gpu.available_vram() {
-        Some((free, total)) => nonzero(reco_core::gpu::vram_pool::lookahead_budget_bytes(
-            free, total,
-        )),
+    match gpu.lookahead_memory_budget() {
+        Some(budget) => nonzero(budget.usable_bytes),
         None => image_budget(None),
     }
 }

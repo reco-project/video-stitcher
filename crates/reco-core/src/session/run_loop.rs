@@ -436,16 +436,11 @@ impl StitchSession {
             #[cfg(not(target_os = "windows"))]
             let needs_allocation = self.gpu_exec_ref().residency.pool.is_none();
             if needs_allocation {
-                match self.gpu_exec_ref().pipeline.gpu().available_vram() {
-                    Some((free, total)) => {
-                        // Budget trusts the driver's "free" figure when it is
-                        // believable (it already excludes the compositor and the
-                        // rest of the pipeline) and falls back to a fraction of
-                        // total when free reads bogus (~0 on a multi-GB card).
-                        // Sampled here just before pool creation, after the GUI
-                        // preview is released, so it reflects real export-time room.
-                        // Over-allocation is caught at pool creation.
-                        let budget = crate::gpu::vram_pool::lookahead_budget_bytes(free, total);
+                match self.gpu_exec_ref().pipeline.gpu().lookahead_memory_budget() {
+                    Some(vram) => {
+                        let budget = vram.usable_bytes;
+                        let free = vram.reported_free_bytes;
+                        let total = vram.total_bytes;
                         log::info!(
                             "VRAM budget: {:.2} GB usable of {:.2} GB total ({:.2} GB reported free); \
                          lookahead pool needs {:.2} GB ({pool_size} slots)",
@@ -533,9 +528,14 @@ impl StitchSession {
             )?;
             session.validate_source_frame(&frame)?;
             let retained_bytes = frame.retained_image_bytes().map_err(SessionError::Config)?;
-            image_budget
-                .retain(retained_bytes)
-                .map_err(SessionError::Config)?;
+            image_budget.retain(retained_bytes).map_err(|error| {
+                let max_frames =
+                    crate::lookahead::max_frames(retained_bytes, session.lookahead_memory_bytes);
+                let max_secs = max_frames as f64 / source.info().fps.max(1.0);
+                SessionError::Config(format!(
+                    "{error}; requested {n} frames, budget fits at most {max_frames} lookahead frames ({max_secs:.2}s)"
+                ))
+            })?;
 
             // Stage GPU frames to persistent slots BEFORE detection,
             // so detection can use the staged textures.

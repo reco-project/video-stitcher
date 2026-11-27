@@ -89,6 +89,20 @@ pub struct SurfaceInfo {
     pub alpha_modes: Vec<wgpu::CompositeAlphaMode>,
 }
 
+/// Snapshot of the lookahead image-memory allowance for a [`GpuContext`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LookaheadMemoryBudget {
+    /// Usable byte allowance for retained lookahead frames.
+    pub usable_bytes: usize,
+    /// Driver-reported free GPU memory (or host-clamped headroom on unified
+    /// memory) in bytes.
+    pub reported_free_bytes: u64,
+    /// Total GPU memory (or physical unified RAM on Apple Silicon) in bytes.
+    pub total_bytes: u64,
+    /// Whether this adapter shares unified CPU+GPU memory.
+    pub unified_memory: bool,
+}
+
 /// Shared GPU context used by all pipeline stages.
 ///
 /// Created once at startup and passed to the pipeline, scene renderer,
@@ -411,10 +425,15 @@ impl GpuContext {
     /// `free` figure is device-wide and therefore counts the decode pool
     /// and TensorRT engine alongside the wgpu allocations. On Windows it
     /// uses the DXGI budget (`IDXGIAdapter3::QueryVideoMemoryInfo`) via the
-    /// DX12 HAL adapter. Other backends return `None`; callers must fall
-    /// back to allocation-time OOM handling when this returns `None`. The
-    /// figure is a snapshot: it can shift as other processes allocate, so
-    /// it is a sizing aid, not a guarantee.
+    /// DX12 HAL adapter. On macOS/iOS Metal it queries
+    /// `recommendedMaxWorkingSetSize` and `currentAllocatedSize`; on
+    /// unified-memory Apple Silicon devices, `free` is additionally clamped by
+    /// actual host free+reclaimable RAM from `host_statistics64` so callers do
+    /// not mistake unused GPU working-set headroom for spare physical RAM.
+    /// Other backends return `None`; callers must fall back to allocation-time
+    /// OOM handling when this returns `None`. The figure is a snapshot: it can
+    /// shift as other processes allocate, so it is a sizing aid, not a
+    /// guarantee.
     pub fn available_vram(&self) -> Option<(u64, u64)> {
         #[cfg(target_os = "linux")]
         {
@@ -460,25 +479,136 @@ impl GpuContext {
         }
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
-            if self.adapter_info.backend != wgpu::Backend::Metal {
-                return None;
+            let (metal_free, metal_total, unified) = self.metal_memory_info()?;
+            if unified {
+                let (host_available, _host_total) = macos_host_memory()?;
+                return Some((metal_free.min(host_available), metal_total));
             }
-            // SAFETY: downcast to the Metal HAL device; the guard borrows
-            // self.device and lives until end of scope, so raw_device() is
-            // valid for the property reads below.
-            let hal_device = unsafe { self.device.as_hal::<wgpu::hal::api::Metal>()? };
-            let raw = hal_device.raw_device();
-            // recommendedMaxWorkingSetSize is the budget beyond which the GPU
-            // starts swapping - a silent slowdown on unified-memory Apple
-            // Silicon (no hard OOM), a hard limit on Intel dGPUs. Treating it
-            // as "total" lets the pre-flight check fail fast before the pool
-            // pushes the app into swap.
-            let total = raw.recommended_max_working_set_size();
-            let used = raw.current_allocated_size();
-            return Some((total.saturating_sub(used), total));
+            return Some((metal_free, metal_total));
         }
         #[allow(unreachable_code)]
         None
+    }
+
+    /// Whether the selected GPU shares unified memory with the CPU
+    /// (e.g. Apple Silicon).
+    pub fn has_unified_memory(&self) -> bool {
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        if let Some((_, _, unified)) = self.metal_memory_info() {
+            return unified;
+        }
+        self.adapter_info.device_type == wgpu::DeviceType::IntegratedGpu
+    }
+
+    /// Compute the lookahead image-memory budget for native GPU-resident
+    /// frames, accounting for unified CPU+GPU memory on Apple Silicon.
+    ///
+    /// On discrete GPUs (Linux CUDA, Windows DX12, Intel Mac dGPUs), this
+    /// applies the dedicated-VRAM budget policy to [`Self::available_vram`].
+    /// On unified-memory Metal devices, Metal's `recommendedMaxWorkingSetSize`
+    /// does not reflect actual free system memory, so the budget is clamped
+    /// against live host free+reclaimable RAM (`host_statistics64`) and a
+    /// conservative share of physical RAM (`hw.memsize`), logging whenever
+    /// unified-memory limits tighten the budget below Metal's working set.
+    /// Returns `None` when no trustworthy budget query is available.
+    pub fn lookahead_memory_budget(&self) -> Option<LookaheadMemoryBudget> {
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        {
+            let (metal_free, metal_total, unified) = self.metal_memory_info()?;
+            if unified {
+                let Some((host_available, host_total)) = macos_host_memory() else {
+                    log::warn!(
+                        "Unified memory host-RAM query failed; refusing to trust Metal's \
+                         {:.2} GB working-set limit as free system memory",
+                        metal_total as f64 / 1e9,
+                    );
+                    return None;
+                };
+                let metal_only_budget =
+                    crate::lookahead::discrete_vram_budget_bytes(metal_free, metal_total);
+                let usable_bytes = crate::lookahead::unified_memory_budget_bytes(
+                    metal_free,
+                    metal_total,
+                    host_available,
+                    host_total,
+                );
+                if usable_bytes == 0 {
+                    log::warn!(
+                        "Unified memory lookahead budget clamped to 0 GB under memory pressure \
+                         (host {:.2} GB available of {:.2} GB physical RAM; \
+                         Metal working set {:.2} GB free of {:.2} GB)",
+                        host_available as f64 / 1e9,
+                        host_total as f64 / 1e9,
+                        metal_free as f64 / 1e9,
+                        metal_total as f64 / 1e9,
+                    );
+                } else if usable_bytes < metal_only_budget {
+                    log::info!(
+                        "Unified memory: clamping lookahead memory budget from {:.2} GB \
+                         (Metal working set) to {:.2} GB (host {:.2} GB available of {:.2} GB \
+                         physical RAM; Metal {:.2} GB free of {:.2} GB)",
+                        metal_only_budget as f64 / 1e9,
+                        usable_bytes as f64 / 1e9,
+                        host_available as f64 / 1e9,
+                        host_total as f64 / 1e9,
+                        metal_free as f64 / 1e9,
+                        metal_total as f64 / 1e9,
+                    );
+                } else {
+                    log::info!(
+                        "Unified memory lookahead budget: {:.2} GB \
+                         (host {:.2} GB available of {:.2} GB physical RAM; \
+                         Metal {:.2} GB free of {:.2} GB)",
+                        usable_bytes as f64 / 1e9,
+                        host_available as f64 / 1e9,
+                        host_total as f64 / 1e9,
+                        metal_free as f64 / 1e9,
+                        metal_total as f64 / 1e9,
+                    );
+                }
+                return Some(LookaheadMemoryBudget {
+                    usable_bytes,
+                    reported_free_bytes: metal_free.min(host_available),
+                    total_bytes: host_total,
+                    unified_memory: true,
+                });
+            }
+            let usable_bytes =
+                crate::lookahead::discrete_vram_budget_bytes(metal_free, metal_total);
+            Some(LookaheadMemoryBudget {
+                usable_bytes,
+                reported_free_bytes: metal_free,
+                total_bytes: metal_total,
+                unified_memory: false,
+            })
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+        {
+            let (free, total) = self.available_vram()?;
+            let usable_bytes = crate::lookahead::discrete_vram_budget_bytes(free, total);
+            Some(LookaheadMemoryBudget {
+                usable_bytes,
+                reported_free_bytes: free,
+                total_bytes: total,
+                unified_memory: self.has_unified_memory(),
+            })
+        }
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    fn metal_memory_info(&self) -> Option<(u64, u64, bool)> {
+        if self.adapter_info.backend != wgpu::Backend::Metal {
+            return None;
+        }
+        // SAFETY: downcast to the Metal HAL device; the guard borrows
+        // self.device and lives until end of scope, so raw_device() is
+        // valid for the property reads below.
+        let hal_device = unsafe { self.device.as_hal::<wgpu::hal::api::Metal>()? };
+        let raw = hal_device.raw_device();
+        let total = raw.recommended_max_working_set_size();
+        let used = raw.current_allocated_size();
+        let unified = raw.has_unified_memory();
+        Some((total.saturating_sub(used), total, unified))
     }
 
     /// The GPU backend name (e.g. "Vulkan", "Dx12", "Metal").
@@ -655,6 +785,80 @@ fn clamp_limits(desired: &wgpu::Limits, supported: &wgpu::Limits) -> wgpu::Limit
         // Copy remaining fields from desired (zero-default features like mesh shaders, RT)
         ..*desired
     }
+}
+
+/// Query `(available, total)` host physical memory in bytes on macOS/iOS via
+/// `sysctl(CTL_HW, HW_MEMSIZE)` and Mach `host_statistics64(HOST_VM_INFO64)`.
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn macos_host_memory() -> Option<(u64, u64)> {
+    unsafe extern "C" {
+        fn mach_port_deallocate(
+            task: libc::mach_port_t,
+            name: libc::mach_port_t,
+        ) -> libc::kern_return_t;
+    }
+
+    let mut host_total: u64 = 0;
+    let mut len = std::mem::size_of::<u64>();
+    let mut mib = [libc::CTL_HW, libc::HW_MEMSIZE];
+    // SAFETY: `mib` has 2 elements and `host_total` is a valid `u64` out-buffer of length `len`.
+    let sysctl_ok = unsafe {
+        libc::sysctl(
+            mib.as_mut_ptr(),
+            2,
+            (&raw mut host_total).cast::<libc::c_void>(),
+            &raw mut len,
+            std::ptr::null_mut(),
+            0,
+        ) == 0
+    };
+    if !sysctl_ok || host_total == 0 {
+        return None;
+    }
+
+    // SAFETY: `_SC_PAGESIZE` is a standard POSIX sysconf key.
+    let page_size = u64::try_from(unsafe { libc::sysconf(libc::_SC_PAGESIZE) }).ok()?;
+    if page_size == 0 {
+        return None;
+    }
+
+    let mut stat = std::mem::MaybeUninit::<libc::vm_statistics64>::zeroed();
+    let mut count: libc::mach_msg_type_number_t = libc::HOST_VM_INFO64_COUNT;
+    // SAFETY: `mach_host_self` returns a send right to the host name port.
+    #[allow(deprecated)]
+    let host = unsafe { libc::mach_host_self() };
+    // SAFETY: `stat` points to zeroed `vm_statistics64` storage of `HOST_VM_INFO64_COUNT` integers.
+    let kr = unsafe {
+        libc::host_statistics64(
+            host,
+            libc::HOST_VM_INFO64,
+            stat.as_mut_ptr().cast::<libc::integer_t>(),
+            &raw mut count,
+        )
+    };
+    // SAFETY: release the send right returned by `mach_host_self`.
+    unsafe {
+        #[allow(deprecated)]
+        let task = libc::mach_task_self();
+        let _ = mach_port_deallocate(task, host);
+    }
+    if kr != libc::KERN_SUCCESS {
+        return None;
+    }
+    // SAFETY: `host_statistics64` returned `KERN_SUCCESS`, populating `stat`.
+    let stat = unsafe { stat.assume_init() };
+    let available = crate::lookahead::macos_vm_available_bytes(crate::lookahead::MacosVmSample {
+        free_count: stat.free_count,
+        speculative_count: stat.speculative_count,
+        external_page_count: stat.external_page_count,
+        purgeable_count: stat.purgeable_count,
+        internal_page_count: stat.internal_page_count,
+        wire_count: stat.wire_count,
+        compressor_page_count: stat.compressor_page_count,
+        page_size,
+        host_total,
+    });
+    Some((available, host_total))
 }
 
 #[cfg(test)]
