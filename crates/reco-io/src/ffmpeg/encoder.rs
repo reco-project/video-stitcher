@@ -6,8 +6,31 @@
 extern crate ffmpeg_next as ffmpeg;
 
 mod audio;
-use super::live_audio::LiveAudio;
+mod catalog;
+mod container;
+mod options;
+mod silent_audio;
+
 use audio::AudioPassthrough;
+use catalog::{
+    EncoderFamily, EncoderSpec, StagingMode, find_encoder_spec, specs_for_codec, validate_selection,
+};
+use container::{
+    ContainerPolicy, HevcHeaderCheck, OutputColor, apply_video_codec_tag,
+    muxer_requires_global_header,
+};
+use options::{build_encoder_opts, validate_encoder_options};
+use silent_audio::SilentAudio;
+// Re-imported for `audio.rs` (`use super::*`) and unit tests.
+use silent_audio::{sanitize_audio_start_time, seconds_to_pts};
+
+use super::hevc_color::HevcColor;
+use super::hw_upload::HardwareUpload;
+use super::live_audio::LiveAudio;
+use super::output_io::OutputIo;
+pub use super::output_io::{StreamMonitor, StreamStatus};
+use crate::output::{Codec, Container, Quality};
+pub use catalog::{available_encoders, available_h264_encoders};
 
 use ffmpeg::format::Pixel;
 use ffmpeg::software::scaling::{context::Context as ScalingContext, flag::Flags as ScalingFlags};
@@ -15,12 +38,6 @@ use ffmpeg::util::frame::video::Video as VideoFrame;
 use ffmpeg::{Rational, Rescale, codec, encoder, format};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
-
-use super::hevc_color::HevcColor;
-use super::hw_upload::{HardwareUpload, staging_pixel_format};
-use super::output_io::OutputIo;
-pub use super::output_io::{StreamMonitor, StreamStatus};
-use crate::output::{Codec, Container, Quality, QualityPreset};
 
 /// Errors from the video encoder.
 #[derive(Debug, Error)]
@@ -56,178 +73,6 @@ pub enum EncodeError {
     },
 }
 
-impl Codec {
-    fn id(self) -> codec::Id {
-        match self {
-            Self::H264 => codec::Id::H264,
-            Self::HEVC => codec::Id::HEVC,
-            Self::AV1 => codec::Id::AV1,
-        }
-    }
-    fn candidates(self) -> &'static [EncoderCandidate] {
-        match self {
-            Self::H264 => H264_ENCODERS,
-            Self::HEVC => HEVC_ENCODERS,
-            Self::AV1 => AV1_ENCODERS,
-        }
-    }
-
-    fn label(self) -> &'static str {
-        match self {
-            Self::H264 => "H.264",
-            Self::HEVC => "HEVC",
-            Self::AV1 => "AV1",
-        }
-    }
-}
-
-struct EncoderCandidate {
-    name: &'static str,
-    is_hardware: bool,
-    /// Pixel format the encoder is opened with. For most encoders this is the
-    /// CPU swscale target (NV12 or YUV420P). `Pixel::VAAPI` is a sentinel
-    /// meaning "GPU surface, sw_format = NV12": the CPU stages frames in NV12
-    /// (see `staging_pixel_format`) and uploads them to a VAAPI surface before
-    /// encoding (see `hw_upload`).
-    pixel_format: Pixel,
-}
-
-/// Known H.264 encoder candidates, in preference order.
-///
-/// Covers: NVIDIA (NVENC), Intel (QSV), Apple (VideoToolbox), AMD (AMF/VAAPI),
-/// embedded Linux (V4L2 M2M), Android (MediaCodec), Windows fallback (MF),
-/// and software (libx264).
-const H264_ENCODERS: &[EncoderCandidate] = &[
-    EncoderCandidate {
-        name: "h264_nvenc",
-        is_hardware: true,
-        pixel_format: Pixel::NV12,
-    },
-    EncoderCandidate {
-        name: "h264_qsv",
-        is_hardware: true,
-        pixel_format: Pixel::NV12,
-    },
-    EncoderCandidate {
-        name: "h264_videotoolbox",
-        is_hardware: true,
-        pixel_format: Pixel::NV12,
-    },
-    EncoderCandidate {
-        name: "h264_amf",
-        is_hardware: true,
-        pixel_format: Pixel::NV12,
-    },
-    EncoderCandidate {
-        name: "h264_vaapi",
-        is_hardware: true,
-        pixel_format: Pixel::VAAPI,
-    },
-    EncoderCandidate {
-        name: "h264_v4l2m2m",
-        is_hardware: true,
-        pixel_format: Pixel::NV12,
-    },
-    EncoderCandidate {
-        name: "h264_mediacodec",
-        is_hardware: true,
-        pixel_format: Pixel::NV12,
-    },
-    EncoderCandidate {
-        name: "h264_mf",
-        is_hardware: true,
-        pixel_format: Pixel::NV12,
-    },
-    EncoderCandidate {
-        name: "libx264",
-        is_hardware: false,
-        pixel_format: Pixel::YUV420P,
-    },
-];
-
-/// Known HEVC encoder candidates, in preference order.
-const HEVC_ENCODERS: &[EncoderCandidate] = &[
-    EncoderCandidate {
-        name: "hevc_nvenc",
-        is_hardware: true,
-        pixel_format: Pixel::NV12,
-    },
-    EncoderCandidate {
-        name: "hevc_qsv",
-        is_hardware: true,
-        pixel_format: Pixel::NV12,
-    },
-    EncoderCandidate {
-        name: "hevc_videotoolbox",
-        is_hardware: true,
-        pixel_format: Pixel::NV12,
-    },
-    EncoderCandidate {
-        name: "hevc_amf",
-        is_hardware: true,
-        pixel_format: Pixel::NV12,
-    },
-    EncoderCandidate {
-        name: "hevc_vaapi",
-        is_hardware: true,
-        pixel_format: Pixel::VAAPI,
-    },
-    EncoderCandidate {
-        name: "hevc_v4l2m2m",
-        is_hardware: true,
-        pixel_format: Pixel::NV12,
-    },
-    EncoderCandidate {
-        name: "hevc_mediacodec",
-        is_hardware: true,
-        pixel_format: Pixel::NV12,
-    },
-    EncoderCandidate {
-        name: "hevc_mf",
-        is_hardware: true,
-        pixel_format: Pixel::NV12,
-    },
-    EncoderCandidate {
-        name: "libx265",
-        is_hardware: false,
-        pixel_format: Pixel::YUV420P,
-    },
-];
-
-/// Known AV1 encoder candidates, in preference order.
-const AV1_ENCODERS: &[EncoderCandidate] = &[
-    EncoderCandidate {
-        name: "av1_nvenc",
-        is_hardware: true,
-        pixel_format: Pixel::NV12,
-    },
-    EncoderCandidate {
-        name: "av1_qsv",
-        is_hardware: true,
-        pixel_format: Pixel::NV12,
-    },
-    EncoderCandidate {
-        name: "av1_amf",
-        is_hardware: true,
-        pixel_format: Pixel::NV12,
-    },
-    EncoderCandidate {
-        name: "av1_vaapi",
-        is_hardware: true,
-        pixel_format: Pixel::VAAPI,
-    },
-    EncoderCandidate {
-        name: "libsvtav1",
-        is_hardware: false,
-        pixel_format: Pixel::YUV420P,
-    },
-    EncoderCandidate {
-        name: "libaom-av1",
-        is_hardware: false,
-        pixel_format: Pixel::YUV420P,
-    },
-];
-
 /// Information about an available encoder.
 #[derive(Debug, Clone)]
 pub struct EncoderInfo {
@@ -237,131 +82,6 @@ pub struct EncoderInfo {
     pub description: String,
     /// Whether this is a hardware-accelerated encoder.
     pub is_hardware: bool,
-}
-
-/// List encoders registered in FFmpeg for a given codec.
-///
-/// Returns encoders in preference order (hardware first, then software). Registration does not guarantee that the required hardware or driver is usable.
-pub fn available_encoders(codec: Codec) -> Vec<EncoderInfo> {
-    crate::init();
-    codec
-        .candidates()
-        .iter()
-        .filter_map(|c| {
-            encoder::find_by_name(c.name).map(|codec| EncoderInfo {
-                name: c.name.to_string(),
-                description: codec.description().to_string(),
-                is_hardware: c.is_hardware,
-            })
-        })
-        .collect()
-}
-
-/// Detect which H.264 encoders are available (convenience wrapper).
-pub fn available_h264_encoders() -> Vec<EncoderInfo> {
-    available_encoders(Codec::H264)
-}
-
-fn auto_candidate_allowed(name: &str) -> bool {
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-    if name.ends_with("_nvenc") {
-        return false;
-    }
-
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-    if name.ends_with("_qsv") {
-        return false;
-    }
-
-    #[cfg(target_os = "linux")]
-    if name.ends_with("_qsv")
-        && let Some(vaapi_name) = vaapi_peer_encoder(name)
-        && encoder::find_by_name(vaapi_name).is_some()
-    {
-        return false;
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    if name.ends_with("_videotoolbox") {
-        return false;
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    if name.ends_with("_amf") || name.ends_with("_mf") {
-        return false;
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    if name.ends_with("_vaapi") || name.ends_with("_v4l2m2m") {
-        return false;
-    }
-
-    #[cfg(not(target_os = "android"))]
-    if name.ends_with("_mediacodec") {
-        return false;
-    }
-
-    true
-}
-
-#[cfg(target_os = "linux")]
-fn vaapi_peer_encoder(name: &str) -> Option<&'static str> {
-    match name {
-        "h264_qsv" => Some("h264_vaapi"),
-        "hevc_qsv" => Some("hevc_vaapi"),
-        "av1_qsv" => Some("av1_vaapi"),
-        _ => None,
-    }
-}
-
-impl Container {
-    fn muxer_name(self) -> &'static str {
-        match self {
-            Self::Mp4 | Self::Mp4Fragmented => "mp4",
-            Self::Mov => "mov",
-            Self::Mkv => "matroska",
-            Self::Flv => "flv",
-        }
-    }
-}
-
-/// FourCC codec tag for Apple-compatible HEVC sample entries (`MKTAG('h', 'v', 'c', '1')`).
-const HVC1_CODEC_TAG: u32 = u32::from_le_bytes(*b"hvc1");
-
-/// Select an explicit container `codec_tag` for a video stream when the muxer default is
-/// incompatible with standard players.
-///
-/// FFmpeg's MP4/MOV muxers default to `hev1` for HEVC when `codec_tag` is `0`, which Apple's
-/// playback stack (QuickTime, Safari, Photos, Finder) rejects. Setting `hvc1` writes parameter
-/// sets in the `hvcC` sample entry when global headers are active. Other codecs and non-ISOBMFF
-/// containers (Matroska, FLV, MPEG-TS, etc.) keep the muxer default (`0`).
-fn video_codec_tag(codec_id: codec::Id, muxer_name: &str, has_global_header: bool) -> Option<u32> {
-    if codec_id == codec::Id::HEVC && has_global_header && matches!(muxer_name, "mp4" | "mov") {
-        Some(HVC1_CODEC_TAG)
-    } else {
-        None
-    }
-}
-
-/// Resolved VUI and container colour configuration for an opened encoder.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct OutputColor {
-    /// Colour primaries, transfer characteristics, and matrix coefficients to tag.
-    metadata: super::ColorMetadata,
-    /// Full/limited YUV range to tag, if known (`Some(true)` = full/JPEG, `Some(false)` = limited/MPEG).
-    full_range: Option<bool>,
-    /// Configure CPU `swscale` RGBA->YUV conversion for the renderer's BT.709 limited-range path.
-    ///
-    /// Kept on BT.709 even when propagating non-BT.709 source VUI metadata because the render
-    /// shaders decode source YUV with the BT.709 matrix; matching matrices cancel on round-trip
-    /// and keep RGBA and NV12 output paths identical.
-    rendered_rgba_scaler: bool,
-}
-
-impl OutputColor {
-    fn has_tags(self) -> bool {
-        !self.metadata.is_empty() || self.full_range.is_some()
-    }
 }
 
 /// Configuration for the video encoder.
@@ -383,7 +103,7 @@ pub struct EncoderConfig {
     /// For a chained recording, list every segment so audio spans the whole
     /// output; passing a single file copies just that one. The first audio
     /// stream of each file is used.
-    pub audio_source: Option<Vec<std::path::PathBuf>>,
+    pub audio_source: Option<Vec<PathBuf>>,
     /// Start copying audio at this source timestamp, in seconds.
     ///
     /// Used when the video export starts from a later processing window
@@ -421,14 +141,21 @@ pub struct EncoderConfig {
     pub color_metadata: super::ColorMetadata,
 }
 
-type OpenedVideoEncoder = (
-    ffmpeg::encoder::video::Encoder,
-    ScalingContext,
-    usize,
-    Rational,
-    Rational,
-    Option<HardwareUpload>,
-);
+#[derive(Debug, Clone, Copy)]
+struct ResolvedCandidate<'a> {
+    name: &'a str,
+    family: EncoderFamily,
+    is_hardware: bool,
+    staging: StagingMode,
+}
+
+struct OpenedVideoEncoder {
+    encoder: ffmpeg::encoder::video::Encoder,
+    scaler: ScalingContext,
+    stream_index: usize,
+    encoder_time_base: Rational,
+    hardware_upload: Option<HardwareUpload>,
+}
 
 /// Video encoder that writes RGBA frames to an MP4 file.
 ///
@@ -484,23 +211,11 @@ enum StreamAudio {
     Silence(SilentAudio),
 }
 
-/// Generates a silent AAC track on the streamed video timeline.
-struct SilentAudio {
-    encoder: ffmpeg::encoder::audio::Encoder,
-    stream_index: usize,
-    output_time_base: Rational,
-    frame: ffmpeg::frame::Audio,
-    next_pts: Option<i64>,
-    samples_per_frame: usize,
-    sample_rate: u32,
-}
-
 // SAFETY: VideoEncoder is only used from a single thread. The raw pointers
 // inside FFmpeg's SwsContext/Encoder are not shared across threads.
 unsafe impl Send for VideoEncoder {}
 // SAFETY: Same single-thread usage as VideoEncoder.
 unsafe impl Send for StreamOutput {}
-unsafe impl Send for SilentAudio {}
 
 impl Drop for VideoEncoder {
     fn drop(&mut self) {
@@ -596,6 +311,94 @@ impl VideoEncoder {
         color: OutputColor,
         live_audio: Option<LiveAudio>,
     ) -> Result<Self, EncodeError> {
+        Self::validate_layout_and_config(width, height, fps, config)?;
+        crate::init();
+
+        let forced_encoder = config.encoder_name.is_some();
+        let candidates = Self::resolve_candidates(config)?;
+        let policy = ContainerPolicy::for_container(config.container);
+
+        // Try each candidate — create a fresh output context per attempt
+        // because add_stream + write_header can leave the context in a
+        // bad state if the encoder fails to open.
+        let mut last_err = None;
+
+        for candidate in candidates {
+            let Some(codec) = encoder::find_by_name(candidate.name) else {
+                continue;
+            };
+
+            if color.has_tags() && codec.id() == codec::Id::HEVC && !HevcColor::available() {
+                last_err = Some(ffmpeg::Error::BsfNotFound.into());
+                continue;
+            }
+
+            // The selected container is authoritative, even without a matching extension.
+            let mut octx = OutputIo::open(path, policy.muxer_name(), config, false)?;
+
+            match Self::try_open(
+                &mut octx, codec, candidate, width, height, fps, config, color,
+            ) {
+                Ok(opened) => {
+                    let hevc_color = if color.has_tags() && codec.id() == codec::Id::HEVC {
+                        let filter =
+                            match HevcColor::new(&opened.encoder, color.metadata, color.full_range)
+                            {
+                                Ok(filter) => filter,
+                                Err(error) => {
+                                    last_err = Some(error.into());
+                                    continue;
+                                }
+                            };
+                        octx.stream_mut(opened.stream_index)
+                            .expect("video stream we just added")
+                            .set_parameters(filter.parameters()?);
+                        Some(filter)
+                    } else {
+                        None
+                    };
+
+                    return Self::finish_muxer_setup(
+                        octx,
+                        opened,
+                        hevc_color,
+                        codec.id(),
+                        candidate,
+                        policy,
+                        path,
+                        width,
+                        height,
+                        fps,
+                        config,
+                        color,
+                        live_audio,
+                    );
+                }
+                Err(e) => {
+                    if forced_encoder {
+                        log::warn!("Encoder {} failed to open: {e}", candidate.name);
+                    } else {
+                        log::debug!(
+                            "Encoder {} failed to open: {e}, trying next...",
+                            candidate.name
+                        );
+                    }
+                    last_err = Some(e);
+                }
+            }
+        }
+
+        Err(last_err.unwrap_or(EncodeError::CodecNotFound(
+            config.codec.unwrap_or_default().label().to_string(),
+        )))
+    }
+
+    fn validate_layout_and_config(
+        width: u32,
+        height: u32,
+        fps: Rational,
+        config: &EncoderConfig,
+    ) -> Result<(), EncodeError> {
         if width == 0
             || height == 0
             || !width.is_multiple_of(2)
@@ -617,19 +420,20 @@ impl VideoEncoder {
                 "quality must be between 0 and 100".into(),
             ));
         }
-        crate::init();
-
-        let all_candidates = config.codec.unwrap_or_default().candidates();
-
-        let forced_encoder = config.encoder_name.is_some();
-        if config.device.is_some() && !forced_encoder {
+        if config.device.is_some() && config.encoder_name.is_none() {
             return Err(EncodeError::InvalidConfig(
                 "device selection requires a named encoder".into(),
             ));
         }
+        Ok(())
+    }
 
-        // Build candidate list
-        let candidates: Vec<(&str, bool, Pixel)> = if let Some(ref name) = config.encoder_name {
+    fn resolve_candidates(
+        config: &EncoderConfig,
+    ) -> Result<Vec<ResolvedCandidate<'_>>, EncodeError> {
+        let forced_encoder = config.encoder_name.is_some();
+
+        let candidates: Vec<ResolvedCandidate<'_>> = if let Some(ref name) = config.encoder_name {
             let selected = encoder::find_by_name(name)
                 .ok_or_else(|| EncodeError::CodecNotFound(name.clone()))?;
             if config
@@ -640,28 +444,31 @@ impl VideoEncoder {
                     "encoder {name} does not encode the requested codec"
                 )));
             }
-            // When a specific encoder is forced, look it up in all codec tables
-            let candidate = all_candidates
-                .iter()
-                .find(|c| c.name == name.as_str())
-                .or_else(|| {
-                    // Also check other codec tables for cross-codec --encoder usage
-                    [H264_ENCODERS, HEVC_ENCODERS, AV1_ENCODERS]
-                        .iter()
-                        .flat_map(|t| t.iter())
-                        .find(|c| c.name == name.as_str())
-                });
-            let pixel_fmt = candidate.map_or(Pixel::YUV420P, |c| c.pixel_format);
-            let is_hw = candidate.is_some_and(|c| c.is_hardware);
-            vec![(name.as_str(), is_hw, pixel_fmt)]
+            let spec = find_encoder_spec(name);
+            let family = spec
+                .map(|s| s.family)
+                .or_else(|| EncoderFamily::from_suffix(name))
+                .unwrap_or(EncoderFamily::Software);
+            let staging = spec.map_or(StagingMode::Yuv420p, |s| s.staging);
+            let is_hardware = spec.is_some_and(EncoderSpec::is_hardware);
+            vec![ResolvedCandidate {
+                name: name.as_str(),
+                family,
+                is_hardware,
+                staging,
+            }]
         } else {
-            all_candidates
-                .iter()
-                .filter(|c| encoder::find_by_name(c.name).is_some())
-                .filter(|c| !config.software_only || !c.is_hardware)
-                .filter(|c| auto_candidate_allowed(c.name))
-                .filter(|c| validate_selection(c.name, config).is_ok())
-                .map(|c| (c.name, c.is_hardware, c.pixel_format))
+            specs_for_codec(config.codec.unwrap_or_default())
+                .filter(|spec| encoder::find_by_name(spec.name).is_some())
+                .filter(|spec| !config.software_only || !spec.is_hardware())
+                .filter(|spec| spec.auto_candidate_allowed())
+                .filter(|spec| validate_selection(spec.name, config).is_ok())
+                .map(|spec| ResolvedCandidate {
+                    name: spec.name,
+                    family: spec.family,
+                    is_hardware: spec.is_hardware(),
+                    staging: spec.staging,
+                })
                 .collect()
         };
 
@@ -671,196 +478,10 @@ impl VideoEncoder {
             ));
         }
         if forced_encoder {
-            validate_selection(candidates[0].0, config)?;
+            validate_selection(candidates[0].name, config)?;
         }
 
-        // Try each candidate — create a fresh output context per attempt
-        // because add_stream + write_header can leave the context in a
-        // bad state if the encoder fails to open.
-        let mut last_err = None;
-
-        for (name, is_hw, pixel_fmt) in &candidates {
-            let codec = match encoder::find_by_name(name) {
-                Some(c) => c,
-                None => continue,
-            };
-
-            if color.has_tags() && codec.id() == codec::Id::HEVC && !HevcColor::available() {
-                last_err = Some(ffmpeg::Error::BsfNotFound.into());
-                continue;
-            }
-
-            // The selected container is authoritative, even without a matching extension.
-            let mut octx = OutputIo::open(path, config.container.muxer_name(), config, false)?;
-
-            match Self::try_open(
-                &mut octx, codec, *pixel_fmt, *is_hw, width, height, fps, config, name, color,
-            ) {
-                Ok((enc_opened, scaler, stream_index, encoder_time_base, _, hardware_upload)) => {
-                    let hevc_color = if color.has_tags() && codec.id() == codec::Id::HEVC {
-                        let filter =
-                            match HevcColor::new(&enc_opened, color.metadata, color.full_range) {
-                                Ok(filter) => filter,
-                                Err(error) => {
-                                    last_err = Some(error.into());
-                                    continue;
-                                }
-                            };
-                        octx.stream_mut(stream_index)
-                            .expect("video stream we just added")
-                            .set_parameters(filter.parameters()?);
-                        Some(filter)
-                    } else {
-                        None
-                    };
-                    // Apply container codec tag after all `set_parameters` calls (including
-                    // `HevcColor`), which copy parameters with `codec_tag = 0`.
-                    if let Some(tag) = video_codec_tag(
-                        codec.id(),
-                        octx.format().name(),
-                        octx.format().flags().contains(format::Flags::GLOBAL_HEADER),
-                    ) {
-                        let stream = octx
-                            .stream_mut(stream_index)
-                            .expect("video stream we just added");
-                        // SAFETY: the newly added output stream owns writable codec parameters
-                        // until `write_header` consumes them.
-                        unsafe {
-                            (*stream.parameters().as_mut_ptr()).codec_tag = tag;
-                        }
-                    }
-                    let hw_tag = if *is_hw { " (hardware)" } else { " (software)" };
-                    log::info!(
-                        "Encoder: {}x{} {}{} @ {}/{} fps",
-                        width,
-                        height,
-                        name,
-                        hw_tag,
-                        fps.0,
-                        fps.1,
-                    );
-                    // Story-tell which frame-delivery path this encoder uses, so
-                    // the upload cost is visible in the field.
-                    if hardware_upload.is_some() {
-                        log::info!(
-                            "Encoder frame path: explicit VAAPI surface upload (NV12 -> GPU surface)"
-                        );
-                    } else if *is_hw {
-                        log::info!(
-                            "Encoder frame path: implicit driver upload (software NV12 -> GPU, handled by FFmpeg)"
-                        );
-                    } else {
-                        log::info!("Encoder frame path: software encode (no GPU upload)");
-                    }
-
-                    // Set up audio passthrough before writing the header.
-                    let audio = AudioPassthrough::open(&mut octx, config, live_audio.clone())?;
-
-                    // Fragmented MP4 needs `movflags` so the muxer
-                    // writes an `empty_moov` up front and flushes
-                    // self-contained fragments on every keyframe.
-                    // A concurrent reader can then parse the file
-                    // mid-write; plain MP4 would park the `moov`
-                    // until `write_trailer` and break replay.
-                    let mut movflags = Vec::new();
-                    if config.container == Container::Mp4Fragmented {
-                        movflags.extend(["empty_moov", "frag_keyframe"]);
-                    }
-                    // Preserve known colour metadata/range even when some fields are unspecified.
-                    // Some hardware encoders omit these labels from their bitstream headers.
-                    if color.has_tags()
-                        && matches!(
-                            config.container,
-                            Container::Mp4 | Container::Mp4Fragmented | Container::Mov
-                        )
-                    {
-                        movflags.push("write_colr");
-                    }
-                    if !movflags.is_empty() {
-                        let mut opts = ffmpeg::Dictionary::new();
-                        opts.set("movflags", &movflags.join("+"));
-                        octx.write_header(opts)?;
-                    } else {
-                        octx.write_header(ffmpeg::Dictionary::new())?;
-                    }
-
-                    let output_time_base = octx
-                        .stream(stream_index)
-                        .expect("video stream we just added")
-                        .time_base();
-
-                    // Update audio output time base after write_header
-                    // (the muxer may adjust it).
-                    let audio = audio.map(|mut a| {
-                        a.refresh_time_base(&octx);
-                        a
-                    });
-
-                    let (stream, stream_monitor) = if let Some(ref url) = config.stream_url {
-                        match Self::open_stream_output(url, &octx, stream_index, config) {
-                            Ok(s) => {
-                                log::info!("Optional stream output queued");
-                                let monitor = s.octx.monitor();
-                                (Some(s), Some(monitor))
-                            }
-                            Err(e) => {
-                                log::warn!(
-                                    "Failed to open stream output ({e}), recording without stream"
-                                );
-                                (None, Some(StreamMonitor::failed(&e)))
-                            }
-                        }
-                    } else {
-                        (None, None)
-                    };
-
-                    let header_check = if codec.id() == codec::Id::HEVC {
-                        Some(HevcHeaderCheck::new(&enc_opened)?)
-                    } else {
-                        None
-                    };
-                    let broadcast_clock = super::encoder_timing::BroadcastClock::new(
-                        crate::output::is_network_destination(path),
-                        stream_monitor.clone(),
-                        config.interrupted.clone(),
-                    );
-                    return Ok(Self {
-                        octx,
-                        encoder: enc_opened,
-                        scaler,
-                        stream_index,
-                        encoder_time_base,
-                        output_time_base,
-                        timeline: super::encoder_timing::Timeline::new(fps),
-                        width,
-                        height,
-                        finished: false,
-                        encoder_name: name.to_string(),
-                        header_check,
-                        hevc_color,
-                        rgba_frame: VideoFrame::new(Pixel::RGBA, width, height),
-                        yuv_frame: VideoFrame::new(staging_pixel_format(*pixel_fmt), width, height),
-                        hardware_upload,
-                        audio,
-                        stream,
-                        stream_monitor,
-                        broadcast_clock,
-                    });
-                }
-                Err(e) => {
-                    if forced_encoder {
-                        log::warn!("Encoder {name} failed to open: {e}");
-                    } else {
-                        log::debug!("Encoder {name} failed to open: {e}, trying next...");
-                    }
-                    last_err = Some(e);
-                }
-            }
-        }
-
-        Err(last_err.unwrap_or(EncodeError::CodecNotFound(
-            config.codec.unwrap_or_default().label().to_string(),
-        )))
+        Ok(candidates)
     }
 
     /// Attempt to open a specific encoder. Returns the opened encoder + scaler
@@ -869,16 +490,14 @@ impl VideoEncoder {
     fn try_open(
         octx: &mut format::context::Output,
         codec: ffmpeg::Codec,
-        pixel_fmt: Pixel,
-        is_hw: bool,
+        candidate: ResolvedCandidate<'_>,
         width: u32,
         height: u32,
         fps: Rational,
         config: &EncoderConfig,
-        name: &str,
         color: OutputColor,
     ) -> Result<OpenedVideoEncoder, EncodeError> {
-        let needs_global_header = octx.format().flags().contains(format::Flags::GLOBAL_HEADER);
+        let needs_global_header = muxer_requires_global_header(octx);
 
         let mut ost = octx.add_stream(codec)?;
         let stream_index = ost.index();
@@ -889,7 +508,7 @@ impl VideoEncoder {
 
         enc.set_width(width);
         enc.set_height(height);
-        enc.set_format(pixel_fmt);
+        enc.set_format(candidate.staging.encoder_pixel_format());
         if let Some(primaries) = color.metadata.primaries {
             enc.set_color_primaries(primaries);
         }
@@ -921,11 +540,11 @@ impl VideoEncoder {
             enc.set_flags(codec::Flags::GLOBAL_HEADER);
         }
 
-        if !is_hw {
+        if !candidate.is_hardware {
             enc.set_threading(ffmpeg::threading::Config::count(0));
         }
 
-        let hardware_upload = if pixel_fmt == Pixel::VAAPI {
+        let hardware_upload = if candidate.staging.uses_vaapi_upload() {
             let upload = HardwareUpload::new_vaapi(width, height, config.device.as_deref())?;
             // SAFETY: `enc` is a live, not-yet-opened encoder context.
             let codec_ctx = unsafe { enc.as_mut_ptr() };
@@ -944,13 +563,13 @@ impl VideoEncoder {
         // pattern: set params, open, re-set params.
         ost.set_parameters(&enc);
         let mut opts = build_encoder_opts(
-            name,
+            candidate.name,
             config.quality,
             config.preset.as_deref(),
             width,
             height,
         );
-        if name.ends_with("_nvenc")
+        if candidate.family == EncoderFamily::Nvenc
             && let Some(device) = &config.device
         {
             opts.set("gpu", device);
@@ -970,22 +589,34 @@ impl VideoEncoder {
         ost.set_rate(fps);
         ost.set_avg_frame_rate(fps);
 
-        // Note: write_header is called by the caller (new()) after optional
-        // audio stream setup. output_time_base is read after write_header.
+        let scaler =
+            Self::build_rgba_scaler(width, height, candidate.staging, color.rendered_rgba_scaler)?;
 
-        let output_time_base = Rational(0, 0); // placeholder, updated after write_header
+        Ok(OpenedVideoEncoder {
+            encoder,
+            scaler,
+            stream_index,
+            encoder_time_base,
+            hardware_upload,
+        })
+    }
 
-        let staging_pixel_fmt = staging_pixel_format(pixel_fmt);
+    fn build_rgba_scaler(
+        width: u32,
+        height: u32,
+        staging: StagingMode,
+        rendered_rgba_scaler: bool,
+    ) -> Result<ScalingContext, EncodeError> {
         let mut scaler = ScalingContext::get(
             Pixel::RGBA,
             width,
             height,
-            staging_pixel_fmt,
+            staging.staging_pixel_format(),
             width,
             height,
             ScalingFlags::BILINEAR,
         )?;
-        if color.rendered_rgba_scaler {
+        if rendered_rgba_scaler {
             // SAFETY: the scaler is live and uniquely borrowed; FFmpeg owns the static coefficient table.
             let result = unsafe {
                 let coefficients = ffmpeg::sys::sws_getCoefficients(ffmpeg::sys::SWS_CS_ITU709);
@@ -1004,15 +635,133 @@ impl VideoEncoder {
                 return Err(ffmpeg::Error::from(result).into());
             }
         }
+        Ok(scaler)
+    }
 
-        Ok((
-            encoder,
-            scaler,
-            stream_index,
-            encoder_time_base,
+    #[allow(clippy::too_many_arguments)]
+    fn finish_muxer_setup(
+        mut octx: OutputIo,
+        opened: OpenedVideoEncoder,
+        hevc_color: Option<HevcColor>,
+        codec_id: codec::Id,
+        candidate: ResolvedCandidate<'_>,
+        policy: ContainerPolicy,
+        path: &Path,
+        width: u32,
+        height: u32,
+        fps: Rational,
+        config: &EncoderConfig,
+        color: OutputColor,
+        live_audio: Option<LiveAudio>,
+    ) -> Result<Self, EncodeError> {
+        apply_video_codec_tag(&mut octx, opened.stream_index, codec_id);
+        Self::log_opened_encoder(
+            candidate,
+            width,
+            height,
+            fps,
+            opened.hardware_upload.is_some(),
+        );
+
+        // Set up audio passthrough before writing the header.
+        let audio = AudioPassthrough::open(&mut octx, config, live_audio)?;
+
+        octx.write_header(policy.muxer_options(color))?;
+
+        let output_time_base = octx
+            .stream(opened.stream_index)
+            .expect("video stream we just added")
+            .time_base();
+
+        // Update audio output time base after write_header (the muxer may adjust it).
+        let audio = audio.map(|mut a| {
+            a.refresh_time_base(&octx);
+            a
+        });
+
+        let (stream, stream_monitor) = if let Some(ref url) = config.stream_url {
+            match Self::open_stream_output(url, &octx, opened.stream_index, config) {
+                Ok(s) => {
+                    log::info!("Optional stream output queued");
+                    let monitor = s.octx.monitor();
+                    (Some(s), Some(monitor))
+                }
+                Err(e) => {
+                    log::warn!("Failed to open stream output ({e}), recording without stream");
+                    (None, Some(StreamMonitor::failed(&e)))
+                }
+            }
+        } else {
+            (None, None)
+        };
+
+        let header_check = if codec_id == codec::Id::HEVC {
+            Some(HevcHeaderCheck::new(&opened.encoder)?)
+        } else {
+            None
+        };
+        let broadcast_clock = super::encoder_timing::BroadcastClock::new(
+            crate::output::is_network_destination(path),
+            stream_monitor.clone(),
+            config.interrupted.clone(),
+        );
+
+        Ok(Self {
+            octx,
+            encoder: opened.encoder,
+            scaler: opened.scaler,
+            stream_index: opened.stream_index,
+            encoder_time_base: opened.encoder_time_base,
             output_time_base,
-            hardware_upload,
-        ))
+            timeline: super::encoder_timing::Timeline::new(fps),
+            width,
+            height,
+            finished: false,
+            encoder_name: candidate.name.to_string(),
+            header_check,
+            hevc_color,
+            rgba_frame: VideoFrame::new(Pixel::RGBA, width, height),
+            yuv_frame: VideoFrame::new(candidate.staging.staging_pixel_format(), width, height),
+            hardware_upload: opened.hardware_upload,
+            audio,
+            stream,
+            stream_monitor,
+            broadcast_clock,
+        })
+    }
+
+    fn log_opened_encoder(
+        candidate: ResolvedCandidate<'_>,
+        width: u32,
+        height: u32,
+        fps: Rational,
+        uses_vaapi_upload: bool,
+    ) {
+        let hw_tag = if candidate.is_hardware {
+            " (hardware)"
+        } else {
+            " (software)"
+        };
+        log::info!(
+            "Encoder: {}x{} {}{} @ {}/{} fps",
+            width,
+            height,
+            candidate.name,
+            hw_tag,
+            fps.0,
+            fps.1,
+        );
+        // Story-tell which frame-delivery path this encoder uses, so
+        // the upload cost is visible in the field.
+        if uses_vaapi_upload {
+            log::info!("Encoder frame path: explicit VAAPI surface upload (NV12 -> GPU surface)");
+        } else if candidate.is_hardware {
+            log::info!(
+                "Encoder frame path: implicit driver upload (software NV12 -> GPU, handled by FFmpeg)"
+            );
+        } else {
+            log::info!("Encoder frame path: software encode (no GPU upload)");
+        }
     }
 
     /// The name of the active encoder (e.g., `"h264_nvenc"`, `"libx264"`).
@@ -1586,278 +1335,6 @@ impl VideoEncoder {
     }
 }
 
-fn sanitize_audio_start_time(secs: f64) -> f64 {
-    if secs.is_finite() && secs > 0.0 {
-        secs
-    } else {
-        0.0
-    }
-}
-
-struct HevcHeaderCheck {
-    parser: std::ptr::NonNull<ffmpeg::sys::AVCodecParserContext>,
-    context: codec::context::Context,
-}
-
-impl HevcHeaderCheck {
-    fn new(encoder: &ffmpeg::encoder::video::Encoder) -> Result<Self, EncodeError> {
-        let context = codec::context::Context::from_parameters(codec::Parameters::from(encoder))?;
-        // SAFETY: allocate an independent parser, owned until Drop.
-        let parser =
-            unsafe { ffmpeg::sys::av_parser_init(ffmpeg::sys::AVCodecID::AV_CODEC_ID_HEVC as _) };
-        let parser = std::ptr::NonNull::new(parser).ok_or_else(|| {
-            EncodeError::InvalidConfig("HEVC header parser is unavailable".into())
-        })?;
-        // SAFETY: parser is live and uniquely owned; encoder packets are complete access units.
-        unsafe {
-            (*parser.as_ptr()).flags |= ffmpeg::sys::PARSER_FLAG_COMPLETE_FRAMES;
-        }
-        Ok(Self { parser, context })
-    }
-
-    fn verify(
-        &mut self,
-        packet: &ffmpeg::Packet,
-        expected: (u32, u32),
-    ) -> Result<bool, EncodeError> {
-        use ffmpeg::packet::Ref;
-        // SAFETY: FFmpeg packets include parser padding; all pointers remain live for this call.
-        let (result, actual) = unsafe {
-            let packet = &*packet.as_ptr();
-            let mut parsed = std::ptr::null_mut();
-            let mut size = 0;
-            let result = ffmpeg::sys::av_parser_parse2(
-                self.parser.as_ptr(),
-                self.context.as_mut_ptr(),
-                &mut parsed,
-                &mut size,
-                packet.data,
-                packet.size,
-                packet.pts,
-                packet.dts,
-                packet.pos,
-            );
-            let parser = self.parser.as_ref();
-            let actual = (parser.width, parser.height);
-            (result, actual)
-        };
-        if result < 0 {
-            return Err(ffmpeg::Error::from(result).into());
-        }
-        // Some backends publish parameter sets separately, before a picture supplies dimensions.
-        if actual == (0, 0) {
-            return Ok(false);
-        }
-        if actual != (expected.0 as i32, expected.1 as i32) {
-            return Err(EncodeError::EncodedDimensions { expected, actual });
-        }
-        Ok(true)
-    }
-}
-
-impl Drop for HevcHeaderCheck {
-    fn drop(&mut self) {
-        // SAFETY: this object exclusively owns this parser and closes it exactly once.
-        unsafe {
-            ffmpeg::sys::av_parser_close(self.parser.as_ptr());
-        }
-    }
-}
-
-fn validate_selection(name: &str, config: &EncoderConfig) -> Result<(), EncodeError> {
-    if let Some(device) = &config.device {
-        if device.is_empty() || device.contains('\0') {
-            return Err(EncodeError::InvalidConfig(
-                "device must be nonempty and contain no NUL bytes".into(),
-            ));
-        }
-        if name.ends_with("_nvenc") {
-            if device.parse::<u32>().is_err() {
-                return Err(EncodeError::InvalidConfig(
-                    "NVENC device must be a nonnegative GPU index".into(),
-                ));
-            }
-        } else if !name.ends_with("_vaapi") {
-            return Err(EncodeError::InvalidConfig(format!(
-                "explicit device selection is not supported for {name}"
-            )));
-        }
-    }
-    if matches!(config.quality, Quality::Value(_))
-        && !matches!(name, "libx264" | "libx265" | "libsvtav1" | "libaom-av1")
-        && !["_nvenc", "_qsv", "_vaapi", "_amf", "_videotoolbox"]
-            .iter()
-            .any(|suffix| name.ends_with(suffix))
-    {
-        return Err(EncodeError::InvalidConfig(format!(
-            "quality selection is not supported by {name}"
-        )));
-    }
-    Ok(())
-}
-
-fn validate_encoder_options(
-    encoder: &ffmpeg::encoder::video::Video,
-    options: &ffmpeg::Dictionary<'_>,
-) -> Result<(), EncodeError> {
-    for (key, _) in options.iter() {
-        let key_c = std::ffi::CString::new(key)
-            .map_err(|_| EncodeError::InvalidConfig("encoder option contains a NUL byte".into()))?;
-        // SAFETY: the encoder and its private AVOptions context are alive; this only looks up an option.
-        let option = unsafe {
-            ffmpeg::sys::av_opt_find(
-                encoder.as_ptr().cast_mut().cast(),
-                key_c.as_ptr(),
-                std::ptr::null(),
-                0,
-                ffmpeg::sys::AV_OPT_SEARCH_CHILDREN,
-            )
-        };
-        if option.is_null() {
-            return Err(EncodeError::InvalidConfig(format!(
-                "encoder does not support option {key}"
-            )));
-        }
-    }
-    Ok(())
-}
-
-fn seconds_to_pts(secs: f64, time_base: Rational) -> i64 {
-    let secs = sanitize_audio_start_time(secs);
-    if secs == 0.0 {
-        return 0;
-    }
-
-    let ts = (secs * f64::from(ffmpeg::ffi::AV_TIME_BASE)).round() as i64;
-    unsafe {
-        ffmpeg::sys::av_rescale_q(
-            ts,
-            Rational(1, ffmpeg::ffi::AV_TIME_BASE).into(),
-            time_base.into(),
-        )
-    }
-}
-
-impl SilentAudio {
-    /// Add a silent AAC audio stream to the output context and prepare the encoder.
-    fn new(octx: &mut format::context::Output) -> Result<Self, EncodeError> {
-        let aac = ffmpeg::encoder::find(codec::Id::AAC)
-            .ok_or_else(|| EncodeError::CodecNotFound("AAC".into()))?;
-
-        let needs_global_header = octx.format().flags().contains(format::Flags::GLOBAL_HEADER);
-
-        let mut ost = octx.add_stream(aac)?;
-        let stream_index = ost.index();
-
-        let mut enc = codec::context::Context::new_with_codec(aac)
-            .encoder()
-            .audio()?;
-
-        let sample_rate = 44100u32;
-        enc.set_rate(sample_rate as i32);
-        enc.set_format(ffmpeg::format::Sample::F32(
-            ffmpeg::format::sample::Type::Planar,
-        ));
-        enc.set_channel_layout(ffmpeg::ChannelLayout::STEREO);
-        enc.set_bit_rate(128_000);
-        enc.set_time_base(Rational(1, sample_rate as i32));
-
-        if needs_global_header {
-            enc.set_flags(codec::Flags::GLOBAL_HEADER);
-        }
-
-        ost.set_parameters(&enc);
-        let encoder = enc.open()?;
-        ost.set_parameters(&encoder);
-
-        let samples_per_frame = unsafe { (*encoder.as_ptr()).frame_size as usize };
-        let samples_per_frame = if samples_per_frame == 0 {
-            1024
-        } else {
-            samples_per_frame
-        };
-
-        let mut frame = ffmpeg::frame::Audio::new(
-            ffmpeg::format::Sample::F32(ffmpeg::format::sample::Type::Planar),
-            samples_per_frame,
-            ffmpeg::ChannelLayout::STEREO,
-        );
-        frame.set_rate(sample_rate);
-
-        // Native frame allocation does not initialize samples.
-        for plane in 0..frame.planes() {
-            frame.data_mut(plane).fill(0);
-        }
-        let output_time_base = Rational(0, 0); // updated after write_header
-
-        Ok(Self {
-            encoder,
-            stream_index,
-            output_time_base,
-            frame,
-            next_pts: None,
-            samples_per_frame,
-            sample_rate,
-        })
-    }
-
-    fn write_for_video(
-        &mut self,
-        octx: &mut OutputIo,
-        start: i64,
-        duration: i64,
-        time_base: Rational,
-    ) -> Result<(), EncodeError> {
-        let end = start.checked_add(duration).ok_or_else(|| {
-            EncodeError::InvalidConfig("stream video packet time overflow".into())
-        })?;
-        if self.next_pts.is_none() {
-            self.next_pts = Some(start.rescale(time_base, (1, self.sample_rate as i32)));
-        }
-        self.write_up_to(octx, end, time_base)
-    }
-
-    /// Generate silence through the supplied presentation time.
-    fn write_up_to(
-        &mut self,
-        octx: &mut OutputIo,
-        video_pts: i64,
-        video_time_base: Rational,
-    ) -> Result<(), EncodeError> {
-        // Convert video PTS to audio sample count.
-        let video_samples = video_pts.rescale(video_time_base, (1, self.sample_rate as i32));
-
-        let Some(mut next_pts) = self.next_pts else {
-            return Ok(());
-        };
-        while next_pts < video_samples {
-            self.frame.set_pts(Some(next_pts));
-            self.encoder.send_frame(&self.frame)?;
-            next_pts += self.samples_per_frame as i64;
-            self.next_pts = Some(next_pts);
-
-            self.write_packets(octx)?;
-        }
-        Ok(())
-    }
-
-    fn finish(&mut self, octx: &mut OutputIo, end_us: i64) -> Result<(), EncodeError> {
-        self.write_up_to(octx, end_us, Rational(1, 1_000_000))?;
-        self.encoder.send_eof()?;
-        self.write_packets(octx)
-    }
-
-    fn write_packets(&mut self, octx: &mut OutputIo) -> Result<(), EncodeError> {
-        let mut packet = ffmpeg::Packet::empty();
-        while receive_encoded_packet(&mut self.encoder, &mut packet)? {
-            packet.set_stream(self.stream_index);
-            packet.rescale_ts(Rational(1, self.sample_rate as i32), self.output_time_base);
-            octx.write_packet(&mut packet)?;
-        }
-        Ok(())
-    }
-}
-
 fn receive_encoded_packet(
     encoder: &mut ffmpeg::encoder::Encoder,
     packet: &mut ffmpeg::Packet,
@@ -1871,298 +1348,15 @@ fn receive_encoded_packet(
     }
 }
 
-/// Build encoder-specific FFmpeg options.
-/// Scale a 1080p-tuned bitrate ceiling (Mbps) by output pixel count, so
-/// higher resolutions get a proportionally higher cap. Clamped to
-/// [0.5x, 8x] of the 1080p baseline; always >= 1 Mbps.
-fn scale_bitrate_mbps(base_mbps: u32, width: u32, height: u32) -> u32 {
-    let scale = (f64::from(width) * f64::from(height) / (1920.0 * 1080.0)).clamp(0.5, 8.0);
-    ((f64::from(base_mbps) * scale).round() as u32).max(1)
-}
-
-/// Map normalized numeric quality (`0..=100`, higher = better) to VideoToolbox
-/// `(global_quality, maxrate_1080p_mbps)`.
-///
-/// VideoToolbox `global_quality` maps to `kVTCompressionPropertyKey_Quality`
-/// (`0.0..=1.0`, FFmpeg divides `global_quality` by 100). Because VT's bitrate
-/// grows steeply near `1.0` (near-lossless), `0..=100` maps linearly onto
-/// `30..=90`: `q = 50` matches `Balanced` (`60`), `q = 75` reaches `75`, and
-/// `q > 75` continues climbing to `90` without hitting the `1.0` cliff.
-///
-/// The 1080p `maxrate` ceiling (scaled by output resolution via
-/// `scale_bitrate_mbps`) is piecewise-linear through the codec's `Balanced`
-/// (`q = 50`) and `High` (`q = 75`) ceilings and expands smoothly up to `2x`
-/// the `High` ceiling at `q = 100`.
-fn videotoolbox_quality_params(q: u8, is_hevc: bool) -> (u32, u32) {
-    let q = f64::from(q.min(100));
-    let global_quality = (30.0 + (q / 100.0) * 60.0).round() as u32;
-
-    let (min_mbps, balanced_mbps, high_mbps, max_mbps) = if is_hevc {
-        (6.0, 14.0, 22.0, 44.0)
-    } else {
-        (8.0, 18.0, 30.0, 60.0)
-    };
-    let maxrate_mbps = if q <= 50.0 {
-        min_mbps + (q / 50.0) * (balanced_mbps - min_mbps)
-    } else if q <= 75.0 {
-        balanced_mbps + ((q - 50.0) / 25.0) * (high_mbps - balanced_mbps)
-    } else {
-        high_mbps + ((q - 75.0) / 25.0) * (max_mbps - high_mbps)
-    };
-
-    (global_quality, maxrate_mbps.round() as u32)
-}
-
-fn build_encoder_opts(
-    name: &str,
-    quality: Quality,
-    preset_override: Option<&str>,
-    width: u32,
-    height: u32,
-) -> ffmpeg::Dictionary<'static> {
-    let mut opts = ffmpeg::Dictionary::new();
-
-    // Bitrate ceilings below are tuned for 1080p. Scale them with pixel
-    // count so higher resolutions (2K/4K) aren't capped far below the
-    // quality the CQ setting actually wants. Returns an "NM" string.
-    let mbps = |base: u32| format!("{}M", scale_bitrate_mbps(base, width, height));
-
-    // When a quality override is set, derive the effective preset from
-    // the quality value so NVENC preset/maxrate scale with the CQ.
-    let quality_override = match quality {
-        Quality::Value(value) => Some(value),
-        _ => None,
-    };
-    let effective_preset = match quality {
-        Quality::Value(75..) => QualityPreset::High,
-        Quality::Value(40..) => QualityPreset::Balanced,
-        Quality::Value(_) => QualityPreset::Fast,
-        Quality::Preset(preset) => preset,
-    };
-
-    match name {
-        "h264_nvenc" => {
-            // NVENC VBR with per-quality bitrate ceiling. Prior defaults
-            // (10M / 15M across all quality presets) artificially capped
-            // High output at ~15 Mbps even with cq=19. Scale the ceilings
-            // with quality so "high" actually delivers the visual bump.
-            let (preset, cq, bv, maxrate) = match effective_preset {
-                QualityPreset::Fast => ("p3", "28", 8, 12),
-                QualityPreset::Balanced => ("p4", "23", 12, 18),
-                QualityPreset::High => ("p5", "19", 20, 30),
-            };
-            opts.set("preset", preset);
-            opts.set("tune", "hq");
-            opts.set("rc", "vbr");
-            opts.set("cq", cq);
-            opts.set("b", &mbps(bv));
-            opts.set("maxrate", &mbps(maxrate));
-            opts.set("profile", "high");
-            opts.set("spatial-aq", "1");
-            opts.set("temporal-aq", "1");
-        }
-        "hevc_nvenc" => {
-            // HEVC ~30% more efficient than H264, so ceilings scale down.
-            let (preset, cq, bv, maxrate) = match effective_preset {
-                QualityPreset::Fast => ("p3", "28", 6, 10),
-                QualityPreset::Balanced => ("p4", "23", 9, 14),
-                QualityPreset::High => ("p5", "19", 15, 22),
-            };
-            opts.set("preset", preset);
-            opts.set("tune", "hq");
-            opts.set("rc", "vbr");
-            opts.set("cq", cq);
-            opts.set("b", &mbps(bv));
-            opts.set("maxrate", &mbps(maxrate));
-            opts.set("profile", "main");
-            opts.set("spatial-aq", "1");
-            opts.set("temporal-aq", "1");
-        }
-        "av1_nvenc" => {
-            // AV1 another ~20% tighter than HEVC.
-            let (preset, cq, bv, maxrate) = match effective_preset {
-                QualityPreset::Fast => ("p3", "32", 5, 8),
-                QualityPreset::Balanced => ("p4", "27", 7, 11),
-                QualityPreset::High => ("p5", "22", 12, 18),
-            };
-            opts.set("preset", preset);
-            opts.set("tune", "hq");
-            opts.set("rc", "vbr");
-            opts.set("cq", cq);
-            opts.set("b", &mbps(bv));
-            opts.set("maxrate", &mbps(maxrate));
-        }
-        "h264_qsv" | "hevc_qsv" | "av1_qsv" => {
-            let gq = match effective_preset {
-                QualityPreset::Fast => "28",
-                QualityPreset::Balanced => "23",
-                QualityPreset::High => "19",
-            };
-            opts.set("preset", "medium");
-            opts.set("global_quality", gq);
-            if name == "h264_qsv" {
-                opts.set("profile", "high");
-            }
-        }
-        "h264_videotoolbox" => {
-            // VideoToolbox quality maps to kVTCompressionPropertyKey_Quality
-            // (0.0-1.0 float, FFmpeg divides global_quality by 100). Because
-            // VT's bitrate grows steeply near 1.0 (near-lossless), pair
-            // global_quality with a resolution-scaled maxrate ceiling via
-            // kVTCompressionPropertyKey_DataRateLimits matching h264_nvenc.
-            let (q, maxrate) = match effective_preset {
-                QualityPreset::Fast => ("50", 12),
-                QualityPreset::Balanced => ("60", 18),
-                QualityPreset::High => ("70", 30),
-            };
-            opts.set("global_quality", q);
-            opts.set("maxrate", &mbps(maxrate));
-            opts.set("profile", "high");
-        }
-        "hevc_videotoolbox" => {
-            // Same VT quality model as H.264; HEVC is ~30% more efficient
-            // so we use lower 1080p baseline ceilings matching hevc_nvenc.
-            let (q, maxrate) = match effective_preset {
-                QualityPreset::Fast => ("50", 10),
-                QualityPreset::Balanced => ("60", 14),
-                QualityPreset::High => ("70", 22),
-            };
-            opts.set("global_quality", q);
-            opts.set("maxrate", &mbps(maxrate));
-            opts.set("profile", "main");
-        }
-        "h264_vaapi" | "hevc_vaapi" | "av1_vaapi" => {
-            let qp = match effective_preset {
-                QualityPreset::Fast => "28",
-                QualityPreset::Balanced => "23",
-                QualityPreset::High => "19",
-            };
-            opts.set("qp", qp);
-            if name == "h264_vaapi" {
-                opts.set("profile", "high");
-            }
-        }
-        "h264_v4l2m2m" | "hevc_v4l2m2m" => {
-            // The wrapper exposes no portable constant-quality control.
-            log::info!("Encoder '{name}' uses driver quality defaults");
-        }
-        "h264_amf" | "hevc_amf" | "av1_amf" => {
-            let q = match effective_preset {
-                QualityPreset::Fast => "22",
-                QualityPreset::Balanced => "18",
-                QualityPreset::High => "14",
-            };
-            opts.set("quality", "balanced");
-            opts.set("qp_i", q);
-            opts.set("qp_p", q);
-            opts.set("rc", "cqp");
-        }
-        "libx265" => {
-            let (preset, crf_val) = match effective_preset {
-                QualityPreset::Fast => ("veryfast", "28"),
-                QualityPreset::Balanced => ("fast", "25"),
-                QualityPreset::High => ("medium", "21"),
-            };
-            opts.set("preset", preset);
-            opts.set("crf", crf_val);
-            opts.set("profile", "main");
-        }
-        "libsvtav1" => {
-            let (preset, crf_val) = match effective_preset {
-                QualityPreset::Fast => ("10", "35"),
-                QualityPreset::Balanced => ("7", "30"),
-                QualityPreset::High => ("4", "25"),
-            };
-            opts.set("preset", preset);
-            opts.set("crf", crf_val);
-        }
-        "libaom-av1" => {
-            let (crf_val, cpu_used) = match effective_preset {
-                QualityPreset::Fast => ("35", "8"),
-                QualityPreset::Balanced => ("30", "6"),
-                QualityPreset::High => ("25", "4"),
-            };
-            opts.set("crf", crf_val);
-            opts.set("cpu-used", cpu_used);
-            opts.set("row-mt", "1");
-        }
-        "libx264" => {
-            let (preset, crf_val) = match effective_preset {
-                QualityPreset::Fast => ("ultrafast", "32"),
-                QualityPreset::Balanced => ("veryfast", "28"),
-                QualityPreset::High => ("fast", "23"),
-            };
-            opts.set("preset", preset);
-            opts.set("crf", crf_val);
-            opts.set("profile", "high");
-            // On Tegra (Jetson), limit threads to avoid starving other
-            // pipeline stages (capture + pairing threads need CPU too).
-            // x264 defaults to num_cpus which over-subscribes.
-            if std::path::Path::new("/etc/nv_tegra_release").exists()
-                || std::fs::read_to_string("/proc/device-tree/compatible")
-                    .unwrap_or_default()
-                    .contains("nvidia,tegra")
-            {
-                let threads = std::env::var("RECO_X264_THREADS")
-                    .ok()
-                    .and_then(|v| v.parse::<u32>().ok())
-                    .unwrap_or(4);
-                log::info!("Tegra platform detected, limiting libx264 to {threads} threads");
-                opts.set("threads", &threads.to_string());
-            }
-        }
-        _ => {
-            log::info!("Encoder '{name}' has no quality presets configured, using FFmpeg defaults");
-        }
-    }
-
-    // Apply normalized quality override (0-100, higher = better).
-    // Converts from the consumer-facing scale to encoder-specific parameters.
-    if let Some(q) = quality_override {
-        if name.ends_with("_videotoolbox") {
-            let is_hevc = name.starts_with("hevc_");
-            let (vt_q, maxrate_base) = videotoolbox_quality_params(q, is_hevc);
-            let val = vt_q.to_string();
-            let maxrate = mbps(maxrate_base);
-            opts.set("global_quality", &val);
-            opts.set("maxrate", &maxrate);
-            log::info!(
-                "Encoder quality: {q} -> {name} global_quality={val} (VT {:.2}), maxrate={maxrate}",
-                f64::from(vt_q) / 100.0
-            );
-        } else {
-            // CRF-style encoders: crf = 40.0 - (quality / 100.0) * 28.0
-            let crf = 40.0 - (q as f64 / 100.0) * 28.0;
-            let crf_str = format!("{crf:.2}");
-            let integer = format!("{crf:.0}");
-            match name {
-                "libx264" | "libx265" => opts.set("crf", &crf_str),
-                "libsvtav1" | "libaom-av1" => opts.set("crf", &integer),
-                name if name.ends_with("_nvenc") => opts.set("cq", &crf_str),
-                name if name.ends_with("_qsv") => opts.set("global_quality", &integer),
-                name if name.ends_with("_vaapi") => opts.set("qp", &integer),
-                name if name.ends_with("_amf") => {
-                    opts.set("qp_i", &integer);
-                    opts.set("qp_p", &integer);
-                }
-                _ => {}
-            }
-        }
-    }
-
-    // Apply preset override.
-    if let Some(preset) = preset_override {
-        opts.set("preset", preset);
-    }
-
-    opts
-}
-
 #[cfg(test)]
 mod tests {
+    use super::container::{HVC1_CODEC_TAG, video_codec_tag};
+    use super::options::scale_bitrate_mbps;
     use super::*;
+    use crate::output::QualityPreset;
 
     mod audio_copy;
+    mod spec_matrix;
 
     #[test]
     fn streaming_audio_samples_are_initialized_to_silence() {
