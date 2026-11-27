@@ -21,15 +21,42 @@
 
 #[cfg(feature = "gpu")]
 use reco_core::render::renderer::GpuPixelFormat;
+use reco_core::source::{FrameSource, SourceError, SourceFrame, SourceInfo};
+
+#[cfg(all(feature = "gpu", target_os = "linux"))]
+mod linux;
+#[cfg(all(feature = "gpu", target_os = "linux"))]
+use linux as platform;
+
+#[cfg(all(feature = "gpu", target_os = "macos"))]
+mod macos;
+#[cfg(all(feature = "gpu", target_os = "macos"))]
+use macos as platform;
+
+#[cfg(all(feature = "gpu", target_os = "windows"))]
+mod windows;
+#[cfg(all(feature = "gpu", target_os = "windows"))]
+use windows as platform;
+
 #[cfg(all(
     feature = "gpu",
-    any(target_os = "linux", target_os = "windows", target_os = "macos")
+    not(any(target_os = "linux", target_os = "macos", target_os = "windows"))
 ))]
-use reco_core::source::FrameSet;
-use reco_core::source::{FrameSource, SourceError, SourceFrame, SourceInfo};
+mod unsupported;
+#[cfg(all(
+    feature = "gpu",
+    not(any(target_os = "linux", target_os = "macos", target_os = "windows"))
+))]
+use unsupported as platform;
 
 #[cfg(all(test, feature = "gpu", any(target_os = "windows", target_os = "macos")))]
 mod native_tests;
+
+#[cfg(feature = "gpu")]
+pub(super) struct SkipOutcome {
+    pub(super) skipped: u64,
+    pub(super) exhausted: bool,
+}
 
 /// GPU-aware file source that auto-selects the optimal decode path.
 ///
@@ -62,98 +89,8 @@ pub struct SmartFileSource {
 
 enum SourceMode {
     Cpu(Box<crate::adapters::FfmpegFileSource>),
-    #[cfg(all(feature = "gpu", target_os = "linux"))]
-    GpuZeroCopy(Box<LinuxZeroCopyState>),
-    #[cfg(all(feature = "gpu", target_os = "macos"))]
-    MetalZeroCopy(
-        crate::decode_stream::OwnedFrames<reco_core::interop::metal::RetainedCVPixelBuffer>,
-    ),
-    #[cfg(all(feature = "gpu", target_os = "windows"))]
-    D3d11ZeroCopy(Box<WindowsZeroCopyState>),
-}
-
-#[cfg(all(feature = "gpu", target_os = "windows"))]
-enum WindowsDecodeState {
-    Pending,
-    Running {
-        frames: crate::decode_stream::OwnedFrames<crate::ffmpeg::decoder::D3d11Frame>,
-    },
-    Failed(SourceError),
-}
-
-#[cfg(all(feature = "gpu", target_os = "windows"))]
-struct WindowsZeroCopyState {
-    inputs: Vec<crate::stitch_job::InputPath>,
-    sync_offset: i64,
-    current_frame: u64,
-    // Drop decode workers before releasing the shared D3D11 device handle.
-    decode: WindowsDecodeState,
-    shared_device: Option<crate::ffmpeg::decoder::SharedHwDevice>,
-}
-
-#[cfg(all(feature = "gpu", target_os = "windows"))]
-impl WindowsZeroCopyState {
-    fn start_at(&mut self, start_secs: Option<f64>) -> Result<(), SourceError> {
-        // Cancel and join any previous decode generation before opening
-        // replacement D3D11VA decoders.
-        self.decode = WindowsDecodeState::Pending;
-        if self.shared_device.is_none() {
-            let Some(device) = crate::ffmpeg::decoder::create_shared_hw_device() else {
-                let error = SourceError::Init {
-                    path: "D3D11VA".into(),
-                    reason: "hardware device creation failed".into(),
-                };
-                self.decode = WindowsDecodeState::Failed(error.clone());
-                return Err(error);
-            };
-            self.shared_device = Some(device);
-        }
-        let frames = match crate::zero_copy::spawn_d3d11_decode_frames(
-            &self.inputs,
-            self.sync_offset,
-            start_secs,
-            self.shared_device.as_ref(),
-        ) {
-            Ok(frames) => frames,
-            Err(error) => {
-                self.decode = WindowsDecodeState::Failed(error.clone());
-                return Err(error);
-            }
-        };
-        self.decode = WindowsDecodeState::Running { frames };
-        Ok(())
-    }
-
-    fn ensure_running(&mut self) {
-        if matches!(self.decode, WindowsDecodeState::Pending) {
-            let _ = self.start_at(None);
-        }
-    }
-
-    /// Jump the decode threads to a new position, replacing whatever
-    /// pipeline is currently pending or running.
-    ///
-    /// Mirrors [`crate::adapters::FfmpegFileSource`]'s [`FrameSource::seek`]
-    /// strategy: cancel and join the previous decode generation, then respawn
-    /// decoders on the same shared D3D11 device seeked to the nearest keyframe
-    /// before `secs` and decode-discard only the remaining GOP gap to the
-    /// target PTS.
-    fn seek_to_secs(&mut self, secs: f64) -> Result<(), SourceError> {
-        self.start_at(Some(secs))
-    }
-}
-
-#[cfg(all(feature = "gpu", target_os = "linux"))]
-struct LinuxZeroCopyState {
-    /// Frame-set receiver. Drop takes it early to unblock the collector
-    /// before joining decode workers.
-    frame_rx: Option<std::sync::mpsc::Receiver<crate::decode_stream::Message<Vec<u8>>>>,
-    /// Shared textures (kept alive until Drop).
-    shared: reco_core::interop::SharedTextureSet,
-    /// Decode thread join handles.
-    join_handles: Vec<std::thread::JoinHandle<()>>,
-    /// Shutdown flag checked by decode threads for graceful exit.
-    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    #[cfg(feature = "gpu")]
+    Native(Box<platform::NativeSource>),
 }
 
 impl SmartFileSource {
@@ -212,14 +149,17 @@ impl SmartFileSource {
                     }
                 })?;
             if probe.is_full_range() != full_range {
-                return Err(SourceError::Init { path: input.first_path().display().to_string(), reason: "camera color ranges differ; mixed full-range and limited-range inputs are not supported".into() });
+                return Err(SourceError::Init {
+                    path: input.first_path().display().to_string(),
+                    reason: "camera color ranges differ; mixed full-range and limited-range inputs are not supported".into(),
+                });
             }
             crate::adapters::merge_frame_rate(&mut info, probe.frame_rate(), input.first_path())?;
-            matching_layout &= (cfg!(target_os = "linux")
+            matching_layout &= (platform::NativeSource::allows_mixed_camera_sizes()
                 || (probe.width() == info.camera_sizes[0].0
                     && probe.height() == info.camera_sizes[0].1))
                 && probe.pixel_format() == pixel_format
-                && is_backend_zero_copy_capable(probe.backend());
+                && platform::NativeSource::supports_backend(probe.backend());
             info.camera_sizes.push((probe.width(), probe.height()));
             if camera == 1 {
                 right_rotation = probe.rotation();
@@ -228,18 +168,14 @@ impl SmartFileSource {
         }
         let color_metadata = crate::ffmpeg::ColorMetadata::reconcile(&camera_colors);
         // Automatic Windows/Metal native selection is restricted to validated layouts.
-        let native_input_count = if cfg!(target_os = "linux") {
-            matches!(inputs.len(), 1 | 2)
-        } else {
-            inputs.len() == 2
-        };
+        let native_input_count = platform::NativeSource::supports_input_count(inputs.len());
 
         // Detect zero-copy capability
         let hwaccel_disabled = std::env::var("RECO_NO_HWACCEL").is_ok();
         if hwaccel_disabled {
             log::info!("RECO_NO_HWACCEL set, forcing CPU decode path");
         }
-        let backend_capable = is_backend_zero_copy_capable(decode_backend);
+        let backend_capable = platform::NativeSource::supports_backend(decode_backend);
         let gpu_capable = gpu.supports_zero_copy();
         let use_zero_copy = !hwaccel_disabled
             && backend_capable
@@ -310,7 +246,7 @@ impl SmartFileSource {
         })
     }
 
-    #[cfg(all(feature = "gpu", target_os = "linux"))]
+    #[cfg(feature = "gpu")]
     #[allow(clippy::too_many_arguments)]
     fn open_zero_copy(
         inputs: &[crate::stitch_job::InputPath],
@@ -323,133 +259,30 @@ impl SmartFileSource {
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
-        let (shared, receivers) =
-            crate::zero_copy::cuda::allocate(gpu, &info.camera_sizes, pixel_format).map_err(
-                |error| SourceError::Init {
-                    path: inputs[0].first_path().display().to_string(),
-                    reason: error.to_string(),
-                },
-            )?;
-        let decoders = inputs
-            .iter()
-            .zip(&shared.cameras)
-            .zip(receivers)
-            .map(|((input, camera), free)| (input.clone(), camera.buf.clone(), free))
-            .collect();
-        let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let decode_handles =
-            crate::zero_copy::spawn_decode_threads_gpu(decoders, sync_offset, shutdown.clone());
-        log::info!(
-            "SmartFileSource: GPU zero-copy ({:?}, {pixel_format:?})",
-            info.camera_sizes
-        );
-
+        let Some(native) = platform::NativeSource::try_open(
+            inputs,
+            gpu,
+            sync_offset,
+            &info,
+            pixel_format,
+            full_range,
+        )?
+        else {
+            return Self::open_cpu_only(inputs, sync_offset, false);
+        };
+        let decode_mode = native.decode_mode();
         Ok(Self {
-            mode: SourceMode::GpuZeroCopy(Box::new(LinuxZeroCopyState {
-                frame_rx: Some(decode_handles.frame_rx),
-                shared,
-                join_handles: decode_handles.join_handles,
-                shutdown,
-            })),
+            mode: SourceMode::Native(Box::new(native)),
             info,
             pixel_format,
             full_range,
             color_metadata,
             left_rotation,
             right_rotation,
-            decode_mode: "GPU zero-copy (CUDA/Vulkan)",
+            decode_mode,
             exhausted: false,
             terminal_error: None,
         })
-    }
-
-    #[cfg(all(feature = "gpu", target_os = "macos"))]
-    #[allow(clippy::too_many_arguments)]
-    fn open_zero_copy(
-        inputs: &[crate::stitch_job::InputPath],
-        _gpu: &reco_core::gpu::GpuContext,
-        sync_offset: i64,
-        info: SourceInfo,
-        pixel_format: GpuPixelFormat,
-        full_range: bool,
-        color_metadata: crate::ffmpeg::ColorMetadata,
-        left_rotation: i32,
-        right_rotation: i32,
-    ) -> Result<Self, SourceError> {
-        let frames = crate::zero_copy::spawn_vt_decode_frames(inputs, sync_offset);
-
-        log::info!(
-            "SmartFileSource: Metal zero-copy ({}x{}, VideoToolbox decode{})",
-            info.camera_sizes[0].0,
-            info.camera_sizes[0].1,
-            if full_range { ", full-range" } else { "" }
-        );
-
-        Ok(Self {
-            mode: SourceMode::MetalZeroCopy(frames),
-            info,
-            pixel_format,
-            full_range,
-            color_metadata,
-            left_rotation,
-            right_rotation,
-            decode_mode: "Metal zero-copy (VideoToolbox)",
-            exhausted: false,
-            terminal_error: None,
-        })
-    }
-
-    #[cfg(all(feature = "gpu", target_os = "windows"))]
-    #[allow(clippy::too_many_arguments)]
-    fn open_zero_copy(
-        inputs: &[crate::stitch_job::InputPath],
-        _gpu: &reco_core::gpu::GpuContext,
-        sync_offset: i64,
-        info: SourceInfo,
-        pixel_format: GpuPixelFormat,
-        full_range: bool,
-        color_metadata: crate::ffmpeg::ColorMetadata,
-        left_rotation: i32,
-        right_rotation: i32,
-    ) -> Result<Self, SourceError> {
-        log::info!("SmartFileSource: D3D11VA zero-copy decode enabled");
-
-        Ok(Self {
-            mode: SourceMode::D3d11ZeroCopy(Box::new(WindowsZeroCopyState {
-                inputs: inputs.to_vec(),
-                sync_offset,
-                current_frame: 0,
-                decode: WindowsDecodeState::Pending,
-                shared_device: None,
-            })),
-            info,
-            pixel_format,
-            full_range,
-            color_metadata,
-            left_rotation,
-            right_rotation,
-            decode_mode: "D3D11VA zero-copy",
-            exhausted: false,
-            terminal_error: None,
-        })
-    }
-
-    #[cfg(feature = "gpu")]
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    #[allow(clippy::too_many_arguments)]
-    fn open_zero_copy(
-        inputs: &[crate::stitch_job::InputPath],
-        _gpu: &reco_core::gpu::GpuContext,
-        sync_offset: i64,
-        _info: SourceInfo,
-        _pixel_format: GpuPixelFormat,
-        _full_range: bool,
-        _color_metadata: crate::ffmpeg::ColorMetadata,
-        _left_rotation: i32,
-        _right_rotation: i32,
-    ) -> Result<Self, SourceError> {
-        log::info!("SmartFileSource: zero-copy not yet implemented for this platform, using CPU");
-        Self::open_cpu_only(inputs, sync_offset, false)
     }
 
     /// Human-readable description of the active decode path.
@@ -469,8 +302,8 @@ impl SmartFileSource {
     #[cfg(all(feature = "gpu", target_os = "linux"))]
     pub fn shared_texture_set(&self) -> Option<&reco_core::interop::SharedTextureSet> {
         match &self.mode {
-            SourceMode::GpuZeroCopy(state) => Some(&state.shared),
-            _ => None,
+            SourceMode::Native(native) => Some(native.shared_texture_set()),
+            SourceMode::Cpu(_) => None,
         }
     }
 }
@@ -499,63 +332,13 @@ impl FrameSource for SmartFileSource {
                 }
                 Ok(frame)
             }
-            #[cfg(all(feature = "gpu", target_os = "linux"))]
-            SourceMode::GpuZeroCopy(state) => {
-                let rx = state
-                    .frame_rx
-                    .as_ref()
-                    .expect("frame_rx taken during shutdown");
-                match crate::decode_stream::receive(rx)
+            #[cfg(feature = "gpu")]
+            SourceMode::Native(native) => {
+                match native
+                    .next_frame()
                     .inspect_err(|error| self.terminal_error = Some(error.clone()))?
                 {
-                    Some(signal) => Ok(Some(SourceFrame::untimed(FrameSet::GpuResident {
-                        slots: signal,
-                    }))),
-                    None => {
-                        self.exhausted = true;
-                        Ok(None)
-                    }
-                }
-            }
-            #[cfg(all(feature = "gpu", target_os = "macos"))]
-            SourceMode::MetalZeroCopy(frames) => match frames
-                .receive()
-                .inspect_err(|error| self.terminal_error = Some(error.clone()))?
-            {
-                Some(frames) => Ok(Some(SourceFrame::untimed(FrameSet::MetalResident(frames)))),
-                None => {
-                    self.exhausted = true;
-                    Ok(None)
-                }
-            },
-            #[cfg(all(feature = "gpu", target_os = "windows"))]
-            SourceMode::D3d11ZeroCopy(state) => {
-                state.ensure_running();
-                let result = match &state.decode {
-                    WindowsDecodeState::Running { frames } => frames.receive(),
-                    WindowsDecodeState::Failed(error) => Err(error.clone()),
-                    _ => unreachable!(),
-                };
-                match result.inspect_err(|error| self.terminal_error = Some(error.clone()))? {
-                    Some(decoded) => {
-                        state.current_frame = state.current_frame.saturating_add(1);
-                        let frames = FrameSet::D3d11Resident(
-                            decoded
-                                .into_iter()
-                                .map(|frame| {
-                                    // SAFETY: the decoded AVFrame owns the texture and pins this slice.
-                                    unsafe {
-                                        reco_core::source::D3d11CameraFrame::from_raw(
-                                            frame.texture,
-                                            frame.array_slice,
-                                            frame,
-                                        )
-                                    }
-                                })
-                                .collect(),
-                        );
-                        Ok(Some(SourceFrame::untimed(frames)))
-                    }
+                    Some(frame) => Ok(Some(frame)),
                     None => {
                         self.exhausted = true;
                         Ok(None)
@@ -577,81 +360,20 @@ impl FrameSource for SmartFileSource {
             return Ok(0);
         }
         match &mut self.mode {
-            #[cfg(all(feature = "gpu", target_os = "linux"))]
-            SourceMode::GpuZeroCopy(state) => {
-                let rx = state
-                    .frame_rx
-                    .as_ref()
-                    .expect("frame_rx taken during shutdown");
-                for i in 0..count {
-                    match crate::decode_stream::receive(rx)
-                        .inspect_err(|error| self.terminal_error = Some(error.clone()))?
-                    {
-                        Some(signal) => {
-                            for (camera, slot) in state.shared.cameras.iter().zip(signal) {
-                                let _ = camera.slot_free_tx.send(slot);
-                            }
-                        }
-                        None => {
-                            self.exhausted = true;
-                            return Ok(i);
-                        }
-                    }
-                }
-                log::debug!("GPU zero-copy: skipped {count} frames for start_time");
-                Ok(count)
-            }
             SourceMode::Cpu(source) => {
                 source.seek(count)?;
                 log::debug!("CPU seek: jumped to frame {count}");
                 Ok(count)
             }
-            #[cfg(all(feature = "gpu", target_os = "macos"))]
-            SourceMode::MetalZeroCopy(_) => {
-                for i in 0..count {
-                    if self.next_frame()?.is_none() {
-                        return Ok(i);
-                    }
+            #[cfg(feature = "gpu")]
+            SourceMode::Native(native) => {
+                let outcome = native
+                    .skip_frames(count, &self.info)
+                    .inspect_err(|error| self.terminal_error = Some(error.clone()))?;
+                if outcome.exhausted {
+                    self.exhausted = true;
                 }
-                Ok(count)
-            }
-            #[cfg(all(feature = "gpu", target_os = "windows"))]
-            SourceMode::D3d11ZeroCopy(_) => {
-                let target = {
-                    let SourceMode::D3d11ZeroCopy(state) = &self.mode else {
-                        unreachable!();
-                    };
-                    if let WindowsDecodeState::Failed(error) = &state.decode {
-                        let error = error.clone();
-                        self.terminal_error = Some(error.clone());
-                        return Err(error);
-                    }
-                    if count == 0 {
-                        return Ok(0);
-                    }
-                    skip_seek_target(state.current_frame, count, &self.info)
-                };
-                if let Some((target_frame, secs)) = target {
-                    let SourceMode::D3d11ZeroCopy(state) = &mut self.mode else {
-                        unreachable!();
-                    };
-                    if let Err(error) = state.seek_to_secs(secs) {
-                        self.terminal_error = Some(error.clone());
-                        return Err(error);
-                    }
-                    state.current_frame = target_frame;
-                    log::debug!(
-                        "D3D11VA seek: jumped to {secs:.1}s (frame {target_frame}, skipped {count})"
-                    );
-                    Ok(count)
-                } else {
-                    for i in 0..count {
-                        if self.next_frame()?.is_none() {
-                            return Ok(i);
-                        }
-                    }
-                    Ok(count)
-                }
+                Ok(outcome.skipped)
             }
         }
     }
@@ -678,67 +400,16 @@ impl FrameSource for SmartFileSource {
         // SmartFileSource exposes blocking reads, not polling.
         match &self.mode {
             SourceMode::Cpu(source) => self.exhausted || source.is_exhausted(),
-            #[cfg(all(feature = "gpu", target_os = "linux"))]
-            SourceMode::GpuZeroCopy(_) => self.exhausted,
-            #[cfg(all(feature = "gpu", target_os = "macos"))]
-            SourceMode::MetalZeroCopy(_) => self.exhausted,
-            #[cfg(all(feature = "gpu", target_os = "windows"))]
-            SourceMode::D3d11ZeroCopy(_) => self.exhausted,
+            #[cfg(feature = "gpu")]
+            SourceMode::Native(_) => self.exhausted,
         }
     }
 
     fn start_decoding(&mut self) {
-        #[cfg(all(feature = "gpu", target_os = "windows"))]
-        if let SourceMode::D3d11ZeroCopy(state) = &mut self.mode {
-            state.ensure_running();
+        #[cfg(feature = "gpu")]
+        if let SourceMode::Native(native) = &mut self.mode {
+            native.start_decoding();
         }
-    }
-}
-
-impl Drop for SmartFileSource {
-    fn drop(&mut self) {
-        // Windows joins through its owned stream. CUDA additionally borrows
-        // allocations that must remain mapped until its workers finish.
-        #[cfg(all(feature = "gpu", target_os = "linux"))]
-        if let SourceMode::GpuZeroCopy(state) = &mut self.mode {
-            // Graceful shutdown ordering to prevent CUDA error 700:
-            //
-            // 1. Set shutdown flag -> decode threads exit via recv_timeout check
-            // 2. Drop frame_rx -> pairing thread's send() returns Err, exits
-            // 3. Join all threads -> VideoDecoder::Drop completes CUDA cleanup
-            //    while shared Vulkan memory is still mapped into CUDA
-            // 4. SharedTextureSet drops naturally -> CUDA memory unmapped
-
-            // Step 1: Signal shutdown to decode threads (they check this
-            // flag via recv_timeout, so they exit even if slot senders
-            // are still held by the session).
-            state
-                .shutdown
-                .store(true, std::sync::atomic::Ordering::Release);
-
-            // Step 2: Drop frame_rx to unblock pairing thread
-            state.frame_rx = None;
-
-            // Step 3: Join decode + pairing threads
-            for handle in state.join_handles.drain(..) {
-                let _ = handle.join();
-            }
-            // SharedTextureSet drops naturally after this
-        }
-    }
-}
-
-/// Check if a decode backend supports GPU zero-copy.
-#[cfg(feature = "gpu")]
-fn is_backend_zero_copy_capable(backend: crate::ffmpeg::decoder::DecodeBackend) -> bool {
-    match backend {
-        #[cfg(target_os = "linux")]
-        crate::ffmpeg::decoder::DecodeBackend::Cuda => true,
-        #[cfg(target_os = "macos")]
-        crate::ffmpeg::decoder::DecodeBackend::VideoToolbox => true,
-        #[cfg(target_os = "windows")]
-        crate::ffmpeg::decoder::DecodeBackend::D3d11va => true,
-        _ => false,
     }
 }
 

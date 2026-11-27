@@ -1,5 +1,6 @@
 //! Bounded decode streams with explicit completion and failure.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::thread::JoinHandle;
 
@@ -103,6 +104,73 @@ where
         })
         .expect("spawn decode worker");
     (rx, handle)
+}
+
+/// Shared keyframe-seek + GOP-discard + send loop for file decode workers.
+pub(crate) struct DecodeStream<'a, T> {
+    pub(crate) label: &'a str,
+    pub(crate) start_secs: Option<f64>,
+    pub(crate) stop: &'a AtomicBool,
+    pub(crate) tx: &'a SyncSender<Message<T>>,
+}
+
+impl<T> DecodeStream<'_, T> {
+    /// Seek `decoder` to the nearest keyframe before `start_secs` (if any),
+    /// decode-discard any remaining GOP frames before the stream-grid target
+    /// PTS, and forward converted frames to `tx` until EOF, cancellation, or
+    /// receiver drop.
+    pub(crate) fn run<F>(
+        &self,
+        decoder: &mut crate::ffmpeg::decoder::VideoDecoder,
+        mut next_frame: impl FnMut(
+            &mut crate::ffmpeg::decoder::VideoDecoder,
+        ) -> Result<Option<F>, crate::ffmpeg::decoder::DecodeError>,
+        timestamp_us: impl Fn(&F) -> i64,
+        into_output: impl FnMut(F) -> T,
+    ) -> Result<(), crate::ffmpeg::decoder::DecodeError> {
+        if self.stop.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+        if let Some(secs) = self.start_secs {
+            decoder.seek_to_secs(secs)?;
+        }
+        // Compare on the stream's timestamp grid: e.g. frame 1 at 30fps
+        // is stored at 33ms in Matroska, not 33.333ms.
+        let target_us = self
+            .start_secs
+            .map(|secs| decoder.seek_timestamp_us(secs))
+            .transpose()?;
+        self.pump_from(target_us, || next_frame(decoder), timestamp_us, into_output)
+    }
+
+    fn pump_from<F, E>(
+        &self,
+        mut target_us: Option<i64>,
+        mut next_frame: impl FnMut() -> Result<Option<F>, E>,
+        timestamp_us: impl Fn(&F) -> i64,
+        mut into_output: impl FnMut(F) -> T,
+    ) -> Result<(), E> {
+        let mut skipped = 0u64;
+        while !self.stop.load(Ordering::Relaxed) {
+            let Some(frame) = next_frame()? else {
+                break;
+            };
+            if target_us.is_some_and(|target| timestamp_us(&frame) < target) {
+                skipped += 1;
+                continue;
+            }
+            if target_us.take().is_some() {
+                log::debug!(
+                    "{}: seek skipped {skipped} frames to reach target",
+                    self.label
+                );
+            }
+            if self.tx.send(Ok(Some(into_output(frame)))).is_err() {
+                break;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -344,5 +412,87 @@ mod tests {
         done_rx
             .recv_timeout(std::time::Duration::from_secs(5))
             .unwrap();
+    }
+
+    #[test]
+    fn pump_from_discards_until_target_then_keeps_lower_pts() {
+        let stop = AtomicBool::new(false);
+        let (tx, rx) = sync_channel(8);
+        let mut frames = vec![
+            Ok::<_, &str>(Some((100_i64, 1_u8))),
+            Ok(Some((200, 2))),
+            Ok(Some((300, 3))),
+            Ok(Some((400, 4))),
+            // Lower PTS after reaching target (e.g. segment reset) must still be emitted.
+            Ok(Some((50, 5))),
+        ]
+        .into_iter();
+        let mut converted = Vec::new();
+        DecodeStream {
+            label: "test",
+            start_secs: None,
+            stop: &stop,
+            tx: &tx,
+        }
+        .pump_from(
+            Some(300),
+            || frames.next().unwrap_or(Ok(None)),
+            |frame| frame.0,
+            |frame| {
+                converted.push(frame.1);
+                frame.1
+            },
+        )
+        .unwrap();
+        drop(tx);
+        let received: Vec<_> = rx.iter().map(|m| m.unwrap().unwrap()).collect();
+        assert_eq!(received, vec![3, 4, 5]);
+        assert_eq!(converted, vec![3, 4, 5]);
+    }
+
+    #[test]
+    fn pump_from_honors_stop_and_propagates_errors() {
+        let stop = AtomicBool::new(false);
+        let (tx, rx) = sync_channel(8);
+        let mut produced = 0_u8;
+        DecodeStream {
+            label: "test",
+            start_secs: None,
+            stop: &stop,
+            tx: &tx,
+        }
+        .pump_from(
+            Some(500),
+            || -> Result<Option<(i64, u8)>, &str> {
+                produced += 1;
+                if produced == 2 {
+                    stop.store(true, Ordering::Relaxed);
+                }
+                Ok(Some((i64::from(produced) * 100, produced)))
+            },
+            |frame| frame.0,
+            |frame| frame.1,
+        )
+        .unwrap();
+        assert_eq!(produced, 2);
+        assert!(rx.try_recv().is_err());
+
+        let stop = AtomicBool::new(false);
+        let (tx, _rx) = sync_channel(8);
+        let mut seq = vec![Ok(Some((100_i64, 1_u8))), Err("decode failure")].into_iter();
+        let err = DecodeStream {
+            label: "test",
+            start_secs: None,
+            stop: &stop,
+            tx: &tx,
+        }
+        .pump_from(
+            Some(300),
+            || seq.next().unwrap_or(Ok(None)),
+            |frame| frame.0,
+            |frame| frame.1,
+        )
+        .unwrap_err();
+        assert_eq!(err, "decode failure");
     }
 }

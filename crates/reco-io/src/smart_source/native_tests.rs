@@ -265,6 +265,7 @@ fn native_camera_frames_keep_dimensions_and_identity_with_and_without_lookahead(
                     let info = automatic.info();
                     let format = automatic.pixel_format;
                     let full_range = automatic.full_range;
+                    let color_metadata = automatic.color_metadata;
                     let rotations = [automatic.left_rotation, automatic.right_rotation];
                     drop(automatic);
                     // Exercise the native adapter without weakening automatic source admission.
@@ -275,6 +276,7 @@ fn native_camera_frames_keep_dimensions_and_identity_with_and_without_lookahead(
                         info,
                         format,
                         full_range,
+                        color_metadata,
                         rotations[0],
                         rotations[1],
                     )

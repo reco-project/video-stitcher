@@ -519,31 +519,23 @@ impl FfmpegFileSource {
                     dec.width(),
                     dec.height()
                 );
-                if let Some(secs) = seek_secs {
-                    dec.seek_to_secs(secs)?;
+                crate::decode_stream::DecodeStream {
+                    label: &format!("{label} decoder"),
+                    start_secs: seek_secs,
+                    stop: &stop,
+                    tx,
                 }
-                // Compare on the stream's timestamp grid: e.g. frame 1 at 30fps
-                // is stored at 33ms in Matroska, not 33.333ms.
-                let mut target_us = seek_secs
-                    .map(|secs| dec.seek_timestamp_us(secs))
-                    .transpose()?;
-                while !stop.load(Ordering::Relaxed) {
-                    let Some(f) = dec.next_frame()? else { break };
-                    if target_us.is_some_and(|target| f.timestamp_us < target) {
-                        continue;
-                    }
-                    target_us = None;
-                    let buf = Yuv420pData {
+                .run(
+                    &mut dec,
+                    ffmpeg::decoder::VideoDecoder::next_frame,
+                    |f| f.timestamp_us,
+                    |f| Yuv420pData {
                         size: (f.width, f.height),
                         y: f.y,
                         u: f.u,
                         v: f.v,
-                    };
-                    if tx.send(Ok(Some(buf))).is_err() {
-                        break;
-                    }
-                }
-                Ok(())
+                    },
+                )
             },
         )
     }
