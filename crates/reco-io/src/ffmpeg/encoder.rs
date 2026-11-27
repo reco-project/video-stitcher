@@ -1822,6 +1822,39 @@ fn scale_bitrate_mbps(base_mbps: u32, width: u32, height: u32) -> u32 {
     ((f64::from(base_mbps) * scale).round() as u32).max(1)
 }
 
+/// Map normalized numeric quality (`0..=100`, higher = better) to VideoToolbox
+/// `(global_quality, maxrate_1080p_mbps)`.
+///
+/// VideoToolbox `global_quality` maps to `kVTCompressionPropertyKey_Quality`
+/// (`0.0..=1.0`, FFmpeg divides `global_quality` by 100). Because VT's bitrate
+/// grows steeply near `1.0` (near-lossless), `0..=100` maps linearly onto
+/// `30..=90`: `q = 50` matches `Balanced` (`60`), `q = 75` reaches `75`, and
+/// `q > 75` continues climbing to `90` without hitting the `1.0` cliff.
+///
+/// The 1080p `maxrate` ceiling (scaled by output resolution via
+/// `scale_bitrate_mbps`) is piecewise-linear through the codec's `Balanced`
+/// (`q = 50`) and `High` (`q = 75`) ceilings and expands smoothly up to `2x`
+/// the `High` ceiling at `q = 100`.
+fn videotoolbox_quality_params(q: u8, is_hevc: bool) -> (u32, u32) {
+    let q = f64::from(q.min(100));
+    let global_quality = (30.0 + (q / 100.0) * 60.0).round() as u32;
+
+    let (min_mbps, balanced_mbps, high_mbps, max_mbps) = if is_hevc {
+        (6.0, 14.0, 22.0, 44.0)
+    } else {
+        (8.0, 18.0, 30.0, 60.0)
+    };
+    let maxrate_mbps = if q <= 50.0 {
+        min_mbps + (q / 50.0) * (balanced_mbps - min_mbps)
+    } else if q <= 75.0 {
+        balanced_mbps + ((q - 50.0) / 25.0) * (high_mbps - balanced_mbps)
+    } else {
+        high_mbps + ((q - 75.0) / 25.0) * (max_mbps - high_mbps)
+    };
+
+    (global_quality, maxrate_mbps.round() as u32)
+}
+
 fn build_encoder_opts(
     name: &str,
     quality: Quality,
@@ -1915,31 +1948,29 @@ fn build_encoder_opts(
         }
         "h264_videotoolbox" => {
             // VideoToolbox quality maps to kVTCompressionPropertyKey_Quality
-            // (0.0-1.0 float, FFmpeg divides global_quality by 100). The
-            // relationship between VT quality and bitrate is exponential:
-            // 0.80 -> ~104 Mbps, 1.0 -> ~297 Mbps (near-lossless). To keep
-            // bitrates comparable with NVENC / software CRF at the same
-            // --quality-value, we cap values at 75 (Apple's "high" tier)
-            // and enforce a maxrate ceiling via kVTCompressionPropertyKey_DataRateLimits.
+            // (0.0-1.0 float, FFmpeg divides global_quality by 100). Because
+            // VT's bitrate grows steeply near 1.0 (near-lossless), pair
+            // global_quality with a resolution-scaled maxrate ceiling via
+            // kVTCompressionPropertyKey_DataRateLimits matching h264_nvenc.
             let (q, maxrate) = match effective_preset {
-                QualityPreset::Fast => ("50", "12000000"),
-                QualityPreset::Balanced => ("60", "18000000"),
-                QualityPreset::High => ("70", "30000000"),
+                QualityPreset::Fast => ("50", 12),
+                QualityPreset::Balanced => ("60", 18),
+                QualityPreset::High => ("70", 30),
             };
             opts.set("global_quality", q);
-            opts.set("maxrate", maxrate);
+            opts.set("maxrate", &mbps(maxrate));
             opts.set("profile", "high");
         }
         "hevc_videotoolbox" => {
             // Same VT quality model as H.264; HEVC is ~30% more efficient
-            // so we use slightly lower ceilings.
+            // so we use lower 1080p baseline ceilings matching hevc_nvenc.
             let (q, maxrate) = match effective_preset {
-                QualityPreset::Fast => ("50", "10000000"),
-                QualityPreset::Balanced => ("60", "14000000"),
-                QualityPreset::High => ("70", "22000000"),
+                QualityPreset::Fast => ("50", 10),
+                QualityPreset::Balanced => ("60", 14),
+                QualityPreset::High => ("70", 22),
             };
             opts.set("global_quality", q);
-            opts.set("maxrate", maxrate);
+            opts.set("maxrate", &mbps(maxrate));
             opts.set("profile", "main");
         }
         "h264_vaapi" | "hevc_vaapi" | "av1_vaapi" => {
@@ -2030,29 +2061,16 @@ fn build_encoder_opts(
     // Apply normalized quality override (0-100, higher = better).
     // Converts from the consumer-facing scale to encoder-specific parameters.
     if let Some(q) = quality_override {
-        let is_videotoolbox = name.contains("videotoolbox");
-        if is_videotoolbox {
-            // VideoToolbox quality is exponential: VT 0.80 -> ~104 Mbps,
-            // VT 1.0 -> ~297 Mbps (near-lossless). To produce bitrates
-            // comparable with NVENC at the same --quality-value, compress
-            // the consumer 0-100 range into VT 40-75 and enforce a maxrate
-            // ceiling via DataRateLimits. VT 0.75 is Apple's "high" tier;
-            // anything above produces diminishing-returns bitrate inflation.
-            let vt_q = 40.0 + (q as f64 / 100.0) * 35.0;
-            let val = format!("{:.0}", vt_q);
+        if name.ends_with("_videotoolbox") {
+            let is_hevc = name.starts_with("hevc_");
+            let (vt_q, maxrate_base) = videotoolbox_quality_params(q, is_hevc);
+            let val = vt_q.to_string();
+            let maxrate = mbps(maxrate_base);
             opts.set("global_quality", &val);
-            // Tiered maxrate matches NVENC ceilings (in bits/sec).
-            let maxrate = if q >= 75 {
-                "30000000"
-            } else if q >= 40 {
-                "18000000"
-            } else {
-                "12000000"
-            };
-            opts.set("maxrate", maxrate);
+            opts.set("maxrate", &maxrate);
             log::info!(
                 "Encoder quality: {q} -> {name} global_quality={val} (VT {:.2}), maxrate={maxrate}",
-                vt_q / 100.0
+                f64::from(vt_q) / 100.0
             );
         } else {
             // CRF-style encoders: crf = 40.0 - (quality / 100.0) * 28.0
@@ -2462,5 +2480,178 @@ mod tests {
         // Clamped: low res floors at 0.5x, never below 1 Mbps.
         assert_eq!(scale_bitrate_mbps(30, 640, 360), 15);
         assert_eq!(scale_bitrate_mbps(1, 320, 240), 1);
+    }
+
+    fn parse_mbps(value: &str) -> u32 {
+        value
+            .strip_suffix('M')
+            .expect("bitrate ceiling should use 'M' suffix")
+            .parse()
+            .expect("bitrate ceiling should be an integer Mbps")
+    }
+
+    #[test]
+    fn videotoolbox_presets_scale_maxrate_with_resolution() {
+        let cases = [
+            ("h264_videotoolbox", "high", QualityPreset::Fast, "50", 12),
+            (
+                "h264_videotoolbox",
+                "high",
+                QualityPreset::Balanced,
+                "60",
+                18,
+            ),
+            ("h264_videotoolbox", "high", QualityPreset::High, "70", 30),
+            ("hevc_videotoolbox", "main", QualityPreset::Fast, "50", 10),
+            (
+                "hevc_videotoolbox",
+                "main",
+                QualityPreset::Balanced,
+                "60",
+                14,
+            ),
+            ("hevc_videotoolbox", "main", QualityPreset::High, "70", 22),
+        ];
+
+        for (encoder, profile, preset, expected_gq, base_mbps) in cases {
+            let opts_1080p = build_encoder_opts(encoder, Quality::Preset(preset), None, 1920, 1080);
+            assert_eq!(opts_1080p.get("global_quality"), Some(expected_gq));
+            assert_eq!(
+                opts_1080p.get("maxrate").map(parse_mbps),
+                Some(base_mbps),
+                "{encoder} {preset:?} 1080p maxrate"
+            );
+            assert_eq!(opts_1080p.get("profile"), Some(profile));
+
+            let opts_4k = build_encoder_opts(encoder, Quality::Preset(preset), None, 3840, 2160);
+            assert_eq!(opts_4k.get("global_quality"), Some(expected_gq));
+            assert_eq!(
+                opts_4k.get("maxrate").map(parse_mbps),
+                Some(base_mbps * 4),
+                "{encoder} {preset:?} 4K maxrate should scale 4x from 1080p"
+            );
+            assert_eq!(opts_4k.get("profile"), Some(profile));
+
+            let opts_720p = build_encoder_opts(encoder, Quality::Preset(preset), None, 1280, 720);
+            assert_eq!(
+                opts_720p.get("maxrate").map(parse_mbps),
+                Some(scale_bitrate_mbps(base_mbps, 1280, 720)),
+                "{encoder} {preset:?} 720p maxrate"
+            );
+        }
+    }
+
+    #[test]
+    fn videotoolbox_numeric_quality_scales_with_resolution_and_progresses_above_75() {
+        for (encoder, expected_profile) in
+            [("h264_videotoolbox", "high"), ("hevc_videotoolbox", "main")]
+        {
+            let mut prev_gq = 0u32;
+            let mut prev_1080p = 0u32;
+            let mut prev_4k = 0u32;
+
+            for q in 0..=100u8 {
+                let opts_1080p = build_encoder_opts(encoder, Quality::Value(q), None, 1920, 1080);
+                let opts_4k = build_encoder_opts(encoder, Quality::Value(q), None, 3840, 2160);
+
+                let gq_1080p: u32 = opts_1080p
+                    .get("global_quality")
+                    .expect("global_quality")
+                    .parse()
+                    .unwrap();
+                let gq_4k: u32 = opts_4k
+                    .get("global_quality")
+                    .expect("global_quality")
+                    .parse()
+                    .unwrap();
+                let maxrate_1080p = parse_mbps(opts_1080p.get("maxrate").expect("maxrate"));
+                let maxrate_4k = parse_mbps(opts_4k.get("maxrate").expect("maxrate"));
+
+                assert_eq!(gq_1080p, gq_4k, "{encoder} q={q}: quality is res-invariant");
+                assert!(
+                    (1..=90).contains(&gq_1080p),
+                    "{encoder} q={q}: global_quality {gq_1080p} out of expected VT range"
+                );
+                assert_eq!(
+                    maxrate_4k,
+                    maxrate_1080p * 4,
+                    "{encoder} q={q}: 4K maxrate should be 4x 1080p"
+                );
+                assert_eq!(opts_1080p.get("profile"), Some(expected_profile));
+                assert_eq!(opts_4k.get("profile"), Some(expected_profile));
+
+                assert!(
+                    gq_1080p >= prev_gq,
+                    "{encoder} q={q}: non-monotonic quality"
+                );
+                assert!(
+                    maxrate_1080p >= prev_1080p,
+                    "{encoder} q={q}: non-monotonic 1080p maxrate"
+                );
+                assert!(
+                    maxrate_4k >= prev_4k,
+                    "{encoder} q={q}: non-monotonic 4K maxrate"
+                );
+
+                prev_gq = gq_1080p;
+                prev_1080p = maxrate_1080p;
+                prev_4k = maxrate_4k;
+            }
+
+            // Representative checkpoints across the full range, specifically verifying
+            // meaningful upward progression above 75 rather than collapsing at High.
+            let samples: Vec<(u32, u32, u32)> = [0u8, 25, 50, 75, 85, 95, 100]
+                .into_iter()
+                .map(|q| {
+                    let o1080 = build_encoder_opts(encoder, Quality::Value(q), None, 1920, 1080);
+                    let o4k = build_encoder_opts(encoder, Quality::Value(q), None, 3840, 2160);
+                    (
+                        o1080.get("global_quality").unwrap().parse().unwrap(),
+                        parse_mbps(o1080.get("maxrate").unwrap()),
+                        parse_mbps(o4k.get("maxrate").unwrap()),
+                    )
+                })
+                .collect();
+
+            for pair in samples.windows(2) {
+                assert!(
+                    pair[1].0 > pair[0].0,
+                    "{encoder}: expected strictly higher global_quality: {pair:?}"
+                );
+                assert!(
+                    pair[1].1 > pair[0].1,
+                    "{encoder}: expected strictly higher 1080p maxrate: {pair:?}"
+                );
+                assert!(
+                    pair[1].2 > pair[0].2,
+                    "{encoder}: expected strictly higher 4K maxrate: {pair:?}"
+                );
+            }
+        }
+
+        // HEVC keeps lower bitrate ceilings than H.264 across the numeric quality scale.
+        for q in [0u8, 25, 50, 75, 85, 100] {
+            let h264 = build_encoder_opts("h264_videotoolbox", Quality::Value(q), None, 3840, 2160);
+            let hevc = build_encoder_opts("hevc_videotoolbox", Quality::Value(q), None, 3840, 2160);
+            assert!(
+                parse_mbps(hevc.get("maxrate").unwrap()) < parse_mbps(h264.get("maxrate").unwrap()),
+                "q={q}: HEVC 4K maxrate should stay below H.264"
+            );
+        }
+
+        // Mid-range and High anchors match the preset tiers cleanly.
+        let hevc_balanced =
+            build_encoder_opts("hevc_videotoolbox", Quality::Value(50), None, 3840, 2160);
+        assert_eq!(hevc_balanced.get("global_quality"), Some("60"));
+        assert_eq!(hevc_balanced.get("maxrate"), Some("56M"));
+
+        let hevc_high =
+            build_encoder_opts("hevc_videotoolbox", Quality::Value(75), None, 3840, 2160);
+        assert_eq!(hevc_high.get("global_quality"), Some("75"));
+        assert_eq!(hevc_high.get("maxrate"), Some("88M"));
+
+        let hevc_85 = build_encoder_opts("hevc_videotoolbox", Quality::Value(85), None, 3840, 2160);
+        assert_eq!(hevc_85.get("global_quality"), Some("81"));
+        assert_eq!(hevc_85.get("maxrate"), Some("124M"));
     }
 }
