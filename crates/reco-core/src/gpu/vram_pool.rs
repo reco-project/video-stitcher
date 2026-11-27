@@ -210,24 +210,9 @@ impl VramPool {
     }
 }
 
-/// Ceiling fraction of *total* VRAM the lookahead pool may use.
-///
-/// Acts as an upper bound (and the fallback when `free` is unusable). The pool
-/// competes with decode surfaces, the stitch pipeline, the encoder, AI tensors,
-/// and the OS compositor, so the pool is never allowed past this fraction of
-/// total even when the driver reports more free.
-const LOOKAHEAD_BUDGET_FRACTION: f64 = 0.70;
-
-/// Runtime margin held back below the driver's "free" figure.
-///
-/// `free` is sampled just before the pool allocates, but the encoder output
-/// surfaces, extra decode buffering, and AI tensors still grow during the run.
-/// This fixed margin leaves room for that growth so the pool does not consume
-/// the last byte of free VRAM.
-const LOOKAHEAD_FREE_RESERVE_BYTES: u64 = 512 * 1024 * 1024;
-
-/// VRAM budget (bytes) available to the lookahead pool, from the driver's
-/// `free` figure when it is trustworthy, else a fraction of `total`.
+/// VRAM budget (bytes) available to the lookahead pool on a discrete GPU,
+/// from the driver's `free` figure when it is trustworthy, else a fraction of
+/// `total`.
 ///
 /// `free` is the honest signal: it already excludes the OS compositor and the
 /// rest of the pipeline, so on small cards it avoids the over-estimate a flat
@@ -235,18 +220,28 @@ const LOOKAHEAD_FREE_RESERVE_BYTES: u64 = 512 * 1024 * 1024;
 /// But some drivers report a bogus ~0 free on a multi-GB card mid-session, which
 /// would block a viable export, so `free` is trusted only when it is a
 /// believable fraction of total; otherwise the total-based estimate is used and
-/// over-allocation is caught at pool creation. Capped at
-/// `total * LOOKAHEAD_BUDGET_FRACTION` either way.
+/// over-allocation is caught at pool creation. Capped at 70% of `total` either
+/// way.
+///
+/// For unified-memory GPUs (such as Apple Silicon), use
+/// [`unified_lookahead_budget_bytes`] or
+/// [`crate::gpu::GpuContext::lookahead_memory_budget`].
 pub fn lookahead_budget_bytes(free_vram: u64, total_vram: u64) -> usize {
-    let total_based = (total_vram as f64 * LOOKAHEAD_BUDGET_FRACTION) as u64;
-    let budget = if free_vram >= total_vram / 8 {
-        free_vram
-            .saturating_sub(LOOKAHEAD_FREE_RESERVE_BYTES)
-            .min(total_based)
-    } else {
-        total_based
-    };
-    budget as usize
+    crate::lookahead::discrete_vram_budget_bytes(free_vram, total_vram)
+}
+
+/// Lookahead byte budget for a unified-memory GPU (such as Apple Silicon),
+/// constrained by both Metal working-set headroom and actual host memory.
+///
+/// Unlike [`lookahead_budget_bytes`], low host availability is real shared-RAM
+/// pressure and never falls back to a high fraction of `gpu_total`.
+pub fn unified_lookahead_budget_bytes(
+    gpu_free: u64,
+    gpu_total: u64,
+    host_available: u64,
+    host_total: u64,
+) -> usize {
+    crate::lookahead::unified_memory_budget_bytes(gpu_free, gpu_total, host_available, host_total)
 }
 
 #[cfg(test)]

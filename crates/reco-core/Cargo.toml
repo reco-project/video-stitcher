@@ -44,6 +44,8 @@ tracing = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ash = { version = "0.38", optional = true }
+
+[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "ios"))'.dependencies]
 libc = { version = "0.2", optional = true }
 
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
