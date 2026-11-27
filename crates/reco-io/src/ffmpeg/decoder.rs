@@ -13,6 +13,21 @@
 
 extern crate ffmpeg_next as ffmpeg;
 
+mod hw_frame;
+mod probe;
+
+#[cfg(all(target_os = "windows", feature = "gpu"))]
+pub use hw_frame::D3d11Frame;
+#[cfg(feature = "gpu")]
+pub use hw_frame::GpuFrame;
+#[cfg(all(target_os = "macos", feature = "gpu"))]
+pub use hw_frame::VtFrame;
+pub use hw_frame::{SharedHwDevice, create_shared_hw_device};
+use hw_frame::{attach_shared_hw_device, is_hw_frame, raw_i32_to_pix_fmt, try_hwaccel};
+
+pub(crate) use probe::probe_recording;
+use probe::{concat_seek_durations, is_plausible_rate, pick_frame_rate, stream_rotation};
+
 use ffmpeg::Rescale;
 use ffmpeg::format::{Pixel, input};
 use ffmpeg::media::Type;
@@ -89,100 +104,6 @@ impl From<ffmpeg::Error> for DecodeError {
         Self::Ffmpeg(e.to_string())
     }
 }
-
-/// A decoded NV12 or P010 frame still on the GPU (CUDA device memory).
-///
-/// Owns a reference to the decoded allocation. Its CUDA pointers remain valid
-/// across subsequent decode calls and decoder destruction until this frame is dropped.
-/// Consumers must finish GPU reads before releasing their last frame reference.
-#[cfg(feature = "gpu")]
-pub struct GpuFrame {
-    /// CUDA device pointer to the Y (luma) plane.
-    pub y_ptr: u64,
-    /// CUDA device pointer to the UV (chroma) plane (NV12 interleaved).
-    pub uv_ptr: u64,
-    /// Row stride (pitch) of the Y plane in bytes.
-    pub y_pitch: usize,
-    /// Row stride (pitch) of the UV plane in bytes.
-    pub uv_pitch: usize,
-    /// Frame width in pixels.
-    pub width: u32,
-    /// Frame height in pixels.
-    pub height: u32,
-    /// Presentation timestamp in microseconds.
-    pub timestamp_us: i64,
-    /// GPU pixel format (NV12 or P010). Determines shared texture formats
-    /// and CUDA copy byte widths.
-    pub pixel_format: reco_core::render::renderer::GpuPixelFormat,
-    _owner: VideoFrame,
-}
-
-/// A decoded frame from VideoToolbox, holding a `CVPixelBufferRef`.
-///
-/// The pixel buffer is backed by an IOSurface and can be imported into
-/// Metal as a texture via `CVMetalTextureCache` without a CPU copy.
-///
-/// **Lifetime:** The `CVPixelBufferRef` is only valid until the next
-/// `next_frame_vt()` call. The caller must import it into Metal textures
-/// (or retain it) before decoding the next frame.
-#[cfg(target_os = "macos")]
-#[cfg(feature = "gpu")]
-pub struct VtFrame {
-    /// Opaque `CVPixelBufferRef` pointer from the decoded AVFrame.
-    /// Cast from `frame->data[3]` per FFmpeg's hwaccel convention.
-    pub cv_pixel_buffer: *mut std::ffi::c_void,
-    /// Frame width in pixels.
-    pub width: u32,
-    /// Frame height in pixels.
-    pub height: u32,
-    /// Presentation timestamp in microseconds.
-    pub timestamp_us: i64,
-}
-
-/// A decoded D3D11VA frame referencing the D3D11 array texture pool.
-///
-/// `texture` is the pool's `ID3D11Texture2D` (same pointer for all frames)
-/// and `array_slice` selects which slice within the pool holds this frame.
-/// Holds a D3D11VA decoded frame with a retained AVFrame reference.
-///
-/// The `_frame_ref` keeps the underlying texture slice pinned in FFmpeg's
-/// decode pool until this struct is dropped. Without it, FFmpeg recycles
-/// the slice and the decoder writes new frame data into it before the
-/// staging copy reads the original.
-#[cfg(target_os = "windows")]
-#[cfg(feature = "gpu")]
-pub struct D3d11Frame {
-    /// Pointer to the D3D11VA decode pool texture (`ID3D11Texture2D*`).
-    pub texture: *mut std::ffi::c_void,
-    /// Array slice index within the pool texture.
-    pub array_slice: usize,
-    /// Frame width in pixels.
-    pub width: u32,
-    /// Frame height in pixels.
-    pub height: u32,
-    /// Presentation timestamp in microseconds.
-    pub timestamp_us: i64,
-    /// Cloned AVFrame that pins the texture slice in the decode pool.
-    _frame_ref: *mut ffi::AVFrame,
-}
-
-#[cfg(target_os = "windows")]
-#[cfg(feature = "gpu")]
-impl Drop for D3d11Frame {
-    fn drop(&mut self) {
-        if !self._frame_ref.is_null() {
-            unsafe {
-                ffi::av_frame_free(&mut self._frame_ref);
-            }
-        }
-    }
-}
-
-// SAFETY: The AVFrame and its texture slice are refcounted. The D3d11Frame
-// owns an independent reference that keeps the slice alive across threads.
-#[cfg(target_os = "windows")]
-#[cfg(feature = "gpu")]
-unsafe impl Send for D3d11Frame {}
 
 /// Re-export the canonical YUV frame type from reco-core.
 pub use reco_core::source::Yuv420pFrame;
@@ -276,109 +197,6 @@ impl Drop for VideoDecoder {
             }
         }
     }
-}
-
-fn container_duration_secs(path: &Path) -> Result<Option<f64>, DecodeError> {
-    let ictx = input(path)?;
-    let duration = ictx.duration();
-    if duration > 0 {
-        Ok(Some(duration as f64 / f64::from(ffmpeg::ffi::AV_TIME_BASE)))
-    } else {
-        Ok(None)
-    }
-}
-
-/// Container metadata for chain compatibility checks, without decoding frames.
-pub(crate) struct RecordingMetadata {
-    pub frames: Option<u64>,
-    pub size: (u32, u32),
-    pub rate: Option<ffmpeg::Rational>,
-    pub rotation: i32,
-}
-
-fn stream_rotation(stream: &ffmpeg::Stream<'_>) -> i32 {
-    let Some(side_data) = stream
-        .side_data()
-        .find(|data| data.kind() == ffmpeg::codec::packet::side_data::Type::DisplayMatrix)
-    else {
-        return 0;
-    };
-    let Some(data) = side_data.data().get(..36) else {
-        return 0;
-    };
-    let mut matrix = [0i32; 9];
-    for (entry, bytes) in matrix.iter_mut().zip(data.chunks_exact(4)) {
-        *entry = i32::from_ne_bytes(bytes.try_into().expect("four-byte matrix entry"));
-    }
-    // SAFETY: matrix contains the nine aligned native-endian entries required by FFmpeg.
-    let angle = unsafe { ffi::av_display_rotation_get(matrix.as_ptr()) };
-    ((-angle).round() as i32).rem_euclid(360)
-}
-
-/// Read each recording independently, rather than trusting concat's first stream.
-pub(crate) fn probe_recording(path: &Path) -> Result<RecordingMetadata, DecodeError> {
-    ffmpeg::init()?;
-    let context = input(path)?;
-    let stream = context
-        .streams()
-        .best(Type::Video)
-        .ok_or(DecodeError::NoVideoStream)?;
-    let parameters = stream.parameters();
-    // SAFETY: parameters owns a live AVCodecParameters for this video stream.
-    let size = unsafe {
-        let parameters = &*parameters.as_ptr();
-        (
-            parameters.width.max(0) as u32,
-            parameters.height.max(0) as u32,
-        )
-    };
-    Ok(RecordingMetadata {
-        frames: video_frame_count(&stream, context.duration()),
-        size,
-        rate: pick_frame_rate(Some(stream.rate()), Some(stream.avg_frame_rate()), None),
-        rotation: stream_rotation(&stream),
-    })
-}
-
-fn video_frame_count(stream: &ffmpeg::Stream<'_>, container_duration: i64) -> Option<u64> {
-    if stream.frames() > 0 {
-        return Some(stream.frames() as u64);
-    }
-    let rate = pick_frame_rate(Some(stream.rate()), Some(stream.avg_frame_rate()), None)?;
-    let time_base = stream.time_base();
-    let seconds = if stream.duration() > 0 && time_base.0 > 0 && time_base.1 > 0 {
-        stream.duration() as f64 * time_base.0 as f64 / time_base.1 as f64
-    } else if container_duration > 0 {
-        container_duration as f64 / f64::from(ffi::AV_TIME_BASE)
-    } else {
-        return None;
-    };
-    let frames = (seconds * rate.0 as f64 / rate.1 as f64).round();
-    (frames.is_finite() && frames > 0.0 && frames < u64::MAX as f64).then_some(frames as u64)
-}
-
-fn concat_seek_durations(paths: &[std::path::PathBuf]) -> Option<Vec<f64>> {
-    let mut durations = Vec::with_capacity(paths.len());
-    for path in paths {
-        match container_duration_secs(path) {
-            Ok(Some(duration)) => durations.push(duration),
-            Ok(None) => {
-                log::warn!(
-                    "Concat demuxer: duration unknown for {}; cross-segment seek may be unavailable",
-                    path.display()
-                );
-                return None;
-            }
-            Err(e) => {
-                log::warn!(
-                    "Concat demuxer: failed to probe duration for {} ({e}); cross-segment seek may be unavailable",
-                    path.display()
-                );
-                return None;
-            }
-        }
-    }
-    Some(durations)
 }
 
 impl VideoDecoder {
@@ -1358,190 +1176,6 @@ fn is_full_range(format: Pixel, range: ffmpeg::color::Range) -> bool {
     }
 }
 
-/// Check if a frame is hardware-decoded (lives on GPU memory).
-fn is_hw_frame(frame: &VideoFrame) -> bool {
-    unsafe { !(*frame.as_ptr()).hw_frames_ctx.is_null() }
-}
-
-/// Pre-created hw device that can be shared across multiple decoders.
-///
-/// D3D11VA textures are device-bound: `CopySubresourceRegion` requires source
-/// and destination on the same device. When two decoders each create their own
-/// device, the staging pool can only copy from one. Sharing a single device
-/// solves this.
-pub struct SharedHwDevice {
-    device_ref: *mut ffi::AVBufferRef,
-    backend: DecodeBackend,
-    #[cfg(target_os = "windows")]
-    decoder_init: Arc<Mutex<()>>,
-}
-
-// SAFETY: The underlying AVBufferRef is refcounted. The D3D11VA/CUDA device
-// it wraps is either thread-safe (CUDA) or protected via ID3D11Multithread.
-unsafe impl Send for SharedHwDevice {}
-
-impl SharedHwDevice {
-    /// Create a new reference suitable for passing to another decoder.
-    ///
-    /// Each reference is independently owned and freed on drop.
-    pub fn new_ref(&self) -> Self {
-        Self {
-            device_ref: unsafe { ffi::av_buffer_ref(self.device_ref) },
-            backend: self.backend,
-            #[cfg(target_os = "windows")]
-            decoder_init: Arc::clone(&self.decoder_init),
-        }
-    }
-
-    /// The decode backend this device supports.
-    pub fn backend(&self) -> DecodeBackend {
-        self.backend
-    }
-}
-
-impl Drop for SharedHwDevice {
-    fn drop(&mut self) {
-        if !self.device_ref.is_null() {
-            unsafe {
-                ffi::av_buffer_unref(&mut self.device_ref);
-            }
-        }
-    }
-}
-
-/// Create a shared hardware device for multi-decoder use.
-///
-/// Returns `None` if no hardware device is available (falls back to software).
-pub fn create_shared_hw_device() -> Option<SharedHwDevice> {
-    let candidates = hwaccel_candidates();
-    for (hw_type, backend) in candidates {
-        let mut device_ref: *mut ffi::AVBufferRef = ptr::null_mut();
-        let ret = unsafe {
-            ffi::av_hwdevice_ctx_create(&mut device_ref, hw_type, ptr::null(), ptr::null_mut(), 0)
-        };
-        if ret >= 0 {
-            log::info!("Shared hw device created: {backend}");
-            return Some(SharedHwDevice {
-                device_ref,
-                backend,
-                #[cfg(target_os = "windows")]
-                decoder_init: Arc::new(Mutex::new(())),
-            });
-        }
-    }
-    None
-}
-
-/// Attach a pre-created hw device to a codec context.
-fn attach_shared_hw_device(
-    context: &mut ffmpeg::codec::context::Context,
-    shared: &SharedHwDevice,
-) -> (DecodeBackend, *mut ffi::AVBufferRef) {
-    let our_ref = unsafe { ffi::av_buffer_ref(shared.device_ref) };
-    unsafe {
-        (*context.as_mut_ptr()).hw_device_ctx = ffi::av_buffer_ref(shared.device_ref);
-    }
-    log::debug!(
-        "Hardware decode attached: {} (shared device)",
-        shared.backend
-    );
-    (shared.backend, our_ref)
-}
-
-/// Platform-preferred hwaccel candidates.
-fn hwaccel_candidates() -> Vec<(ffi::AVHWDeviceType, DecodeBackend)> {
-    vec![
-        #[cfg(target_os = "windows")]
-        (
-            ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_D3D11VA,
-            DecodeBackend::D3d11va,
-        ),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        (
-            ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA,
-            DecodeBackend::Cuda,
-        ),
-        #[cfg(target_os = "linux")]
-        (
-            ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI,
-            DecodeBackend::Vaapi,
-        ),
-        #[cfg(target_os = "macos")]
-        (
-            ffi::AVHWDeviceType::AV_HWDEVICE_TYPE_VIDEOTOOLBOX,
-            DecodeBackend::VideoToolbox,
-        ),
-    ]
-}
-
-/// Try to enable hardware-accelerated decoding on the codec context.
-///
-/// Attempts platform-preferred backends first. Returns the active backend
-/// and the hw device reference (must be kept alive and freed on drop).
-fn try_hwaccel(
-    context: &mut ffmpeg::codec::context::Context,
-) -> (DecodeBackend, *mut ffi::AVBufferRef) {
-    let candidates = hwaccel_candidates();
-
-    for (hw_type, backend) in candidates {
-        let hw_type_name = unsafe {
-            let name = ffi::av_hwdevice_get_type_name(hw_type);
-            if name.is_null() {
-                "unknown"
-            } else {
-                std::ffi::CStr::from_ptr(name).to_str().unwrap_or("unknown")
-            }
-        };
-
-        // Try to create a hardware device context
-        let mut device_ref: *mut ffi::AVBufferRef = ptr::null_mut();
-        let ret = unsafe {
-            ffi::av_hwdevice_ctx_create(
-                &mut device_ref,
-                hw_type,
-                ptr::null(),     // default device
-                ptr::null_mut(), // no options
-                0,               // no flags
-            )
-        };
-
-        if ret < 0 {
-            log::debug!("Hardware decode {hw_type_name}: not available (error {ret})");
-            continue;
-        }
-
-        // Assign the hardware device context to the codec context.
-        // The codec context takes a reference (av_buffer_ref), so we keep our own.
-        unsafe {
-            (*context.as_mut_ptr()).hw_device_ctx = ffi::av_buffer_ref(device_ref);
-        }
-
-        log::debug!("Hardware decode enabled: {backend} ({hw_type_name})");
-        return (backend, device_ref);
-    }
-
-    log::info!("No hardware decoder available - using software decode");
-    (DecodeBackend::Software, ptr::null_mut())
-}
-
-/// Convert a raw `i32` codec format to `ffi::AVPixelFormat`.
-///
-/// `AVPixelFormat` is `#[repr(i32)]`, so this is a layout-safe reinterpret
-/// via `union` rather than `std::mem::transmute`. FFmpeg accepts any i32
-/// and returns NULL/error for unknown values, so no Rust-side validation
-/// of the enum discriminant is needed.
-fn raw_i32_to_pix_fmt(v: i32) -> ffi::AVPixelFormat {
-    #[repr(C)]
-    union Reinterpret {
-        i: i32,
-        fmt: ffi::AVPixelFormat,
-    }
-    // SAFETY: AVPixelFormat is #[repr(i32)], so i32 and AVPixelFormat have
-    // identical size and alignment. Reading fmt after writing i is defined
-    // because both are integer types with the same representation.
-    unsafe { Reinterpret { i: v }.fmt }
-}
-
 /// Copy one plane from an FFmpeg frame into a reusable buffer, removing stride padding.
 ///
 /// Clears `buf` and fills it with tightly-packed row data. The buffer's
@@ -1572,41 +1206,6 @@ fn extract_plane_into(buf: &mut Vec<u8>, data: &[u8], stride: usize, width: usiz
             let start = row * stride;
             buf.extend_from_slice(&data[start..start + width]);
         }
-    }
-}
-
-/// Upper bound for a believable source frame rate. High-speed phone modes
-/// reach 960fps; a 90000/1 rational is a demuxer surfacing its 90kHz time
-/// base as `r_frame_rate`, not a camera.
-const MAX_SANE_FPS: f64 = 1000.0;
-
-/// FFmpeg reports "unset" as 0/0 or 0/1; anything non-positive or above
-/// [`MAX_SANE_FPS`] is a placeholder or time-base artifact, not a rate.
-fn is_plausible_rate(r: &ffmpeg::Rational) -> bool {
-    r.0 > 0 && r.1 > 0 && (r.0 as f64 / r.1 as f64) <= MAX_SANE_FPS
-}
-
-/// Pick the frame rate, nominal first, mirroring FFmpeg's own
-/// `av_guess_frame_rate`: container `r_frame_rate` (for MP4 the demuxer
-/// derives it from packet durations and snaps to the standard-rate table,
-/// so it reads 30000/1001 where a raw measured average would read
-/// 13455000/448949), then `avg_frame_rate`, then the codec context (needs
-/// bitstream VUI timing). The `avg < 70 && r > 210` guard is ported from
-/// av_guess_frame_rate: an r that high with a sane avg is a field or
-/// telecine rate, not a picture rate.
-fn pick_frame_rate(
-    stream_r: Option<ffmpeg::Rational>,
-    stream_avg: Option<ffmpeg::Rational>,
-    codec: Option<ffmpeg::Rational>,
-) -> Option<ffmpeg::Rational> {
-    let as_fps = |r: &ffmpeg::Rational| r.0 as f64 / r.1 as f64;
-    let r = stream_r.filter(is_plausible_rate);
-    let avg = stream_avg.filter(is_plausible_rate);
-    match (r, avg) {
-        (Some(r), Some(avg)) if as_fps(&avg) < 70.0 && as_fps(&r) > 210.0 => Some(avg),
-        (Some(r), _) => Some(r),
-        (None, Some(avg)) => Some(avg),
-        (None, None) => codec.filter(is_plausible_rate),
     }
 }
 
@@ -1661,12 +1260,9 @@ mod tests {
         assert!(decoder.next_frame().unwrap().is_none());
     }
 
-    use super::pick_frame_rate;
     use ffmpeg_next as ffmpeg;
 
     const R60: ffmpeg::Rational = ffmpeg::Rational(60, 1);
-    const R30: ffmpeg::Rational = ffmpeg::Rational(30, 1);
-    const NTSC: ffmpeg::Rational = ffmpeg::Rational(30000, 1001);
     const UNSET: ffmpeg::Rational = ffmpeg::Rational(0, 0);
 
     #[test]
@@ -1800,64 +1396,6 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn prefers_nominal_r_frame_rate() {
-        // r is the demuxer's measured-then-snapped rate (30000/1001), avg
-        // the raw average; nominal wins per av_guess_frame_rate.
-        assert_eq!(
-            pick_frame_rate(Some(NTSC), Some(R60), Some(R30)),
-            Some(NTSC)
-        );
-    }
-
-    #[test]
-    fn falls_back_to_avg_frame_rate_when_r_unset() {
-        assert_eq!(pick_frame_rate(Some(UNSET), Some(R60), None), Some(R60));
-    }
-
-    #[test]
-    fn telecine_guard_prefers_sane_avg_over_field_rate() {
-        // Ported av_guess_frame_rate guard: r=240 with avg=29.97 is a
-        // field/telecine rate, not the picture rate.
-        let field = ffmpeg::Rational(240, 1);
-        assert_eq!(pick_frame_rate(Some(field), Some(NTSC), None), Some(NTSC));
-        // r=120 is under the 210 threshold: a real high-speed rate wins.
-        let r120 = ffmpeg::Rational(120, 1);
-        assert_eq!(pick_frame_rate(Some(r120), Some(R60), None), Some(r120));
-    }
-
-    #[test]
-    fn falls_back_to_codec_context_last() {
-        assert_eq!(
-            pick_frame_rate(Some(UNSET), Some(ffmpeg::Rational(0, 1)), Some(NTSC)),
-            Some(NTSC)
-        );
-    }
-
-    #[test]
-    fn none_when_everything_is_unset() {
-        assert_eq!(pick_frame_rate(Some(UNSET), Some(UNSET), None), None);
-        assert_eq!(pick_frame_rate(None, None, None), None);
-    }
-
-    #[test]
-    fn rejects_negative_rationals() {
-        assert_eq!(
-            pick_frame_rate(Some(ffmpeg::Rational(-1, 1)), Some(R30), None),
-            Some(R30)
-        );
-    }
-
-    /// A timing-less stream surfaces its 90kHz time base as r_frame_rate;
-    /// trusting it would size the encoder at 90000fps, far worse than the
-    /// old wrong-but-sane 30fps default.
-    #[test]
-    fn rejects_time_base_artifact_rates() {
-        let tb = ffmpeg::Rational(90000, 1);
-        assert_eq!(pick_frame_rate(Some(tb), Some(tb), Some(NTSC)), Some(NTSC));
-        assert_eq!(pick_frame_rate(Some(tb), Some(tb), None), None);
-    }
-
     /// MJPEG carries no timing in its bitstream, so on decode the codec
     /// context's framerate is unset and only the container knows the rate -
     /// the same shape as camera-original HEVC without VUI timing, which
@@ -1890,42 +1428,6 @@ mod tests {
         assert_eq!(decoder.frame_rate(), None);
         assert_eq!(decoder.fps(), None);
         assert!(decoder.next_frame().unwrap().is_some());
-    }
-
-    #[test]
-    fn frame_count_prefers_video_metadata_and_preserves_unknowns() {
-        use super::{ffi, input, video_frame_count};
-        ffmpeg::init().unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("mjpeg60.mov");
-        write_mjpeg_60fps(&path);
-        let mut context = input(&path).unwrap();
-        let mut stream = context.stream_mut(0).unwrap();
-        stream.set_rate(NTSC);
-        stream.set_avg_frame_rate(NTSC);
-        stream.set_time_base((1, 30000));
-        // SAFETY: this test exclusively owns the demuxer and its stream.
-        unsafe {
-            (*stream.as_mut_ptr()).nb_frames = 48;
-            (*stream.as_mut_ptr()).duration = 300300;
-        }
-        let longer_audio_duration = 100 * i64::from(ffi::AV_TIME_BASE);
-        assert_eq!(video_frame_count(&stream, longer_audio_duration), Some(48));
-        unsafe {
-            (*stream.as_mut_ptr()).nb_frames = 0;
-        }
-        assert_eq!(video_frame_count(&stream, longer_audio_duration), Some(300));
-        unsafe {
-            (*stream.as_mut_ptr()).duration = ffi::AV_NOPTS_VALUE;
-        }
-        assert_eq!(
-            video_frame_count(&stream, 10 * i64::from(ffi::AV_TIME_BASE)),
-            Some(300)
-        );
-        assert_eq!(video_frame_count(&stream, ffi::AV_NOPTS_VALUE), None);
-        stream.set_rate(UNSET);
-        stream.set_avg_frame_rate(UNSET);
-        assert_eq!(video_frame_count(&stream, longer_audio_duration), None);
     }
 
     #[test]
@@ -1986,7 +1488,7 @@ mod tests {
         }
     }
 
-    fn write_mjpeg_60fps(path: &std::path::Path) {
+    pub(super) fn write_mjpeg_60fps(path: &std::path::Path) {
         use ffmpeg::codec;
 
         let mut octx = ffmpeg::format::output(path).unwrap();
