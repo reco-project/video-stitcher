@@ -64,7 +64,8 @@ fn d3d11_owned_frames_drain_eof_and_propagate_failure() {
     }
     assert!(total > 3);
     for offset in [-3_i64, 0, 3] {
-        let stream = spawn_d3d11_decode_frames(&[input.clone(), input.clone()], offset).unwrap();
+        let stream =
+            spawn_d3d11_decode_frames(&[input.clone(), input.clone()], offset, None, None).unwrap();
         let mut count = 0;
         while stream.receive().unwrap().is_some() {
             count += 1;
@@ -77,7 +78,8 @@ fn d3d11_owned_frames_drain_eof_and_propagate_failure() {
     assert!(!missing.exists());
     let broken = InputPath::Chained(vec![input.first_path().to_owned(), missing]);
     for (left, right) in [(&broken, &input), (&input, &broken)] {
-        let stream = spawn_d3d11_decode_frames(&[left.clone(), right.clone()], 0).unwrap();
+        let stream =
+            spawn_d3d11_decode_frames(&[left.clone(), right.clone()], 0, None, None).unwrap();
         let mut count = 0;
         loop {
             match stream.receive() {
