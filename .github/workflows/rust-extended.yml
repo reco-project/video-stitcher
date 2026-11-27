@@ -15,8 +15,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'schedule' && 'nightly' || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: >-
+    ${{ github.workflow }}-${{
+      github.event_name == 'schedule' && 'nightly' ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && (github.event.label.name != 'ci-full' || github.base_ref == 'main') && format('noop-{0}', github.run_id)) ||
+      github.ref
+    }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -32,7 +37,7 @@ jobs:
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
-      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.base_ref != 'main' && github.event.label.name == 'ci-full')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -95,7 +100,7 @@ jobs:
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
-      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.base_ref != 'main' && github.event.label.name == 'ci-full')
     runs-on: ubuntu-latest
     # The GPU-execution tests (CPU-vs-GPU stitch agreement, KB4) run against a
     # software Vulkan adapter (lavapipe) so they are actually exercised in CI
@@ -183,7 +188,7 @@ jobs:
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
-      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.base_ref != 'main' && github.event.label.name == 'ci-full')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -216,7 +221,7 @@ jobs:
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
-      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.base_ref != 'main' && github.event.label.name == 'ci-full')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -239,7 +244,7 @@ jobs:
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
-      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.base_ref != 'main' && github.event.label.name == 'ci-full')
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -268,7 +273,7 @@ jobs:
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
-      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.base_ref != 'main' && github.event.label.name == 'ci-full')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -289,7 +294,7 @@ jobs:
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
-      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.base_ref != 'main' && github.event.label.name == 'ci-full')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -312,7 +317,7 @@ jobs:
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
-      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.base_ref != 'main' && github.event.label.name == 'ci-full')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -335,7 +340,7 @@ jobs:
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
-      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.base_ref != 'main' && github.event.label.name == 'ci-full')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -363,7 +368,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
-      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.base_ref != 'main' && github.event.label.name == 'ci-full')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -384,7 +389,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
-      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.base_ref != 'main' && github.event.label.name == 'ci-full')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -434,11 +439,12 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
-      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.base_ref != 'main' && github.event.label.name == 'ci-full')
     runs-on: ubuntu-latest
     permissions:
       checks: write
       contents: read
+      issues: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: dtolnay/rust-toolchain@stable
