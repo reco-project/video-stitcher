@@ -300,7 +300,17 @@ fn configured_providers(
                 .with_model_cache_dir(cache.to_string_lossy())
                 .build()
         }),
-        #[cfg(target_os = "windows")]
+        // DirectML is mutually exclusive with TensorRT and CUDA in the same
+        // ORT session: `commit_from_file` rejects the provider list outright
+        // with "DML EP can only be used with CPU EPs", regardless of whether
+        // TensorRT/CUDA can actually load on this machine. Since Windows
+        // builds unconditionally enable `ort/directml`, omit DirectML whenever
+        // `tensorrt` or `cuda` is compiled in so each session queues only one
+        // GPU EP family plus ORT's implicit CPU fallback.
+        #[cfg(all(
+            target_os = "windows",
+            not(any(feature = "tensorrt", feature = "cuda"))
+        ))]
         ("DirectML", false, ort::ep::DirectML::default().build()),
     ])
 }
