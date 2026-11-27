@@ -261,3 +261,306 @@ fn session_sink_labels_rendered_pixels_but_generic_encoder_does_not() {
     drop(encoder);
     assert_matrix(&raw_path, false);
 }
+
+fn assert_color_metadata(
+    path: &std::path::Path,
+    expected: reco_io::ffmpeg::ColorMetadata,
+    expected_full_range: bool,
+) {
+    use ffmpeg_next::color::{Primaries, Range, Space, TransferCharacteristic};
+
+    let decoder = VideoDecoder::open_software(path).unwrap();
+    assert_eq!(decoder.color_metadata(), expected, "{}", path.display());
+    assert_eq!(
+        decoder.is_full_range(),
+        expected_full_range,
+        "{}",
+        path.display()
+    );
+    drop(decoder);
+
+    let mut input = ffmpeg_next::format::input(path).unwrap();
+    let stream = input
+        .streams()
+        .best(ffmpeg_next::media::Type::Video)
+        .unwrap();
+    let index = stream.index();
+    let parameters = stream.parameters();
+    // SAFETY: parameters remains alive while its fields are inspected.
+    let raw = unsafe { &*parameters.as_ptr() };
+    assert_eq!(
+        Primaries::from(raw.color_primaries),
+        expected.primaries.unwrap_or(Primaries::Unspecified),
+        "stream primaries for {}",
+        path.display()
+    );
+    assert_eq!(
+        TransferCharacteristic::from(raw.color_trc),
+        expected
+            .transfer
+            .unwrap_or(TransferCharacteristic::Unspecified),
+        "stream transfer for {}",
+        path.display()
+    );
+    assert_eq!(
+        Space::from(raw.color_space),
+        expected.space.unwrap_or(Space::Unspecified),
+        "stream space for {}",
+        path.display()
+    );
+    assert_eq!(
+        Range::from(raw.color_range),
+        if expected_full_range {
+            Range::JPEG
+        } else {
+            Range::MPEG
+        },
+        "stream range for {}",
+        path.display()
+    );
+
+    let mut codec_decoder =
+        ffmpeg_next::codec::context::Context::from_parameters(stream.parameters())
+            .unwrap()
+            .decoder()
+            .video()
+            .unwrap();
+    let mut frame = ffmpeg_next::frame::Video::empty();
+    for (stream, packet) in input.packets() {
+        if stream.index() != index {
+            continue;
+        }
+        codec_decoder.send_packet(&packet).unwrap();
+        if codec_decoder.receive_frame(&mut frame).is_ok() {
+            break;
+        }
+    }
+    if frame.width() == 0 {
+        codec_decoder.send_eof().unwrap();
+        codec_decoder.receive_frame(&mut frame).unwrap();
+    }
+    assert_eq!(
+        frame.color_primaries(),
+        expected.primaries.unwrap_or(Primaries::Unspecified),
+        "decoded frame primaries for {}",
+        path.display()
+    );
+    assert_eq!(
+        frame.color_transfer_characteristic(),
+        expected
+            .transfer
+            .unwrap_or(TransferCharacteristic::Unspecified),
+        "decoded frame transfer for {}",
+        path.display()
+    );
+    assert_eq!(
+        frame.color_space(),
+        expected.space.unwrap_or(Space::Unspecified),
+        "decoded frame space for {}",
+        path.display()
+    );
+    assert_eq!(
+        frame.color_range(),
+        if expected_full_range {
+            Range::JPEG
+        } else {
+            Range::MPEG
+        },
+        "decoded frame range for {}",
+        path.display()
+    );
+}
+
+#[test]
+fn hdr_hlg_and_pq_bt2020_metadata_roundtrips_for_h264_and_hevc() {
+    use ffmpeg_next::color::{Primaries, Space, TransferCharacteristic};
+    use reco_io::ffmpeg::ColorMetadata;
+
+    let cases = [
+        (
+            "hlg",
+            ColorMetadata {
+                primaries: Some(Primaries::BT2020),
+                transfer: Some(TransferCharacteristic::ARIB_STD_B67),
+                space: Some(Space::BT2020NCL),
+            },
+            [0u8, 9, 0, 18, 0, 9, 0],
+        ),
+        (
+            "pq",
+            ColorMetadata {
+                primaries: Some(Primaries::BT2020),
+                transfer: Some(TransferCharacteristic::SMPTE2084),
+                space: Some(Space::BT2020NCL),
+            },
+            [0u8, 9, 0, 16, 0, 9, 0],
+        ),
+    ];
+
+    let targets = [
+        ("libx265", Container::Mp4),
+        ("libx265", Container::Mp4Fragmented),
+        ("libx265", Container::Mov),
+        ("libx265", Container::Mkv),
+        ("libx264", Container::Mp4),
+    ];
+
+    let dir = tempfile::tempdir().unwrap();
+    for (label, metadata, expected_nclx) in cases {
+        for (encoder_name, container) in targets {
+            let path = dir
+                .path()
+                .join(format!("{label}-{encoder_name}-{container:?}.bin"));
+            let config = EncoderConfig {
+                encoder_name: Some(encoder_name.into()),
+                container,
+                gop_size: Some(2),
+                color_metadata: metadata,
+                ..Default::default()
+            };
+            let mut sink = FfmpegFileEncoder::new(&path, 64, 64, (30, 1), &config).unwrap();
+            for index in 0..3 {
+                sink.consume(OutputFrame {
+                    data: &[128; 64 * 64 * 3 / 2],
+                    width: 64,
+                    height: 64,
+                    format: PixelFormat::Nv12,
+                    pts_us: Some(index * 1_000_000 / 30),
+                })
+                .unwrap();
+            }
+            sink.finish().unwrap();
+            drop(sink);
+
+            assert_color_metadata(&path, metadata, false);
+
+            match container {
+                Container::Mp4 | Container::Mp4Fragmented => {
+                    let bytes = std::fs::read(&path).unwrap();
+                    let colr = bytes
+                        .windows(8)
+                        .position(|tag| tag == b"colrnclx")
+                        .expect("MP4 container must carry colr nclx box");
+                    assert_eq!(
+                        &bytes[colr + 8..colr + 15],
+                        &expected_nclx,
+                        "{label} {encoder_name} {container:?}: unexpected colr nclx bytes"
+                    );
+                }
+                Container::Mov => {
+                    let bytes = std::fs::read(&path).unwrap();
+                    let colr = bytes
+                        .windows(8)
+                        .position(|tag| tag == b"colrnclc")
+                        .expect("MOV container must carry colr nclc box");
+                    assert_eq!(
+                        &bytes[colr + 8..colr + 14],
+                        &expected_nclx[..6],
+                        "{label} {encoder_name} {container:?}: unexpected colr nclc bytes"
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+#[test]
+fn stitch_job_propagates_matching_hdr_metadata_and_falls_back_on_mismatch() {
+    use ffmpeg_next::color::{Primaries, Space, TransferCharacteristic};
+    use reco_core::calibration::{Calibration, Framing, Lens};
+    use reco_core::projection::LShape;
+    use reco_io::StitchJob;
+    use reco_io::ffmpeg::ColorMetadata;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+
+    let hlg_bt2020 = ColorMetadata {
+        primaries: Some(Primaries::BT2020),
+        transfer: Some(TransferCharacteristic::ARIB_STD_B67),
+        space: Some(Space::BT2020NCL),
+    };
+    let sdr_fallback = ColorMetadata {
+        primaries: None,
+        transfer: None,
+        space: Some(Space::BT709),
+    };
+
+    let write_fixture = |path: &std::path::Path, encoder_name: &str, color_metadata| {
+        let config = EncoderConfig {
+            encoder_name: Some(encoder_name.into()),
+            color_metadata,
+            ..Default::default()
+        };
+        let mut sink = FfmpegFileEncoder::new(path, 64, 64, (30, 1), &config).unwrap();
+        for index in 0..5 {
+            sink.consume(OutputFrame {
+                data: &[128; 64 * 64 * 3 / 2],
+                width: 64,
+                height: 64,
+                format: PixelFormat::Nv12,
+                pts_us: Some(index * 1_000_000 / 30),
+            })
+            .unwrap();
+        }
+        sink.finish().unwrap();
+    };
+
+    let calibration = || {
+        let lens = Lens::fisheye(64, 64, 32.0, 32.0, 32.0, 32.0, [0.0; 4]);
+        Calibration::new(
+            vec![lens.clone(), lens],
+            LShape {
+                intersect: 0.5,
+                x_ty: 0.0,
+                x_rz: 0.0,
+                z_rx: 0.0,
+                x_rx: 0.0,
+                z_rz: 0.0,
+                blend_width: 0.05,
+            },
+            Framing {
+                axis_offset: 0.25,
+                tilt: 0.0,
+                roll: 0.0,
+            },
+        )
+    };
+
+    let dir = tempfile::tempdir().unwrap();
+    let hdr_in = dir.path().join("hdr_hlg_in.mp4");
+    let sdr_in = dir.path().join("sdr_in.mp4");
+    write_fixture(&hdr_in, "libx265", hlg_bt2020);
+    write_fixture(&sdr_in, "libx264", ColorMetadata::default());
+
+    for encoder_name in ["libx265", "libx264"] {
+        let output = dir.path().join(format!("stitched-hdr-{encoder_name}.mp4"));
+        StitchJob::with_calibration([hdr_in.clone(), hdr_in.clone()], calibration(), &output)
+            .cpu()
+            .resolution(64, 64)
+            .encoder_name(encoder_name)
+            .max_frames(4)
+            .on_session(|session, _| {
+                session.core_mut().set_constrained_look(false);
+                Ok(())
+            })
+            .run(&Arc::new(AtomicBool::new(false)))
+            .unwrap();
+        assert_color_metadata(&output, hlg_bt2020, false);
+    }
+
+    // Mismatched cameras (HDR HLG BT.2020 + SDR BT.709) fall back conservatively to SDR BT.709.
+    let mismatched_out = dir.path().join("stitched-mismatch.mp4");
+    StitchJob::with_calibration([hdr_in, sdr_in], calibration(), &mismatched_out)
+        .cpu()
+        .resolution(64, 64)
+        .encoder_name("libx265")
+        .max_frames(4)
+        .on_session(|session, _| {
+            session.core_mut().set_constrained_look(false);
+            Ok(())
+        })
+        .run(&Arc::new(AtomicBool::new(false)))
+        .unwrap();
+    assert_color_metadata(&mismatched_out, sdr_fallback, false);
+}

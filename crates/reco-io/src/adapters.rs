@@ -236,6 +236,7 @@ pub struct FfmpegFileSource {
     info: SourceInfo,
     decode_backend: ffmpeg::decoder::DecodeBackend,
     full_range: bool,
+    color_metadata: ffmpeg::ColorMetadata,
     /// GPU pixel format (NV12 8-bit or P010 10-bit).
     #[cfg(feature = "gpu")]
     pixel_format: reco_core::render::renderer::GpuPixelFormat,
@@ -316,6 +317,7 @@ impl FfmpegFileSource {
         })?;
         let fps_r = probe.frame_rate();
         let full_range = probe.is_full_range();
+        let first_color = probe.color_metadata();
         let fps = probe.fps().unwrap_or(0.0);
         let (segment_frames, recording_warnings) = probe_recordings(inputs);
         for warning in recording_warnings
@@ -337,6 +339,7 @@ impl FfmpegFileSource {
         drop(probe);
 
         let mut rotations = vec![first_rotation];
+        let mut camera_colors = vec![first_color];
         for input in &inputs[1..] {
             let d = open_probe(input.first_path()).map_err(|e| SourceError::Init {
                 path: input.first_path().display().to_string(),
@@ -351,7 +354,9 @@ impl FfmpegFileSource {
             merge_frame_rate(&mut info, d.frame_rate(), input.first_path())?;
             info.camera_sizes.push((d.width(), d.height()));
             rotations.push(d.rotation());
+            camera_colors.push(d.color_metadata());
         }
+        let color_metadata = ffmpeg::ColorMetadata::reconcile(&camera_colors);
 
         let inputs = inputs.to_vec();
         let decode_inputs = inputs.clone();
@@ -363,6 +368,7 @@ impl FfmpegFileSource {
             stream,
             cleanup: crate::decoder_cleanup::DecoderTask::new(coordinator),
             full_range,
+            color_metadata,
             info,
             decode_backend,
             #[cfg(feature = "gpu")]
@@ -382,6 +388,11 @@ impl FfmpegFileSource {
     /// The decode backend selected during probe (CUDA, VAAPI, or software).
     pub fn decode_backend(&self) -> ffmpeg::decoder::DecodeBackend {
         self.decode_backend
+    }
+
+    /// Reconciled source colourimetry metadata across all cameras.
+    pub fn color_metadata(&self) -> ffmpeg::ColorMetadata {
+        self.color_metadata
     }
 
     /// Per-recording frame-count estimates in input order, before synchronization.
@@ -665,6 +676,7 @@ mod decode_tests {
             },
             decode_backend: ffmpeg::decoder::DecodeBackend::Software,
             full_range: false,
+            color_metadata: ffmpeg::ColorMetadata::default(),
             #[cfg(feature = "gpu")]
             pixel_format: reco_core::render::renderer::GpuPixelFormat::Nv12,
             rotations: vec![0],

@@ -246,6 +246,7 @@ pub struct VideoDecoder {
     #[cfg(feature = "gpu")]
     is_10bit: bool,
     is_full_range: bool,
+    color_metadata: super::ColorMetadata,
     require_timestamps: bool,
     live_audio: Option<super::live_audio::LiveAudio>,
     decoded_frame: VideoFrame,
@@ -568,7 +569,7 @@ impl VideoDecoder {
             }
         };
 
-        let is_full_range = {
+        let (is_full_range, color_metadata) = {
             let raw_codecpar = unsafe { &*stream.parameters().as_ptr() };
             let format = Pixel::from(raw_i32_to_pix_fmt(raw_codecpar.format));
             let full_range = is_full_range(format, raw_codecpar.color_range.into());
@@ -578,7 +579,15 @@ impl VideoDecoder {
                     raw_codecpar.color_range
                 );
             }
-            full_range
+            let color_metadata = super::ColorMetadata::from_raw(
+                raw_codecpar.color_primaries,
+                raw_codecpar.color_trc,
+                raw_codecpar.color_space,
+            );
+            if !color_metadata.is_empty() {
+                log::debug!("Source colour metadata: {color_metadata}");
+            }
+            (full_range, color_metadata)
         };
 
         log::debug!(
@@ -608,6 +617,7 @@ impl VideoDecoder {
             #[cfg(feature = "gpu")]
             is_10bit,
             is_full_range,
+            color_metadata,
             require_timestamps: live,
             live_audio: None,
             decoded_frame: VideoFrame::empty(),
@@ -743,6 +753,11 @@ impl VideoDecoder {
         self.is_full_range
     }
 
+    /// Source colourimetry metadata (primaries, transfer characteristics, matrix) from stream headers.
+    pub fn color_metadata(&self) -> super::ColorMetadata {
+        self.color_metadata
+    }
+
     /// Rotation from stream metadata (0, 90, 180, 270 degrees).
     ///
     /// The CPU decode path applies this by reversing buffers in `extract_yuv`.
@@ -859,6 +874,9 @@ impl VideoDecoder {
                             self.decoded_frame.format(),
                             self.decoded_frame.color_range(),
                         );
+                    }
+                    if self.require_timestamps && self.color_metadata.is_empty() {
+                        self.color_metadata = super::ColorMetadata::from_frame(&self.decoded_frame);
                     }
                     if width != self.width || height != self.height {
                         return Err(DecodeError::ConversionError(format!(

@@ -5,6 +5,7 @@
 //! encode (NVENC, VideoToolbox, QSV).
 
 pub mod calibration_io;
+mod color;
 pub mod decoder;
 pub mod encoder;
 mod encoder_timing;
@@ -12,6 +13,8 @@ mod hevc_color;
 mod hw_upload;
 pub(crate) mod live_audio;
 mod output_io;
+
+pub use color::ColorMetadata;
 
 use std::sync::Once;
 

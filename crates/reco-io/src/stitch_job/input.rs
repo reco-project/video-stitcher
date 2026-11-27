@@ -161,4 +161,12 @@ impl OpenedSource {
             Self::Supplied(_) => "supplied host source",
         }
     }
+
+    pub(super) fn color_metadata(&self) -> crate::ffmpeg::ColorMetadata {
+        match self {
+            Self::Files(source) => source.color_metadata(),
+            Self::Rtsp(source) => source.color_metadata(),
+            Self::Supplied(_) => crate::ffmpeg::ColorMetadata::default(),
+        }
+    }
 }
