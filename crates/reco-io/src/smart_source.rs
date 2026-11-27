@@ -73,10 +73,7 @@ enum SourceMode {
 
 #[cfg(all(feature = "gpu", target_os = "windows"))]
 enum WindowsDecodeState {
-    Pending {
-        inputs: Vec<crate::stitch_job::InputPath>,
-        sync_offset: i64,
-    },
+    Pending,
     Running {
         frames: crate::decode_stream::OwnedFrames<crate::ffmpeg::decoder::D3d11Frame>,
     },
@@ -85,24 +82,63 @@ enum WindowsDecodeState {
 
 #[cfg(all(feature = "gpu", target_os = "windows"))]
 struct WindowsZeroCopyState {
+    inputs: Vec<crate::stitch_job::InputPath>,
+    sync_offset: i64,
+    current_frame: u64,
+    // Drop decode workers before releasing the shared D3D11 device handle.
     decode: WindowsDecodeState,
+    shared_device: Option<crate::ffmpeg::decoder::SharedHwDevice>,
 }
 
 #[cfg(all(feature = "gpu", target_os = "windows"))]
 impl WindowsZeroCopyState {
-    fn ensure_running(&mut self) {
-        if let WindowsDecodeState::Pending {
-            inputs,
-            sync_offset,
-        } = &self.decode
-        {
-            let inputs = inputs.clone();
-            let sync_offset = *sync_offset;
-            self.decode = match crate::zero_copy::spawn_d3d11_decode_frames(&inputs, sync_offset) {
-                Ok(frames) => WindowsDecodeState::Running { frames },
-                Err(error) => WindowsDecodeState::Failed(error),
+    fn start_at(&mut self, start_secs: Option<f64>) -> Result<(), SourceError> {
+        // Cancel and join any previous decode generation before opening
+        // replacement D3D11VA decoders.
+        self.decode = WindowsDecodeState::Pending;
+        if self.shared_device.is_none() {
+            let Some(device) = crate::ffmpeg::decoder::create_shared_hw_device() else {
+                let error = SourceError::Init {
+                    path: "D3D11VA".into(),
+                    reason: "hardware device creation failed".into(),
+                };
+                self.decode = WindowsDecodeState::Failed(error.clone());
+                return Err(error);
             };
+            self.shared_device = Some(device);
         }
+        let frames = match crate::zero_copy::spawn_d3d11_decode_frames(
+            &self.inputs,
+            self.sync_offset,
+            start_secs,
+            self.shared_device.as_ref(),
+        ) {
+            Ok(frames) => frames,
+            Err(error) => {
+                self.decode = WindowsDecodeState::Failed(error.clone());
+                return Err(error);
+            }
+        };
+        self.decode = WindowsDecodeState::Running { frames };
+        Ok(())
+    }
+
+    fn ensure_running(&mut self) {
+        if matches!(self.decode, WindowsDecodeState::Pending) {
+            let _ = self.start_at(None);
+        }
+    }
+
+    /// Jump the decode threads to a new position, replacing whatever
+    /// pipeline is currently pending or running.
+    ///
+    /// Mirrors [`crate::adapters::FfmpegFileSource`]'s [`FrameSource::seek`]
+    /// strategy: cancel and join the previous decode generation, then respawn
+    /// decoders on the same shared D3D11 device seeked to the nearest keyframe
+    /// before `secs` and decode-discard only the remaining GOP gap to the
+    /// target PTS.
+    fn seek_to_secs(&mut self, secs: f64) -> Result<(), SourceError> {
+        self.start_at(Some(secs))
     }
 }
 
@@ -367,10 +403,11 @@ impl SmartFileSource {
 
         Ok(Self {
             mode: SourceMode::D3d11ZeroCopy(Box::new(WindowsZeroCopyState {
-                decode: WindowsDecodeState::Pending {
-                    inputs: inputs.to_vec(),
-                    sync_offset,
-                },
+                inputs: inputs.to_vec(),
+                sync_offset,
+                current_frame: 0,
+                decode: WindowsDecodeState::Pending,
+                shared_device: None,
             })),
             info,
             pixel_format,
@@ -481,6 +518,7 @@ impl FrameSource for SmartFileSource {
                 };
                 match result.inspect_err(|error| self.terminal_error = Some(error.clone()))? {
                     Some(decoded) => {
+                        state.current_frame = state.current_frame.saturating_add(1);
                         let frames = FrameSet::D3d11Resident(
                             decoded
                                 .into_iter()
@@ -559,12 +597,41 @@ impl FrameSource for SmartFileSource {
             }
             #[cfg(all(feature = "gpu", target_os = "windows"))]
             SourceMode::D3d11ZeroCopy(_) => {
-                for i in 0..count {
-                    if self.next_frame()?.is_none() {
-                        return Ok(i);
+                let target = {
+                    let SourceMode::D3d11ZeroCopy(state) = &self.mode else {
+                        unreachable!();
+                    };
+                    if let WindowsDecodeState::Failed(error) = &state.decode {
+                        let error = error.clone();
+                        self.terminal_error = Some(error.clone());
+                        return Err(error);
                     }
+                    if count == 0 {
+                        return Ok(0);
+                    }
+                    skip_seek_target(state.current_frame, count, &self.info)
+                };
+                if let Some((target_frame, secs)) = target {
+                    let SourceMode::D3d11ZeroCopy(state) = &mut self.mode else {
+                        unreachable!();
+                    };
+                    if let Err(error) = state.seek_to_secs(secs) {
+                        self.terminal_error = Some(error.clone());
+                        return Err(error);
+                    }
+                    state.current_frame = target_frame;
+                    log::debug!(
+                        "D3D11VA seek: jumped to {secs:.1}s (frame {target_frame}, skipped {count})"
+                    );
+                    Ok(count)
+                } else {
+                    for i in 0..count {
+                        if self.next_frame()?.is_none() {
+                            return Ok(i);
+                        }
+                    }
+                    Ok(count)
                 }
-                Ok(count)
             }
         }
     }
@@ -652,5 +719,63 @@ fn is_backend_zero_copy_capable(backend: crate::ffmpeg::decoder::DecodeBackend) 
         #[cfg(target_os = "windows")]
         crate::ffmpeg::decoder::DecodeBackend::D3d11va => true,
         _ => false,
+    }
+}
+
+/// Compute the absolute `(target_frame, target_secs)` for a fast keyframe seek,
+/// or `None` when the caller should fall back to decode-and-discard (zero skip,
+/// unknown/non-positive/non-finite frame rate, or overflowing timestamp).
+#[cfg(any(test, all(feature = "gpu", target_os = "windows")))]
+fn skip_seek_target(current_frame: u64, count: u64, info: &SourceInfo) -> Option<(u64, f64)> {
+    if count == 0 || info.fps_rational.is_none() || !info.fps.is_finite() || info.fps <= 0.0 {
+        return None;
+    }
+    let target_frame = current_frame.saturating_add(count);
+    let secs = target_frame as f64 / info.fps;
+    secs.is_finite().then_some((target_frame, secs))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn info_with_fps(fps: f64, fps_rational: Option<(i32, i32)>) -> SourceInfo {
+        SourceInfo {
+            camera_sizes: vec![(1920, 1080); 2],
+            fps,
+            fps_rational,
+            total_frames: None,
+        }
+    }
+
+    #[test]
+    fn skip_seek_target_computes_absolute_frame_and_seconds() {
+        let info = info_with_fps(30.0, Some((30, 1)));
+        assert_eq!(skip_seek_target(0, 9000, &info), Some((9000, 300.0)));
+        assert_eq!(skip_seek_target(15, 45, &info), Some((60, 2.0)));
+    }
+
+    #[test]
+    fn skip_seek_target_rejects_zero_and_invalid_frame_rates() {
+        let valid = info_with_fps(30.0, Some((30, 1)));
+        assert_eq!(skip_seek_target(0, 0, &valid), None);
+        assert_eq!(skip_seek_target(10, 0, &valid), None);
+
+        for invalid in [
+            info_with_fps(0.0, None),
+            info_with_fps(30.0, None),
+            info_with_fps(0.0, Some((30, 1))),
+            info_with_fps(-30.0, Some((30, 1))),
+            info_with_fps(f64::NAN, Some((30, 1))),
+            info_with_fps(f64::INFINITY, Some((30, 1))),
+            info_with_fps(f64::MIN_POSITIVE, Some((1, 1))),
+        ] {
+            let count = if invalid.fps == f64::MIN_POSITIVE {
+                u64::MAX
+            } else {
+                100
+            };
+            assert_eq!(skip_seek_target(0, count, &invalid), None);
+        }
     }
 }
