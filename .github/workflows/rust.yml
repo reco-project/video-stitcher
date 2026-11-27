@@ -5,33 +5,236 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
+  workflow_dispatch:
 
 # Restrict default permissions to read-only. Jobs that need more
 # declare their own permissions block.
 permissions:
   contents: read
 
-# Cancel in-progress runs for the same branch/PR to save resources.
+# Cancel superseded PR runs immediately, but let branch pushes finish
+# so baseline caches stay warm.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
-  # Includes libobs-dev because reco-obs's build.rs runs bindgen
-  # against /usr/include/obs/obs.h on every workspace-level cargo
-  # command (clippy, test, doc, bench). Without it, any job that
-  # touches reco-obs fails at build-script time.
-  APT_PACKAGES: >-
-    libavcodec-dev libavformat-dev libavutil-dev
-    libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev
-    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base
-    libfontconfig1-dev libobs-dev
-    pkg-config clang libclang-dev
 
 jobs:
+  # ===========================================================================
+  # Stage 1 helper — classify changed paths on pull requests so unrelated PRs
+  # skip heavy untouched checks while failing open on non-PR or non-merge refs.
+  # ===========================================================================
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      reco_core: ${{ steps.filter.outputs.reco_core }}
+      deps: ${{ steps.filter.outputs.deps }}
+      ffmpeg_sdk: ${{ steps.filter.outputs.ffmpeg_sdk }}
+      inference: ${{ steps.filter.outputs.inference }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 2
+      - name: Classify changed paths
+        id: filter
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" != "pull_request" ]] || ! git rev-parse --verify HEAD^2 >/dev/null 2>&1; then
+            echo "reco_core=true" >> "$GITHUB_OUTPUT"
+            echo "deps=true" >> "$GITHUB_OUTPUT"
+            echo "ffmpeg_sdk=true" >> "$GITHUB_OUTPUT"
+            echo "inference=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed=$(git diff --name-only HEAD^1 HEAD)
+          echo "Changed files:"
+          echo "$changed"
+
+          match() {
+            if grep -Eq "$1" <<< "$changed"; then
+              echo "true"
+            else
+              echo "false"
+            fi
+          }
+
+          echo "reco_core=$(match '^(crates/reco-core/|Cargo\.toml$|Cargo\.lock$|rust-toolchain\.toml$|\.cargo/)')" >> "$GITHUB_OUTPUT"
+          echo "deps=$(match '^(Cargo\.toml$|Cargo\.lock$|crates/[^/]+/Cargo\.toml$|deny\.toml$|\.github/deny-dev-advisories\.inc$)')" >> "$GITHUB_OUTPUT"
+          echo "ffmpeg_sdk=$(match '^(scripts/|\.github/actions/linux-desktop-sdk/|crates/reco-io/|Cargo\.lock$)')" >> "$GITHUB_OUTPUT"
+          echo "inference=$(match '^(crates/reco-detect/|crates/reco-autocam/|Cargo\.lock$)')" >> "$GITHUB_OUTPUT"
+
+  # ===========================================================================
+  # Stage 1 — PR fast gate (required by branch protection on main).
+  #
+  # Runs formatting and default-feature workspace clippy only so PR feedback
+  # stays compact and the rust-cache stays small. Full feature-boundary clippy
+  # lanes run in Stage 2 (rust-extended.yml).
+  # ===========================================================================
+  check:
+    name: Check & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: v1-rust
+          shared-key: check-fast
+          save-if: ${{ github.event_name == 'push' }}
+      - uses: ./.github/actions/linux-build-deps
+      - name: Format check
+        run: cargo fmt --all -- --check
+      - name: Clippy (default features)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # ===========================================================================
+  # Stage 1 — PR fast tests (required by branch protection on main).
+  #
+  # Runs default workspace unit and integration tests without software lavapipe,
+  # --features profiling, or repeated wgpu-free rebuilds (all covered in Stage 2
+  # via rust-extended.yml). Because reco-core has no workspace dependencies, PRs
+  # to dev that do not touch reco-core or Cargo/toolchain files run downstream
+  # workspace tests directly (~35s vs ~6-8m for reco-core's coverage-map tests).
+  # ===========================================================================
+  test:
+    name: Test
+    needs: changes
+    runs-on: ubuntu-latest
+    env:
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: v1-rust
+          shared-key: test-fast
+          env-vars: CARGO_PROFILE_TEST_DEBUG
+          save-if: ${{ github.event_name == 'push' }}
+      - uses: ./.github/actions/linux-build-deps
+        with:
+          extra-packages: ffmpeg
+      - name: Run tests (workspace excluding untouched reco-core)
+        if: github.event_name == 'pull_request' && github.base_ref != 'main' && needs.changes.outputs.reco_core != 'true'
+        run: cargo test --workspace --exclude reco-core
+      - name: Run tests and warm full test cache (push)
+        if: github.event_name == 'push'
+        run: |
+          cargo test --workspace --exclude reco-core
+          cargo test -p reco-core --no-run
+      - name: Run tests (full workspace)
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          (github.event_name == 'pull_request' && (github.base_ref == 'main' || needs.changes.outputs.reco_core == 'true'))
+        run: cargo test --workspace
+
+  # ===========================================================================
+  # Stage 1 — Secret scanning (~7s, runs on every PR and push).
+  # ===========================================================================
+  secrets:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      # Run the gitleaks CLI directly instead of gitleaks-action. The action
+      # requires a license key for org repos, and that secret is unavailable
+      # to pull_request runs from forks, so it failed on every community PR.
+      # The binary is free for everyone and needs no secret, so it scans fork
+      # and internal PRs identically.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C "$HOME/.local/bin" gitleaks
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Scan working tree for secrets
+        run: gitleaks dir . --redact --verbose
+
+  # ===========================================================================
+  # Stage 1 (path-filtered) — cargo-deny supply-chain, licenses, and bans.
+  # Runs on PRs only when manifests, lockfile, or deny config change, plus on
+  # pushes to dev/main, PRs to main, workflow_dispatch, and ci-full PRs.
+  # ===========================================================================
+  deny:
+    name: cargo-deny
+    needs: changes
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && (
+        github.base_ref == 'main' ||
+        needs.changes.outputs.deps == 'true' ||
+        contains(github.event.pull_request.labels.*.name, 'ci-full')
+      ))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Apply dev-only maintenance exceptions
+        if: github.ref == 'refs/heads/dev' || github.base_ref == 'dev'
+        run: |
+          sed -i '/^\[advisories\]$/,/^\[/ { /^ignore = \[$/r .github/deny-dev-advisories.inc
+          }' deny.toml
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+          arguments: --all-features
+
+  # ===========================================================================
+  # Stage 1 (path-filtered) — Fast CUDA/TensorRT inference checks on PRs that
+  # touch reco-detect, reco-autocam, or Cargo.lock without compiling NCNN or
+  # running Valgrind (covered in Stage 3 via rust-extended.yml).
+  # ===========================================================================
+  inference-fast:
+    name: Inference backends (fast)
+    needs: changes
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.base_ref != 'main' &&
+      !contains(github.event.pull_request.labels.*.name, 'ci-full') &&
+      needs.changes.outputs.inference == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: v1-rust
+          shared-key: gpu-backends
+          save-if: false
+      - uses: ./.github/actions/linux-build-deps
+      - name: Check reco-detect (cuda + load-dynamic)
+        run: cargo check -p reco-detect --features cuda,load-dynamic
+      - name: Test TensorRT cache keys
+        run: cargo test -p reco-detect --features tensorrt,load-dynamic --lib ort_session::cache::tests
+
+  # ===========================================================================
+  # Stage 2 + path-filtered PR — Pinned FFmpeg SDK and Linux relocation.
+  # Runs on push to dev/main, PRs to main, workflow_dispatch, ci-full PRs, and
+  # PRs touching scripts/, .github/actions/linux-desktop-sdk/, crates/reco-io/,
+  # or Cargo.lock.
+  # ===========================================================================
   ffmpeg-sdk:
     name: Pinned FFmpeg and Linux relocation
+    needs: changes
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && (
+        github.base_ref == 'main' ||
+        needs.changes.outputs.ffmpeg_sdk == 'true' ||
+        contains(github.event.pull_request.labels.*.name, 'ci-full')
+      ))
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
@@ -44,7 +247,10 @@ jobs:
       - uses: ./.github/actions/linux-desktop-sdk
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
-          key: ffmpeg-sdk-${{ hashFiles('scripts/ffmpeg-sdk.json', 'scripts/build_ffmpeg_sdk.py') }}
+          prefix-key: v1-rust
+          shared-key: ffmpeg-sdk
+          key: ${{ hashFiles('scripts/ffmpeg-sdk.json', 'scripts/build_ffmpeg_sdk.py') }}
+          save-if: ${{ github.event_name == 'push' }}
       - name: Packaging regression tests
         run: python3 -m unittest discover -s scripts/tests -v
       - name: I/O tests on the pinned runtime
@@ -78,444 +284,3 @@ jobs:
           mv "$FFMPEG_DIR" "$FFMPEG_DIR-hidden"
           trap 'mv "$FFMPEG_DIR-hidden" "$FFMPEG_DIR"' EXIT
           python3 scripts/verify_ffmpeg_bundle.py "$RUNNER_TEMP/relocated package"
-
-  # ===========================================================================
-  # check & lint — the tight-loop gate. Runs on every push.
-  # ===========================================================================
-  check:
-    name: Check & Lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: dtolnay/rust-toolchain@1.92.0
-        with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - &install-apt-packages
-        name: Install Linux build dependencies
-        shell: bash
-        run: |
-          read -ra pkgs <<< "$APT_PACKAGES"
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -o Acquire::Retries=3 "${pkgs[@]}"
-      - &configure-libclang
-        name: Match bindgen to the system Clang headers
-        shell: bash
-        run: |
-          clang=$(readlink -f /usr/bin/clang)
-          libdir=$(dirname "$(dirname "$clang")")/lib
-          test -f "$libdir/libclang.so"
-          echo "CLANG_PATH=$clang" >> "$GITHUB_ENV"
-          echo "LIBCLANG_PATH=$libdir" >> "$GITHUB_ENV"
-      - name: Format check
-        run: cargo fmt --all -- --check
-      - name: Clippy (default features)
-        run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: Clippy (with profiling)
-        run: cargo clippy --workspace --all-targets --features profiling -- -D warnings
-      - name: Clippy (with gstreamer)
-        run: cargo clippy --workspace --all-targets --features gstreamer -- -D warnings
-      - name: Clippy (with load-dynamic)
-        run: cargo clippy --workspace --all-targets --features load-dynamic -- -D warnings
-      # Subprocess capture needs no camera SDK or device for lifecycle tests.
-      - name: Clippy (with libcamera)
-        run: cargo clippy --workspace --all-targets --features libcamera -- -D warnings
-      - name: Libcamera subprocess lifecycle
-        run: cargo test -p reco-io --no-default-features --features libcamera --lib 'libcamera::'
-      - name: GStreamer capture lifecycle, ownership and encoded delivery
-        timeout-minutes: 5
-        run: cargo test -p reco-io --no-default-features --features gstreamer,ffmpeg --lib 'gstreamer::'
-      - name: Clippy (reco-gui automation hook)
-        run: cargo clippy -p reco-gui --all-targets --features automation -- -D warnings
-      - name: Clippy (no default features)
-        run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
-      # -p isolates reco-core from workspace feature unification, so this
-      # is the one lint lane where the gpu feature is genuinely OFF and
-      # CPU geometry, rendering and session orchestration are checked
-      # on its own.
-      - name: Clippy (reco-core wgpu-free)
-        run: cargo clippy -p reco-core --all-targets --no-default-features -- -D warnings
-      - name: Profiling across consumer feature boundaries
-        run: |
-          cargo test -p reco-core --no-default-features --features profiling --test profiling
-          cargo clippy -p reco-io --all-targets --no-default-features --features ffmpeg,reco-core/profiling -- -D warnings
-      - name: Clippy (reco-io wgpu-free)
-        run: |
-          cargo clippy -p reco-io --all-targets --no-default-features -- -D warnings
-          cargo clippy -p reco-io --all-targets --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling -- -D warnings
-      - name: Clippy (reco-control CPU-only)
-        run: cargo clippy -p reco-control --all-targets --no-default-features -- -D warnings
-      - name: Clippy (reco-autocam control-only)
-        run: cargo clippy -p reco-autocam --all-targets --no-default-features --features profiling -- -D warnings
-      - name: Clippy (reco-autocam detector adapters)
-        run: cargo clippy -p reco-autocam --all-targets --no-default-features --features detectors -- -D warnings
-      - name: Clippy (reco-control device helper)
-        run: cargo clippy -p reco-control --all-targets --features gopro -- -D warnings
-
-  # ===========================================================================
-  # test — default features + profiling + all-features.
-  # ===========================================================================
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    # The GPU-execution tests (CPU-vs-GPU stitch agreement, KB4) run against a
-    # software Vulkan adapter (lavapipe) so they are actually exercised in CI
-    # instead of silently skipping on the GPU-less runner. RECO_REQUIRE_GPU
-    # turns "no adapter" into a hard failure, so a missing/broken adapter fails
-    # CI loudly rather than letting the agreement tests pass vacuously.
-    env:
-      RECO_REQUIRE_GPU: "1"
-      VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.json
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - *install-apt-packages
-      - *configure-libclang
-      - name: Install FFmpeg and lavapipe for workspace tests
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg mesa-vulkan-drivers vulkan-tools
-          vulkaninfo --summary
-      - name: Run tests (default)
-        run: cargo test --workspace
-      - name: Run tests (with profiling)
-        run: cargo test --workspace --features profiling
-      - name: GPU session completion and cancellation
-        run: cargo test -p reco-core gpu_run_completion -- --ignored --test-threads=1
-      - name: GPU native input completion
-        run: cargo test -p reco-core nvmm_ -- --ignored --test-threads=1
-      - name: GPU output timestamp association
-        run: cargo test -p reco-core gpu_output_times_stay_with_images -- --ignored --test-threads=1
-      # The wgpu-free build: -p bypasses workspace feature unification so
-      # reco-core tests exercise the CPU engine and session without wgpu.
-      # RECO_REQUIRE_GPU must not apply - there is no GPU path to require.
-      - name: Run tests (reco-core wgpu-free)
-        run: |
-          cargo test -p reco-core --no-default-features
-          core_graph="$(cargo tree -p reco-core --no-default-features -e normal --prefix none)"
-          if [[ "$core_graph" == *"wgpu v"* ]]; then
-            echo "CPU session unexpectedly enables wgpu" >&2
-            exit 1
-          fi
-        env:
-          RECO_REQUIRE_GPU: ""
-      - name: Run tests (reco-io wgpu-free)
-        run: |
-          cargo test -p reco-io --no-default-features
-          cargo test -p reco-io --no-default-features --features ffmpeg
-          cargo test -p reco-io --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling
-          io_graph="$(cargo tree -p reco-io --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling -e normal --prefix none)"
-          if [[ "$io_graph" == *"wgpu v"* ]]; then
-            echo "Host I/O unexpectedly enables wgpu" >&2
-            exit 1
-          fi
-        env:
-          RECO_REQUIRE_GPU: ""
-      - name: Run tests (reco-control CPU-only)
-        run: |
-          cargo test -p reco-control --no-default-features
-          control_graph="$(cargo tree -p reco-control --no-default-features -e normal --prefix none)"
-          if [[ "$control_graph" == *"wgpu v"* || "$control_graph" == *"reqwest v"* ]]; then
-            echo "Viewport controls unexpectedly enable GPU or HTTP dependencies" >&2
-            exit 1
-          fi
-      - name: Run tests (reco-control device helper)
-        run: cargo test -p reco-control --features gopro
-      - name: Run tests (reco-autocam control-only)
-        run: |
-          cargo test -p reco-autocam --no-default-features --features profiling
-          autocam_graph="$(cargo tree -p reco-autocam --no-default-features --features profiling -e normal --prefix none)"
-          if [[ "$autocam_graph" == *"wgpu v"* || "$autocam_graph" == *"reco-detect v"* || "$autocam_graph" == *"ort v"* ]]; then
-            echo "Camera-control policies unexpectedly enable GPU or inference dependencies" >&2
-            exit 1
-          fi
-
-  # ===========================================================================
-  # doc — full workspace docs, all features enabled, warnings-as-errors.
-  # ===========================================================================
-  doc:
-    name: Documentation
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - *install-apt-packages
-      - *configure-libclang
-      - name: Build docs (profiling + gstreamer + load-dynamic + stacked-output + gopro)
-        run: cargo doc --workspace --no-deps --features profiling,gstreamer,load-dynamic,stacked-output,gopro
-        env:
-          RUSTDOCFLAGS: "-D warnings"
-      - name: Build docs (reco-io wgpu-free)
-        run: cargo doc -p reco-io --no-deps --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling
-        env:
-          RUSTDOCFLAGS: "-D warnings"
-      - name: Build docs (reco-autocam control-only)
-        run: cargo doc -p reco-autocam --no-deps --no-default-features --features profiling
-        env:
-          RUSTDOCFLAGS: "-D warnings"
-
-  # ===========================================================================
-  # deny — cargo-deny supply-chain + licenses + bans check.
-  # ===========================================================================
-  deny:
-    name: cargo-deny
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Apply dev-only maintenance exceptions
-        if: github.ref == 'refs/heads/dev' || github.base_ref == 'dev'
-        run: |
-          sed -i '/^\[advisories\]$/,/^\[/ { /^ignore = \[$/r .github/deny-dev-advisories.inc
-          }' deny.toml
-      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
-        with:
-          command: check
-          arguments: --all-features
-
-  # ===========================================================================
-  # audit — RUSTSEC advisory check. Kept alongside cargo-deny because
-  # rustsec/audit-check annotates PRs nicely with flagged advisories.
-  # ===========================================================================
-  audit:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    permissions:
-      checks: write
-      contents: read
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
-        env:
-          # rust-toolchain.toml pins the repo to the 1.92 MSRV, but the
-          # action cargo-installs cargo-audit with a fresh resolution whose
-          # deps outpace it (kstring 2.0.4 needs 1.96). The env override
-          # beats the file pin for this job only; the MSRV job still
-          # enforces 1.92 for the workspace itself.
-          RUSTUP_TOOLCHAIN: stable
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          # quick-xml DoS advisories: transitive via the Linux GUI stack
-          # (zbus_xml / wayland-scanner), local-input only. rustybuzz:
-          # unmaintained, transitive via slint's text stack. Justified in
-          # deny.toml; keep the two lists in sync.
-          ignore: RUSTSEC-2026-0194, RUSTSEC-2026-0195, RUSTSEC-2026-0206
-
-  # ===========================================================================
-  # msrv — the Rust toolchain we officially support.
-  # ===========================================================================
-  msrv:
-    # Bumped from 1.88 to 1.92 because wgpu 28 declares rust-version=1.92
-    # in its Cargo.toml. Enforced via rust-toolchain.toml + this job.
-    name: MSRV (1.92.0)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: dtolnay/rust-toolchain@1.92.0
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - *install-apt-packages
-      - *configure-libclang
-      - name: Check MSRV
-        run: cargo check --workspace
-
-  # ===========================================================================
-  # Backend feature checks and hardware-independent NCNN runtime tests.
-  #
-  # - CUDA / TensorRT / CoreML are exercised via `--features XYZ,load-dynamic`
-  #   which keeps ORT from linking at build time, so the host doesn't
-  #   need the runtime SDKs installed.
-  # - tensorrt-native is a C++ wrapper that requires NvInfer.h. No GH
-  #   runner has it, so the job is best-effort (`continue-on-error`).
-  #   Any actual C++ compile errors still appear in the log for humans.
-  # ===========================================================================
-  gpu-backends:
-    name: Inference backends
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - name: Install Linux build dependencies and Valgrind
-        shell: bash
-        run: |
-          read -ra pkgs <<< "$APT_PACKAGES"
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -o Acquire::Retries=3 "${pkgs[@]}" valgrind
-      - name: Check reco-detect (cuda + load-dynamic)
-        run: cargo check -p reco-detect --features cuda,load-dynamic
-      - name: Test TensorRT cache keys
-        run: cargo test -p reco-detect --features tensorrt,load-dynamic --lib ort_session::cache::tests
-      - name: Build NCNN CPU runtime
-        shell: bash
-        run: |
-          curl --fail --location --retry 3 https://github.com/Tencent/ncnn/archive/e54f7b1f88434e1d844ea0551b880a1cfb079ce1.tar.gz --output "$RUNNER_TEMP/ncnn.tar.gz"
-          echo "999e904d1631f46381728c68c3255af67d2cf4dbfbab8e3a7f2343e7a6dffc3d  $RUNNER_TEMP/ncnn.tar.gz" | sha256sum --check
-          mkdir "$RUNNER_TEMP/ncnn-src"
-          tar -xzf "$RUNNER_TEMP/ncnn.tar.gz" --strip-components=1 -C "$RUNNER_TEMP/ncnn-src"
-          cmake -S "$RUNNER_TEMP/ncnn-src" -B "$RUNNER_TEMP/ncnn-build" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/ncnn" -DNCNN_C_API=ON -DNCNN_VULKAN=OFF -DNCNN_BUILD_TOOLS=OFF -DNCNN_BUILD_EXAMPLES=OFF -DNCNN_BUILD_BENCHMARK=OFF -DNCNN_BUILD_TESTS=OFF -DNCNN_AVX512=OFF
-          cmake --build "$RUNNER_TEMP/ncnn-build" --parallel 2
-          cmake --install "$RUNNER_TEMP/ncnn-build"
-      - name: Test and lint NCNN without ORT
-        env:
-          NCNN_DIR: ${{ runner.temp }}/ncnn
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: valgrind --leak-check=full --errors-for-leak-kinds=definite --error-exitcode=1
-        run: |
-          cargo test -p reco-detect -p reco-autocam --no-default-features --features ncnn --lib ncnn -- --test-threads=1
-          cargo clippy -p reco-detect -p reco-autocam --all-targets --no-default-features --features ncnn -- -D warnings
-      - name: Check reco-detect (tensorrt-native, best-effort)
-        # Requires NvInfer.h which no hosted GH runner has. Kept in CI
-        # to catch Rust-side regressions in trt/engine.rs even when the
-        # C++ compile fails upstream.
-        run: cargo check -p reco-detect --features tensorrt-native
-        continue-on-error: true
-
-  # ===========================================================================
-  # Benchmark compile — catches bench regressions during the long v2
-  # consolidation branch. Compile-only; no runtime measurement.
-  # ===========================================================================
-  bench-build:
-    name: Benchmark compile
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - *install-apt-packages
-      - *configure-libclang
-      - name: Build benches (no-run)
-        run: cargo bench --workspace --no-run
-
-  # ===========================================================================
-  # macOS — covers reco-core + CLI; extended to reco-gui and the ORT
-  # CoreML backend (compile-only). reco-obs requires libobs headers that
-  # are not shipped via Homebrew, so it is skipped here.
-  # ===========================================================================
-  check-macos:
-    name: Check (macOS)
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - name: Install dependencies
-        run: brew install ffmpeg gstreamer gst-plugins-base pkg-config
-      - name: Check reco-core
-        run: cargo check -p reco-core
-      - name: Check reco-core (profiling)
-        run: cargo check -p reco-core --features profiling
-      - name: Check full CLI
-        run: cargo check -p reco-cli
-      - name: Check reco-gui (macOS Metal path)
-        run: cargo check -p reco-gui
-      - name: Check reco-detect (coreml + load-dynamic)
-        run: cargo check -p reco-detect --features coreml,load-dynamic
-
-  # macOS Intel (x86_64-apple-darwin) is suspended - the ort-sys crate
-  # publishes no prebuilt ONNX Runtime binary for that target with
-  # reco-detect's feature set, and we have no hardware to test on.
-
-  # ===========================================================================
-  # Windows — covers reco-core + reco-gui. reco-obs requires libobs
-  # headers from vcpkg; deferred to a future CI expansion.
-  # ===========================================================================
-  check-windows:
-    name: Check (Windows)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - name: Check reco-core
-        run: cargo check -p reco-core
-      - name: Check reco-core (profiling)
-        run: cargo check -p reco-core --features profiling
-      # reco-gui transitively depends on ffmpeg-sys-next via reco-io,
-      # which fails to build on windows-latest without vcpkg FFmpeg
-      # provisioning. Deferred to M8 once we wire vcpkg in a way that
-      # doesn't blow per-push CI time budget.
-
-  # Cross-compile check: cargo check type-checks without linking, so no
-  # FFmpeg or ORT native libraries are needed for the target architecture.
-  # Pins the toolchain to 1.92.0 to match rust-toolchain.toml - otherwise
-  # @stable installs latest stable but rust-toolchain.toml forces 1.92.0
-  # on first cargo invocation, and the target's std lib is not installed
-  # for 1.92.0. Pinning resolves "can't find crate for `core`" errors.
-  check-windows-arm:
-    name: Check (Windows ARM64)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: dtolnay/rust-toolchain@1.92.0
-        with:
-          targets: aarch64-pc-windows-msvc
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - name: Check reco-core
-        run: cargo check -p reco-core --target aarch64-pc-windows-msvc
-      - name: Check reco-core (profiling)
-        run: cargo check -p reco-core --target aarch64-pc-windows-msvc --features profiling
-
-  # Cross-compile check: verifies reco-core compiles for aarch64 Linux (Jetson).
-  # Full CLI check is skipped because ffmpeg-sys-next's build script requires
-  # FFmpeg dev packages for the target architecture (multiarch apt setup).
-  check-linux-arm:
-    name: Check (Linux ARM64)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: dtolnay/rust-toolchain@1.92.0
-        with:
-          targets: aarch64-unknown-linux-gnu
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - name: Check reco-core
-        run: cargo check -p reco-core --target aarch64-unknown-linux-gnu
-      - name: Check reco-core (profiling)
-        run: cargo check -p reco-core --target aarch64-unknown-linux-gnu --features profiling
-
-  # ===========================================================================
-  # Android compile-check — keeps the mobile trait design honest during
-  # the M3 refactor. User directive 2026-04-18: Android is a real
-  # hardware target, not just a trait-ready future. A real-device test
-  # via adb shell comes later in M5/M7.
-  # ===========================================================================
-  check-android:
-    name: Check (Android aarch64)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      # Pinned toolchain for same reason as check-linux-arm /
-      # check-windows-arm: rust-toolchain.toml forces 1.92.0, and
-      # `rustup target add` applies to the active toolchain.
-      - uses: dtolnay/rust-toolchain@1.92.0
-        with:
-          targets: aarch64-linux-android
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      - name: Check reco-core (Android, no default features)
-        # reco-core has no std::fs / FFmpeg deps by itself; should
-        # compile clean for the Android target. Failures here flag
-        # inadvertent host-OS assumptions creeping in.
-        run: cargo check -p reco-core --target aarch64-linux-android --no-default-features
-
-  secrets:
-    name: Secret Scanning
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      # Run the gitleaks CLI directly instead of gitleaks-action. The action
-      # requires a license key for org repos, and that secret is unavailable
-      # to pull_request runs from forks, so it failed on every community PR.
-      # The binary is free for everyone and needs no secret, so it scans fork
-      # and internal PRs identically.
-      - name: Install gitleaks
-        env:
-          GITLEAKS_VERSION: 8.30.1
-        run: |
-          mkdir -p "$HOME/.local/bin"
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | tar -xz -C "$HOME/.local/bin" gitleaks
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Scan working tree for secrets
-        run: gitleaks dir . --redact --verbose

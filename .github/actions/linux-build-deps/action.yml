@@ -1,0 +1,42 @@
+name: Linux CI build dependencies
+description: Install native apt build libraries and align bindgen with the system libclang.
+inputs:
+  extra-packages:
+    description: Additional space-separated apt packages to install in the same apt transaction.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Install Linux build dependencies
+      shell: bash
+      env:
+        EXTRA_PACKAGES: ${{ inputs.extra-packages }}
+      run: |
+        set -euo pipefail
+        # Includes libobs-dev because reco-obs's build.rs runs bindgen
+        # against /usr/include/obs/obs.h on every workspace-level cargo
+        # command (clippy, test, doc, bench). Without it, any job that
+        # touches reco-obs fails at build-script time.
+        pkgs=(
+          libavcodec-dev libavformat-dev libavutil-dev
+          libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev
+          libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base
+          libfontconfig1-dev libobs-dev
+          pkg-config clang libclang-dev
+        )
+        if [[ -n "$EXTRA_PACKAGES" ]]; then
+          read -ra extra <<< "$EXTRA_PACKAGES"
+          pkgs+=("${extra[@]}")
+        fi
+        sudo apt-get update
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -o Acquire::Retries=3 "${pkgs[@]}"
+    - name: Match bindgen to the system Clang headers
+      shell: bash
+      run: |
+        set -euo pipefail
+        clang=$(readlink -f /usr/bin/clang)
+        libdir=$(dirname "$(dirname "$clang")")/lib
+        test -f "$libdir/libclang.so"
+        echo "CLANG_PATH=$clang" >> "$GITHUB_ENV"
+        echo "LIBCLANG_PATH=$libdir" >> "$GITHUB_ENV"

@@ -1,0 +1,459 @@
+name: Rust Extended CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+    types: [opened, synchronize, reopened, labeled]
+  schedule:
+    # Nightly Stage 3 verification sweep (03:00 UTC daily).
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'schedule' && 'nightly' || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ===========================================================================
+  # Stage 2 — Full verification (push to dev/main, PRs targeting main,
+  # workflow_dispatch, or PRs labeled `ci-full`).
+  # ===========================================================================
+  feature-matrix-lint:
+    name: Feature Matrix Lint
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: v1-rust
+          shared-key: feature-matrix-lint
+          save-if: ${{ github.event_name == 'push' }}
+      - uses: ./.github/actions/linux-build-deps
+      - name: Clippy (with profiling)
+        run: cargo clippy --workspace --all-targets --features profiling -- -D warnings
+      - name: Clippy (with gstreamer)
+        run: cargo clippy --workspace --all-targets --features gstreamer -- -D warnings
+      - name: Clippy (with load-dynamic)
+        run: cargo clippy --workspace --all-targets --features load-dynamic -- -D warnings
+      # Subprocess capture needs no camera SDK or device for lifecycle tests.
+      - name: Clippy (with libcamera)
+        run: cargo clippy --workspace --all-targets --features libcamera -- -D warnings
+      - name: Libcamera subprocess lifecycle
+        run: cargo test -p reco-io --no-default-features --features libcamera --lib 'libcamera::'
+      - name: GStreamer capture lifecycle, ownership and encoded delivery
+        timeout-minutes: 5
+        run: cargo test -p reco-io --no-default-features --features gstreamer,ffmpeg --lib 'gstreamer::'
+      - name: Clippy (reco-gui automation hook)
+        run: cargo clippy -p reco-gui --all-targets --features automation -- -D warnings
+      - name: Clippy (no default features)
+        run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+      # -p isolates reco-core from workspace feature unification, so this
+      # is the one lint lane where the gpu feature is genuinely OFF and
+      # CPU geometry, rendering and session orchestration are checked
+      # on its own.
+      - name: Clippy (reco-core wgpu-free)
+        run: cargo clippy -p reco-core --all-targets --no-default-features -- -D warnings
+      - name: Profiling across consumer feature boundaries
+        run: |
+          cargo test -p reco-core --no-default-features --features profiling --test profiling
+          cargo clippy -p reco-io --all-targets --no-default-features --features ffmpeg,reco-core/profiling -- -D warnings
+      - name: Clippy (reco-io wgpu-free)
+        run: |
+          cargo clippy -p reco-io --all-targets --no-default-features -- -D warnings
+          cargo clippy -p reco-io --all-targets --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling -- -D warnings
+      - name: Clippy (reco-control CPU-only)
+        run: cargo clippy -p reco-control --all-targets --no-default-features -- -D warnings
+      - name: Clippy (reco-autocam control-only)
+        run: cargo clippy -p reco-autocam --all-targets --no-default-features --features profiling -- -D warnings
+      - name: Clippy (reco-autocam detector adapters)
+        run: cargo clippy -p reco-autocam --all-targets --no-default-features --features detectors -- -D warnings
+      - name: Clippy (reco-control device helper)
+        run: cargo clippy -p reco-control --all-targets --features gopro -- -D warnings
+
+  # ===========================================================================
+  # Stage 2 — Software-lavapipe GPU tests, profiling, and wgpu-free isolation.
+  # ===========================================================================
+  test-full:
+    name: Full Matrix & GPU Tests
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+    runs-on: ubuntu-latest
+    # The GPU-execution tests (CPU-vs-GPU stitch agreement, KB4) run against a
+    # software Vulkan adapter (lavapipe) so they are actually exercised in CI
+    # instead of silently skipping on the GPU-less runner. RECO_REQUIRE_GPU
+    # turns "no adapter" into a hard failure, so a missing/broken adapter fails
+    # CI loudly rather than letting the agreement tests pass vacuously.
+    env:
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
+      RECO_REQUIRE_GPU: "1"
+      VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.json
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: v1-rust
+          shared-key: test-full
+          env-vars: CARGO_PROFILE_TEST_DEBUG
+          save-if: ${{ github.event_name == 'push' }}
+      - uses: ./.github/actions/linux-build-deps
+        with:
+          extra-packages: ffmpeg mesa-vulkan-drivers vulkan-tools
+      - name: Verify lavapipe Vulkan adapter
+        run: vulkaninfo --summary
+      - name: Run tests (default + lavapipe GPU)
+        run: cargo test --workspace
+      - name: Run tests (with profiling)
+        run: cargo test --workspace --features profiling
+      - name: GPU session completion and cancellation
+        run: cargo test -p reco-core gpu_run_completion -- --ignored --test-threads=1
+      - name: GPU native input completion
+        run: cargo test -p reco-core nvmm_ -- --ignored --test-threads=1
+      - name: GPU output timestamp association
+        run: cargo test -p reco-core gpu_output_times_stay_with_images -- --ignored --test-threads=1
+      # The wgpu-free build: -p bypasses workspace feature unification so
+      # reco-core tests exercise the CPU engine and session without wgpu.
+      # RECO_REQUIRE_GPU must not apply - there is no GPU path to require.
+      - name: Run tests (reco-core wgpu-free)
+        run: |
+          cargo test -p reco-core --no-default-features
+          core_graph="$(cargo tree -p reco-core --no-default-features -e normal --prefix none)"
+          if [[ "$core_graph" == *"wgpu v"* ]]; then
+            echo "CPU session unexpectedly enables wgpu" >&2
+            exit 1
+          fi
+        env:
+          RECO_REQUIRE_GPU: ""
+      - name: Run tests (reco-io wgpu-free)
+        run: |
+          cargo test -p reco-io --no-default-features
+          cargo test -p reco-io --no-default-features --features ffmpeg
+          cargo test -p reco-io --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling
+          io_graph="$(cargo tree -p reco-io --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling -e normal --prefix none)"
+          if [[ "$io_graph" == *"wgpu v"* ]]; then
+            echo "Host I/O unexpectedly enables wgpu" >&2
+            exit 1
+          fi
+        env:
+          RECO_REQUIRE_GPU: ""
+      - name: Run tests (reco-control CPU-only)
+        run: |
+          cargo test -p reco-control --no-default-features
+          control_graph="$(cargo tree -p reco-control --no-default-features -e normal --prefix none)"
+          if [[ "$control_graph" == *"wgpu v"* || "$control_graph" == *"reqwest v"* ]]; then
+            echo "Viewport controls unexpectedly enable GPU or HTTP dependencies" >&2
+            exit 1
+          fi
+      - name: Run tests (reco-control device helper)
+        run: cargo test -p reco-control --features gopro
+      - name: Run tests (reco-autocam control-only)
+        run: |
+          cargo test -p reco-autocam --no-default-features --features profiling
+          autocam_graph="$(cargo tree -p reco-autocam --no-default-features --features profiling -e normal --prefix none)"
+          if [[ "$autocam_graph" == *"wgpu v"* || "$autocam_graph" == *"reco-detect v"* || "$autocam_graph" == *"ort v"* ]]; then
+            echo "Camera-control policies unexpectedly enable GPU or inference dependencies" >&2
+            exit 1
+          fi
+
+  # ===========================================================================
+  # Stage 2 — Documentation (full workspace docs, warnings-as-errors).
+  # ===========================================================================
+  doc:
+    name: Documentation
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: v1-rust
+          shared-key: doc
+          save-if: ${{ github.event_name == 'push' }}
+      - uses: ./.github/actions/linux-build-deps
+      - name: Build docs (profiling + gstreamer + load-dynamic + stacked-output + gopro)
+        run: cargo doc --workspace --no-deps --features profiling,gstreamer,load-dynamic,stacked-output,gopro
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+      - name: Build docs (reco-io wgpu-free)
+        run: cargo doc -p reco-io --no-deps --no-default-features --features ffmpeg,stacked-output,gstreamer,libcamera,v4l2,config,profiling
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+      - name: Build docs (reco-autocam control-only)
+        run: cargo doc -p reco-autocam --no-deps --no-default-features --features profiling
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
+  # ===========================================================================
+  # Stage 2 — Benchmark compile (compile-only; catches bench regressions).
+  # ===========================================================================
+  bench-build:
+    name: Benchmark compile
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: v1-rust
+          shared-key: bench-build
+          save-if: ${{ github.event_name == 'push' }}
+      - uses: ./.github/actions/linux-build-deps
+      - name: Build benches (no-run)
+        run: cargo bench --workspace --no-run
+
+  # ===========================================================================
+  # Stage 2 — Cross-platform compile checks (macOS, Windows, ARM64, Android).
+  # ===========================================================================
+  check-macos:
+    name: Check (macOS)
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: v1-rust
+          shared-key: check-macos
+          save-if: ${{ github.event_name == 'push' }}
+      - name: Install dependencies
+        run: brew install ffmpeg gstreamer gst-plugins-base pkg-config
+      - name: Check reco-core
+        run: cargo check -p reco-core
+      - name: Check reco-core (profiling)
+        run: cargo check -p reco-core --features profiling
+      - name: Check full CLI
+        run: cargo check -p reco-cli
+      - name: Check reco-gui (macOS Metal path)
+        run: cargo check -p reco-gui
+      - name: Check reco-detect (coreml + load-dynamic)
+        run: cargo check -p reco-detect --features coreml,load-dynamic
+
+  check-windows:
+    name: Check (Windows)
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: v1-rust
+          shared-key: check-windows
+          save-if: ${{ github.event_name == 'push' }}
+      - name: Check reco-core
+        run: cargo check -p reco-core
+      - name: Check reco-core (profiling)
+        run: cargo check -p reco-core --features profiling
+
+  check-windows-arm:
+    name: Check (Windows ARM64)
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          targets: aarch64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: v1-rust
+          shared-key: check-windows-arm
+          save-if: ${{ github.event_name == 'push' }}
+      - name: Check reco-core
+        run: cargo check -p reco-core --target aarch64-pc-windows-msvc
+      - name: Check reco-core (profiling)
+        run: cargo check -p reco-core --target aarch64-pc-windows-msvc --features profiling
+
+  check-linux-arm:
+    name: Check (Linux ARM64)
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          targets: aarch64-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: v1-rust
+          shared-key: check-linux-arm
+          save-if: ${{ github.event_name == 'push' }}
+      - name: Check reco-core
+        run: cargo check -p reco-core --target aarch64-unknown-linux-gnu
+      - name: Check reco-core (profiling)
+        run: cargo check -p reco-core --target aarch64-unknown-linux-gnu --features profiling
+
+  check-android:
+    name: Check (Android aarch64)
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: v1-rust
+          shared-key: check-android
+          save-if: ${{ github.event_name == 'push' }}
+      - name: Check reco-core (Android, no default features)
+        run: cargo check -p reco-core --target aarch64-linux-android --no-default-features
+
+  # ===========================================================================
+  # Stage 3 — Nightly (schedule), push to main, PRs targeting main,
+  # workflow_dispatch, and PRs labeled `ci-full`.
+  # ===========================================================================
+  msrv:
+    # Bumped from 1.88 to 1.92 because wgpu 28 declares rust-version=1.92
+    # in its Cargo.toml. Enforced via rust-toolchain.toml + this job.
+    name: MSRV (1.92.0)
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: v1-rust
+          shared-key: msrv
+          save-if: ${{ github.event_name == 'push' || github.event_name == 'schedule' }}
+      - uses: ./.github/actions/linux-build-deps
+      - name: Check MSRV
+        run: cargo check --workspace
+
+  gpu-backends:
+    name: Inference backends
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: v1-rust
+          shared-key: gpu-backends
+          save-if: ${{ github.event_name == 'push' || github.event_name == 'schedule' }}
+      - uses: ./.github/actions/linux-build-deps
+        with:
+          extra-packages: valgrind
+      - name: Check reco-detect (cuda + load-dynamic)
+        run: cargo check -p reco-detect --features cuda,load-dynamic
+      - name: Test TensorRT cache keys
+        run: cargo test -p reco-detect --features tensorrt,load-dynamic --lib ort_session::cache::tests
+      - name: Build NCNN CPU runtime
+        shell: bash
+        run: |
+          curl --fail --location --retry 3 https://github.com/Tencent/ncnn/archive/e54f7b1f88434e1d844ea0551b880a1cfb079ce1.tar.gz --output "$RUNNER_TEMP/ncnn.tar.gz"
+          echo "999e904d1631f46381728c68c3255af67d2cf4dbfbab8e3a7f2343e7a6dffc3d  $RUNNER_TEMP/ncnn.tar.gz" | sha256sum --check
+          mkdir "$RUNNER_TEMP/ncnn-src"
+          tar -xzf "$RUNNER_TEMP/ncnn.tar.gz" --strip-components=1 -C "$RUNNER_TEMP/ncnn-src"
+          cmake -S "$RUNNER_TEMP/ncnn-src" -B "$RUNNER_TEMP/ncnn-build" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/ncnn" -DNCNN_C_API=ON -DNCNN_VULKAN=OFF -DNCNN_BUILD_TOOLS=OFF -DNCNN_BUILD_EXAMPLES=OFF -DNCNN_BUILD_BENCHMARK=OFF -DNCNN_BUILD_TESTS=OFF -DNCNN_AVX512=OFF
+          cmake --build "$RUNNER_TEMP/ncnn-build" --parallel 2
+          cmake --install "$RUNNER_TEMP/ncnn-build"
+      - name: Test and lint NCNN without ORT
+        env:
+          NCNN_DIR: ${{ runner.temp }}/ncnn
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: valgrind --leak-check=full --errors-for-leak-kinds=definite --error-exitcode=1
+        run: |
+          cargo test -p reco-detect -p reco-autocam --no-default-features --features ncnn --lib ncnn -- --test-threads=1
+          cargo clippy -p reco-detect -p reco-autocam --all-targets --no-default-features --features ncnn -- -D warnings
+      - name: Check reco-detect (tensorrt-native, best-effort)
+        # Requires NvInfer.h which no hosted GH runner has. Kept in CI
+        # to catch Rust-side regressions in trt/engine.rs even when the
+        # C++ compile fails upstream.
+        run: cargo check -p reco-detect --features tensorrt-native
+        continue-on-error: true
+
+  audit:
+    name: Security Audit
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'ci-full')
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+        env:
+          # rust-toolchain.toml pins the repo to the 1.92 MSRV, but the
+          # action cargo-installs cargo-audit with a fresh resolution whose
+          # deps outpace it (kstring 2.0.4 needs 1.96). The env override
+          # beats the file pin for this job only; the MSRV job still
+          # enforces 1.92 for the workspace itself.
+          RUSTUP_TOOLCHAIN: stable
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # quick-xml DoS advisories: transitive via the Linux GUI stack
+          # (zbus_xml / wayland-scanner), local-input only. rustybuzz:
+          # unmaintained, transitive via slint's text stack. Justified in
+          # deny.toml; keep the two lists in sync.
+          ignore: RUSTSEC-2026-0194, RUSTSEC-2026-0195, RUSTSEC-2026-0206
