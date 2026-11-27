@@ -43,32 +43,41 @@ pub enum SessionError {
     },
 }
 
-/// One-shot verdict on whether the ONNX Runtime library can be loaded.
+/// One-shot verdict and shared process-global [`ort::environment::Environment`].
 ///
-/// With load-dynamic, ort's first API call dlopens the runtime; when the
-/// load fails, ort builds the error through `Error::new`, which calls
-/// back into `api()` and re-enters the once-lock whose initializer is
-/// still on this thread's stack - a self-deadlock, not an error (#446).
-/// ort's failing init path must therefore never execute: the dylib is
-/// probed with our own dlopen first, and ort is only entered once the
-/// probe proves the load cannot fail.
-static ORT_RUNTIME: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
+/// With load-dynamic, ort's first API call dlopens the runtime; probing the
+/// dylib with our own dlopen first avoids ort's failing init path (#446)
+/// and lets us report missing or incompatible runtimes without entering ort.
+/// Once initialized, the single process-wide `Environment` stays alive for
+/// all subsequent `Session::builder` calls.
+static ORT_RUNTIME: std::sync::OnceLock<Result<ort::environment::Environment, String>> =
+    std::sync::OnceLock::new();
+
+/// Return the process-global ORT environment, initializing it once.
+fn ort_environment() -> Result<&'static ort::environment::Environment, String> {
+    match ORT_RUNTIME.get_or_init(|| {
+        probe_ort_dylib()?;
+        // The probe proved the dylib loads and is API-compatible, so
+        // ort's init cannot reach the failing load path.
+        // catch_unwind stays as a backstop for exotic init panics.
+        match std::panic::catch_unwind(|| {
+            let env = ort::init().build()?;
+            Session::builder(&env)?;
+            Ok::<_, ort::Error>(env)
+        }) {
+            Ok(Ok(env)) => Ok(env),
+            Ok(Err(e)) => Err(format!("ONNX Runtime init failed: {e}")),
+            Err(_) => Err("ONNX Runtime initialization panicked".to_string()),
+        }
+    }) {
+        Ok(env) => Ok(env),
+        Err(reason) => Err(reason.clone()),
+    }
+}
 
 /// `Ok` when the ONNX Runtime library loaded; `Err` with the reason otherwise.
 pub fn ort_runtime_available() -> Result<(), String> {
-    ORT_RUNTIME
-        .get_or_init(|| {
-            probe_ort_dylib()?;
-            // The probe proved the dylib loads and is API-compatible, so
-            // ort's init cannot reach the deadlocking error path.
-            // catch_unwind stays as a backstop for exotic init panics.
-            match std::panic::catch_unwind(Session::builder) {
-                Ok(Ok(_)) => Ok(()),
-                Ok(Err(e)) => Err(format!("ONNX Runtime init failed: {e}")),
-                Err(_) => Err("ONNX Runtime initialization panicked".to_string()),
-            }
-        })
-        .clone()
+    ort_environment().map(|_| ())
 }
 
 /// Verify the ONNX Runtime dynamic library loads and is API-compatible
@@ -219,14 +228,11 @@ pub(crate) fn session_builder(
     model_path: Option<&Path>,
 ) -> Result<(SessionBuilder, AiProbeResult), SessionError> {
     // Session::builder() must not run when the runtime cannot load: ort's
-    // failing init self-deadlocks building its own error (#446), so the
-    // gate's cached verdict is the only safe way to learn availability.
-    // The same applies to constructing ANY ort::Error (its constructor
-    // calls CreateStatus through api()), hence SessionError.
-    if let Err(reason) = ort_runtime_available() {
-        return Err(SessionError::RuntimeUnavailable(reason));
-    }
-    let mut builder = Session::builder()?
+    // failing init self-deadlocks/panics without our preflight gate (#446),
+    // so ort_environment() is the only safe way to initialize and retrieve
+    // the shared Environment.
+    let env = ort_environment().map_err(SessionError::RuntimeUnavailable)?;
+    let mut builder = Session::builder(env)?
         .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)
         .map_err(ort::Error::from)?;
 
@@ -394,5 +400,13 @@ mod tests {
         let first = ort_runtime_available();
         let second = ort_runtime_available();
         assert_eq!(first.is_ok(), second.is_ok());
+    }
+
+    #[test]
+    fn ort_api_version_matches_pinned_desktop_runtime() {
+        // Desktop packaging (`scripts/*-desktop.json`, `release.yml`) pins
+        // ONNX Runtime 1.24.4. Keep ort's C API target at 24 unless the
+        // bundled runtimes are upgraded in lockstep.
+        assert_eq!(ort::MINOR_VERSION, 24);
     }
 }

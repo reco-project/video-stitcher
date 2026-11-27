@@ -23,7 +23,19 @@ profiling = ["reco-core/profiling"]
 
 [dependencies]
 reco-core = { path = "../reco-core" }
-ort = { version = "2.0.0-rc.12", optional = true }
+# Pin `api-24` explicitly because ort 2.0.0-rc.15 defaults to `api-31`,
+# while desktop packaging and CI (`scripts/*-desktop.json`, `release.yml`)
+# ship ONNX Runtime 1.24.4. Targeting C API 24 keeps `load-dynamic`
+# compatible with 1.24.4 and newer runtimes alike.
+ort = { version = "2.0.0-rc.15", optional = true, default-features = false, features = [
+    "std",
+    "ndarray",
+    "tracing",
+    "download-binaries",
+    "tls-native",
+    "copy-dylibs",
+    "api-24",
+] }
 dirs = { version = "6", optional = true }
 hmac-sha256 = { version = "1.1.14", optional = true }
 libloading = { version = "0.9", optional = true }
@@ -40,9 +52,10 @@ libloading = "0.9"
 
 # ort_session registers the DirectML EP on Windows; without ort's
 # `directml` feature the registration silently falls back to the CPU
-# EP, so every Windows ort build carries it.
+# EP, so every Windows ort build carries it. Keep `default-features = false`
+# so feature unification does not pull in ort's default `api-31`.
 [target.'cfg(windows)'.dependencies]
-ort = { version = "2.0.0-rc.12", optional = true, features = ["directml"] }
+ort = { version = "2.0.0-rc.15", optional = true, default-features = false, features = ["directml"] }
 
 # Apple frameworks: used by coreml_inference (CoreML model wrap) and
 # metal_compute (Metal compute pipeline for YOLO preprocess). These
