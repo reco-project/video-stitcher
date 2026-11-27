@@ -325,6 +325,24 @@ impl Container {
     }
 }
 
+/// FourCC codec tag for Apple-compatible HEVC sample entries (`MKTAG('h', 'v', 'c', '1')`).
+const HVC1_CODEC_TAG: u32 = u32::from_le_bytes(*b"hvc1");
+
+/// Select an explicit container `codec_tag` for a video stream when the muxer default is
+/// incompatible with standard players.
+///
+/// FFmpeg's MP4/MOV muxers default to `hev1` for HEVC when `codec_tag` is `0`, which Apple's
+/// playback stack (QuickTime, Safari, Photos, Finder) rejects. Setting `hvc1` writes parameter
+/// sets in the `hvcC` sample entry when global headers are active. Other codecs and non-ISOBMFF
+/// containers (Matroska, FLV, MPEG-TS, etc.) keep the muxer default (`0`).
+fn video_codec_tag(codec_id: codec::Id, muxer_name: &str, has_global_header: bool) -> Option<u32> {
+    if codec_id == codec::Id::HEVC && has_global_header && matches!(muxer_name, "mp4" | "mov") {
+        Some(HVC1_CODEC_TAG)
+    } else {
+        None
+    }
+}
+
 /// Resolved VUI and container colour configuration for an opened encoder.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct OutputColor {
@@ -696,6 +714,22 @@ impl VideoEncoder {
                     } else {
                         None
                     };
+                    // Apply container codec tag after all `set_parameters` calls (including
+                    // `HevcColor`), which copy parameters with `codec_tag = 0`.
+                    if let Some(tag) = video_codec_tag(
+                        codec.id(),
+                        octx.format().name(),
+                        octx.format().flags().contains(format::Flags::GLOBAL_HEADER),
+                    ) {
+                        let stream = octx
+                            .stream_mut(stream_index)
+                            .expect("video stream we just added");
+                        // SAFETY: the newly added output stream owns writable codec parameters
+                        // until `write_header` consumes them.
+                        unsafe {
+                            (*stream.parameters().as_mut_ptr()).codec_tag = tag;
+                        }
+                    }
                     let hw_tag = if *is_hw { " (hardware)" } else { " (software)" };
                     log::info!(
                         "Encoder: {}x{} {}{} @ {}/{} fps",
@@ -2678,5 +2712,103 @@ mod tests {
         let hevc_85 = build_encoder_opts("hevc_videotoolbox", Quality::Value(85), None, 3840, 2160);
         assert_eq!(hevc_85.get("global_quality"), Some("81"));
         assert_eq!(hevc_85.get("maxrate"), Some("124M"));
+    }
+
+    #[test]
+    fn hevc_mp4_mov_selects_hvc1_codec_tag() {
+        assert_eq!(HVC1_CODEC_TAG, u32::from_le_bytes(*b"hvc1"));
+        assert_eq!(
+            video_codec_tag(codec::Id::HEVC, "mp4", true),
+            Some(HVC1_CODEC_TAG)
+        );
+        assert_eq!(
+            video_codec_tag(codec::Id::HEVC, "mov", true),
+            Some(HVC1_CODEC_TAG)
+        );
+        // hvc1 requires global headers (VPS/SPS/PPS in the hvcC sample entry).
+        assert_eq!(video_codec_tag(codec::Id::HEVC, "mp4", false), None);
+        assert_eq!(video_codec_tag(codec::Id::HEVC, "mov", false), None);
+        // Non-ISOBMFF containers must keep their muxer default.
+        assert_eq!(video_codec_tag(codec::Id::HEVC, "matroska", true), None);
+        assert_eq!(video_codec_tag(codec::Id::HEVC, "flv", true), None);
+        assert_eq!(video_codec_tag(codec::Id::HEVC, "mpegts", false), None);
+        // Other codecs keep their muxer default.
+        assert_eq!(video_codec_tag(codec::Id::H264, "mp4", true), None);
+        assert_eq!(video_codec_tag(codec::Id::H264, "mov", true), None);
+        assert_eq!(video_codec_tag(codec::Id::AV1, "mp4", true), None);
+    }
+
+    #[test]
+    fn hevc_muxed_mp4_and_mov_write_hvc1_codec_tag() {
+        crate::init();
+        if encoder::find_by_name("libx265").is_none() {
+            return;
+        }
+        let cases = [
+            (Container::Mp4, "out.mp4", Some(HVC1_CODEC_TAG)),
+            (Container::Mp4, "out", Some(HVC1_CODEC_TAG)),
+            (Container::Mp4Fragmented, "frag.mp4", Some(HVC1_CODEC_TAG)),
+            (Container::Mov, "out.mov", Some(HVC1_CODEC_TAG)),
+            // Container muxer is authoritative even when the filename ends in .mp4.
+            (Container::Mkv, "out.mkv", None),
+            (Container::Mkv, "misleading.mp4", None),
+        ];
+        for rendered in [false, true] {
+            for (container, filename, expected_tag) in cases {
+                let dir = tempfile::tempdir().unwrap();
+                let path = dir.path().join(filename);
+                let config = EncoderConfig {
+                    encoder_name: Some("libx265".into()),
+                    codec: Some(Codec::HEVC),
+                    preset: Some("ultrafast".into()),
+                    container,
+                    ..Default::default()
+                };
+                let mut enc = if rendered {
+                    VideoEncoder::new_rendered(&path, 64, 64, Rational(30, 1), &config, None)
+                        .unwrap()
+                } else {
+                    VideoEncoder::new(&path, 64, 64, Rational(30, 1), &config).unwrap()
+                };
+                for _ in 0..3 {
+                    enc.write_nv12_frame(&[128; 64 * 64 * 3 / 2], None).unwrap();
+                }
+                enc.finish().unwrap();
+                drop(enc);
+
+                let input = format::input(&path).unwrap();
+                let stream = input
+                    .streams()
+                    .best(ffmpeg::media::Type::Video)
+                    .expect("muxed video stream");
+                let params = stream.parameters();
+                assert_eq!(params.id(), codec::Id::HEVC);
+                // SAFETY: `params` is live for the duration of this inspection.
+                let (codec_tag, extradata_size) = unsafe {
+                    let raw = &*params.as_ptr();
+                    (raw.codec_tag, raw.extradata_size)
+                };
+                match expected_tag {
+                    Some(tag) => {
+                        assert_eq!(
+                            codec_tag,
+                            tag,
+                            "expected hvc1 for {container:?} ({filename}, rendered={rendered}), got {:?}",
+                            std::str::from_utf8(&codec_tag.to_le_bytes())
+                        );
+                        assert!(
+                            extradata_size > 0,
+                            "expected global header extradata (hvcC) for {container:?} ({filename}, rendered={rendered})"
+                        );
+                    }
+                    None => {
+                        assert_ne!(
+                            codec_tag, HVC1_CODEC_TAG,
+                            "must not write hvc1 for {container:?} ({filename}, rendered={rendered})"
+                        );
+                    }
+                }
+            }
+        }
     }
 }
