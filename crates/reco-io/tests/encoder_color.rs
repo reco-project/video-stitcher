@@ -564,3 +564,41 @@ fn stitch_job_propagates_matching_hdr_metadata_and_falls_back_on_mismatch() {
         .unwrap();
     assert_color_metadata(&mismatched_out, sdr_fallback, false);
 }
+
+#[test]
+fn partial_hdr_metadata_does_not_fabricate_bt709_matrix() {
+    use ffmpeg_next::color::{Primaries, TransferCharacteristic};
+    use reco_io::ffmpeg::ColorMetadata;
+
+    let partial_hdr = ColorMetadata {
+        primaries: Some(Primaries::BT2020),
+        transfer: Some(TransferCharacteristic::ARIB_STD_B67),
+        space: None,
+    };
+
+    let dir = tempfile::tempdir().unwrap();
+    for encoder_name in ["libx265", "libx264"] {
+        let path = dir.path().join(format!("partial-hdr-{encoder_name}.mp4"));
+        let config = EncoderConfig {
+            encoder_name: Some(encoder_name.into()),
+            gop_size: Some(2),
+            color_metadata: partial_hdr,
+            ..Default::default()
+        };
+        let mut sink = FfmpegFileEncoder::new(&path, 64, 64, (30, 1), &config).unwrap();
+        for index in 0..3 {
+            sink.consume(OutputFrame {
+                data: &[128; 64 * 64 * 3 / 2],
+                width: 64,
+                height: 64,
+                format: PixelFormat::Nv12,
+                pts_us: Some(index * 1_000_000 / 30),
+            })
+            .unwrap();
+        }
+        sink.finish().unwrap();
+        drop(sink);
+
+        assert_color_metadata(&path, partial_hdr, false);
+    }
+}

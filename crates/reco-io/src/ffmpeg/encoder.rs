@@ -530,12 +530,7 @@ impl VideoEncoder {
         config: &EncoderConfig,
         live_audio: Option<LiveAudio>,
     ) -> Result<Self, EncodeError> {
-        let source = config.color_metadata.normalized();
-        let metadata = super::ColorMetadata {
-            primaries: source.primaries,
-            transfer: source.transfer,
-            space: Some(source.space.unwrap_or(ffmpeg::color::Space::BT709)),
-        };
+        let metadata = config.color_metadata.for_rendered_output();
         Self::new_with_color(
             path,
             width,

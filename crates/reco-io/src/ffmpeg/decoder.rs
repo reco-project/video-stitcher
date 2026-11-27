@@ -247,6 +247,7 @@ pub struct VideoDecoder {
     is_10bit: bool,
     is_full_range: bool,
     color_metadata: super::ColorMetadata,
+    color_metadata_frozen: bool,
     require_timestamps: bool,
     live_audio: Option<super::live_audio::LiveAudio>,
     decoded_frame: VideoFrame,
@@ -618,6 +619,7 @@ impl VideoDecoder {
             is_10bit,
             is_full_range,
             color_metadata,
+            color_metadata_frozen: !live,
             require_timestamps: live,
             live_audio: None,
             decoded_frame: VideoFrame::empty(),
@@ -875,8 +877,11 @@ impl VideoDecoder {
                             self.decoded_frame.color_range(),
                         );
                     }
-                    if self.require_timestamps && self.color_metadata.is_empty() {
-                        self.color_metadata = super::ColorMetadata::from_frame(&self.decoded_frame);
+                    if !self.color_metadata_frozen {
+                        self.color_metadata = self
+                            .color_metadata
+                            .or(super::ColorMetadata::from_frame(&self.decoded_frame));
+                        self.color_metadata_frozen = true;
                     }
                     if width != self.width || height != self.height {
                         return Err(DecodeError::ConversionError(format!(

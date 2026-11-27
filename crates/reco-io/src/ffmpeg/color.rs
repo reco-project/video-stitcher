@@ -98,6 +98,45 @@ impl ColorMetadata {
             )
     }
 
+    /// Fill any unspecified fields in `self` from `fallback`, preserving explicit fields.
+    pub(crate) fn or(self, fallback: Self) -> Self {
+        let primary = self.normalized();
+        let fallback = fallback.normalized();
+        Self {
+            primaries: primary.primaries.or(fallback.primaries),
+            transfer: primary.transfer.or(fallback.transfer),
+            space: primary.space.or(fallback.space),
+        }
+    }
+
+    /// Resolve metadata for rendered exports.
+    ///
+    /// Preserves explicit source colourimetry, and defaults an unspecified matrix to BT.709
+    /// only when the metadata is empty or BT.709-compatible SDR. Partial HDR or non-BT.709
+    /// metadata keeps `space: None` rather than fabricating a contradictory BT.709 matrix.
+    pub(crate) fn for_rendered_output(self) -> Self {
+        let source = self.normalized();
+        let default_bt709_space = source.space.is_none()
+            && !source.is_hdr()
+            && matches!(
+                source.primaries,
+                None | Some(ffmpeg::color::Primaries::BT709)
+            )
+            && matches!(
+                source.transfer,
+                None | Some(ffmpeg::color::TransferCharacteristic::BT709)
+            );
+        Self {
+            primaries: source.primaries,
+            transfer: source.transfer,
+            space: if default_bt709_space {
+                Some(ffmpeg::color::Space::BT709)
+            } else {
+                source.space
+            },
+        }
+    }
+
     /// Reconcile colour metadata across one or more camera streams.
     ///
     /// Returns the shared metadata when all cameras agree. When cameras disagree,
@@ -244,5 +283,70 @@ mod tests {
             ColorMetadata::default().to_string(),
             "primaries=unspecified, transfer=unspecified, space=unspecified"
         );
+    }
+
+    #[test]
+    fn or_backfills_only_missing_fields() {
+        let partial_codecpar = ColorMetadata {
+            primaries: Some(Primaries::Unspecified),
+            transfer: None,
+            space: Some(Space::BT2020NCL),
+        };
+        let frame_vui = ColorMetadata {
+            primaries: Some(Primaries::BT2020),
+            transfer: Some(TransferCharacteristic::ARIB_STD_B67),
+            space: Some(Space::BT709),
+        };
+        assert_eq!(
+            partial_codecpar.or(frame_vui),
+            ColorMetadata {
+                primaries: Some(Primaries::BT2020),
+                transfer: Some(TransferCharacteristic::ARIB_STD_B67),
+                space: Some(Space::BT2020NCL),
+            }
+        );
+        assert_eq!(ColorMetadata::default().or(hlg_bt2020()), hlg_bt2020());
+    }
+
+    #[test]
+    fn for_rendered_output_defaults_bt709_only_for_empty_or_bt709_sdr() {
+        assert_eq!(
+            ColorMetadata::default().for_rendered_output(),
+            ColorMetadata {
+                primaries: None,
+                transfer: None,
+                space: Some(Space::BT709),
+            }
+        );
+
+        let partial_bt709 = ColorMetadata {
+            primaries: Some(Primaries::BT709),
+            transfer: Some(TransferCharacteristic::BT709),
+            space: None,
+        };
+        assert_eq!(
+            partial_bt709.for_rendered_output(),
+            ColorMetadata {
+                primaries: Some(Primaries::BT709),
+                transfer: Some(TransferCharacteristic::BT709),
+                space: Some(Space::BT709),
+            }
+        );
+
+        let partial_hdr = ColorMetadata {
+            primaries: Some(Primaries::BT2020),
+            transfer: Some(TransferCharacteristic::ARIB_STD_B67),
+            space: None,
+        };
+        assert_eq!(partial_hdr.for_rendered_output(), partial_hdr);
+
+        let partial_bt601 = ColorMetadata {
+            primaries: Some(Primaries::SMPTE170M),
+            transfer: None,
+            space: None,
+        };
+        assert_eq!(partial_bt601.for_rendered_output(), partial_bt601);
+
+        assert_eq!(hlg_bt2020().for_rendered_output(), hlg_bt2020());
     }
 }
