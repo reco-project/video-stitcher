@@ -11,7 +11,7 @@ use crate::source::FrameSet;
 impl StitchSession {
     /// Resolve the latest world-space camera decision for the next submitted frame.
     ///
-    /// Manual source loops call this after detection and panner updates, before an explicit render-at-pose method. `frame_seconds` is the output frame duration, independent of processing time. The batch loop calls this automatically after lookahead smoothing, for every frame residency.
+    /// Manual source loops call this after detection and panner updates, before an explicit render-at-pose method. `frame_seconds` is the output frame duration, independent of processing time. The batch loop calls this automatically after the panner decision, for every frame residency.
     pub fn advance_render_pose(&mut self, frame_seconds: f32) -> Result<RenderPose, SessionError> {
         Ok(self.core.advance_pose(
             self.core.requested_world_pose,

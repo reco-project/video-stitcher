@@ -5,12 +5,13 @@
     test
 ))]
 pub(crate) fn pool_slots(frames: usize) -> Result<usize, String> {
+    // Immediate D3D11 submission uses two alternating slots. Buffered runs
+    // retain the frame being presented plus exactly the requested future frames.
     if frames == 0 {
         return Ok(2);
     }
     frames
-        .checked_add((frames / 2).max(1))
-        .and_then(|n| n.checked_add(4))
+        .checked_add(1)
         .ok_or_else(|| "lookahead pool capacity overflow".into())
 }
 
@@ -37,20 +38,10 @@ pub(crate) fn max_frames(per_slot: usize, budget: usize) -> usize {
     if per_slot == 0 {
         return 0;
     }
-    let slots = budget / per_slot;
-    let (mut low, mut high) = (0, slots);
-    while low < high {
-        let mid = low + (high - low).div_ceil(2);
-        if pool_slots(mid).is_ok_and(|n| n <= slots) {
-            low = mid;
-        } else {
-            high = mid - 1;
-        }
-    }
-    low
+    (budget / per_slot).saturating_sub(1)
 }
 
-/// Tracks owned image allocations across both scheduling queues.
+/// Tracks owned image allocations in the lookahead buffer.
 pub(crate) struct ImageBudget {
     retained: usize,
     limit: usize,
@@ -94,7 +85,7 @@ mod tests {
     #[test]
     fn checked_sizes_and_exact_fit() {
         assert_eq!(pool_slots(0).unwrap(), 2);
-        assert_eq!(pool_slots(1).unwrap(), 6);
+        assert_eq!(pool_slots(1).unwrap(), 2);
         assert!(pool_slots(usize::MAX).is_err());
         assert!(image_bytes(&[(u32::MAX, u32::MAX)], 2).is_err());
         assert_eq!(

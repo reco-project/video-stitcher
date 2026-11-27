@@ -57,10 +57,6 @@ impl FrameBuffer {
         }
     }
 
-    pub fn len(&self) -> usize {
-        self.frames.len()
-    }
-
     pub fn is_full(&self) -> bool {
         self.frames.len() >= self.capacity
     }
@@ -199,11 +195,9 @@ mod tests {
         assert!(!buf.is_full());
 
         buf.push(make_frame(0.0));
-        assert_eq!(buf.len(), 1);
         assert!(!buf.is_full());
 
         buf.push(make_frame(0.0));
-        assert_eq!(buf.len(), 2);
         assert!(buf.is_full());
     }
 

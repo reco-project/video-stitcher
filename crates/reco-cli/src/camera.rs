@@ -48,8 +48,7 @@ pub struct CameraRunConfig<'a> {
     /// Write a snapshot every N frames (only with `snapshot_dir`).
     #[cfg(feature = "snapshot")]
     pub snapshot_interval: u64,
-    /// Lookahead buffer in seconds. The panner leads by this window and
-    /// the loop centered-smooths past+future poses. 0 disables it.
+    /// Maximum future input for the panner, in seconds. Zero disables lookahead.
     /// Only effective with AI tracking (a model + non-sweep mode).
     pub lookahead: f64,
     /// Optional retained-image byte allowance for buffered capture.

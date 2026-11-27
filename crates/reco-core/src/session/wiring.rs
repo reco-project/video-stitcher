@@ -101,7 +101,7 @@ impl StitchSession {
     /// Set the lookahead depth and retained source-image allowance in bytes.
     ///
     /// A nonzero depth requires a nonzero allowance. Counts owned host planes
-    /// across both scheduling queues and native staging payload estimates,
+    /// in the frame buffer and native staging payload estimates,
     /// not total process memory or driver overhead. Exceeding the allowance
     /// aborts the run without shortening the requested lookahead.
     pub fn set_lookahead(&mut self, frames: usize, max_image_bytes: usize) {

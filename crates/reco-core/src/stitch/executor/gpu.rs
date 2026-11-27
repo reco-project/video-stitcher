@@ -433,8 +433,6 @@ impl GpuExecutor {
         lookahead_frames: usize,
         pixel_format: crate::render::renderer::GpuPixelFormat,
     ) -> Result<(), String> {
-        // The scheduler's frame capacity includes the post-smoothing queue;
-        // modulo reuse must not overwrite a frame still waiting to render.
         let slots = crate::lookahead::pool_slots(lookahead_frames)?;
         let sizes = self.pipeline.source_sizes();
         if let Some(pool) = self.residency.d3d11_staging.as_ref() {

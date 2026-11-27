@@ -104,7 +104,7 @@ pub struct StitchCore {
     /// [`WorldState`](crate::detect::tracker::WorldState) each frame and emits
     /// a [`WorldPose`]. When unset, the last world request is retained.
     pub(crate) panner: Option<Box<dyn Panner>>,
-    /// Latest world-space request, including lookahead smoothing when active. Used for render-pose resolution and passed as the previous pose on the next panner update.
+    /// Latest world-space request. Used for render-pose resolution and passed as the previous pose on the next panner update.
     pub(crate) requested_world_pose: WorldPose,
 
     /// Structured observability sink for the detect -> track -> pan

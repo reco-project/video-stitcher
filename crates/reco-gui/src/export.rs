@@ -359,9 +359,6 @@ pub fn run_export(
         Ok(())
     });
 
-    // Lookahead buffers N future frames so the panner can centered-smooth
-    // its pose stream. It is the dominant quality lever for AI panning, so
-    // the GUI defaults it on; the baked dead_zone_rad assumes it is active.
     #[cfg(feature = "autocam")]
     if autocam.enabled && autocam.lookahead_secs > 0.0 {
         job = job.lookahead(autocam.lookahead_secs);

@@ -8,9 +8,7 @@
 //! - [`file_panner`] - [`FilePanner`], replays precomputed trajectory from CSV.
 //! - [`sweep`] - [`SweepPanner`], deterministic debug pan.
 //!
-//! Lookahead is not a panner type: it is a loop concern (the buffered
-//! run loop centered-smooths the panner's pose stream over past + future
-//! frames). FieldPanner runs the same whether the buffer is on or off.
+//! The session supplies future world states within the configured lookahead.
 
 pub mod field;
 pub mod file_panner;

@@ -113,8 +113,7 @@ impl super::StitchCore {
 
     /// The buffered (lookahead) panner step: decide the pose for
     /// `world` while seeing `futures`, advancing `requested_world_pose`.
-    /// Without a panner the pose stays wherever the loop last seeded it
-    /// (see [`Self::set_requested_world_pose`]).
+    /// Without a panner the pose stays at its latest request.
     #[cfg_attr(not(feature = "gpu"), allow(dead_code))] // session (gpu-gated) drives this
     pub(crate) fn decide_pose_with_lookahead(
         &mut self,
@@ -135,14 +134,6 @@ impl super::StitchCore {
         let pose = panner.decide_with_lookahead(world, futures, &ctx);
         self.requested_world_pose = pose;
         pose
-    }
-
-    /// Seed the pose the next presentation clamp and panner tick see.
-    /// The buffered loop writes its post-smoothed pose back through
-    /// this before rendering.
-    #[cfg_attr(not(feature = "gpu"), allow(dead_code))] // session (gpu-gated) drives this
-    pub(crate) fn set_requested_world_pose(&mut self, pose: WorldPose) {
-        self.requested_world_pose = pose;
     }
 
     /// Whether the attached detector prefers native CUDA NV12 input. The Linux NVDEC session path uses this to select CUDA pointers or wgpu preprocessing; other source paths select their own frame residency.

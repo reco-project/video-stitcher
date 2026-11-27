@@ -222,11 +222,11 @@ fn full_circle_lookahead_follows_both_directions_across_the_yaw_seam() {
 }
 
 #[test]
-fn lookahead_image_budget_covers_both_queues_and_preserves_short_inputs() {
+fn lookahead_image_budget_covers_the_window_and_preserves_short_inputs() {
     for nv12 in [false, true] {
         for depth in [1usize, 2, 3, 10] {
             let frame_bytes = (W * H * 3) as usize;
-            let peak = (depth + (depth / 2).max(1) + 1).min(6);
+            let peak = (depth + 1).min(6);
             for short in [false, true] {
                 let length = if short { 1 } else { 6 };
                 let bytes = frame_bytes * if short { 1 } else { peak };
@@ -449,11 +449,11 @@ fn cpu_buffered_output_preserves_order_manual_pose_replay_and_limits() {
                     for depth in [0, 1, 2, 10] {
                         let mut session = build_cpu_session();
                         session.core_mut().set_constrained_look(false);
-                        session.core.set_requested_world_pose(WorldPose {
+                        session.core.requested_world_pose = WorldPose {
                             yaw: 0.25,
                             pitch: 0.125,
                             fov_degrees: 64.0,
-                        });
+                        };
                         session
                             .core_mut()
                             .enable_replay_buffer(Some(std::time::Duration::from_secs(60)));

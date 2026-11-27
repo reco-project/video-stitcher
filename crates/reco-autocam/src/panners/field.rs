@@ -166,10 +166,7 @@ pub struct FieldPannerConfig {
     /// present and near. Forced to `1.0` in ball-only tracking mode.
     pub ball_weight: f32,
     /// When lookahead is active, the base chase runs this many times
-    /// more reactive (looser velocity clamp + faster velocity EMA). The
-    /// loop's centered smoother removes the resulting jitter lag-free,
-    /// so the base can afford to actually keep up. `1.0` = unchanged
-    /// (the reactive/no-buffer profile).
+    /// more reactive (looser velocity clamp and faster velocity EMA). A value of 1.0 preserves the base response.
     pub lookahead_reactivity: f32,
     /// Lookahead lead gain: the fraction of the predicted action
     /// displacement (mean of the future window minus the current
@@ -800,8 +797,7 @@ impl Panner for FieldPanner {
 
         // Once a non-empty lookahead buffer is seen, stay in the
         // reactive damping profile (latched, so the drain tail does not
-        // snap back to over-damped). The loop's centered smoother is
-        // what removes the resulting jitter, lag-free.
+        // snap back to over-damped).
         self.lookahead_active |= !future.is_empty();
         let reactivity = if self.lookahead_active {
             self.config.lookahead_reactivity.max(1.0)
@@ -915,8 +911,7 @@ impl Panner for FieldPanner {
 
         // Velocity-clamped chase toward the resolved target (shared by
         // the cluster and ball-only paths). When lookahead is active the
-        // clamp and EMA are loosened by `reactivity` so the base keeps
-        // up; the centered smoother downstream removes the jitter.
+        // clamp and EMA use the configured lookahead reactivity.
         if let Some((target_yaw, target_pitch)) = target
             && target_yaw.is_finite()
             && target_pitch.is_finite()
