@@ -31,7 +31,8 @@ impl NativeSource {
         _sync_offset: i64,
         _info: &SourceInfo,
         _pixel_format: GpuPixelFormat,
-        _full_range: bool,
+        _color: reco_core::render::color::YuvColor,
+        _rotations: [i32; 2],
     ) -> Result<Option<Self>, SourceError> {
         log::info!("SmartFileSource: zero-copy not yet implemented for this platform, using CPU");
         Ok(None)

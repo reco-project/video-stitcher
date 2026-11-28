@@ -301,7 +301,7 @@ pub use nvmm::{NvmmFrame, NvmmPlaneInfo};
 /// CPU variants carry one entry per camera; the stitch boundary
 /// rejects a length that does not match the projection's camera count
 /// (`check_camera_count` in `stitch::cpu`, mirrored by the submit
-/// dispatch). CUDA/Vulkan slots also carry one entry per input and are
+/// dispatch). CUDA/Vulkan leases also carry one entry per input and are
 /// validated by the session, as are D3D11 and Metal frames. NVMM imports carry stereo pairs.
 #[non_exhaustive]
 pub enum FrameSet {
@@ -311,13 +311,10 @@ pub enum FrameSet {
     /// Shared CPU-resident NV12 images (2 planes per camera).
     /// Cloning a camera handle retains the image without copying its planes.
     Nv12(Vec<Arc<Nv12Data>>),
-    /// GPU-resident: data already written to shared textures by the
-    /// source. Values are double-buffer slot indices (0 or 1), one per
-    /// camera, that the pipeline uses to select the correct bind group.
-    GpuResident {
-        /// Per-camera double-buffer slot indices.
-        slots: Vec<u8>,
-    },
+    /// CUDA/Vulkan NV12 or P010 images, one exclusive lease per camera.
+    /// Keep the leases until all GPU reads complete.
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
+    GpuResident(Vec<crate::interop::cuda_lease::CudaLease>),
     /// macOS zero-copy: retained CVPixelBuffers from VideoToolbox
     /// decode, one per camera. The session imports these as Metal
     /// textures each frame.
@@ -570,9 +567,8 @@ pub trait FrameSource: Send {
     /// Whether this source delivers GPU-resident frames.
     ///
     /// When `true`, [`next_frame`](Self::next_frame) may return
-    /// [`FrameSet::GpuResident`] or `FrameSet::MetalResident`.
-    /// The session uses this to configure GPU bind groups and select
-    /// the optimal render path automatically.
+    /// `FrameSet::GpuResident` or `FrameSet::MetalResident`.
+    /// The session uses this to choose the appropriate rendering and lookahead path.
     fn is_gpu_resident(&self) -> bool {
         false
     }
@@ -648,10 +644,8 @@ pub trait FrameSource: Send {
 
     /// Skip N frames without processing them.
     ///
-    /// The default implementation calls `next_frame()` in a loop, which
-    /// works for CPU and D3D11VA sources. GPU zero-copy sources override
-    /// this to receive and immediately release decode slots, avoiding
-    /// deadlock from the bounded slot channel.
+    /// The default implementation reads and drops each frame, which
+    /// releases any native image leases it holds.
     fn skip_frames(&mut self, count: u64) -> Result<u64, SourceError> {
         for i in 0..count {
             if self.next_frame()?.is_none() {

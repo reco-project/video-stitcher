@@ -349,6 +349,12 @@ impl RtspSource {
                 gpu.unwrap(),
                 &source.info.camera_sizes,
                 format,
+                reco_core::render::color::YuvColor {
+                    matrix: source.matrix,
+                    full_range: source.full_range,
+                    ..Default::default()
+                },
+                source.rotations,
             )?);
         }
         source.media_origin_us = metadata
@@ -593,11 +599,6 @@ impl RtspSource {
             })
             .collect::<Result<_, _>>()?;
         Ok(FrameSet::Yuv420p(images))
-    }
-
-    #[cfg(all(feature = "gpu", target_os = "linux"))]
-    pub(crate) fn shared_texture_set(&self) -> Option<&reco_core::interop::SharedTextureSet> {
-        self.native.as_ref().map(|native| &native.shared)
     }
 
     pub(crate) fn decode_mode(&self) -> &'static str {

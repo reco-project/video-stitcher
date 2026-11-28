@@ -3,32 +3,35 @@
 //! Frame messages are followed by explicit EOF or failure. CUDA copies finish
 //! before a slot is published; Metal and D3D11 messages retain their surfaces.
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "linux")]
 pub(crate) mod cuda;
 
 #[cfg(all(test, target_os = "windows"))]
 mod windows_tests;
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "linux")]
 use crate::decode_stream::Message;
 #[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))]
 use crate::decode_stream::spawn;
 #[cfg(any(target_os = "linux", target_os = "windows", target_os = "macos"))]
 use crate::ffmpeg::decoder::{DecodeError, VideoDecoder};
+#[cfg(target_os = "linux")]
+use reco_core::interop::cuda_lease::{CudaLease, CudaSlotPool};
+#[cfg(target_os = "linux")]
+use std::{
+    sync::{Arc, atomic::AtomicBool, mpsc::Receiver},
+    thread::JoinHandle,
+};
 
 /// Spawn a single-video GPU decode worker that copies frames into shared textures.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "linux")]
 fn spawn_single_decoder_gpu(
     input: crate::stitch_job::InputPath,
     label: String,
-    buf: reco_core::interop::zero_copy::GpuBufInfo,
-    slot_free_rx: std::sync::mpsc::Receiver<u8>,
+    pool: CudaSlotPool,
     skip_frames: u64,
-    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
-) -> (
-    std::sync::mpsc::Receiver<Message<u8>>,
-    std::thread::JoinHandle<()>,
-) {
+    shutdown: Arc<AtomicBool>,
+) -> (Receiver<Message<CudaLease>>, JoinHandle<()>) {
     spawn(
         format!("decode_{label}_gpu"),
         1,
@@ -49,20 +52,12 @@ fn spawn_single_decoder_gpu(
                 }
             }
 
-            loop {
-                if shutdown.load(std::sync::atomic::Ordering::Relaxed) {
-                    break;
-                }
-                let slot = match slot_free_rx.recv_timeout(std::time::Duration::from_millis(100)) {
-                    Ok(slot) => slot,
-                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
-                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
-                };
+            while let Some(mut lease) = pool.acquire(&shutdown) {
                 let Some(frame) = dec.next_frame_gpu()? else {
                     break;
                 };
-                cuda::stage(&frame, &buf, slot)?;
-                if tx.send(Ok(Some(slot))).is_err() {
+                cuda::stage(&frame, &mut lease)?;
+                if tx.send(Ok(Some(lease))).is_err() {
                     break;
                 }
             }
@@ -72,21 +67,15 @@ fn spawn_single_decoder_gpu(
 }
 
 /// Spawn one worker per input and collect synchronized resident frame sets.
-/// Join all workers before dropping their shared textures.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-pub fn spawn_decode_threads_gpu(
-    decoders: Vec<(
-        crate::stitch_job::InputPath,
-        reco_core::interop::zero_copy::GpuBufInfo,
-        std::sync::mpsc::Receiver<u8>,
-    )>,
+#[cfg(target_os = "linux")]
+pub(crate) fn spawn_decode_threads_gpu(
+    decoders: Vec<(crate::stitch_job::InputPath, CudaSlotPool)>,
     sync_offset: i64,
-    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
-) -> reco_core::interop::zero_copy::GpuDecodeHandles {
-    let mut receivers = Vec::with_capacity(decoders.len());
-    let mut join_handles = Vec::with_capacity(decoders.len() + 1);
+    shutdown: Arc<AtomicBool>,
+) -> crate::decode_stream::OwnedFrames<CudaLease> {
+    let mut workers = Vec::with_capacity(decoders.len());
     let stereo = decoders.len() == 2;
-    for (camera, (input, buf, free)) in decoders.into_iter().enumerate() {
+    for (camera, (input, pool)) in decoders.into_iter().enumerate() {
         let skip =
             if stereo && ((camera == 0 && sync_offset < 0) || (camera == 1 && sync_offset > 0)) {
                 sync_offset.unsigned_abs()
@@ -94,16 +83,10 @@ pub fn spawn_decode_threads_gpu(
                 0
             };
         let (rx, handle) =
-            spawn_single_decoder_gpu(input, camera.to_string(), buf, free, skip, shutdown.clone());
-        receivers.push(rx);
-        join_handles.push(handle);
+            spawn_single_decoder_gpu(input, camera.to_string(), pool, skip, shutdown.clone());
+        workers.push((rx, crate::decoder_cleanup::DecoderTask::new(handle)));
     }
-    let (frame_rx, collector) = crate::decode_stream::collect(receivers, 0, 1);
-    join_handles.push(collector);
-    reco_core::interop::zero_copy::GpuDecodeHandles {
-        frame_rx,
-        join_handles,
-    }
+    crate::decode_stream::OwnedFrames::new(workers, 0, shutdown)
 }
 
 /// Spawn camera-ordered VideoToolbox workers with cancellation and joined cleanup.

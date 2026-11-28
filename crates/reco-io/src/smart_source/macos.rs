@@ -33,7 +33,8 @@ impl NativeSource {
         sync_offset: i64,
         info: &SourceInfo,
         _pixel_format: GpuPixelFormat,
-        full_range: bool,
+        color: reco_core::render::color::YuvColor,
+        _rotations: [i32; 2],
     ) -> Result<Option<Self>, SourceError> {
         let frames = crate::zero_copy::spawn_vt_decode_frames(inputs, sync_offset);
 
@@ -41,7 +42,7 @@ impl NativeSource {
             "SmartFileSource: Metal zero-copy ({}x{}, VideoToolbox decode{})",
             info.camera_sizes[0].0,
             info.camera_sizes[0].1,
-            if full_range { ", full-range" } else { "" }
+            if color.full_range { ", full-range" } else { "" }
         );
 
         Ok(Some(Self { frames }))

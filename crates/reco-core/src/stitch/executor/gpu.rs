@@ -86,8 +86,7 @@ impl GpuExecutorConfig {
 /// for callers that want "planes in, RGBA out" with no pipelining.
 pub struct GpuExecutor {
     pub(crate) pipeline: StitchPipeline,
-    /// Resident-frame machinery: shared decode textures, the VRAM
-    /// lookahead pool, decode backpressure. Populated lazily by the
+    /// Native imports and lookahead staging. Populated lazily by the
     /// configure/stage methods; empty for pure CPU-frame consumers.
     pub(crate) residency: crate::stitch::residency::Residency,
     /// Readback ring for the synchronous [`StitchExecutor::stitch`]
@@ -180,64 +179,6 @@ impl GpuExecutor {
         Some(accepted)
     }
 
-    /// Wire the shared zero-copy decode textures into the pipeline:
-    /// bind groups for rendering, views for detection and replay
-    /// packing, texture clones for pool staging, CUDA pointers for
-    /// GPU detection, and the decode backpressure channels.
-    #[cfg(target_os = "linux")]
-    pub(crate) fn configure_shared_textures(&mut self, shared: &crate::interop::SharedTextureSet) {
-        self.residency.bind_groups = Some(self.pipeline.configure_gpu_source(shared));
-        self.residency.slot_free_tx = Some(
-            shared
-                .cameras
-                .iter()
-                .map(|c| c.slot_free_tx.clone())
-                .collect(),
-        );
-        self.residency.cuda_buf_info = Some(shared.cameras.iter().map(|c| c.buf.clone()).collect());
-        self.residency.shared_views = Some(
-            shared
-                .cameras
-                .iter()
-                .map(|c| {
-                    std::array::from_fn(|i| c.textures[i].texture.create_view(&Default::default()))
-                })
-                .collect(),
-        );
-        self.residency.shared_textures = Some(
-            shared
-                .cameras
-                .iter()
-                .map(|c| std::array::from_fn(|i| c.textures[i].texture.clone()))
-                .collect(),
-        );
-        log::info!("GpuExecutor: shared zero-copy decode textures configured");
-    }
-
-    /// CUDA buffer info for GPU detection on the shared decode
-    /// textures, cloned so callers can hold it across `&mut` engine
-    /// calls. `None` until a zero-copy source is configured.
-    #[cfg(target_os = "linux")]
-    pub(crate) fn cuda_buf_info(&self) -> Option<Vec<crate::interop::zero_copy::GpuBufInfo>> {
-        self.residency.cuda_buf_info.clone()
-    }
-
-    /// Render from the shared decode textures at the given slots
-    /// (immediate zero-copy path).
-    #[cfg(target_os = "linux")]
-    pub(crate) fn render_shared_slots(
-        &mut self,
-        slots: &[u8],
-        pose: RenderPose,
-    ) -> Result<wgpu::CommandBuffer, StitchError> {
-        let bind_groups = self.residency.bind_groups.as_ref().ok_or_else(|| {
-            StitchError::InvalidConfig(
-                "GPU bind groups not configured - call setup_gpu_source() before run()".into(),
-            )
-        })?;
-        Ok(self.pipeline.render_gpu_frame(bind_groups, slots, pose)?)
-    }
-
     /// Render from a VRAM lookahead pool slot (buffered path).
     #[cfg(target_os = "linux")]
     pub(crate) fn render_pool_slot(
@@ -255,53 +196,11 @@ impl GpuExecutor {
             .render_with_bind_groups(pool.bind_groups(slot), pose)?)
     }
 
-    /// Copy the shared decode slots into a pool slot so the decode
-    /// surfaces can recycle while the frame waits in the lookahead
-    /// buffer. The copy is awaited before returning. The decode slot
-    /// is NOT released here - detection still reads it; the caller
-    /// frees it via [`Self::release_decode_slots`] afterwards.
-    #[cfg(target_os = "linux")]
-    pub(crate) fn stage_shared_to_pool(
-        &mut self,
-        slots: &[u8],
-    ) -> Result<Option<usize>, StitchError> {
-        let residency = &mut self.residency;
-        let (Some(pool), Some(shared_tex)) =
-            (residency.pool.as_mut(), residency.shared_textures.as_ref())
-        else {
-            return Ok(None);
-        };
-        let slot = pool.acquire().ok_or_else(|| {
-            StitchError::InvalidConfig(format!(
-                "VRAM pool exhausted ({} slots, {} available)",
-                pool.capacity(),
-                pool.available()
-            ))
-        })?;
-        let gpu = self.pipeline.gpu();
-        let sources: Vec<_> = shared_tex
-            .iter()
-            .zip(slots)
-            .map(|(textures, &s)| {
-                let s = usize::from(s);
-                (&textures[s * 2], &textures[s * 2 + 1])
-            })
-            .collect();
-        pool.copy_from_textures(gpu, slot, &sources);
-        let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
-        Ok(Some(slot))
-    }
-
-    /// Copy imported NVMM plane textures into a pool slot.
-    /// The copy is awaited so the
-    /// source may recycle its buffer immediately after.
+    /// Copy native plane textures into the lookahead pool and await completion.
     #[cfg(target_os = "linux")]
     pub(crate) fn stage_textures_to_pool(
         &mut self,
-        left_y: &wgpu::Texture,
-        left_uv: &wgpu::Texture,
-        right_y: &wgpu::Texture,
-        right_uv: &wgpu::Texture,
+        cameras: &[(&wgpu::Texture, &wgpu::Texture)],
     ) -> Result<Option<usize>, StitchError> {
         let Some(pool) = self.residency.pool.as_mut() else {
             return Ok(None);
@@ -314,12 +213,10 @@ impl GpuExecutor {
             ))
         })?;
         let gpu = self.pipeline.gpu();
-        pool.copy_from_textures(gpu, slot, &[(left_y, left_uv), (right_y, right_uv)]);
-        if let Err(error) = super::super::nvmm_completion::wait_for_reads(&gpu.device) {
+        pool.copy_from_textures(gpu, slot, cameras);
+        if let Err(error) = crate::gpu::wait_for_reads(&gpu.device) {
             pool.release(slot);
-            return Err(StitchError::InvalidConfig(format!(
-                "NVMM staging completion: {error}"
-            )));
+            return Err(StitchError::InvalidConfig(error));
         }
         Ok(Some(slot))
     }
@@ -384,7 +281,7 @@ impl GpuExecutor {
             return Ok(None);
         }
         let [ly, lu, ry, ru] = self.import_nvmm(left, right)?;
-        self.stage_textures_to_pool(&ly, &lu, &ry, &ru)
+        self.stage_textures_to_pool(&[(&ly, &lu), (&ry, &ru)])
             .map_err(|e| e.to_string())
     }
 
@@ -444,27 +341,6 @@ impl GpuExecutor {
             .expect("created above")
             .import_frame(cameras, self.pipeline.gpu())
             .map_err(|e| e.to_string())
-    }
-
-    /// Hand decode slots back to the decode threads. Call only after
-    /// detection has read the slot - releasing earlier lets the decode
-    /// thread overwrite the shared memory mid-read.
-    #[cfg(target_os = "linux")]
-    pub(crate) fn release_decode_slots(&self, slots: &[u8]) {
-        if let Some(senders) = &self.residency.slot_free_tx {
-            for (camera, (tx, &slot)) in senders.iter().zip(slots).enumerate() {
-                if tx.send(slot).is_err() {
-                    log::error!("failed to release camera {camera} GPU decode slot {slot}");
-                }
-            }
-        }
-    }
-
-    /// Drop the decode backpressure senders so decode threads see a
-    /// closed channel and exit instead of blocking on `recv()`.
-    #[cfg(target_os = "linux")]
-    pub(crate) fn drop_decode_channels(&mut self) {
-        self.residency.slot_free_tx = None;
     }
 
     /// Lazily allocate complete frame slots, including every camera's own extent.

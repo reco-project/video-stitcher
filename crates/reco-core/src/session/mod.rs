@@ -30,7 +30,7 @@ mod detection_dispatch;
 pub(crate) mod frame_buffer;
 /// Per-frame render and encode methods (step, render_frame, submit_render_output).
 mod frame_processing;
-/// Batch processing entry points (run, run_immediate, setup_gpu_source).
+/// Batch processing entry points (run, run_immediate).
 mod run_loop;
 /// Configuration wiring (set/clear/attach methods).
 mod wiring;
@@ -98,13 +98,11 @@ pub struct StitchSession {
     /// Camera rotation from stream metadata, populated by
     /// [`configure_from_source`](Self::configure_from_source).
     /// Used to tell the GPU detector to flip frames during preprocessing.
-    #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
+    #[cfg(all(feature = "gpu", target_os = "windows"))]
     pub(crate) left_rotation: i32,
     /// Right camera rotation from stream metadata.
-    #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
+    #[cfg(all(feature = "gpu", target_os = "windows"))]
     pub(crate) right_rotation: i32,
-    /// Source quantization range used by CUDA detection.
-    pub(crate) source_full_range: bool,
     delivery_color: crate::render::color::YuvColor,
     /// GPU pixel format (NV12 or P010) for D3D11VA staging pool creation.
     #[cfg(feature = "gpu")]
@@ -202,11 +200,10 @@ impl StitchSession {
             last_submit_time: std::time::Duration::ZERO,
             #[cfg(feature = "gpu")]
             current_vram_slot: None,
-            #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
+            #[cfg(all(feature = "gpu", target_os = "windows"))]
             left_rotation: 0,
-            #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
+            #[cfg(all(feature = "gpu", target_os = "windows"))]
             right_rotation: 0,
-            source_full_range: false,
             delivery_color: Default::default(),
             #[cfg(feature = "gpu")]
             gpu_pixel_format: crate::render::renderer::GpuPixelFormat::Nv12,

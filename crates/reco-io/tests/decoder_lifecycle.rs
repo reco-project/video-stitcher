@@ -351,9 +351,6 @@ fn mixed_native_inputs_preserve_pixels_detection_order_and_lookahead() {
             session.set_lookahead(depth, usize::MAX);
             let counts = Arc::new(Mutex::new([0; 2]));
             if native {
-                session
-                    .setup_gpu_source(source.shared_texture_set().unwrap())
-                    .unwrap();
                 session.set_detector(Box::new(CheckInputs {
                     sizes: source_sizes.clone(),
                     counts: counts.clone(),
@@ -458,13 +455,13 @@ fn cuda_mono_session_preserves_pixels_order_and_buffered_tail() {
             Ok(())
         }
     }
+    let gpu = reco_core::gpu::GpuContext::new_blocking().unwrap();
     for (width, height) in [(WIDTH, HEIGHT), (7500, 2500)] {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("reordered.mp4");
         fixture_size(&path, "libx264", width, height);
         let input = InputPath::Single(path);
         let run = |native: bool, depth: usize, limit: u64, budget: usize| {
-            let gpu = reco_core::gpu::GpuContext::new_blocking().unwrap();
             let mut source = if native {
                 reco_io::SmartFileSource::open(std::slice::from_ref(&input), &gpu, 0).unwrap()
             } else {
@@ -507,14 +504,11 @@ fn cuda_mono_session_preserves_pixels_order_and_buffered_tail() {
                 width: 64,
                 height: 48,
             };
-            let executor = GpuExecutor::new(gpu, config).unwrap();
+            let executor = GpuExecutor::new(gpu.clone(), config).unwrap();
             let mut session =
                 StitchSession::with_executor(Executor::Gpu(Box::new(executor))).unwrap();
             session.core_mut().set_constrained_look(false);
             session.set_lookahead(depth, budget);
-            if let Some(shared) = source.shared_texture_set() {
-                session.setup_gpu_source(shared).unwrap();
-            }
             let frames = Arc::new(Mutex::new(Vec::new()));
             session
                 .add_sink(
@@ -606,10 +600,12 @@ fn cuda_mono_session_preserves_pixels_order_and_buffered_tail() {
                 }
             }
         }
-        // Depth five retains eleven native staging slots (5 + 2 + 4).
-        let exact_budget = width as usize * height as usize * 3 / 2 * 11;
+        // Depth five stages the current frame plus five future frames.
+        let exact_budget = width as usize * height as usize * 3 / 2 * 6;
         assert_eq!(run(true, 5, u64::MAX, exact_budget).unwrap().len(), FRAMES);
-        let error = run(true, 5, u64::MAX, exact_budget - 1).unwrap_err();
+        let Err(error) = run(true, 5, u64::MAX, exact_budget - 1) else {
+            panic!("one byte below the required budget must fail");
+        };
         assert!(error.contains("image storage"), "{error}");
     }
 }
@@ -796,21 +792,7 @@ fn assert_file_counts(native: bool) {
         assert_eq!(source.total_frames(), Some(expected as u64));
         source.start_decoding();
         let mut decoded = 0;
-        while let Some(frame) = source.next_frame().unwrap() {
-            #[cfg(all(feature = "gpu", target_os = "linux"))]
-            if let FrameSet::GpuResident { slots } = frame.images {
-                for (camera, slot) in source
-                    .shared_texture_set()
-                    .unwrap()
-                    .cameras
-                    .iter()
-                    .zip(slots)
-                {
-                    let _ = camera.slot_free_tx.send(slot);
-                }
-            }
-            #[cfg(not(all(feature = "gpu", target_os = "linux")))]
-            drop(frame);
+        while source.next_frame().unwrap().is_some() {
             decoded += 1;
         }
         assert_eq!(decoded, expected);
@@ -1813,9 +1795,6 @@ fn incompatible_detector_releases_native_decode_workers() {
                 .unwrap();
             session.core_mut().set_constrained_look(false);
             session.set_lookahead(depth, usize::MAX);
-            session
-                .setup_gpu_source(source.shared_texture_set().unwrap())
-                .unwrap();
             let error = session
                 .run(&mut source, u64::MAX, &AtomicBool::new(false), None)
                 .unwrap_err();
@@ -1920,7 +1899,32 @@ fn cuda_workers_preserve_completion_failure_and_cancellation() {
         reco_io::SmartFileSource::open(&[input.clone(), input.clone()], &gpu, 0).unwrap();
     assert!(source.is_gpu_resident());
     assert_eq!(source.skip_frames(1).unwrap(), 1);
+    // Hold both slots while joining the decode workers. The frames must stay
+    // readable after their source is gone.
+    let held: Vec<_> = (0..2)
+        .map(|_| source.next_frame().unwrap().unwrap())
+        .collect();
     drop(source);
+    for (index, frame) in held.iter().enumerate() {
+        let FrameSet::GpuResident(cameras) = &frame.images else {
+            panic!("CUDA leases required");
+        };
+        for lease in cameras {
+            let frame = lease.cuda_frame();
+            let mut sample = [0u8; 1];
+            reco_core::interop::cuda::cuda_ensure_context().unwrap();
+            // SAFETY: the lease still owns this Y allocation after source teardown.
+            unsafe {
+                reco_core::interop::cuda::cuda_memcpy_dtoh(
+                    sample.as_mut_ptr().cast(),
+                    frame.y_ptr,
+                    1,
+                )
+            }
+            .unwrap();
+            assert!(sample[0].abs_diff(32 + (index as u8 + 1) * 4) <= 2);
+        }
+    }
 }
 
 #[test]

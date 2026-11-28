@@ -134,7 +134,6 @@ fn reused_session_applies_both_full_and_limited_source_ranges() {
             &session.core.executor,
             crate::stitch::Executor::Cpu(executor) if executor.color.full_range == full_range
         ));
-        assert_eq!(session.source_full_range, full_range);
     }
 }
 
@@ -201,7 +200,7 @@ fn reused_session_replaces_source_rotation_without_double_flipping_host_frames()
             flipped,
             "native={native}, rotation={rotation}"
         );
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        #[cfg(target_os = "windows")]
         assert_eq!(
             (session.left_rotation, session.right_rotation),
             if native { (rotation, rotation) } else { (0, 0) }
@@ -1352,9 +1351,10 @@ fn cpu_session_rejects_gpu_resident_frames() {
             }
         }
         fn next_frame(&mut self) -> Result<Option<crate::source::SourceFrame>, SourceError> {
-            Ok(Some(crate::source::SourceFrame::untimed(
-                FrameSet::GpuResident { slots: vec![0, 0] },
-            )))
+            panic!("the CPU session must reject the source before reading it");
+        }
+        fn is_gpu_resident(&self) -> bool {
+            true
         }
     }
 

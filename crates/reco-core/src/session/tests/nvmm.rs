@@ -205,7 +205,10 @@ fn nvmm_staged_pixels_survive_capture_reuse() {
             if staged {
                 let slot = session
                     .gpu_exec()
-                    .stage_textures_to_pool(&textures[0], &textures[1], &textures[2], &textures[3])
+                    .stage_textures_to_pool(&[
+                        (&textures[0], &textures[1]),
+                        (&textures[2], &textures[3]),
+                    ])
                     .unwrap()
                     .unwrap();
                 // The producer overwrites its original allocation before render.
@@ -215,7 +218,6 @@ fn nvmm_staged_pixels_survive_capture_reuse() {
                     tracking_complete: true,
                     capture: None,
                     frame_seconds: 1.0 / 30.0,
-                    gpu_buf_info: None,
                 };
                 session
                     .process_frame_any(

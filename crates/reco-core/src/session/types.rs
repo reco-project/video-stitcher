@@ -96,10 +96,6 @@ pub struct FrameProgress {
 pub type ProgressCallback = Box<dyn FnMut(&FrameProgress) + Send>;
 
 /// Frame-loop configuration and the current input's capture identities.
-///
-/// The borrow checker prevents reading `self.gpu_buf_info` immutably
-/// while calling `&mut self` methods (detect, render). Cloning the
-/// buffer info once and passing it through this struct avoids that conflict.
 #[derive(Default)]
 pub(crate) struct FrameLoopContext {
     /// Capture identities of the input currently being processed.
@@ -108,9 +104,6 @@ pub(crate) struct FrameLoopContext {
     pub(crate) tracking_complete: bool,
     /// Output frame duration, independent of decode and processing time.
     pub(crate) frame_seconds: f32,
-    /// CUDA buffer info for GPU detection (Linux zero-copy path).
-    #[cfg(all(feature = "gpu", target_os = "linux"))]
-    pub(crate) gpu_buf_info: Option<Vec<crate::interop::zero_copy::GpuBufInfo>>,
 }
 
 /// Errors from [`StitchSession`](super::StitchSession). `Clone + Send + Sync` so consumers

@@ -79,57 +79,11 @@ impl StitchSession {
             let detect_t0 = std::time::Instant::now();
             let ran_detection = match frame {
                 #[cfg(all(feature = "gpu", target_os = "linux"))]
-                FrameSet::GpuResident { slots } => {
-                    if self.core.detector_prefers_cuda_nv12() {
-                        if self.frame_count == 0 {
-                            log::info!("GpuResident detection: CUDA path (TensorRT/ORT-CUDA)");
-                        }
-                        if let Some(buffers) = &ctx.gpu_buf_info {
-                            if due {
-                                crate::profile_scope!("gpu_detect_total");
-                                let frames = super::detection_dispatch::cuda_nv12_frames(
-                                    buffers,
-                                    slots,
-                                    [self.left_rotation, self.right_rotation],
-                                    self.source_full_range,
-                                );
-                                self.core.run_detection_frames(&frames, capture_times_us)?;
-                            }
-                            due
-                        } else {
-                            if self.frame_count == 0 {
-                                log::warn!(
-                                    "GpuResident frame but no gpu_buf_info - detection disabled, \
-                                 panner advancing without detections"
-                                );
-                            }
-                            false
-                        }
-                    } else if let Some(views) = self.shared_views() {
-                        if self.frame_count == 0 {
-                            log::info!(
-                                "GpuResident detection: wgpu shared texture views (ORT/wgpu preprocess)"
-                            );
-                        }
-                        if due {
-                            crate::profile_scope!("detect_wgpu_nv12");
-                            let frames = super::detection_dispatch::shared_nv12_frames(
-                                &views,
-                                slots,
-                                self.core.source_sizes(),
-                                [self.left_rotation, self.right_rotation],
-                            );
-                            self.core.run_detection_frames(&frames, capture_times_us)?;
-                        }
-                        due
-                    } else {
-                        if self.frame_count == 0 {
-                            log::warn!(
-                                "GpuResident frame but no shared views - detection disabled"
-                            );
-                        }
-                        false
+                FrameSet::GpuResident(cameras) => {
+                    if due {
+                        self.detect_cuda(cameras, capture_times_us)?;
                     }
+                    due
                 }
                 #[cfg(all(feature = "gpu", target_os = "linux"))]
                 FrameSet::NvmmResident(cameras) => {
@@ -194,8 +148,9 @@ impl StitchSession {
         let render_t0 = std::time::Instant::now();
         match frame {
             #[cfg(all(feature = "gpu", target_os = "linux"))]
-            Some(FrameSet::GpuResident { slots }) => {
-                self.render_gpu_resident(slots, pos, pts_us)?;
+            Some(FrameSet::GpuResident(cameras)) => {
+                let views: Vec<_> = cameras.iter().map(|lease| lease.views()).collect();
+                self.render_frame_imported_nv12(&views, pos, pts_us)?;
             }
             #[cfg(all(feature = "gpu", target_os = "linux"))]
             Some(FrameSet::NvmmResident([left, right])) => {
@@ -203,7 +158,7 @@ impl StitchSession {
             }
             #[cfg(all(feature = "gpu", target_os = "linux"))]
             None if self.current_vram_slot.is_some() && ctx.tracking_complete => {
-                self.render_gpu_resident(&[], pos, pts_us)?;
+                self.render_staged_frame(self.current_vram_slot.unwrap(), pos, pts_us)?;
             }
             #[cfg(all(feature = "gpu", target_os = "windows"))]
             frame
@@ -372,90 +327,34 @@ impl StitchSession {
         self.render_frame_imported_nv12(&cameras, pose, pts_us)
     }
 
-    /// Render a GpuResident frame: shared CUDA/Vulkan textures.
-    ///
-    /// Renders from the executor's resident-frame surface, packs
-    /// replay from the shared texture views, and releases decode
-    /// slots for thread reuse.
+    /// Render the VRAM copy and pack its stereo planes for replay when enabled.
     #[cfg(all(feature = "gpu", target_os = "linux"))]
-    fn render_gpu_resident(
+    fn render_staged_frame(
         &mut self,
-        slots: &[u8],
+        slot: usize,
         pose: RenderPose,
         pts_us: Option<i64>,
     ) -> Result<(), SessionError> {
-        // VRAM pool path: render from the staged pool slot.
-        // Decode slots were already freed during produce.
-        if let Some(vram_idx) = self.current_vram_slot {
-            let render_buf = self
-                .gpu_exec()
-                .render_pool_slot(vram_idx, pose)
-                .map_err(crate::core::types::StitchCoreError::from)?;
-            self.submit_render_output(render_buf, pts_us)?;
-            if self.core.stacked_atlas_dims().is_some()
-                && let Some([[ly, lu], [ry, ru]]) = self
-                    .gpu_exec_ref()
-                    .residency
-                    .pool
-                    .as_ref()
-                    .and_then(|p| p.stereo_views(vram_idx))
-            {
-                use crate::gpu::yuv_stack_packer::StackedPackSource::Nv12;
-                self.core.pack_gpu_stacked_replay_from_views(
-                    Nv12 { y: &ly, uv: &lu },
-                    Nv12 { y: &ry, uv: &ru },
-                );
-            }
-            return Ok(());
-        }
-
-        // Shared texture path (non-buffered / immediate mode).
         let render_buf = self
             .gpu_exec()
-            .render_shared_slots(slots, pose)
-            .map_err(|e| SessionError::ZeroCopy(e.to_string()))?;
+            .render_pool_slot(slot, pose)
+            .map_err(crate::core::types::StitchCoreError::from)?;
         self.submit_render_output(render_buf, pts_us)?;
-
-        if let Some(views) = self.shared_views()
-            && let ([left, right], [ls, rs]) = (views.as_slice(), slots)
+        if self.core.stacked_atlas_dims().is_some()
+            && let Some([[ly, lu], [ry, ru]]) = self
+                .gpu_exec_ref()
+                .residency
+                .pool
+                .as_ref()
+                .and_then(|p| p.stereo_views(slot))
         {
-            let ls = usize::from(*ls);
-            let rs = usize::from(*rs);
+            use crate::gpu::yuv_stack_packer::StackedPackSource::Nv12;
             self.core.pack_gpu_stacked_replay_from_views(
-                crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
-                    y: &left[ls * 2],
-                    uv: &left[ls * 2 + 1],
-                },
-                crate::gpu::yuv_stack_packer::StackedPackSource::Nv12 {
-                    y: &right[rs * 2],
-                    uv: &right[rs * 2 + 1],
-                },
+                Nv12 { y: &ly, uv: &lu },
+                Nv12 { y: &ry, uv: &ru },
             );
         }
-
-        // NV12 readback may only wait for an older frame. CUDA may reuse
-        // these external textures only after this frame's GPU reads finish.
-        self.core
-            .gpu()
-            .device()
-            .poll(wgpu::PollType::wait_indefinitely())
-            .map_err(|e| SessionError::ZeroCopy(e.to_string()))?;
-        self.gpu_exec().release_decode_slots(slots);
-
         Ok(())
-    }
-
-    /// Clones of the executor's shared texture views (Arc-backed, so
-    /// the clone is pointer-sized). Cloned out rather than borrowed
-    /// because the callers feed them into `&mut self.core` methods
-    /// (detection, replay pack) while the views live on the executor
-    /// inside that same core.
-    #[cfg(all(feature = "gpu", target_os = "linux"))]
-    pub(crate) fn shared_views(&self) -> Option<Vec<[wgpu::TextureView; 4]>> {
-        self.core
-            .executor
-            .gpu()
-            .and_then(|g| g.residency.shared_views.clone())
     }
 
     /// Render an NVMM frame directly from imported DMA-buf textures
@@ -562,31 +461,6 @@ impl StitchSession {
         self.copy_to_vram_pool_platform(frame, produce_index)
     }
 
-    /// Release decode-pool slots back to the decode thread.
-    ///
-    /// Must be called only AFTER detection has finished reading the
-    /// decode slot. In the buffered produce path the frame is copied
-    /// into the VramPool, then detection reads the original decode
-    /// slot; releasing it earlier lets the decode thread overwrite the
-    /// slot mid-read (use-after-free on the shared GPU memory).
-    ///
-    /// No-op on platforms that do not use the GPU decode slot-free
-    /// channel (Windows D3D11 stages into a persistent pool; macOS
-    /// imports CVPixelBuffers).
-    #[cfg(feature = "gpu")]
-    pub(crate) fn release_gpu_decode_slot(&self, frame: &FrameSet) {
-        #[cfg(target_os = "linux")]
-        {
-            if let FrameSet::GpuResident { slots } = frame {
-                self.gpu_exec_ref().release_decode_slots(slots);
-            }
-        }
-        #[cfg(not(target_os = "linux"))]
-        {
-            let _ = frame;
-        }
-    }
-
     #[cfg(all(feature = "gpu", target_os = "linux"))]
     fn copy_to_vram_pool_platform(
         &mut self,
@@ -603,17 +477,13 @@ impl StitchSession {
                 .stage_nvmm_to_pool(left, right)
                 .map_err(SessionError::ZeroCopy);
         }
-        let slots = match frame {
-            FrameSet::GpuResident { slots } => slots,
-            _ => return Ok(None),
+        let FrameSet::GpuResident(cameras) = frame else {
+            return Ok(None);
         };
-        // The decode slot is NOT released here. Detection reads it
-        // after this copy (see `produce_one`), so the slot must stay
-        // held until `release_gpu_decode_slot` is called
-        // post-detection.
+        let textures: Vec<_> = cameras.iter().map(|lease| lease.textures()).collect();
         self.gpu_exec()
-            .stage_shared_to_pool(slots)
-            .map_err(|e| SessionError::Config(e.to_string()))
+            .stage_textures_to_pool(&textures)
+            .map_err(|e| SessionError::ZeroCopy(e.to_string()))
     }
 
     #[cfg(all(feature = "gpu", target_os = "windows"))]

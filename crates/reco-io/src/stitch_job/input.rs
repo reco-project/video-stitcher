@@ -123,14 +123,6 @@ pub(super) enum OpenedSource {
 }
 
 impl OpenedSource {
-    #[cfg(all(feature = "gpu", target_os = "linux"))]
-    pub(super) fn shared_texture_set(&self) -> Option<&reco_core::interop::SharedTextureSet> {
-        match self {
-            Self::Files(source) => source.shared_texture_set(),
-            Self::Rtsp(source) => source.shared_texture_set(),
-            Self::Supplied(_) => None,
-        }
-    }
     pub(super) fn audio(&self) -> Option<crate::ffmpeg::live_audio::LiveAudio> {
         match self {
             Self::Files(_) | Self::Supplied(_) => None,

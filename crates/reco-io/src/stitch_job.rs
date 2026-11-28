@@ -867,12 +867,6 @@ impl StitchJob {
         session.telemetry_mut().set_gpu_name(gpu_name.clone());
         session.telemetry_mut().set_decode_mode(decode_mode.clone());
 
-        // Configure GPU bind groups if source is GPU-resident
-        #[cfg(all(feature = "gpu", target_os = "linux"))]
-        if let Some(shared) = opened.shared_texture_set() {
-            session.setup_gpu_source(shared)?;
-        }
-
         let live_audio = opened.audio();
         let source_color = opened.color_metadata();
         if !source_color.is_empty() {
