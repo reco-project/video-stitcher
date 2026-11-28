@@ -509,11 +509,23 @@ mod tests {
         let mut readback =
             crate::gpu::rgba_readback::RgbaReadback::new(pipeline.gpu(), out_w, out_h)
                 .expect("readback");
+        let frames = crate::source::FrameSet::Yuv420p(
+            [left, right]
+                .iter()
+                .map(|plane| {
+                    crate::source::Yuv420pData {
+                        size: (cam_w, cam_h),
+                        y: plane.y.to_vec(),
+                        u: plane.u.to_vec(),
+                        v: plane.v.to_vec(),
+                    }
+                    .into()
+                })
+                .collect(),
+        );
         let mut gpu_rgba: Option<Vec<u8>> = None;
         for _ in 0..3 {
-            let cmd = pipeline
-                .render_to_target(&left, &right, pose)
-                .expect("render");
+            let cmd = pipeline.render_frame_set(&frames, pose).expect("render");
             let tex = pipeline.render_target();
             if let Some(bytes) = readback
                 .readback(pipeline.gpu(), tex, cmd)
@@ -1257,8 +1269,7 @@ mod tests {
                 .to_vec()
         };
 
-        let combined =
-            capture(renderer.render_to_target(&gpu, Some(&scene), cal, pose, shape.blend_width));
+        let combined = capture(renderer.render_to_target(&gpu, Some(&scene), cal, pose));
         let left_only =
             capture(renderer.render_isolated_camera_to_target(&gpu, &scene, cal, pose, 0));
         let right_only =
@@ -1678,12 +1689,10 @@ mod tests {
                 render_gpu_nv12_with_isolated_oracles(&cal, &viewport, sizes, &planes, pose, true)
                     .unwrap();
             let maps = cal.surface_maps(&viewport, pose);
-            assert!(
-                core.render_and_readback_delivery(&images, pose, None)
-                    .unwrap()
-                    .is_none()
-            );
-            let frame = core.flush_delivery().unwrap().unwrap();
+            let cmd = core.render_frame_set_at_pose(&images, pose).unwrap();
+            let gpu = core.executor.gpu_mut().unwrap();
+            assert!(gpu.convert_delivery(cmd, None).unwrap().is_none());
+            let frame = gpu.flush_delivery().unwrap().unwrap();
             assert_eq!(frame.format, PixelFormat::P010);
             let mut right_only_fade = 0;
             let mut overlap_between_eight_bit_codes = 0;

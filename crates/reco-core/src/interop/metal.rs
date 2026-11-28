@@ -122,6 +122,19 @@ pub unsafe fn pixel_buffer_format(cv_pixel_buffer: CVPixelBufferRef) -> u32 {
 // Error type
 // ---------------------------------------------------------------------------
 
+fn metal_video_layout(
+    fourcc: u32,
+) -> Result<(crate::render::renderer::GpuPixelFormat, bool), MetalInteropError> {
+    use crate::render::renderer::GpuPixelFormat::{Nv12, P010};
+    match fourcc {
+        K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_VIDEO_RANGE => Ok((Nv12, false)),
+        K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_FULL_RANGE => Ok((Nv12, true)),
+        K_CV_PIXEL_FORMAT_420_YP_CB_CR_10_BI_PLANAR_VIDEO_RANGE => Ok((P010, false)),
+        K_CV_PIXEL_FORMAT_420_YP_CB_CR_10_BI_PLANAR_FULL_RANGE => Ok((P010, true)),
+        format => Err(MetalInteropError::UnsupportedFormat(format)),
+    }
+}
+
 /// Errors from Metal/VideoToolbox interop operations.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum MetalInteropError {
@@ -140,6 +153,10 @@ pub enum MetalInteropError {
     /// The CVMetalTextureGetTexture call returned a null pointer.
     #[error("CVMetalTextureGetTexture returned null")]
     NullTexture,
+
+    /// wgpu rejected the imported texture.
+    #[error("wgpu Metal texture import failed: {0}")]
+    WgpuImport(String),
 
     /// The CVPixelBuffer has an unsupported pixel format.
     #[error("unsupported CVPixelBuffer format: 0x{0:08x}")]
@@ -180,6 +197,12 @@ impl RetainedCVPixelBuffer {
     /// Get the raw `CVPixelBufferRef` pointer for import.
     pub fn as_ptr(&self) -> CVPixelBufferRef {
         self.ptr
+    }
+
+    pub(crate) fn video_layout(
+        &self,
+    ) -> Result<(crate::render::renderer::GpuPixelFormat, bool), MetalInteropError> {
+        metal_video_layout(unsafe { CVPixelBufferGetPixelFormatType(self.as_ptr()) })
     }
 
     pub(crate) fn data_size(&self) -> usize {
@@ -384,13 +407,8 @@ impl MetalTextureCache {
             return Err(MetalInteropError::InvalidLayout);
         }
         let format = unsafe { CVPixelBufferGetPixelFormatType(cv_pixel_buffer) };
-        let is_10bit = match format {
-            K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_VIDEO_RANGE
-            | K_CV_PIXEL_FORMAT_420_YP_CB_CR_8_BI_PLANAR_FULL_RANGE => false,
-            K_CV_PIXEL_FORMAT_420_YP_CB_CR_10_BI_PLANAR_VIDEO_RANGE
-            | K_CV_PIXEL_FORMAT_420_YP_CB_CR_10_BI_PLANAR_FULL_RANGE => true,
-            _ => return Err(MetalInteropError::UnsupportedFormat(format)),
-        };
+        let (pixel_format, _) = metal_video_layout(format)?;
+        let is_10bit = pixel_format == crate::render::renderer::GpuPixelFormat::P010;
 
         if !self.logged_format {
             let w = unsafe { CVPixelBufferGetWidthOfPlane(cv_pixel_buffer, 0) };
@@ -474,7 +492,7 @@ impl MetalTextureCache {
             )
         };
 
-        // Wrap into wgpu texture
+        let scope = gpu.device().push_error_scope(wgpu::ErrorFilter::Validation);
         let texture = unsafe {
             gpu.device.create_texture_from_hal::<Metal>(
                 hal_texture,
@@ -495,6 +513,9 @@ impl MetalTextureCache {
             )
         };
 
+        if let Some(error) = pollster::block_on(scope.pop()) {
+            return Err(MetalInteropError::WgpuImport(error.to_string()));
+        }
         Ok(texture)
     }
 }
@@ -541,13 +562,22 @@ pub(crate) struct ImportedFrame {
 }
 
 impl ImportedFrame {
+    pub(crate) fn textures(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (&wgpu::Texture, &wgpu::Texture)> + Clone {
+        self.planes.iter().map(|(y, uv)| (&y.texture, &uv.texture))
+    }
+
+    pub(crate) fn discard_unsubmitted(mut self) {
+        self.planes.clear();
+    }
+
     pub(crate) fn views(&self) -> Vec<(wgpu::TextureView, wgpu::TextureView)> {
-        self.planes
-            .iter()
+        self.textures()
             .map(|(y, uv)| {
                 (
-                    y.texture.create_view(&Default::default()),
-                    uv.texture.create_view(&Default::default()),
+                    y.create_view(&Default::default()),
+                    uv.create_view(&Default::default()),
                 )
             })
             .collect()
@@ -556,6 +586,9 @@ impl ImportedFrame {
 
 impl Drop for ImportedFrame {
     fn drop(&mut self) {
+        if self.planes.is_empty() {
+            return;
+        }
         let owners: Vec<_> = std::mem::take(&mut self.planes)
             .into_iter()
             .flat_map(|(y, uv)| [y, uv])

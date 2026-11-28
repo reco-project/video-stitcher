@@ -5,8 +5,8 @@ use crate::detect::detector::{Detection, Detector, DetectorError, DetectorFrame}
 use crate::detect::panner::{PanContext, Panner};
 use crate::detect::tracker::WorldState;
 use crate::geometry::{CameraIndex, WorldPose};
-use crate::render::planes::Yuv420pPlanes;
 use crate::render::viewport::ViewportSize;
+use crate::source::{FrameSet, Yuv420pData};
 use crate::stitch::{CpuExecutor, Executor, test_support::calib};
 
 struct UnexpectedInference;
@@ -74,14 +74,9 @@ fn explicit_cpu_yuv_does_not_run_ai() {
     .unwrap();
     let mut core = StitchCore::new(Executor::Cpu(Box::new(executor))).unwrap();
     attach(&mut core);
-    let data = vec![128; 4096];
-    let frame = Yuv420pPlanes {
-        y: &data,
-        u: &data[..1024],
-        v: &data[..1024],
-    };
+    let images = stereo_images();
     for _ in 0..3 {
-        core.submit_frame_yuv420p_at_pose(&frame, &frame, Default::default())
+        core.submit_frame_at_pose(&images, Default::default())
             .unwrap();
     }
     assert_eq!(core.frame_count(), 3);
@@ -89,49 +84,42 @@ fn explicit_cpu_yuv_does_not_run_ai() {
     assert_eq!(core.replay_buffer().unwrap().len(), 3);
 }
 
+fn stereo_images() -> FrameSet {
+    let image = Yuv420pData {
+        size: (64, 64),
+        y: vec![128; 4096],
+        u: vec![128; 1024],
+        v: vec![128; 1024],
+    };
+    FrameSet::Yuv420p(vec![image.clone().into(), image.into()])
+}
+
 #[cfg(feature = "gpu")]
 #[test]
-fn explicit_gpu_formats_do_not_run_ai() {
-    use crate::render::{planes::RgbaPlanes, renderer::InputFormat};
+fn explicit_gpu_submit_does_not_run_ai() {
+    use crate::render::renderer::InputFormat;
     use crate::stitch::{GpuExecutor, GpuExecutorConfig};
     let Some(gpu) = crate::stitch::test_support::gpu_or_skip() else {
         return;
     };
-    for format in [InputFormat::Yuv420p, InputFormat::Rgba] {
-        let config = GpuExecutorConfig {
-            viewport_size: ViewportSize {
-                width: 64,
-                height: 64,
-            },
-            ..GpuExecutorConfig::new(calib(64, 64), vec![(64, 64); 2], format)
-        };
-        let mut core = StitchCore::new(Executor::Gpu(Box::new(
-            GpuExecutor::new(gpu.clone(), config).unwrap(),
-        )))
-        .unwrap();
-        attach(&mut core);
-        let data = vec![128; 64 * 64 * 4];
-        for _ in 0..3 {
-            match format {
-                InputFormat::Yuv420p => {
-                    let frame = Yuv420pPlanes {
-                        y: &data[..4096],
-                        u: &data[..1024],
-                        v: &data[..1024],
-                    };
-                    core.submit_frame_yuv420p_at_pose(&frame, &frame, Default::default())
-                        .unwrap();
-                }
-                InputFormat::Rgba => {
-                    let frame = RgbaPlanes::from_rgba(&data);
-                    core.submit_frame_rgba_at_pose(&frame, &frame, Default::default())
-                        .unwrap();
-                }
-                _ => unreachable!(),
-            }
-        }
-        assert_eq!(core.frame_count(), 3);
-        assert!(core.last_detections().is_empty());
-        assert_eq!(core.replay_buffer().unwrap().len(), 1);
+    let config = GpuExecutorConfig {
+        viewport_size: ViewportSize {
+            width: 64,
+            height: 64,
+        },
+        ..GpuExecutorConfig::new(calib(64, 64), vec![(64, 64); 2], InputFormat::Yuv420p)
+    };
+    let mut core = StitchCore::new(Executor::Gpu(Box::new(
+        GpuExecutor::new(gpu, config).unwrap(),
+    )))
+    .unwrap();
+    attach(&mut core);
+    let images = stereo_images();
+    for _ in 0..3 {
+        core.submit_frame_at_pose(&images, Default::default())
+            .unwrap();
     }
+    assert_eq!(core.frame_count(), 3);
+    assert!(core.last_detections().is_empty());
+    assert_eq!(core.replay_buffer().unwrap().len(), 1);
 }

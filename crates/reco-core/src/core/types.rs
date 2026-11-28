@@ -109,10 +109,8 @@ pub struct ReplayFrame {
 /// # Semantics
 ///
 /// - `record_yuv` fires before rendering a stereo YUV420P submit via
-///   [`super::StitchCore::submit_frame`] and
-///   [`super::StitchCore::submit_frame_yuv420p_at_pose`]. It sees the tight
+///   [`super::StitchCore::submit_frame`]. It sees the tight
 ///   (no-stride) YUV420P planes submitted to rendering, including submissions whose rendering subsequently fails.
-/// - RGBA submit paths are not recorded: the recorder accepts YUV420P planes, and these paths perform no recording conversion.
 /// - `flush` and `finish` are best-effort; errors are logged by
 ///   the implementation and never propagated back to the submit
 ///   path so a failing recorder cannot break the stitch output.

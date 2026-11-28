@@ -105,17 +105,18 @@ fn quad_vertices() -> [Vertex; 6] {
 
 // ---- Renderer ----
 
-/// Per-plane GPU resources (YUV textures + uniform buffer + bind groups).
-struct PlaneResources {
+struct CameraResources {
+    uniform_buffer: wgpu::Buffer,
+    uniform_bind_group: wgpu::BindGroup,
+    size: (u32, u32),
+    uploaded: OnceLock<PlaneTextures>,
+}
+
+struct PlaneTextures {
     y_texture: wgpu::Texture,
     u_texture: wgpu::Texture,
     v_texture: wgpu::Texture,
     texture_bind_group: wgpu::BindGroup,
-    imported_bind_group: Option<wgpu::BindGroup>,
-    uniform_buffer: wgpu::Buffer,
-    uniform_bind_group: wgpu::BindGroup,
-    width: u32,
-    height: u32,
 }
 
 /// Input pixel format for the renderer.
@@ -128,9 +129,8 @@ pub enum InputFormat {
     /// NVDEC native output format. V texture is a 1x1 dummy.
     Nv12,
     /// Packed RGBA: a single `Rgba8Unorm` texture at full resolution
-    /// holding pre-composited sRGB-domain RGB. Used by OBS Browser Source,
-    /// screen capture, WebRTC ingest, and other non-camera sources whose
-    /// native format is already RGB. The shader samples the single plane
+    /// holding sRGB-domain RGB, such as demosaiced Bayer capture.
+    /// The shader samples the single plane
     /// and writes the RGB triple straight out (no YUV conversion).
     /// `u_texture` / `v_texture` are 1x1 dummies in this mode.
     Rgba,
@@ -219,7 +219,7 @@ pub(crate) struct Renderer {
     /// Planes-only helper: restores opaque alpha (1.0) across the full target.
     opaque_alpha_pipeline: Option<wgpu::RenderPipeline>,
     vertex_buffer: Option<wgpu::Buffer>,
-    cameras: Vec<PlaneResources>,
+    cameras: Vec<CameraResources>,
     /// Caller-owned previews do not allocate an unused internal output texture.
     render_target: OnceLock<(wgpu::Texture, wgpu::TextureView)>,
     output_format: wgpu::TextureFormat,
@@ -247,7 +247,7 @@ impl Renderer {
         camera: usize,
         data: &super::planes::Yuv420pPlanes<'_>,
     ) -> Result<(), RenderError> {
-        upload_yuv(gpu, &self.cameras[camera], data.y, data.u, data.v)
+        upload_yuv(gpu, self.upload_textures(camera), data.y, data.u, data.v)
     }
 
     pub(crate) fn upload_nv12(
@@ -256,13 +256,13 @@ impl Renderer {
         camera: usize,
         data: &super::planes::Nv12Planes<'_>,
     ) -> Result<(), RenderError> {
-        upload_nv12(gpu, &self.cameras[camera], data.y, data.uv)
+        upload_nv12(gpu, self.upload_textures(camera), data.y, data.uv)
     }
 
     /// Create a new renderer with all GPU resources.
     ///
-    /// Allocates textures, buffers, and compiles the shader pipeline.
-    /// This is called once during pipeline initialization.
+    /// Allocates uniform buffers and compiles the shader pipeline. Upload
+    /// textures are allocated only when the batch path first uses them.
     ///
     /// `input_format` selects between YUV420P (3 separate planes) and
     /// NV12 (Y + interleaved UV). NV12 is the native NVDEC output format.
@@ -298,31 +298,7 @@ impl Renderer {
             })
         });
 
-        // Bind group layouts — YUV420P: 3 plane textures + 1 sampler
-        let texture_entry = |binding: u32| wgpu::BindGroupLayoutEntry {
-            binding,
-            visibility: wgpu::ShaderStages::FRAGMENT,
-            ty: wgpu::BindingType::Texture {
-                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                view_dimension: wgpu::TextureViewDimension::D2,
-                multisampled: false,
-            },
-            count: None,
-        };
-        let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("texture_layout"),
-            entries: &[
-                texture_entry(0), // Y plane
-                texture_entry(1), // U plane
-                texture_entry(2), // V plane
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
+        let texture_layout = video_texture_layout(device);
 
         let uniform_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("uniform_layout"),
@@ -395,13 +371,7 @@ impl Renderer {
             None
         };
 
-        // Sampler (shared by both planes)
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("video_sampler"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
+        let sampler = video_sampler(device);
 
         let (camera_count, uniform_size) = match program.pass {
             super::GpuPass::Planes => (2, std::mem::size_of::<GpuUniforms>()),
@@ -416,14 +386,10 @@ impl Renderer {
         };
         let cameras = (0..camera_count)
             .map(|camera| {
-                Self::create_plane_resources(
+                Self::create_camera_resources(
                     device,
-                    &texture_layout,
                     &uniform_layout,
-                    &sampler,
                     source_sizes[camera],
-                    input_format,
-                    &format!("camera_{camera}"),
                     uniform_size as u64,
                 )
             })
@@ -548,8 +514,8 @@ impl Renderer {
         }
     }
 
-    fn video_pipelines(&self) -> &VideoPipelines {
-        if self.color.flags() == 0 || self.input_format == InputFormat::Rgba {
+    fn video_pipelines(&self, extended: bool) -> &VideoPipelines {
+        if !extended {
             return &self.video;
         }
         self.extended_video.get_or_init(|| {
@@ -564,106 +530,21 @@ impl Renderer {
         })
     }
 
-    fn create_plane_resources(
+    fn create_camera_resources(
         device: &wgpu::Device,
-        texture_layout: &wgpu::BindGroupLayout,
         uniform_layout: &wgpu::BindGroupLayout,
-        sampler: &wgpu::Sampler,
-        (width, height): (u32, u32),
-        input_format: InputFormat,
-        label: &str,
+        size: (u32, u32),
         uniform_size: u64,
-    ) -> PlaneResources {
-        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
-
-        let create_texture = |name: &str, w: u32, h: u32, format: wgpu::TextureFormat| {
-            device.create_texture(&wgpu::TextureDescriptor {
-                label: Some(&format!("{label}_{name}")),
-                size: wgpu::Extent3d {
-                    width: w,
-                    height: h,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format,
-                usage,
-                view_formats: &[],
-            })
-        };
-
-        // Y plane format + u/v plane selection depend on input format.
-        // For Rgba the "Y" slot actually holds a full-res Rgba8Unorm texture;
-        // u/v are 1x1 dummies that the shader never samples.
-        let y_texture = match input_format {
-            InputFormat::Yuv420p | InputFormat::Nv12 => {
-                create_texture("y", width, height, wgpu::TextureFormat::R8Unorm)
-            }
-            InputFormat::Rgba => {
-                create_texture("rgba", width, height, wgpu::TextureFormat::Rgba8Unorm)
-            }
-        };
-
-        let (u_texture, v_texture) = match input_format {
-            InputFormat::Yuv420p => {
-                // YUV420P: separate R8 U and V at half resolution
-                let u = create_texture("u", width / 2, height / 2, wgpu::TextureFormat::R8Unorm);
-                let v = create_texture("v", width / 2, height / 2, wgpu::TextureFormat::R8Unorm);
-                (u, v)
-            }
-            InputFormat::Nv12 => {
-                // NV12: interleaved UV as Rg8Unorm at half resolution
-                let uv = create_texture("uv", width / 2, height / 2, wgpu::TextureFormat::Rg8Unorm);
-                // Dummy V texture - shader won't sample it in NV12 mode
-                let v_dummy = create_texture("v_dummy", 1, 1, wgpu::TextureFormat::R8Unorm);
-                (uv, v_dummy)
-            }
-            InputFormat::Rgba => {
-                // Shader skips u/v sampling on the Rgba path; 1x1 dummies
-                // satisfy the bind group layout without wasting memory.
-                let u_dummy = create_texture("u_dummy", 1, 1, wgpu::TextureFormat::R8Unorm);
-                let v_dummy = create_texture("v_dummy", 1, 1, wgpu::TextureFormat::R8Unorm);
-                (u_dummy, v_dummy)
-            }
-        };
-
-        let y_view = y_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let u_view = u_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let v_view = v_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(&format!("{label}_texture_bg")),
-            layout: texture_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&y_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&u_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&v_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::Sampler(sampler),
-                },
-            ],
-        });
-
+    ) -> CameraResources {
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some(&format!("{label}_uniforms")),
+            label: Some("camera_uniforms"),
             size: uniform_size,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
         let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(&format!("{label}_uniform_bg")),
+            label: Some("camera_uniform_bg"),
             layout: uniform_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
@@ -671,77 +552,61 @@ impl Renderer {
             }],
         });
 
-        PlaneResources {
-            y_texture,
-            u_texture,
-            v_texture,
-            texture_bind_group,
-            imported_bind_group: None,
+        CameraResources {
             uniform_buffer,
             uniform_bind_group,
-            width,
-            height,
+            size,
+            uploaded: OnceLock::new(),
         }
     }
 
-    /// Upload YUV420P planes to the left camera textures.
-    #[cfg_attr(
-        feature = "profiling",
-        tracing::instrument(skip_all, name = "gpu_upload")
-    )]
-    pub fn upload_left_yuv(
-        &self,
-        gpu: &GpuContext,
-        y: &[u8],
-        u: &[u8],
-        v: &[u8],
-    ) -> Result<(), RenderError> {
-        upload_yuv(gpu, &self.cameras[0], y, u, v)
-    }
-
-    /// Upload YUV420P planes to the right camera textures.
-    pub fn upload_right_yuv(
-        &self,
-        gpu: &GpuContext,
-        y: &[u8],
-        u: &[u8],
-        v: &[u8],
-    ) -> Result<(), RenderError> {
-        upload_yuv(gpu, &self.cameras[1], y, u, v)
-    }
-
-    /// Upload a packed RGBA plane to the left camera texture.
-    ///
-    /// Data must be `width * height * 4` bytes in (R, G, B, A) byte order.
-    /// Upload-side swizzling translates BGRA sources before calling this -
-    /// see [`pipeline::RgbaPlanes`](crate::render::pipeline::RgbaPlanes).
-    pub fn upload_left_rgba(&self, gpu: &GpuContext, rgba: &[u8]) -> Result<(), RenderError> {
-        debug_assert_eq!(
-            self.input_format,
-            InputFormat::Rgba,
-            "upload_left_rgba requires InputFormat::Rgba"
-        );
-        upload_rgba(gpu, &self.cameras[0], rgba)
-    }
-
-    /// Upload a packed RGBA plane to the right camera texture.
-    /// See [`Self::upload_left_rgba`].
-    pub fn upload_right_rgba(&self, gpu: &GpuContext, rgba: &[u8]) -> Result<(), RenderError> {
-        debug_assert_eq!(
-            self.input_format,
-            InputFormat::Rgba,
-            "upload_right_rgba requires InputFormat::Rgba"
-        );
-        upload_rgba(gpu, &self.cameras[1], rgba)
+    fn upload_textures(&self, camera: usize) -> &PlaneTextures {
+        let camera = &self.cameras[camera];
+        camera.uploaded.get_or_init(|| {
+            use wgpu::TextureFormat::{R8Unorm, Rg8Unorm, Rgba8Unorm};
+            let (width, height) = camera.size;
+            let texture = |width, height, format| video_plane(&self.device, width, height, format);
+            let [y_texture, u_texture, v_texture] = match self.input_format {
+                InputFormat::Yuv420p => [
+                    texture(width, height, R8Unorm),
+                    texture(width / 2, height / 2, R8Unorm),
+                    texture(width / 2, height / 2, R8Unorm),
+                ],
+                InputFormat::Nv12 => [
+                    texture(width, height, R8Unorm),
+                    texture(width / 2, height / 2, Rg8Unorm),
+                    texture(1, 1, R8Unorm),
+                ],
+                InputFormat::Rgba => [
+                    texture(width, height, Rgba8Unorm),
+                    texture(1, 1, R8Unorm),
+                    texture(1, 1, R8Unorm),
+                ],
+            };
+            let views = [&y_texture, &u_texture, &v_texture]
+                .map(|texture| texture.create_view(&Default::default()));
+            let texture_bind_group = video_bind_group(
+                &self.device,
+                &self.texture_layout,
+                &self.sampler,
+                views.each_ref(),
+                "uploaded_camera",
+            );
+            PlaneTextures {
+                y_texture,
+                u_texture,
+                v_texture,
+                texture_bind_group,
+            }
+        })
     }
 
     /// Copy a GPU texture into the left input plane (RGBA mode).
     ///
-    /// Zero-copy alternative to [`upload_left_rgba`]: the source texture
-    /// must be `Rgba8Unorm` with matching dimensions. The copy is
+    /// The source must be `Rgba8Unorm` with matching dimensions. The copy is
     /// appended to `encoder` as a GPU-side blit with no CPU involvement.
     pub fn copy_texture_to_left(&self, encoder: &mut wgpu::CommandEncoder, source: &wgpu::Texture) {
-        copy_texture_to_plane(encoder, source, &self.cameras[0]);
+        copy_texture_to_plane(encoder, source, &self.upload_textures(0).y_texture);
     }
 
     /// Copy a GPU texture into the right input plane (RGBA mode).
@@ -750,7 +615,7 @@ impl Renderer {
         encoder: &mut wgpu::CommandEncoder,
         source: &wgpu::Texture,
     ) {
-        copy_texture_to_plane(encoder, source, &self.cameras[1]);
+        copy_texture_to_plane(encoder, source, &self.upload_textures(1).y_texture);
     }
 
     /// Create a texture bind group from external textures.
@@ -784,43 +649,13 @@ impl Renderer {
         uv_view: &wgpu::TextureView,
         label: &str,
     ) -> wgpu::BindGroup {
-        let v_view = self.cameras[0]
-            .v_texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(label),
-            layout: &self.texture_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(y_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(uv_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&v_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::Sampler(&self.sampler),
-                },
-            ],
-        })
-    }
-
-    /// Set a camera's texture bind group for the next render.
-    pub fn set_camera_bind_group(&mut self, camera: usize, bind_group: wgpu::BindGroup) {
-        self.cameras[camera].imported_bind_group = Some(bind_group);
-    }
-
-    /// Release imported bindings and sample the owned upload textures again.
-    pub(crate) fn clear_imported_bind_groups(&mut self) {
-        for camera in &mut self.cameras {
-            camera.imported_bind_group = None;
-        }
+        video_bind_group(
+            &self.device,
+            &self.texture_layout,
+            &self.sampler,
+            [y_view, uv_view, uv_view],
+            label,
+        )
     }
 
     /// Enable 180-degree UV flip for the GPU zero-copy path.
@@ -844,13 +679,6 @@ impl Renderer {
         self.color = color;
     }
 
-    pub(crate) fn set_sample_format(
-        &mut self,
-        samples: super::color::YuvSampleFormat,
-    ) -> super::color::YuvSampleFormat {
-        std::mem::replace(&mut self.color.samples, samples)
-    }
-
     /// Create fresh `TextureView`s for the left plane's Y/U/V
     /// textures. Needed by [`crate::gpu::yuv_stack_packer::YuvStackPacker`]
     /// when replay recording is enabled: the packer samples the same
@@ -863,18 +691,18 @@ impl Renderer {
     pub(crate) fn left_plane_views(
         &self,
     ) -> (wgpu::TextureView, wgpu::TextureView, wgpu::TextureView) {
-        Self::plane_views(&self.cameras[0])
+        Self::plane_views(self.upload_textures(0))
     }
 
     /// Right-side counterpart to [`Self::left_plane_views`].
     pub(crate) fn right_plane_views(
         &self,
     ) -> (wgpu::TextureView, wgpu::TextureView, wgpu::TextureView) {
-        Self::plane_views(&self.cameras[1])
+        Self::plane_views(self.upload_textures(1))
     }
 
     fn plane_views(
-        plane: &PlaneResources,
+        plane: &PlaneTextures,
     ) -> (wgpu::TextureView, wgpu::TextureView, wgpu::TextureView) {
         (
             plane
@@ -901,17 +729,18 @@ impl Renderer {
     /// Returns the command encoder with the render pass already recorded.
     /// Callers handle submission, readback, or further encoding as needed.
     #[allow(clippy::too_many_arguments)]
-    fn encode_stitch_pass(
+    pub(crate) fn draw_bound<'a>(
         &self,
         gpu: &GpuContext,
         scene: Option<&PlaneScene>,
         calibration: &Calibration,
         pose: RenderPose,
-        blend_width: f32,
-        target_view: &wgpu::TextureView,
-        aspect: f32,
-        encoder_label: &str,
-    ) -> wgpu::CommandEncoder {
+        target_view: Option<&wgpu::TextureView>,
+        camera: impl Fn(usize) -> (&'a wgpu::BindGroup, VideoSampling),
+    ) -> wgpu::CommandBuffer {
+        let blend_width = calibration.projection.blend_width();
+        let aspect = self.output_width as f32 / self.output_height as f32;
+        let target_view = target_view.unwrap_or_else(|| &self.output_target().1);
         if let Some(scene) = scene {
             let projection = opengl_to_wgpu_matrix()
                 * Perspective3::new(
@@ -935,9 +764,7 @@ impl Renderer {
                 &calibration.lenses[0],
                 false,
                 blend_width,
-                self.input_format,
-                self.flip_180[0],
-                self.color,
+                camera(0).1,
             );
             left_uniforms.lens_preview[0] = calibration.lenses[0].correction;
 
@@ -947,9 +774,7 @@ impl Renderer {
                 &calibration.lenses[1],
                 true,
                 blend_width,
-                self.input_format,
-                self.flip_180[1],
-                self.color,
+                camera(1).1,
             );
             right_uniforms.lens_preview[0] = calibration.lenses[1].correction;
 
@@ -967,9 +792,7 @@ impl Renderer {
             let uniforms = panorama.gpu_uniforms(
                 &calibration.lenses,
                 &calibration.framing,
-                std::array::from_fn(|i| {
-                    video_flags(i as u32, self.input_format, self.flip_180[i], self.color)
-                }),
+                std::array::from_fn(|i| camera(i).1.flags(i as u32)),
             );
             for (camera, uniform) in self.cameras.iter().zip(&uniforms) {
                 gpu.queue
@@ -981,7 +804,7 @@ impl Renderer {
                 f64::from(calibration.lenses[0].height),
                 aspect,
                 pose,
-                video_flags(0, self.input_format, self.flip_180[0], self.color),
+                camera(0).1.flags(0),
             );
             gpu.queue.write_buffer(
                 &self.cameras[0].uniform_buffer,
@@ -992,10 +815,11 @@ impl Renderer {
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some(encoder_label),
+                label: Some("stitch_frame"),
             });
 
-        let pipelines = self.video_pipelines();
+        let pipelines =
+            self.video_pipelines((0..self.cameras.len()).any(|i| camera(i).1.extended()));
         let planes_blend_pipelines = if scene.is_some() && blend_width > 0.0 {
             pipelines
                 .right_uncovered
@@ -1028,16 +852,9 @@ impl Renderer {
                 multiview_mask: None,
             });
 
-            let bind_camera = |pass: &mut wgpu::RenderPass<'_>, camera: &PlaneResources| {
-                pass.set_bind_group(
-                    0,
-                    camera
-                        .imported_bind_group
-                        .as_ref()
-                        .unwrap_or(&camera.texture_bind_group),
-                    &[],
-                );
-                pass.set_bind_group(1, &camera.uniform_bind_group, &[]);
+            let bind_camera = |pass: &mut wgpu::RenderPass<'_>, i: usize| {
+                pass.set_bind_group(0, camera(i).0, &[]);
+                pass.set_bind_group(1, &self.cameras[i].uniform_bind_group, &[]);
             };
 
             if let Some((right_uncovered_pipeline, opaque_alpha_pipeline)) = planes_blend_pipelines
@@ -1051,7 +868,7 @@ impl Renderer {
                 // Draw 1: Left camera (base). Covered pixels become (L, 1.0);
                 // uncovered pixels stay (0, 0, 0, 0).
                 pass.set_pipeline(&pipelines.main);
-                bind_camera(&mut pass, &self.cameras[0]);
+                bind_camera(&mut pass, 0);
                 pass.draw(0..6, 0..1);
 
                 // Draw 2: Right camera uncovered fill inside the fade band.
@@ -1059,7 +876,7 @@ impl Renderer {
                 // dst.a == 1.0, keeps L untouched. Rgb10a2Unorm represents
                 // both coverage values exactly in two alpha bits.
                 pass.set_pipeline(right_uncovered_pipeline);
-                bind_camera(&mut pass, &self.cameras[1]);
+                bind_camera(&mut pass, 1);
                 pass.draw(0..6, 0..1);
 
                 // Draw 3: Right camera standard smoothstep blend. Its weight
@@ -1079,14 +896,14 @@ impl Renderer {
                 if let Some(vertices) = &self.vertex_buffer {
                     pass.set_vertex_buffer(0, vertices.slice(..));
                 }
-                for camera in &self.cameras {
-                    bind_camera(&mut pass, camera);
+                for i in 0..self.cameras.len() {
+                    bind_camera(&mut pass, i);
                     pass.draw(0..if self.vertex_buffer.is_some() { 6 } else { 3 }, 0..1);
                 }
             }
         }
 
-        encoder
+        encoder.finish()
     }
 
     /// Render a stitched frame to the internal render target, without readback.
@@ -1105,20 +922,37 @@ impl Renderer {
         scene: Option<&PlaneScene>,
         calibration: &Calibration,
         pose: RenderPose,
-        blend_width: f32,
     ) -> wgpu::CommandBuffer {
-        let aspect = self.output_width as f32 / self.output_height as f32;
-        let encoder = self.encode_stitch_pass(
-            gpu,
-            scene,
-            calibration,
-            pose,
-            blend_width,
-            &self.output_target().1,
-            aspect,
-            "stitch_to_target",
-        );
-        encoder.finish()
+        self.draw_batch(gpu, scene, calibration, pose, None, self.color)
+    }
+
+    pub(crate) fn draw_batch(
+        &self,
+        gpu: &GpuContext,
+        scene: Option<&PlaneScene>,
+        calibration: &Calibration,
+        pose: RenderPose,
+        groups: Option<&[wgpu::BindGroup]>,
+        color: super::color::YuvColor,
+    ) -> wgpu::CommandBuffer {
+        self.draw_bound(gpu, scene, calibration, pose, None, |i| {
+            let group = groups.map_or_else(
+                || &self.upload_textures(i).texture_bind_group,
+                |groups| &groups[i],
+            );
+            (
+                group,
+                VideoSampling {
+                    format: self.input_format,
+                    orientation: u32::from(self.flip_180[i]),
+                    color,
+                },
+            )
+        })
+    }
+
+    pub(crate) fn source_color(&self) -> super::color::YuvColor {
+        self.color
     }
 
     /// Access the internal render target texture.
@@ -1166,33 +1000,6 @@ impl Renderer {
         })
     }
 
-    /// Render a stitched frame directly to a texture view (e.g., a window surface).
-    ///
-    /// Unlike [`Self::render_to_target`], this does NOT read back the result to CPU.
-    /// Used for interactive preview windows.
-    pub fn render_to_view(
-        &self,
-        gpu: &GpuContext,
-        scene: Option<&PlaneScene>,
-        calibration: &Calibration,
-        pose: RenderPose,
-        aspect: f32,
-        blend_width: f32,
-        target_view: &wgpu::TextureView,
-    ) -> wgpu::SubmissionIndex {
-        let encoder = self.encode_stitch_pass(
-            gpu,
-            scene,
-            calibration,
-            pose,
-            blend_width,
-            target_view,
-            aspect,
-            "preview_frame",
-        );
-        gpu.queue.submit(Some(encoder.finish()))
-    }
-
     /// Test-only isolated single-camera GPU draw (cleared to transparent,
     /// `blend_width = 0.0`) so oracle tests can compare combined compositing
     /// directly against actual hardware left-only and right-only rasterization.
@@ -1227,9 +1034,11 @@ impl Renderer {
             &calibration.lenses[camera],
             camera == 1,
             0.0,
-            self.input_format,
-            self.flip_180[camera],
-            self.color,
+            VideoSampling {
+                format: self.input_format,
+                orientation: u32::from(self.flip_180[camera]),
+                color: self.color,
+            },
         );
         uniforms.lens_preview[0] = calibration.lenses[camera].correction;
         gpu.queue.write_buffer(
@@ -1265,16 +1074,15 @@ impl Renderer {
                 .as_ref()
                 .expect("GpuPass::Planes always has a vertex buffer");
             let plane = &self.cameras[camera];
-            pass.set_pipeline(&self.video_pipelines().main);
-            pass.set_vertex_buffer(0, vertices.slice(..));
-            pass.set_bind_group(
-                0,
-                plane
-                    .imported_bind_group
-                    .as_ref()
-                    .unwrap_or(&plane.texture_bind_group),
-                &[],
+            pass.set_pipeline(
+                &self
+                    .video_pipelines(
+                        self.input_format != InputFormat::Rgba && self.color.flags() != 0,
+                    )
+                    .main,
             );
+            pass.set_vertex_buffer(0, vertices.slice(..));
+            pass.set_bind_group(0, &self.upload_textures(camera).texture_bind_group, &[]);
             pass.set_bind_group(1, &plane.uniform_bind_group, &[]);
             pass.draw(0..6, 0..1);
         }
@@ -1284,73 +1092,48 @@ impl Renderer {
 
 // ---- Helper functions ----
 
-/// Upload a packed RGBA plane (4 bytes per pixel) to a GPU texture.
-///
-/// Expects `width * height * 4` bytes in (R, G, B, A) order.
-/// Callers with BGRA source data need to swizzle to RGBA before
-/// this call - the shader samples `rgba.rgb` directly.
-fn upload_rgba(gpu: &GpuContext, plane: &PlaneResources, rgba: &[u8]) -> Result<(), RenderError> {
-    let w = plane.width;
-    let h = plane.height;
-    let expected = (w * h * 4) as usize;
-    if rgba.len() != expected {
-        return Err(RenderError::FrameSizeMismatch {
-            expected,
-            actual: rgba.len(),
-        });
-    }
-    gpu.queue.write_texture(
-        wgpu::TexelCopyTextureInfo {
-            texture: &plane.y_texture,
-            mip_level: 0,
-            origin: wgpu::Origin3d::ZERO,
-            aspect: wgpu::TextureAspect::All,
-        },
-        rgba,
-        wgpu::TexelCopyBufferLayout {
-            offset: 0,
-            bytes_per_row: Some(w * 4),
-            rows_per_image: Some(h),
-        },
-        wgpu::Extent3d {
-            width: w,
-            height: h,
-            depth_or_array_layers: 1,
-        },
-    );
-    Ok(())
-}
-
 /// GPU-to-GPU texture copy into a plane's y_texture.
 fn copy_texture_to_plane(
     encoder: &mut wgpu::CommandEncoder,
     source: &wgpu::Texture,
-    plane: &PlaneResources,
+    target: &wgpu::Texture,
 ) {
-    let size = wgpu::Extent3d {
-        width: plane.width,
-        height: plane.height,
-        depth_or_array_layers: 1,
-    };
     encoder.copy_texture_to_texture(
-        wgpu::TexelCopyTextureInfo {
-            texture: source,
-            mip_level: 0,
-            origin: wgpu::Origin3d::ZERO,
-            aspect: wgpu::TextureAspect::All,
-        },
-        wgpu::TexelCopyTextureInfo {
-            texture: &plane.y_texture,
-            mip_level: 0,
-            origin: wgpu::Origin3d::ZERO,
-            aspect: wgpu::TextureAspect::All,
-        },
-        size,
+        source.as_image_copy(),
+        target.as_image_copy(),
+        target.size(),
     );
 }
 
-/// Upload a single R8Unorm plane to a GPU texture.
-fn upload_plane(gpu: &GpuContext, texture: &wgpu::Texture, data: &[u8], width: u32, height: u32) {
+pub(crate) fn video_plane(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("video_plane"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    })
+}
+
+/// Upload a tightly packed video plane.
+pub(crate) fn write_video_plane(
+    gpu: &GpuContext,
+    texture: &wgpu::Texture,
+    data: &[u8],
+    row_bytes: u32,
+) {
     gpu.queue.write_texture(
         wgpu::TexelCopyTextureInfo {
             texture,
@@ -1361,27 +1144,23 @@ fn upload_plane(gpu: &GpuContext, texture: &wgpu::Texture, data: &[u8], width: u
         data,
         wgpu::TexelCopyBufferLayout {
             offset: 0,
-            bytes_per_row: Some(width),
-            rows_per_image: Some(height),
+            bytes_per_row: Some(row_bytes),
+            rows_per_image: Some(texture.height()),
         },
-        wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
+        texture.size(),
     );
 }
 
 /// Upload YUV420P planes (Y full-res, U/V half-res) to GPU textures.
 fn upload_yuv(
     gpu: &GpuContext,
-    plane: &PlaneResources,
+    plane: &PlaneTextures,
     y: &[u8],
     u: &[u8],
     v: &[u8],
 ) -> Result<(), RenderError> {
-    let w = plane.width;
-    let h = plane.height;
+    let w = plane.y_texture.width();
+    let h = plane.y_texture.height();
     let uv_w = w / 2;
     let uv_h = h / 2;
 
@@ -1404,9 +1183,9 @@ fn upload_yuv(
         });
     }
 
-    upload_plane(gpu, &plane.y_texture, y, w, h);
-    upload_plane(gpu, &plane.u_texture, u, uv_w, uv_h);
-    upload_plane(gpu, &plane.v_texture, v, uv_w, uv_h);
+    write_video_plane(gpu, &plane.y_texture, y, w);
+    write_video_plane(gpu, &plane.u_texture, u, uv_w);
+    write_video_plane(gpu, &plane.v_texture, v, uv_w);
     Ok(())
 }
 
@@ -1416,12 +1195,12 @@ fn upload_yuv(
 /// Each texel contains (U, V) as two bytes.
 fn upload_nv12(
     gpu: &GpuContext,
-    plane: &PlaneResources,
+    plane: &PlaneTextures,
     y: &[u8],
     uv: &[u8],
 ) -> Result<(), RenderError> {
-    let w = plane.width;
-    let h = plane.height;
+    let w = plane.y_texture.width();
+    let h = plane.y_texture.height();
     let uv_w = w / 2;
     let uv_h = h / 2;
 
@@ -1438,52 +1217,107 @@ fn upload_nv12(
         });
     }
 
-    upload_plane(gpu, &plane.y_texture, y, w, h);
-    // UV plane is Rg8Unorm: 2 bytes per texel, so bytes_per_row = uv_w * 2
-    gpu.queue.write_texture(
-        wgpu::TexelCopyTextureInfo {
-            texture: &plane.u_texture,
-            mip_level: 0,
-            origin: wgpu::Origin3d::ZERO,
-            aspect: wgpu::TextureAspect::All,
-        },
-        uv,
-        wgpu::TexelCopyBufferLayout {
-            offset: 0,
-            bytes_per_row: Some(uv_w * 2),
-            rows_per_image: Some(uv_h),
-        },
-        wgpu::Extent3d {
-            width: uv_w,
-            height: uv_h,
-            depth_or_array_layers: 1,
-        },
-    );
+    write_video_plane(gpu, &plane.y_texture, y, w);
+    write_video_plane(gpu, &plane.u_texture, uv, uv_w * 2);
     Ok(())
 }
 
-fn video_flags(
-    camera: u32,
-    input: InputFormat,
-    flip_180: bool,
-    color: super::color::YuvColor,
-) -> [u32; 4] {
-    [camera, input as u32, u32::from(flip_180), color.flags()]
+#[derive(Clone, Copy)]
+pub(crate) struct VideoSampling {
+    pub(crate) format: InputFormat,
+    pub(crate) orientation: u32,
+    pub(crate) color: super::color::YuvColor,
+}
+
+impl VideoSampling {
+    fn flags(self, camera: u32) -> [u32; 4] {
+        [
+            camera,
+            self.format as u32,
+            self.orientation,
+            self.color.flags(),
+        ]
+    }
+
+    pub(crate) fn extended(self) -> bool {
+        self.format != InputFormat::Rgba && self.color.flags() != 0
+    }
+}
+
+pub(crate) fn video_texture_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    let texture_entry = |binding: u32| wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    };
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("texture_layout"),
+        entries: &[
+            texture_entry(0), // Y plane
+            texture_entry(1), // U plane
+            texture_entry(2), // V plane
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+    })
+}
+
+pub(crate) fn video_sampler(device: &wgpu::Device) -> wgpu::Sampler {
+    device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("video_sampler"),
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        ..Default::default()
+    })
+}
+
+pub(crate) fn video_bind_group(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    sampler: &wgpu::Sampler,
+    [y, u, v]: [&wgpu::TextureView; 3],
+    label: &str,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some(label),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(y),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(u),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::TextureView(v),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: wgpu::BindingResource::Sampler(sampler),
+            },
+        ],
+    })
 }
 
 /// Build the GPU uniform struct for one plane.
-///
-/// `flip_180`: when true, the shader flips UV coordinates to apply
-/// 180-degree rotation. Used by the GPU zero-copy path where the CPU
-/// buffer-reversal trick from the software decode path is not possible.
 pub(crate) fn build_gpu_uniforms(
     mvp: &Matrix4<f32>,
     camera: &Lens,
     is_right: bool,
     blend_width: f32,
-    input_format: InputFormat,
-    flip_180: bool,
-    color: super::color::YuvColor,
+    sampling: VideoSampling,
 ) -> GpuUniforms {
     let w = camera.width as f32;
     let h = camera.height as f32;
@@ -1503,7 +1337,7 @@ pub(crate) fn build_gpu_uniforms(
         ],
         color_scale: [1.0, 1.0, 1.0, 0.0],
         color_offset_blend: [0.0, 0.0, 0.0, blend_width],
-        flags: video_flags(u32::from(is_right), input_format, flip_180, color),
+        flags: sampling.flags(u32::from(is_right)),
         // Full correction for normal stitching. LensPreviewRenderer
         // overrides this field for the single-camera preview mode.
         lens_preview: [1.0, 0.0, 0.0, 0.0],
@@ -1581,9 +1415,11 @@ mod tests {
             &camera,
             false,
             0.0,
-            InputFormat::Yuv420p,
-            false,
-            Default::default(),
+            VideoSampling {
+                format: InputFormat::Yuv420p,
+                orientation: 0,
+                color: Default::default(),
+            },
         );
 
         // fx/width ≈ 0.4678

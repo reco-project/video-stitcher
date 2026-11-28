@@ -60,6 +60,7 @@ impl CudaSlotPool {
                 y,
                 uv,
                 format,
+                device: gpu.device().clone(),
                 color,
                 rotation,
             })
@@ -99,6 +100,10 @@ impl CudaLease {
         (&image.y_view, &image.uv_view)
     }
 
+    pub(crate) fn device(&self) -> &wgpu::Device {
+        &self.0.image().device
+    }
+
     /// Layout of the shared Y and UV planes.
     pub fn pixel_format(&self) -> GpuPixelFormat {
         self.0.image().format
@@ -133,6 +138,7 @@ struct CudaImage {
     y: SharedTexture,
     uv: SharedTexture,
     format: GpuPixelFormat,
+    device: wgpu::Device,
     color: YuvColor,
     rotation: i32,
 }

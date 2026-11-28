@@ -5,8 +5,6 @@
 //! `render_*_at_pose` methods (GPU-only, no readback).
 
 use crate::geometry::RenderPose;
-#[cfg(feature = "gpu")]
-use crate::render::planes::RgbaPlanes;
 use crate::render::planes::Yuv420pPlanes;
 use crate::stitch::Executor;
 
@@ -166,22 +164,6 @@ impl super::StitchCore {
         Ok(self.deliver_cpu_frame(rgba, pose))
     }
 
-    /// GPU arm of the YUV submits: pipelined render + triple-buffered
-    /// readback.
-    #[cfg(feature = "gpu")]
-    fn submit_gpu_yuv(
-        &mut self,
-        left: &Yuv420pPlanes<'_>,
-        right: &Yuv420pPlanes<'_>,
-        pose: RenderPose,
-    ) -> Result<RenderOutcome<'_>, StitchCoreError> {
-        let Executor::Gpu(gpu) = &mut self.executor else {
-            unreachable!("routed from the GPU arm");
-        };
-        let cmd = gpu.pipeline.render_to_target(left, right, pose)?;
-        self.deliver_gpu_render(cmd, pose)
-    }
-
     #[cfg(feature = "gpu")]
     fn deliver_gpu_render(
         &mut self,
@@ -191,7 +173,7 @@ impl super::StitchCore {
         // GPU stacked-replay pack runs before the readback so the
         // borrow checker sees `self.readback` free while the pack
         // runs. Queue ordering: `queue.write_texture` inside
-        // `render_to_target` is already enqueued; the pack submit
+        // `render_frame_set` is already enqueued; the pack submit
         // processes the writes before its compute pass reads the
         // textures, and the subsequent stitch submit reads the
         // same textures into the render target. No-op when packer
@@ -232,55 +214,6 @@ impl super::StitchCore {
         })
     }
 
-    /// Submit a stereo YUV420P frame pair at an explicit pose.
-    ///
-    /// Renders the supplied pose without detection, tracker updates or camera-motion resolution. Anchors the session clock, reads back RGBA, records replay when enabled and increments the frame count. Callers that also need inference use [`Self::detection_due`] and [`Self::run_detection_frames`] explicitly.
-    ///
-    /// This is the canonical submit path for interactive UIs (OBS
-    /// pan/zoom sliders, mouse-drag preview) where pose comes from
-    /// user input rather than a panner.
-    pub fn submit_frame_yuv420p_at_pose(
-        &mut self,
-        left: &Yuv420pPlanes<'_>,
-        right: &Yuv420pPlanes<'_>,
-        pose: RenderPose,
-    ) -> Result<RenderOutcome<'_>, StitchCoreError> {
-        self.anchor_session_start();
-
-        // Replay recording tap - see `submit_frame` for the
-        // rationale (record-before-render so the file exactly
-        // matches what the pipeline consumed).
-        if let Some(ref mut recorder) = self.stacked_recorder {
-            let (src_w, src_h) = self.executor.source_sizes()[0];
-            recorder.record_yuv(left, right, src_w, src_h);
-        }
-
-        match &self.executor {
-            Executor::Cpu(_) => self.submit_cpu_yuv(&[*left, *right], pose),
-            #[cfg(feature = "gpu")]
-            Executor::Gpu(_) => self.submit_gpu_yuv(left, right, pose),
-        }
-    }
-
-    /// Submit a stereo RGBA frame pair at an explicit render-space pose. See
-    /// [`Self::submit_frame_yuv420p_at_pose`] for semantics.
-    ///
-    /// Renders the supplied pose without running detection or advancing camera motion. Convert BGRA source bytes to RGBA before submission.
-    #[cfg(feature = "gpu")]
-    pub fn submit_frame_rgba_at_pose(
-        &mut self,
-        left: &RgbaPlanes<'_>,
-        right: &RgbaPlanes<'_>,
-        pose: RenderPose,
-    ) -> Result<RenderOutcome<'_>, StitchCoreError> {
-        self.anchor_session_start();
-        let Executor::Gpu(gpu) = &mut self.executor else {
-            return Err(StitchCoreError::RequiresGpu);
-        };
-        let cmd = gpu.pipeline.render_to_target_rgba(left, right, pose)?;
-        self.deliver_gpu_render(cmd, pose)
-    }
-
     /// Store a CPU-stitched frame and hand out the borrowed outcome -
     /// the synchronous dual of the GPU readback tail (replay push +
     /// frame accounting).
@@ -317,63 +250,63 @@ impl super::StitchCore {
     // Preview mode (engine renders straight to a caller-supplied view)
     // -----------------------------------------------------------------
 
-    /// Render a CPU-resident YUV420P or NV12 frame set directly to a surface view - the
-    /// interactive preview path (GUI/CLI). No detection, no panner, no
-    /// readback; the caller supplies the (already oriented) pose.
+    /// Prepare a complete candidate for panorama, lens and recording draws.
     ///
-    /// The full pose is the render parameter - fov included, so there
-    /// is no cached zoom state to go stale between calls.
+    /// Owns the decoded inputs through upload or native staging. Provide the
+    /// source's matrix and range and the clockwise rotations of native camera
+    /// images in projection order. Host images already have their decoded
+    /// orientation, and CUDA leases carry their own color and rotation.
+    /// Source owners may be dropped after this call. D3D11 preparation waits
+    /// for its staging query before returning a drawable frame.
     ///
-    /// Submits on this engine's queue without waiting for completion. The caller controls frames in flight; the returned marker covers this render, not later processing by the caller. The target must be a full, single-sampled 2D view matching the configured viewport, output format and device. Backing layout is checked here; view format and device compatibility remain wgpu requirements. Keep any external allocation owner alive and prevent reuse until this submission completes.
+    /// Keep the current frame until this returns successfully and release it
+    /// when accepting its replacement. At most two frames from this engine
+    /// may be held at once. See [`super::PreviewFrame`] for residency and
+    /// completion guarantees.
+    #[cfg(feature = "gpu")]
+    pub fn prepare_preview_frame(
+        &mut self,
+        frames: crate::source::FrameSet,
+        color: crate::render::color::YuvColor,
+        rotations: [i32; 2],
+    ) -> Result<super::PreviewFrame, StitchCoreError> {
+        let gpu = self
+            .executor
+            .gpu_mut()
+            .ok_or(StitchCoreError::RequiresGpu)?;
+        Ok(gpu
+            .pipeline
+            .prepare_preview_frame(frames, color, rotations)?)
+    }
+
+    /// Submit a prepared frame at the supplied pose, without detection or readback.
+    ///
+    /// The caller owns the target and controls the number of draws in flight.
+    /// The view must be full, single-sampled and match the configured viewport,
+    /// format and device. Keep any external target owner alive until the returned
+    /// render submission completes.
     #[cfg(feature = "gpu")]
     pub fn render_to_view(
-        &mut self,
-        frames: &crate::source::FrameSet,
+        &self,
+        frame: &super::PreviewFrame,
         pose: RenderPose,
         view: &wgpu::TextureView,
     ) -> Result<wgpu::SubmissionIndex, StitchCoreError> {
-        let Executor::Gpu(gpu) = &mut self.executor else {
-            return Err(StitchCoreError::RequiresGpu);
-        };
-        Ok(gpu.pipeline.render_to_view(frames, pose, view)?)
+        let gpu = self.executor.gpu().ok_or(StitchCoreError::RequiresGpu)?;
+        let cmd = gpu.pipeline.draw_preview(frame, pose, Some(view))?;
+        Ok(gpu.pipeline.gpu().queue().submit(Some(cmd)))
     }
 
-    /// Render a CPU-resident frame set on the GPU and queue it for packed delivery.
+    /// Render and queue NV12 readback from the same prepared preview planes.
     ///
-    /// Returns `None` for the first two submissions, then returns the oldest frame,
-    /// including its original timestamp. Drain the tail with [`Self::flush_delivery`].
-    #[cfg(feature = "gpu")]
-    pub fn render_and_readback_delivery(
-        &mut self,
-        frames: &crate::source::FrameSet,
-        pose: RenderPose,
-        pts_us: Option<i64>,
-    ) -> Result<Option<crate::sink::OutputFrame<'_>>, StitchCoreError> {
-        let Executor::Gpu(gpu) = &mut self.executor else {
-            return Err(StitchCoreError::RequiresGpu);
-        };
-        let cmd = gpu.pipeline.render_frame_set(frames, pose)?;
-        Ok(gpu.convert_delivery(cmd, pts_us)?)
-    }
-
-    /// Drain the oldest packed delivery frame, or return `None` when none remain.
-    #[cfg(feature = "gpu")]
-    pub fn flush_delivery(
-        &mut self,
-    ) -> Result<Option<crate::sink::OutputFrame<'_>>, StitchCoreError> {
-        let Executor::Gpu(gpu) = &mut self.executor else {
-            return Err(StitchCoreError::RequiresGpu);
-        };
-        Ok(gpu.flush_delivery()?)
-    }
-
-    /// Render and read back NV12 for the preview-mode recording tap.
-    ///
-    /// Requires an NV12 delivery target. Drain the tail with [`Self::flush_nv12`].
+    /// Encodes limited-range NV12 using the first camera's YUV matrix.
+    /// Requires an NV12 delivery target. Returns `None` during readback
+    /// warmup, then the oldest completed frame. Drain the tail with
+    /// [`Self::flush_nv12`].
     #[cfg(feature = "gpu")]
     pub fn render_and_readback_nv12(
         &mut self,
-        frames: &crate::source::FrameSet,
+        frame: &super::PreviewFrame,
         pose: RenderPose,
     ) -> Result<Option<&[u8]>, StitchCoreError> {
         if self.delivery_format() != crate::sink::DeliveryFormat::Nv12 {
@@ -381,9 +314,13 @@ impl super::StitchCore {
                 "preview recording requires NV12 delivery".into(),
             ));
         }
-        Ok(self
-            .render_and_readback_delivery(frames, pose, None)?
-            .map(|frame| frame.data))
+        let gpu = self
+            .executor
+            .gpu_mut()
+            .ok_or(StitchCoreError::RequiresGpu)?;
+        let cmd = gpu.pipeline.draw_preview(frame, pose, None)?;
+        gpu.set_delivery_matrix(frame.camera(0).1.color.matrix);
+        Ok(gpu.convert_delivery(cmd, None)?.map(|frame| frame.data))
     }
 
     /// Drain one pending NV12 frame from the preview recording tap.
@@ -394,7 +331,11 @@ impl super::StitchCore {
                 "preview recording requires NV12 delivery".into(),
             ));
         }
-        Ok(self.flush_delivery()?.map(|frame| frame.data))
+        let gpu = self
+            .executor
+            .gpu_mut()
+            .ok_or(StitchCoreError::RequiresGpu)?;
+        Ok(gpu.flush_delivery()?.map(|frame| frame.data))
     }
 
     // Session encoding combines a single frame's rendering and conversion in one submission.

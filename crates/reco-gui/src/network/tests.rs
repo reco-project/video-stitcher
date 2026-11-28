@@ -159,7 +159,7 @@ fn live_playback_polls_pauses_and_preserves_the_displayed_image_on_failure() {
         std::thread::sleep(Duration::from_millis(2));
     }
     assert_eq!(playback.state(), PlayState::Paused);
-    assert!(playback.current_frame().is_some());
+    assert!(playback.decoded_selection().is_some());
     drop(playback);
     drop(cleanup);
 }

@@ -157,7 +157,11 @@ impl GpuExecutor {
 
     pub(super) fn set_source_color(&mut self, color: crate::render::color::YuvColor) {
         self.pipeline.set_source_color(color);
-        let delivery = crate::render::color::YuvColor::delivery(color.matrix);
+        self.set_delivery_matrix(color.matrix);
+    }
+
+    pub(crate) fn set_delivery_matrix(&mut self, matrix: crate::render::color::YuvMatrix) {
+        let delivery = crate::render::color::YuvColor::delivery(matrix);
         if self.delivery_color != delivery {
             self.delivery = None;
             self.delivery_color = delivery;
@@ -382,9 +386,8 @@ impl GpuExecutor {
             .d3d11_staging
             .as_mut()
             .ok_or_else(|| "D3D11 staging pool not created".to_string())?;
-        // The source retains every decoded texture until the session asks for
-        // another frame, after this synchronous staging call has completed.
-        unsafe { pool.stage_frames(frames, slot) }.map_err(|e| format!("D3D11 staging: {e}"))
+        pool.stage_frames(frames, slot)
+            .map_err(|e| format!("D3D11 staging: {e}"))
     }
 
     /// Complete frame slot assigned round-robin by sequence number.

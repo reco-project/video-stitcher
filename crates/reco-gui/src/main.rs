@@ -617,23 +617,20 @@ impl AppState {
         &self,
         cal: &Calibration,
         source_sizes: Vec<(u32, u32)>,
-        color: reco_core::render::color::YuvColor,
     ) -> Result<PreviewBridge, String> {
         let gpu = self
             .shared_gpu
             .as_ref()
             .ok_or("GPU preview unavailable")?
             .clone();
-        let mut bridge = PreviewBridge::new(
+        PreviewBridge::new(
             gpu,
             cal.clone(),
             source_sizes,
             PREVIEW_WIDTH_DEFAULT,
             PREVIEW_HEIGHT_DEFAULT,
         )
-        .map_err(|e| format!("GPU init error: {e}"))?;
-        bridge.engine_mut().set_source_color(color);
-        Ok(bridge)
+        .map_err(|e| format!("GPU init error: {e}"))
     }
 
     /// Apply validated editor geometry without waiting for derived coverage.
@@ -820,7 +817,7 @@ impl AppState {
             if sizes.len() != cal.projection.camera_count() {
                 return Err("Disconnect live inputs before changing the camera count.".into());
             }
-            let bridge = self.build_bridge(cal, sizes, self.playback.yuv_color())?;
+            let bridge = self.build_bridge(cal, sizes)?;
             self.bridge = Some(bridge);
             self.reset_view();
             return Ok(());
@@ -840,7 +837,10 @@ impl AppState {
             .ok_or("No input dimensions")?
             .to_vec();
 
-        let bridge = self.build_bridge(cal, source_sizes, playback.yuv_color())?;
+        let mut bridge = self.build_bridge(cal, source_sizes)?;
+        playback
+            .prepare_preview(bridge.engine_mut())
+            .map_err(|e| e.to_string())?;
 
         self.cancel_calibration();
         self.stop_recording();
@@ -949,31 +949,27 @@ impl AppState {
         self.recording_tx.is_some()
     }
 
-    /// Render the current frame. With zero-copy texture sharing, the
-    /// same path works for both playback ticks and seek/step — no more
-    /// sync vs async distinction.
+    /// Redraw the accepted frame, preparing a new selection when one is available.
     fn render_current(&mut self) -> Option<slint::Image> {
+        let engine = self.bridge.as_mut()?.engine_mut();
+        if let Err(e) = self.playback.prepare_preview(engine) {
+            log::error!("Preview preparation failed: {e}");
+            return None;
+        }
         if !self.lens_preview_active && !self.clamp_targets() {
             return None;
         }
-        let frame = self.playback.current_frame()?;
+        let recording = self.is_recording();
+        let frame = self.playback.preview()?;
+        let bridge = self.bridge.as_mut()?;
 
         // Lens preview mode: render single camera flat
         if self.lens_preview_active {
-            let bridge = self.bridge.as_mut()?;
             let cal = bridge.engine().calibration();
             let camera = usize::from(self.lens_preview_side == "right");
-            let reco_core::source::FrameSet::Yuv420p(cameras) = frame else {
-                return None;
-            };
-            let planes = cameras.get(camera)?.as_planes();
+            let size = *bridge.engine().source_sizes().get(camera)?;
             let params = cal.lenses.get(camera)?.clone();
-            return match bridge.render_lens_preview(
-                &planes,
-                cameras[camera].size,
-                &params,
-                self.playback.yuv_color(),
-            ) {
+            return match bridge.render_lens_preview(frame, camera, size, &params) {
                 Ok(img) => Some(img),
                 Err(e) => {
                     log::error!("Lens preview error: {e}");
@@ -984,9 +980,7 @@ impl AppState {
 
         let pose = self.pose.current_pose();
 
-        let recording = self.is_recording();
         if recording {
-            let bridge = self.bridge.as_mut().unwrap();
             let (w, h) = bridge.viewport_size();
 
             // Encode the accepted interactive pose, also used by the display below.
@@ -1011,7 +1005,6 @@ impl AppState {
             // The display render is cheap compared to the NV12 readback
             // but we skip most frames to keep encoding smooth.
             if self.recording_frames.is_multiple_of(5) {
-                let bridge = self.bridge.as_mut().unwrap();
                 match bridge.render_frame(frame, pose) {
                     Ok(img) => return Some(img),
                     Err(e) => log::error!("Preview render error: {e}"),
@@ -1019,7 +1012,7 @@ impl AppState {
             }
             None
         } else {
-            match self.bridge.as_mut()?.render_frame(frame, pose) {
+            match bridge.render_frame(frame, pose) {
                 Ok(img) => Some(img),
                 Err(e) => {
                     log::error!("Render error: {e}");
@@ -1151,11 +1144,6 @@ impl AppState {
                 );
                 crate::toast::sync_to_ui(&self.toasts, app);
                 return;
-            }
-            if let Some(bridge) = &mut self.bridge {
-                bridge
-                    .engine_mut()
-                    .set_source_color(self.playback.yuv_color());
             }
             self.preview_dirty = true;
         }

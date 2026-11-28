@@ -106,47 +106,24 @@ fn repeated_host_frames_remain_correct_after_mutation_and_borrowed_uploads() {
         assert!(original.chunks_exact(4).any(|rgba| rgba[0] > 16));
         assert_eq!(pipeline.upload_frame_set(&input).unwrap(), 0);
         assert_eq!(render(&mut pipeline, &input), original);
-        let alternate = frames(format, 180);
-        let commands = match &alternate {
-            FrameSet::Yuv420p(cameras) => pipeline
-                .render_to_target(
-                    &cameras[0].as_planes(),
-                    &cameras[1].as_planes(),
-                    RenderPose::default(),
-                )
-                .unwrap(),
-            FrameSet::Nv12(cameras) => pipeline
-                .render_nv12(
-                    &cameras.iter().map(|c| c.as_planes()).collect::<Vec<_>>(),
-                    RenderPose::default(),
-                )
-                .unwrap(),
-            _ => unreachable!(),
-        };
-        assert!(pipeline.uploaded.iter().all(Option::is_none));
-        assert_ne!(pixels(&pipeline, commands), original);
-        assert_eq!(pipeline.upload_frame_set(&input).unwrap(), 2);
-        assert_eq!(render(&mut pipeline, &input), original);
+        if let FrameSet::Nv12(cameras) = frames(format, 180) {
+            let pose = RenderPose::default();
+            let left = cameras[0].as_planes();
+            let right = cameras[1].as_planes();
+            let commands = pipeline.render_nv12(&[left, right], pose).unwrap();
+            assert!(pipeline.uploaded.iter().all(Option::is_none));
+            assert_ne!(pixels(&pipeline, commands), original);
+            assert_eq!(pipeline.upload_frame_set(&input).unwrap(), 2);
+            assert_eq!(render(&mut pipeline, &input), original);
 
-        let failed = match &alternate {
-            FrameSet::Yuv420p(cameras) => {
-                let mut invalid = cameras[1].as_planes();
-                invalid.u = &[];
-                pipeline.render_to_target(&cameras[0].as_planes(), &invalid, RenderPose::default())
-            }
-            FrameSet::Nv12(cameras) => {
-                let mut invalid = cameras[1].as_planes();
-                invalid.uv = &[];
-                pipeline.render_nv12(&[cameras[0].as_planes(), invalid], RenderPose::default())
-            }
-            _ => unreachable!(),
-        };
-        assert!(failed.is_err());
-        assert_eq!(
-            render(&mut pipeline, &input),
-            original,
-            "restore even a partially overwritten upload"
-        );
+            let invalid = Nv12Planes { uv: &[], ..right };
+            assert!(pipeline.render_nv12(&[left, invalid], pose).is_err());
+            assert_eq!(
+                render(&mut pipeline, &input),
+                original,
+                "restore even a partially overwritten upload"
+            );
+        }
 
         let mut invalid = frames(format, 180);
         match &mut invalid {

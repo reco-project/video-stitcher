@@ -512,11 +512,20 @@ mod tests {
                             .collect(),
                     )
                 };
+                let preview_inputs = match &frames {
+                    FrameSet::Yuv420p(cameras) => FrameSet::Yuv420p(cameras.clone()),
+                    FrameSet::Nv12(cameras) => FrameSet::Nv12(cameras.clone()),
+                    _ => unreachable!(),
+                };
                 let mut executor = GpuExecutor::new(gpu.clone(), {
                     let source_sizes = vec![(w, h); cal.projection.camera_count()];
                     GpuExecutorConfig::new(cal.clone(), source_sizes, format)
                 })
                 .unwrap();
+                let prepared = executor
+                    .pipeline
+                    .prepare_preview_frame(preview_inputs, Default::default(), [0; 2])
+                    .unwrap();
                 for (width, height) in [(80, 48), (48, 80)] {
                     executor.pipeline.resize(width, height).unwrap();
                     for (invalid_width, invalid_height) in
@@ -569,10 +578,11 @@ mod tests {
                             pitch: 0.1,
                             fov_degrees: 55.0,
                         };
-                        executor
+                        let draw = executor
                             .pipeline
-                            .render_to_view(&frames, pose, &view)
+                            .draw_preview(&prepared, pose, Some(&view))
                             .unwrap();
+                        gpu.queue().submit(Some(draw));
                         let empty = gpu
                             .device
                             .create_command_encoder(&Default::default())
@@ -593,7 +603,10 @@ mod tests {
                             "cameras={count}, format={format:?}, {width}x{height}, yaw={yaw}"
                         );
                         assert!(preview.chunks_exact(4).any(|pixel| pixel[0] > 32));
-                        let cmd = executor.pipeline.render_frame_set(&frames, pose).unwrap();
+                        let cmd = executor
+                            .pipeline
+                            .draw_preview(&prepared, pose, None)
+                            .unwrap();
                         readback
                             .readback(&gpu, executor.pipeline.render_target(), cmd)
                             .unwrap();
@@ -606,7 +619,11 @@ mod tests {
                     assert!(
                         executor
                             .pipeline
-                            .render_to_view(&FrameSet::Nv12(vec![]), RenderPose::default(), &view)
+                            .prepare_preview_frame(
+                                FrameSet::Nv12(vec![]),
+                                Default::default(),
+                                [0; 2]
+                            )
                             .is_err()
                     );
                     let short = FrameSet::Nv12(
@@ -624,7 +641,7 @@ mod tests {
                     assert!(
                         executor
                             .pipeline
-                            .render_to_view(&short, RenderPose::default(), &view)
+                            .prepare_preview_frame(short, Default::default(), [0; 2])
                             .is_err()
                     );
                 }

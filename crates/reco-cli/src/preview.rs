@@ -21,7 +21,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use reco_control::ControlIntent;
-use reco_core::core::StitchCore;
+use reco_core::core::{PreviewFrame, StitchCore};
 use reco_core::render::viewport::ViewportSize;
 use reco_core::sink::{OutputFrame, OutputSink, PixelFormat};
 use reco_core::source::{FrameSet, FrameSource};
@@ -128,12 +128,6 @@ pub fn run_preview(
         info.camera_sizes[0].0, info.camera_sizes[0].1, width, height
     );
 
-    // Get the first frame for initial display
-    let first = source
-        .next_frame()?
-        .ok_or_else(|| anyhow::anyhow!("videos have no frames"))?
-        .images;
-
     let event_loop = EventLoop::new()?;
 
     let frame_duration = std::time::Duration::from_secs_f64(1.0 / info.fps);
@@ -154,7 +148,7 @@ pub fn run_preview(
         source_sizes: info.camera_sizes.clone(),
         width,
         height,
-        current_frame: first,
+        preview: None,
 
         pose: {
             use reco_control::pose_control::{PoseControl, PoseControlConfig};
@@ -173,7 +167,7 @@ pub fn run_preview(
                 },
             })?
         },
-        frame_count: 1,
+        frame_count: 0,
         playing: false,
         needs_redraw: false,
         frame_duration,
@@ -216,7 +210,7 @@ struct App {
     source_sizes: Vec<(u32, u32)>,
     width: u32,
     height: u32,
-    current_frame: FrameSet,
+    preview: Option<PreviewFrame>,
     /// Requested and accepted render-space pose, with no temporal smoothing.
     pose: reco_control::pose_control::PoseControl,
     frame_count: u64,
@@ -370,15 +364,37 @@ impl App {
         self.needs_redraw = true;
     }
 
+    fn accept_frame(&mut self, images: FrameSet) -> bool {
+        let Some(renderer) = self.renderer.as_mut() else {
+            return false;
+        };
+        let source = self.source.as_ref().expect("decoded frame has a source");
+        match renderer.prepare_preview_frame(
+            images,
+            source.yuv_color(),
+            [source.left_rotation(), source.right_rotation()],
+        ) {
+            Ok(frame) => {
+                self.preview = Some(frame);
+                self.frame_count += 1;
+                self.needs_redraw = true;
+                true
+            }
+            Err(e) => {
+                self.playing = false;
+                eprintln!("Preview preparation failed: {e}");
+                false
+            }
+        }
+    }
+
     fn advance_frame(&mut self) {
         let Some(ref mut source) = self.source else {
             return;
         };
         match source.try_next_frame() {
             Ok(Some(frame)) => {
-                self.current_frame = frame.images;
-                self.frame_count += 1;
-                self.needs_redraw = true;
+                self.accept_frame(frame.images);
             }
             Ok(None) => {
                 if source.is_exhausted() {
@@ -399,12 +415,7 @@ impl App {
             return false;
         };
         match source.next_frame() {
-            Ok(Some(frame)) => {
-                self.current_frame = frame.images;
-                self.frame_count += 1;
-                self.needs_redraw = true;
-                true
-            }
+            Ok(Some(frame)) => self.accept_frame(frame.images),
             Ok(None) => {
                 self.playing = false;
                 println!("End of video");
@@ -438,6 +449,9 @@ impl App {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if self.window.is_some() {
+            return;
+        }
         let attrs = WindowAttributes::default()
             .with_title("Reco Preview")
             .with_inner_size(winit::dpi::PhysicalSize::new(self.width, self.height));
@@ -504,11 +518,7 @@ impl ApplicationHandler for App {
             },
         )
         .expect("create executor");
-        let mut renderer =
-            StitchCore::new(Executor::Gpu(Box::new(executor))).expect("create engine");
-        if let Some(source) = &self.source {
-            renderer.set_source_color(source.yuv_color());
-        }
+        let renderer = StitchCore::new(Executor::Gpu(Box::new(executor))).expect("create engine");
         let initial_world = reco_core::geometry::WorldPose {
             fov_degrees: self.pose.target_pose().fov_degrees,
             ..Default::default()
@@ -533,7 +543,10 @@ impl ApplicationHandler for App {
         self.surface = Some(surface);
         self.renderer = Some(renderer);
         self.window = Some(window);
-        self.needs_redraw = true;
+        if !self.step_frame() {
+            self.failure = Some("Could not prepare the first video frame".into());
+            event_loop.exit();
+        }
     }
 
     fn window_event(
@@ -788,8 +801,11 @@ impl ApplicationHandler for App {
                         ..Default::default()
                     });
 
+                let Some(preview) = self.preview.as_ref() else {
+                    return;
+                };
                 let render = self.pose.current_pose();
-                if let Err(e) = renderer.render_to_view(&self.current_frame, render, &view) {
+                if let Err(e) = renderer.render_to_view(preview, render, &view) {
                     log::error!("Render failed: {e}");
                     return;
                 }
@@ -798,7 +814,7 @@ impl ApplicationHandler for App {
                 if self.recording.is_some() && self.record_frame {
                     self.record_frame = false;
                     let (width, height) = renderer.output_dims();
-                    match renderer.render_and_readback_nv12(&self.current_frame, render) {
+                    match renderer.render_and_readback_nv12(preview, render) {
                         Ok(Some(nv12)) => {
                             if let Some(ref mut enc) = self.recording
                                 && let Err(e) = enc.consume(OutputFrame {
