@@ -9,7 +9,7 @@ extern crate ffmpeg_next as ffmpeg;
 
 use super::EncodeError;
 use super::catalog::{EncoderFamily, QualityModel, find_encoder_spec};
-use crate::output::{Quality, QualityPreset};
+use crate::output::{BitDepth, Quality, QualityPreset};
 
 /// Scale a 1080p-tuned bitrate ceiling (Mbps) by output pixel count, so
 /// higher resolutions get a proportionally higher cap. Clamped to
@@ -297,6 +297,7 @@ pub(super) fn build_encoder_opts(
     preset_override: Option<&str>,
     width: u32,
     height: u32,
+    bit_depth: BitDepth,
 ) -> ffmpeg::Dictionary<'static> {
     let mut opts = ffmpeg::Dictionary::new();
 
@@ -333,6 +334,10 @@ pub(super) fn build_encoder_opts(
         if let Some(q) = quality_override {
             apply_fallback_numeric_quality(&mut opts, name, q, &mbps);
         }
+    }
+
+    if bit_depth == BitDepth::Ten {
+        opts.set("profile", "main10");
     }
 
     // Apply preset override.

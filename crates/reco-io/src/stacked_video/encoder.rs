@@ -3,7 +3,7 @@
 //! Uses Matroska and automatic encoder selection by default. Planar input is interleaved when the encoder requires NV12. Consumers configure encoding through [`StackedEncoderConfig`].
 use super::{GridLayout, StackError, pack_yuv420p};
 use crate::ffmpeg::encoder::{EncodeError, EncoderConfig, VideoEncoder};
-use crate::output::{Codec, Container, Quality, QualityPreset};
+use crate::output::{BitDepth, Codec, Container, Quality, QualityPreset};
 use reco_core::source::Yuv420pFrame;
 use std::path::Path;
 use thiserror::Error;
@@ -94,6 +94,12 @@ impl StackedEncoder {
         output_path: &Path,
         config: StackedEncoderConfig,
     ) -> Result<Self, StackedEncodeError> {
+        if config.inner.bit_depth == BitDepth::Ten {
+            return Err(EncodeError::InvalidConfig(
+                "stacked video requires 8-bit YUV420P input".into(),
+            )
+            .into());
+        }
         let (fps_num, fps_den) = config.fps.unwrap_or_else(|| {
             log::warn!(
                 "StackedEncoder opened without an fps; defaulting to 30fps - \

@@ -1021,7 +1021,8 @@ pub struct FfmpegFileEncoder {
 
 #[cfg(feature = "ffmpeg")]
 impl FfmpegFileEncoder {
-    /// Encode rendered frames as limited-range NV12 using the configured colour matrix.
+    /// Encode limited-range rendered frames using the configured colour matrix.
+    /// The sink requests NV12 for 8-bit output or P010LE for 10-bit output.
     ///
     /// Raw camera planes belong in [`ffmpeg::encoder::VideoEncoder`] instead.
     pub fn new(
@@ -1088,19 +1089,14 @@ impl OutputSink for FfmpegFileEncoder {
     }
 
     fn wants(&self) -> SinkInput {
-        SinkInput::CpuBytes(PixelFormat::Nv12)
+        SinkInput::CpuBytes(self.inner.input_pixel_format())
     }
 
     fn consume(&mut self, frame: OutputFrame<'_>) -> Result<(), SinkError> {
         let result = match frame.format {
             PixelFormat::Nv12 => self.inner.write_nv12_frame(frame.data, frame.pts_us),
             PixelFormat::Rgba8 => self.inner.write_frame(frame.data, frame.pts_us),
-            PixelFormat::P010 => {
-                return Err(SinkError::Consume {
-                    frame_index: None,
-                    reason: "this encoder accepts NV12 or 8-bit RGBA frames".into(),
-                });
-            }
+            PixelFormat::P010 => self.inner.write_p010_frame(frame.data, frame.pts_us),
         };
         result.map_err(|e| match e {
             ffmpeg::encoder::EncodeError::Cancelled => SinkError::Cancelled,
