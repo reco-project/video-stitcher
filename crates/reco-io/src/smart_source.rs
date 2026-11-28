@@ -117,12 +117,13 @@ impl SmartFileSource {
         };
         let left_probe_path = left.first_path();
 
-        let probe = crate::ffmpeg::decoder::VideoDecoder::open(left_probe_path).map_err(|e| {
-            SourceError::Init {
-                path: left_probe_path.display().to_string(),
-                reason: format!("{e}"),
-            }
-        })?;
+        let probe =
+            crate::ffmpeg::decoder::VideoDecoder::open_input_probe(left, false).map_err(|e| {
+                SourceError::Init {
+                    path: left_probe_path.display().to_string(),
+                    reason: format!("{e}"),
+                }
+            })?;
 
         let fps_r = probe.frame_rate();
         let mut info = SourceInfo {
@@ -142,12 +143,10 @@ impl SmartFileSource {
         let mut matching_layout = true;
         let mut camera_colors = vec![first_color];
         for (camera, input) in inputs.iter().enumerate().skip(1) {
-            let probe =
-                crate::ffmpeg::decoder::VideoDecoder::open(input.first_path()).map_err(|e| {
-                    SourceError::Init {
-                        path: input.first_path().display().to_string(),
-                        reason: e.to_string(),
-                    }
+            let probe = crate::ffmpeg::decoder::VideoDecoder::open_input_probe(input, false)
+                .map_err(|e| SourceError::Init {
+                    path: input.first_path().display().to_string(),
+                    reason: e.to_string(),
                 })?;
             if probe.is_full_range() != full_range {
                 return Err(SourceError::Init {
@@ -316,6 +315,12 @@ impl SmartFileSource {
             SourceMode::Native(native) => Some(native.shared_texture_set()),
             SourceMode::Cpu(_) => None,
         }
+    }
+}
+
+impl crate::stacked_video::replay::ReplaySource for SmartFileSource {
+    fn replay_color_metadata(&self) -> crate::ffmpeg::ColorMetadata {
+        self.color_metadata()
     }
 }
 

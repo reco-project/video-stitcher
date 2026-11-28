@@ -289,8 +289,9 @@ impl FfmpegFileSource {
     ///
     /// Accepts `InputPath` to support chained multi-segment files
     /// (GoPro/DJI auto-split). Format, fps, and decode backend are
-    /// probed from input 0's first segment; rotation is probed per
-    /// input. The frame-count estimate uses the shortest input.
+    /// probed from input 0's first segment. Rotation is probed per
+    /// input. Each chain must keep the same colour description and range.
+    /// The frame-count estimate uses the shortest input.
     pub fn open_inputs(
         inputs: &[crate::stitch_job::InputPath],
         sync_offset: i64,
@@ -307,12 +308,9 @@ impl FfmpegFileSource {
         }
 
         let probe_path = first.first_path();
-        let open_probe = if software_decode {
-            ffmpeg::decoder::VideoDecoder::open_software
-        } else {
-            ffmpeg::decoder::VideoDecoder::open
-        };
-        let probe = open_probe(probe_path).map_err(|e| SourceError::Init {
+        let open_probe =
+            |input| ffmpeg::decoder::VideoDecoder::open_input_probe(input, software_decode);
+        let probe = open_probe(first).map_err(|e| SourceError::Init {
             path: probe_path.display().to_string(),
             reason: format!("{e}"),
         })?;
@@ -342,7 +340,7 @@ impl FfmpegFileSource {
         let mut rotations = vec![first_rotation];
         let mut camera_colors = vec![first_color];
         for input in &inputs[1..] {
-            let d = open_probe(input.first_path()).map_err(|e| SourceError::Init {
+            let d = open_probe(input).map_err(|e| SourceError::Init {
                 path: input.first_path().display().to_string(),
                 reason: e.to_string(),
             })?;
@@ -894,6 +892,13 @@ mod decode_tests {
                 joiner.join().unwrap();
             }
         }
+    }
+}
+
+#[cfg(feature = "ffmpeg")]
+impl crate::stacked_video::replay::ReplaySource for FfmpegFileSource {
+    fn replay_color_metadata(&self) -> crate::ffmpeg::ColorMetadata {
+        self.color_metadata()
     }
 }
 

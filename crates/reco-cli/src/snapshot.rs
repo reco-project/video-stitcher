@@ -42,7 +42,7 @@ pub struct SnapshotWriter {
 }
 
 impl SnapshotWriter {
-    /// Create a snapshot sink writing to `dir/snapshot.jpg`.
+    /// Create a limited-range BT.709 NV12 snapshot sink writing to `dir/snapshot.jpg`.
     ///
     /// The directory is created if it does not exist.
     pub fn new(dir: &Path, interval: u64) -> std::io::Result<Self> {
@@ -169,7 +169,6 @@ fn write_snapshot(job: &SnapshotJob, snapshot_path: &Path, tmp_path: &Path) -> a
             let yi = row * w + col;
             let uv_idx = (row / 2) * w + (col & !1);
 
-            // Both core output converters produce BT.709 limited-range NV12.
             let colour = yuv_to_rgb(
                 y_plane[yi] as f64 / 255.0,
                 uv_plane[uv_idx] as f64 / 255.0,

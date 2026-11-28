@@ -309,7 +309,7 @@ impl GpuUndistort {
         }
     }
 
-    /// Undistort a YUV420P frame using the GPU.
+    /// Undistort a limited-range BT.709 YUV420P frame using the GPU.
     ///
     /// Uses `build_gpu_uniforms` from the stitching renderer for identical
     /// intrinsic computation. Returns RGBA (`width * height * 4` bytes).

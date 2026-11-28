@@ -152,24 +152,30 @@ impl ColorMetadata {
         metadata
     }
 
-    /// Resolve a shared colour description for compositing.
-    pub(crate) fn reconcile(cameras: &[Self]) -> Result<(Self, YuvMatrix), String> {
+    /// Compare effective tags, including the defaults for untagged SDR.
+    pub(crate) fn matches_description(self, other: Self) -> Result<bool, String> {
         use ffmpeg::color::{Primaries, TransferCharacteristic};
 
+        let left = self.normalized();
+        let right = other.normalized();
+        Ok(left.matrix()? == right.matrix()?
+            && left.primaries.unwrap_or(Primaries::BT709)
+                == right.primaries.unwrap_or(Primaries::BT709)
+            && left.transfer.unwrap_or(TransferCharacteristic::BT709)
+                == right.transfer.unwrap_or(TransferCharacteristic::BT709))
+    }
+
+    /// Resolve a shared colour description for compositing.
+    pub(crate) fn reconcile(cameras: &[Self]) -> Result<(Self, YuvMatrix), String> {
         let Some((&first, rest)) = cameras.split_first() else {
             return Ok((Self::default(), YuvMatrix::Bt709));
         };
         let first = first.normalized();
         let matrix = first.matrix()?;
-        let primaries = |metadata: Self| metadata.primaries.unwrap_or(Primaries::BT709);
-        let transfer = |metadata: Self| metadata.transfer.unwrap_or(TransferCharacteristic::BT709);
         let mut shared = first;
         for (index, &other) in rest.iter().enumerate() {
             let other = other.normalized();
-            if other.matrix()? != matrix
-                || primaries(other) != primaries(first)
-                || transfer(other) != transfer(first)
-            {
+            if !first.matches_description(other)? {
                 return Err(format!(
                     "camera color metadata differ (camera 0: {first}; camera {}: {other})",
                     index + 1,

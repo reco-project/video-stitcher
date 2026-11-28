@@ -609,6 +609,12 @@ impl RtspSource {
     }
 }
 
+impl crate::stacked_video::replay::ReplaySource for RtspSource {
+    fn replay_color_metadata(&self) -> crate::ffmpeg::ColorMetadata {
+        self.color_metadata()
+    }
+}
+
 impl FrameSource for RtspSource {
     fn info(&self) -> SourceInfo {
         self.info.clone()

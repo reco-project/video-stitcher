@@ -110,11 +110,7 @@ pub enum PackerError {
     InvalidDimensions(String),
 }
 
-/// Shader-side uniform layout. 10 × u32 = 40 bytes; padded to 48
-/// bytes for std140 alignment on backends that require 16-byte
-/// struct boundaries. Kept here in Rust rather than relying on
-/// automatic bindgen so the byte layout is obviously correct when
-/// reading the shader source.
+/// Shader-side uniform layout, ten consecutive u32 fields.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 struct PackParams {
@@ -127,7 +123,7 @@ struct PackParams {
     y_plane_u32_offset: u32,
     u_plane_u32_offset: u32,
     v_plane_u32_offset: u32,
-    _pad: u32,
+    sample_encoding: u32,
 }
 
 /// Staging ring depth. Same 3-slot pipelining as [`Nv12Converter`]:
@@ -146,8 +142,8 @@ pub enum SourceFormat {
     /// Three separate R8Unorm textures (Y full-res, U half-res,
     /// V half-res). Matches `InputFormat::Yuv420p`.
     Yuv420p,
-    /// Y as R8Unorm (full-res) + UV interleaved as Rg8Unorm
-    /// (half-res). The third texture slot is a 1×1 dummy; the
+    /// NV12 or P010: full-resolution Y and interleaved half-resolution UV.
+    /// The third texture slot is a 1×1 dummy; the
     /// pack shader never samples it. Matches `InputFormat::Nv12`
     /// and NVDEC / Jetson ISP GPU-resident decode output.
     Nv12,
@@ -210,14 +206,14 @@ pub enum StackedPackSource<'a> {
         /// V plane view (R8Unorm / R16Unorm, half-res).
         v: &'a wgpu::TextureView,
     },
-    /// NV12 interleaved: Y full-res, UV interleaved half-res.
+    /// NV12 or P010: Y full-res, UV interleaved half-res.
     /// The packer's built-in 1×1 dummy texture is substituted at
     /// binding 2 so the bind group layout stays stable across
     /// both source-format variants.
     Nv12 {
-        /// Y plane view (R8Unorm, full-res).
+        /// Y plane view (R8Unorm or R16Unorm, full-res).
         y: &'a wgpu::TextureView,
-        /// UV plane view (Rg8Unorm, half-res, interleaved).
+        /// UV plane view (Rg8Unorm or Rg16Unorm, half-res, interleaved).
         uv: &'a wgpu::TextureView,
     },
 }
@@ -261,6 +257,7 @@ pub struct StackedAtlas {
 pub struct YuvStackPacker {
     /// Which source format the kernels are configured for.
     source_format: SourceFormat,
+    full_range: bool,
     /// Pipelines for the plane-packing kernels. For Yuv420p all
     /// three (Y/U/V) are dispatched; for Nv12 only `pipeline_y`
     /// and `pipeline_uv_nv12` are dispatched.
@@ -533,6 +530,7 @@ impl YuvStackPacker {
 
         Ok(Self {
             source_format,
+            full_range: false,
             pipeline_y,
             pipeline_u,
             pipeline_v,
@@ -579,6 +577,11 @@ impl YuvStackPacker {
         )
     }
 
+    /// Select full-range quantization for P010 input. The default is limited range.
+    pub fn set_full_range(&mut self, full_range: bool) {
+        self.full_range = full_range;
+    }
+
     /// Dispatch the three plane kernels for one tile.
     ///
     /// `tile_index` is the row-major slot the tile occupies in the
@@ -607,6 +610,11 @@ impl YuvStackPacker {
         );
 
         let atlas_w = self.output.width * self.layout.cols;
+        let p010 = self.source_format == SourceFormat::Nv12
+            && matches!(
+                src_y.texture().format(),
+                wgpu::TextureFormat::R16Unorm | wgpu::TextureFormat::P010
+            );
         let params = PackParams {
             tile_y_row_offset: self.layout.tile_row(tile_index) * self.output.height,
             tile_y_col_offset: self.layout.tile_col(tile_index) * self.output.width,
@@ -617,7 +625,7 @@ impl YuvStackPacker {
             y_plane_u32_offset: 0,
             u_plane_u32_offset: self.y_plane_bytes / 4,
             v_plane_u32_offset: (self.y_plane_bytes + self.uv_plane_bytes) / 4,
-            _pad: 0,
+            sample_encoding: u32::from(p010) * (1 + u32::from(self.full_range)),
         };
         gpu.queue.write_buffer(
             &self.params_buffers[tile_index as usize],
@@ -1063,5 +1071,72 @@ mod tests {
         assert!(atlas.u[16..].iter().all(|&b| b == 160));
         assert!(atlas.v[..16].iter().all(|&b| b == 70));
         assert!(atlas.v[16..].iter().all(|&b| b == 170));
+    }
+    #[test]
+    #[ignore = "requires a GPU (wgpu adapter init)"]
+    fn p010_vstack_packs_range_aware_codes() {
+        let gpu = GpuContext::new_blocking().expect("GPU init");
+        let layout = StackGridLayout::vstack(8, 8, 2).expect("layout");
+        let out = OutputTileSize::unscaled(8, 8);
+        let mut packer =
+            YuvStackPacker::new(&gpu, layout, out, SourceFormat::Nv12).expect("packer");
+
+        let plane = |size, format, codes: &[u16]| {
+            let extent = wgpu::Extent3d {
+                width: size,
+                height: size,
+                depth_or_array_layers: 1,
+            };
+            let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("P010 test plane"),
+                size: extent,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            });
+            let pixel: Vec<_> = codes.iter().map(|code| code << 6).collect();
+            let data = pixel.repeat((size * size) as usize);
+            gpu.queue.write_texture(
+                texture.as_image_copy(),
+                bytemuck::cast_slice(&data),
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(size * codes.len() as u32 * 2),
+                    rows_per_image: Some(size),
+                },
+                extent,
+            );
+            texture.create_view(&Default::default())
+        };
+
+        for (full_range, [y, u, v], expected) in [
+            (false, [940, 960, 512], [235, 240, 128]),
+            (false, [942, 66, 510], [236, 17, 128]),
+            (true, [1023, 1023, 512], [255, 255, 128]),
+            (true, [512, 0, 515], [128, 0, 129]),
+        ] {
+            packer.set_full_range(full_range);
+            let y = plane(8, wgpu::TextureFormat::R16Unorm, &[y]);
+            let uv = plane(4, wgpu::TextureFormat::Rg16Unorm, &[u, v]);
+            let mut encoder = gpu.device.create_command_encoder(&Default::default());
+            for tile in 0..2 {
+                packer.pack_tile_from_views(
+                    &gpu,
+                    &mut encoder,
+                    tile,
+                    StackedPackSource::Nv12 { y: &y, uv: &uv },
+                );
+            }
+            packer.copy_to_staging(&mut encoder);
+            gpu.queue.submit(Some(encoder.finish()));
+            let atlas = packer.read_oldest(&gpu).expect("packed atlas");
+            for (plane, code) in [&atlas.y, &atlas.u, &atlas.v].into_iter().zip(expected) {
+                assert_eq!(plane[0], code);
+                assert!(plane.iter().all(|&actual| actual == code));
+            }
+        }
     }
 }

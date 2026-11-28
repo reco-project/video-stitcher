@@ -702,6 +702,10 @@ impl StitchPipeline {
         self.renderer.set_full_range(full_range);
     }
 
+    pub(crate) fn source_full_range(&self) -> bool {
+        self.renderer.source_full_range()
+    }
+
     /// Set the interpretation of source YUV samples for every camera.
     pub fn set_source_color(&mut self, color: super::color::YuvColor) {
         self.renderer.set_source_color(color);

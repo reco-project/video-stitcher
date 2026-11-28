@@ -76,6 +76,51 @@ fn raw_replay_preserves_range_and_planes_without_assigning_a_matrix() {
     }
 }
 
+#[test]
+fn replay_wrapper_preserves_source_hlg_and_rejects_an_explicit_matrix_mismatch() {
+    use ffmpeg_next::color::{Primaries, Space, TransferCharacteristic};
+    use reco_core::{render::color::YuvMatrix, source::FrameSource};
+    use reco_io::{ffmpeg::ColorMetadata, stacked_video::replay::ReplayRecordingSource};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("source.mkv");
+    let replay = dir.path().join("replay.mkv");
+    let rejected = dir.path().join("mismatched.mkv");
+    let layout = GridLayout::vstack(TILE_W, TILE_H, 2).unwrap();
+    let metadata = ColorMetadata {
+        primaries: Some(Primaries::BT2020),
+        transfer: Some(TransferCharacteristic::ARIB_STD_B67),
+        space: Some(Space::BT2020NCL),
+    };
+    let mut config = encoder_config(Container::Mkv);
+    config.inner.color_metadata = metadata;
+    let mut writer = StackedEncoder::new(layout, &path, config.clone()).unwrap();
+    writer
+        .push_all(&[&synthetic_tile(0, 0), &synthetic_tile(0, 1)])
+        .unwrap();
+    writer.finish().unwrap();
+
+    let source = StackedSource::open(layout, &path).unwrap();
+    assert_eq!(source.color_metadata(), metadata);
+    config.inner.color_metadata = ColorMetadata::default();
+    let mut recording =
+        ReplayRecordingSource::wrap(Box::new(source), &replay, config.clone()).unwrap();
+    assert!(recording.next_frame().unwrap().is_some());
+    recording.finish().unwrap();
+    let mut reopened = StackedSource::open(layout, &replay).unwrap();
+    assert_eq!(reopened.color_metadata(), metadata);
+    assert_eq!(reopened.yuv_matrix(), YuvMatrix::Bt2020Ncl);
+    assert!(reopened.next_tuple().unwrap().is_some());
+
+    config.inner.color_metadata.space = Some(Space::BT709);
+    let source = StackedSource::open(layout, &path).unwrap();
+    let error = ReplayRecordingSource::wrap(Box::new(source), &rejected, config)
+        .err()
+        .expect("explicit mismatch must be rejected");
+    assert!(error.to_string().contains("replay color matrix"), "{error}");
+    assert!(!rejected.exists());
+}
+
 /// Synthetic tile: fills planes with per-frame/per-tile constant
 /// values so we can recover the written index after decode even
 /// after H.264 lossy compression rounds off.

@@ -26,7 +26,7 @@ pub use hw_frame::{SharedHwDevice, create_shared_hw_device};
 use hw_frame::{attach_shared_hw_device, is_hw_frame, raw_i32_to_pix_fmt, try_hwaccel};
 
 pub(crate) use probe::probe_recording;
-use probe::{concat_seek_durations, is_plausible_rate, pick_frame_rate, stream_rotation};
+use probe::{is_plausible_rate, pick_frame_rate, probe_concat, stream_color, stream_rotation};
 
 use ffmpeg::Rescale;
 use ffmpeg::format::{Pixel, input};
@@ -243,6 +243,28 @@ impl VideoDecoder {
         }
     }
 
+    /// Probe the first segment's stream properties and validate colour across the chain.
+    pub(crate) fn open_input_probe(
+        source: &crate::stitch_job::InputPath,
+        force_software: bool,
+    ) -> Result<Self, DecodeError> {
+        crate::init();
+        let path = source.first_path();
+        let context = input(path)?;
+        let probe = match source {
+            crate::stitch_job::InputPath::Chained(paths) if paths.len() > 1 => {
+                Some(probe_concat(path, &context, &paths[1..])?)
+            }
+            _ => None,
+        };
+        let mut decoder = Self::from_input_context_inner(context, None, force_software, false)?;
+        if let Some(probe) = probe {
+            decoder.is_full_range = probe.full_range;
+            decoder.color_metadata = probe.color;
+        }
+        Ok(decoder)
+    }
+
     /// Open with a pre-created shared hw device.
     ///
     /// Both decoders in a stereo pair must share the same device so D3D11VA
@@ -388,26 +410,13 @@ impl VideoDecoder {
             }
         };
 
-        let (is_full_range, color_metadata) = {
-            let raw_codecpar = unsafe { &*stream.parameters().as_ptr() };
-            let format = Pixel::from(raw_i32_to_pix_fmt(raw_codecpar.format));
-            let full_range = is_full_range(format, raw_codecpar.color_range.into());
-            if full_range {
-                log::debug!(
-                    "Source is full-range YUV (format={format:?}, color_range={:?})",
-                    raw_codecpar.color_range
-                );
-            }
-            let color_metadata = super::ColorMetadata::from_raw(
-                raw_codecpar.color_primaries,
-                raw_codecpar.color_trc,
-                raw_codecpar.color_space,
-            );
-            if !color_metadata.is_empty() {
-                log::debug!("Source colour metadata: {color_metadata}");
-            }
-            (full_range, color_metadata)
-        };
+        let (is_full_range, color_metadata) = stream_color(&stream);
+        if is_full_range {
+            log::debug!("Source is full-range YUV");
+        }
+        if !color_metadata.is_empty() {
+            log::debug!("Source colour metadata: {color_metadata}");
+        }
 
         log::debug!(
             "Decoder: {}x{} {:?}, time_base={}/{}, backend={}",
@@ -491,19 +500,22 @@ impl VideoDecoder {
             };
         }
 
+        let probe = {
+            let first = input(&paths[0])?;
+            probe_concat(&paths[0], &first, &paths[1..])?
+        };
         let mut manifest = tempfile::Builder::new()
             .prefix("reco_concat_")
             .suffix(".txt")
             .tempfile()
             .map_err(|e| DecodeError::Ffmpeg(format!("concat manifest: {e}")))?;
-        let durations = concat_seek_durations(paths);
 
         writeln!(manifest, "ffconcat version 1.0")
             .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
         for (idx, p) in paths.iter().enumerate() {
             writeln!(manifest, "file '{}'", p.display())
                 .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
-            if let Some(durations) = durations.as_ref() {
+            if let Some(durations) = probe.durations.as_ref() {
                 writeln!(manifest, "duration {:.6}", durations[idx])
                     .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
             }
@@ -536,6 +548,8 @@ impl VideoDecoder {
         };
 
         let mut dec = Self::from_input_context_inner(ictx, shared, force_software, false)?;
+        dec.is_full_range = probe.full_range;
+        dec.color_metadata = probe.color;
         dec._manifest = Some(manifest);
         Ok(dec)
     }
@@ -716,14 +730,24 @@ impl VideoDecoder {
                             "decoded color range changed; the source requires a fixed range".into(),
                         ));
                     }
-                    if self.require_timestamps || self._manifest.is_some() {
-                        let frame_color = super::ColorMetadata::from_frame(&self.decoded_frame)
-                            .or(self.color_metadata);
-                        if frame_color != self.color_metadata {
-                            super::ColorMetadata::reconcile(&[self.color_metadata, frame_color])
-                                .map_err(|reason| DecodeError::ConversionError(format!(
-                                    "decoded color metadata changed under a fixed source description: {reason}"
-                                )))?;
+                    let frame_color = super::ColorMetadata::from_frame(&self.decoded_frame)
+                        .or(self.color_metadata);
+                    if frame_color != self.color_metadata {
+                        let changed = || {
+                            format!(
+                                "decoded color metadata changed under a fixed source description (opening: {}; frame: {frame_color})",
+                                self.color_metadata,
+                            )
+                        };
+                        match self.color_metadata.matches_description(frame_color) {
+                            Ok(true) => {}
+                            Ok(false) => return Err(DecodeError::ConversionError(changed())),
+                            Err(reason) => {
+                                return Err(DecodeError::ConversionError(format!(
+                                    "{}: {reason}",
+                                    changed()
+                                )));
+                            }
                         }
                     }
                     #[cfg(target_os = "windows")]

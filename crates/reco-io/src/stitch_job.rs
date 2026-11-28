@@ -971,10 +971,12 @@ impl StitchJob {
                     crate::ffmpeg::encoder::VideoEncoder::replay_encoder_name(&enc_name)
                         .map(String::from);
             }
-            cfg.encoder_config.full_range = source.is_full_range();
-            if cfg.encoder_config.inner.color_metadata.is_empty() {
-                cfg.encoder_config.inner.color_metadata = source_color;
-            }
+            crate::stacked_video::replay::configure_replay_color(
+                &mut cfg.encoder_config,
+                source.as_ref(),
+                source_color,
+            )
+            .map_err(|e| StitchError::Other(format!("replay recording color: {e}")))?;
             if cfg.encoder_config.fps.is_none() {
                 cfg.encoder_config.fps = Some(fps_rational);
                 log::info!(
@@ -1121,7 +1123,7 @@ impl StitchJob {
                         cfg.path.display(),
                     );
                     source = Box::new(
-                        crate::stacked_video::replay::ReplayRecordingSource::wrap(
+                        crate::stacked_video::replay::ReplayRecordingSource::wrap_configured(
                             source,
                             &cfg.path,
                             *cfg.encoder_config,

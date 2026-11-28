@@ -836,6 +836,10 @@ impl Renderer {
         self.color.full_range = full_range;
     }
 
+    pub(crate) fn source_full_range(&self) -> bool {
+        self.color.full_range
+    }
+
     pub(crate) fn set_source_color(&mut self, color: super::color::YuvColor) {
         self.color = color;
     }

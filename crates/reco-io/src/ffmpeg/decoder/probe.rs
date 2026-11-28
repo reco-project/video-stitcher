@@ -1,19 +1,23 @@
 //! Container and stream metadata inspection and concat-seek helpers.
 
-use super::{DecodeError, ffmpeg};
+use super::{DecodeError, ffmpeg, is_full_range, raw_i32_to_pix_fmt};
+use crate::ffmpeg::ColorMetadata;
 use ffmpeg::ffi;
+use ffmpeg::format::Pixel;
 use ffmpeg::format::input;
 use ffmpeg::media::Type;
 use std::path::{Path, PathBuf};
 
-fn container_duration_secs(path: &Path) -> Result<Option<f64>, DecodeError> {
-    let ictx = input(path)?;
-    let duration = ictx.duration();
-    if duration > 0 {
-        Ok(Some(duration as f64 / f64::from(ffi::AV_TIME_BASE)))
-    } else {
-        Ok(None)
-    }
+/// Range and colour metadata reported by a probed video stream.
+pub(super) fn stream_color(stream: &ffmpeg::Stream<'_>) -> (bool, ColorMetadata) {
+    let parameters = stream.parameters();
+    // SAFETY: parameters owns a live AVCodecParameters for this video stream.
+    let raw = unsafe { &*parameters.as_ptr() };
+    let format = Pixel::from(raw_i32_to_pix_fmt(raw.format));
+    (
+        is_full_range(format, raw.color_range.into()),
+        ColorMetadata::from_raw(raw.color_primaries, raw.color_trc, raw.color_space),
+    )
 }
 
 /// Container metadata for chain compatibility checks, without decoding frames.
@@ -85,28 +89,70 @@ fn video_frame_count(stream: &ffmpeg::Stream<'_>, container_duration: i64) -> Op
     (frames.is_finite() && frames > 0.0 && frames < u64::MAX as f64).then_some(frames as u64)
 }
 
-pub(super) fn concat_seek_durations(paths: &[PathBuf]) -> Option<Vec<f64>> {
-    let mut durations = Vec::with_capacity(paths.len());
-    for path in paths {
-        match container_duration_secs(path) {
-            Ok(Some(duration)) => durations.push(duration),
-            Ok(None) => {
-                log::warn!(
-                    "Concat demuxer: duration unknown for {}; cross-segment seek may be unavailable",
-                    path.display()
-                );
-                return None;
-            }
-            Err(e) => {
-                log::warn!(
-                    "Concat demuxer: failed to probe duration for {} ({e}); cross-segment seek may be unavailable",
-                    path.display()
-                );
-                return None;
-            }
+pub(super) struct ConcatProbe {
+    pub durations: Option<Vec<f64>>,
+    pub full_range: bool,
+    pub color: ColorMetadata,
+}
+
+pub(super) fn probe_concat(
+    first: &Path,
+    first_context: &ffmpeg::format::context::Input,
+    rest: &[PathBuf],
+) -> Result<ConcatProbe, DecodeError> {
+    let mut durations = Vec::with_capacity(1 + rest.len());
+    let probe_segment = |path: &Path, context: &ffmpeg::format::context::Input| {
+        let stream = context
+            .streams()
+            .best(Type::Video)
+            .ok_or(DecodeError::NoVideoStream)?;
+        let duration = context.duration();
+        let duration = (duration > 0).then(|| duration as f64 / f64::from(ffi::AV_TIME_BASE));
+        if duration.is_none() {
+            log::warn!(
+                "Concat demuxer: duration unknown for {}; cross-segment seek may be unavailable",
+                path.display()
+            );
         }
+        Ok::<_, DecodeError>((stream_color(&stream), duration))
+    };
+    let ((full_range, mut color), duration) =
+        probe_segment(first, first_context).map_err(|error| {
+            DecodeError::Ffmpeg(format!("concat segment {}: {error}", first.display()))
+        })?;
+    durations.push(duration);
+    for path in rest {
+        let ((segment_range, segment_color), duration) = input(path)
+            .map_err(DecodeError::from)
+            .and_then(|context| probe_segment(path, &context))
+            .map_err(|error| {
+                DecodeError::Ffmpeg(format!("concat segment {}: {error}", path.display()))
+            })?;
+        durations.push(duration);
+        if segment_range != full_range {
+            return Err(DecodeError::ConversionError(format!(
+                "segment color ranges differ ({} and {})",
+                first.display(),
+                path.display()
+            )));
+        }
+        let compatible = color
+            .matches_description(segment_color)
+            .map_err(DecodeError::ConversionError)?;
+        if !compatible {
+            return Err(DecodeError::ConversionError(format!(
+                "segment color metadata differ ({}: {color}; {}: {segment_color})",
+                first.display(),
+                path.display()
+            )));
+        }
+        color = color.or(segment_color);
     }
-    Some(durations)
+    Ok(ConcatProbe {
+        durations: durations.into_iter().collect(),
+        full_range,
+        color,
+    })
 }
 
 /// Upper bound for a believable source frame rate. High-speed phone modes

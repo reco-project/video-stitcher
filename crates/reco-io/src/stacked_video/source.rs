@@ -116,6 +116,12 @@ impl StackedSource {
     }
 }
 
+impl crate::stacked_video::replay::ReplaySource for StackedSource {
+    fn replay_color_metadata(&self) -> crate::ffmpeg::ColorMetadata {
+        self.color_metadata()
+    }
+}
+
 // Safety: VideoDecoder owns ffmpeg raw pointers but is bound to
 // one thread by its `!Sync` wrapping. StackedSource inherits
 // that; the Send impl is carried by VideoDecoder (which the

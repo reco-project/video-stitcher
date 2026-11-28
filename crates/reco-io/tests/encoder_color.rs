@@ -578,18 +578,156 @@ fn stitch_job_exports_bt2020_pixels_and_rejects_mixed_hdr_sdr() {
         "{error}"
     );
     assert!(!mismatched_out.exists());
+}
 
-    let input = reco_io::InputPath::Chained(vec![hdr_in, sdr_in]);
-    let mut decoder = VideoDecoder::open_input_software(&input).unwrap();
-    let mut frames = 0;
+fn write_color_fixture(path: &std::path::Path, color_args: &[&str]) {
+    let output = std::process::Command::new("ffmpeg")
+        .args([
+            "-v",
+            "error",
+            "-nostdin",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=s=64x64:r=30",
+            "-t",
+            "2",
+            "-c:v",
+            "libx264",
+            "-threads",
+            "1",
+            "-bf",
+            "0",
+        ])
+        .args(color_args)
+        .arg(path)
+        .output()
+        .expect("ffmpeg fixture encoder");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+const HLG_TAGS: &[&str] = &[
+    "-colorspace",
+    "bt2020nc",
+    "-color_primaries",
+    "bt2020",
+    "-color_trc",
+    "arib-std-b67",
+    "-color_range",
+    "tv",
+];
+
+#[test]
+fn concat_rejects_incompatible_segment_color_before_decoding() {
+    use reco_io::{InputPath, SmartFileSource};
+
+    let dir = tempfile::tempdir().unwrap();
+    let hdr = dir.path().join("hdr.mp4");
+    let untagged = dir.path().join("untagged.mp4");
+    let full_range = dir.path().join("full-range.mp4");
+    write_color_fixture(&hdr, HLG_TAGS);
+    write_color_fixture(&untagged, &[]);
+    write_color_fixture(&full_range, &["-color_range", "pc"]);
+
+    let untagged_probe = VideoDecoder::open_software(&untagged).unwrap();
+    assert!(untagged_probe.color_metadata().is_empty());
+    assert!(!untagged_probe.is_full_range());
+    assert!(
+        VideoDecoder::open_software(&full_range)
+            .unwrap()
+            .is_full_range()
+    );
+    #[cfg(feature = "gpu")]
+    let gpu = reco_core::gpu::GpuContext::new_blocking().ok();
+    for (paths, expected) in [
+        ([hdr, untagged.clone()], "segment color metadata differ"),
+        ([untagged, full_range], "segment color ranges differ"),
+    ] {
+        let input = InputPath::Chained(paths.to_vec());
+        let decoder_error = VideoDecoder::open_input_software(&input)
+            .err()
+            .expect("concat open");
+        assert!(
+            decoder_error.to_string().contains(expected),
+            "{decoder_error}"
+        );
+        #[cfg(feature = "gpu")]
+        if let Some(gpu) = &gpu {
+            let source_error = SmartFileSource::open(std::slice::from_ref(&input), gpu, 0)
+                .err()
+                .expect("smart source open");
+            assert!(
+                source_error.to_string().contains(expected),
+                "{source_error}"
+            );
+        }
+        let source_error = SmartFileSource::open_cpu_only(&[input], 0, true)
+            .err()
+            .expect("source open");
+        assert!(
+            source_error.to_string().contains(expected),
+            "{source_error}"
+        );
+    }
+}
+
+#[test]
+fn ordinary_and_stacked_files_reject_midstream_color_changes() {
+    use reco_io::stacked_video::{GridLayout, source::StackedSource};
+
+    let dir = tempfile::tempdir().unwrap();
+    let hdr = dir.path().join("hdr.ts");
+    let sdr = dir.path().join("sdr.ts");
+    let combined = dir.path().join("transition.ts");
+    write_color_fixture(&hdr, HLG_TAGS);
+    write_color_fixture(
+        &sdr,
+        &[
+            "-colorspace",
+            "bt709",
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-color_range",
+            "tv",
+            "-output_ts_offset",
+            "2",
+        ],
+    );
+    let mut stream = std::fs::read(hdr).unwrap();
+    stream.extend(std::fs::read(sdr).unwrap());
+    std::fs::write(&combined, stream).unwrap();
+
+    let mut decoder = VideoDecoder::open_software(&combined).unwrap();
+    assert!(decoder.color_metadata().is_hdr());
+    assert!(decoder.next_frame().unwrap().is_some());
     let error = loop {
         match decoder.next_frame() {
-            Ok(Some(_)) => frames += 1,
-            Ok(None) => panic!("changed color metadata must be rejected"),
+            Ok(Some(_)) => {}
+            Ok(None) => panic!("decoded the entire color transition"),
             Err(error) => break error,
         }
     };
-    assert!(frames > 0);
+    assert!(
+        error.to_string().contains("decoded color metadata changed"),
+        "{error}"
+    );
+
+    let layout = GridLayout::vstack(64, 32, 2).unwrap();
+    let mut stacked = StackedSource::open(layout, &combined).unwrap();
+    assert!(stacked.next_tuple().unwrap().is_some());
+    let error = loop {
+        match stacked.next_tuple() {
+            Ok(Some(_)) => {}
+            Ok(None) => panic!("decoded the entire stacked color transition"),
+            Err(error) => break error,
+        }
+    };
     assert!(
         error.to_string().contains("decoded color metadata changed"),
         "{error}"

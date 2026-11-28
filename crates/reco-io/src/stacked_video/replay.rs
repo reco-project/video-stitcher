@@ -12,16 +12,51 @@
 
 use super::encoder::{StackedEncodeError, StackedEncoder, StackedEncoderConfig};
 use super::{GridLayout, StackError};
+use crate::ffmpeg::{ColorMetadata, encoder::EncodeError};
 #[cfg(feature = "gpu")]
 use reco_core::core::types::StackedReplayGpuRecorder as CoreStackedGpuRecorder;
 use reco_core::core::types::StackedReplayRecorder as CoreStackedReplayRecorder;
 #[cfg(feature = "gpu")]
 use reco_core::gpu::yuv_stack_packer::StackedAtlas;
+use reco_core::render::color::YuvMatrix;
 use reco_core::render::planes::Yuv420pPlanes;
 use reco_core::source::{
     FrameSet, FrameSource, SourceError, SourceFrame, SourceInfo, Yuv420pFrame,
 };
 use std::path::Path;
+
+/// A frame source that exposes the stream tags needed for raw replay.
+pub trait ReplaySource: FrameSource {
+    /// Colourimetry tags carried by the source stream, if available.
+    fn replay_color_metadata(&self) -> ColorMetadata {
+        ColorMetadata::default()
+    }
+}
+
+pub(crate) fn configure_replay_color(
+    config: &mut StackedEncoderConfig,
+    source: &dyn FrameSource,
+    source_metadata: ColorMetadata,
+) -> Result<(), EncodeError> {
+    let matrix = source.yuv_matrix();
+    let requested = config.inner.color_metadata.normalized();
+    if requested.space.is_some() {
+        let requested_matrix = requested.matrix().map_err(EncodeError::InvalidConfig)?;
+        if requested_matrix != matrix {
+            return Err(EncodeError::InvalidConfig(format!(
+                "replay color matrix {requested_matrix:?} differs from source matrix {matrix:?}"
+            )));
+        }
+    }
+
+    config.full_range = source.is_full_range();
+    config.inner.color_metadata = if matrix != YuvMatrix::Bt709 || requested.space.is_some() {
+        source_metadata.with_matrix(matrix)
+    } else {
+        source_metadata
+    };
+    Ok(())
+}
 
 /// Decorator FrameSource that also writes source frames to a
 /// stacked-video replay file.
@@ -36,21 +71,27 @@ pub struct ReplayRecordingSource {
 impl ReplayRecordingSource {
     /// Wrap an existing source, recording each Yuv420p stereo
     /// frame to `path` as it passes through. `config` supplies
-    /// the encoder parameters; `StackedEncoderConfig::default`
-    /// is the usual choice.
+    /// the encoder parameters. The recording uses the source range
+    /// and colourimetry. An explicitly configured matrix must match.
     pub fn wrap(
-        inner: Box<dyn FrameSource>,
+        inner: Box<dyn ReplaySource>,
         path: &Path,
         mut config: StackedEncoderConfig,
     ) -> Result<Self, StackedEncodeError> {
-        config.full_range = inner.is_full_range();
+        configure_replay_color(&mut config, inner.as_ref(), inner.replay_color_metadata())?;
+        Self::wrap_configured(inner, path, config)
+    }
+
+    pub(crate) fn wrap_configured(
+        inner: Box<dyn FrameSource>,
+        path: &Path,
+        config: StackedEncoderConfig,
+    ) -> Result<Self, StackedEncodeError> {
         let info = inner.info();
         let [first, _] = info.camera_sizes.as_slice() else {
-            return Err(StackedEncodeError::Encode(
-                crate::ffmpeg::encoder::EncodeError::InvalidConfig(
-                    "stacked replay requires two cameras".into(),
-                ),
-            ));
+            return Err(StackedEncodeError::Encode(EncodeError::InvalidConfig(
+                "stacked replay requires two cameras".into(),
+            )));
         };
         let first = *first;
         for (index, &(got_w, got_h)) in info.camera_sizes.iter().enumerate() {
@@ -630,6 +671,8 @@ mod source_contract_tests {
             self.full_range
         }
     }
+
+    impl ReplaySource for PollingSource {}
 
     #[test]
     fn replay_wrapper_preserves_pending_eof_and_color_range() {
