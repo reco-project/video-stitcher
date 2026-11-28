@@ -621,6 +621,17 @@ const HLG_TAGS: &[&str] = &[
     "tv",
 ];
 
+const BT709_TAGS: &[&str] = &[
+    "-colorspace",
+    "bt709",
+    "-color_primaries",
+    "bt709",
+    "-color_trc",
+    "bt709",
+    "-color_range",
+    "tv",
+];
+
 const UNSPECIFIED_H264_COLOR: &str = "h264_metadata=video_format=0:colour_primaries=2:transfer_characteristics=2:matrix_coefficients=2";
 
 #[test]
@@ -679,16 +690,7 @@ fn concat_rejects_incompatible_segment_color_before_decoding() {
 
 #[test]
 fn ordinary_and_stacked_files_reject_midstream_color_changes() {
-    assert_midstream_color_change(&[
-        "-colorspace",
-        "bt709",
-        "-color_primaries",
-        "bt709",
-        "-color_trc",
-        "bt709",
-        "-color_range",
-        "tv",
-    ]);
+    assert_midstream_color_change(BT709_TAGS);
 }
 
 #[test]
@@ -709,9 +711,7 @@ fn assert_midstream_color_change(second_segment_args: &[&str]) {
     let mut args = second_segment_args.to_vec();
     args.extend(["-output_ts_offset", "2"]);
     write_color_fixture(&second, &args);
-    let mut stream = std::fs::read(hdr).unwrap();
-    stream.extend(std::fs::read(second).unwrap());
-    std::fs::write(&combined, stream).unwrap();
+    join_color_segments(&hdr, &second, &combined);
 
     let mut decoder = VideoDecoder::open_software(&combined).unwrap();
     assert!(decoder.color_metadata().is_hdr());
@@ -733,6 +733,46 @@ fn assert_midstream_color_change(second_segment_args: &[&str]) {
                 .is_some_and(|error| error.to_string().contains("decoded color metadata changed")),
         "expected both readers to reject frame 61: decoder={decoder_error:?}, stacked={stacked_error:?}",
     );
+}
+
+fn join_color_segments(
+    first: &std::path::Path,
+    second: &std::path::Path,
+    combined: &std::path::Path,
+) {
+    let mut stream = std::fs::read(first).unwrap();
+    stream.extend(std::fs::read(second).unwrap());
+    std::fs::write(combined, stream).unwrap();
+}
+
+#[test]
+fn seek_clears_frame_color_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let untagged = dir.path().join("untagged.ts");
+    let tagged = dir.path().join("bt709.ts");
+    let combined = dir.path().join("transition.ts");
+    write_color_fixture(
+        &untagged,
+        &["-bsf:v", UNSPECIFIED_H264_COLOR, "-muxdelay", "0"],
+    );
+    let mut args = BT709_TAGS.to_vec();
+    args.extend(["-muxdelay", "0", "-output_ts_offset", "2"]);
+    write_color_fixture(&tagged, &args);
+    join_color_segments(&untagged, &tagged, &combined);
+
+    let mut decoder = VideoDecoder::open_software(&combined).unwrap();
+    assert!(decoder.color_metadata().is_empty());
+    for _ in 0..120 {
+        assert!(decoder.next_frame().unwrap().is_some());
+    }
+    assert!(decoder.next_frame().unwrap().is_none());
+
+    decoder.seek_to_secs(0.0).unwrap();
+    let frame = decoder
+        .next_frame()
+        .unwrap()
+        .expect("first frame after seek");
+    assert_eq!(frame.timestamp_us, 0);
 }
 
 #[test]
