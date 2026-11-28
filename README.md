@@ -1,11 +1,11 @@
 # Reco Video Stitcher
 
-**Open-source GPU-accelerated panoramic sports camera software. Desktop App with AI tracking, CLI, and OBS Plugin.**
+**Open-source GPU-accelerated panoramic sports camera software. Desktop app with AI tracking and a CLI.**
 
 [![CI](https://github.com/reco-project/video-stitcher/actions/workflows/rust.yml/badge.svg)](https://github.com/reco-project/video-stitcher/actions)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 
-Stitch two camera feeds into a seamless panoramic sports view with AI-powered automatic camera control. No subscriptions, no vendor lock-in. Ships as a CLI, a Slint-based desktop app, and an OBS Studio source plugin that all consume the same Rust engine.
+Stitch two camera feeds into a seamless panoramic sports view with AI-powered automatic camera control. No subscriptions, no vendor lock-in. The CLI and Slint-based desktop app share the same Rust engine.
 
 ## Features
 
@@ -13,7 +13,7 @@ Stitch two camera feeds into a seamless panoramic sports view with AI-powered au
 - **Zero-copy decode** - Supported batch paths share native decode surfaces with the GPU. Interactive file preview uploads host frames.
 - **AI ball + player tracking** - YOLO detection on ONNX (CPU / CUDA / CoreML / NCNN) or native TensorRT `.engine`, with lookahead and density-peak player clustering
 - **Automatic calibration** - Direct image alignment with optional lens profiles, estimated optics, independent overlap checks and IMU / audio temporal sync
-- **Live production** - GStreamer camera ingest (Linux / Jetson CSI), push-based `StitchCore::submit_frame_*` for OBS and live streams, replay ring buffer, stacked-video pack/unpack
+- **Live production** - GStreamer camera ingest (Linux / Jetson CSI), push-based `StitchCore::submit_frame_*` for live streams, replay ring buffer, stacked-video pack/unpack
 - **Cross-platform** - Linux / macOS / Windows desktop, NVIDIA Jetson Orin, cloud workers
 
 ## Quick start
@@ -95,7 +95,7 @@ LIBVA_MESSAGING_LEVEL=2 ./target/release/reco stitch left.mp4 right.mp4 -c match
 
 ## Architecture
 
-Nine Rust crates. Strict dependency direction keeps the engine reusable as a library.
+Eight Rust crates. Strict dependency direction keeps the engine reusable as a library.
 
 ```
 reco-core        GPU stitching engine (wgpu). No I/O, no domain logic.
@@ -106,10 +106,9 @@ reco-calibrate   Direct pixel alignment, stereo optimization, lens database, liv
 reco-control     Operator intent vocabulary (keyboard today; gopro/mobile/websocket scaffolds).
 reco-cli         Terminal consumer: stitch / calibrate / preview / camera / analyze / info.
 reco-gui         Slint desktop consumer with wgpu preview + export UI.
-reco-obs         OBS Studio source plugin (async-frame ingestion, BGRA, interactive pan/zoom).
 ```
 
-**Dependency direction:** consumers (`cli` / `gui` / `obs`) depend on the four library crates (`autocam`, `calibrate`, `detect`, `io`); all four depend on `reco-core`. `reco-control` is consumed by `cli` / `gui` / `obs`.
+**Dependency direction:** `reco-cli` and `reco-gui` use `reco-autocam`, `reco-calibrate`, `reco-detect`, and `reco-io`, which depend on `reco-core`. Both consumers use `reco-control` for interactive input.
 
 Push-based is the canonical ingestion path: consumers call `StitchCore::submit_frame` with a per-camera `FrameSet` each frame (interactive consumers use the `submit_frame_*_at_pose` variants). Batch file processing (`StitchSession::run`) is a thin pull-adapter on top.
 
@@ -123,7 +122,7 @@ Prerequisites: Rust **1.92+** (workspace MSRV), FFmpeg development libraries, pk
 # Ubuntu / Debian (apt)
 sudo apt install libavcodec-dev libavformat-dev libavutil-dev \
     libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev \
-    pkg-config clang libobs-dev
+    pkg-config clang
 
 # macOS (Homebrew)
 brew install ffmpeg pkg-config
@@ -154,7 +153,6 @@ Workspace feature flags exist only at real external, platform, or packaging depe
 | `ncnn` | `reco-detect`, `reco-autocam`, `reco-cli`, `reco-gui` | NCNN inference backend for mobile / embedded |
 | `io` | `reco-calibrate` | File-based calibration via `reco-io` |
 | `gopro` | `reco-control`, `reco-cli` | Optional OpenGoPro HTTP device helper (`reqwest`) |
-| `replay` | `reco-obs` | Optional `reco-io` stacked-video replay recorder (keeps OBS plugin `.so` smaller when off) |
 | `automation` | `reco-gui` | Dev/CI headless preload and auto-export hook (`RECO_AUTOLOAD` / `RECO_AUTOEXPORT`) |
 | `profiling` | workspace | `tracing` (+ `tracing-chrome` in `reco-cli`) instrumentation, zero-cost when off |
 

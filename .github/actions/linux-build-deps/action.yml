@@ -14,15 +14,11 @@ runs:
         EXTRA_PACKAGES: ${{ inputs.extra-packages }}
       run: |
         set -euo pipefail
-        # Includes libobs-dev because reco-obs's build.rs runs bindgen
-        # against /usr/include/obs/obs.h on every workspace-level cargo
-        # command (clippy, test, doc, bench). Without it, any job that
-        # touches reco-obs fails at build-script time.
         pkgs=(
           libavcodec-dev libavformat-dev libavutil-dev
           libswscale-dev libavdevice-dev libavfilter-dev libswresample-dev
           libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base
-          libfontconfig1-dev libobs-dev
+          libfontconfig1-dev
           pkg-config clang libclang-dev
         )
         if [[ -n "$EXTRA_PACKAGES" ]]; then
