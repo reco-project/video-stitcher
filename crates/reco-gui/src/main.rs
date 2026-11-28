@@ -3138,14 +3138,19 @@ fn main() -> anyhow::Result<()> {
     app.on_open_export_dialog(move || {
         let s = state_ref.borrow();
         if let Some(app) = app_weak.upgrade() {
-            // Seed from persisted user defaults first (codec, quality,
-            // model path) so the dialog reflects the user's last
-            // choices across sessions...
-            app.set_export_codec(if app.get_export_stream_enabled() {
-                "h264".into()
-            } else {
-                s.user_settings.default_codec.clone().into()
-            });
+            use slint::Model as _;
+
+            app.set_export_codec(
+                crate::export::initial_codec(
+                    app.get_export_stream_enabled(),
+                    s.playback.color_metadata().is_hdr(),
+                    app.get_available_codecs()
+                        .iter()
+                        .any(|codec| codec == "hevc"),
+                    &s.user_settings.default_codec,
+                )
+                .into(),
+            );
             app.set_export_quality(s.user_settings.default_quality.clone().into());
             let count = s.calibration.as_ref().map_or(0, |cal| cal.lenses.len());
             let choices: Vec<slint::SharedString> = std::iter::once("No source audio".into())
@@ -3360,11 +3365,13 @@ fn main() -> anyhow::Result<()> {
             None
         };
 
-        // Persist the user's codec / quality / blend choices as the
-        // defaults for next session. Model path is saved in the
+        // Persist export defaults. HDR's required codec is source-specific,
+        // so keep the saved SDR codec preference. Model path is saved in the
         // on_pick_export_model callback so it sticks even if the user
         // never actually hits Start. Save is best-effort.
-        s.user_settings.default_codec = codec_str.clone();
+        if !s.playback.color_metadata().is_hdr() {
+            s.user_settings.default_codec = codec_str.clone();
+        }
         s.user_settings.default_quality = quality_str.clone();
         s.user_settings.default_blend_width = blend;
         s.user_settings.save();

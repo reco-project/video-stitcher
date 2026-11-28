@@ -13,6 +13,23 @@ use reco_core::calibration::Calibration;
 use crate::RecoApp;
 use reco_io::ffmpeg::encoder::{StreamMonitor, StreamStatus};
 
+/// Choose the initial dialog codec. Publishing uses H.264. HDR file export
+/// selects HEVC when offered, and other file exports use the saved preference.
+pub(crate) fn initial_codec(
+    streaming: bool,
+    hdr: bool,
+    hevc_available: bool,
+    user_default: &str,
+) -> &str {
+    if streaming {
+        "h264"
+    } else if hdr && hevc_available {
+        "hevc"
+    } else {
+        user_default
+    }
+}
+
 /// Settings snapshotted on the UI thread for one processed-output job.
 pub struct ExportRequest {
     pub inputs: Inputs,
@@ -529,6 +546,14 @@ pub fn poll_export(rx: &std::sync::mpsc::Receiver<ExportOutcome>) -> Option<Expo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn export_dialog_initial_codec() {
+        assert_eq!(initial_codec(false, true, true, "h264"), "hevc");
+        assert_eq!(initial_codec(true, true, true, "av1"), "h264");
+        assert_eq!(initial_codec(false, false, true, "av1"), "av1");
+        assert_eq!(initial_codec(false, true, false, "av1"), "av1");
+    }
 
     #[test]
     #[cfg(feature = "autocam")]

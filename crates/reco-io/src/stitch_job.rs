@@ -7,6 +7,11 @@
 //! and audio passthrough.
 //! Without the `gpu` feature, rendering uses the CPU executor; FFmpeg can still use hardware decode and encode. [`StitchJob::cpu`] explicitly forces software codecs as well.
 //!
+//! SDR exports default to 8-bit H.264. HDR exports require GPU rendering and
+//! default to 10-bit HEVC Main 10 with the source colour metadata. Native P010
+//! decoding retains 10-bit input precision. Host-backed file decoding supplies
+//! 8-bit YUV420P to the renderer.
+//!
 //! # Example
 //!
 //! ```rust,ignore
@@ -25,7 +30,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
-use crate::output::{AudioMode, Codec, Container, Quality};
+use crate::output::{AudioMode, BitDepth, Codec, Container, Quality};
 use crate::stacked_video::replay::ReplayRecordingSource;
 use reco_core::render::viewport::ViewportSize;
 use reco_core::session::StitchSession;
@@ -368,7 +373,9 @@ impl StitchJob {
 
     // ── Output settings ──
 
-    /// Set the output video codec.
+    /// Set the output video codec. With automatic encoder selection, the
+    /// default is 8-bit H.264 for SDR or 10-bit HEVC Main 10 for HDR.
+    /// HDR requires HEVC Main 10 and is incompatible with FLV and RTMP.
     pub fn codec(mut self, codec: Codec) -> Self {
         self.codec = Some(codec);
         self
@@ -477,7 +484,7 @@ impl StitchJob {
     /// professional replay, web panorama generation, or cloud
     /// deployment.
     ///
-    /// Defaults to Matroska container, libx264, 30-frame GOP - see
+    /// Defaults to 8-bit H.264 in Matroska with a 30-frame GOP. See
     /// [`crate::stacked_video::encoder::StackedEncoderConfig`] for
     /// the full default and use [`Self::replay_recording_config`]
     /// to override.
@@ -535,6 +542,7 @@ impl StitchJob {
     /// GPU initialized. Implies [`Self::force_cpu_decode`] (there is
     /// no GPU to decode into).
     /// A caller-supplied source keeps its own acquisition/decoder configuration.
+    /// CPU stitching only supports 8-bit output and rejects HDR export.
     pub fn cpu(mut self) -> Self {
         self.cpu_stitch = true;
         self
@@ -762,6 +770,32 @@ impl StitchJob {
             interrupted,
             &self.audio,
         )?;
+        let source_color = opened.color_metadata();
+        if !source_color.is_empty() {
+            log::info!("Source colour metadata: {source_color}");
+        }
+        let bit_depth = if source_color.is_hdr() {
+            BitDepth::Ten
+        } else {
+            BitDepth::Eight
+        };
+        if bit_depth == BitDepth::Ten {
+            #[cfg(feature = "gpu")]
+            let gpu_rendering = gpu.is_some();
+            #[cfg(not(feature = "gpu"))]
+            let gpu_rendering = false;
+            if !gpu_rendering {
+                return Err(StitchError::Other(
+                    "10-bit HDR export requires GPU rendering (CPU stitching only supports 8-bit output)".into(),
+                ));
+            }
+            if self.codec.is_some_and(|codec| codec != Codec::HEVC) {
+                return Err(StitchError::Other(
+                    "10-bit HDR export requires HEVC Main 10".into(),
+                ));
+            }
+            log::info!("Selected 10-bit HDR delivery (P010LE, HEVC Main 10)");
+        }
         let frames = opened.frames();
         let info = frames.info();
         let fps_rational = info.fps_rational.ok_or_else(|| StitchError::Other(
@@ -845,7 +879,10 @@ impl StitchJob {
                     calibration: cal,
                     viewport_size,
                     source_sizes: info.camera_sizes.clone(),
-                    output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
+                    output_format: match bit_depth {
+                        BitDepth::Eight => reco_core::gpu::OutputFormat::Rgba8Unorm,
+                        BitDepth::Ten => reco_core::gpu::OutputFormat::Rgb10a2Unorm,
+                    },
                     input_format: frames.input_format(),
                     left_rotation: frames.left_rotation(),
                     right_rotation: frames.right_rotation(),
@@ -874,10 +911,6 @@ impl StitchJob {
         }
 
         let live_audio = opened.audio();
-        let source_color = opened.color_metadata();
-        if !source_color.is_empty() {
-            log::info!("Source colour metadata: {source_color}");
-        }
         source = opened.into_frames();
         let output_color = reco_core::render::color::YuvColor::delivery(source.yuv_color().matrix);
 
@@ -920,7 +953,7 @@ impl StitchJob {
                 device: self.encoder_device.clone(),
                 software_only: self.cpu_stitch,
                 codec: self.codec,
-                bit_depth: Default::default(),
+                bit_depth,
                 quality: self.quality,
                 preset: self.preset.clone(),
                 audio_source,
@@ -974,6 +1007,8 @@ impl StitchJob {
 
             if let Some(ref mut cfg) = self.replay_recording {
                 if cfg.encoder_config.inner.encoder_name.is_none() {
+                    // Match the primary hardware family when useful. The replay
+                    // config still selects its own codec and 8-bit input.
                     cfg.encoder_config.inner.encoder_name =
                         crate::ffmpeg::encoder::VideoEncoder::replay_encoder_name(&enc_name)
                             .map(String::from);

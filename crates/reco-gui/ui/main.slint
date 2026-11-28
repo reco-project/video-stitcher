@@ -2804,7 +2804,8 @@ export component RecoApp inherits Window {
                                         ComboBox {
                                             model: root.available-codecs;
                                             enabled: !root.export-stream-enabled;
-                                            current-index: root.export-codec == "hevc" ? 1 : root.export-codec == "av1" ? 2 : 0;
+                                            current-index: root.available-codecs.length > 1 && root.available-codecs[1] == root.export-codec ? 1
+                                                : root.available-codecs.length > 2 && root.available-codecs[2] == root.export-codec ? 2 : 0;
                                             selected(v) => {
                                                 root.export-codec = v;
                                             }

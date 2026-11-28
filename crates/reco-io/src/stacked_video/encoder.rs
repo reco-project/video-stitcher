@@ -52,6 +52,7 @@ impl Default for StackedEncoderConfig {
                 // Matroska does not require a finalized central index to read completed clusters.
                 container: Container::Mkv,
                 codec: Some(Codec::H264),
+                bit_depth: BitDepth::Eight,
                 quality: Quality::Preset(QualityPreset::Fast),
                 encoder_name: None,
                 preset: None,
