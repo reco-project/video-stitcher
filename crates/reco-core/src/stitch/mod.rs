@@ -1729,6 +1729,66 @@ mod tests {
         );
     }
 
+    /// Planar (L-shape) GPU compositing relies on destination alpha for
+    /// hardware-exact seam coverage and must reject alpha-free output formats
+    /// with a typed configuration error, even when `blend_width == 0.0` (since
+    /// `apply_calibration` can enable blending later on the same renderer).
+    #[test]
+    #[cfg(feature = "gpu")]
+    fn gpu_executor_rejects_alpha_free_output_formats_for_l_shape() {
+        use crate::render::{pipeline::PipelineError, renderer::InputFormat};
+        use crate::stitch::{GpuExecutor, GpuExecutorConfig, StitchError};
+
+        let Some(gpu) = gpu_or_skip() else {
+            return;
+        };
+
+        let viewport = ViewportSize {
+            width: 128,
+            height: 72,
+        };
+        let (base_cal, sizes, _pose) = mixed_aspect_tilted_blend_calib();
+
+        for blend_width in [0.15_f32, 0.0_f32] {
+            let mut cal = base_cal.clone();
+            cal.projection.l_shape_mut().unwrap().blend_width = blend_width;
+
+            for format in [
+                wgpu::TextureFormat::R8Unorm,
+                wgpu::TextureFormat::Rg8Unorm,
+                wgpu::TextureFormat::Rg11b10Ufloat,
+            ] {
+                let config = GpuExecutorConfig {
+                    viewport_size: viewport.clone(),
+                    output_format: format,
+                    ..GpuExecutorConfig::new(cal.clone(), sizes.to_vec(), InputFormat::Nv12)
+                };
+                match GpuExecutor::new(gpu.clone(), config) {
+                    Err(StitchError::Pipeline(PipelineError::InvalidConfig { .. })) => {}
+                    Err(other) => panic!(
+                        "expected PipelineError::InvalidConfig for {format:?} (blend_width={blend_width}), got {other}"
+                    ),
+                    Ok(_) => panic!(
+                        "alpha-free format {format:?} (blend_width={blend_width}) should be rejected for L-shape GPU compositing"
+                    ),
+                }
+            }
+        }
+
+        for format in [
+            wgpu::TextureFormat::Rgba8Unorm,
+            wgpu::TextureFormat::Bgra8Unorm,
+        ] {
+            let config = GpuExecutorConfig {
+                viewport_size: viewport.clone(),
+                output_format: format,
+                ..GpuExecutorConfig::new(base_cal.clone(), sizes.to_vec(), InputFormat::Nv12)
+            };
+            GpuExecutor::new(gpu.clone(), config)
+                .unwrap_or_else(|e| panic!("alpha-bearing format {format:?} should succeed: {e}"));
+        }
+    }
+
     /// Verify that overlap seam blending remains unchanged and CPU/GPU agree
     /// with distinct left/right source intensities across mixed-aspect, lens,
     /// and depth-clip boundaries.

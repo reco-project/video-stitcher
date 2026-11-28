@@ -18,7 +18,7 @@ fn dominant_source(
     let mut best_weight = 0.0;
     for (camera, (map, blend)) in maps.iter().enumerate() {
         if let Some(uv) = map.sample_uv(ndc) {
-            let alpha = blend.alpha(uv.edge);
+            let alpha = blend.composite_alpha(uv.edge, best.is_some());
             best_weight *= 1.0 - alpha;
             if alpha > best_weight {
                 best_weight = alpha;

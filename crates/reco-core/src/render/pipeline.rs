@@ -162,6 +162,13 @@ impl StitchPipeline {
         }
 
         let output_format = output_format.into();
+        if program.pass == super::GpuPass::Planes && !super::has_alpha_channel(output_format) {
+            return Err(PipelineError::InvalidConfig {
+                reason: format!(
+                    "L-shape GPU compositing requires a 4-channel color render target format with an alpha channel, got {output_format:?}"
+                ),
+            });
+        }
         let scene = Self::derive_plane_scene(&calibration);
         let renderer = Renderer::new(
             &gpu,

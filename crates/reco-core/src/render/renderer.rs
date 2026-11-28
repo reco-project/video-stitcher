@@ -256,6 +256,10 @@ impl Renderer {
         output_format: wgpu::TextureFormat,
         input_format: InputFormat,
     ) -> Self {
+        debug_assert!(
+            program.pass != super::GpuPass::Planes || super::has_alpha_channel(output_format),
+            "planar GPU compositing requires a 4-channel color render target format with an alpha channel, got {output_format:?}"
+        );
         let device = &gpu.device;
 
         // Shader: compiled from the projection's GPU program descriptor -
