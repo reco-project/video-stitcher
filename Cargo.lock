@@ -5586,23 +5586,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reco-obs"
-version = "0.5.4"
-dependencies = [
- "bindgen 0.72.1",
- "cc",
- "log",
- "reco-control",
- "reco-core",
- "reco-io",
- "serde",
- "serde_json",
- "tracing",
- "tracing-log",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "redox_syscall"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

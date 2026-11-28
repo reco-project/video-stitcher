@@ -1,4 +1,4 @@
-//! Direct viewport input shared by CLI preview, GUI and OBS.
+//! Direct viewport input shared by CLI preview and GUI.
 //!
 //! Inputs update a render-space target. Call [`PoseControl::constrain`](crate::pose_control::PoseControl::constrain) before rendering to accept it through coverage. Successful acceptance discards blocked deltas, so releasing or reversing a drag has no residual motion. Automatic tracking and its timing belong to core.
 

@@ -12,7 +12,7 @@ mod direct;
 pub mod error;
 pub mod lens_database;
 /// Live calibration — drive the calibration pipeline from a live
-/// frame-pair source (OBS, V4L2, WebRTC, etc.). See the `live` module's
+/// frame-pair source (V4L2, WebRTC, etc.). See the `live` module's
 /// `calibrate_from_live` function and `LiveFramePairSource` trait. Does
 /// not require the `io` feature — the source is a trait object supplied
 /// by the consumer, not a file.

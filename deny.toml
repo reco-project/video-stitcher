@@ -101,7 +101,6 @@ exceptions = [
     { allow = ["AGPL-3.0-only"], crate = "reco-control" },
     { allow = ["AGPL-3.0-only"], crate = "reco-detect" },
     { allow = ["AGPL-3.0-only"], crate = "reco-gui" },
-    { allow = ["AGPL-3.0-only"], crate = "reco-obs" },
 
     # --- Slint (tri-licensed GPL-3.0-only OR LicenseRef-Slint-Royalty-
     # free-2.0 OR LicenseRef-Slint-Software-3.0). We hold a Slint

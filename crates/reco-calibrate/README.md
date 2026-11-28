@@ -10,7 +10,7 @@ Stereo camera calibration for the reco L-shape projection.
 - Optional fixed optics from a Reco or Gyroflow profile file or the manual database picker. Each camera without a supplied lens is estimated from overlap.
 - **Temporal sync** — IMU cross-correlation (Gyroflow telemetry-parser) + audio cross-correlation fallback.
 - File calibration needs a measured or supplied frame offset. If IMU and audio both fail, `reco calibrate` stops before fitting. Pass `--sync-offset <frames>` using the right frame index minus the left for the same event. Use `0` for synchronized recordings. The decoded-media test `unresolved_timing_stops_before_optics_and_explicit_zero_resumes` covers this distinction.
-- **Live calibration** (`live` module) — `LiveFramePairSource` trait + `calibrate_from_live` function for streaming sources (OBS plugin, Jetson CSI, WebRTC); no `io` feature required.
+- **Live calibration** (`live` module) — `LiveFramePairSource` trait + `calibrate_from_live` function for streaming sources (e.g. Jetson CSI or WebRTC); no `io` feature required.
 - `calibrate_videos` wraps probing, synchronization, frame extraction and native calibration. The first sampled pair fits the model; later pairs verify it. `reco calibrate --frames 4` selects four pairs. A reviewable CLI result is retained in an explicit `.review.json` report; `--accept-unconfirmed` permits saving it as a calibration.
 - `--left-profile` and `--right-profile` independently fix each camera’s optics. The GUI previews reviewable candidates without saving, covered by `explicit_candidate_preview_does_not_save_until_requested` in its calibration editor tests.
 
@@ -25,5 +25,5 @@ Stereo camera calibration for the reco L-shape projection.
 
 ```bash
 cargo build -p reco-calibrate --features io   # file-based calibration (default for reco-cli)
-cargo build -p reco-calibrate                  # live-only (OBS plugin, Jetson)
+cargo build -p reco-calibrate                  # live-only
 ```

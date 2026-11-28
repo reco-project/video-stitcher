@@ -1,12 +1,10 @@
 //! Live calibration from in-memory frame pair streams.
 //!
 //! Drives the calibration pipeline from any source of synchronized
-//! YUV420P frame pairs (an OBS plugin's dual-source buffer, a Jetson
-//! V4L2 capture, a WebRTC ingest, etc.). Consumers implement
-//! `LiveFramePairSource` on whatever their upstream source is and
-//! pass it to `calibrate_from_live`; the function pulls N pairs
-//! and feeds them to the existing [`calibrate`](crate::calibrate)
-//! primitive.
+//! YUV420P frame pairs (e.g. V4L2 capture or WebRTC ingest).
+//! Consumers implement `LiveFramePairSource` for their upstream source
+//! and pass it to `calibrate_from_live`, which pulls N pairs for the
+//! [`calibrate`](crate::calibrate) solver.
 //!
 //! # When to use this vs. `calibrate_videos`
 //!
@@ -14,10 +12,8 @@
 //!   recorded to files and you want a one-shot calibration for
 //!   post-production.
 //! - `calibrate_from_live` (stream-based) when you want to
-//!   calibrate **in the middle of a live session** — the OBS
-//!   "Calibrate from current sources" workflow,
-//!   Jetson on-device calibration with the cameras already
-//!   streaming, mobile "re-calibrate" button.
+//!   calibrate **in the middle of a live session**, such as on-device
+//!   calibration with cameras already streaming.
 //! - `calibrate` directly when you have your
 //!   own capture policy and just want the core solver. Prefer
 //!   `calibrate_from_live` if the "collect N pairs with a
@@ -30,13 +26,13 @@
 //! implements `LiveFramePairSource`:
 //!
 //! ```ignore
-//! struct ObsCalibSource<'a> {
-//!     buffer: &'a mut TimestampedIngestBuffer<ObsFrameHandle>,
+//! struct LiveCalibSource<'a> {
+//!     buffer: &'a mut TimestampedIngestBuffer<CaptureFrameHandle>,
 //!     left_id: SourceId,
 //!     right_id: SourceId,
 //! }
 //!
-//! impl<'a> LiveFramePairSource for ObsCalibSource<'a> {
+//! impl<'a> LiveFramePairSource for LiveCalibSource<'a> {
 //!     fn next_pair(&mut self, timeout: Duration)
 //!         -> Option<(Yuv420pFrame, Yuv420pFrame)>
 //!     {
@@ -68,9 +64,8 @@ use crate::types::{CalibrationProgress, CalibrationResult, CalibrationStep, Yuv4
 /// A source of synchronized YUV420P frame pairs for live calibration.
 ///
 /// Consumers implement this trait on a small adapter that wraps their
-/// upstream source (OBS dual-source buffer, V4L2 capture, WebRTC ingest,
-/// `TimestampedIngestBuffer`). The trait is `Send` so calibration can
-/// run on a worker thread.
+/// upstream source (V4L2 capture, WebRTC ingest, `TimestampedIngestBuffer`).
+/// The trait is `Send` so calibration can run on a worker thread.
 pub trait LiveFramePairSource: Send {
     /// Retrieve the next synchronized `(left, right)` frame pair, or
     /// return `None` if no pair arrives within `timeout`.

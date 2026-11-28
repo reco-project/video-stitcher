@@ -4,7 +4,7 @@ Operator pose-control state machine and intent dispatch.
 
 ## Why it exists
 
-CLI preview, GUI and OBS share drag/zoom translation and coverage feedback. Native key bindings and presentation scheduling stay in their consumers; geometry and calibration validation stay in core.
+CLI preview and GUI share drag/zoom translation and coverage feedback. Native key bindings and presentation scheduling stay in their consumers; geometry and calibration validation stay in core.
 
 ## What it owns
 

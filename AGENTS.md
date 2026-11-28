@@ -8,7 +8,7 @@ Active release work lives in GitHub issues, PRs, and milestones, not in this
 file - check there for the current focus. For the latest stable version and
 changelog, see the [GitHub Releases page](https://github.com/reco-project/video-stitcher/releases).
 Per-crate consumer pain is logged in each crate's `FRICTION.md`
-(e.g. `crates/reco-gui/FRICTION.md`, `crates/reco-obs/FRICTION.md`).
+(e.g. `crates/reco-gui/FRICTION.md`).
 
 **Rule: document friction, don't work around it.** A reco-core API gap that a
 consumer would otherwise hack around gets a `FRICTION.md` entry, not a
@@ -24,7 +24,6 @@ consumer-side workaround.
 - `crates/reco-calibrate/` — Stereo camera calibration from pixel overlap
 - `crates/reco-control/` — Typed control intents (pose, hotkeys) shared by interactive consumers
 - `crates/reco-gui/` — Slint GUI consumer (wgpu zero-copy preview)
-- `crates/reco-obs/` — OBS Studio source plugin (async-frame ingestion + BGRA + interactive pan/zoom)
 
 ## Key commands
 
