@@ -1233,6 +1233,56 @@ impl OutputSink for Nv12CheckingSink {
     }
 }
 
+#[test]
+fn dropping_session_releases_sinks_before_core() {
+    use crate::detect::pipeline_event::{PipelineEvent, PipelineEventSink};
+
+    struct DropProbe(&'static str, Arc<Mutex<Vec<&'static str>>>);
+
+    impl Drop for DropProbe {
+        fn drop(&mut self) {
+            self.1.lock().unwrap().push(self.0);
+        }
+    }
+
+    impl PipelineEventSink for DropProbe {
+        fn emit(&mut self, _: PipelineEvent) {}
+    }
+
+    impl OutputSink for DropProbe {
+        fn name(&self) -> &str {
+            self.0
+        }
+        fn wants(&self) -> SinkInput {
+            SinkInput::CpuBytes(crate::sink::PixelFormat::Nv12)
+        }
+        fn consume(&mut self, _: OutputFrame<'_>) -> Result<(), SinkError> {
+            Ok(())
+        }
+        fn finish(&mut self) -> Result<(), SinkError> {
+            self.1.lock().unwrap().push("finish");
+            Ok(())
+        }
+    }
+
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let mut session = build_cpu_session();
+    session.set_event_sink(Box::new(DropProbe("core", events.clone())));
+    for (name, options) in [
+        ("threaded", super::SinkOptions::threaded(1)),
+        ("inline", super::SinkOptions::inline_lossy()),
+    ] {
+        session
+            .add_sink(Box::new(DropProbe(name, events.clone())), options)
+            .unwrap();
+    }
+    drop(session);
+    assert_eq!(
+        *events.lock().unwrap(),
+        ["finish", "threaded", "inline", "core"]
+    );
+}
+
 /// The full batch path over the software stitch: source -> engine
 /// submit (detection + pose + CPU stitch) -> CPU NV12 -> sink fan-out.
 /// Runs in the default suite - the session's first GPU-free

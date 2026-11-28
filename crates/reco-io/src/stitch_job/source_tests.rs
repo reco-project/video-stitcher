@@ -154,6 +154,7 @@ fn lifecycle(gpu: bool) {
                 source.fail = fail;
                 let checked = Arc::new(AtomicBool::new(false));
                 let finalizing = checked.clone();
+                let source_stopped = stopped.clone();
                 let mut job = StitchJob::from_source(source, calibration(), &output)
                     .resolution(W, H)
                     .encoder_name("libx264")
@@ -165,9 +166,10 @@ fn lifecycle(gpu: bool) {
                         Ok(())
                     })
                     .on_finalizing(move || {
-                        assert!(
-                            stopped.load(Ordering::SeqCst),
-                            "capture must stop before finalizing"
+                        assert_eq!(
+                            source_stopped.load(Ordering::SeqCst),
+                            !fail,
+                            "a failed run must finalize output before stopping capture"
                         );
                         finalizing.store(true, Ordering::SeqCst);
                     });
@@ -185,6 +187,7 @@ fn lifecycle(gpu: bool) {
                     assert_eq!(result.unwrap().frames_processed, 12);
                 }
                 assert!(checked.load(Ordering::SeqCst));
+                assert!(stopped.load(Ordering::SeqCst));
                 let mut decoder =
                     crate::ffmpeg::decoder::VideoDecoder::open_software(&output).unwrap();
                 let mut times = Vec::new();
@@ -220,7 +223,7 @@ fn lifecycle(gpu: bool) {
 }
 
 #[test]
-fn supplied_host_formats_preserve_timing_and_stop_before_finalization() {
+fn supplied_host_formats_preserve_timing_and_finalize_on_failure() {
     lifecycle(false);
 }
 

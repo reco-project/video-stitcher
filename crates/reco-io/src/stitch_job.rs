@@ -26,6 +26,7 @@ use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use crate::output::{AudioMode, Codec, Container, Quality};
+use crate::stacked_video::replay::ReplayRecordingSource;
 use reco_core::render::viewport::ViewportSize;
 use reco_core::session::StitchSession;
 use reco_core::session::types::FrameProgress;
@@ -351,7 +352,7 @@ impl StitchJob {
 
     /// Create a job from a caller-owned host-backed image source.
     ///
-    /// The job takes ownership and drops the source before finalizing its output. The source owns acquisition, timestamp mapping and cancellation; pass the same interruption flag to its opener and [`Self::run`]. Metadata and image layout must remain fixed. Native GPU sources require device-aware [`StitchSession`] setup and are rejected here.
+    /// The job takes ownership of the source. On a successful run it drops the source before finalizing its output. If setup fails after attaching the output sink, or the run fails, it releases the output first. The source owns acquisition, timestamp mapping and cancellation; pass the same interruption flag to its opener and [`Self::run`]. Metadata and image layout must remain fixed. Native GPU sources require device-aware [`StitchSession`] setup and are rejected here.
     ///
     /// Audio is disabled because [`FrameSource`] delivers images only. File start-time and frame-offset settings are unavailable; [`Self::end_time`] converts duration to a frame limit using the source rate, and [`Self::max_frames`] limits the number of images processed.
     pub fn from_source(
@@ -943,191 +944,211 @@ impl StitchJob {
             callback(monitor.clone());
         }
         session.telemetry_mut().set_encoder_name(enc_name.clone());
-        session.add_sink(
-            Box::new(encoder),
-            reco_core::session::SinkOptions::threaded(2),
-        )?;
-
-        // Sample the allowance after inference and output resources are initialized.
-        if self.lookahead_secs > 0.0 {
-            let frames = (self.lookahead_secs * info.fps).round() as usize;
-            let budget = match source.is_gpu_resident() {
-                #[cfg(feature = "gpu")]
-                true => crate::lookahead::native_image_budget(
-                    session.core().gpu(),
-                    self.lookahead_memory_bytes,
-                ),
-                _ => crate::lookahead::image_budget(self.lookahead_memory_bytes),
-            }
-            .map_err(StitchError::Other)?;
-            session.set_lookahead(frames, budget);
-        }
-
-        if let Some(ref mut cfg) = self.replay_recording {
-            if cfg.encoder_config.inner.encoder_name.is_none() {
-                cfg.encoder_config.inner.encoder_name =
-                    crate::ffmpeg::encoder::VideoEncoder::replay_encoder_name(&enc_name)
-                        .map(String::from);
-            }
-            cfg.encoder_config.full_range = source.is_full_range();
-            if cfg.encoder_config.inner.color_metadata.is_empty() {
-                cfg.encoder_config.inner.color_metadata = source_color;
-            }
-            if cfg.encoder_config.fps.is_none() {
-                cfg.encoder_config.fps = Some(fps_rational);
-                log::info!(
-                    "replay recording follows the source rate {}/{}",
-                    fps_rational.0,
-                    fps_rational.1
-                );
-            }
-        }
-
-        // Resolve processing window (start_time / end_time / max_frames).
         let skip_frames = (start_secs * fps).round() as u64;
+        let setup_result = (|| -> Result<_, StitchError> {
+            session.add_sink(
+                Box::new(encoder),
+                reco_core::session::SinkOptions::threaded(2),
+            )?;
 
-        // Skip frames to reach start position.
-        if skip_frames > 0 {
-            log::info!("skipping {skip_frames} frames (start_time={start_secs:.2}s)");
-            let skipped = source.skip_frames(skip_frames)?;
-            if skipped < skip_frames {
-                log::warn!("source ended during skip at frame {skipped}/{skip_frames}");
+            // Sample the allowance after inference and output resources are initialized.
+            if self.lookahead_secs > 0.0 {
+                let frames = (self.lookahead_secs * info.fps).round() as usize;
+                let budget = match source.is_gpu_resident() {
+                    #[cfg(feature = "gpu")]
+                    true => crate::lookahead::native_image_budget(
+                        session.core().gpu(),
+                        self.lookahead_memory_bytes,
+                    ),
+                    _ => crate::lookahead::image_budget(self.lookahead_memory_bytes),
+                }
+                .map_err(StitchError::Other)?;
+                session.set_lookahead(frames, budget);
             }
-        }
 
-        // Compute frame limit from end_time and max_frames.
-        let end_limit = self
-            .end_time
-            .map(|end| ((end - start_secs) * fps).round() as u64);
-        let frame_limit = match (end_limit, self.max_frames) {
-            (Some(el), Some(mf)) => {
-                let limit = el.min(mf);
-                if limit == mf {
-                    log::info!("frame limit: {limit} (from max_frames)");
-                } else {
+            if let Some(ref mut cfg) = self.replay_recording {
+                if cfg.encoder_config.inner.encoder_name.is_none() {
+                    cfg.encoder_config.inner.encoder_name =
+                        crate::ffmpeg::encoder::VideoEncoder::replay_encoder_name(&enc_name)
+                            .map(String::from);
+                }
+                cfg.encoder_config.full_range = source.is_full_range();
+                if cfg.encoder_config.inner.color_metadata.is_empty() {
+                    cfg.encoder_config.inner.color_metadata = source_color;
+                }
+                if cfg.encoder_config.fps.is_none() {
+                    cfg.encoder_config.fps = Some(fps_rational);
                     log::info!(
-                        "frame limit: {limit} (from end_time {:.2}s)",
-                        self.end_time.unwrap()
+                        "replay recording follows the source rate {}/{}",
+                        fps_rational.0,
+                        fps_rational.1
                     );
                 }
-                limit
             }
-            (Some(el), None) => {
-                log::info!(
-                    "frame limit: {el} (from end_time {:.2}s)",
-                    self.end_time.unwrap()
-                );
-                el
-            }
-            (None, Some(mf)) => {
-                log::info!("frame limit: {mf} (from max_frames)");
-                mf
-            }
-            (None, None) => u64::MAX,
-        };
 
-        // Replay starts after skipped frames, on the same output window.
-        if let Some(cfg) = self.replay_recording.take() {
-            // Pack-path selection. GPU-resident sources (NVDEC
-            // zero-copy, future Metal / Jetson ISP) send frames
-            // through `submit_render_output`; the session's
-            // zero-copy driver now taps the pack shader directly
-            // against those shared textures (post-#270 wiring in
-            // reco-core). CPU-resident sources continue through
-            // the `ReplayRecordingSource` decorator: uploading
-            // just-to-pack would lose to a straight CPU memcpy.
-            //
-            // Both arms log the decision explicitly so the pack
-            // path is never a silent choice.
-            match source.is_gpu_resident() {
-                #[cfg(feature = "gpu")]
-                true => {
-                    // Resolve the output tile size. `scale` is the
-                    // per-tile dims after downscale; the layout stays
-                    // sized by the source tile dims (layout.capacity
-                    // is N, atlas h = output.height * rows).
-                    let (out_w, out_h) = cfg
-                        .scale
-                        .unwrap_or((info.camera_sizes[0].0, info.camera_sizes[0].1));
-                    let layout = reco_core::gpu::yuv_stack_packer::StackGridLayout::vstack(
-                    out_w, out_h, 2,
-                )
-                .ok_or_else(|| {
-                    StitchError::Other(format!(
-                        "GPU stacked replay: replay tile dims {out_w}x{out_h} are not YUV420P-aligned \
-                         (width must be divisible by 4, height must be even). Source: {}x{}",
-                        info.camera_sizes[0].0, info.camera_sizes[0].1,
-                    ))
-                })?;
-                    let output_size = if cfg.scale.is_some() {
-                        reco_core::gpu::yuv_stack_packer::OutputTileSize::scaled(out_w, out_h)
-                    } else {
-                        reco_core::gpu::yuv_stack_packer::OutputTileSize::unscaled(out_w, out_h)
-                    };
-                    session
-                        .enable_gpu_stacked_replay(layout, output_size)
-                        .map_err(|e| {
-                            StitchError::Other(format!("enable GPU stacked replay: {e}"))
-                        })?;
-                    let (atlas_w, atlas_h) = session.stacked_atlas_dims().ok_or_else(|| {
-                        StitchError::Other(
-                            "stacked_atlas_dims returned None right after enable; internal bug"
-                                .into(),
-                        )
-                    })?;
-                    let recorder = crate::stacked_video::replay::session_gpu_recorder(
-                        &cfg.path,
-                        *cfg.encoder_config,
-                        atlas_w,
-                        atlas_h,
-                    )
-                    .map_err(|e| StitchError::Other(format!("open GPU replay recorder: {e}")))?;
-                    session.set_stacked_gpu_recorder(recorder);
-                    let scale_note = if cfg.scale.is_some() {
-                        format!(
-                            " [A19 downscale: source {}x{} -> tile {}x{}]",
-                            info.camera_sizes[0].0, info.camera_sizes[0].1, out_w, out_h
-                        )
-                    } else {
-                        String::new()
-                    };
-                    log::info!(
-                        "reco-io: replay pack path = GPU (source GPU-resident; tile {}x{}, N=2, atlas {}x{}){} -> {}",
-                        out_w,
-                        out_h,
-                        atlas_w,
-                        atlas_h,
-                        scale_note,
-                        cfg.path.display(),
-                    );
+            // Skip frames to reach start position.
+            if skip_frames > 0 {
+                log::info!("skipping {skip_frames} frames (start_time={start_secs:.2}s)");
+                let skipped = source.skip_frames(skip_frames)?;
+                if skipped < skip_frames {
+                    log::warn!("source ended during skip at frame {skipped}/{skip_frames}");
                 }
-                _ => {
-                    if cfg.scale.is_some() {
-                        log::warn!(
-                            "reco-io: --replay-scale requested on a CPU-resident source, but the \
-                         CPU ReplayRecordingSource decorator doesn't support downscale today. \
-                         Recording at source dims {}x{} instead. Use a GPU-resident source \
-                         (zero-copy NVDEC) or disable --replay-scale.",
-                            info.camera_sizes[0].0,
-                            info.camera_sizes[0].1,
+            }
+
+            // Compute frame limit from end_time and max_frames.
+            let end_limit = self
+                .end_time
+                .map(|end| ((end - start_secs) * fps).round() as u64);
+            let frame_limit = match (end_limit, self.max_frames) {
+                (Some(el), Some(mf)) => {
+                    let limit = el.min(mf);
+                    if limit == mf {
+                        log::info!("frame limit: {limit} (from max_frames)");
+                    } else {
+                        log::info!(
+                            "frame limit: {limit} (from end_time {:.2}s)",
+                            self.end_time.unwrap()
                         );
                     }
+                    limit
+                }
+                (Some(el), None) => {
                     log::info!(
-                        "reco-io: replay pack path = CPU (source CPU-resident; ReplayRecordingSource decorator, tile {}x{}, N=2) -> {}",
-                        info.camera_sizes[0].0,
-                        info.camera_sizes[0].1,
-                        cfg.path.display(),
+                        "frame limit: {el} (from end_time {:.2}s)",
+                        self.end_time.unwrap()
                     );
-                    source = Box::new(
-                        crate::stacked_video::replay::ReplayRecordingSource::wrap(
-                            source,
+                    el
+                }
+                (None, Some(mf)) => {
+                    log::info!("frame limit: {mf} (from max_frames)");
+                    mf
+                }
+                (None, None) => u64::MAX,
+            };
+
+            // Replay starts after skipped frames, on the same output window.
+            let replay_encoder = if let Some(cfg) = self.replay_recording.take() {
+                // Pack-path selection. GPU-resident sources (NVDEC
+                // zero-copy, future Metal / Jetson ISP) send frames
+                // through `submit_render_output`; the session's
+                // zero-copy driver now taps the pack shader directly
+                // against those shared textures (post-#270 wiring in
+                // reco-core). CPU-resident sources continue through
+                // the `ReplayRecordingSource` decorator: uploading
+                // just-to-pack would lose to a straight CPU memcpy.
+                //
+                // Both arms log the decision explicitly so the pack
+                // path is never a silent choice.
+                match source.is_gpu_resident() {
+                    #[cfg(feature = "gpu")]
+                    true => {
+                        // Resolve the output tile size. `scale` is the
+                        // per-tile dims after downscale; the layout stays
+                        // sized by the source tile dims (layout.capacity
+                        // is N, atlas h = output.height * rows).
+                        let (out_w, out_h) = cfg
+                            .scale
+                            .unwrap_or((info.camera_sizes[0].0, info.camera_sizes[0].1));
+                        use reco_core::gpu::yuv_stack_packer::{OutputTileSize, StackGridLayout};
+
+                        let layout = StackGridLayout::vstack(out_w, out_h, 2).ok_or_else(|| {
+                            let (source_w, source_h) = info.camera_sizes[0];
+                            StitchError::Other(format!(
+                                "GPU stacked replay: replay tile dims {out_w}x{out_h} are not YUV420P-aligned \
+                                 (width must be divisible by 4, height must be even). Source: {source_w}x{source_h}",
+                            ))
+                        })?;
+                        let output_size = if cfg.scale.is_some() {
+                            OutputTileSize::scaled(out_w, out_h)
+                        } else {
+                            OutputTileSize::unscaled(out_w, out_h)
+                        };
+                        session
+                            .enable_gpu_stacked_replay(layout, output_size)
+                            .map_err(|e| {
+                                StitchError::Other(format!("enable GPU stacked replay: {e}"))
+                            })?;
+                        let (atlas_w, atlas_h) = session.stacked_atlas_dims().ok_or_else(|| {
+                            StitchError::Other(
+                                "stacked_atlas_dims returned None right after enable; internal bug"
+                                    .into(),
+                            )
+                        })?;
+                        let recorder = crate::stacked_video::replay::session_gpu_recorder(
                             &cfg.path,
                             *cfg.encoder_config,
+                            atlas_w,
+                            atlas_h,
                         )
-                        .map_err(|e| StitchError::Other(format!("replay recording open: {e}")))?,
-                    );
+                        .map_err(|e| {
+                            StitchError::Other(format!("open GPU replay recorder: {e}"))
+                        })?;
+                        session.set_stacked_gpu_recorder(recorder);
+                        let scale_note = if cfg.scale.is_some() {
+                            format!(
+                                " [A19 downscale: source {}x{} -> tile {}x{}]",
+                                info.camera_sizes[0].0, info.camera_sizes[0].1, out_w, out_h
+                            )
+                        } else {
+                            String::new()
+                        };
+                        log::info!(
+                            "reco-io: replay pack path = GPU (source GPU-resident; tile {}x{}, N=2, atlas {}x{}){} -> {}",
+                            out_w,
+                            out_h,
+                            atlas_w,
+                            atlas_h,
+                            scale_note,
+                            cfg.path.display(),
+                        );
+                        None
+                    }
+                    _ => {
+                        if cfg.scale.is_some() {
+                            log::warn!(
+                                "reco-io: --replay-scale requested on a CPU-resident source, but the \
+                             CPU ReplayRecordingSource decorator doesn't support downscale today. \
+                             Recording at source dims {}x{} instead. Use a GPU-resident source \
+                             (zero-copy NVDEC) or disable --replay-scale.",
+                                info.camera_sizes[0].0,
+                                info.camera_sizes[0].1,
+                            );
+                        }
+                        log::info!(
+                            "reco-io: replay pack path = CPU (source CPU-resident; ReplayRecordingSource decorator, tile {}x{}, N=2) -> {}",
+                            info.camera_sizes[0].0,
+                            info.camera_sizes[0].1,
+                            cfg.path.display(),
+                        );
+                        Some(
+                            ReplayRecordingSource::open_encoder(
+                                source.as_ref(),
+                                &cfg.path,
+                                *cfg.encoder_config,
+                            )
+                            .map_err(|e| {
+                                StitchError::Other(format!("replay recording open: {e}"))
+                            })?,
+                        )
+                    }
                 }
+            } else {
+                None
+            };
+            Ok((frame_limit, replay_encoder))
+        })();
+        let (frame_limit, replay_encoder) = match setup_result {
+            Ok(setup) => setup,
+            Err(error) => {
+                // Keep the source alive through sink shutdown, including a failed replay open.
+                if let Err(finish_error) = session.finish() {
+                    log::warn!("output finalization also failed: {finish_error}");
+                }
+                return Err(error);
             }
+        };
+        if let Some(encoder) = replay_encoder {
+            source = Box::new(ReplayRecordingSource::with_encoder(source, encoder));
         }
         let run_result = session.run(
             source.as_mut(),
@@ -1136,9 +1157,9 @@ impl StitchJob {
             self.on_progress.take(),
         );
 
-        // Host images retain their own storage, so stop acquisition before output
-        // finalization. Native slots can still be referenced by pending GPU work.
-        let _native_source = if source.is_gpu_resident() {
+        // Native slots can still be referenced by pending GPU work. On failure,
+        // also keep host sources alive until output finalization releases the files.
+        let _source_during_finish = if source.is_gpu_resident() || run_result.is_err() {
             Some(source)
         } else {
             drop(source);
