@@ -2,7 +2,7 @@
 //!
 //! `h264_vaapi` / `hevc_vaapi` / `av1_vaapi` only accept frames that live
 //! in VAAPI surfaces, not CPU pixel formats. This module owns the VAAPI
-//! hwdevice + hwframe context and uploads CPU NV12 staging frames to GPU
+//! hwdevice + hwframe context and uploads CPU NV12 or P010LE staging frames to GPU
 //! surfaces via `av_hwframe_transfer_data`. All of the unsafe FFmpeg FFI
 //! for that path is isolated here so the encoder core stays readable.
 
@@ -14,14 +14,14 @@ use std::ptr;
 
 use super::encoder::EncodeError;
 
-/// Owns a VAAPI hwframe context and uploads CPU NV12 frames to GPU surfaces.
+/// Owns a VAAPI hwframe context and uploads CPU NV12 or P010LE frames to GPU surfaces.
 pub(super) struct HardwareUpload {
     frame: VideoFrame,
     frames_ref: *mut ffmpeg::sys::AVBufferRef,
 }
 
 impl HardwareUpload {
-    /// Create a VAAPI device + NV12-backed hwframe pool for `width`x`height`.
+    /// Create a VAAPI device and hwframe pool for `width`x`height`.
     ///
     /// Returns an error if VAAPI is unavailable, which lets the encoder
     /// fallback chain move on to the next candidate.
@@ -29,6 +29,7 @@ impl HardwareUpload {
         width: u32,
         height: u32,
         device: Option<&str>,
+        sw_format: Pixel,
     ) -> Result<Self, EncodeError> {
         let device = device
             .map(std::ffi::CString::new)
@@ -63,7 +64,7 @@ impl HardwareUpload {
             }
 
             (*frames_ctx).format = Pixel::VAAPI.into();
-            (*frames_ctx).sw_format = Pixel::NV12.into();
+            (*frames_ctx).sw_format = sw_format.into();
             (*frames_ctx).width = width as i32;
             (*frames_ctx).height = height as i32;
             (*frames_ctx).initial_pool_size = 8;
@@ -102,7 +103,7 @@ impl HardwareUpload {
         Ok(())
     }
 
-    /// Upload a CPU NV12 `source` frame to a VAAPI surface and return it.
+    /// Upload a CPU NV12 or P010LE `source` frame to a VAAPI surface and return it.
     ///
     /// The returned frame is owned by `self` and reused on the next call.
     pub(super) fn upload(&mut self, source: &VideoFrame) -> Result<&VideoFrame, EncodeError> {

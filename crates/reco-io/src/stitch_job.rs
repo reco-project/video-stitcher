@@ -920,6 +920,7 @@ impl StitchJob {
                 device: self.encoder_device.clone(),
                 software_only: self.cpu_stitch,
                 codec: self.codec,
+                bit_depth: Default::default(),
                 quality: self.quality,
                 preset: self.preset.clone(),
                 audio_source,

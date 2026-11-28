@@ -49,6 +49,16 @@ impl fmt::Display for Codec {
     }
 }
 
+/// Sample precision for encoded video.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BitDepth {
+    /// 8-bit 4:2:0. Accepts NV12, YUV420P, or RGBA8 input.
+    #[default]
+    Eight,
+    /// 10-bit 4:2:0. Requires packed P010LE input and encodes HEVC Main 10.
+    Ten,
+}
+
 /// Mutually exclusive encoder quality selection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Quality {

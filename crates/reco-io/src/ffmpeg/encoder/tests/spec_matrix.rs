@@ -8,10 +8,11 @@ use super::super::catalog::{
     vaapi_peer_encoder, validate_selection,
 };
 use super::super::container::{ContainerPolicy, HVC1_CODEC_TAG, OutputColor};
-use super::super::options::{build_encoder_opts, videotoolbox_quality_params};
+use super::super::options::videotoolbox_quality_params;
 use super::super::{Codec, Container, EncoderConfig, Pixel, Quality};
+use super::build_encoder_opts;
 use crate::ffmpeg::ColorMetadata;
-use crate::output::QualityPreset;
+use crate::output::{BitDepth, QualityPreset};
 use ffmpeg_next as ffmpeg;
 
 fn opts_map(dict: &ffmpeg::Dictionary<'_>) -> BTreeMap<String, String> {
@@ -142,7 +143,7 @@ fn staging_mode_invariants_across_all_encoders() {
             EncoderFamily::Vaapi => {
                 assert_eq!(
                     spec.staging,
-                    StagingMode::VaapiSurface,
+                    StagingMode::VaapiSurface(BitDepth::Eight),
                     "{} must use VaapiSurface staging",
                     spec.name
                 );
@@ -801,4 +802,113 @@ fn container_policy_matrix_across_containers_codecs_and_color_modes() {
             }
         }
     }
+}
+
+#[test]
+fn main10_catalog_is_native_first_and_uses_10bit_staging() {
+    let expected = [
+        ("hevc_nvenc", Pixel::P010LE, Pixel::P010LE),
+        ("hevc_qsv", Pixel::P010LE, Pixel::P010LE),
+        ("hevc_videotoolbox", Pixel::P010LE, Pixel::P010LE),
+        ("hevc_amf", Pixel::P010LE, Pixel::P010LE),
+        ("hevc_vaapi", Pixel::VAAPI, Pixel::P010LE),
+        ("libx265", Pixel::YUV420P10LE, Pixel::YUV420P10LE),
+    ];
+    let actual: Vec<_> = ALL_ENCODERS
+        .iter()
+        .filter_map(|spec| {
+            let staging = spec.staging_for(BitDepth::Ten)?;
+            assert_eq!(staging.uses_vaapi_upload(), spec.name == "hevc_vaapi");
+            for quality in [Quality::default(), Quality::Value(80)] {
+                let opts = super::super::options::build_encoder_opts(
+                    spec.name,
+                    quality,
+                    None,
+                    1920,
+                    1080,
+                    BitDepth::Ten,
+                );
+                let mut baseline =
+                    opts_map(&build_encoder_opts(spec.name, quality, None, 1920, 1080));
+                baseline.insert("profile".into(), "main10".into());
+                assert_eq!(opts_map(&opts), baseline, "{}", spec.name);
+            }
+            Some((
+                spec.name,
+                staging.encoder_pixel_format(),
+                staging.staging_pixel_format(),
+            ))
+        })
+        .collect();
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn main10_requires_hevc_and_rejects_unsupported_encoders_and_streaming() {
+    use super::super::{EncodeError, VideoEncoder};
+    use std::path::Path;
+
+    let config = EncoderConfig {
+        bit_depth: BitDepth::Ten,
+        ..Default::default()
+    };
+    assert_eq!(config.auto_codec(), Codec::HEVC);
+    assert_eq!(EncoderConfig::default().auto_codec(), Codec::H264);
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("out.mp4");
+    std::fs::write(&path, b"existing file").unwrap();
+    let invalid = |path: &Path, config: &EncoderConfig, message: &str| {
+        let result = VideoEncoder::new(path, 256, 128, (30, 1).into(), config);
+        assert!(
+            matches!(result, Err(EncodeError::InvalidConfig(reason)) if reason.contains(message)),
+            "{config:?} should reject {message}"
+        );
+    };
+    for codec in [Codec::H264, Codec::AV1] {
+        invalid(
+            &path,
+            &EncoderConfig {
+                codec: Some(codec),
+                ..config.clone()
+            },
+            "requires HEVC Main 10",
+        );
+    }
+    for name in [
+        "libx264",
+        "h264_nvenc",
+        "hevc_mf",
+        "hevc_v4l2m2m",
+        "hevc_mediacodec",
+        "custom_hevc",
+    ] {
+        invalid(
+            &path,
+            &EncoderConfig {
+                encoder_name: Some(name.into()),
+                ..config.clone()
+            },
+            name,
+        );
+    }
+    invalid(
+        &path,
+        &EncoderConfig {
+            container: Container::Flv,
+            ..config.clone()
+        },
+        "FLV or RTMP",
+    );
+    let url = "rtmps://localhost/live";
+    invalid(
+        &path,
+        &EncoderConfig {
+            stream_url: Some(url.into()),
+            ..config.clone()
+        },
+        "FLV or RTMP",
+    );
+    invalid(Path::new(url), &config, "FLV or RTMP");
+    assert_eq!(std::fs::read(path).unwrap(), b"existing file");
 }

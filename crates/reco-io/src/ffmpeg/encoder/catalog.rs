@@ -9,7 +9,7 @@ use ffmpeg::format::Pixel;
 use ffmpeg::{codec, encoder};
 
 use super::{EncodeError, EncoderConfig, EncoderInfo};
-use crate::output::{Codec, Quality};
+use crate::output::{BitDepth, Codec, Quality};
 
 impl Codec {
     pub(super) const fn id(self) -> codec::Id {
@@ -40,31 +40,36 @@ pub(super) enum StagingMode {
     Nv12,
     /// CPU stages planar YUV420P for software encoders.
     Yuv420p,
-    /// CPU stages NV12 and uploads to a VAAPI GPU surface before encoding.
-    VaapiSurface,
+    /// CPU stages P010LE for Main 10 hardware encoders with implicit upload.
+    P010,
+    /// CPU stages planar YUV420P10LE for libx265.
+    Yuv420p10,
+    /// CPU stages NV12 or P010LE and uploads it to a VAAPI surface.
+    VaapiSurface(BitDepth),
 }
 
 impl StagingMode {
     /// Pixel format configured on the FFmpeg `AVCodecContext`.
     pub(super) const fn encoder_pixel_format(self) -> Pixel {
         match self {
-            Self::Nv12 => Pixel::NV12,
-            Self::Yuv420p => Pixel::YUV420P,
-            Self::VaapiSurface => Pixel::VAAPI,
+            Self::VaapiSurface(_) => Pixel::VAAPI,
+            _ => self.staging_pixel_format(),
         }
     }
 
-    /// CPU software pixel format used by swscale and the reusable staging frame.
+    /// CPU software pixel format for the reusable staging frame.
     pub(super) const fn staging_pixel_format(self) -> Pixel {
         match self {
-            Self::Nv12 | Self::VaapiSurface => Pixel::NV12,
+            Self::Nv12 | Self::VaapiSurface(BitDepth::Eight) => Pixel::NV12,
             Self::Yuv420p => Pixel::YUV420P,
+            Self::P010 | Self::VaapiSurface(BitDepth::Ten) => Pixel::P010LE,
+            Self::Yuv420p10 => Pixel::YUV420P10LE,
         }
     }
 
     /// Whether frames must be transferred via [`super::super::hw_upload::HardwareUpload`].
     pub(super) const fn uses_vaapi_upload(self) -> bool {
-        matches!(self, Self::VaapiSurface)
+        matches!(self, Self::VaapiSurface(_))
     }
 }
 
@@ -112,8 +117,8 @@ impl EncoderFamily {
     }
 
     /// Whether automatic encoder selection may consider this backend on the current platform.
-    pub(super) fn auto_candidate_allowed(self, name: &str) -> bool {
-        let _ = name;
+    pub(super) fn auto_candidate_allowed(self, name: &str, bit_depth: BitDepth) -> bool {
+        let _ = (name, bit_depth);
         match self {
             Self::Nvenc => cfg!(any(target_os = "linux", target_os = "windows")),
             Self::Qsv => {
@@ -123,7 +128,8 @@ impl EncoderFamily {
                 }
                 #[cfg(target_os = "linux")]
                 {
-                    if let Some(vaapi_name) = vaapi_peer_encoder(name)
+                    if bit_depth == BitDepth::Eight
+                        && let Some(vaapi_name) = vaapi_peer_encoder(name)
                         && encoder::find_by_name(vaapi_name).is_some()
                     {
                         return false;
@@ -274,8 +280,28 @@ impl EncoderSpec {
         self.family.is_hardware()
     }
 
-    pub(super) fn auto_candidate_allowed(&self) -> bool {
-        self.family.auto_candidate_allowed(self.name)
+    pub(super) fn auto_candidate_allowed(&self, bit_depth: BitDepth) -> bool {
+        self.family.auto_candidate_allowed(self.name, bit_depth)
+    }
+
+    pub(super) fn staging_for(&self, bit_depth: BitDepth) -> Option<StagingMode> {
+        if bit_depth == BitDepth::Eight {
+            return Some(self.staging);
+        }
+        if self.codec != Codec::HEVC {
+            return None;
+        }
+        match self.family {
+            EncoderFamily::Nvenc
+            | EncoderFamily::Qsv
+            | EncoderFamily::VideoToolbox
+            | EncoderFamily::Amf => Some(StagingMode::P010),
+            EncoderFamily::Vaapi => Some(StagingMode::VaapiSurface(BitDepth::Ten)),
+            EncoderFamily::Software => Some(StagingMode::Yuv420p10),
+            EncoderFamily::V4l2M2m | EncoderFamily::MediaCodec | EncoderFamily::MediaFoundation => {
+                None
+            }
+        }
     }
 }
 
@@ -348,7 +374,7 @@ pub(super) const ALL_ENCODERS: &[EncoderSpec] = &[
         name: "h264_vaapi",
         codec: Codec::H264,
         family: EncoderFamily::Vaapi,
-        staging: StagingMode::VaapiSurface,
+        staging: StagingMode::VaapiSurface(BitDepth::Eight),
         quality_model: QualityModel::VaapiQp {
             profile: Some("high"),
         },
@@ -457,7 +483,7 @@ pub(super) const ALL_ENCODERS: &[EncoderSpec] = &[
         name: "hevc_vaapi",
         codec: Codec::HEVC,
         family: EncoderFamily::Vaapi,
-        staging: StagingMode::VaapiSurface,
+        staging: StagingMode::VaapiSurface(BitDepth::Eight),
         quality_model: QualityModel::VaapiQp { profile: None },
     },
     EncoderSpec {
@@ -551,7 +577,7 @@ pub(super) const ALL_ENCODERS: &[EncoderSpec] = &[
         name: "av1_vaapi",
         codec: Codec::AV1,
         family: EncoderFamily::Vaapi,
-        staging: StagingMode::VaapiSurface,
+        staging: StagingMode::VaapiSurface(BitDepth::Eight),
         quality_model: QualityModel::VaapiQp { profile: None },
     },
     EncoderSpec {

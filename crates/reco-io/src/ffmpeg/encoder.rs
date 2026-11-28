@@ -9,6 +9,7 @@ mod audio;
 mod catalog;
 mod container;
 mod options;
+mod p010;
 mod silent_audio;
 
 use audio::AudioPassthrough;
@@ -19,7 +20,7 @@ use container::{
     ContainerPolicy, HevcHeaderCheck, OutputColor, apply_video_codec_tag,
     muxer_requires_global_header,
 };
-use options::{build_encoder_opts, validate_encoder_options};
+use options::validate_encoder_options;
 use silent_audio::SilentAudio;
 // Re-imported for `audio.rs` (`use super::*`) and unit tests.
 use silent_audio::{sanitize_audio_start_time, seconds_to_pts};
@@ -29,7 +30,7 @@ use super::hw_upload::HardwareUpload;
 use super::live_audio::LiveAudio;
 use super::output_io::OutputIo;
 pub use super::output_io::{StreamMonitor, StreamStatus};
-use crate::output::{Codec, Container, Quality};
+use crate::output::{BitDepth, Codec, Container, Quality};
 pub use catalog::{available_encoders, available_h264_encoders};
 
 use ffmpeg::format::Pixel;
@@ -89,8 +90,12 @@ pub struct EncoderInfo {
 pub struct EncoderConfig {
     /// Force a specific encoder by name, or `None` for auto-detection.
     pub encoder_name: Option<String>,
-    /// Output codec. When absent, infer from the selected encoder, or use H.264 for automatic selection.
+    /// Output codec. When absent, infer from the named encoder, or select H.264 for 8-bit and HEVC for 10-bit.
     pub codec: Option<Codec>,
+    /// Output sample precision. 10-bit requires P010LE input and HEVC Main 10. FLV and RTMP are incompatible.
+    ///
+    /// Main 10 VAAPI uses the `hev1` sample entry in MP4 and MOV to retain in-band parameter sets.
+    pub bit_depth: BitDepth,
     /// Restrict automatic selection to software encoders.
     pub software_only: bool,
     /// Explicit VAAPI render device, or NVENC GPU index. Requires a matching named encoder.
@@ -141,6 +146,15 @@ pub struct EncoderConfig {
     pub color_metadata: super::ColorMetadata,
 }
 
+impl EncoderConfig {
+    fn auto_codec(&self) -> Codec {
+        self.codec.unwrap_or(match self.bit_depth {
+            BitDepth::Eight => Codec::H264,
+            BitDepth::Ten => Codec::HEVC,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct ResolvedCandidate<'a> {
     name: &'a str,
@@ -151,13 +165,13 @@ struct ResolvedCandidate<'a> {
 
 struct OpenedVideoEncoder {
     encoder: ffmpeg::encoder::video::Encoder,
-    scaler: ScalingContext,
+    scaler: Option<ScalingContext>,
     stream_index: usize,
     encoder_time_base: Rational,
     hardware_upload: Option<HardwareUpload>,
 }
 
-/// Video encoder that writes RGBA frames to an MP4 file.
+/// FFmpeg video encoder for 8-bit frames or packed 10-bit P010LE frames.
 ///
 /// # Example
 ///
@@ -174,7 +188,7 @@ struct OpenedVideoEncoder {
 pub struct VideoEncoder {
     octx: OutputIo,
     encoder: ffmpeg::encoder::video::Encoder,
-    scaler: ScalingContext,
+    rgba_input: Option<(ScalingContext, VideoFrame)>,
     stream_index: usize,
     encoder_time_base: Rational,
     output_time_base: Rational,
@@ -186,7 +200,6 @@ pub struct VideoEncoder {
     header_check: Option<HevcHeaderCheck>,
     hevc_color: Option<HevcColor>,
     /// Reusable frame buffers to avoid per-frame allocation.
-    rgba_frame: VideoFrame,
     yuv_frame: VideoFrame,
     hardware_upload: Option<HardwareUpload>,
     /// Audio passthrough state (if enabled).
@@ -313,6 +326,17 @@ impl VideoEncoder {
         live_audio: Option<LiveAudio>,
     ) -> Result<Self, EncodeError> {
         Self::validate_layout_and_config(width, height, fps, config)?;
+        if config.bit_depth == BitDepth::Ten
+            && (config.container == Container::Flv
+                || config.stream_url.is_some()
+                || path.to_str().is_some_and(|path| {
+                    path.starts_with("rtmp://") || path.starts_with("rtmps://")
+                }))
+        {
+            return Err(EncodeError::InvalidConfig(
+                "10-bit HEVC output is incompatible with FLV or RTMP".into(),
+            ));
+        }
         crate::init();
 
         let forced_encoder = config.encoder_name.is_some();
@@ -390,7 +414,7 @@ impl VideoEncoder {
         }
 
         Err(last_err.unwrap_or(EncodeError::CodecNotFound(
-            config.codec.unwrap_or_default().label().to_string(),
+            config.auto_codec().label().to_string(),
         )))
     }
 
@@ -432,9 +456,24 @@ impl VideoEncoder {
     fn resolve_candidates(
         config: &EncoderConfig,
     ) -> Result<Vec<ResolvedCandidate<'_>>, EncodeError> {
-        let forced_encoder = config.encoder_name.is_some();
+        let bit_depth = config.bit_depth;
+        if bit_depth == BitDepth::Ten && config.auto_codec() != Codec::HEVC {
+            return Err(EncodeError::InvalidConfig(
+                "10-bit output requires HEVC Main 10".into(),
+            ));
+        }
 
         let candidates: Vec<ResolvedCandidate<'_>> = if let Some(ref name) = config.encoder_name {
+            let spec = find_encoder_spec(name);
+            let staging = match (bit_depth, spec.and_then(|spec| spec.staging_for(bit_depth))) {
+                (_, Some(staging)) => staging,
+                (BitDepth::Eight, None) => StagingMode::Yuv420p,
+                (BitDepth::Ten, None) => {
+                    return Err(EncodeError::InvalidConfig(format!(
+                        "encoder {name} is unsupported for 10-bit HEVC Main 10 output"
+                    )));
+                }
+            };
             let selected = encoder::find_by_name(name)
                 .ok_or_else(|| EncodeError::CodecNotFound(name.clone()))?;
             if config
@@ -445,12 +484,11 @@ impl VideoEncoder {
                     "encoder {name} does not encode the requested codec"
                 )));
             }
-            let spec = find_encoder_spec(name);
+            validate_selection(name, config)?;
             let family = spec
                 .map(|s| s.family)
                 .or_else(|| EncoderFamily::from_suffix(name))
                 .unwrap_or(EncoderFamily::Software);
-            let staging = spec.map_or(StagingMode::Yuv420p, |s| s.staging);
             let is_hardware = spec.is_some_and(EncoderSpec::is_hardware);
             vec![ResolvedCandidate {
                 name: name.as_str(),
@@ -459,29 +497,27 @@ impl VideoEncoder {
                 staging,
             }]
         } else {
-            specs_for_codec(config.codec.unwrap_or_default())
+            specs_for_codec(config.auto_codec())
                 .filter(|spec| encoder::find_by_name(spec.name).is_some())
                 .filter(|spec| !config.software_only || !spec.is_hardware())
-                .filter(|spec| spec.auto_candidate_allowed())
+                .filter(|spec| spec.auto_candidate_allowed(bit_depth))
                 .filter(|spec| validate_selection(spec.name, config).is_ok())
-                .map(|spec| ResolvedCandidate {
-                    name: spec.name,
-                    family: spec.family,
-                    is_hardware: spec.is_hardware(),
-                    staging: spec.staging,
+                .filter_map(|spec| {
+                    Some(ResolvedCandidate {
+                        name: spec.name,
+                        family: spec.family,
+                        is_hardware: spec.is_hardware(),
+                        staging: spec.staging_for(bit_depth)?,
+                    })
                 })
                 .collect()
         };
 
         if candidates.is_empty() {
             return Err(EncodeError::CodecNotFound(
-                config.codec.unwrap_or_default().label().to_string(),
+                config.auto_codec().label().to_string(),
             ));
         }
-        if forced_encoder {
-            validate_selection(candidates[0].name, config)?;
-        }
-
         Ok(candidates)
     }
 
@@ -546,7 +582,12 @@ impl VideoEncoder {
         }
 
         let hardware_upload = if candidate.staging.uses_vaapi_upload() {
-            let upload = HardwareUpload::new_vaapi(width, height, config.device.as_deref())?;
+            let upload = HardwareUpload::new_vaapi(
+                width,
+                height,
+                config.device.as_deref(),
+                candidate.staging.staging_pixel_format(),
+            )?;
             // SAFETY: `enc` is a live, not-yet-opened encoder context.
             let codec_ctx = unsafe { enc.as_mut_ptr() };
             upload.attach_to_encoder(codec_ctx)?;
@@ -563,12 +604,13 @@ impl VideoEncoder {
         // canonical ffmpeg-next transcode example follows the same
         // pattern: set params, open, re-set params.
         ost.set_parameters(&enc);
-        let mut opts = build_encoder_opts(
+        let mut opts = options::build_encoder_opts(
             candidate.name,
             config.quality,
             config.preset.as_deref(),
             width,
             height,
+            config.bit_depth,
         );
         if candidate.family == EncoderFamily::Nvenc
             && let Some(device) = &config.device
@@ -590,7 +632,9 @@ impl VideoEncoder {
         ost.set_rate(fps);
         ost.set_avg_frame_rate(fps);
 
-        let scaler = Self::build_rgba_scaler(width, height, candidate.staging, color)?;
+        let scaler = (config.bit_depth == BitDepth::Eight)
+            .then(|| Self::build_rgba_scaler(width, height, candidate.staging, color))
+            .transpose()?;
 
         Ok(OpenedVideoEncoder {
             encoder,
@@ -656,7 +700,11 @@ impl VideoEncoder {
         color: OutputColor,
         live_audio: Option<LiveAudio>,
     ) -> Result<Self, EncodeError> {
-        apply_video_codec_tag(&mut octx, opened.stream_index, codec_id);
+        // VAAPI drivers can emit Main 10 parameter sets that differ from
+        // FFmpeg's extradata. Keep them in-band instead of stripping them with hvc1.
+        if !matches!(candidate.staging, StagingMode::VaapiSurface(BitDepth::Ten)) {
+            apply_video_codec_tag(&mut octx, opened.stream_index, codec_id);
+        }
         Self::log_opened_encoder(
             candidate,
             width,
@@ -711,7 +759,9 @@ impl VideoEncoder {
         Ok(Self {
             octx,
             encoder: opened.encoder,
-            scaler: opened.scaler,
+            rgba_input: opened
+                .scaler
+                .map(|scaler| (scaler, VideoFrame::new(Pixel::RGBA, width, height))),
             stream_index: opened.stream_index,
             encoder_time_base: opened.encoder_time_base,
             output_time_base,
@@ -722,7 +772,6 @@ impl VideoEncoder {
             encoder_name: candidate.name.to_string(),
             header_check,
             hevc_color,
-            rgba_frame: VideoFrame::new(Pixel::RGBA, width, height),
             yuv_frame: VideoFrame::new(candidate.staging.staging_pixel_format(), width, height),
             hardware_upload: opened.hardware_upload,
             audio,
@@ -948,7 +997,23 @@ impl VideoEncoder {
         Ok(())
     }
 
-    /// Write an RGBA frame to the output file.
+    pub(crate) fn input_pixel_format(&self) -> reco_core::sink::PixelFormat {
+        match self.yuv_frame.format() {
+            Pixel::P010LE | Pixel::YUV420P10LE => reco_core::sink::PixelFormat::P010,
+            _ => reco_core::sink::PixelFormat::Nv12,
+        }
+    }
+
+    fn require_8bit_input(&self) -> Result<(), EncodeError> {
+        if self.rgba_input.is_none() {
+            return Err(EncodeError::InvalidConfig(
+                "10-bit encoders require P010LE frames".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Write an RGBA frame to an 8-bit encoder.
     ///
     /// `pts_us` follows [`reco_core::sink::OutputFrame::pts_us`]. The output uses a microsecond encoder clock; the container may quantize it further. Network destinations pace encoded packets on one wall clock; ordinary file output is unrestricted. Frames are not duplicated.
     ///
@@ -962,6 +1027,11 @@ impl VideoEncoder {
         rgba_data: &[u8],
         pts_us: Option<i64>,
     ) -> Result<(), EncodeError> {
+        self.require_8bit_input()?;
+        let (scaler, rgba_frame) = self
+            .rgba_input
+            .as_mut()
+            .expect("8-bit encoder has an RGBA scaler");
         let expected = self.width as usize * self.height as usize * 4;
         if rgba_data.len() != expected {
             return Err(EncodeError::FrameSizeMismatch {
@@ -970,24 +1040,24 @@ impl VideoEncoder {
             });
         }
 
-        let stride = self.rgba_frame.stride(0);
+        let stride = rgba_frame.stride(0);
         let row_bytes = self.width as usize * 4;
         if stride == row_bytes {
-            self.rgba_frame.data_mut(0)[..rgba_data.len()].copy_from_slice(rgba_data);
+            rgba_frame.data_mut(0)[..rgba_data.len()].copy_from_slice(rgba_data);
         } else {
             for y in 0..self.height as usize {
                 let src_start = y * row_bytes;
                 let dst_start = y * stride;
-                self.rgba_frame.data_mut(0)[dst_start..dst_start + row_bytes]
+                rgba_frame.data_mut(0)[dst_start..dst_start + row_bytes]
                     .copy_from_slice(&rgba_data[src_start..src_start + row_bytes]);
             }
         }
 
-        self.scaler.run(&self.rgba_frame, &mut self.yuv_frame)?;
+        scaler.run(rgba_frame, &mut self.yuv_frame)?;
         self.send_current_yuv_frame(pts_us)
     }
 
-    /// Write a pre-converted NV12 frame to the output file.
+    /// Write a pre-converted NV12 frame to an 8-bit encoder.
     ///
     /// `pts_us` follows [`Self::write_frame`].
     ///
@@ -1005,6 +1075,7 @@ impl VideoEncoder {
         nv12_data: &[u8],
         pts_us: Option<i64>,
     ) -> Result<(), EncodeError> {
+        self.require_8bit_input()?;
         let expected = self.width as usize * self.height as usize * 3 / 2;
         if nv12_data.len() != expected {
             return Err(EncodeError::FrameSizeMismatch {
@@ -1064,7 +1135,46 @@ impl VideoEncoder {
         self.send_current_yuv_frame(pts_us)
     }
 
-    /// Write a pre-converted YUV420P planar frame.
+    /// Write a tightly packed P010LE frame to a 10-bit encoder.
+    ///
+    /// The layout matches [`reco_core::sink::DeliveryFormat::P010`]. The buffer must
+    /// contain exactly `width * height * 3` bytes, with `width * height * 2`
+    /// bytes of Y followed by `width * height` bytes of interleaved UV. Each
+    /// little-endian 16-bit word stores its 10-bit sample in bits 15 through 6.
+    /// `pts_us` follows [`Self::write_frame`].
+    #[cfg_attr(
+        feature = "profiling",
+        tracing::instrument(skip_all, name = "encode_p010_frame")
+    )]
+    pub fn write_p010_frame(
+        &mut self,
+        p010_data: &[u8],
+        pts_us: Option<i64>,
+    ) -> Result<(), EncodeError> {
+        if self.rgba_input.is_some() {
+            return Err(EncodeError::InvalidConfig(
+                "P010LE frames require a 10-bit encoder".into(),
+            ));
+        }
+        let expected = self.width as usize * self.height as usize * 3;
+        if p010_data.len() != expected {
+            return Err(EncodeError::FrameSizeMismatch {
+                expected,
+                actual: p010_data.len(),
+            });
+        }
+
+        // SAFETY: the staging AVFrame is live. The encoder may still hold a
+        // reference after a previous submission, so ensure the planes are writable.
+        let status = unsafe { ffmpeg::sys::av_frame_make_writable(self.yuv_frame.as_mut_ptr()) };
+        if status < 0 {
+            return Err(ffmpeg::Error::from(status).into());
+        }
+        p010::stage(p010_data, &mut self.yuv_frame);
+        self.send_current_yuv_frame(pts_us)
+    }
+
+    /// Write a pre-converted YUV420P planar frame to an 8-bit encoder.
     ///
     /// `pts_us` follows [`Self::write_frame`].
     ///
@@ -1091,6 +1201,7 @@ impl VideoEncoder {
         v: &[u8],
         pts_us: Option<i64>,
     ) -> Result<(), EncodeError> {
+        self.require_8bit_input()?;
         if !self.width.is_multiple_of(2) || !self.height.is_multiple_of(2) {
             return Err(EncodeError::FrameSizeMismatch {
                 expected: 0,
@@ -1359,6 +1470,16 @@ mod tests {
 
     mod audio_copy;
     mod spec_matrix;
+
+    fn build_encoder_opts(
+        name: &str,
+        quality: Quality,
+        preset: Option<&str>,
+        width: u32,
+        height: u32,
+    ) -> ffmpeg::Dictionary<'static> {
+        options::build_encoder_opts(name, quality, preset, width, height, BitDepth::Eight)
+    }
 
     #[test]
     fn streaming_audio_samples_are_initialized_to_silence() {
