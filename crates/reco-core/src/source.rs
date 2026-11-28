@@ -251,14 +251,14 @@ impl Nv12Data {
 /// Non-owning - the pointer is only valid while the source pins the
 /// underlying decode slice alive (until the session has staged the
 /// frame into shared textures).
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "gpu", target_os = "windows"))]
 pub struct D3d11CameraFrame {
     pub(crate) texture: *mut std::ffi::c_void,
     pub(crate) slice: usize,
     _owner: Box<dyn Send>,
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "gpu", target_os = "windows"))]
 impl D3d11CameraFrame {
     /// Attach the owner that pins the decoded texture slice until staging completes.
     ///
@@ -326,7 +326,7 @@ pub enum FrameSet {
     /// Windows D3D11VA zero-copy: decoded frames still on D3D11 GPU
     /// memory, one per camera. The session stages these into shared
     /// NV12 textures for wgpu rendering.
-    #[cfg(target_os = "windows")]
+    #[cfg(all(feature = "gpu", target_os = "windows"))]
     D3d11Resident(Vec<D3d11CameraFrame>),
     /// Jetson NVMM zero-copy: NV12 frames in NvBufSurface DMA-buf
     /// memory, one per camera. The session imports the DMA-bufs as
