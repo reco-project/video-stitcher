@@ -31,8 +31,10 @@ fn fixture(path: &Path, hdr: bool) {
     let source = format!("nullsrc=s={WIDTH}x{HEIGHT}:r=10");
     if hdr {
         // The adjacent neutral luma values 512 and 513 both round to 128 in 8-bit YUV.
+        // Tag the generated frames so FFmpeg passes the colour metadata to the encoder.
         ffmpeg.arg(format!(
-            "{source},format=yuv420p10le,geq=lum='512+mod(N,2)':cb=512:cr=512"
+            "{source},format=yuv420p10le,geq=lum='512+mod(N,2)':cb=512:cr=512,\
+             setparams=range=tv:color_primaries=bt2020:color_trc=arib-std-b67:colorspace=bt2020nc"
         ));
         ffmpeg.args([
             "-c:v",
@@ -55,6 +57,9 @@ fn fixture(path: &Path, hdr: bool) {
         ffmpeg.args(["-c:v", "libx264", "-preset", "ultrafast"]);
     }
     run_command(ffmpeg.args(["-frames:v", "6"]).arg(path));
+    if hdr {
+        assert_hlg_metadata(&video_info(path), path);
+    }
 }
 
 fn job(input: &Path, output: &Path) -> StitchJob {
@@ -98,6 +103,16 @@ fn video_info(path: &Path) -> serde_json::Value {
     let stream = &info["streams"][0];
     assert_eq!(stream["nb_read_frames"], "6");
     stream.clone()
+}
+
+fn assert_hlg_metadata(stream: &serde_json::Value, path: &Path) {
+    for (field, expected) in [
+        ("color_primaries", "bt2020"),
+        ("color_transfer", "arib-std-b67"),
+        ("color_space", "bt2020nc"),
+    ] {
+        assert_eq!(stream[field], expected, "{}: {field}", path.display());
+    }
 }
 
 #[test]
@@ -190,9 +205,7 @@ fn hdr_defaults_to_main10_with_hlg_metadata_and_8_bit_replay() {
     assert_eq!(video["codec_name"], "hevc");
     assert_eq!(video["profile"], "Main 10");
     assert_eq!(video["pix_fmt"], "yuv420p10le");
-    assert_eq!(video["color_primaries"], "bt2020");
-    assert_eq!(video["color_transfer"], "arib-std-b67");
-    assert_eq!(video["color_space"], "bt2020nc");
+    assert_hlg_metadata(&video, &output);
 
     let replay = video_info(&replay);
     assert_eq!(replay["codec_name"], "h264");
