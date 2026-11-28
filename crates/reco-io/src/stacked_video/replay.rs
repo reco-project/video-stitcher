@@ -79,14 +79,16 @@ impl ReplayRecordingSource {
         mut config: StackedEncoderConfig,
     ) -> Result<Self, StackedEncodeError> {
         configure_replay_color(&mut config, inner.as_ref(), inner.replay_color_metadata())?;
-        Self::wrap_configured(inner, path, config)
+        let encoder = Self::open_encoder(inner.as_ref(), path, config)?;
+        Ok(Self::with_encoder(inner, encoder))
     }
 
-    pub(crate) fn wrap_configured(
-        inner: Box<dyn FrameSource>,
+    /// Open a recorder with the resolved source colour without consuming the source.
+    pub(crate) fn open_encoder(
+        inner: &dyn FrameSource,
         path: &Path,
         config: StackedEncoderConfig,
-    ) -> Result<Self, StackedEncodeError> {
+    ) -> Result<StackedEncoder, StackedEncodeError> {
         let info = inner.info();
         let [first, _] = info.camera_sizes.as_slice() else {
             return Err(StackedEncodeError::Encode(EncodeError::InvalidConfig(
@@ -122,7 +124,12 @@ impl ReplayRecordingSource {
             first.1,
             path.display(),
         );
-        Ok(Self {
+        Ok(encoder)
+    }
+
+    /// Attach a recorder opened for this source with [`Self::open_encoder`].
+    pub(crate) fn with_encoder(inner: Box<dyn FrameSource>, encoder: StackedEncoder) -> Self {
+        Self {
             inner,
             encoder: Some(encoder),
             warned_non_yuv420p: false,
@@ -130,7 +137,7 @@ impl ReplayRecordingSource {
             // Flush to disk every ~1 second at 30fps. Balances
             // replay freshness against syscall overhead.
             flush_interval: 30,
-        })
+        }
     }
 
     /// Finalize the replay file. Safe to call from the pipeline

@@ -426,17 +426,17 @@ mod tests {
 
     #[cfg(all(feature = "ffmpeg", target_os = "linux"))]
     #[test]
-    fn supplied_job_reaps_capture_before_output_finalization() {
+    fn supplied_job_reaps_capture_after_output_finalization() {
         use reco_core::calibration::{Calibration, Framing, Lens};
         let interrupted = Arc::new(AtomicBool::new(false));
         let source = source(
             &["while :; do printf 'abcdefghUVxy'; done"; 2],
             interrupted.clone(),
         );
-        let children: Vec<_> = source
+        let child_paths: Vec<_> = source
             .cameras
             .iter()
-            .map(|camera| camera.child.id())
+            .map(|camera| std::path::PathBuf::from(format!("/proc/{}", camera.child.id())))
             .collect();
         let lens = Lens::fisheye(4, 2, 2.0, 2.0, 2.0, 1.0, [0.0; 4]);
         let calibration = Calibration::new(
@@ -458,6 +458,7 @@ mod tests {
         );
         let dir = tempfile::tempdir().unwrap();
         let output = dir.path().join("capture.mp4");
+        let finalizing_paths = child_paths.clone();
         let result = crate::StitchJob::from_source(source, calibration, &output)
             .cpu()
             .resolution(64, 32)
@@ -468,16 +469,19 @@ mod tests {
                 Ok(())
             })
             .on_finalizing(move || {
-                for child in children {
-                    assert!(
-                        !std::path::Path::new(&format!("/proc/{child}")).exists(),
-                        "capture child still alive during finalization"
-                    );
+                for child in finalizing_paths {
+                    assert!(child.exists(), "capture child reaped before finalization");
                 }
             })
             .run(&interrupted)
             .unwrap();
         assert_eq!(result.frames_processed, 2);
+        for child in child_paths {
+            assert!(
+                !child.exists(),
+                "capture child still alive after job return"
+            );
+        }
         let mut decoder = crate::ffmpeg::decoder::VideoDecoder::open_software(&output).unwrap();
         assert!(decoder.next_frame().unwrap().is_some());
         assert!(decoder.next_frame().unwrap().is_some());

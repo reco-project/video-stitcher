@@ -65,15 +65,15 @@ use types::{SessionConfig, StitchSessionBuilder};
 /// Call [`finish`](Self::finish) to flush the last frame and finalize
 /// every sink.
 pub struct StitchSession {
+    /// Attached output sinks in delivery order. Drop them before the core so
+    /// threaded sinks finish and release their outputs before engine teardown.
+    pub(crate) sinks: Vec<sinks::AttachedSink>,
     /// The canonical push-first engine. Owns the render substrate,
     /// readback staging, coverage boundary, and the single AI stack
     /// (detector, trackers, panner, event sink). The session is the
     /// pull-loop orchestrator over it: frame buffering, sink
     /// fan-out, telemetry, progress.
     pub(crate) core: StitchCore,
-    /// Attached output sinks; every rendered frame fans out to all of
-    /// them in attach order.
-    pub(crate) sinks: Vec<sinks::AttachedSink>,
     /// Reused software RGBA-to-NV12 conversion storage, empty on GPU sessions.
     pub(crate) cpu_nv12: Vec<u8>,
     /// Number of lookahead frames (0 = disabled).
@@ -193,8 +193,8 @@ impl StitchSession {
         let core = StitchCore::new(executor)?;
 
         Ok(Self {
-            core,
             sinks: Vec::new(),
+            core,
             cpu_nv12: Vec::new(),
             lookahead_frames: 0,
             lookahead_memory_bytes: 0,
