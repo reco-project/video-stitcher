@@ -41,8 +41,18 @@ impl ReplayRecordingSource {
     pub fn wrap(
         inner: Box<dyn FrameSource>,
         path: &Path,
-        mut config: StackedEncoderConfig,
+        config: StackedEncoderConfig,
     ) -> Result<Self, StackedEncodeError> {
+        let encoder = Self::open_encoder(inner.as_ref(), path, config)?;
+        Ok(Self::with_encoder(inner, encoder))
+    }
+
+    /// Open the recorder without taking ownership of the source on failure.
+    pub(crate) fn open_encoder(
+        inner: &dyn FrameSource,
+        path: &Path,
+        mut config: StackedEncoderConfig,
+    ) -> Result<StackedEncoder, StackedEncodeError> {
         config.full_range = inner.is_full_range();
         let info = inner.info();
         let [first, _] = info.camera_sizes.as_slice() else {
@@ -81,7 +91,12 @@ impl ReplayRecordingSource {
             first.1,
             path.display(),
         );
-        Ok(Self {
+        Ok(encoder)
+    }
+
+    /// Attach a recorder opened for this source with [`Self::open_encoder`].
+    pub(crate) fn with_encoder(inner: Box<dyn FrameSource>, encoder: StackedEncoder) -> Self {
+        Self {
             inner,
             encoder: Some(encoder),
             warned_non_yuv420p: false,
@@ -89,7 +104,7 @@ impl ReplayRecordingSource {
             // Flush to disk every ~1 second at 30fps. Balances
             // replay freshness against syscall overhead.
             flush_interval: 30,
-        })
+        }
     }
 
     /// Finalize the replay file. Safe to call from the pipeline

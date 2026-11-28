@@ -79,6 +79,13 @@ use self::types::{StackedReplayRecorder, StitchCoreError};
 ///
 /// Detection is wired through [`Detector`]. Frame loops dispatch supported detector inputs, map results to world-reference angles, update trackers and request a world-space pose from the panner. Explicit render-at-pose methods render an already resolved pose without advancing that chain.
 pub struct StitchCore {
+    /// Receives completed atlas readbacks when attached via
+    /// [`Self::set_stacked_gpu_recorder`]. Drop it before the executor
+    /// and packer so the encoder can close during unwind. Explicit
+    /// [`Self::clear_stacked_gpu_recorder`] drains pending atlases first.
+    #[cfg(feature = "gpu")]
+    pub(crate) stacked_gpu_recorder: Option<Box<dyn StackedReplayGpuRecorder>>,
+
     pub(crate) executor: Executor,
     /// Pipelined RGBA delivery ring, allocated on the first GPU push submission. Texture-only previews, NV12 delivery and CPU executors do not allocate it.
     #[cfg(feature = "gpu")]
@@ -142,15 +149,6 @@ pub struct StitchCore {
     #[cfg(feature = "gpu")]
     pub(crate) stacked_packer: Option<YuvStackPacker>,
 
-    /// Optional GPU-pack atlas recorder attached via
-    /// [`Self::set_stacked_gpu_recorder`]. Receives the packed atlas
-    /// bytes every time [`YuvStackPacker::poll_ready`] yields a
-    /// completed readback slot. `None` means the pack still runs
-    /// (if enabled) but the bytes are dropped - useful when a
-    /// consumer wants to attach the recorder lazily.
-    #[cfg(feature = "gpu")]
-    pub(crate) stacked_gpu_recorder: Option<Box<dyn StackedReplayGpuRecorder>>,
-
     /// Apply coverage constraints to automatic presentation and direct interaction. Explicit render-at-pose methods bypass this policy.
     pub(crate) constrained_look: bool,
 
@@ -183,6 +181,8 @@ impl StitchCore {
             crate::calibration::Projection::Panorama(_)
         );
         Ok(Self {
+            #[cfg(feature = "gpu")]
+            stacked_gpu_recorder: None,
             executor,
             #[cfg(feature = "gpu")]
             readback: None,
@@ -206,8 +206,6 @@ impl StitchCore {
             stacked_recorder: None,
             #[cfg(feature = "gpu")]
             stacked_packer: None,
-            #[cfg(feature = "gpu")]
-            stacked_gpu_recorder: None,
             constrained_look,
             frame_count: 0,
             session_start: None,
