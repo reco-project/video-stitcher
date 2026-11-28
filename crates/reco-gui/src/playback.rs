@@ -4,6 +4,7 @@
 
 use std::time::{Duration, Instant};
 
+use reco_core::render::color::YuvColor;
 use reco_core::source::{FrameSet, FrameSource, SourceError, SourceFrame, SourceInfo};
 use reco_io::adapters::FfmpegFileSource;
 use reco_io::stitch_job::InputPath;
@@ -70,11 +71,20 @@ pub struct Playback {
 }
 
 impl Playback {
-    /// Range of the decoded source planes.
-    pub fn is_full_range(&self) -> bool {
+    /// Colour encoding of the decoded source planes.
+    pub fn yuv_color(&self) -> YuvColor {
         self.source
             .as_ref()
-            .is_some_and(|source| source.frames().is_full_range())
+            .map(|source| source.frames().yuv_color())
+            .unwrap_or_default()
+    }
+
+    pub fn color_metadata(&self) -> reco_io::ffmpeg::ColorMetadata {
+        match &self.source {
+            Some(Source::File(source)) => source.color_metadata(),
+            Some(Source::Live(source)) => source.color_metadata(),
+            None => Default::default(),
+        }
     }
 
     /// Create an empty playback controller (no source loaded).

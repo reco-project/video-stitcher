@@ -264,7 +264,7 @@ pub fn poll(state: &mut AppState, weak: &slint::Weak<RecoApp>) {
         let bridge = state.build_bridge(
             &opening.calibration,
             playback.source_sizes().unwrap().to_vec(),
-            playback.is_full_range(),
+            playback.yuv_color(),
         )?;
         state.unload_pipeline();
         state.left_input = None;

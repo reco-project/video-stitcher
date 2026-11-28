@@ -305,7 +305,7 @@ mod tests {
             &calib,
             &cfg,
             RenderPose::default(),
-            false,
+            Default::default(),
         )
         .unwrap();
         assert_eq!(out.len(), (w * h * 4) as usize);
@@ -332,7 +332,7 @@ mod tests {
             &calib,
             &cfg,
             RenderPose::default(),
-            false,
+            Default::default(),
         )
         .unwrap();
         let b = stitch_rgba(
@@ -341,7 +341,7 @@ mod tests {
             &calib,
             &cfg,
             RenderPose::default(),
-            false,
+            Default::default(),
         )
         .unwrap();
         assert_eq!(a, b, "stitch must be deterministic");
@@ -426,7 +426,7 @@ mod tests {
             &calib,
             &viewport_size,
             pose,
-            false,
+            Default::default(),
         )
         .expect("cpu stitch");
         Agreement::compare(&gpu_rgba, &cpu_rgba).assert_within(AgreementBounds::DEFAULT, "nv12");
@@ -524,7 +524,7 @@ mod tests {
             &calib,
             &viewport_size,
             pose,
-            false,
+            Default::default(),
         )
         .expect("cpu stitch yuv420p");
         Agreement::compare(&gpu_rgba, &cpu_rgba).assert_within(AgreementBounds::DEFAULT, "yuv420p");
@@ -633,7 +633,10 @@ mod tests {
             calib,
             viewport_size,
             pose,
-            full_range,
+            crate::render::color::YuvColor {
+                full_range,
+                ..Default::default()
+            },
         )
         .unwrap();
         Some((gpu_rgba, cpu_rgba))
@@ -1005,7 +1008,7 @@ mod tests {
                 yaw: pose.yaw + 0.01,
                 ..pose
             },
-            false,
+            Default::default(),
         )
         .expect("cpu stitch");
         let bad = Agreement::compare(&gpu_rgba, &perturbed);
@@ -1434,7 +1437,18 @@ mod tests {
                 Nv12Planes { y: &ly, uv: &luv },
                 Nv12Planes { y: &ry, uv: &ruv },
             ];
-            let cpu = stitch_rgba(&planes, &sizes, &cal, &viewport, pose, true).unwrap();
+            let cpu = stitch_rgba(
+                &planes,
+                &sizes,
+                &cal,
+                &viewport,
+                pose,
+                crate::render::color::YuvColor {
+                    full_range: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
             #[cfg(feature = "gpu")]
             let gpu_oracles =
                 render_gpu_nv12_with_isolated_oracles(&cal, &viewport, sizes, &planes, pose, true);
@@ -1811,7 +1825,18 @@ mod tests {
                 Nv12Planes { y: &ly, uv: &luv },
                 Nv12Planes { y: &ry, uv: &ruv },
             ];
-            let cpu = stitch_rgba(&planes, &sizes, &cal, &viewport, pose, true).unwrap();
+            let cpu = stitch_rgba(
+                &planes,
+                &sizes,
+                &cal,
+                &viewport,
+                pose,
+                crate::render::color::YuvColor {
+                    full_range: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
             #[cfg(feature = "gpu")]
             let gpu = render_gpu_nv12(&cal, &viewport, sizes, &planes, pose, true);
 

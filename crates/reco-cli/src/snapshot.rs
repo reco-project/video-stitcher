@@ -16,7 +16,7 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 
-use reco_core::render::color::bt709_yuv_to_rgb;
+use reco_core::render::color::{YuvColor, yuv_to_rgb};
 use reco_core::sink::{OutputFrame, OutputSink, PixelFormat, SinkError, SinkInput};
 
 /// A snapshot job sent to the background thread.
@@ -170,11 +170,11 @@ fn write_snapshot(job: &SnapshotJob, snapshot_path: &Path, tmp_path: &Path) -> a
             let uv_idx = (row / 2) * w + (col & !1);
 
             // Both core output converters produce BT.709 limited-range NV12.
-            let colour = bt709_yuv_to_rgb(
+            let colour = yuv_to_rgb(
                 y_plane[yi] as f64 / 255.0,
                 uv_plane[uv_idx] as f64 / 255.0,
                 uv_plane[uv_idx + 1] as f64 / 255.0,
-                false,
+                YuvColor::default(),
             );
             let pi = yi * 3;
             rgb[pi..pi + 3].copy_from_slice(&colour.map(|c| (c * 255.0).round() as u8));

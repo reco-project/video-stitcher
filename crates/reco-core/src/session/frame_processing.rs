@@ -284,11 +284,12 @@ impl StitchSession {
             unreachable!("software rendering is synchronous");
         };
         let convert_t0 = std::time::Instant::now();
-        crate::render::nv12_cpu::rgba_to_nv12_into(
+        crate::render::nv12_cpu::rgba_to_nv12_with_color_into(
             rgba,
             render_width,
             width,
             height,
+            self.delivery_color,
             &mut self.cpu_nv12,
         )?;
         self.last_readback_time = convert_t0.elapsed();

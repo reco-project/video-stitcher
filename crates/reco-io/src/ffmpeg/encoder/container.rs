@@ -48,12 +48,8 @@ pub(super) struct OutputColor {
     pub(super) metadata: super::super::ColorMetadata,
     /// Full/limited YUV range to tag, if known (`Some(true)` = full/JPEG, `Some(false)` = limited/MPEG).
     pub(super) full_range: Option<bool>,
-    /// Configure CPU `swscale` RGBA->YUV conversion for the renderer's BT.709 limited-range path.
-    ///
-    /// Kept on BT.709 even when propagating non-BT.709 source VUI metadata because the render
-    /// shaders decode source YUV with the BT.709 matrix; matching matrices cancel on round-trip
-    /// and keep RGBA and NV12 output paths identical.
-    pub(super) rendered_rgba_scaler: bool,
+    /// Apply the rendered output matrix and range when accepting RGBA frames.
+    pub(super) rgba_matrix: Option<reco_core::render::color::YuvMatrix>,
 }
 
 impl OutputColor {

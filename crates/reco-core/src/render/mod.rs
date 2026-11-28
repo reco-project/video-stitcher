@@ -26,6 +26,7 @@ pub(crate) enum GpuPass {
 
 /// Shader and draw configuration supplied by a projection.
 #[cfg(feature = "gpu")]
+#[derive(Clone, Copy)]
 pub(crate) struct GpuProgram {
     /// WGSL source, compiled at pipeline creation.
     pub wgsl: &'static str,
@@ -42,10 +43,9 @@ pub(crate) struct GpuProgram {
 
 /// Strip sRGB encoding from a texture format.
 ///
-/// The stitch shader outputs sRGB-encoded values directly (BT.709 YCbCr
-/// to R'G'B'). Rendering to an sRGB-format surface would apply sRGB
-/// encoding again, causing double-gamma (faded colors). Returns the
-/// equivalent linear format for surface creation.
+/// The stitch shader writes the source's nonlinear R'G'B' values directly.
+/// An sRGB-format render attachment would apply another transfer function.
+/// Returns the equivalent UNORM format for surface creation.
 #[cfg(feature = "gpu")]
 pub fn strip_srgb(format: wgpu::TextureFormat) -> wgpu::TextureFormat {
     match format {
@@ -99,7 +99,7 @@ mod tests {
                 v: &chroma,
             },
             &lens,
-            false,
+            Default::default(),
         );
         gpu.device
             .poll(wgpu::PollType::wait_indefinitely())

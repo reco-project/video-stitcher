@@ -199,6 +199,10 @@ impl FrameSource for ReplayRecordingSource {
         self.inner.is_exhausted()
     }
 
+    fn yuv_matrix(&self) -> reco_core::render::color::YuvMatrix {
+        self.inner.yuv_matrix()
+    }
+
     fn is_full_range(&self) -> bool {
         self.inner.is_full_range()
     }

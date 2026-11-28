@@ -30,6 +30,7 @@ use reco_core::core::StitchCore;
 use reco_core::core::types::StitchCoreError;
 use reco_core::gpu::GpuContext;
 use reco_core::lens::preview::LensPreviewRenderer;
+use reco_core::render::color::YuvColor;
 use reco_core::render::pipeline::{PipelineError, Yuv420pPlanes};
 use reco_core::render::viewport::ViewportSize;
 use reco_core::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
@@ -174,7 +175,7 @@ impl PreviewBridge {
         planes: &Yuv420pPlanes<'_>,
         size: (u32, u32),
         params: &Lens,
-        full_range: bool,
+        color: YuvColor,
     ) -> Result<slint::Image, PipelineError> {
         if self
             .lens_preview
@@ -188,7 +189,7 @@ impl PreviewBridge {
         }
         let (_, lp) = self.lens_preview.as_ref().expect("prepared lens preview");
 
-        let texture = lp.render_yuv(self.engine.gpu(), planes, params, full_range);
+        let texture = lp.render_yuv(self.engine.gpu(), planes, params, color);
 
         slint::Image::try_from(texture).map_err(|_| PipelineError::InvalidConfig {
             reason: "slint::Image::try_from(wgpu::Texture) failed".into(),

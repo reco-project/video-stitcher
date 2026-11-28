@@ -209,3 +209,86 @@ fn repeated_host_frames_remain_correct_after_mutation_and_borrowed_uploads() {
         assert_eq!(render(&mut pipeline, &fresh), original);
     }
 }
+
+#[test]
+fn sampled_nv12_and_p010_match_independent_color_vectors() {
+    use crate::render::color::tests::{P010_VECTORS, RGB_PATCHES, vectors};
+    use crate::render::color::{YuvColor, YuvMatrix};
+    use crate::stitch::test_support::gpu_or_skip;
+
+    let Some(gpu) = gpu_or_skip() else { return };
+    let mut pipeline = pipeline(&gpu, InputFormat::Nv12);
+    let assert_center = |rgba: &[u8], expected: [u8; 3]| {
+        let center = (16 * 64 + 32) * 4;
+        let rgb = &rgba[center..center + 3];
+        assert!(
+            rgb.iter().zip(expected).all(|(&a, b)| a.abs_diff(b) <= 2),
+            "{rgb:?} vs {expected:?}"
+        );
+    };
+    for (color, codes) in vectors() {
+        pipeline.set_source_color(color);
+        for ([y, cb, cr], rgb) in codes.into_iter().zip(RGB_PATCHES) {
+            let y = [y; 64 * 32];
+            let uv = [cb, cr].repeat(32 * 16);
+            let input = Nv12Planes { y: &y, uv: &uv };
+            let commands = pipeline
+                .render_nv12(&[input; 2], RenderPose::default())
+                .unwrap();
+            assert_center(&pixels(&pipeline, commands), rgb);
+        }
+    }
+
+    if !gpu
+        .device()
+        .features()
+        .contains(wgpu::Features::TEXTURE_FORMAT_16BIT_NORM)
+    {
+        return;
+    }
+    let make_plane = |format, width, height| {
+        gpu.device().create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        })
+    };
+    let y_plane = make_plane(wgpu::TextureFormat::R16Unorm, 64, 32);
+    let uv_plane = make_plane(wgpu::TextureFormat::Rg16Unorm, 32, 16);
+    let y_view = y_plane.create_view(&Default::default());
+    let uv_view = uv_plane.create_view(&Default::default());
+    let upload = |texture: &wgpu::Texture, data: &[u16]| {
+        gpu.queue().write_texture(
+            texture.as_image_copy(),
+            bytemuck::cast_slice(data),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(128),
+                rows_per_image: None,
+            },
+            texture.size(),
+        );
+    };
+    for (full_range, [y, cb, cr], rgb) in P010_VECTORS {
+        pipeline.set_source_color(YuvColor {
+            matrix: YuvMatrix::Bt2020Ncl,
+            full_range,
+            ..Default::default()
+        });
+        upload(&y_plane, &[y << 6; 64 * 32]);
+        upload(&uv_plane, &[cb << 6, cr << 6].repeat(32 * 16));
+        let commands = pipeline
+            .render_imported_views(&[(&y_view, &uv_view); 2], RenderPose::default())
+            .unwrap();
+        assert_center(&pixels(&pipeline, commands), rgb);
+    }
+}

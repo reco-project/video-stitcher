@@ -875,6 +875,7 @@ impl StitchJob {
             log::info!("Source colour metadata: {source_color}");
         }
         let mut source = opened.into_frames();
+        let output_color = reco_core::render::color::YuvColor::delivery(source.yuv_color().matrix);
 
         for hook in self.session_hooks.drain(..) {
             hook(&mut session, source.as_ref())?;
@@ -934,6 +935,7 @@ impl StitchJob {
             (fps_rational.0, fps_rational.1),
             &enc_config,
             live_audio,
+            output_color,
         )?;
         let enc_name = encoder.encoder_name().to_string();
         let stream_monitor = encoder.stream_monitor();

@@ -466,7 +466,7 @@ fn hdr_hlg_and_pq_bt2020_metadata_roundtrips_for_h264_and_hevc() {
 }
 
 #[test]
-fn stitch_job_propagates_matching_hdr_metadata_and_falls_back_on_mismatch() {
+fn stitch_job_exports_bt2020_pixels_and_rejects_mixed_hdr_sdr() {
     use ffmpeg_next::color::{Primaries, Space, TransferCharacteristic};
     use reco_core::calibration::{Calibration, Framing, Lens};
     use reco_core::projection::LShape;
@@ -480,12 +480,6 @@ fn stitch_job_propagates_matching_hdr_metadata_and_falls_back_on_mismatch() {
         transfer: Some(TransferCharacteristic::ARIB_STD_B67),
         space: Some(Space::BT2020NCL),
     };
-    let sdr_fallback = ColorMetadata {
-        primaries: None,
-        transfer: None,
-        space: Some(Space::BT709),
-    };
-
     let write_fixture = |path: &std::path::Path, encoder_name: &str, color_metadata| {
         let config = EncoderConfig {
             encoder_name: Some(encoder_name.into()),
@@ -493,9 +487,13 @@ fn stitch_job_propagates_matching_hdr_metadata_and_falls_back_on_mismatch() {
             ..Default::default()
         };
         let mut sink = FfmpegFileEncoder::new(path, 64, 64, (30, 1), &config).unwrap();
+        // This YCbCr triplet maps outside RGB gamut. Clamping makes an incorrect
+        // input matrix observable even when the output repeats the same mistake.
+        let mut samples = vec![168; 64 * 64];
+        samples.extend([224, 16].repeat(32 * 32));
         for index in 0..5 {
             sink.consume(OutputFrame {
-                data: &[128; 64 * 64 * 3 / 2],
+                data: &samples,
                 width: 64,
                 height: 64,
                 format: PixelFormat::Nv12,
@@ -530,7 +528,7 @@ fn stitch_job_propagates_matching_hdr_metadata_and_falls_back_on_mismatch() {
     let dir = tempfile::tempdir().unwrap();
     let hdr_in = dir.path().join("hdr_hlg_in.mp4");
     let sdr_in = dir.path().join("sdr_in.mp4");
-    write_fixture(&hdr_in, "libx265", hlg_bt2020);
+    write_fixture(&hdr_in, "libx264", hlg_bt2020);
     write_fixture(&sdr_in, "libx264", ColorMetadata::default());
 
     for encoder_name in ["libx265", "libx264"] {
@@ -547,27 +545,60 @@ fn stitch_job_propagates_matching_hdr_metadata_and_falls_back_on_mismatch() {
             .run(&Arc::new(AtomicBool::new(false)))
             .unwrap();
         assert_color_metadata(&output, hlg_bt2020, false);
+        let mut decoder = VideoDecoder::open_software(&output).unwrap();
+        let frame = decoder.next_frame().unwrap().unwrap();
+        // BT.2020 NCL maps [168, 224, 16] to clamped 8-bit RGB [0, 232, 255].
+        // Re-encoding produces [164, 167, 25]. BT.709 on both legs yields Cr=32.
+        let actual = [
+            frame.y[32 * 64 + 32],
+            frame.u[16 * 32 + 16],
+            frame.v[16 * 32 + 16],
+        ];
+        let expected = [164, 167, 25];
+        assert!(
+            actual
+                .into_iter()
+                .zip(expected)
+                .all(|(a, b)| a.abs_diff(b) <= 2),
+            "{encoder_name}: {actual:?} vs {expected:?}"
+        );
     }
 
-    // Mismatched cameras (HDR HLG BT.2020 + SDR BT.709) fall back conservatively to SDR BT.709.
     let mismatched_out = dir.path().join("stitched-mismatch.mp4");
-    StitchJob::with_calibration([hdr_in, sdr_in], calibration(), &mismatched_out)
-        .cpu()
-        .resolution(64, 64)
-        .encoder_name("libx265")
-        .max_frames(4)
-        .on_session(|session, _| {
-            session.core_mut().set_constrained_look(false);
-            Ok(())
-        })
-        .run(&Arc::new(AtomicBool::new(false)))
-        .unwrap();
-    assert_color_metadata(&mismatched_out, sdr_fallback, false);
+    let error = StitchJob::with_calibration(
+        [hdr_in.clone(), sdr_in.clone()],
+        calibration(),
+        &mismatched_out,
+    )
+    .cpu()
+    .run(&Arc::new(AtomicBool::new(false)))
+    .unwrap_err();
+    assert!(
+        error.to_string().contains("camera color metadata differ"),
+        "{error}"
+    );
+    assert!(!mismatched_out.exists());
+
+    let input = reco_io::InputPath::Chained(vec![hdr_in, sdr_in]);
+    let mut decoder = VideoDecoder::open_input_software(&input).unwrap();
+    let mut frames = 0;
+    let error = loop {
+        match decoder.next_frame() {
+            Ok(Some(_)) => frames += 1,
+            Ok(None) => panic!("changed color metadata must be rejected"),
+            Err(error) => break error,
+        }
+    };
+    assert!(frames > 0);
+    assert!(
+        error.to_string().contains("decoded color metadata changed"),
+        "{error}"
+    );
 }
 
 #[test]
-fn partial_hdr_metadata_does_not_fabricate_bt709_matrix() {
-    use ffmpeg_next::color::{Primaries, TransferCharacteristic};
+fn rendered_partial_hdr_uses_bt2020_matrix_when_primaries_are_bt2020() {
+    use ffmpeg_next::color::{Primaries, Space, TransferCharacteristic};
     use reco_io::ffmpeg::ColorMetadata;
 
     let partial_hdr = ColorMetadata {
@@ -599,6 +630,62 @@ fn partial_hdr_metadata_does_not_fabricate_bt709_matrix() {
         sink.finish().unwrap();
         drop(sink);
 
-        assert_color_metadata(&path, partial_hdr, false);
+        assert_color_metadata(
+            &path,
+            ColorMetadata {
+                space: Some(Space::BT2020NCL),
+                ..partial_hdr
+            },
+            false,
+        );
+    }
+}
+
+#[test]
+fn ffmpeg_rgba_scaler_uses_the_tagged_output_matrix() {
+    use ffmpeg_next::color::Space;
+    use reco_io::ffmpeg::ColorMetadata;
+    let dir = tempfile::tempdir().unwrap();
+    for (space, expected) in [
+        (Space::BT709, [63, 102, 240]),
+        (Space::BT2020NCL, [74, 97, 240]),
+        (Space::SMPTE170M, [81, 90, 240]),
+        (Space::BT470BG, [81, 90, 240]),
+    ] {
+        let path = dir.path().join(format!("{space:?}.mp4"));
+        let config = EncoderConfig {
+            encoder_name: Some("libx264".into()),
+            quality: reco_io::output::Quality::Value(100),
+            color_metadata: ColorMetadata {
+                space: Some(space),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut encoder = FfmpegFileEncoder::new(&path, 64, 64, (30, 1), &config).unwrap();
+        let rgba = [255, 0, 0, 255].repeat(64 * 64);
+        encoder
+            .consume(OutputFrame {
+                data: &rgba,
+                width: 64,
+                height: 64,
+                format: PixelFormat::Rgba8,
+                pts_us: Some(0),
+            })
+            .unwrap();
+        encoder.finish().unwrap();
+        drop(encoder);
+        let mut decoder = VideoDecoder::open_software(&path).unwrap();
+        assert_eq!(decoder.color_metadata().space, Some(space));
+        assert!(!decoder.is_full_range());
+        let frame = decoder.next_frame().unwrap().unwrap();
+        let actual = [frame.y[0], frame.u[0], frame.v[0]];
+        assert!(
+            actual
+                .into_iter()
+                .zip(expected)
+                .all(|(a, b)| a.abs_diff(b) <= 2),
+            "{space:?}: {actual:?} vs {expected:?}"
+        );
     }
 }

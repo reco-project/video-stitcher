@@ -716,6 +716,16 @@ impl VideoDecoder {
                             "decoded color range changed; the source requires a fixed range".into(),
                         ));
                     }
+                    if self.require_timestamps || self._manifest.is_some() {
+                        let frame_color = super::ColorMetadata::from_frame(&self.decoded_frame)
+                            .or(self.color_metadata);
+                        if frame_color != self.color_metadata {
+                            super::ColorMetadata::reconcile(&[self.color_metadata, frame_color])
+                                .map_err(|reason| DecodeError::ConversionError(format!(
+                                    "decoded color metadata changed under a fixed source description: {reason}"
+                                )))?;
+                        }
+                    }
                     #[cfg(target_os = "windows")]
                     {
                         self.pending_hw_init = None;
@@ -1028,8 +1038,8 @@ impl VideoDecoder {
     /// Extract YUV420P planes from the current decoded frame.
     ///
     /// For hardware-decoded frames, transfers from GPU to CPU first.
-    /// If the frame format isn't YUV420P (e.g. NV12 from NVDEC),
-    /// swscale converts it (very cheap for NV12→YUV420P: just deinterleave UV).
+    /// Ten-bit 4:2:0 is quantized to 8-bit in the source range. Other layouts
+    /// use swscale (e.g. deinterleave UV for NV12).
     fn extract_yuv(&mut self) -> Result<Yuv420pFrame, DecodeError> {
         // If hardware-decoded, transfer GPU frame to CPU
         let cpu_frame = if is_hw_frame(&self.decoded_frame) {
@@ -1057,94 +1067,107 @@ impl VideoDecoder {
 
         let frame_format = cpu_frame.format();
 
-        // Get or create scaler if needed
-        let source = if frame_format != Pixel::YUV420P {
-            let needs_new_scaler = self.scaler.is_none()
-                || self
-                    .scaler
-                    .as_ref()
-                    .is_some_and(|_| self.converted_frame.format() != Pixel::YUV420P);
-
-            if needs_new_scaler {
-                log::debug!(
-                    "Creating scaler: {:?} → YUV420P ({}x{})",
-                    frame_format,
-                    self.width,
-                    self.height
-                );
-                let mut scaler = ScalingContext::get(
-                    frame_format,
-                    self.width,
-                    self.height,
-                    Pixel::YUV420P,
-                    self.width,
-                    self.height,
-                    ScalingFlags::POINT,
-                )
-                .map_err(|e| {
-                    DecodeError::ConversionError(format!(
-                        "cannot create scaler for {frame_format:?}: {e}"
-                    ))
-                })?;
-                // Preserve the source range when changing pixel layout; YUVJ defaults would compress it.
-                // SAFETY: the scaler is uniquely owned and FFmpeg owns the constant coefficient table.
-                let result = unsafe {
-                    let coefficients = ffi::sws_getCoefficients(ffi::SWS_CS_ITU709);
-                    ffi::sws_setColorspaceDetails(
-                        scaler.as_mut_ptr(),
-                        coefficients,
-                        i32::from(self.is_full_range),
-                        coefficients,
-                        i32::from(self.is_full_range),
-                        0,
-                        1 << 16,
-                        1 << 16,
-                    )
-                };
-                if result < 0 {
-                    return Err(DecodeError::ConversionError(format!(
-                        "cannot preserve decoded color range: {}",
-                        ffmpeg::Error::from(result)
-                    )));
-                }
-                self.scaler = Some(scaler);
-            }
-
-            if let Some(scaler) = &mut self.scaler {
-                profile_scope!("swscale");
-                scaler
-                    .run(cpu_frame, &mut self.converted_frame)
-                    .map_err(|e| DecodeError::ConversionError(format!("swscale failed: {e}")))?;
-                &self.converted_frame
-            } else {
-                cpu_frame
-            }
-        } else {
-            cpu_frame
-        };
-
         let timestamp_us = self.pts_to_us(unsafe { (*self.decoded_frame.as_ptr()).pts })?;
-
         let w = self.width as usize;
         let h = self.height as usize;
-        let uv_w = w / 2;
-        let uv_h = h / 2;
+        if matches!(
+            frame_format,
+            Pixel::P010LE | Pixel::P010BE | Pixel::YUV420P10LE | Pixel::YUV420P10BE
+        ) {
+            extract_10bit_yuv(
+                cpu_frame,
+                self.is_full_range,
+                [&mut self.y_buf, &mut self.u_buf, &mut self.v_buf],
+            );
+        } else {
+            // Get or create scaler if needed
+            let source = if frame_format != Pixel::YUV420P {
+                let needs_new_scaler = self
+                    .scaler
+                    .as_ref()
+                    .is_none_or(|scaler| scaler.input().format != frame_format);
 
-        extract_plane_into(&mut self.y_buf, source.data(0), source.stride(0), w, h);
-        extract_plane_into(
-            &mut self.u_buf,
-            source.data(1),
-            source.stride(1),
-            uv_w,
-            uv_h,
-        );
-        extract_plane_into(
-            &mut self.v_buf,
-            source.data(2),
-            source.stride(2),
-            uv_w,
-            uv_h,
-        );
+                if needs_new_scaler {
+                    log::debug!(
+                        "Creating scaler: {:?} → YUV420P ({}x{})",
+                        frame_format,
+                        self.width,
+                        self.height
+                    );
+                    let mut scaler = ScalingContext::get(
+                        frame_format,
+                        self.width,
+                        self.height,
+                        Pixel::YUV420P,
+                        self.width,
+                        self.height,
+                        ScalingFlags::POINT,
+                    )
+                    .map_err(|e| {
+                        DecodeError::ConversionError(format!(
+                            "cannot create scaler for {frame_format:?}: {e}"
+                        ))
+                    })?;
+                    // Preserve the source range when changing pixel layout; YUVJ defaults would compress it.
+                    // SAFETY: the scaler is uniquely owned and FFmpeg owns the constant coefficient table.
+                    let result = unsafe {
+                        let coefficients = ffi::sws_getCoefficients(super::color::swscale_matrix(
+                            self.color_metadata.matrix().unwrap_or_default(),
+                        ));
+                        ffi::sws_setColorspaceDetails(
+                            scaler.as_mut_ptr(),
+                            coefficients,
+                            i32::from(self.is_full_range),
+                            coefficients,
+                            i32::from(self.is_full_range),
+                            0,
+                            1 << 16,
+                            1 << 16,
+                        )
+                    };
+                    if result < 0 {
+                        return Err(DecodeError::ConversionError(format!(
+                            "cannot preserve decoded color range: {}",
+                            ffmpeg::Error::from(result)
+                        )));
+                    }
+                    self.scaler = Some(scaler);
+                }
+
+                if let Some(scaler) = &mut self.scaler {
+                    profile_scope!("swscale");
+                    scaler
+                        .run(cpu_frame, &mut self.converted_frame)
+                        .map_err(|e| {
+                            DecodeError::ConversionError(format!("swscale failed: {e}"))
+                        })?;
+                    &self.converted_frame
+                } else {
+                    cpu_frame
+                }
+            } else {
+                cpu_frame
+            };
+
+            let uv_w = w / 2;
+            let uv_h = h / 2;
+
+            extract_plane_into(&mut self.y_buf, source.data(0), source.stride(0), w, h);
+            extract_plane_into(
+                &mut self.u_buf,
+                source.data(1),
+                source.stride(1),
+                uv_w,
+                uv_h,
+            );
+            extract_plane_into(
+                &mut self.v_buf,
+                source.data(2),
+                source.stride(2),
+                uv_w,
+                uv_h,
+            );
+        }
 
         // Apply rotation from stream metadata.
         // 180 degrees: reverse each row and reverse row order (equivalent to
@@ -1163,6 +1186,49 @@ impl VideoDecoder {
             height: self.height,
             timestamp_us,
         })
+    }
+}
+
+fn extract_10bit_yuv(frame: &VideoFrame, full_range: bool, output: [&mut Vec<u8>; 3]) {
+    let packed = matches!(frame.format(), Pixel::P010LE | Pixel::P010BE);
+    let big_endian = matches!(frame.format(), Pixel::P010BE | Pixel::YUV420P10BE);
+    let read = if big_endian {
+        u16::from_be_bytes
+    } else {
+        u16::from_le_bytes
+    };
+
+    for (plane, buf) in output.into_iter().enumerate() {
+        let chroma = plane != 0;
+        let plane_index = if packed && chroma { 1 } else { plane };
+        let stride = frame.stride(plane_index);
+        let data = frame.data(plane_index);
+        let width = frame.width() as usize >> usize::from(chroma);
+        let height = frame.height() as usize >> usize::from(chroma);
+        let (start, step) = if packed && chroma {
+            ((plane - 1) * 2, 4)
+        } else {
+            (0, 2)
+        };
+        let shift = if packed { 6 } else { 0 };
+        buf.clear();
+        buf.reserve(width * height);
+        for row in data.chunks_exact(stride).take(height) {
+            buf.extend((0..width).map(|x| {
+                let i = start + x * step;
+                let code = i32::from((read([row[i], row[i + 1]]) >> shift) & 1023);
+                let sample = if !full_range {
+                    // The legal offsets and spans are exactly four times their 8-bit values.
+                    (code + 2) / 4
+                } else if chroma {
+                    // Scale about neutral so 512 maps exactly to 128.
+                    128 + ((code - 512) * 255 + 511).div_euclid(1023)
+                } else {
+                    (code * 255 + 511) / 1023
+                };
+                sample.clamp(0, 255) as u8
+            }));
+        }
     }
 }
 
@@ -1428,6 +1494,54 @@ mod tests {
         assert_eq!(decoder.frame_rate(), None);
         assert_eq!(decoder.fps(), None);
         assert!(decoder.next_frame().unwrap().is_some());
+    }
+
+    #[test]
+    fn p010_host_extraction_preserves_range_endpoints_and_neutral() {
+        use super::{Pixel, VideoFrame, extract_10bit_yuv};
+        for (full, y, cb, cr, expected) in [
+            (
+                false,
+                [64_u16, 940],
+                [64_u16, 960],
+                512_u16,
+                [[16, 235], [16, 240], [128, 128]],
+            ),
+            (
+                true,
+                [0, 1023],
+                [0, 1023],
+                512,
+                [[0, 255], [0, 255], [128, 128]],
+            ),
+        ] {
+            for (format, big_endian) in [(Pixel::P010LE, false), (Pixel::P010BE, true)] {
+                let mut frame = VideoFrame::new(format, 4, 2);
+                let bytes = |code| {
+                    let value: u16 = code << 6;
+                    if big_endian {
+                        value.to_be_bytes()
+                    } else {
+                        value.to_le_bytes()
+                    }
+                };
+                let stride = frame.stride(0);
+                for row in 0..2 {
+                    for (i, code) in y.into_iter().cycle().take(4).enumerate() {
+                        frame.data_mut(0)[row * stride + i * 2..row * stride + i * 2 + 2]
+                            .copy_from_slice(&bytes(code));
+                    }
+                }
+                for (i, code) in [cb[0], cr, cb[1], cr].into_iter().enumerate() {
+                    frame.data_mut(1)[i * 2..i * 2 + 2].copy_from_slice(&bytes(code));
+                }
+                let (mut y, mut cb, mut cr) = (Vec::new(), Vec::new(), Vec::new());
+                extract_10bit_yuv(&frame, full, [&mut y, &mut cb, &mut cr]);
+                assert_eq!(y, expected[0].repeat(4));
+                assert_eq!(cb, expected[1]);
+                assert_eq!(cr, expected[2]);
+            }
+        }
     }
 
     #[test]

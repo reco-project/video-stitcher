@@ -107,6 +107,7 @@ pub struct RtspSource {
     config: RtspConfig,
     info: SourceInfo,
     full_range: bool,
+    matrix: reco_core::render::color::YuvMatrix,
     color_metadata: crate::ffmpeg::ColorMetadata,
     selector: Selector<Image>,
     #[cfg(all(feature = "gpu", target_os = "linux"))]
@@ -245,6 +246,7 @@ impl RtspSource {
                 total_frames: None,
             },
             full_range: false,
+            matrix: Default::default(),
             color_metadata: crate::ffmpeg::ColorMetadata::default(),
             selector,
             #[cfg(all(feature = "gpu", target_os = "linux"))]
@@ -332,7 +334,9 @@ impl RtspSource {
             return Err(invalid("RTSP camera color ranges differ"));
         }
         let camera_colors: Vec<_> = metadata.iter().map(|info| info.color_metadata).collect();
-        source.color_metadata = crate::ffmpeg::ColorMetadata::reconcile(&camera_colors);
+        (source.color_metadata, source.matrix) =
+            crate::ffmpeg::ColorMetadata::reconcile(&camera_colors)
+                .map_err(|reason| invalid(&reason))?;
         source.info.camera_sizes = metadata.iter().map(|info| info.size).collect();
         for (rotation, info) in source.rotations.iter_mut().zip(&metadata) {
             *rotation = info.rotation;
@@ -640,6 +644,10 @@ impl FrameSource for RtspSource {
     fn right_rotation(&self) -> i32 {
         self.rotations[1]
     }
+    fn yuv_matrix(&self) -> reco_core::render::color::YuvMatrix {
+        self.matrix
+    }
+
     fn is_full_range(&self) -> bool {
         self.full_range
     }

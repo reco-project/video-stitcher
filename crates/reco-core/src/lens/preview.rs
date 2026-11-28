@@ -13,8 +13,9 @@
 use crate::calibration::Lens;
 use crate::geometry::opengl_to_wgpu_matrix;
 use crate::gpu::GpuContext;
+use crate::render::color::YuvColor;
 use crate::render::pipeline::Yuv420pPlanes;
-use crate::render::renderer::{InputFormat, build_gpu_uniforms};
+use crate::render::renderer::{InputFormat, build_gpu_uniforms, video_compilation_options};
 
 use bytemuck::Pod;
 use nalgebra::Orthographic3;
@@ -83,6 +84,7 @@ fn quad_vertices(aspect: f32) -> [Vertex; 6] {
 /// output texture (ownership transfers to the caller).
 pub struct LensPreviewRenderer {
     pipeline: wgpu::RenderPipeline,
+    extended_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     y_texture: wgpu::Texture,
     u_texture: wgpu::Texture,
@@ -175,36 +177,41 @@ impl LensPreviewRenderer {
             immediate_size: 0,
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("lens_preview_pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[Vertex::LAYOUT],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: output_format,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                ..Default::default()
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+        let create_pipeline = |extended| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("lens_preview_pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    compilation_options: Default::default(),
+                    buffers: &[Vertex::LAYOUT],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    compilation_options: video_compilation_options(extended),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: output_format,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: None,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+
+        let pipeline = create_pipeline(false);
+        let extended_pipeline = create_pipeline(true);
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("lens_preview_sampler"),
@@ -253,6 +260,7 @@ impl LensPreviewRenderer {
 
         Self {
             pipeline,
+            extended_pipeline,
             vertex_buffer,
             y_texture,
             u_texture,
@@ -273,13 +281,13 @@ impl LensPreviewRenderer {
     /// can be passed to `slint::Image::try_from(wgpu::Texture)`.
     ///
     /// Uses the lens's correction strength: zero is equidistant, not raw.
-    /// `full_range` selects the range of the supplied YUV planes.
+    /// `color` describes the matrix and range of the supplied 8-bit YUV planes.
     pub fn render_yuv(
         &self,
         gpu: &GpuContext,
         planes: &Yuv420pPlanes<'_>,
         params: &Lens,
-        full_range: bool,
+        color: YuvColor,
     ) -> wgpu::Texture {
         upload_plane(
             &gpu.queue,
@@ -307,15 +315,12 @@ impl LensPreviewRenderer {
         let ortho = Orthographic3::new(-0.5, 0.5, -hh, hh, -1.0, 1.0);
         let mvp = opengl_to_wgpu_matrix() * ortho.to_homogeneous();
 
-        let mut uniforms = build_gpu_uniforms(
-            &mvp,
-            params,
-            false,
-            0.0,
-            InputFormat::Yuv420p,
-            false,
-            full_range,
-        );
+        let color = YuvColor {
+            samples: Default::default(),
+            ..color
+        };
+        let mut uniforms =
+            build_gpu_uniforms(&mvp, params, false, 0.0, InputFormat::Yuv420p, false, color);
         uniforms.lens_preview[0] = params.correction;
 
         gpu.queue
@@ -389,7 +394,11 @@ impl LensPreviewRenderer {
                 timestamp_writes: None,
                 multiview_mask: None,
             });
-            pass.set_pipeline(&self.pipeline);
+            pass.set_pipeline(if color.flags() != 0 {
+                &self.extended_pipeline
+            } else {
+                &self.pipeline
+            });
             pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             pass.set_bind_group(0, &texture_bind_group, &[]);
             pass.set_bind_group(1, &self.uniform_bind_group, &[]);
@@ -491,7 +500,7 @@ mod tests {
                             v: &chroma,
                         },
                         &lens,
-                        false,
+                        Default::default(),
                     );
                     let empty = gpu
                         .device

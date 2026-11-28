@@ -285,7 +285,14 @@ impl App {
             rec_w,
             rec_h,
             self.fps_rational,
-            &reco_io::ffmpeg::encoder::EncoderConfig::default(),
+            &reco_io::ffmpeg::encoder::EncoderConfig {
+                color_metadata: self
+                    .source
+                    .as_ref()
+                    .map(|source| source.color_metadata())
+                    .unwrap_or_default(),
+                ..Default::default()
+            },
         ) {
             Ok(pair) => pair,
             Err(e) => {
@@ -498,7 +505,11 @@ impl ApplicationHandler for App {
             },
         )
         .expect("create executor");
-        let renderer = StitchCore::new(Executor::Gpu(Box::new(executor))).expect("create engine");
+        let mut renderer =
+            StitchCore::new(Executor::Gpu(Box::new(executor))).expect("create engine");
+        if let Some(source) = &self.source {
+            renderer.set_source_color(source.yuv_color());
+        }
         let initial_world = reco_core::geometry::WorldPose {
             fov_degrees: self.pose.target_pose().fov_degrees,
             ..Default::default()

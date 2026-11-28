@@ -196,9 +196,17 @@ impl Executor {
     /// than limited range (16-235).
     pub fn set_full_range(&mut self, full_range: bool) {
         match self {
-            Executor::Cpu(c) => c.full_range = full_range,
+            Executor::Cpu(c) => c.color.full_range = full_range,
             #[cfg(feature = "gpu")]
             Executor::Gpu(g) => g.pipeline.set_full_range(full_range),
+        }
+    }
+
+    pub(crate) fn set_source_color(&mut self, color: crate::render::color::YuvColor) {
+        match self {
+            Executor::Cpu(c) => c.color = color,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(g) => g.set_source_color(color),
         }
     }
 

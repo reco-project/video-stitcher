@@ -236,6 +236,7 @@ pub struct FfmpegFileSource {
     info: SourceInfo,
     decode_backend: ffmpeg::decoder::DecodeBackend,
     full_range: bool,
+    matrix: reco_core::render::color::YuvMatrix,
     color_metadata: ffmpeg::ColorMetadata,
     /// GPU pixel format (NV12 8-bit or P010 10-bit).
     #[cfg(feature = "gpu")]
@@ -356,7 +357,13 @@ impl FfmpegFileSource {
             rotations.push(d.rotation());
             camera_colors.push(d.color_metadata());
         }
-        let color_metadata = ffmpeg::ColorMetadata::reconcile(&camera_colors);
+        let (color_metadata, matrix) =
+            ffmpeg::ColorMetadata::reconcile(&camera_colors).map_err(|reason| {
+                SourceError::Init {
+                    path: probe_path.display().to_string(),
+                    reason,
+                }
+            })?;
 
         let inputs = inputs.to_vec();
         let decode_inputs = inputs.clone();
@@ -368,6 +375,7 @@ impl FfmpegFileSource {
             stream,
             cleanup: crate::decoder_cleanup::DecoderTask::new(coordinator),
             full_range,
+            matrix,
             color_metadata,
             info,
             decode_backend,
@@ -668,6 +676,7 @@ mod decode_tests {
             },
             decode_backend: ffmpeg::decoder::DecodeBackend::Software,
             full_range: false,
+            matrix: Default::default(),
             color_metadata: ffmpeg::ColorMetadata::default(),
             #[cfg(feature = "gpu")]
             pixel_format: reco_core::render::renderer::GpuPixelFormat::Nv12,
@@ -890,6 +899,10 @@ mod decode_tests {
 
 #[cfg(feature = "ffmpeg")]
 impl reco_core::source::FrameSource for FfmpegFileSource {
+    fn yuv_matrix(&self) -> reco_core::render::color::YuvMatrix {
+        self.matrix
+    }
+
     fn is_full_range(&self) -> bool {
         self.full_range
     }
@@ -1003,7 +1016,7 @@ pub struct FfmpegFileEncoder {
 
 #[cfg(feature = "ffmpeg")]
 impl FfmpegFileEncoder {
-    /// Encode rendered frames using the renderer's BT.709 limited-range YUV convention.
+    /// Encode rendered frames as limited-range NV12 using the configured colour matrix.
     ///
     /// Raw camera planes belong in [`ffmpeg::encoder::VideoEncoder`] instead.
     pub fn new(
@@ -1013,7 +1026,12 @@ impl FfmpegFileEncoder {
         fps: (i32, i32),
         config: &ffmpeg::encoder::EncoderConfig,
     ) -> Result<Self, SinkError> {
-        Self::with_live_audio(path, width, height, fps, config, None)
+        let matrix = config
+            .color_metadata
+            .matrix()
+            .map_err(|reason| SinkError::Init { reason })?;
+        let color = reco_core::render::color::YuvColor::delivery(matrix);
+        Self::with_live_audio(path, width, height, fps, config, None, color)
     }
 
     pub(crate) fn with_live_audio(
@@ -1023,6 +1041,7 @@ impl FfmpegFileEncoder {
         fps: (i32, i32),
         config: &ffmpeg::encoder::EncoderConfig,
         audio: Option<ffmpeg::live_audio::LiveAudio>,
+        output_color: reco_core::render::color::YuvColor,
     ) -> Result<Self, SinkError> {
         let fps_rational = ffmpeg_next::Rational(fps.0, fps.1);
         let inner = ffmpeg::encoder::VideoEncoder::new_rendered(
@@ -1032,6 +1051,7 @@ impl FfmpegFileEncoder {
             fps_rational,
             config,
             audio,
+            output_color,
         )
         .map_err(|e| {
             if matches!(e, ffmpeg::encoder::EncodeError::Cancelled) {

@@ -74,6 +74,7 @@ pub struct SmartFileSource {
     #[cfg(feature = "gpu")]
     pixel_format: GpuPixelFormat,
     full_range: bool,
+    matrix: reco_core::render::color::YuvMatrix,
     color_metadata: crate::ffmpeg::ColorMetadata,
     left_rotation: i32,
     right_rotation: i32,
@@ -166,7 +167,11 @@ impl SmartFileSource {
             }
             camera_colors.push(probe.color_metadata());
         }
-        let color_metadata = crate::ffmpeg::ColorMetadata::reconcile(&camera_colors);
+        let (color_metadata, matrix) = crate::ffmpeg::ColorMetadata::reconcile(&camera_colors)
+            .map_err(|reason| SourceError::Init {
+                path: left_probe_path.display().to_string(),
+                reason,
+            })?;
         // Automatic Windows/Metal native selection is restricted to validated layouts.
         let native_input_count = platform::NativeSource::supports_input_count(inputs.len());
 
@@ -200,7 +205,7 @@ impl SmartFileSource {
                 info,
                 pixel_format,
                 full_range,
-                color_metadata,
+                (color_metadata, matrix),
                 left_rotation,
                 right_rotation,
             )
@@ -222,6 +227,7 @@ impl SmartFileSource {
         let pixel_format = source.pixel_format();
         let full_range = source.is_full_range();
         let color_metadata = source.color_metadata();
+        let matrix = source.yuv_matrix();
         log::info!(
             "SmartFileSource: host-backed frames ({} camera(s), {}x{}{})",
             inputs.len(),
@@ -237,6 +243,7 @@ impl SmartFileSource {
             #[cfg(feature = "gpu")]
             pixel_format,
             full_range,
+            matrix,
             color_metadata,
             left_rotation,
             right_rotation,
@@ -255,7 +262,10 @@ impl SmartFileSource {
         info: SourceInfo,
         pixel_format: GpuPixelFormat,
         full_range: bool,
-        color_metadata: crate::ffmpeg::ColorMetadata,
+        (color_metadata, matrix): (
+            crate::ffmpeg::ColorMetadata,
+            reco_core::render::color::YuvMatrix,
+        ),
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
@@ -276,6 +286,7 @@ impl SmartFileSource {
             info,
             pixel_format,
             full_range,
+            matrix,
             color_metadata,
             left_rotation,
             right_rotation,
@@ -381,6 +392,10 @@ impl FrameSource for SmartFileSource {
     #[cfg(feature = "gpu")]
     fn gpu_pixel_format(&self) -> GpuPixelFormat {
         self.pixel_format
+    }
+
+    fn yuv_matrix(&self) -> reco_core::render::color::YuvMatrix {
+        self.matrix
     }
 
     fn is_full_range(&self) -> bool {

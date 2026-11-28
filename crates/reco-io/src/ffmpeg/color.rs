@@ -1,14 +1,23 @@
 //! Stream colourimetry metadata (VUI / container colour description).
 
 use ffmpeg_next as ffmpeg;
+use reco_core::render::color::YuvMatrix;
 use std::fmt;
+
+pub(crate) fn swscale_matrix(matrix: YuvMatrix) -> i32 {
+    use ffmpeg::ffi::*;
+    match matrix {
+        YuvMatrix::Bt709 => SWS_CS_ITU709,
+        YuvMatrix::Bt2020Ncl => SWS_CS_BT2020,
+        YuvMatrix::Bt601 => SWS_CS_SMPTE170M,
+    }
+}
 
 /// ITU-T H.273 colourimetry metadata carried by video streams and containers.
 ///
 /// Each field is `None` when unspecified, reserved, or otherwise absent.
 /// Range (`full` vs `limited`) is tracked separately because the renderer
-/// converts inputs to limited-range YUV while preserving the source's colour
-/// description.
+/// emits 8-bit limited-range YUV in the resolved source matrix.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ColorMetadata {
     /// Colour primaries (e.g. `BT2020`, `BT709`).
@@ -109,56 +118,66 @@ impl ColorMetadata {
         }
     }
 
-    /// Resolve metadata for rendered exports.
-    ///
-    /// Preserves explicit source colourimetry, and defaults an unspecified matrix to BT.709
-    /// only when the metadata is empty or BT.709-compatible SDR. Partial HDR or non-BT.709
-    /// metadata keeps `space: None` rather than fabricating a contradictory BT.709 matrix.
-    pub(crate) fn for_rendered_output(self) -> Self {
+    /// Resolve the YCbCr matrix of decoded input. Missing matrix tags
+    /// default to BT.2020 NCL for BT.2020 primaries and to BT.709 for SDR.
+    pub(crate) fn matrix(self) -> Result<YuvMatrix, String> {
+        use ffmpeg::color::{Primaries, Space};
+
         let source = self.normalized();
-        let default_bt709_space = source.space.is_none()
-            && !source.is_hdr()
-            && matches!(
-                source.primaries,
-                None | Some(ffmpeg::color::Primaries::BT709)
-            )
-            && matches!(
-                source.transfer,
-                None | Some(ffmpeg::color::TransferCharacteristic::BT709)
-            );
-        Self {
-            primaries: source.primaries,
-            transfer: source.transfer,
-            space: if default_bt709_space {
-                Some(ffmpeg::color::Space::BT709)
-            } else {
-                source.space
-            },
+        match source.space {
+            Some(Space::BT709) => Ok(YuvMatrix::Bt709),
+            Some(Space::BT2020NCL) => Ok(YuvMatrix::Bt2020Ncl),
+            Some(Space::SMPTE170M | Space::BT470BG) => Ok(YuvMatrix::Bt601),
+            Some(space) => Err(format!("unsupported YCbCr matrix {space:?}")),
+            None if source.primaries == Some(Primaries::BT2020) => Ok(YuvMatrix::Bt2020Ncl),
+            None if source.is_hdr() => {
+                Err("HDR input requires a YCbCr matrix tag or BT.2020 primaries".into())
+            }
+            None => Ok(YuvMatrix::Bt709),
         }
     }
 
-    /// Reconcile colour metadata across one or more camera streams.
-    ///
-    /// Returns the shared metadata when all cameras agree. When cameras disagree,
-    /// logs a warning and returns `ColorMetadata::default()` so exports fall back
-    /// conservatively to default rendered metadata.
-    pub(crate) fn reconcile(cameras: &[Self]) -> Self {
+    /// Tag the matrix actually used for encoded YCbCr, retaining the BT.601 alias
+    /// from the source when applicable.
+    pub(crate) fn with_matrix(self, matrix: YuvMatrix) -> Self {
+        use ffmpeg::color::Space;
+
+        let mut metadata = self.normalized();
+        metadata.space = Some(match matrix {
+            YuvMatrix::Bt709 => Space::BT709,
+            YuvMatrix::Bt2020Ncl => Space::BT2020NCL,
+            YuvMatrix::Bt601 if metadata.space == Some(Space::BT470BG) => Space::BT470BG,
+            YuvMatrix::Bt601 => Space::SMPTE170M,
+        });
+        metadata
+    }
+
+    /// Resolve a shared colour description for compositing.
+    pub(crate) fn reconcile(cameras: &[Self]) -> Result<(Self, YuvMatrix), String> {
+        use ffmpeg::color::{Primaries, TransferCharacteristic};
+
         let Some((&first, rest)) = cameras.split_first() else {
-            return Self::default();
+            return Ok((Self::default(), YuvMatrix::Bt709));
         };
         let first = first.normalized();
+        let matrix = first.matrix()?;
+        let primaries = |metadata: Self| metadata.primaries.unwrap_or(Primaries::BT709);
+        let transfer = |metadata: Self| metadata.transfer.unwrap_or(TransferCharacteristic::BT709);
+        let mut shared = first;
         for (index, &other) in rest.iter().enumerate() {
             let other = other.normalized();
-            if other != first {
-                log::warn!(
-                    "Camera 0 and camera {} colour metadata differ ({first} vs {other}); \
-                     falling back to default export colour metadata",
+            if other.matrix()? != matrix
+                || primaries(other) != primaries(first)
+                || transfer(other) != transfer(first)
+            {
+                return Err(format!(
+                    "camera color metadata differ (camera 0: {first}; camera {}: {other})",
                     index + 1,
-                );
-                return Self::default();
+                ));
             }
+            shared = shared.or(other);
         }
-        first
+        Ok((shared, matrix))
     }
 }
 
@@ -241,35 +260,25 @@ mod tests {
     }
 
     #[test]
-    fn reconcile_propagates_agreement_and_falls_back_on_mismatch() {
-        assert_eq!(ColorMetadata::reconcile(&[]), ColorMetadata::default());
-        assert_eq!(ColorMetadata::reconcile(&[hlg_bt2020()]), hlg_bt2020());
+    fn reconcile_rejects_incompatible_camera_color() {
         assert_eq!(
-            ColorMetadata::reconcile(&[hlg_bt2020(), hlg_bt2020()]),
+            ColorMetadata::reconcile(&[]).unwrap().0,
+            ColorMetadata::default()
+        );
+        assert_eq!(
+            ColorMetadata::reconcile(&[hlg_bt2020(), hlg_bt2020()])
+                .unwrap()
+                .0,
             hlg_bt2020()
         );
-        // Mismatched cameras conservatively fall back to empty default.
+        assert!(ColorMetadata::reconcile(&[hlg_bt2020(), sdr_bt709()]).is_err());
+        assert!(ColorMetadata::reconcile(&[hlg_bt2020(), ColorMetadata::default()]).is_err());
+        assert!(ColorMetadata::reconcile(&[hlg_bt2020(), pq_bt2020()]).is_err());
         assert_eq!(
-            ColorMetadata::reconcile(&[hlg_bt2020(), sdr_bt709()]),
-            ColorMetadata::default()
-        );
-        assert_eq!(
-            ColorMetadata::reconcile(&[hlg_bt2020(), ColorMetadata::default()]),
-            ColorMetadata::default()
-        );
-        assert_eq!(
-            ColorMetadata::reconcile(&[hlg_bt2020(), pq_bt2020()]),
-            ColorMetadata::default()
-        );
-        // Unspecified fields normalize identically to None.
-        let untagged_explicit = ColorMetadata {
-            primaries: Some(Primaries::Unspecified),
-            transfer: Some(TransferCharacteristic::Unspecified),
-            space: Some(Space::Unspecified),
-        };
-        assert_eq!(
-            ColorMetadata::reconcile(&[untagged_explicit, ColorMetadata::default()]),
-            ColorMetadata::default()
+            ColorMetadata::reconcile(&[sdr_bt709(), ColorMetadata::default()])
+                .unwrap()
+                .0,
+            sdr_bt709()
         );
     }
 
@@ -309,44 +318,29 @@ mod tests {
     }
 
     #[test]
-    fn for_rendered_output_defaults_bt709_only_for_empty_or_bt709_sdr() {
-        assert_eq!(
-            ColorMetadata::default().for_rendered_output(),
-            ColorMetadata {
-                primaries: None,
-                transfer: None,
-                space: Some(Space::BT709),
-            }
-        );
-
-        let partial_bt709 = ColorMetadata {
-            primaries: Some(Primaries::BT709),
-            transfer: Some(TransferCharacteristic::BT709),
-            space: None,
-        };
-        assert_eq!(
-            partial_bt709.for_rendered_output(),
-            ColorMetadata {
-                primaries: Some(Primaries::BT709),
-                transfer: Some(TransferCharacteristic::BT709),
-                space: Some(Space::BT709),
-            }
-        );
-
+    fn resolves_supported_matrices_and_rejects_constant_luminance() {
+        assert_eq!(ColorMetadata::default().matrix().unwrap(), YuvMatrix::Bt709);
         let partial_hdr = ColorMetadata {
-            primaries: Some(Primaries::BT2020),
-            transfer: Some(TransferCharacteristic::ARIB_STD_B67),
             space: None,
+            ..hlg_bt2020()
         };
-        assert_eq!(partial_hdr.for_rendered_output(), partial_hdr);
-
-        let partial_bt601 = ColorMetadata {
-            primaries: Some(Primaries::SMPTE170M),
-            transfer: None,
-            space: None,
-        };
-        assert_eq!(partial_bt601.for_rendered_output(), partial_bt601);
-
-        assert_eq!(hlg_bt2020().for_rendered_output(), hlg_bt2020());
+        assert_eq!(partial_hdr.matrix().unwrap(), YuvMatrix::Bt2020Ncl);
+        assert_eq!(partial_hdr.with_matrix(YuvMatrix::Bt2020Ncl), hlg_bt2020());
+        for space in [Space::SMPTE170M, Space::BT470BG] {
+            let metadata = ColorMetadata {
+                space: Some(space),
+                ..Default::default()
+            };
+            assert_eq!(metadata.matrix().unwrap(), YuvMatrix::Bt601);
+            assert_eq!(metadata.with_matrix(YuvMatrix::Bt601), metadata);
+        }
+        assert!(
+            ColorMetadata {
+                space: Some(Space::BT2020CL),
+                ..hlg_bt2020()
+            }
+            .matrix()
+            .is_err()
+        );
     }
 }

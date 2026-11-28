@@ -603,6 +603,31 @@ pub trait FrameSource: Send {
         false
     }
 
+    /// YCbCr matrix of the delivered source planes. Untagged input defaults to BT.709.
+    fn yuv_matrix(&self) -> crate::render::color::YuvMatrix {
+        crate::render::color::YuvMatrix::Bt709
+    }
+
+    /// Matrix, range and sample storage of the frames supplied by this source.
+    fn yuv_color(&self) -> crate::render::color::YuvColor {
+        use crate::render::color::YuvColor;
+        #[cfg(feature = "gpu")]
+        if self.is_gpu_resident()
+            && self.gpu_pixel_format() == crate::render::renderer::GpuPixelFormat::P010
+        {
+            return YuvColor {
+                full_range: self.is_full_range(),
+                samples: crate::render::color::YuvSampleFormat::P010,
+                matrix: self.yuv_matrix(),
+            };
+        }
+        YuvColor {
+            full_range: self.is_full_range(),
+            matrix: self.yuv_matrix(),
+            ..Default::default()
+        }
+    }
+
     /// Left camera rotation from stream metadata (degrees: 0, 90, 180, 270).
     ///
     /// The session applies rotation automatically: the CPU path handles it
