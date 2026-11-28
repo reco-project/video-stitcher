@@ -88,3 +88,10 @@ cargo run --release -p reco-cli --features profiling -- stitch left.mp4 right.mp
 - Public items need a living consumer: speculative API surface gets cut,
   not kept for later
 - Verify changes actually run - exercise the binary or tests, not just `cargo check`
+
+## Maintainer workflow
+- Get user approval before posting public GitHub comments or opening/closing external issues and PRs.
+- Public comments: concise, factual tone; no em dashes, no exclamation marks.
+- Bugs require a deterministic reproduction before a fix; quality and performance claims require measurement first.
+- Run an independent review pass on non-trivial PRs before merging.
+- Keep tracking issues short and high-level.
