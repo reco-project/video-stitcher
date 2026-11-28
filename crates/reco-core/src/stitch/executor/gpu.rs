@@ -37,6 +37,14 @@ pub struct GpuExecutorConfig {
     /// consumer; `Bgra8Unorm` matches native Windows DirectX surfaces
     /// for consumers that prefer to swizzle on upload instead of on
     /// readback.
+    ///
+    /// Planar (L-shape) GPU compositing tracks base-surface coverage in
+    /// destination alpha and requires a 4-channel color format with an alpha
+    /// channel (such as `Rgba8Unorm`, `Bgra8Unorm`, `Rgb10a2Unorm`, or
+    /// `Rgba16Float`). Alpha-free formats (such as `R8Unorm`, `Rg8Unorm`, or
+    /// `Rg11b10Ufloat`) are rejected at construction with
+    /// [`StitchError::Pipeline`] wrapping
+    /// [`PipelineError::InvalidConfig`](crate::render::pipeline::PipelineError::InvalidConfig).
     pub output_format: wgpu::TextureFormat,
     /// Whether source YUV uses full-range (JPEG) quantization.
     pub full_range: bool,

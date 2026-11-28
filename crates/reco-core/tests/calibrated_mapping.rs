@@ -110,12 +110,12 @@ fn external_compositor_matches_cpu_for_both_projections() {
                                     assert!((0.0..=1.0).contains(&sample.u));
                                     assert!((0.0..=1.0).contains(&sample.v));
                                     seen[camera] = true;
-                                    supported = true;
-                                    let alpha = blend.alpha(sample.edge);
+                                    let alpha = blend.composite_alpha(sample.edge, supported);
                                     assert!((0.0..=1.0).contains(&alpha));
-                                    saw_blend |= alpha > 0.0 && alpha < 1.0;
+                                    saw_blend |= supported && alpha > 0.0 && alpha < 1.0;
                                     let source = if camera == active { 1.0 } else { 0.0 };
                                     value += (source - value) * alpha;
+                                    supported = true;
                                 }
                             }
                             saw_uncovered |= !supported;
@@ -139,6 +139,106 @@ fn external_compositor_matches_cpu_for_both_projections() {
 }
 
 #[test]
+fn external_compositor_preserves_right_only_boundary_pixels() {
+    let size = ViewportSize {
+        width: 120,
+        height: 68,
+    };
+    let left_lens = Lens::fisheye(128, 72, 60.0, 60.0, 64.0, 36.0, [-0.02, 0.004, 0.0, 0.0]);
+    let right_lens = Lens::fisheye(128, 96, 60.0, 60.0, 62.0, 46.0, [-0.02, 0.004, 0.0, 0.0]);
+    let cal = Calibration::new(
+        vec![left_lens, right_lens],
+        LShape {
+            intersect: 0.5,
+            x_ty: 0.04,
+            x_rz: 0.06,
+            z_rx: -0.05,
+            x_rx: 0.07,
+            z_rz: 0.05,
+            blend_width: 0.15,
+        },
+        Framing {
+            axis_offset: 0.25,
+            tilt: 0.12,
+            roll: -0.08,
+        },
+    );
+    cal.validate().unwrap();
+    let pose = RenderPose {
+        yaw: 0.0,
+        pitch: 0.0,
+        fov_degrees: 112.0,
+    };
+    let maps = cal.surface_maps(&size, pose);
+    let executor = CpuExecutor::new(cal, size.clone(), vec![(128, 72), (128, 96)], true).unwrap();
+    let ly = vec![255u8; 128 * 72];
+    let luv = vec![128u8; 128 * 36];
+    let ry = vec![255u8; 128 * 96];
+    let ruv = vec![128u8; 128 * 48];
+    let rendered = executor
+        .stitch_nv12(
+            &[
+                Nv12Planes { y: &ly, uv: &luv },
+                Nv12Planes { y: &ry, uv: &ruv },
+            ],
+            pose,
+        )
+        .unwrap();
+
+    let mut right_only_zero = 0usize;
+    let mut right_only_frac = 0usize;
+    let mut both_blended = 0usize;
+    for y in 0..size.height {
+        for x in 0..size.width {
+            let ndc = [
+                (f64::from(x) + 0.5) / f64::from(size.width) * 2.0 - 1.0,
+                1.0 - (f64::from(y) + 0.5) / f64::from(size.height) * 2.0,
+            ];
+            let left = maps[0].0.sample_uv(ndc);
+            let right = maps[1].0.sample_uv(ndc);
+            if let (None, Some(sample)) = (left, right) {
+                let nominal = maps[1].1.alpha(sample.edge);
+                if nominal == 0.0 {
+                    right_only_zero += 1;
+                } else if nominal < 1.0 {
+                    right_only_frac += 1;
+                }
+                assert_eq!(maps[1].1.composite_alpha(sample.edge, false), 1.0);
+            } else if let (Some(_), Some(sample)) = (left, right) {
+                let alpha = maps[1].1.composite_alpha(sample.edge, true);
+                if alpha > 0.0 && alpha < 1.0 {
+                    both_blended += 1;
+                }
+            }
+            let mut value = 0.0;
+            let mut supported = false;
+            for (map, blend) in &maps {
+                if let Some(sample) = map.sample_uv(ndc) {
+                    let alpha = blend.composite_alpha(sample.edge, supported);
+                    value += (1.0 - value) * alpha;
+                    supported = true;
+                }
+            }
+            let expected = if supported { 255u8 } else { 0u8 };
+            assert_eq!((value * 255.0).round() as u8, expected);
+            let offset = ((y * size.width + x) * 4) as usize;
+            for channel in &rendered[offset..offset + 3] {
+                assert_eq!(*channel, expected, "pixel ({x}, {y}) mismatch");
+            }
+        }
+    }
+    assert!(
+        right_only_zero > 0,
+        "expected right-only zero-weight pixels"
+    );
+    assert!(
+        right_only_frac > 0,
+        "expected right-only fractional-weight pixels"
+    );
+    assert!(both_blended > 0, "expected blended overlap pixels");
+}
+
+#[test]
 fn public_blend_weights_cover_seam_endpoints() {
     assert_eq!(BlendRule::Opaque.alpha(-1.0), 1.0);
     assert_eq!(BlendRule::Smoothstep(0.0).alpha(-1.0), 1.0);
@@ -148,6 +248,10 @@ fn public_blend_weights_cover_seam_endpoints() {
     assert_eq!(blend.alpha(0.1), 0.5);
     assert_eq!(blend.alpha(0.2), 1.0);
     assert_eq!(blend.alpha(0.3), 1.0);
+    for edge in [-0.1, 0.0, 0.1, 0.2, 0.3] {
+        assert_eq!(blend.composite_alpha(edge, false), 1.0);
+        assert_eq!(blend.composite_alpha(edge, true), blend.alpha(edge));
+    }
 }
 
 #[test]

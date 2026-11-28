@@ -467,3 +467,144 @@ fn ownership_follows_blending_not_a_field_halfway_split() {
         "field geometry is a separate concern"
     );
 }
+
+#[test]
+fn right_only_zero_weight_blend_point_is_picked_and_owned() {
+    let left_lens = Lens::fisheye(
+        256,
+        144,
+        120.0,
+        120.0,
+        128.0,
+        72.0,
+        [-0.02, 0.004, 0.0, 0.0],
+    );
+    let mut right_lens = Lens::fisheye(
+        256,
+        192,
+        120.0,
+        120.0,
+        125.0,
+        93.0,
+        [-0.02, 0.004, 0.0, 0.0],
+    );
+    right_lens.correction = 0.85;
+    let mut cal = Calibration::new(
+        vec![left_lens, right_lens],
+        LShape {
+            intersect: 0.5,
+            x_ty: 0.04,
+            x_rz: 0.06,
+            z_rx: -0.05,
+            x_rx: 0.07,
+            z_rz: 0.05,
+            blend_width: 0.15,
+        },
+        Framing {
+            axis_offset: 0.25,
+            tilt: 0.12,
+            roll: -0.08,
+        },
+    );
+    cal.validate().unwrap();
+
+    let size = ViewportSize {
+        width: 256,
+        height: 144,
+    };
+    let pose = RenderPose {
+        yaw: 0.0,
+        pitch: 0.0,
+        fov_degrees: 112.0,
+    };
+    let maps = cal.surface_maps(&size, pose);
+
+    // Pixel (119, 39) is right-only with negative edge (nominal weight 0.0).
+    let target_pt = [119.5 / 256.0, 39.5 / 144.0];
+    let target_ndc = [2.0 * target_pt[0] - 1.0, 1.0 - 2.0 * target_pt[1]];
+    assert!(
+        maps[0].0.sample_uv(target_ndc).is_none(),
+        "fixture pixel (119, 39) must not be covered by left camera"
+    );
+    let target_uv = maps[1]
+        .0
+        .sample_uv(target_ndc)
+        .expect("fixture pixel (119, 39) must be covered by right camera");
+    assert!(
+        target_uv.edge < 0.0 && maps[1].1.alpha(target_uv.edge) == 0.0,
+        "fixture pixel (119, 39) must have zero nominal blend weight, got edge={}",
+        target_uv.edge
+    );
+
+    let picked = cal
+        .pick_source_point(&size, pose, target_pt)
+        .expect("visible right-only zero-weight pixel must be pickable");
+    assert_eq!(picked.camera, 1);
+    assert!((picked.position[0] - target_uv.u).abs() < 1e-12);
+    assert!((picked.position[1] - target_uv.v).abs() < 1e-12);
+
+    // Every right-only pixel in the fade band (including zero nominal weight)
+    // must pick camera 1, while overlap pixels with nominal weight < 0.5 still
+    // pick camera 0.
+    let mut right_only_zero = 0usize;
+    let mut right_only_frac = 0usize;
+    let mut overlap_left_wins = 0usize;
+    for py in 0..size.height {
+        for px in 0..size.width {
+            let pt = [
+                (px as f64 + 0.5) / size.width as f64,
+                (py as f64 + 0.5) / size.height as f64,
+            ];
+            let ndc = [2.0 * pt[0] - 1.0, 1.0 - 2.0 * pt[1]];
+            match (maps[0].0.sample_uv(ndc), maps[1].0.sample_uv(ndc)) {
+                (None, Some(rs)) => {
+                    let picked = cal
+                        .pick_source_point(&size, pose, pt)
+                        .expect("right-only pixel must pick camera 1");
+                    assert_eq!(picked.camera, 1);
+                    let w = maps[1].1.alpha(rs.edge);
+                    if w == 0.0 {
+                        right_only_zero += 1;
+                    } else if w < 1.0 {
+                        right_only_frac += 1;
+                    }
+                }
+                (Some(_), Some(rs)) if maps[1].1.alpha(rs.edge) < 0.5 => {
+                    let picked = cal
+                        .pick_source_point(&size, pose, pt)
+                        .expect("overlap pixel must pick a source");
+                    assert_eq!(picked.camera, 0);
+                    overlap_left_wins += 1;
+                }
+                _ => {}
+            }
+        }
+    }
+    assert!(right_only_zero > 0);
+    assert!(right_only_frac > 0);
+    assert!(overlap_left_wins > 0);
+
+    // A small field ROI around the right-only zero-weight source point must
+    // both contain and own that point on camera 1.
+    let [u, v] = picked.position;
+    let d = 0.01;
+    cal.field_roi = Some(FieldRoi {
+        corners: [
+            [u - d, v - d],
+            [u + d, v - d],
+            [u + d, v + d],
+            [u - d, v + d],
+        ]
+        .map(|position| SourcePoint {
+            camera: 1,
+            position,
+        }),
+    });
+    cal.validate().unwrap();
+    let boundary = cal.field_boundary().unwrap().unwrap();
+    assert!(boundary.contains(picked));
+    assert!(
+        boundary.owns(picked),
+        "right-only zero-weight pixel inside the ROI must be owned by camera 1"
+    );
+}

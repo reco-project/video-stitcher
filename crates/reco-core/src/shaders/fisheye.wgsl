@@ -70,7 +70,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Raw mode: negative correction bypasses all projection math
     // and samples the input texture directly at the fragment UV.
     if u.lens_preview.x < 0.0 {
-        if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
+        if !(uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
             return vec4<f32>(0.0, 0.0, 0.0, 0.0);
         }
         let raw = sample_video(uv, u.flags);
@@ -84,8 +84,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let distorted_uv = lens_uv(uv, u.intrinsics, u.dist, correction);
 
     // Bounds check — v2 uses separate textures (no stacking)
-    if distorted_uv.x < 0.0 || distorted_uv.x > 1.0 ||
-       distorted_uv.y < 0.0 || distorted_uv.y > 1.0 {
+    if !(distorted_uv.x >= 0.0 && distorted_uv.x <= 1.0 &&
+         distorted_uv.y >= 0.0 && distorted_uv.y <= 1.0) {
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
 
@@ -98,9 +98,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Compute alpha for seam blending (right plane fades in at left edge)
     var alpha = 1.0;
     let blend_width = u.color_offset_blend.w;
-    if u.flags.x == 1u && blend_width > 0.0 {
-        let edge_dist = uv.x;
-        alpha = smoothstep(0.0, blend_width, edge_dist);
+    if u.flags.x == 1u && blend_width > 0.0 && uv.x < blend_width {
+        alpha = smoothstep(0.0, blend_width, uv.x);
     }
 
     // Split-view separator line (1px white at the midpoint)
@@ -109,4 +108,46 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     return vec4<f32>(color, alpha);
+}
+
+// Uncovered-pixel fill for the right plane inside its fade band.
+// Blended with OneMinusDstAlpha / DstAlpha and ColorWrites::COLOR so pixels
+// without left-base coverage (dst.a == 0) take the right color while
+// left-covered pixels (dst.a == 1) stay untouched, without altering dst.a.
+@fragment
+fn fs_right_uncovered(in: VertexOutput) -> @location(0) vec4<f32> {
+    let uv = in.uv * 2.0 - vec2<f32>(0.5);
+    let blend_width = u.color_offset_blend.w;
+    if !(uv.x < blend_width) {
+        discard;
+    }
+    let distorted_uv = lens_uv(uv, u.intrinsics, u.dist, u.lens_preview.x);
+    if !(distorted_uv.x >= 0.0 && distorted_uv.x <= 1.0 &&
+         distorted_uv.y >= 0.0 && distorted_uv.y <= 1.0) {
+        discard;
+    }
+    let tex_color = sample_video(distorted_uv, u.flags);
+    let color = apply_color_transfer(
+        tex_color.rgb,
+        u.color_scale.xyz,
+        u.color_offset_blend.xyz,
+    );
+    return vec4<f32>(color, 1.0);
+}
+
+// Fullscreen triangle to restore opaque output alpha (1.0) after DstAlpha
+// compositing without touching RGB (paired with ColorWrites::ALPHA).
+@vertex
+fn vs_opaque_alpha(@builtin(vertex_index) idx: u32) -> @builtin(position) vec4<f32> {
+    let positions = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(3.0, -1.0),
+        vec2<f32>(-1.0, 3.0),
+    );
+    return vec4<f32>(positions[idx], 0.0, 1.0);
+}
+
+@fragment
+fn fs_opaque_alpha() -> @location(0) vec4<f32> {
+    return vec4<f32>(0.0, 0.0, 0.0, 1.0);
 }

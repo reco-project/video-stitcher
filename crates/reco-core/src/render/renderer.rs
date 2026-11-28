@@ -194,6 +194,10 @@ impl GpuPixelFormat {
 /// Created once per pipeline and reused for every frame.
 pub(crate) struct Renderer {
     pipeline: wgpu::RenderPipeline,
+    /// Planes-only helper: fills right-only fade-band pixels where `dst.a == 0`.
+    right_uncovered_pipeline: Option<wgpu::RenderPipeline>,
+    /// Planes-only helper: restores opaque alpha (1.0) across the full target.
+    opaque_alpha_pipeline: Option<wgpu::RenderPipeline>,
     vertex_buffer: Option<wgpu::Buffer>,
     cameras: Vec<PlaneResources>,
     /// Caller-owned previews do not allocate an unused internal output texture.
@@ -252,6 +256,10 @@ impl Renderer {
         output_format: wgpu::TextureFormat,
         input_format: InputFormat,
     ) -> Self {
+        debug_assert!(
+            program.pass != super::GpuPass::Planes || super::has_alpha_channel(output_format),
+            "planar GPU compositing requires a 4-channel color render target format with an alpha channel, got {output_format:?}"
+        );
         let device = &gpu.device;
 
         // Shader: compiled from the projection's GPU program descriptor -
@@ -354,6 +362,92 @@ impl Renderer {
             cache: None,
         });
 
+        let (right_uncovered_pipeline, opaque_alpha_pipeline) = if program.pass
+            == super::GpuPass::Planes
+        {
+            let right_uncovered = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("stitch_right_uncovered_pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some(program.vs_entry),
+                    compilation_options: Default::default(),
+                    buffers: &[Vertex::LAYOUT],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_right_uncovered"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: output_format,
+                        blend: Some(wgpu::BlendState {
+                            color: wgpu::BlendComponent {
+                                src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
+                                dst_factor: wgpu::BlendFactor::DstAlpha,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                            alpha: wgpu::BlendComponent {
+                                src_factor: wgpu::BlendFactor::Zero,
+                                dst_factor: wgpu::BlendFactor::One,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                        }),
+                        write_mask: wgpu::ColorWrites::COLOR,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: None,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            });
+
+            let empty_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("stitch_opaque_alpha_layout"),
+                bind_group_layouts: &[],
+                immediate_size: 0,
+            });
+            let opaque_alpha = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("stitch_opaque_alpha_pipeline"),
+                layout: Some(&empty_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_opaque_alpha"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_opaque_alpha"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: output_format,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALPHA,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: None,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            });
+
+            (Some(right_uncovered), Some(opaque_alpha))
+        } else {
+            (None, None)
+        };
+
         // Sampler (shared by both planes)
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("video_sampler"),
@@ -390,6 +484,8 @@ impl Renderer {
 
         Self {
             pipeline,
+            right_uncovered_pipeline,
+            opaque_alpha_pipeline,
             vertex_buffer,
             cameras,
             render_target: OnceLock::new(),
@@ -831,6 +927,19 @@ impl Renderer {
                 label: Some(encoder_label),
             });
 
+        let planes_blend_pipelines = if scene.is_some() && blend_width > 0.0 {
+            self.right_uncovered_pipeline
+                .as_ref()
+                .zip(self.opaque_alpha_pipeline.as_ref())
+        } else {
+            None
+        };
+        let clear_color = if planes_blend_pipelines.is_some() {
+            wgpu::Color::TRANSPARENT
+        } else {
+            wgpu::Color::BLACK
+        };
+
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("stitch_pass"),
@@ -838,7 +947,7 @@ impl Renderer {
                     view: target_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load: wgpu::LoadOp::Clear(clear_color),
                         store: wgpu::StoreOp::Store,
                     },
                     depth_slice: None,
@@ -849,11 +958,7 @@ impl Renderer {
                 multiview_mask: None,
             });
 
-            pass.set_pipeline(&self.pipeline);
-            if let Some(vertices) = &self.vertex_buffer {
-                pass.set_vertex_buffer(0, vertices.slice(..));
-            }
-            for camera in &self.cameras {
+            let bind_camera = |pass: &mut wgpu::RenderPass<'_>, camera: &PlaneResources| {
                 pass.set_bind_group(
                     0,
                     camera
@@ -863,7 +968,49 @@ impl Renderer {
                     &[],
                 );
                 pass.set_bind_group(1, &camera.uniform_bind_group, &[]);
-                pass.draw(0..if self.vertex_buffer.is_some() { 6 } else { 3 }, 0..1);
+            };
+
+            if let Some((right_uncovered_pipeline, opaque_alpha_pipeline)) = planes_blend_pipelines
+            {
+                let vertices = self
+                    .vertex_buffer
+                    .as_ref()
+                    .expect("GpuPass::Planes always has a vertex buffer");
+                pass.set_vertex_buffer(0, vertices.slice(..));
+
+                // Draw 1: Left camera (base). Covered pixels become (L, 1.0);
+                // uncovered pixels stay (0, 0, 0, 0).
+                pass.set_pipeline(&self.pipeline);
+                bind_camera(&mut pass, &self.cameras[0]);
+                pass.draw(0..6, 0..1);
+
+                // Draw 2: Right camera uncovered fill inside the fade band.
+                // Where dst.a == 0.0, writes R without modifying dst.a; where
+                // dst.a == 1.0, keeps L untouched.
+                pass.set_pipeline(right_uncovered_pipeline);
+                bind_camera(&mut pass, &self.cameras[1]);
+                pass.draw(0..6, 0..1);
+
+                // Draw 3: Right camera standard smoothstep blend.
+                // Over left-covered pixels (L): a * R + (1 - a) * L.
+                // Over right-only fade-band pixels (R): a * R + (1 - a) * R = R.
+                // Outside fade band (a = 1): R.
+                pass.set_pipeline(&self.pipeline);
+                pass.draw(0..6, 0..1);
+
+                // Draw 4: Restore dst.a = 1.0 across the full target without
+                // touching RGB so covered and uncovered pixels stay opaque.
+                pass.set_pipeline(opaque_alpha_pipeline);
+                pass.draw(0..3, 0..1);
+            } else {
+                pass.set_pipeline(&self.pipeline);
+                if let Some(vertices) = &self.vertex_buffer {
+                    pass.set_vertex_buffer(0, vertices.slice(..));
+                }
+                for camera in &self.cameras {
+                    bind_camera(&mut pass, camera);
+                    pass.draw(0..if self.vertex_buffer.is_some() { 6 } else { 3 }, 0..1);
+                }
             }
         }
 
@@ -972,6 +1119,94 @@ impl Renderer {
             "preview_frame",
         );
         gpu.queue.submit(Some(encoder.finish()))
+    }
+
+    /// Test-only isolated single-camera GPU draw (cleared to transparent,
+    /// `blend_width = 0.0`) so oracle tests can compare combined compositing
+    /// directly against actual hardware left-only and right-only rasterization.
+    #[cfg(test)]
+    pub(crate) fn render_isolated_camera_to_target(
+        &self,
+        gpu: &GpuContext,
+        scene: &PlaneScene,
+        calibration: &Calibration,
+        pose: RenderPose,
+        camera: usize,
+    ) -> wgpu::CommandBuffer {
+        let aspect = self.output_width as f32 / self.output_height as f32;
+        let projection = opengl_to_wgpu_matrix()
+            * Perspective3::new(
+                aspect,
+                pose.render_fov().to_radians(),
+                NEAR_PLANE,
+                FAR_PLANE,
+            )
+            .to_homogeneous();
+        let view = view_matrix(
+            &scene.camera,
+            pose.yaw,
+            pose.pitch,
+            calibration.framing.tilt as f32,
+            calibration.framing.roll as f32,
+        );
+        let mvp = projection * view * scene.models[camera];
+        let mut uniforms = build_gpu_uniforms(
+            &mvp,
+            &calibration.lenses[camera],
+            camera == 1,
+            0.0,
+            self.input_format,
+            self.flip_180[camera],
+            self.is_full_range,
+        );
+        uniforms.lens_preview[0] = calibration.lenses[camera].correction;
+        gpu.queue.write_buffer(
+            &self.cameras[camera].uniform_buffer,
+            0,
+            bytemuck::bytes_of(&uniforms),
+        );
+
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("isolated_camera_to_target"),
+            });
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("isolated_camera_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.output_target().1,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+                multiview_mask: None,
+            });
+            let vertices = self
+                .vertex_buffer
+                .as_ref()
+                .expect("GpuPass::Planes always has a vertex buffer");
+            let plane = &self.cameras[camera];
+            pass.set_pipeline(&self.pipeline);
+            pass.set_vertex_buffer(0, vertices.slice(..));
+            pass.set_bind_group(
+                0,
+                plane
+                    .imported_bind_group
+                    .as_ref()
+                    .unwrap_or(&plane.texture_bind_group),
+                &[],
+            );
+            pass.set_bind_group(1, &plane.uniform_bind_group, &[]);
+            pass.draw(0..6, 0..1);
+        }
+        encoder.finish()
     }
 }
 
@@ -1250,6 +1485,7 @@ mod tests {
 
     #[test]
     fn uniforms_are_normalized() {
+        assert_eq!(std::mem::size_of::<GpuUniforms>(), 160);
         let camera = Lens::fisheye(
             3840,
             2160,

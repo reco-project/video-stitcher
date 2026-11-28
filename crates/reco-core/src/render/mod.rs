@@ -55,6 +55,20 @@ pub fn strip_srgb(format: wgpu::TextureFormat) -> wgpu::TextureFormat {
     }
 }
 
+/// Whether a render-target texture format has a dedicated alpha channel.
+///
+/// Planar (L-shape) GPU compositing tracks left-plane coverage in destination
+/// alpha (`DstAlpha` / `OneMinusDstAlpha`). Alpha-free formats make graphics
+/// APIs substitute `1.0` for missing destination alpha, breaking uncovered
+/// right-plane preservation whenever `blend_width > 0.0`.
+#[cfg(feature = "gpu")]
+pub(crate) fn has_alpha_channel(format: wgpu::TextureFormat) -> bool {
+    format.has_color_aspect()
+        && !format.is_compressed()
+        && !format.is_multi_planar_format()
+        && format.components() == 4
+}
+
 #[cfg(all(test, feature = "gpu"))]
 mod tests {
     use super::strip_srgb;
