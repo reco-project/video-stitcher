@@ -121,7 +121,7 @@ impl StitchSession {
                 }
                 images.len()
             }
-            #[cfg(target_os = "windows")]
+            #[cfg(all(feature = "gpu", target_os = "windows"))]
             FrameSet::D3d11Resident(images) => images.len(),
         };
         let expected = self.core.calibration().projection.camera_count();
