@@ -277,6 +277,9 @@ pub trait Detector: Send {
 
     /// Attempt to run detection on the supplied frame.
     ///
+    /// Complete any reads of borrowed GPU input before returning, including
+    /// on error. The source may recycle the input immediately afterwards.
+    ///
     /// # Errors
     ///
     /// Returns:

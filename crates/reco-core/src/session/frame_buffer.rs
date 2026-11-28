@@ -12,11 +12,16 @@ use crate::detect::tracker::WorldState;
 use crate::source::FrameSet;
 
 #[cfg(all(feature = "gpu", target_os = "linux"))]
-pub(super) fn release_staged_nvmm(
+pub(super) fn release_staged_native(
     frame: Option<FrameSet>,
     slot: Option<usize>,
 ) -> Option<FrameSet> {
-    if slot.is_some() && matches!(frame, Some(FrameSet::NvmmResident(_))) {
+    if slot.is_some()
+        && matches!(
+            frame,
+            Some(FrameSet::NvmmResident(_) | FrameSet::GpuResident(_))
+        )
+    {
         None
     } else {
         frame
@@ -25,7 +30,7 @@ pub(super) fn release_staged_nvmm(
 
 /// A single buffered frame: decoded pixels + detection metadata.
 pub(crate) struct BufferedFrame {
-    /// None only when an NVMM input has been replaced by its owned VRAM copy.
+    /// None when native input has been replaced by its staged copy.
     pub frame: Option<FrameSet>,
     pub pts_us: Option<i64>,
     pub world_state: WorldState,
@@ -106,7 +111,7 @@ mod tests {
             let weak = Arc::downgrade(&owner);
             let frame = NvmmFrame::lifetime_test_frame(owner);
             let mut buffered = make_frame(0.0);
-            buffered.frame = release_staged_nvmm(
+            buffered.frame = release_staged_native(
                 Some(FrameSet::NvmmResident([frame.clone(), frame])),
                 Some(slot),
             );
@@ -123,7 +128,7 @@ mod tests {
         let weak = Arc::downgrade(&owner);
         let frame = NvmmFrame::lifetime_test_frame(owner);
         let unstaged =
-            release_staged_nvmm(Some(FrameSet::NvmmResident([frame.clone(), frame])), None);
+            release_staged_native(Some(FrameSet::NvmmResident([frame.clone(), frame])), None);
         assert!(weak.upgrade().is_some());
         drop(unstaged);
         assert!(weak.upgrade().is_none());

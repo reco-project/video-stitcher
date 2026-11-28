@@ -91,15 +91,6 @@ enum UploadedImage {
     Nv12(Weak<Nv12Data>),
 }
 
-/// Pre-built bind groups for GPU-resident zero-copy sources.
-///
-/// Created by [`StitchPipeline::configure_gpu_source`]. Each slot
-/// corresponds to a double-buffer index used by the decode thread.
-#[cfg(target_os = "linux")]
-pub(crate) struct GpuSourceBindGroups {
-    cameras: Vec<[wgpu::BindGroup; 2]>,
-}
-
 impl StitchPipeline {
     /// The L-shape's plane placement for the GPU uniforms, when the
     /// projection has planes, including each calibrated image's proportions.
@@ -277,56 +268,6 @@ impl StitchPipeline {
         self.calibration = calibration;
     }
 
-    /// Set up bind groups for GPU-resident zero-copy input.
-    ///
-    /// Creates bind groups for the provided shared textures (Y + UV per slot
-    /// per camera). Call once during setup, then pass the result to
-    /// [`Self::render_gpu_frame`] each frame.
-    #[cfg(target_os = "linux")]
-    pub fn configure_gpu_source(
-        &mut self,
-        shared: &crate::interop::SharedTextureSet,
-    ) -> GpuSourceBindGroups {
-        GpuSourceBindGroups {
-            cameras: shared
-                .cameras
-                .iter()
-                .map(|camera| {
-                    std::array::from_fn(|slot| {
-                        self.renderer.create_texture_bind_group(
-                            &camera.textures[slot * 2].texture,
-                            &camera.textures[slot * 2 + 1].texture,
-                            "decode_slot",
-                        )
-                    })
-                })
-                .collect(),
-        }
-    }
-
-    /// Select each camera's shared decode slot and render.
-    #[cfg(target_os = "linux")]
-    pub fn render_gpu_frame(
-        &mut self,
-        bind_groups: &GpuSourceBindGroups,
-        slots: &[u8],
-        pose: RenderPose,
-    ) -> Result<wgpu::CommandBuffer, PipelineError> {
-        self.check_inputs(slots.len(), InputFormat::Nv12)?;
-        if bind_groups.cameras.len() != slots.len() || slots.iter().any(|&slot| slot > 1) {
-            return Err(PipelineError::InvalidConfig {
-                reason: "invalid shared decode slots".into(),
-            });
-        }
-        for (camera, &slot) in slots.iter().enumerate() {
-            self.renderer.set_camera_bind_group(
-                camera,
-                bind_groups.cameras[camera][usize::from(slot)].clone(),
-            );
-        }
-        self.render_to_target_gpu(pose)
-    }
-
     /// Create a texture bind group from Y + UV textures.
     pub fn create_texture_bind_group(
         &self,
@@ -425,7 +366,7 @@ impl StitchPipeline {
     /// Process a CPU-resident frame set and return the render command buffer.
     ///
     /// Handles YUV420P vs NV12 format differences internally.
-    /// For GPU-resident frames, use [`Self::render_gpu_frame`] instead.
+    /// For native NV12 or P010 planes, see [`Self::render_imported_views`].
     ///
     /// Validates camera count and pixel format before uploading.
     pub fn render_frame_set(

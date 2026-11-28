@@ -824,3 +824,21 @@ pub mod rgba_readback;
 pub mod vram_pool;
 pub mod yuv_converter;
 pub mod yuv_stack_packer;
+
+#[cfg(target_os = "linux")]
+pub(crate) fn wait_for_reads(device: &wgpu::Device) -> Result<(), String> {
+    // No index means the most recent submission at the start of this poll,
+    // which includes all reads submitted before the worker received the frame.
+    match device.poll(wgpu::PollType::wait_indefinitely()) {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            // There is no index or timeout to reject. Do not recycle camera
+            // memory on an unexpected backend failure before proving completion.
+            while let Err(retry) = device.poll(wgpu::PollType::wait_indefinitely()) {
+                log::error!("GPU completion failed: {retry}");
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(format!("GPU submission completion: {error}"))
+        }
+    }
+}

@@ -65,9 +65,7 @@ pub(super) struct SkipOutcome {
 /// on macOS, or CPU software decode as a fallback. The selection is
 /// transparent to the consumer.
 ///
-/// For GPU zero-copy paths, this source owns the shared textures and
-/// decode threads. The session creates bind groups from the source's
-/// textures at the start of `run()`.
+/// Native frames retain their decode surfaces independently of the source.
 pub struct SmartFileSource {
     mode: SourceMode,
     info: SourceInfo,
@@ -274,7 +272,12 @@ impl SmartFileSource {
             sync_offset,
             &info,
             pixel_format,
-            full_range,
+            reco_core::render::color::YuvColor {
+                matrix,
+                full_range,
+                ..Default::default()
+            },
+            [left_rotation, right_rotation],
         )?
         else {
             return Self::open_cpu_only(inputs, sync_offset, false);
@@ -303,18 +306,6 @@ impl SmartFileSource {
     /// Reconciled source colourimetry metadata across all cameras.
     pub fn color_metadata(&self) -> crate::ffmpeg::ColorMetadata {
         self.color_metadata
-    }
-
-    /// Access the shared texture set (GPU zero-copy only).
-    ///
-    /// The session uses this to create bind groups at the start of `run()`.
-    /// Returns `None` for CPU-mode sources.
-    #[cfg(all(feature = "gpu", target_os = "linux"))]
-    pub fn shared_texture_set(&self) -> Option<&reco_core::interop::SharedTextureSet> {
-        match &self.mode {
-            SourceMode::Native(native) => Some(native.shared_texture_set()),
-            SourceMode::Cpu(_) => None,
-        }
     }
 }
 

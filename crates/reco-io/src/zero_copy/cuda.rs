@@ -1,26 +1,21 @@
 //! Shared CUDA/Vulkan staging for decoded file and live images.
 
 use crate::ffmpeg::decoder::{DecodeError, GpuFrame};
-use reco_core::interop::cuda::{cuda_2d_copy, cuda_ensure_context, cuda_synchronize};
-use reco_core::interop::zero_copy::GpuBufInfo;
-#[cfg(target_os = "linux")]
+use reco_core::gpu::GpuContext;
 use reco_core::interop::{
-    shared_textures::SharedCameraTextures,
+    cuda::{CudaInteropError, cuda_2d_copy, cuda_ensure_context, cuda_synchronize},
+    cuda_lease::{CudaLease, CudaSlotPool},
     vulkan::{Nv12Plane, create_nv12_shared_texture},
 };
-#[cfg(target_os = "linux")]
-use reco_core::render::renderer::GpuPixelFormat;
-#[cfg(target_os = "linux")]
-use reco_core::{gpu::GpuContext, interop::SharedTextureSet};
-#[cfg(target_os = "linux")]
-use std::sync::mpsc::{Receiver, sync_channel};
+use reco_core::render::{color::YuvColor, renderer::GpuPixelFormat};
 
-#[cfg(target_os = "linux")]
 pub(crate) fn allocate(
     gpu: &GpuContext,
     sizes: &[(u32, u32)],
     format: GpuPixelFormat,
-) -> Result<(SharedTextureSet, Vec<Receiver<u8>>), reco_core::interop::cuda::CudaInteropError> {
+    color: YuvColor,
+    rotations: [i32; 2],
+) -> Result<Vec<CudaSlotPool>, CudaInteropError> {
     // NVIDIA driver workaround for R16Unorm: see issue #134.
     let _warmup = if format == GpuPixelFormat::P010 {
         Some((
@@ -30,67 +25,47 @@ pub(crate) fn allocate(
     } else {
         None
     };
-    let mut cameras = Vec::with_capacity(sizes.len());
-    let mut receivers = Vec::with_capacity(sizes.len());
-    for &(width, height) in sizes {
-        let y0 = create_nv12_shared_texture(gpu, width, height, Nv12Plane::Y, format)?;
-        let uv0 = create_nv12_shared_texture(gpu, width, height, Nv12Plane::Uv, format)?;
-        let y1 = create_nv12_shared_texture(gpu, width, height, Nv12Plane::Y, format)?;
-        let uv1 = create_nv12_shared_texture(gpu, width, height, Nv12Plane::Uv, format)?;
-        let buf = GpuBufInfo {
-            y_ptr: [y0.cuda_ptr, y1.cuda_ptr],
-            uv_ptr: [uv0.cuda_ptr, uv1.cuda_ptr],
-            y_pitch: [y0.pitch, y1.pitch],
-            uv_pitch: [uv0.pitch, uv1.pitch],
-            width,
-            height,
-            pixel_format: format,
-        };
-        let (tx, rx) = sync_channel(2);
-        tx.send(0).expect("seed slot");
-        tx.send(1).expect("seed slot");
-        receivers.push(rx);
-        cameras.push(SharedCameraTextures {
-            textures: [y0, uv0, y1, uv1],
-            buf,
-            slot_free_tx: tx,
-        });
-    }
-    Ok((SharedTextureSet { cameras }, receivers))
+    sizes
+        .iter()
+        .zip(rotations)
+        .map(|(&size, rotation)| CudaSlotPool::new(gpu, size, format, color, rotation))
+        .collect()
 }
 
-pub(crate) fn stage(frame: &GpuFrame, buf: &GpuBufInfo, slot: u8) -> Result<(), DecodeError> {
-    if slot > 1
-        || frame.width != buf.width
-        || frame.height != buf.height
-        || frame.pixel_format != buf.pixel_format
+pub(crate) fn stage(frame: &GpuFrame, lease: &mut CudaLease) -> Result<(), DecodeError> {
+    let dst = lease.cuda_frame();
+    if frame.width != dst.width
+        || frame.height != dst.height
+        || frame.pixel_format != lease.pixel_format()
     {
         return Err(DecodeError::ConversionError(
             "decoded frame layout does not match shared CUDA textures".into(),
         ));
     }
-    let copy = || {
+    let stage = || {
         cuda_ensure_context()?;
-        let s = usize::from(slot);
-        let width = buf.width as usize * buf.pixel_format.bytes_per_sample();
-        cuda_2d_copy(
-            buf.y_ptr[s],
-            buf.y_pitch[s],
+        let width = dst.width as usize * frame.pixel_format.bytes_per_sample();
+        let copies = cuda_2d_copy(
+            dst.y_ptr,
+            dst.y_pitch,
             frame.y_ptr,
             frame.y_pitch,
             width,
-            buf.height as usize,
-        )?;
-        cuda_2d_copy(
-            buf.uv_ptr[s],
-            buf.uv_pitch[s],
-            frame.uv_ptr,
-            frame.uv_pitch,
-            width,
-            buf.height as usize / 2,
-        )?;
-        // Publish only after both planes are complete, and before releasing the decoded owner.
-        cuda_synchronize()
+            dst.height as usize,
+        )
+        .and_then(|()| {
+            cuda_2d_copy(
+                dst.uv_ptr,
+                dst.uv_pitch,
+                frame.uv_ptr,
+                frame.uv_pitch,
+                width,
+                dst.height as usize / 2,
+            )
+        });
+        // Even if the second copy fails, an earlier write can still be in flight.
+        let completed = cuda_synchronize();
+        copies.and(completed)
     };
-    copy().map_err(|e| DecodeError::ConversionError(format!("CUDA staging: {e}")))
+    stage().map_err(|e| DecodeError::ConversionError(format!("CUDA staging: {e}")))
 }

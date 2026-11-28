@@ -79,6 +79,17 @@ fn accept_capture_timing(
 }
 
 impl StitchSession {
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
+    fn cuda_reads<'a>(&self, frame: &'a crate::source::FrameSet) -> Option<CudaReads<'a>> {
+        let crate::source::FrameSet::GpuResident(leases) = frame else {
+            return None;
+        };
+        Some(CudaReads {
+            device: Some(self.core.gpu().device().clone()),
+            _leases: leases,
+        })
+    }
+
     fn validate_source_frame(&self, frame: &crate::source::FrameSet) -> Result<(), SessionError> {
         frame
             .validate_host_images(self.core.source_sizes())
@@ -92,11 +103,19 @@ impl StitchSession {
                     "native resident frames require a GPU executor".into(),
                 ));
             }
-            FrameSet::GpuResident { slots } => {
-                if slots.iter().any(|&slot| slot > 1) {
-                    return Err(SessionError::Config("invalid shared decode slot".into()));
+            #[cfg(all(feature = "gpu", target_os = "linux"))]
+            FrameSet::GpuResident(images) => {
+                for (camera, image) in images.iter().enumerate() {
+                    let (y, _) = image.textures();
+                    if self.core.source_sizes().get(camera) != Some(&(y.width(), y.height()))
+                        || self.gpu_pixel_format != image.pixel_format()
+                    {
+                        return Err(SessionError::Config(
+                            "CUDA image layout does not match the configured source".into(),
+                        ));
+                    }
                 }
-                slots.len()
+                images.len()
             }
             #[cfg(target_os = "linux")]
             FrameSet::NvmmResident(images) => {
@@ -143,7 +162,6 @@ impl StitchSession {
             self.gpu_pixel_format = source.gpu_pixel_format();
         }
         let color = source.yuv_color();
-        self.source_full_range = color.full_range;
         self.core.set_source_color(color);
         self.delivery_color = crate::render::color::YuvColor::delivery(color.matrix);
         // Apply rotation via shader UV flip ONLY for GPU-resident sources.
@@ -158,51 +176,12 @@ impl StitchSession {
         if lr == 180 || rr == 180 {
             log::info!("Rotation: UV flip left={}, right={}", lr == 180, rr == 180);
         }
-        // Detector preprocessing consumes the same source orientation independently.
-        #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
+        // D3D11 detection consumes the source orientation independently.
+        #[cfg(all(feature = "gpu", target_os = "windows"))]
         {
             self.left_rotation = lr;
             self.right_rotation = rr;
         }
-    }
-
-    /// Configure the session for a GPU-resident source.
-    ///
-    /// Hands the source's shared textures to the GPU executor, which
-    /// builds render bind groups, detection/replay views, and the
-    /// decode backpressure channels. Call this before
-    /// [`run`](Self::run) when using a GPU-resident [`FrameSource`]
-    /// like `SmartFileSource`.
-    /// Requires a GPU executor and one shared surface per projection input.
-    #[cfg(all(feature = "gpu", target_os = "linux"))]
-    pub fn setup_gpu_source(
-        &mut self,
-        shared: &crate::interop::SharedTextureSet,
-    ) -> Result<(), SessionError> {
-        if self.core.executor.gpu().is_none()
-            || self.core.calibration().projection.camera_count() != shared.cameras.len()
-        {
-            return Err(SessionError::Config(
-                "shared decode textures must match the GPU executor camera count".into(),
-            ));
-        }
-        for (camera, &(width, height)) in shared.cameras.iter().zip(self.core.source_sizes()) {
-            if camera.buf.width != width
-                || camera.buf.height != height
-                || camera.textures.iter().enumerate().any(|(plane, texture)| {
-                    let divisor = if plane % 2 == 0 { 1 } else { 2 };
-                    (texture.texture.width(), texture.texture.height())
-                        != (width / divisor, height / divisor)
-                })
-            {
-                return Err(SessionError::Config(
-                    "shared decode texture dimensions do not match the executor".into(),
-                ));
-            }
-        }
-        self.gpu_exec().configure_shared_textures(shared);
-        log::info!("Session configured for GPU-resident source");
-        Ok(())
     }
 
     /// Batch-process frames from a source into the attached sinks.
@@ -274,18 +253,14 @@ impl StitchSession {
             self.run_immediate(source, frame_limit, interrupted, &mut on_progress)
         };
 
-        // Drop GPU slot senders so decode threads can exit gracefully.
-        // Without this, SmartFileSource::drop() deadlocks because the
-        // executor's cloned senders keep the decode threads' recv() alive.
         #[cfg(all(feature = "gpu", target_os = "linux"))]
-        if let Some(exec) = self.core.executor.gpu_mut() {
-            exec.drop_decode_channels();
-            if let Err(error) = exec.finish_nvmm_reads() {
-                if result.is_ok() {
-                    return Err(SessionError::ZeroCopy(error));
-                }
-                log::error!("{error}");
+        if let Some(exec) = self.core.executor.gpu_mut()
+            && let Err(error) = exec.finish_nvmm_reads()
+        {
+            if result.is_ok() {
+                return Err(SessionError::ZeroCopy(error));
             }
+            log::error!("{error}");
         }
 
         result
@@ -390,8 +365,6 @@ impl StitchSession {
             tracking_complete: true,
             capture: None,
             frame_seconds: frame_seconds(source.info().fps)?,
-            #[cfg(all(feature = "gpu", target_os = "linux"))]
-            gpu_buf_info: self.core.executor.gpu().and_then(|g| g.cuda_buf_info()),
         };
         let n = self.lookahead_frames;
         let mut image_budget = crate::lookahead::ImageBudget::new(self.lookahead_memory_bytes)
@@ -544,6 +517,9 @@ impl StitchSession {
                 ))
             })?;
 
+            #[cfg(all(feature = "gpu", target_os = "linux"))]
+            let cuda_reads = session.cuda_reads(&frame);
+
             // Stage GPU frames to persistent slots BEFORE detection,
             // so detection can use the staged textures.
             #[cfg(feature = "gpu")]
@@ -562,9 +538,11 @@ impl StitchSession {
                 capture.as_ref(),
                 ctx.frame_seconds,
             );
-            // Detection still reads the original decode surface after staging.
-            #[cfg(feature = "gpu")]
-            session.release_gpu_decode_slot(&frame);
+            #[cfg(all(feature = "gpu", target_os = "linux"))]
+            let world_state = {
+                let finished = finish_cuda_reads(cuda_reads);
+                world_state.and_then(|state| finished.map(|()| state))
+            };
             let (world_state, mut timing) = match world_state {
                 Ok(state) => state,
                 Err(error) => {
@@ -577,11 +555,11 @@ impl StitchSession {
             };
             let detections = session.core.last_detections().to_vec();
 
-            // Staging has completed and detection no longer uses the capture
-            // buffer. Keeping it in the lookahead queue would exhaust the ISP pool.
+            // Release native inputs after staging and detection have finished reading.
+            // Lookahead owns independent copies, so decode can reuse the inputs.
             let frame = Some(frame);
             #[cfg(all(feature = "gpu", target_os = "linux"))]
-            let frame = super::frame_buffer::release_staged_nvmm(frame, vram_slot);
+            let frame = super::frame_buffer::release_staged_native(frame, vram_slot);
 
             #[cfg(all(feature = "gpu", target_os = "windows"))]
             let frame = frame.filter(|f| {
@@ -673,8 +651,6 @@ impl StitchSession {
             tracking_complete: false,
             capture: None,
             frame_seconds: frame_seconds(source.info().fps)?,
-            #[cfg(all(feature = "gpu", target_os = "linux"))]
-            gpu_buf_info: self.core.executor.gpu().and_then(|g| g.cuda_buf_info()),
         };
 
         while continue_run(&mut completion, self.frame_count, frame_limit, interrupted) {
@@ -715,7 +691,9 @@ impl StitchSession {
                 });
             }
 
-            self.process_frame_any(
+            #[cfg(all(feature = "gpu", target_os = "linux"))]
+            let cuda_reads = self.cuda_reads(&frame);
+            let result = self.process_frame_any(
                 Some(&frame),
                 start.elapsed(),
                 pts_us,
@@ -725,7 +703,10 @@ impl StitchSession {
                 },
                 frame_t0,
                 &ctx,
-            )?;
+            );
+            #[cfg(all(feature = "gpu", target_os = "linux"))]
+            let result = result.and(finish_cuda_reads(cuda_reads));
+            result?;
 
             if let Some(cb) = on_progress.as_mut() {
                 cb(&FrameProgress {
@@ -740,6 +721,34 @@ impl StitchSession {
             completion,
         })
     }
+}
+
+// Readback can finish an older submission while this frame is still in use.
+// Keep the leases through this completion boundary, including early errors.
+#[cfg(all(feature = "gpu", target_os = "linux"))]
+struct CudaReads<'a> {
+    device: Option<wgpu::Device>,
+    _leases: &'a [crate::interop::cuda_lease::CudaLease],
+}
+
+#[cfg(all(feature = "gpu", target_os = "linux"))]
+impl Drop for CudaReads<'_> {
+    fn drop(&mut self) {
+        if let Some(device) = self.device.take()
+            && let Err(error) = crate::gpu::wait_for_reads(&device)
+        {
+            log::error!("{error}");
+        }
+    }
+}
+
+#[cfg(all(feature = "gpu", target_os = "linux"))]
+fn finish_cuda_reads(reads: Option<CudaReads<'_>>) -> Result<(), SessionError> {
+    if let Some(mut reads) = reads {
+        crate::gpu::wait_for_reads(&reads.device.take().expect("pending CUDA reads"))
+            .map_err(SessionError::ZeroCopy)?;
+    }
+    Ok(())
 }
 
 // Record cancellation where it stops processing, not after finalization when

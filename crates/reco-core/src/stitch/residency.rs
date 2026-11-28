@@ -1,5 +1,4 @@
-//! Resident-frame state the GPU executor owns: shared zero-copy decode
-//! textures, the VRAM lookahead pool, and decode backpressure channels.
+//! Resident-frame state the GPU executor owns: native imports and lookahead staging.
 //!
 //! Zero-copy sources hand the executor platform handles; everything
 //! needed to render from them without a CPU round-trip lives here,
@@ -11,21 +10,6 @@ use crate::gpu::vram_pool::VramPool;
 /// Lazily-populated residency state for one [`GpuExecutor`](super::GpuExecutor).
 #[derive(Default)]
 pub(crate) struct Residency {
-    /// Bind groups for the shared zero-copy decode textures.
-    #[cfg(target_os = "linux")]
-    pub(crate) bind_groups: Option<crate::render::pipeline::GpuSourceBindGroups>,
-    /// Slot-free senders for decode backpressure.
-    #[cfg(target_os = "linux")]
-    pub(crate) slot_free_tx: Option<Vec<std::sync::mpsc::SyncSender<u8>>>,
-    /// CUDA buffer info for GPU detection on the shared textures.
-    #[cfg(target_os = "linux")]
-    pub(crate) cuda_buf_info: Option<Vec<crate::interop::zero_copy::GpuBufInfo>>,
-    /// Per-camera views: Y/UV for slots 0 and 1.
-    #[cfg(target_os = "linux")]
-    pub(crate) shared_views: Option<Vec<[wgpu::TextureView; 4]>>,
-    /// Texture handles for device-local copies into the lookahead pool.
-    #[cfg(target_os = "linux")]
-    pub(crate) shared_textures: Option<Vec<[wgpu::Texture; 4]>>,
     /// DMA-buf -> Vulkan texture cache for the NVMM zero-copy path
     /// (Jetson). Reuses matching allocation identities and plane layouts.
     #[cfg(target_os = "linux")]

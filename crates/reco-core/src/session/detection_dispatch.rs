@@ -16,34 +16,6 @@ use crate::geometry::CameraIndex;
 use crate::session::types::SessionError;
 use crate::source::FrameSet;
 
-#[cfg(all(test, feature = "gpu", target_os = "linux"))]
-mod cuda_range_tests {
-    #[test]
-    fn source_range_is_retained_with_native_pointers() {
-        let buffer = crate::interop::zero_copy::GpuBufInfo {
-            y_ptr: [11, 22],
-            uv_ptr: [33, 44],
-            y_pitch: [1920, 2048],
-            uv_pitch: [1920, 2048],
-            width: 1920,
-            height: 1080,
-            pixel_format: crate::render::renderer::GpuPixelFormat::Nv12,
-        };
-        for full_range in [false, true] {
-            let frames =
-                super::cuda_nv12_frames(std::slice::from_ref(&buffer), &[1], [180, 0], full_range);
-            let crate::detect::detector::DetectorFrame::CudaNv12(frame) = &frames[0].1 else {
-                panic!("wrong residency")
-            };
-            assert_eq!(frame.is_full_range, full_range);
-            assert_eq!(
-                (frame.y_ptr, frame.uv_ptr, frame.y_pitch, frame.rotation),
-                (22, 44, 2048, 180)
-            );
-        }
-    }
-}
-
 /// Borrow native images without preparing model-specific pixels in the session.
 #[cfg(all(feature = "gpu", target_os = "linux"))]
 pub(super) fn nvmm_frames(
@@ -53,67 +25,6 @@ pub(super) fn nvmm_frames(
         (0, DetectorFrame::Nvmm(&cameras[0])),
         (1, DetectorFrame::Nvmm(&cameras[1])),
     ]
-}
-
-/// Per-camera CUDA NV12 frames from the shared-texture slot pointers.
-#[cfg(all(feature = "gpu", target_os = "linux"))]
-pub(super) fn cuda_nv12_frames(
-    buffers: &[crate::interop::zero_copy::GpuBufInfo],
-    slots: &[u8],
-    rotations: [i32; 2],
-    full_range: bool,
-) -> Vec<(CameraIndex, DetectorFrame<'static>)> {
-    use crate::detect::detector::CudaNv12Frame;
-    buffers
-        .iter()
-        .zip(slots)
-        .enumerate()
-        .map(|(camera, (buf, &slot))| {
-            let slot = usize::from(slot);
-            (
-                camera,
-                DetectorFrame::CudaNv12(CudaNv12Frame {
-                    y_ptr: buf.y_ptr[slot],
-                    uv_ptr: buf.uv_ptr[slot],
-                    y_pitch: buf.y_pitch[slot],
-                    uv_pitch: buf.uv_pitch[slot],
-                    width: buf.width,
-                    height: buf.height,
-                    rotation: rotations[camera],
-                    is_10bit: buf.pixel_format == crate::render::renderer::GpuPixelFormat::P010,
-                    is_full_range: full_range,
-                }),
-            )
-        })
-        .collect()
-}
-
-/// Per-camera views selected from shared double-buffered textures.
-#[cfg(all(feature = "gpu", target_os = "linux"))]
-pub(super) fn shared_nv12_frames<'a>(
-    views: &'a [[wgpu::TextureView; 4]],
-    slots: &[u8],
-    sizes: &[(u32, u32)],
-    rotations: [i32; 2],
-) -> Vec<(CameraIndex, DetectorFrame<'a>)> {
-    views
-        .iter()
-        .zip(slots)
-        .enumerate()
-        .map(|(camera, (views, &slot))| {
-            let slot = usize::from(slot);
-            (
-                camera,
-                DetectorFrame::WgpuNv12 {
-                    y_view: &views[slot * 2],
-                    uv_view: &views[slot * 2 + 1],
-                    width: sizes[camera].0,
-                    height: sizes[camera].1,
-                    rotation: rotations[camera],
-                },
-            )
-        })
-        .collect()
 }
 
 /// Per-camera detection input from D3D11 staging views.
@@ -163,6 +74,42 @@ pub(super) fn metal_frames(
 }
 
 impl StitchSession {
+    #[cfg(all(feature = "gpu", target_os = "linux"))]
+    pub(super) fn detect_cuda(
+        &mut self,
+        cameras: &[crate::interop::cuda_lease::CudaLease],
+        capture_times_us: &[i64],
+    ) -> Result<(), SessionError> {
+        let frames: Vec<_> = if self.core.detector_prefers_cuda_nv12() {
+            cameras
+                .iter()
+                .enumerate()
+                .map(|(camera, lease)| (camera, DetectorFrame::CudaNv12(lease.cuda_frame())))
+                .collect()
+        } else {
+            cameras
+                .iter()
+                .enumerate()
+                .map(|(camera, lease)| {
+                    let (y_view, uv_view) = lease.views();
+                    let frame = lease.cuda_frame();
+                    (
+                        camera,
+                        DetectorFrame::WgpuNv12 {
+                            y_view,
+                            uv_view,
+                            width: frame.width,
+                            height: frame.height,
+                            rotation: frame.rotation,
+                        },
+                    )
+                })
+                .collect()
+        };
+        self.core.run_detection_frames(&frames, capture_times_us)?;
+        Ok(())
+    }
+
     /// Shared detection skeleton: gate by the engine's schedule, let
     /// the closure feed the engine's detector, then drive the
     /// tracker/panner chain.
@@ -208,30 +155,7 @@ impl StitchSession {
         if due {
             match frame {
                 #[cfg(all(feature = "gpu", target_os = "linux"))]
-                FrameSet::GpuResident { slots } => {
-                    if self.core.detector_prefers_cuda_nv12() {
-                        let bufs = self.core.executor.gpu().and_then(|g| g.cuda_buf_info());
-                        if let Some(bufs) = bufs {
-                            crate::profile_scope!("gpu_detect_total");
-                            let frames = cuda_nv12_frames(
-                                &bufs,
-                                slots,
-                                [self.left_rotation, self.right_rotation],
-                                self.source_full_range,
-                            );
-                            self.core.run_detection_frames(&frames, capture_times_us)?;
-                        }
-                    } else if let Some(views) = self.shared_views() {
-                        crate::profile_scope!("detect_wgpu_nv12");
-                        let frames = shared_nv12_frames(
-                            &views,
-                            slots,
-                            self.core.source_sizes(),
-                            [self.left_rotation, self.right_rotation],
-                        );
-                        self.core.run_detection_frames(&frames, capture_times_us)?;
-                    }
-                }
+                FrameSet::GpuResident(cameras) => self.detect_cuda(cameras, capture_times_us)?,
                 #[cfg(all(feature = "gpu", target_os = "windows"))]
                 FrameSet::D3d11Resident(..) => {
                     let views = self
