@@ -1,22 +1,8 @@
 //! Zero-copy GPU preview bridge: reco-core StitchCore -> Slint Image.
 //!
-//! Shares the wgpu device and queue with Slint via its `unstable-wgpu-28`
-//! feature. Renders directly into a `wgpu::Texture` allocated on Slint's
-//! device; the texture is then wrapped in a `slint::Image` and handed to
-//! the UI — no CPU readback, no staging buffers, no readback latency.
-//!
-//! ## Wiring
-//!
-//! 1. `main()` calls `slint::BackendSelector::require_wgpu_28()` before
-//!    creating the UI so Slint initializes its renderer on wgpu 28.
-//! 2. A `set_rendering_notifier` callback fires with
-//!    `GraphicsAPI::WGPU28 { device, queue, .. }` on `RenderingSetup`.
-//! 3. Those handles are passed to `PreviewBridge::new`, which builds a
-//!    `GpuContext::from_device_queue` and a `StitchCore`.
-//! 4. Each frame allocates a fresh `wgpu::Texture` on the shared device
-//!    with `RENDER_ATTACHMENT | TEXTURE_BINDING`, renders into it, and
-//!    moves it into `slint::Image::try_from`.
-//!
+//! Slint uses the same wgpu context as the stitch engine. Each frame is
+//! rendered into a sampleable texture and transferred to a Slint image.
+
 //! ## Why a fresh texture per frame?
 //!
 //! `slint::Image::try_from(wgpu::Texture)` takes ownership: Slint holds
@@ -39,8 +25,7 @@ use reco_core::wgpu;
 /// Bridges reco-core GPU rendering to Slint via a shared wgpu device.
 ///
 /// Each `render_frame` call produces a fresh `slint::Image` backed by a
-/// GPU texture on Slint's own device - the UI displays it with zero
-/// copies.
+/// GPU texture that Slint can sample directly.
 pub struct PreviewBridge {
     engine: StitchCore,
     viewport_width: u32,
@@ -50,22 +35,18 @@ pub struct PreviewBridge {
 }
 
 impl PreviewBridge {
-    /// Create a new preview bridge sharing Slint's wgpu 28 device.
+    /// Create the stitching pipeline on the context supplied to Slint.
     ///
-    /// The `device`, `queue`, and `adapter_info` must come from Slint's
-    /// `GraphicsAPI::WGPU28` rendering notifier — using anything else
-    /// will not produce a zero-copy path.
+    /// Slint samples the textures produced by this bridge on the same
+    /// device. Work submitted on the shared queue keeps rendering and
+    /// sampling in order.
     pub fn new(
-        device: wgpu::Device,
-        queue: wgpu::Queue,
-        adapter_info: wgpu::AdapterInfo,
+        gpu: GpuContext,
         calibration: Calibration,
         source_sizes: Vec<(u32, u32)>,
         viewport_width: u32,
         viewport_height: u32,
     ) -> Result<Self, StitchCoreError> {
-        let gpu = GpuContext::from_device_queue(device, queue, adapter_info);
-
         log::info!(
             "PreviewBridge (zero-copy): GPU={} ({})",
             gpu.gpu_name(),
@@ -132,8 +113,7 @@ impl PreviewBridge {
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Render into Slint's own device — commands submit on the shared
-        // queue, no copies, no synchronization round-trip.
+        // Submit to the shared queue before Slint samples the texture.
         self.engine.render_to_view(frames, pose, &view)?;
 
         // Hand the texture to Slint. ownership transfers; Slint releases

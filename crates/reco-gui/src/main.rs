@@ -6,12 +6,9 @@
 //!
 //! ## Architecture
 //!
-//! Slint and reco-core share a single wgpu 28 device. `main()` selects
-//! the wgpu 28 backend via `BackendSelector::require_wgpu_28()`, and a
-//! `set_rendering_notifier` callback captures Slint's device/queue on
-//! `RenderingSetup`. Those handles feed `GpuContext::from_device_queue`,
-//! so reco-core renders stitched frames directly into Slint-owned
-//! textures with no CPU readback.
+//! Reco creates the wgpu 28 context and supplies its handles to Slint.
+//! Preview textures are rendered and displayed on the shared device
+//! without a CPU readback.
 
 #[cfg(test)]
 mod calibration_edit_tests;
@@ -42,21 +39,12 @@ use reco_calibrate::{LensProfileInfo, ProfileSource};
 use reco_control::ControlIntent;
 use reco_control::pose_control::{PoseControl, PoseControlConfig};
 use reco_core::calibration::Calibration;
+use reco_core::gpu::GpuContext;
 use reco_core::render::viewport::ViewportSize;
-use reco_core::wgpu;
 
 use crate::playback::{PlayState, Playback};
 use crate::preview::PreviewBridge;
 use crate::toast::{Severity, ToastManager};
-
-/// wgpu handles captured from Slint's rendering notifier. Populated once
-/// on `RenderingSetup`; used to build `PreviewBridge` when files load.
-#[derive(Clone)]
-struct SharedGpu {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    adapter_info: wgpu::AdapterInfo,
-}
 
 slint::include_modules!();
 
@@ -222,9 +210,8 @@ struct AppState {
     /// Prevents stacking multiple native pickers while the app window
     /// remains responsive.
     file_dialog_open: bool,
-    /// wgpu handles captured from Slint's rendering notifier. `None`
-    /// until the window has completed its first rendering setup.
-    shared_gpu: Option<SharedGpu>,
+    /// The context shared with Slint. Software rendering leaves preview disabled.
+    shared_gpu: Option<GpuContext>,
     /// Headless preload/auto-export hook (RECO_AUTOLOAD); `None` in normal use.
     #[cfg(feature = "automation")]
     autoload: Option<AutoloadSpec>,
@@ -625,8 +612,7 @@ impl AppState {
         Ok(())
     }
 
-    /// Build a PreviewBridge using the captured Slint GPU handles. Fails
-    /// if the rendering notifier hasn't populated `shared_gpu` yet.
+    /// Build the preview on the same device and queue that display its textures.
     fn build_bridge(
         &self,
         cal: &Calibration,
@@ -636,12 +622,10 @@ impl AppState {
         let gpu = self
             .shared_gpu
             .as_ref()
-            .ok_or("GPU not ready yet (Slint rendering not initialized)")?
+            .ok_or("GPU preview unavailable")?
             .clone();
         let mut bridge = PreviewBridge::new(
-            gpu.device,
-            gpu.queue,
-            gpu.adapter_info,
+            gpu,
             cal.clone(),
             source_sizes,
             PREVIEW_WIDTH_DEFAULT,
@@ -1604,27 +1588,44 @@ fn install_panic_hook() {
     }));
 }
 
+/// Choose the renderer before creating any Slint component. The returned GPU
+/// is the context used to configure Slint and create preview textures.
+fn select_preview_gpu() -> anyhow::Result<Option<GpuContext>> {
+    let software_requested = std::env::var("SLINT_BACKEND").is_ok_and(|backend| {
+        matches!(
+            backend.to_ascii_lowercase().as_str(),
+            "sw" | "software" | "winit-sw" | "winit-software"
+        )
+    });
+    if !software_requested {
+        match GpuContext::new_blocking() {
+            Ok(gpu) => {
+                slint::BackendSelector::new()
+                    .require_wgpu_28(slint::wgpu_28::WGPUConfiguration::Manual {
+                        instance: gpu.instance().clone(),
+                        adapter: gpu.adapter().clone(),
+                        device: gpu.device().clone(),
+                        queue: gpu.queue().clone(),
+                    })
+                    .select()?;
+                return Ok(Some(gpu));
+            }
+            Err(error) => log::warn!("GPU preview unavailable: {error}"),
+        }
+    }
+
+    slint::BackendSelector::new()
+        .renderer_name("software".into())
+        .select()?;
+    Ok(None)
+}
+
 fn main() -> anyhow::Result<()> {
     init_tracing();
     install_panic_hook();
     reco_io::init();
 
-    // Select wgpu 28 as Slint's rendering backend. This MUST happen
-    // before creating any window. femtovg-wgpu renders UI through
-    // wgpu (DX12/Vulkan) instead of OpenGL, so it works on GPUs
-    // that lack an OpenGL driver. downlevel_defaults() ensures iGPUs
-    // and older hardware can satisfy the device limits.
-    slint::BackendSelector::new()
-        .require_wgpu_28({
-            let mut config = slint::wgpu_28::WGPUConfiguration::default();
-            if let slint::wgpu_28::WGPUConfiguration::Automatic(ref mut settings) = config {
-                settings.device_required_limits = reco_core::wgpu::Limits::downlevel_defaults();
-                settings.backends = reco_core::gpu::GpuContext::select_backends();
-            }
-            config
-        })
-        .select()?;
-
+    let mut gpu = select_preview_gpu()?;
     let app = RecoApp::new()?;
     let mut user_settings = crate::settings::GuiSettings::load();
     if user_settings.telemetry_client_id.is_none() {
@@ -1632,6 +1633,29 @@ fn main() -> anyhow::Result<()> {
         user_settings.save();
     }
     let state = Rc::new(RefCell::new(AppState::new(user_settings)));
+
+    if gpu.is_some() {
+        let state = Rc::clone(&state);
+        let app_weak = app.as_weak();
+        match app
+            .window()
+            .set_rendering_notifier(move |rendering_state, _| {
+                if matches!(rendering_state, slint::RenderingState::BeforeRendering) {
+                    vsync_render_tick(&state, &app_weak);
+                }
+            }) {
+            Ok(()) => {}
+            Err(slint::SetRenderingNotifierError::Unsupported) => {
+                log::warn!("Slint renderer does not support GPU preview");
+                gpu = None;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    if gpu.is_none() {
+        app.set_status_text("GPU preview unavailable".into());
+    }
+    state.borrow_mut().shared_gpu = gpu;
 
     // Initialize opt-in telemetry if the user enabled it.
     {
@@ -1661,7 +1685,12 @@ fn main() -> anyhow::Result<()> {
         let s = state.borrow();
         if let Some(ref t) = s.telemetry {
             let os = format!("{} {}", std::env::consts::OS, std::env::consts::ARCH);
-            t.context("(pending GPU init)", &os, &ai_status);
+            let gpu = if s.shared_gpu.is_some() {
+                "(available)"
+            } else {
+                "(unavailable)"
+            };
+            t.context(gpu, &os, &ai_status);
         }
     }
 
@@ -1756,68 +1785,6 @@ fn main() -> anyhow::Result<()> {
     // the next resize will correct.
     // Window size restore disabled - Slint's preferred size (1280x820)
     // is a safe default across all displays. Users can maximize manually.
-
-    // Capture Slint's wgpu device and queue on RenderingSetup. These
-    // are reused by PreviewBridge so reco-core's stitch output lands
-    // directly in Slint-owned textures with zero copies.
-    let state_for_notifier = Rc::clone(&state);
-    let app_weak_notifier = app.as_weak();
-    app.window()
-        .set_rendering_notifier(move |rendering_state, graphics_api| {
-            match rendering_state {
-                slint::RenderingState::RenderingSetup => {
-                    let slint::GraphicsAPI::WGPU28 {
-                        instance: _,
-                        device,
-                        queue,
-                        ..
-                    } = graphics_api
-                    else {
-                        log::warn!(
-                            "Expected WGPU28 GraphicsAPI in rendering notifier, got something else"
-                        );
-                        return;
-                    };
-
-                    // Reconstruct adapter info by enumerating the instance. The
-                    // notifier doesn't expose the adapter directly, but any adapter
-                    // matching the device's backend will have the correct GPU name
-                    // for logging — the device and queue are what actually matter
-                    // for correctness.
-                    let adapter_info = wgpu::AdapterInfo {
-                        name: "Slint-shared wgpu 28 device".into(),
-                        vendor: 0,
-                        device: 0,
-                        device_pci_bus_id: String::new(),
-                        device_type: wgpu::DeviceType::Other,
-                        driver: String::new(),
-                        driver_info: String::new(),
-                        backend: wgpu::Backend::Vulkan,
-                        subgroup_min_size: 0,
-                        subgroup_max_size: 0,
-                        transient_saves_memory: false,
-                    };
-
-                    state_for_notifier.borrow_mut().shared_gpu = Some(SharedGpu {
-                        device: device.clone(),
-                        queue: queue.clone(),
-                        adapter_info,
-                    });
-                    log::info!("Captured Slint wgpu 28 device/queue for zero-copy preview");
-
-                    // If files were picked before the renderer was ready, the init
-                    // path would have failed early. Retry now that we have the GPU.
-                    if let Some(app) = app_weak_notifier.upgrade() {
-                        try_init_and_update(&state_for_notifier, &app.as_weak());
-                    }
-                }
-                slint::RenderingState::BeforeRendering => {
-                    // Produce the preview immediately before Slint renders its scene.
-                    vsync_render_tick(&state_for_notifier, &app_weak_notifier);
-                }
-                _ => {}
-            }
-        })?;
 
     network::bind(&app, &state);
 
@@ -3588,8 +3555,7 @@ fn main() -> anyhow::Result<()> {
         slint::TimerMode::Repeated,
         std::time::Duration::from_millis(TICK_INTERVAL_MS as u64),
         move || {
-            // Dev/test preload (RECO_AUTOLOAD): fire once, after the GPU
-            // device has been captured by the rendering notifier.
+            // Dev/test preload (RECO_AUTOLOAD): fire once if GPU preview is available.
             #[cfg(feature = "automation")]
             {
                 let ready = {
@@ -4212,7 +4178,12 @@ fn update_preview_ui(
         }
         Ok(false) => {
             if let Some(app) = app_weak.upgrade() {
-                app.set_status_text("Select a calibration and its video inputs".into());
+                let status = if s.shared_gpu.is_some() {
+                    "Select a calibration and its video inputs"
+                } else {
+                    "GPU preview unavailable"
+                };
+                app.set_status_text(status.into());
             }
         }
         Err(e) => {

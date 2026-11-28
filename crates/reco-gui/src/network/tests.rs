@@ -1,7 +1,7 @@
 //! The GUI's real opening, polling and processed-output lifecycle with owned loopback peers.
 
 use super::*;
-use crate::{ExportOutcome, PlayState, SharedGpu, wgpu};
+use crate::{ExportOutcome, GpuContext, PlayState};
 use reco_core::calibration::{Framing, Lens};
 use reco_core::projection::Cylinder;
 use slint::Model;
@@ -168,23 +168,8 @@ fn live_playback_polls_pauses_and_preserves_the_displayed_image_on_failure() {
 #[ignore = "requires a GPU; uses an owned RTSP/AAC peer and writes only to a temporary directory"]
 fn actual_live_preview_then_recording_stops_and_finalizes_audio() {
     let app = app();
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: reco_core::gpu::GpuContext::select_backends(),
-        ..Default::default()
-    });
-    let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
-    eprintln!(
-        "Live preview renderer: {} ({:?})",
-        adapter.get_info().name,
-        adapter.get_info().backend
-    );
-    let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
     let mut state = AppState::new(Default::default());
-    state.shared_gpu = Some(SharedGpu {
-        device,
-        queue,
-        adapter_info: adapter.get_info(),
-    });
+    state.shared_gpu = Some(GpuContext::new_blocking().unwrap());
     state.use_constrained_look = false;
     state.calibration = Some(calibration());
     let peer = peer::Peer::video(50, None);
