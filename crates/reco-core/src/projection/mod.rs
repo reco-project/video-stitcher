@@ -200,7 +200,7 @@ impl Calibration {
 
     /// Build ordered output-to-source maps for a render-space pose and viewport, without a GPU.
     ///
-    /// Entry `i` samples source camera `i`; composite in order using [`BlendRule::alpha`] and the returned sample's edge coordinate. Maps capture this calibration, viewport and pose: rebuild them when any mapping input changes. The caller must supply a validated calibration and viewport and a finite pose with FOV in `[1, 179]`. This query does not apply coverage constraints.
+    /// Entry `i` samples source camera `i`; composite in surface order, treating the first covered surface at a pixel as opaque and blending subsequent covered surfaces with [`BlendRule::composite_alpha`] (or [`BlendRule::alpha`] once a base surface has been sampled) using the returned sample's edge coordinate. Uncovered pixels have no valid surface. Maps capture this calibration, viewport and pose: rebuild them when any mapping input changes. The caller must supply a validated calibration and viewport and a finite pose with FOV in `[1, 179]`. This query does not apply coverage constraints.
     pub fn surface_maps(
         &self,
         viewport_size: &crate::render::viewport::ViewportSize,

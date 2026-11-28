@@ -30,28 +30,43 @@ pub use executor::{CpuExecutor, Executor, StitchError, StitchExecutor};
 #[cfg(feature = "gpu")]
 pub use executor::{GpuExecutor, GpuExecutorConfig};
 
-/// How one projection surface composites over the surfaces before it.
+/// How one projection surface composites over earlier covered surfaces.
 ///
 /// Paired with a [`SurfaceMap`] in the ordered surface list a projection
-/// emits: the first surface lays the base, later ones blend over it.
+/// emits: the first valid surface at a pixel is opaque, and later valid
+/// surfaces blend over it per their [`BlendRule`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BlendRule {
     /// Fully replaces whatever is underneath wherever this surface covers.
     Opaque,
     /// Fades in over `[0, width]` of the surface's [`SurfaceUv::edge`]
-    /// coordinate (the GPU's seam smoothstep). A non-positive width
-    /// renders fully opaque wherever the surface covers.
+    /// coordinate (the GPU's seam smoothstep) when an earlier surface already
+    /// covers the pixel. A non-positive width renders fully opaque wherever
+    /// the surface covers.
     Smoothstep(f64),
 }
 
 impl BlendRule {
-    /// Blend factor for a covered pixel with the finite [`SurfaceUv::edge`] coordinate returned by its map. Composite as `previous + (source - previous) * alpha` in surface order.
+    /// Nominal blend factor for a covered pixel composited over an earlier
+    /// covered surface, using the finite [`SurfaceUv::edge`] coordinate
+    /// returned by its map.
+    ///
+    /// When no earlier surface covers the pixel, composite the first valid
+    /// surface opaquely (`1.0`); subsequent valid surfaces composite as
+    /// `previous + (source - previous) * alpha` in surface order. See
+    /// [`Self::composite_alpha`] for the combined weight.
     pub fn alpha(&self, edge: f64) -> f64 {
         match *self {
             BlendRule::Opaque => 1.0,
             BlendRule::Smoothstep(width) if width > 0.0 => smoothstep(0.0, width, edge),
             BlendRule::Smoothstep(_) => 1.0,
         }
+    }
+
+    /// Effective blend factor in surface order: `1.0` when no earlier surface
+    /// covers the pixel (`!has_base`), otherwise [`Self::alpha`].
+    pub fn composite_alpha(&self, edge: f64, has_base: bool) -> f64 {
+        if has_base { self.alpha(edge) } else { 1.0 }
     }
 }
 
@@ -69,9 +84,8 @@ pub struct SurfaceUv {
     pub u: f64,
     /// Normalised camera UV in `[0, 1]`.
     pub v: f64,
-    /// Seam coordinate used by the compositor's blend rule. Normally extended
-    /// plane UV x; the panorama saturates it where no underlying source exists
-    /// so a singly supported pixel remains opaque.
+    /// Seam coordinate used by the compositor's blend rule when blending over
+    /// an earlier covered surface (normally extended plane UV x).
     pub edge: f64,
 }
 
@@ -267,7 +281,6 @@ mod tests {
     #[cfg(feature = "gpu")]
     use super::test_support::{Agreement, AgreementBounds};
     use super::test_support::{calib, nv12};
-    #[cfg(feature = "gpu")]
     use crate::calibration::Calibration;
     use crate::geometry::RenderPose;
     use crate::render::planes::Nv12Planes;
@@ -1006,5 +1019,797 @@ mod tests {
             bad.mean,
             AgreementBounds::DEFAULT.max_mean
         );
+    }
+
+    /// Build a mixed-aspect, tilted and rolled L-shape calibration with
+    /// blending enabled that exercises left-only, right-only (both zero and
+    /// fractional nominal seam weight), blended-overlap, and uncovered pixels.
+    fn mixed_aspect_tilted_blend_calib() -> (Calibration, [(u32, u32); 2], RenderPose) {
+        use crate::calibration::{Framing, Lens};
+        use crate::projection::LShape;
+
+        let left_lens = Lens::fisheye(
+            256,
+            144,
+            120.0,
+            120.0,
+            128.0,
+            72.0,
+            [-0.02, 0.004, 0.0, 0.0],
+        );
+        let mut right_lens = Lens::fisheye(
+            256,
+            192,
+            120.0,
+            120.0,
+            125.0,
+            93.0,
+            [-0.02, 0.004, 0.0, 0.0],
+        );
+        right_lens.correction = 0.85;
+        let cal = Calibration::new(
+            vec![left_lens, right_lens],
+            LShape {
+                intersect: 0.5,
+                x_ty: 0.04,
+                x_rz: 0.06,
+                z_rx: -0.05,
+                x_rx: 0.07,
+                z_rz: 0.05,
+                blend_width: 0.15,
+            },
+            Framing {
+                axis_offset: 0.25,
+                tilt: 0.12,
+                roll: -0.08,
+            },
+        );
+        cal.validate().unwrap();
+        let pose = RenderPose {
+            yaw: 0.0,
+            pitch: 0.0,
+            fov_degrees: 112.0,
+        };
+        (cal, [(256, 144), (256, 192)], pose)
+    }
+
+    /// Calibration where the left plane quad covers the right seam zone,
+    /// but the left lens's shifted principal point / narrower FOV rejects
+    /// pixels at the lens/source UV boundary (testing lens validity, not just
+    /// quad footprint).
+    fn lens_boundary_blend_calib() -> (Calibration, [(u32, u32); 2], RenderPose) {
+        use crate::calibration::{Framing, Lens};
+        use crate::projection::LShape;
+
+        let left_lens = Lens::fisheye(256, 144, 240.0, 240.0, 80.0, 72.0, [0.15, 0.05, 0.0, 0.0]);
+        let right_lens = Lens::fisheye(
+            256,
+            144,
+            120.0,
+            120.0,
+            128.0,
+            72.0,
+            [-0.02, 0.004, 0.0, 0.0],
+        );
+        let cal = Calibration::new(
+            vec![left_lens, right_lens],
+            LShape {
+                intersect: 0.5,
+                x_ty: 0.0,
+                x_rz: 0.0,
+                z_rx: 0.0,
+                x_rx: 0.0,
+                z_rz: 0.0,
+                blend_width: 0.15,
+            },
+            Framing {
+                axis_offset: 0.25,
+                tilt: 0.0,
+                roll: 0.0,
+            },
+        );
+        cal.validate().unwrap();
+        let pose = RenderPose {
+            yaw: 0.0,
+            pitch: 0.0,
+            fov_degrees: 95.0,
+        };
+        (cal, [(256, 144), (256, 144)], pose)
+    }
+
+    /// Calibration where the left plane is partially depth-clipped by
+    /// `NEAR_PLANE` inside the right seam zone while the right plane remains
+    /// valid (testing depth-clip validity in base-support evaluation).
+    fn depth_clip_blend_calib() -> (Calibration, [(u32, u32); 2], RenderPose) {
+        use crate::calibration::{Framing, Lens};
+        use crate::projection::LShape;
+
+        let left_lens = Lens::fisheye(
+            256,
+            144,
+            120.0,
+            120.0,
+            128.0,
+            72.0,
+            [-0.02, 0.004, 0.0, 0.0],
+        );
+        let right_lens = left_lens.clone();
+        let cal = Calibration::new(
+            vec![left_lens, right_lens],
+            LShape {
+                intersect: 0.5,
+                x_ty: 0.0,
+                x_rz: 0.0,
+                z_rx: 0.0,
+                x_rx: 0.0,
+                z_rz: 0.12,
+                blend_width: 0.2,
+            },
+            Framing {
+                axis_offset: 0.008,
+                tilt: 0.0,
+                roll: 0.0,
+            },
+        );
+        cal.validate().unwrap();
+        let pose = RenderPose {
+            yaw: 0.0,
+            pitch: 0.0,
+            fov_degrees: 110.0,
+        };
+        (cal, [(256, 144), (256, 144)], pose)
+    }
+
+    fn solid_nv12(w: u32, h: u32, y_val: u8) -> (Vec<u8>, Vec<u8>) {
+        (
+            vec![y_val; (w * h) as usize],
+            vec![128u8; (w * (h / 2)) as usize],
+        )
+    }
+
+    #[cfg(feature = "gpu")]
+    fn render_gpu_nv12(
+        cal: &Calibration,
+        viewport_size: &ViewportSize,
+        source_sizes: [(u32, u32); 2],
+        planes: &[Nv12Planes<'_>; 2],
+        pose: RenderPose,
+        full_range: bool,
+    ) -> Option<Vec<u8>> {
+        use crate::render::renderer::InputFormat;
+        use crate::stitch::{GpuExecutor, GpuExecutorConfig, StitchExecutor};
+
+        let gpu = gpu_or_skip()?;
+        let mut config =
+            GpuExecutorConfig::new(cal.clone(), source_sizes.to_vec(), InputFormat::Nv12);
+        config.viewport_size = viewport_size.clone();
+        config.full_range = full_range;
+        let mut exec = GpuExecutor::new(gpu, config).expect("gpu executor");
+        Some(exec.stitch(planes, pose).expect("gpu stitch"))
+    }
+
+    /// Render the combined GPU stitch together with isolated left-only and
+    /// right-only GPU draws (using the identical `Renderer`, textures, scene,
+    /// and pose) so tests can verify compositing against actual hardware
+    /// rasterization without analytic reprojection slack.
+    #[cfg(feature = "gpu")]
+    fn render_gpu_nv12_with_isolated_oracles(
+        cal: &Calibration,
+        viewport_size: &ViewportSize,
+        source_sizes: [(u32, u32); 2],
+        planes: &[Nv12Planes<'_>; 2],
+        pose: RenderPose,
+        full_range: bool,
+    ) -> Option<(Vec<u8>, Vec<u8>, Vec<u8>)> {
+        use crate::gpu::rgba_readback::RgbaReadback;
+        use crate::render::renderer::{InputFormat, Renderer};
+
+        let gpu = gpu_or_skip()?;
+        let shape = cal.projection.l_shape().expect("L-shape calibration");
+        let scene = shape.scene(
+            &cal.framing,
+            [cal.lenses[0].aspect_ratio(), cal.lenses[1].aspect_ratio()],
+        );
+        let program = cal
+            .projection
+            .geometry()
+            .gpu_program()
+            .expect("L-shape supplies a GPU program");
+        let mut renderer = Renderer::new(
+            &gpu,
+            &program,
+            viewport_size.width,
+            viewport_size.height,
+            &source_sizes,
+            wgpu::TextureFormat::Rgba8Unorm,
+            InputFormat::Nv12,
+        );
+        renderer.set_full_range(full_range);
+        renderer
+            .upload_nv12(&gpu, 0, &planes[0])
+            .expect("upload left");
+        renderer
+            .upload_nv12(&gpu, 1, &planes[1])
+            .expect("upload right");
+
+        let mut readback =
+            RgbaReadback::new(&gpu, viewport_size.width, viewport_size.height).expect("readback");
+        let mut capture = |cmd: wgpu::CommandBuffer| -> Vec<u8> {
+            assert!(
+                readback
+                    .readback(&gpu, renderer.render_target(), cmd)
+                    .expect("submit readback")
+                    .is_none()
+            );
+            readback
+                .flush_pending(&gpu)
+                .expect("flush readback")
+                .expect("pending frame")
+                .to_vec()
+        };
+
+        let combined =
+            capture(renderer.render_to_target(&gpu, Some(&scene), cal, pose, shape.blend_width));
+        let left_only =
+            capture(renderer.render_isolated_camera_to_target(&gpu, &scene, cal, pose, 0));
+        let right_only =
+            capture(renderer.render_isolated_camera_to_target(&gpu, &scene, cal, pose, 1));
+        Some((combined, left_only, right_only))
+    }
+
+    #[cfg(feature = "gpu")]
+    struct GpuOracleCounts {
+        right_only_total: usize,
+        right_only_fade: usize,
+        overlap_fade: usize,
+    }
+
+    /// Compare a combined GPU render against isolated left-only and right-only
+    /// GPU draws across every pixel of `viewport`.
+    ///
+    /// Asserts:
+    /// - 0 pixels with non-opaque alpha (`a != 255`)
+    /// - 0 uncovered pixels with non-black RGB
+    /// - 0 left-only pixels differing from isolated left-only GPU draw
+    /// - 0 right-only pixels differing from isolated right-only GPU draw by >1 LSB
+    /// - 0 overlap pixels bypassing smoothstep blending
+    #[cfg(feature = "gpu")]
+    fn assert_gpu_matches_isolated_draws(
+        label: &str,
+        cal: &Calibration,
+        viewport: &ViewportSize,
+        pose: RenderPose,
+        combined: &[u8],
+        left_only: &[u8],
+        right_only: &[u8],
+    ) -> GpuOracleCounts {
+        let maps = cal.surface_maps(viewport, pose);
+        let mut non_opaque_alpha = 0usize;
+        let mut uncovered_mismatch = 0usize;
+        let mut left_only_mismatch = 0usize;
+        let mut right_only_mismatch = 0usize;
+        let mut right_only_darkened = 0usize;
+        let mut overlap_mismatch = 0usize;
+        let mut right_only_total = 0usize;
+        let mut right_only_fade = 0usize;
+        let mut overlap_fade = 0usize;
+
+        for py in 0..viewport.height {
+            for px in 0..viewport.width {
+                let off = ((py * viewport.width + px) * 4) as usize;
+                let c = &combined[off..off + 4];
+                let l = &left_only[off..off + 4];
+                let r = &right_only[off..off + 4];
+
+                if c[3] != 255 {
+                    non_opaque_alpha += 1;
+                }
+
+                let l_cov = l[3] == 255;
+                let r_cov = r[3] == 255;
+                match (l_cov, r_cov) {
+                    (false, false) => {
+                        if c[0] != 0 || c[1] != 0 || c[2] != 0 {
+                            uncovered_mismatch += 1;
+                        }
+                    }
+                    (true, false) => {
+                        if c[0] != l[0] || c[1] != l[1] || c[2] != l[2] {
+                            left_only_mismatch += 1;
+                        }
+                    }
+                    (false, true) => {
+                        right_only_total += 1;
+                        let ndc = viewport.pixel_ndc(px, py);
+                        if let Some(rs) = maps[1].0.sample_uv(ndc)
+                            && maps[1].1.alpha(rs.edge) < 1.0
+                        {
+                            right_only_fade += 1;
+                        }
+                        if (0..3).any(|ch| c[ch].abs_diff(r[ch]) > 1) {
+                            right_only_mismatch += 1;
+                        }
+                        if (0..3).any(|ch| c[ch].saturating_add(1) < r[ch]) {
+                            right_only_darkened += 1;
+                        }
+                    }
+                    (true, true) => {
+                        let ndc = viewport.pixel_ndc(px, py);
+                        if let Some(rs) = maps[1].0.sample_uv(ndc) {
+                            let alpha = maps[1].1.alpha(rs.edge);
+                            if alpha < 1.0 {
+                                overlap_fade += 1;
+                            }
+                            for ch in 0..3 {
+                                let expected = (f64::from(l[ch])
+                                    + (f64::from(r[ch]) - f64::from(l[ch])) * alpha)
+                                    .round() as u8;
+                                if c[ch].abs_diff(expected) > 2 {
+                                    overlap_mismatch += 1;
+                                    break;
+                                }
+                            }
+                        } else {
+                            // Subpixel GPU/CPU tie-break on the right outer lens
+                            // boundary: blended output must remain bounded by
+                            // the two source draws (no fade toward black).
+                            for ch in 0..3 {
+                                let lo = l[ch].min(r[ch]).saturating_sub(1);
+                                let hi = l[ch].max(r[ch]).saturating_add(1);
+                                if c[ch] < lo || c[ch] > hi {
+                                    overlap_mismatch += 1;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        assert_eq!(
+            non_opaque_alpha, 0,
+            "{label}: {non_opaque_alpha} pixels had alpha != 255"
+        );
+        assert_eq!(
+            uncovered_mismatch, 0,
+            "{label}: {uncovered_mismatch} uncovered pixels were non-black"
+        );
+        assert_eq!(
+            left_only_mismatch, 0,
+            "{label}: {left_only_mismatch} left-only pixels differed from isolated left GPU draw"
+        );
+        assert_eq!(
+            right_only_darkened, 0,
+            "{label}: {right_only_darkened} right-only pixels were darkened relative to isolated right GPU draw"
+        );
+        assert_eq!(
+            right_only_mismatch, 0,
+            "{label}: {right_only_mismatch} right-only pixels differed by >1 LSB from isolated right GPU draw"
+        );
+        assert_eq!(
+            overlap_mismatch, 0,
+            "{label}: {overlap_mismatch} overlap pixels deviated from smoothstep blend"
+        );
+
+        GpuOracleCounts {
+            right_only_total,
+            right_only_fade,
+            overlap_fade,
+        }
+    }
+
+    /// Issue #486 regression: white sources with blending enabled must produce
+    /// no black or darkened pixels wherever at least one camera is valid,
+    /// across mixed aspects, tilted/rolled planes, lens boundaries, and
+    /// near-plane depth clipping, on both CPU and GPU.
+    #[test]
+    fn white_sources_have_no_dark_pixels_where_any_source_is_valid() {
+        let viewport = ViewportSize {
+            width: 240,
+            height: 135,
+        };
+        let mut reversed_mixed = mixed_aspect_tilted_blend_calib();
+        reversed_mixed.0.lenses.swap(0, 1);
+        reversed_mixed.1.swap(0, 1);
+        let shape = reversed_mixed.0.projection.l_shape_mut().unwrap();
+        shape.x_ty = -0.18;
+        shape.x_rz = -0.12;
+        shape.x_rx = -0.07;
+        shape.z_rz = -0.05;
+        reversed_mixed.0.framing.tilt = -0.10;
+        reversed_mixed.0.framing.roll = 0.09;
+
+        let cases = [
+            ("mixed-aspect-tilted", mixed_aspect_tilted_blend_calib()),
+            ("mixed-aspect-reversed", reversed_mixed),
+            ("lens-boundary", lens_boundary_blend_calib()),
+            ("depth-clip-boundary", depth_clip_blend_calib()),
+        ];
+
+        for (label, (cal, sizes, pose)) in cases {
+            let (ly, luv) = solid_nv12(sizes[0].0, sizes[0].1, 255);
+            let (ry, ruv) = solid_nv12(sizes[1].0, sizes[1].1, 255);
+            let planes = [
+                Nv12Planes { y: &ly, uv: &luv },
+                Nv12Planes { y: &ry, uv: &ruv },
+            ];
+            let cpu = stitch_rgba(&planes, &sizes, &cal, &viewport, pose, true).unwrap();
+            #[cfg(feature = "gpu")]
+            let gpu_oracles =
+                render_gpu_nv12_with_isolated_oracles(&cal, &viewport, sizes, &planes, pose, true);
+
+            let maps = cal.surface_maps(&viewport, pose);
+            let mut neither = 0usize;
+            let mut left_only = 0usize;
+            let mut right_only_zero = 0usize;
+            let mut right_only_frac = 0usize;
+            let mut both_blended = 0usize;
+
+            for py in 0..viewport.height {
+                for px in 0..viewport.width {
+                    let ndc = viewport.pixel_ndc(px, py);
+                    let l = maps[0].0.sample_uv(ndc);
+                    let r = maps[1].0.sample_uv(ndc);
+                    let off = ((py * viewport.width + px) * 4) as usize;
+                    let cpu_rgb = &cpu[off..off + 3];
+                    assert_eq!(cpu[off + 3], 255, "{label} ({px},{py}) CPU alpha");
+                    match (l, r) {
+                        (None, None) => {
+                            neither += 1;
+                            assert_eq!(cpu_rgb, [0, 0, 0], "{label} ({px},{py}) uncovered CPU");
+                        }
+                        (l_opt, r_opt) => {
+                            match (l_opt, r_opt) {
+                                (Some(_), None) => left_only += 1,
+                                (None, Some(rs)) => {
+                                    let nom = maps[1].1.alpha(rs.edge);
+                                    if nom == 0.0 {
+                                        right_only_zero += 1;
+                                    } else if nom < 1.0 {
+                                        right_only_frac += 1;
+                                    }
+                                }
+                                (Some(_), Some(rs)) => {
+                                    let nom = maps[1].1.alpha(rs.edge);
+                                    if nom > 0.0 && nom < 1.0 {
+                                        both_blended += 1;
+                                    }
+                                }
+                                (None, None) => unreachable!(),
+                            }
+                            assert_eq!(
+                                cpu_rgb,
+                                [255, 255, 255],
+                                "{label} ({px},{py}) valid pixel darkened on CPU"
+                            );
+                        }
+                    }
+                }
+            }
+
+            assert!(left_only > 0, "{label}: expected left-only pixels");
+            assert!(
+                right_only_zero + right_only_frac > 0,
+                "{label}: expected right-only pixels in blend zone (zero={right_only_zero}, frac={right_only_frac})"
+            );
+            if label == "mixed-aspect-tilted" {
+                assert!(neither > 0, "{label}: expected uncovered pixels");
+                assert!(
+                    right_only_zero > 0,
+                    "{label}: expected right-only zero-weight pixels"
+                );
+                assert!(
+                    right_only_frac > 0,
+                    "{label}: expected right-only fractional-weight pixels"
+                );
+                assert!(both_blended > 0, "{label}: expected blended overlap pixels");
+            }
+            #[cfg(feature = "gpu")]
+            if let Some((ref combined, ref gpu_left, ref gpu_right)) = gpu_oracles {
+                // Exact isolated-GPU-draw verification: 0 darkened valid pixels,
+                // 0 lit uncovered pixels, and opaque alpha on every pixel.
+                let mut gpu_dark_on_valid = 0usize;
+                let mut gpu_lit_on_uncovered = 0usize;
+                for py in 0..viewport.height {
+                    for px in 0..viewport.width {
+                        let off = ((py * viewport.width + px) * 4) as usize;
+                        assert_eq!(combined[off + 3], 255, "{label} ({px},{py}) GPU alpha");
+                        let covered = gpu_left[off + 3] == 255 || gpu_right[off + 3] == 255;
+                        if covered {
+                            if combined[off..off + 3].iter().any(|&c| c < 254) {
+                                gpu_dark_on_valid += 1;
+                            }
+                        } else if combined[off..off + 3] != [0, 0, 0] {
+                            gpu_lit_on_uncovered += 1;
+                        }
+                    }
+                }
+                assert_eq!(
+                    gpu_dark_on_valid, 0,
+                    "{label}: {gpu_dark_on_valid} darkened valid pixels on GPU"
+                );
+                assert_eq!(
+                    gpu_lit_on_uncovered, 0,
+                    "{label}: {gpu_lit_on_uncovered} lit uncovered pixels on GPU"
+                );
+                assert_gpu_matches_isolated_draws(
+                    label, &cal, &viewport, pose, combined, gpu_left, gpu_right,
+                );
+                Agreement::compare(combined, &cpu).assert_within(AgreementBounds::DEFAULT, label);
+            }
+        }
+    }
+
+    /// Isolated-GPU-draw oracle regression for the exact counterexample FOVs
+    /// where analytic `f32` inverse-homography reprojection diverged from
+    /// hardware left-plane rasterization (`93.081` darkened right-only pixel
+    /// `(513, 481)`; `91.659` bypassed overlap blend at `(490, 491)`), plus
+    /// the default FOV.
+    #[test]
+    #[cfg(feature = "gpu")]
+    fn gpu_dstalpha_oracle_matches_isolated_draws_on_counterexample_fovs() {
+        let viewport = ViewportSize {
+            width: 960,
+            height: 540,
+        };
+        let (cal, sizes, base_pose) = mixed_aspect_tilted_blend_calib();
+        let (ly, luv) = solid_nv12(sizes[0].0, sizes[0].1, 40);
+        let (ry, ruv) = solid_nv12(sizes[1].0, sizes[1].1, 255);
+        let planes = [
+            Nv12Planes { y: &ly, uv: &luv },
+            Nv12Planes { y: &ry, uv: &ruv },
+        ];
+
+        for (label, fov) in [
+            ("mixed-aspect-fov-93.081", 93.081_f32),
+            ("mixed-aspect-fov-91.659", 91.659_f32),
+            ("mixed-aspect-fov-default", base_pose.fov_degrees),
+        ] {
+            let pose = RenderPose {
+                fov_degrees: fov,
+                ..base_pose
+            };
+            let Some((combined, left_only, right_only)) =
+                render_gpu_nv12_with_isolated_oracles(&cal, &viewport, sizes, &planes, pose, true)
+            else {
+                return;
+            };
+            let counts = assert_gpu_matches_isolated_draws(
+                label,
+                &cal,
+                &viewport,
+                pose,
+                &combined,
+                &left_only,
+                &right_only,
+            );
+            assert!(
+                counts.right_only_fade > 0,
+                "{label}: expected right-only pixels inside fade band"
+            );
+            assert!(
+                counts.overlap_fade > 0,
+                "{label}: expected blended overlap pixels"
+            );
+        }
+    }
+
+    /// Isolated-GPU-draw oracle regression for a calibration whose left (base)
+    /// plane edge crosses the right plane's fade band nearly horizontally.
+    /// Analytic reprojection errors amplify along a near-horizontal edge into
+    /// long single-row runs of darkened right-only pixels; hardware `DstAlpha`
+    /// must produce 0 mismatches across the entire frame.
+    #[test]
+    #[cfg(feature = "gpu")]
+    fn gpu_dstalpha_oracle_nearly_horizontal_base_edge() {
+        use crate::calibration::{Framing, Lens};
+        use crate::projection::LShape;
+
+        let viewport = ViewportSize {
+            width: 960,
+            height: 540,
+        };
+        let left_lens = Lens::fisheye(256, 144, 80.0, 80.0, 128.0, 72.0, [-0.02, 0.004, 0.0, 0.0]);
+        let right_lens = Lens::fisheye(256, 192, 80.0, 80.0, 128.0, 96.0, [-0.02, 0.004, 0.0, 0.0]);
+        // With axis_offset = 0.8 and intersect = 0.5 (half_offset = 0.25),
+        // sin(z_rx) = hh_left / (2 * axis_offset - half_offset) = 0.28125 / 1.35
+        // (~0.21 rad) cancels perspective foreshortening so the left plane's
+        // projected top edge runs nearly horizontally across the right fade band
+        // while staying well inside the 4:3 right plane's vertical footprint.
+        let cal = Calibration::new(
+            vec![left_lens, right_lens],
+            LShape {
+                intersect: 0.5,
+                x_ty: 0.05,
+                x_rz: 0.0,
+                z_rx: 0.21,
+                x_rx: 0.0,
+                z_rz: 0.0,
+                blend_width: 0.25,
+            },
+            Framing {
+                axis_offset: 0.8,
+                tilt: 0.0,
+                roll: 0.0,
+            },
+        );
+        cal.validate().unwrap();
+        let sizes = [(256, 144), (256, 192)];
+        let pose = RenderPose {
+            yaw: 0.0,
+            pitch: 0.0,
+            fov_degrees: 50.0,
+        };
+        let (ly, luv) = solid_nv12(sizes[0].0, sizes[0].1, 40);
+        let (ry, ruv) = solid_nv12(sizes[1].0, sizes[1].1, 255);
+        let planes = [
+            Nv12Planes { y: &ly, uv: &luv },
+            Nv12Planes { y: &ry, uv: &ruv },
+        ];
+
+        let Some((combined, left_only, right_only)) =
+            render_gpu_nv12_with_isolated_oracles(&cal, &viewport, sizes, &planes, pose, true)
+        else {
+            return;
+        };
+
+        // Confirm the geometry genuinely places a long horizontal base-edge
+        // boundary across the right plane's fade band.
+        let maps = cal.surface_maps(&viewport, pose);
+        let mut max_horizontal_boundary_row = 0usize;
+        for py in 1..(viewport.height - 1) {
+            let mut row_boundary_px = 0usize;
+            for px in 0..viewport.width {
+                let off = ((py * viewport.width + px) * 4) as usize;
+                let up = (((py - 1) * viewport.width + px) * 4) as usize;
+                let dn = (((py + 1) * viewport.width + px) * 4) as usize;
+                let right_only_here = left_only[off + 3] == 0 && right_only[off + 3] == 255;
+                let adj_left = left_only[up + 3] == 255 || left_only[dn + 3] == 255;
+                if right_only_here
+                    && adj_left
+                    && let Some(rs) = maps[1].0.sample_uv(viewport.pixel_ndc(px, py))
+                    && maps[1].1.alpha(rs.edge) < 1.0
+                {
+                    row_boundary_px += 1;
+                }
+            }
+            max_horizontal_boundary_row = max_horizontal_boundary_row.max(row_boundary_px);
+        }
+        assert!(
+            max_horizontal_boundary_row >= 60,
+            "expected a nearly horizontal base edge across the fade band, got max {max_horizontal_boundary_row} px in one row"
+        );
+
+        let counts = assert_gpu_matches_isolated_draws(
+            "nearly-horizontal-base-edge",
+            &cal,
+            &viewport,
+            pose,
+            &combined,
+            &left_only,
+            &right_only,
+        );
+        assert!(counts.right_only_total > 0);
+        assert!(counts.right_only_fade > 0);
+        assert!(counts.overlap_fade > 0);
+    }
+
+    /// Hard-seam (`blend_width == 0.0`) fast path must skip the DstAlpha helper
+    /// draws, still match isolated draws with 0 mismatches, and output opaque
+    /// alpha across the entire frame.
+    #[test]
+    #[cfg(feature = "gpu")]
+    fn gpu_hard_seam_zero_blend_matches_isolated_draws() {
+        let viewport = ViewportSize {
+            width: 240,
+            height: 135,
+        };
+        let (mut cal, sizes, pose) = mixed_aspect_tilted_blend_calib();
+        cal.projection.l_shape_mut().unwrap().blend_width = 0.0;
+        let (ly, luv) = solid_nv12(sizes[0].0, sizes[0].1, 40);
+        let (ry, ruv) = solid_nv12(sizes[1].0, sizes[1].1, 255);
+        let planes = [
+            Nv12Planes { y: &ly, uv: &luv },
+            Nv12Planes { y: &ry, uv: &ruv },
+        ];
+        let Some((combined, left_only, right_only)) =
+            render_gpu_nv12_with_isolated_oracles(&cal, &viewport, sizes, &planes, pose, true)
+        else {
+            return;
+        };
+        assert_gpu_matches_isolated_draws(
+            "hard-seam-zero-blend",
+            &cal,
+            &viewport,
+            pose,
+            &combined,
+            &left_only,
+            &right_only,
+        );
+    }
+
+    /// Verify that overlap seam blending remains unchanged and CPU/GPU agree
+    /// with distinct left/right source intensities across mixed-aspect, lens,
+    /// and depth-clip boundaries.
+    #[test]
+    fn overlap_blending_unchanged_and_agrees_across_boundaries() {
+        let viewport = ViewportSize {
+            width: 240,
+            height: 135,
+        };
+        let cases = [
+            ("overlap-mixed-aspect", mixed_aspect_tilted_blend_calib()),
+            ("overlap-lens-boundary", lens_boundary_blend_calib()),
+            ("overlap-depth-clip", depth_clip_blend_calib()),
+        ];
+
+        for (label, (cal, sizes, pose)) in cases {
+            let (ly, luv) = solid_nv12(sizes[0].0, sizes[0].1, 40);
+            let (ry, ruv) = solid_nv12(sizes[1].0, sizes[1].1, 240);
+            let planes = [
+                Nv12Planes { y: &ly, uv: &luv },
+                Nv12Planes { y: &ry, uv: &ruv },
+            ];
+            let cpu = stitch_rgba(&planes, &sizes, &cal, &viewport, pose, true).unwrap();
+            #[cfg(feature = "gpu")]
+            let gpu = render_gpu_nv12(&cal, &viewport, sizes, &planes, pose, true);
+
+            let maps = cal.surface_maps(&viewport, pose);
+            let mut checked_overlap = 0usize;
+            let mut checked_right_only_fade = 0usize;
+
+            for py in 0..viewport.height {
+                for px in 0..viewport.width {
+                    let ndc = viewport.pixel_ndc(px, py);
+                    let off = ((py * viewport.width + px) * 4) as usize;
+                    match (maps[0].0.sample_uv(ndc), maps[1].0.sample_uv(ndc)) {
+                        (Some(_), Some(rs)) => {
+                            let alpha = maps[1].1.alpha(rs.edge);
+                            if alpha > 0.0 && alpha < 1.0 {
+                                let expected = (40.0 + (240.0 - 40.0) * alpha).round() as u8;
+                                assert!(
+                                    cpu[off].abs_diff(expected) <= 1,
+                                    "{label} ({px},{py}) CPU overlap={}, expected={expected}, alpha={alpha}",
+                                    cpu[off]
+                                );
+                                #[cfg(feature = "gpu")]
+                                if let Some(ref g) = gpu {
+                                    assert!(
+                                        g[off].abs_diff(expected) <= 2,
+                                        "{label} ({px},{py}) GPU overlap={}, expected={expected}, alpha={alpha}",
+                                        g[off]
+                                    );
+                                }
+                                checked_overlap += 1;
+                            }
+                        }
+                        (None, Some(rs)) if maps[1].1.alpha(rs.edge) < 1.0 => {
+                            assert!(
+                                cpu[off].abs_diff(240) <= 1,
+                                "{label} ({px},{py}) CPU right-only={}, expected=240",
+                                cpu[off]
+                            );
+                            checked_right_only_fade += 1;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            assert!(
+                checked_right_only_fade > 0,
+                "{label}: expected right-only pixels in nominal fade zone"
+            );
+            if label == "overlap-mixed-aspect" {
+                assert!(
+                    checked_overlap > 0,
+                    "{label}: expected blended overlap pixels"
+                );
+            }
+            #[cfg(feature = "gpu")]
+            if let Some(ref g) = gpu {
+                Agreement::compare(g, &cpu).assert_within(AgreementBounds::DEFAULT, label);
+            }
+        }
     }
 }

@@ -160,16 +160,24 @@ fn composite_rgba(
     for py in 0..out_h {
         for px in 0..out_w {
             let mut rgb = [0.0f64; 3];
+            let mut covered = false;
             let ndc = viewport_size.pixel_ndc(px, py);
             for ((map, rule), sample) in surfaces.iter().zip(samplers) {
                 if let Some(s) = map.sample_uv(ndc) {
-                    let alpha = rule.alpha(s.edge);
-                    let src = sample(s.u, s.v);
-                    rgb = [
-                        rgb[0] + (src[0] - rgb[0]) * alpha,
-                        rgb[1] + (src[1] - rgb[1]) * alpha,
-                        rgb[2] + (src[2] - rgb[2]) * alpha,
-                    ];
+                    if !covered {
+                        rgb = sample(s.u, s.v);
+                        covered = true;
+                    } else {
+                        let alpha = rule.alpha(s.edge);
+                        if alpha > 0.0 {
+                            let src = sample(s.u, s.v);
+                            rgb = [
+                                rgb[0] + (src[0] - rgb[0]) * alpha,
+                                rgb[1] + (src[1] - rgb[1]) * alpha,
+                                rgb[2] + (src[2] - rgb[2]) * alpha,
+                            ];
+                        }
+                    }
                 }
             }
             let i = ((py * out_w + px) * 4) as usize;
@@ -329,5 +337,95 @@ mod tests {
                 }
             }
         }
+    }
+
+    struct FixedSurface {
+        samples: Vec<Option<crate::stitch::SurfaceUv>>,
+        width: u32,
+    }
+
+    impl SurfaceMap for FixedSurface {
+        fn sample_uv(&self, [ndc_x, _]: [f64; 2]) -> Option<crate::stitch::SurfaceUv> {
+            let px = (((ndc_x + 1.0) * 0.5) * f64::from(self.width)).floor() as usize;
+            self.samples[px]
+        }
+
+        fn covers_ndc(&self, _min: [f64; 2], _max: [f64; 2], _rotation_bound: f64) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn composite_rgba_preserves_single_source_and_blends_overlap() {
+        use crate::stitch::SurfaceUv;
+
+        let uv = |edge| {
+            Some(SurfaceUv {
+                u: 0.5,
+                v: 0.5,
+                edge,
+            })
+        };
+        // 8 pixels covering every state:
+        // 0: neither valid -> uncovered black
+        // 1: left-only -> full left
+        // 2: right-only, edge < 0 (nominal alpha = 0) -> full right
+        // 3: right-only, edge = 0 (nominal alpha = 0) -> full right
+        // 4: right-only, edge = 0.1 (nominal alpha = 0.5) -> full right
+        // 5: both valid, edge = 0.0 (alpha = 0) -> full left
+        // 6: both valid, edge = 0.1 (alpha = 0.5) -> 50/50 blend
+        // 7: both valid, edge = 0.2 (alpha = 1.0) -> full right
+        let left = FixedSurface {
+            width: 8,
+            samples: vec![None, uv(0.5), None, None, None, uv(0.5), uv(0.5), uv(0.5)],
+        };
+        let right = FixedSurface {
+            width: 8,
+            samples: vec![
+                None,
+                None,
+                uv(-0.1),
+                uv(0.0),
+                uv(0.1),
+                uv(0.0),
+                uv(0.1),
+                uv(0.2),
+            ],
+        };
+        let surfaces: Vec<(Box<dyn SurfaceMap>, BlendRule)> = vec![
+            (Box::new(left), BlendRule::Opaque),
+            (Box::new(right), BlendRule::Smoothstep(0.2)),
+        ];
+        let left_sampler = |_: f64, _: f64| [0.2, 0.4, 0.8];
+        let right_sampler = |_: f64, _: f64| [1.0, 0.6, 0.0];
+        let samplers: Vec<&dyn Fn(f64, f64) -> [f64; 3]> = vec![&left_sampler, &right_sampler];
+
+        let out = composite_rgba(&surfaces, &samplers, 8, 1);
+        let px = |i: usize| [out[i * 4], out[i * 4 + 1], out[i * 4 + 2], out[i * 4 + 3]];
+
+        let left_rgb = [to_u8(0.2), to_u8(0.4), to_u8(0.8), 255];
+        let right_rgb = [to_u8(1.0), to_u8(0.6), to_u8(0.0), 255];
+        let mid_rgb = [to_u8(0.6), to_u8(0.5), to_u8(0.4), 255];
+
+        assert_eq!(px(0), [0, 0, 0, 255], "neither valid must stay uncovered");
+        assert_eq!(px(1), left_rgb, "left-only must be opaque left");
+        assert_eq!(
+            px(2),
+            right_rgb,
+            "right-only with edge < 0 must be opaque right"
+        );
+        assert_eq!(
+            px(3),
+            right_rgb,
+            "right-only with edge = 0 must be opaque right"
+        );
+        assert_eq!(
+            px(4),
+            right_rgb,
+            "right-only with fractional weight must be opaque right"
+        );
+        assert_eq!(px(5), left_rgb, "both valid at alpha=0 must stay left");
+        assert_eq!(px(6), mid_rgb, "both valid at alpha=0.5 must blend 50/50");
+        assert_eq!(px(7), right_rgb, "both valid at alpha=1 must be right");
     }
 }
