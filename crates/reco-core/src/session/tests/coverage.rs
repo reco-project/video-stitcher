@@ -32,6 +32,7 @@ fn source_rates_are_accepted_in_immediate_and_buffered_sessions() {
             self.source.next_frame()
         }
     }
+    let mut cached_coverage: Option<Controller> = None;
     for fps in [0.5, 300.0, 1000.0] {
         for lookahead in [0, 4] {
             let cal = test_calibration();
@@ -46,6 +47,9 @@ fn source_rates_are_accepted_in_immediate_and_buffered_sessions() {
             .unwrap();
             let mut session =
                 StitchSession::with_executor(Executor::Cpu(Box::new(executor))).unwrap();
+            if let Some(prepared) = &cached_coverage {
+                session.core.coverage_motion = Some(prepared.clone_reset());
+            }
             session.set_lookahead(lookahead, usize::MAX);
             let mut source = RatedSource {
                 source: MockSource::new(8),
@@ -60,6 +64,13 @@ fn source_rates_are_accepted_in_immediate_and_buffered_sessions() {
             );
             session.finish().unwrap();
             assert!(session.core_mut().current_pose().yaw.is_finite());
+            if cached_coverage.is_none() {
+                cached_coverage = session
+                    .core
+                    .coverage_motion
+                    .as_ref()
+                    .map(Controller::clone_reset);
+            }
         }
     }
 }
@@ -83,6 +94,8 @@ fn coverage_runs_once_after_immediate_or_lookahead_decisions() {
         height: H,
     };
     let config = MapConfig::default();
+    let mut expected = Controller::new(&cal, &size, config).unwrap();
+    let mut cached_coverage: Option<Controller> = None;
     for (gpu, lookahead) in [(false, 0), (false, 8), (true, 0), (true, 8)] {
         let executor = Executor::Cpu(Box::new(
             {
@@ -121,7 +134,17 @@ fn coverage_runs_once_after_immediate_or_lookahead_decisions() {
             executor
         };
         let mut session = StitchSession::with_executor(executor).unwrap();
+        if let Some(prepared) = &cached_coverage {
+            session.core.coverage_motion = Some(prepared.clone_reset());
+        }
         session.core_mut().prepare_coverage().unwrap();
+        if cached_coverage.is_none() {
+            cached_coverage = session
+                .core
+                .coverage_motion
+                .as_ref()
+                .map(Controller::clone_reset);
+        }
         session.set_panner(Box::new(Steps));
         session.set_lookahead(lookahead, usize::MAX);
         let events = Arc::new(Mutex::new(Vec::new()));
@@ -158,7 +181,7 @@ fn coverage_runs_once_after_immediate_or_lookahead_decisions() {
             .collect();
         assert_eq!(requested.len(), 180);
         assert_eq!(presented.len(), 180);
-        let mut expected = Controller::new(&cal, &size, config.clone()).unwrap();
+        expected.reset();
         for (index, ((request_index, request), (actual_index, actual))) in
             requested.iter().zip(&presented).enumerate()
         {

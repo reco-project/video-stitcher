@@ -92,10 +92,11 @@ jobs:
         run: cargo clippy -p reco-control --all-targets --features gopro -- -D warnings
 
   # ===========================================================================
-  # Stage 2 — Software-lavapipe GPU tests, profiling, and wgpu-free isolation.
+  # Stage 2 — Software-lavapipe GPU & workspace tests (parallel with CPU-only
+  # feature-boundary and scoped profiling jobs below).
   # ===========================================================================
-  test-full:
-    name: Full Matrix & GPU Tests
+  test-gpu:
+    name: GPU & Workspace Tests
     if: >-
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
@@ -117,7 +118,7 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           prefix-key: v1-rust
-          shared-key: test-full
+          shared-key: test-gpu
           env-vars: CARGO_PROFILE_TEST_DEBUG
           save-if: ${{ github.event_name == 'push' }}
       - uses: ./.github/actions/linux-build-deps
@@ -127,17 +128,40 @@ jobs:
         run: vulkaninfo --summary
       - name: Run tests (default + lavapipe GPU)
         run: cargo test --workspace
-      - name: Run tests (with profiling)
-        run: cargo test --workspace --features profiling
       - name: GPU session completion and cancellation
         run: cargo test -p reco-core gpu_run_completion -- --ignored --test-threads=1
       - name: GPU native input completion
         run: cargo test -p reco-core nvmm_ -- --ignored --test-threads=1
       - name: GPU output timestamp association
         run: cargo test -p reco-core gpu_output_times_stay_with_images -- --ignored --test-threads=1
+
+  # ===========================================================================
+  # Stage 2 — wgpu-free & CPU-only isolation tests + dependency boundary checks.
+  # ===========================================================================
+  test-cpu-boundaries:
+    name: wgpu-free & CPU-only Tests
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.base_ref != 'main' && github.event.label.name == 'ci-full')
+    runs-on: ubuntu-latest
+    env:
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: v1-rust
+          shared-key: test-cpu-boundaries
+          env-vars: CARGO_PROFILE_TEST_DEBUG
+          save-if: ${{ github.event_name == 'push' }}
+      - uses: ./.github/actions/linux-build-deps
+        with:
+          extra-packages: ffmpeg
       # The wgpu-free build: -p bypasses workspace feature unification so
       # reco-core tests exercise the CPU engine and session without wgpu.
-      # RECO_REQUIRE_GPU must not apply - there is no GPU path to require.
       - name: Run tests (reco-core wgpu-free)
         run: |
           cargo test -p reco-core --no-default-features
@@ -146,8 +170,6 @@ jobs:
             echo "CPU session unexpectedly enables wgpu" >&2
             exit 1
           fi
-        env:
-          RECO_REQUIRE_GPU: ""
       - name: Run tests (reco-io wgpu-free)
         run: |
           cargo test -p reco-io --no-default-features
@@ -158,8 +180,6 @@ jobs:
             echo "Host I/O unexpectedly enables wgpu" >&2
             exit 1
           fi
-        env:
-          RECO_REQUIRE_GPU: ""
       - name: Run tests (reco-control CPU-only)
         run: |
           cargo test -p reco-control --no-default-features
@@ -178,6 +198,39 @@ jobs:
             echo "Camera-control policies unexpectedly enable GPU or inference dependencies" >&2
             exit 1
           fi
+
+  # ===========================================================================
+  # Stage 2 — Profiling tests (full workspace with --features profiling,
+  # running in parallel with test-gpu and test-cpu-boundaries).
+  # ===========================================================================
+  test-profiling:
+    name: Profiling Tests
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.action != 'labeled' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci-full'))) ||
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.base_ref != 'main' && github.event.label.name == 'ci-full')
+    runs-on: ubuntu-latest
+    env:
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
+      RECO_REQUIRE_GPU: "1"
+      VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.json
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: dtolnay/rust-toolchain@1.92.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: v1-rust
+          shared-key: test-profiling
+          env-vars: CARGO_PROFILE_TEST_DEBUG
+          save-if: ${{ github.event_name == 'push' }}
+      - uses: ./.github/actions/linux-build-deps
+        with:
+          extra-packages: ffmpeg mesa-vulkan-drivers vulkan-tools
+      - name: Verify lavapipe Vulkan adapter
+        run: vulkaninfo --summary
+      - name: Run workspace tests (with profiling)
+        run: cargo test --workspace --features profiling
 
   # ===========================================================================
   # Stage 2 — Documentation (full workspace docs, warnings-as-errors).

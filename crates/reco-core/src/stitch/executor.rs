@@ -292,15 +292,14 @@ mod tests {
             black as f64 / (out_w * out_h) as f64
         };
 
-        // (tilt, roll, fov as a fraction of the coverage max): level rig,
+        // (tilt, roll, fov fractions of the coverage max): level rig,
         // moderate and gameday tilt, tilt+roll, and the zoomed-in regime
         // where the rotated-corner overhang is proportionally largest.
-        for &(tilt, roll, fov_factor) in &[
-            (0.0f64, 0.0f64, 0.9f32),
-            (0.15, 0.0, 0.9),
-            (0.33, 0.0, 0.9),
-            (0.33, 0.12, 0.9),
-            (0.33, 0.12, 0.5),
+        for &(tilt, roll, fov_factors) in &[
+            (0.0f64, 0.0f64, &[0.9f32][..]),
+            (0.15, 0.0, &[0.9]),
+            (0.33, 0.0, &[0.9]),
+            (0.33, 0.12, &[0.9, 0.5]),
         ] {
             let mut cal = calib(cam_w, cam_h);
             cal.framing.tilt = tilt;
@@ -322,32 +321,35 @@ mod tests {
                 .unwrap(),
             )))
             .unwrap();
-            let fov = (core.prepare_coverage().unwrap() * fov_factor).min(60.0);
+            let cap = core.prepare_coverage().unwrap();
 
-            for &(wy, wp) in &[
-                (0.0f32, 0.0f32),
-                (-3.0, -1.5),
-                (-3.0, 1.5),
-                (3.0, -1.5),
-                (3.0, 1.5),
-                (0.0, -1.5),
-                (0.0, 1.5),
-                (-3.0, 0.0),
-                (3.0, 0.0),
-            ] {
-                let requested =
-                    core.calibration()
-                        .world_to_render_pose(crate::geometry::WorldPose {
-                            yaw: wy,
-                            pitch: wp,
-                            fov_degrees: fov,
-                        });
-                let pose = core.constrain_render_pose(requested, requested).unwrap();
-                let frac = black_frac(&backend.stitch(&[planes, planes], pose).unwrap());
-                assert!(
-                    frac == 0.0,
-                    "black fraction {frac:.4} at tilt={tilt} roll={roll} fov={fov:.1} target=({wy},{wp})"
-                );
+            for &fov_factor in fov_factors {
+                let fov = (cap * fov_factor).min(60.0);
+                for &(wy, wp) in &[
+                    (0.0f32, 0.0f32),
+                    (-3.0, -1.5),
+                    (-3.0, 1.5),
+                    (3.0, -1.5),
+                    (3.0, 1.5),
+                    (0.0, -1.5),
+                    (0.0, 1.5),
+                    (-3.0, 0.0),
+                    (3.0, 0.0),
+                ] {
+                    let requested =
+                        core.calibration()
+                            .world_to_render_pose(crate::geometry::WorldPose {
+                                yaw: wy,
+                                pitch: wp,
+                                fov_degrees: fov,
+                            });
+                    let pose = core.constrain_render_pose(requested, requested).unwrap();
+                    let frac = black_frac(&backend.stitch(&[planes, planes], pose).unwrap());
+                    assert!(
+                        frac == 0.0,
+                        "black fraction {frac:.4} at tilt={tilt} roll={roll} fov={fov:.1} target=({wy},{wp})"
+                    );
+                }
             }
         }
     }

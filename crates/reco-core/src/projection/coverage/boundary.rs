@@ -108,6 +108,88 @@ fn enclosure_impl(
     certify_regions(&maps, &regions, rotation, budget)
 }
 
+/// Calibration- and viewport-constant exterior enclosure evaluator for roof sweeps.
+pub(super) enum PreparedExterior<'a> {
+    LShape(Box<crate::projection::l_shape::PreparedLShape>),
+    Cylinder(crate::projection::cylinder::PreparedCylinder),
+    Generic(&'a Calibration, &'a ViewportSize),
+}
+
+pub(super) enum PreparedCell {
+    LShape(crate::projection::l_shape::PreparedLShapeCell),
+    Cylinder(([f64; 3], [f64; 3], [f64; 3])),
+    Generic(f32, f32),
+}
+
+impl<'a> PreparedExterior<'a> {
+    pub(super) fn new(cal: &'a Calibration, size: &'a ViewportSize) -> Self {
+        match &cal.projection {
+            crate::calibration::Projection::LShape(lshape) => {
+                Self::LShape(Box::new(crate::projection::l_shape::PreparedLShape::new(
+                    lshape,
+                    &cal.lenses,
+                    &cal.framing,
+                    size,
+                )))
+            }
+            crate::calibration::Projection::Cylinder(cylinder) => {
+                Self::Cylinder(crate::projection::cylinder::PreparedCylinder::new(
+                    cylinder,
+                    &cal.framing,
+                    f64::from(cal.lenses[0].height),
+                    size,
+                ))
+            }
+            _ => Self::Generic(cal, size),
+        }
+    }
+
+    pub(super) fn prepare_cell(&self, mid_yaw: f32, mid_pitch: f32) -> PreparedCell {
+        match self {
+            Self::LShape(p) => PreparedCell::LShape(p.prepare_cell(mid_yaw, mid_pitch)),
+            Self::Cylinder(p) => PreparedCell::Cylinder(p.orientation(mid_yaw, mid_pitch)),
+            Self::Generic(_, _) => PreparedCell::Generic(mid_yaw, mid_pitch),
+        }
+    }
+
+    pub(super) fn exterior_enclosure_cell(
+        &self,
+        cell: &PreparedCell,
+        size: &ViewportSize,
+        min_fov: f32,
+        max_fov: f32,
+        rotation: f64,
+        budget: usize,
+    ) -> bool {
+        let Some(regions) = strips(size, min_fov, max_fov, rotation) else {
+            return false;
+        };
+        let (lo, hi) = (regions[0].0, regions[2].1);
+        match (self, cell) {
+            (Self::LShape(p), PreparedCell::LShape(lcell)) => {
+                let maps = p.plane_maps(lcell, max_fov);
+                certify_outline_covered(&maps, lo, hi, rotation, budget)
+            }
+            (Self::Cylinder(p), PreparedCell::Cylinder(orientation)) => {
+                let map = [p.map_for_orientation(*orientation, max_fov)];
+                certify_outline_covered(&map, lo, hi, rotation, budget)
+            }
+            (Self::Generic(cal, size), PreparedCell::Generic(yaw, pitch)) => {
+                let maps = cal.surface_maps(
+                    size,
+                    RenderPose {
+                        yaw: *yaw,
+                        pitch: *pitch,
+                        fov_degrees: max_fov,
+                    },
+                );
+                certify_outline_covered(&maps, lo, hi, rotation, budget)
+            }
+            _ => unreachable!("PreparedCell always matches PreparedExterior"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

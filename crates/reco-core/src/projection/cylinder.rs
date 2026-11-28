@@ -251,7 +251,7 @@ fn rotate(v: [f64; 3], k: [f64; 3], angle: f64) -> [f64; 3] {
 /// construction must match or the two projections disagree on what a
 /// calibrated tilt means.
 /// Ray-basis quantities are precomputed in f64 for CPU sampling and GPU uniforms.
-struct CylinderMap {
+pub(crate) struct CylinderMap {
     /// Rotated camera basis for ray construction: the ray for NDC
     /// `(x, y)` is `forward + right * x * tan_h + up * y * tan_v`.
     forward: [f64; 3],
@@ -350,6 +350,93 @@ impl CylinderMap {
             radius: cylinder.radius,
             arc_rad: cylinder.arc_deg.to_radians(),
             half_height: cylinder.surface_height.unwrap_or(source_height_px) * 0.5,
+        }
+    }
+}
+
+/// Calibration-constant cylinder state for allocation-free coverage sweeps.
+pub(crate) struct PreparedCylinder {
+    f0: [f64; 3],
+    u: [f64; 3],
+    base_right: [f64; 3],
+    aspect: f64,
+    radius: f64,
+    arc_rad: f64,
+    half_height: f64,
+}
+
+impl PreparedCylinder {
+    pub(crate) fn new(
+        cylinder: &Cylinder,
+        framing: &Framing,
+        source_height_px: f64,
+        viewport_size: &ViewportSize,
+    ) -> Self {
+        let camera = cylinder.virtual_camera(framing);
+        let base_forward = [
+            f64::from(camera.base_forward.x),
+            f64::from(camera.base_forward.y),
+            f64::from(camera.base_forward.z),
+        ];
+        let base_right = [
+            f64::from(camera.base_right.x),
+            f64::from(camera.base_right.y),
+            f64::from(camera.base_right.z),
+        ];
+        let mut f0 = base_forward;
+        let mut u = [0.0, 1.0, 0.0];
+        if framing.tilt.abs() > 1e-9 {
+            f0 = rotate(f0, base_right, framing.tilt);
+            u = rotate(u, base_right, framing.tilt);
+        }
+        if framing.roll.abs() > 1e-9 {
+            u = rotate(u, f0, -framing.roll);
+        }
+        Self {
+            f0,
+            u,
+            base_right,
+            aspect: f64::from(viewport_size.width) / f64::from(viewport_size.height),
+            radius: cylinder.radius,
+            arc_rad: cylinder.arc_deg.to_radians(),
+            half_height: cylinder.surface_height.unwrap_or(source_height_px) * 0.5,
+        }
+    }
+
+    pub(crate) fn orientation(&self, yaw: f32, pitch: f32) -> ([f64; 3], [f64; 3], [f64; 3]) {
+        let (yaw, pitch) = (f64::from(yaw), f64::from(pitch));
+        let pitch_axis = rotate(self.base_right, self.u, yaw);
+        let forward = rotate(rotate(self.f0, self.u, yaw), pitch_axis, pitch);
+        let up = rotate(rotate(self.u, self.u, yaw), pitch_axis, pitch);
+        let right = [
+            forward[1] * up[2] - forward[2] * up[1],
+            forward[2] * up[0] - forward[0] * up[2],
+            forward[0] * up[1] - forward[1] * up[0],
+        ];
+        (forward, right, up)
+    }
+
+    pub(crate) fn map_for_orientation(
+        &self,
+        (forward, right, up): ([f64; 3], [f64; 3], [f64; 3]),
+        fov_degrees: f32,
+    ) -> CylinderMap {
+        let fov = RenderPose {
+            yaw: 0.0,
+            pitch: 0.0,
+            fov_degrees,
+        }
+        .render_fov();
+        let tan_half_v = (f64::from(fov).to_radians() * 0.5).tan();
+        CylinderMap {
+            forward,
+            right,
+            up,
+            tan_half_h: tan_half_v * self.aspect,
+            tan_half_v,
+            radius: self.radius,
+            arc_rad: self.arc_rad,
+            half_height: self.half_height,
         }
     }
 }

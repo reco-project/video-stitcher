@@ -77,6 +77,7 @@ impl Grid {
     }
 }
 
+#[cfg_attr(test, derive(Clone))]
 pub(super) struct Roof {
     grid: Grid,
     minimum_fov: f32,
@@ -146,12 +147,13 @@ impl Roof {
     ) -> Self {
         let count = grid.columns * grid.rows;
         let workers = workers.clamp(1, count);
+        let prepared = boundary::PreparedExterior::new(cal, size);
         let compute = |i| {
             if is_cancelled(cancelled) {
                 return 0.0;
             }
             Self::cell_ceiling(
-                cal,
+                &prepared,
                 size,
                 grid,
                 fov,
@@ -193,7 +195,7 @@ impl Roof {
     }
 
     fn cell_ceiling(
-        cal: &Calibration,
+        prepared: &boundary::PreparedExterior<'_>,
         size: &ViewportSize,
         grid: Grid,
         fov: [f32; 2],
@@ -219,17 +221,12 @@ impl Roof {
             pitch: (pitch(y + 1) as f32).next_up(),
             fov_degrees: fov[0],
         };
+        let mid = interpolate(lo, hi, 0.5);
+        let rotation =
+            f64::from((hi.yaw - lo.yaw).abs() + (hi.pitch - lo.pitch).abs()) * 0.5 + 2e-6;
+        let cell = prepared.prepare_cell(mid.yaw, mid.pitch);
         let supported = |maximum| {
-            boundary::exterior_enclosure(
-                cal,
-                size,
-                lo,
-                RenderPose {
-                    fov_degrees: maximum,
-                    ..hi
-                },
-                2048,
-            ) == Certificate::Covered
+            prepared.exterior_enclosure_cell(&cell, size, fov[0], maximum, rotation, 2048)
         };
         let mut low = 0.0;
         if supported(fov[0]) {
