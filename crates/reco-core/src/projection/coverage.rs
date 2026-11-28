@@ -230,11 +230,11 @@ fn certify_regions_with<S: SurfaceQuery>(
 
 /// Certify whether the 4-segment rectangular outline `[lo, hi]` is covered.
 ///
-/// Because `covers_ndc` is inclusion-monotonic (`[p, p] ⊆ [a, b]`), if no
-/// surface certifies a single point `p` with the given `rotation`, no leaf
-/// box containing `p` can ever certify it either. Checking corners and segment
-/// midpoints with `covers_ndc(p, p, rotation)` fails fast in O(1) instead of
-/// subdividing to `depth == 40` or `budget` along the rotation-margin boundary.
+/// Checks the 4 unique corners once with `sample_uv_some` up front, then runs
+/// a stack-allocated DFS over the 4 boundary segments calling
+/// `covers_ndc(a, b, rotation)` on each segment and probing each subdivision
+/// midpoint with `sample_uv_some` to fail fast on uncovered regions without
+/// re-probing shared child endpoints.
 fn certify_outline_covered<S: SurfaceQuery>(
     surfaces: &[S],
     lo: [f64; 2],

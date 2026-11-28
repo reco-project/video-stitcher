@@ -200,9 +200,8 @@ jobs:
           fi
 
   # ===========================================================================
-  # Stage 2 — Scoped profiling tests (avoids duplicating all 400+ reco-core
-  # unit tests already run in test-gpu; feature-matrix-lint checks clippy
-  # --all-targets --features profiling across the entire workspace).
+  # Stage 2 — Profiling tests (full workspace with --features profiling,
+  # running in parallel with test-gpu and test-cpu-boundaries).
   # ===========================================================================
   test-profiling:
     name: Profiling Tests
@@ -230,12 +229,8 @@ jobs:
           extra-packages: ffmpeg mesa-vulkan-drivers vulkan-tools
       - name: Verify lavapipe Vulkan adapter
         run: vulkaninfo --summary
-      - name: Build reco-core unit tests (with profiling)
-        run: cargo test -p reco-core --features profiling --lib --no-run
-      - name: Run reco-core profiling tests
-        run: cargo test -p reco-core --features profiling --test profiling
-      - name: Run workspace tests (excluding reco-core, with profiling)
-        run: cargo test --workspace --exclude reco-core --features profiling
+      - name: Run workspace tests (with profiling)
+        run: cargo test --workspace --features profiling
 
   # ===========================================================================
   # Stage 2 — Documentation (full workspace docs, warnings-as-errors).

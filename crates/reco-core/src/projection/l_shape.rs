@@ -267,6 +267,20 @@ impl PlaneMap {
         cam: &Lens,
         correction: f64,
     ) -> Self {
+        let mut optics = NormalizedLens::new(cam);
+        optics.correction = correction;
+        let scaled_d = optics.d.map(|k| k * correction);
+        Self::from_view_projection(model, view_projection, optics, scaled_d)
+    }
+
+    /// Build a plane map from pre-normalized optics and the renderer's exact
+    /// `f32` view-projection matrix.
+    fn from_view_projection(
+        model: Matrix4<f32>,
+        view_projection: &Matrix4<f32>,
+        optics: NormalizedLens,
+        scaled_d: [f64; 4],
+    ) -> Self {
         let mvp = view_projection * model;
         // For a quad at z = 0 in model space, `clip = M3 * [x, y, 1]` where M3
         // takes the x, y and translation columns of the MVP (z dropped).
@@ -290,9 +304,6 @@ impl PlaneMap {
             }),
             None => [0.0; 3],
         };
-        let mut optics = NormalizedLens::new(cam);
-        optics.correction = correction;
-        let scaled_d = optics.d.map(|k| k * correction);
         Self {
             m3_inv,
             z_row,
@@ -514,19 +525,17 @@ impl SurfaceMap for PlaneMap {
 /// Calibration-constant scene and lens state for allocation-free L-shape map sweeps.
 pub(crate) struct PreparedLShape {
     scene: PlaneScene,
-    proj_unit: Matrix4<f32>,
+    opengl_to_wgpu: Matrix4<f32>,
     optics: [NormalizedLens; 2],
     scaled_d: [[f64; 4]; 2],
     tilt: f32,
     roll: f32,
-    out_aspect: f64,
+    out_aspect: f32,
 }
 
-/// Cell-constant (yaw, pitch) inverse projection state for FOV bisection.
+/// Cell-constant `(yaw, pitch)` view transform for FOV bisection.
 pub(crate) struct PreparedLShapeCell {
-    base_inv: [Option<Matrix3<f64>>; 2],
-    z_row: [(f64, f64, f64); 2],
-    base_depth_coeff: [[f64; 3]; 2],
+    view: Matrix4<f32>,
 }
 
 impl PreparedLShape {
@@ -540,10 +549,6 @@ impl PreparedLShape {
             framing,
             [lenses[0].aspect_ratio(), lenses[1].aspect_ratio()],
         );
-        // Unit-tangent perspective (P00 = 1, P11 = 1) with the exact wgpu depth row.
-        let proj_unit = opengl_to_wgpu_matrix()
-            * Perspective3::new(1.0, std::f32::consts::FRAC_PI_2, NEAR_PLANE, FAR_PLANE)
-                .to_homogeneous();
         let optics = [
             NormalizedLens::new(&lenses[0]),
             NormalizedLens::new(&lenses[1]),
@@ -554,84 +559,49 @@ impl PreparedLShape {
         ];
         Self {
             scene,
-            proj_unit,
+            opengl_to_wgpu: opengl_to_wgpu_matrix(),
             optics,
             scaled_d,
             tilt: framing.tilt as f32,
             roll: framing.roll as f32,
-            out_aspect: f64::from(viewport_size.aspect_ratio()),
+            out_aspect: viewport_size.aspect_ratio(),
         }
     }
 
     pub(crate) fn prepare_cell(&self, yaw: f32, pitch: f32) -> PreparedLShapeCell {
-        let view = view_matrix(&self.scene.camera, yaw, pitch, self.tilt, self.roll);
-        let vp = self.proj_unit * view;
-        let mut base_inv = [None; 2];
-        let mut z_row = [(0.0, 0.0, 0.0); 2];
-        let mut base_depth_coeff = [[0.0; 3]; 2];
-        for i in 0..2 {
-            let mvp = vp * self.scene.models[i];
-            let m3 = Matrix3::new(
-                mvp[(0, 0)] as f64,
-                mvp[(0, 1)] as f64,
-                mvp[(0, 3)] as f64,
-                mvp[(1, 0)] as f64,
-                mvp[(1, 1)] as f64,
-                mvp[(1, 3)] as f64,
-                mvp[(3, 0)] as f64,
-                mvp[(3, 1)] as f64,
-                mvp[(3, 3)] as f64,
-            );
-            let inv = m3.try_inverse();
-            let zr = (mvp[(2, 0)] as f64, mvp[(2, 1)] as f64, mvp[(2, 3)] as f64);
-            base_depth_coeff[i] = match inv {
-                Some(m) => {
-                    std::array::from_fn(|c| zr.0 * m[(0, c)] + zr.1 * m[(1, c)] + zr.2 * m[(2, c)])
-                }
-                None => [0.0; 3],
-            };
-            base_inv[i] = inv;
-            z_row[i] = zr;
-        }
         PreparedLShapeCell {
-            base_inv,
-            z_row,
-            base_depth_coeff,
+            view: view_matrix(&self.scene.camera, yaw, pitch, self.tilt, self.roll),
         }
     }
 
     pub(crate) fn plane_maps(&self, cell: &PreparedLShapeCell, fov_degrees: f32) -> [PlaneMap; 2] {
+        // Compute the exact same f32 projection * view * model product and 3x3
+        // inverse as `l_shape_plane_maps` so nearly edge-on planes cannot
+        // diverge from the fresh renderer's floating-point rounding.
         let fov = RenderPose {
             yaw: 0.0,
             pitch: 0.0,
             fov_degrees,
         }
         .render_fov();
-        let tan_half_v = f64::from((fov.to_radians() * 0.5).tan());
-        let tan_half_h = tan_half_v * self.out_aspect;
-        let build = |i: usize| {
-            let m3_inv = cell.base_inv[i].map(|mut m| {
-                m[(0, 0)] *= tan_half_h;
-                m[(1, 0)] *= tan_half_h;
-                m[(2, 0)] *= tan_half_h;
-                m[(0, 1)] *= tan_half_v;
-                m[(1, 1)] *= tan_half_v;
-                m[(2, 1)] *= tan_half_v;
-                m
-            });
-            let dc = cell.base_depth_coeff[i];
-            PlaneMap {
-                m3_inv,
-                z_row: cell.z_row[i],
-                depth_coeff: [dc[0] * tan_half_h, dc[1] * tan_half_v, dc[2]],
-                clip_depth: true,
-                optics: self.optics[i],
-                scaled_d: self.scaled_d[i],
-                tan_half_h,
-                tan_half_v,
-            }
-        };
-        [build(0), build(1)]
+        let projection = self.opengl_to_wgpu
+            * Perspective3::new(self.out_aspect, fov.to_radians(), NEAR_PLANE, FAR_PLANE)
+                .to_homogeneous();
+        let view_projection = projection * cell.view;
+        [
+            PlaneMap::from_view_projection(
+                self.scene.models[0],
+                &view_projection,
+                self.optics[0],
+                self.scaled_d[0],
+            ),
+            PlaneMap::from_view_projection(
+                self.scene.models[1],
+                &view_projection,
+                self.optics[1],
+                self.scaled_d[1],
+            ),
+        ]
     }
 }
 
@@ -1249,5 +1219,65 @@ mod tests {
                 "expected some random boxes to certify for correction={correction}"
             );
         }
+    }
+
+    #[test]
+    fn prepared_l_shape_matches_fresh_maps_on_edge_on_plane() {
+        let cfg = ViewportSize {
+            width: 1920,
+            height: 1080,
+        };
+        let lens = Lens {
+            width: 1920,
+            height: 1080,
+            fx: 480.0,
+            fy: 270.0,
+            cx: 960.0,
+            cy: 540.0,
+            distortion: [0.0; 4],
+            correction: 0.0,
+        };
+        let lenses = [lens.clone(), lens];
+        let framing = Framing {
+            axis_offset: 0.24,
+            tilt: 0.0,
+            roll: 0.0,
+        };
+        let projection = LShape {
+            intersect: 0.8,
+            x_ty: -0.7758546371620935,
+            x_rz: 0.0,
+            z_rx: 0.0,
+            x_rx: 0.3,
+            z_rz: 0.0,
+            blend_width: DEFAULT_BLEND_WIDTH,
+        };
+        let pose = RenderPose {
+            yaw: 0.0,
+            pitch: 0.0,
+            fov_degrees: 150.0,
+        };
+
+        let (fresh_left, fresh_right) =
+            l_shape_plane_maps(&projection, &lenses, &framing, &cfg, pose);
+        let prepared = PreparedLShape::new(&projection, &lenses, &framing, &cfg);
+        let cell = prepared.prepare_cell(pose.yaw, pose.pitch);
+        let [prep_left, prep_right] = prepared.plane_maps(&cell, pose.fov_degrees);
+
+        for (fresh, prep) in [(&fresh_left, &prep_left), (&fresh_right, &prep_right)] {
+            assert_eq!(fresh.m3_inv, prep.m3_inv);
+            assert_eq!(fresh.z_row, prep.z_row);
+            assert_eq!(fresh.depth_coeff, prep.depth_coeff);
+            assert_eq!(fresh.tan_half_h.to_bits(), prep.tan_half_h.to_bits());
+            assert_eq!(fresh.tan_half_v.to_bits(), prep.tan_half_v.to_bits());
+        }
+
+        // Regression counterexample: scaling a unit-FOV f64 inverse diverged on
+        // this nearly edge-on right plane and certified an uncovered NDC point.
+        let point = [-0.06251415950976259, -0.35845615419670246];
+        assert!(fresh_left.sample_uv(point).is_none());
+        assert!(fresh_right.sample_uv(point).is_none());
+        assert!(!prep_left.covers_ndc(point, point, 0.0123));
+        assert!(!prep_right.covers_ndc(point, point, 0.0123));
     }
 }
