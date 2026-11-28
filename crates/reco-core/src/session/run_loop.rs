@@ -232,7 +232,6 @@ impl StitchSession {
         if !source.is_gpu_resident()
             && let Some(exec) = self.core.executor.gpu_mut()
         {
-            exec.pipeline.clear_imported_bind_groups();
             exec.residency.pool = None;
             #[cfg(target_os = "windows")]
             {

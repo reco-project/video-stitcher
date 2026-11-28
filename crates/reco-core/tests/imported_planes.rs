@@ -67,14 +67,14 @@ fn caller_owned_outputs_preserve_each_image_without_intermediate_waits() {
                 fov_degrees: 45.0 + f32::from(index) * 3.0,
             };
             let target = output_texture(&gpu, 128, 72);
+            let frame = direct
+                .core_mut()
+                .prepare_preview_frame(FrameSet::Nv12(images), Default::default(), [0; 2])
+                .unwrap();
             last_submission = Some(
                 direct
                     .core_mut()
-                    .render_to_view(
-                        &FrameSet::Nv12(images),
-                        pose,
-                        &target.create_view(&Default::default()),
-                    )
+                    .render_to_view(&frame, pose, &target.create_view(&Default::default()))
                     .unwrap(),
             );
             outputs.push(target);
@@ -124,9 +124,13 @@ fn caller_owned_output_composes_with_conversion_before_target_reuse() {
             reference
                 .render_frame(&FrameSet::Nv12(data.clone()), pose, None)
                 .unwrap();
+            let frame = direct
+                .core_mut()
+                .prepare_preview_frame(FrameSet::Nv12(data), Default::default(), [0; 2])
+                .unwrap();
             direct
                 .core_mut()
-                .render_to_view(&FrameSet::Nv12(data), pose, &view)
+                .render_to_view(&frame, pose, &view)
                 .unwrap();
             // Rendering is already submitted. Conversion on the same queue precedes the next render into this target, without a CPU wait between them.
             let empty = gpu
@@ -160,7 +164,10 @@ fn caller_target_rejection_preserves_subsequent_host_rendering() {
     let (mut session, _) = session(&gpu, &[(64, 32); 2], InputFormat::Nv12);
     let data = image((64, 32), 0, 2);
     let (y, _) = views(&gpu, &data, GpuPixelFormat::Nv12);
-    let host = FrameSet::Nv12(vec![data; 2]);
+    let host = session
+        .core_mut()
+        .prepare_preview_frame(FrameSet::Nv12(vec![data; 2]), Default::default(), [0; 2])
+        .unwrap();
     for invalid in [output_texture(&gpu, 64, 72), output_texture(&gpu, 128, 64)] {
         let view = invalid.create_view(&Default::default());
         assert!(

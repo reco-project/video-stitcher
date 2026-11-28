@@ -569,7 +569,8 @@ fn export_preview_restores_exact_source_frame_pose_and_calibration_reset_baselin
         assert!(state.playback.advance_blocking().unwrap());
     }
     let pixels = |state: &AppState| {
-        let reco_core::source::FrameSet::Yuv420p(cameras) = state.playback.current_frame().unwrap()
+        let reco_core::source::FrameSet::Yuv420p(cameras) =
+            state.playback.decoded_selection().unwrap()
         else {
             panic!("expected decoded camera images");
         };

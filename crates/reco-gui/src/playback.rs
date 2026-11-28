@@ -4,7 +4,7 @@
 
 use std::time::{Duration, Instant};
 
-use reco_core::render::color::YuvColor;
+use reco_core::core::{PreviewFrame, StitchCore, types::StitchCoreError};
 use reco_core::source::{FrameSet, FrameSource, SourceError, SourceFrame, SourceInfo};
 use reco_io::adapters::FfmpegFileSource;
 use reco_io::stitch_job::InputPath;
@@ -59,7 +59,9 @@ pub struct Playback {
     source: Option<Source>,
     info: Option<SourceInfo>,
     state: PlayState,
-    current_frame: Option<FrameSet>,
+    /// Selected decode awaiting GPU preparation, or retained by software playback.
+    decoded: Option<FrameSet>,
+    preview: Option<(PreviewFrame, u64)>,
     frame_index: u64,
     pending_seek: Option<PendingSeek>,
     total_frames: Option<u64>,
@@ -71,14 +73,6 @@ pub struct Playback {
 }
 
 impl Playback {
-    /// Colour encoding of the decoded source planes.
-    pub fn yuv_color(&self) -> YuvColor {
-        self.source
-            .as_ref()
-            .map(|source| source.frames().yuv_color())
-            .unwrap_or_default()
-    }
-
     pub fn color_metadata(&self) -> reco_io::ffmpeg::ColorMetadata {
         match &self.source {
             Some(Source::File(source)) => source.color_metadata(),
@@ -93,7 +87,8 @@ impl Playback {
             source: None,
             info: None,
             state: PlayState::Empty,
-            current_frame: None,
+            decoded: None,
+            preview: None,
             frame_index: 0,
             pending_seek: None,
             total_frames: None,
@@ -136,6 +131,7 @@ impl Playback {
                 reason: "no frames available at the requested sync offset".into(),
             });
         }
+        candidate.preview = self.preview.take();
         *self = candidate;
         Ok(())
     }
@@ -151,7 +147,7 @@ impl Playback {
             info: Some(source.info()),
             source: Some(Source::Live(Box::new(source))),
             state: PlayState::Playing,
-            current_frame: Some(first.images),
+            decoded: Some(first.images),
             frame_index: 1,
             ..Self::new()
         }
@@ -178,7 +174,7 @@ impl Playback {
             None => self.read_frame(blocking)?,
         };
         let Some(frame) = frame else { return Ok(false) };
-        self.current_frame = Some(frame);
+        self.decoded = Some(frame);
         self.frame_index = self
             .pending_seek
             .take()
@@ -351,8 +347,37 @@ impl Playback {
         self.state
     }
 
-    pub fn current_frame(&self) -> Option<&FrameSet> {
-        self.current_frame.as_ref()
+    /// Prepare an incoming selection while keeping the displayed frame on error.
+    pub fn prepare_preview(&mut self, engine: &mut StitchCore) -> Result<(), StitchCoreError> {
+        if let Some(decoded) = self.decoded.take() {
+            let (color, rotations) = self.source.as_ref().map_or(Default::default(), |source| {
+                let source = source.frames();
+                (
+                    source.yuv_color(),
+                    [source.left_rotation(), source.right_rotation()],
+                )
+            });
+            match engine.prepare_preview_frame(decoded, color, rotations) {
+                Ok(prepared) => self.preview = Some((prepared, self.frame_index)),
+                Err(error) => {
+                    if let Some((_, index)) = &self.preview {
+                        self.frame_index = *index;
+                    }
+                    self.pause();
+                    return Err(error);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn preview(&self) -> Option<&PreviewFrame> {
+        self.preview.as_ref().map(|(frame, _)| frame)
+    }
+
+    #[cfg(test)]
+    pub fn decoded_selection(&self) -> Option<&FrameSet> {
+        self.decoded.as_ref()
     }
 
     pub fn frame_index(&self) -> u64 {
@@ -402,7 +427,7 @@ mod tests {
         playback
             .open(std::slice::from_ref(&input), 0, &cleanup)
             .unwrap();
-        let FrameSet::Yuv420p(before) = playback.current_frame().unwrap() else {
+        let FrameSet::Yuv420p(before) = playback.decoded_selection().unwrap() else {
             panic!("YUV420P")
         };
         let before = before[0].clone();
@@ -412,7 +437,7 @@ mod tests {
             assert_eq!(playback.requested_frame(), target);
             assert!(playback.is_seeking());
             assert_eq!(playback.state(), PlayState::Paused);
-            let FrameSet::Yuv420p(current) = playback.current_frame().unwrap() else {
+            let FrameSet::Yuv420p(current) = playback.decoded_selection().unwrap() else {
                 panic!("YUV420P")
             };
             assert!(std::sync::Arc::ptr_eq(&before, &current[0]));
@@ -424,7 +449,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(2));
         }
         assert_eq!(playback.frame_index(), 1, "decoding is not presentation");
-        let FrameSet::Yuv420p(current) = playback.current_frame().unwrap() else {
+        let FrameSet::Yuv420p(current) = playback.decoded_selection().unwrap() else {
             panic!("YUV420P")
         };
         assert!(std::sync::Arc::ptr_eq(&before, &current[0]));
@@ -448,7 +473,7 @@ mod tests {
         let FrameSet::Yuv420p(expected) = oracle.next_frame().unwrap().unwrap().images else {
             panic!("YUV420P")
         };
-        let FrameSet::Yuv420p(actual) = playback.current_frame().unwrap() else {
+        let FrameSet::Yuv420p(actual) = playback.decoded_selection().unwrap() else {
             panic!("YUV420P")
         };
         assert_eq!(actual[0].y, expected[0].y);
@@ -532,15 +557,15 @@ mod tests {
                     sequence = sequence.wrapping_mul(6364136223846793005).wrapping_add(1);
                     let target = (sequence >> 32) % expected.len() as u64;
                     playback.seek_frame(target).unwrap();
-                    let before = fingerprint(playback.current_frame().unwrap());
+                    let before = fingerprint(playback.decoded_selection().unwrap());
                     let index = playback.frame_index();
                     playback.poll_seek().unwrap();
                     assert_eq!(playback.frame_index(), index);
-                    assert_eq!(fingerprint(playback.current_frame().unwrap()), before);
+                    assert_eq!(fingerprint(playback.decoded_selection().unwrap()), before);
                     if sequence & 1 == 0 && playback.tick().unwrap() {
                         assert_eq!(playback.frame_index(), target + 1);
                         assert_eq!(
-                            fingerprint(playback.current_frame().unwrap()),
+                            fingerprint(playback.decoded_selection().unwrap()),
                             expected[target as usize]
                         );
                     }
@@ -549,7 +574,7 @@ mod tests {
                 finish_seek(&mut playback);
                 assert_eq!(playback.frame_index(), target + 1, "cycle {cycle}");
                 assert_eq!(
-                    fingerprint(playback.current_frame().unwrap()),
+                    fingerprint(playback.decoded_selection().unwrap()),
                     expected[target as usize]
                 );
                 assert_eq!(playback.state(), PlayState::Paused);
@@ -609,7 +634,7 @@ mod tests {
         let state = state.borrow();
         assert_eq!(state.playback.state(), PlayState::Finished);
         assert!(state.playback.frame_index() > 1);
-        assert!(state.playback.current_frame().is_some());
+        assert!(state.playback.decoded_selection().is_some());
         assert_eq!(app.get_status_text(), "Playback finished");
     }
 
@@ -653,7 +678,7 @@ mod tests {
             assert!(!crate::vsync_render_tick(&state, &app.as_weak()));
         }
         assert_eq!(state.borrow().playback.frame_index(), frame);
-        assert!(state.borrow().playback.current_frame().is_some());
+        assert!(state.borrow().playback.decoded_selection().is_some());
         assert_eq!(app.get_status_text(), status);
     }
 
@@ -689,7 +714,7 @@ mod tests {
     #[ignore = "requires RECO_PLAYBACK_TEST_VIDEO pointing to a short, multi-frame video"]
     fn file_replacement_preserves_playback_on_first_frame_failure() {
         fn first_y(playback: &Playback) -> &[u8] {
-            let FrameSet::Yuv420p(cameras) = playback.current_frame().unwrap() else {
+            let FrameSet::Yuv420p(cameras) = playback.decoded_selection().unwrap() else {
                 panic!("expected YUV420P")
             };
             &cameras[0].y
@@ -721,7 +746,7 @@ mod tests {
         ] {
             playback.seek_frame(target).unwrap();
             finish_seek(&mut playback);
-            assert!(playback.current_frame().is_some());
+            assert!(playback.decoded_selection().is_some());
             assert_eq!(playback.frame_index(), target + 1);
         }
         let before = first_y(&playback).to_vec();
@@ -755,7 +780,7 @@ mod tests {
             .seek_frame(playback.total_frames().unwrap() / 2)
             .unwrap();
         assert!(playback.advance_blocking().unwrap());
-        let FrameSet::Yuv420p(cameras) = playback.current_frame().unwrap() else {
+        let FrameSet::Yuv420p(cameras) = playback.decoded_selection().unwrap() else {
             panic!("expected YUV420P")
         };
         assert_eq!(cameras.len(), 1);

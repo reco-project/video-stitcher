@@ -27,9 +27,10 @@ use thiserror::Error;
 
 use windows::Win32::Foundation::{CloseHandle, GENERIC_ALL, HANDLE, S_OK};
 use windows::Win32::Graphics::Direct3D11::{
-    D3D11_BOX, D3D11_QUERY, D3D11_QUERY_DESC, D3D11_RESOURCE_MISC_SHARED,
-    D3D11_RESOURCE_MISC_SHARED_NTHANDLE, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, ID3D11Device,
-    ID3D11DeviceContext, ID3D11Multithread, ID3D11Query, ID3D11Texture2D,
+    D3D11_ASYNC_GETDATA_DONOTFLUSH, D3D11_BOX, D3D11_QUERY_DESC, D3D11_QUERY_EVENT,
+    D3D11_RESOURCE_MISC_SHARED, D3D11_RESOURCE_MISC_SHARED_NTHANDLE, D3D11_TEXTURE2D_DESC,
+    D3D11_USAGE_DEFAULT, ID3D11Device, ID3D11DeviceContext, ID3D11Multithread, ID3D11Query,
+    ID3D11Texture2D,
 };
 use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
 use windows::Win32::Graphics::Dxgi::Common::{
@@ -83,6 +84,28 @@ struct StagingState {
     event_query: ID3D11Query,
 }
 
+impl StagingState {
+    fn copy_ready(&self) -> Result<bool, D3d11InteropError> {
+        let mut done = 0i32;
+        let hr = unsafe {
+            (Interface::vtable(&self.context).GetData)(
+                Interface::as_raw(&self.context),
+                Interface::as_raw(&self.event_query),
+                (&mut done as *mut i32).cast::<c_void>(),
+                std::mem::size_of::<i32>() as u32,
+                D3D11_ASYNC_GETDATA_DONOTFLUSH.0 as u32,
+            )
+        };
+        if hr.is_err() {
+            return Err(D3d11InteropError::StagingCopy(format!(
+                "GetData failed: HRESULT {:#x}",
+                hr.0
+            )));
+        }
+        Ok(hr == S_OK && done != 0)
+    }
+}
+
 /// NV12/P010 staging pool for D3D11VA -> wgpu zero-copy.
 ///
 /// Each frame slot holds one texture per camera, at that camera's extent.
@@ -119,6 +142,16 @@ impl D3d11StagingPool {
     ) -> Result<Self, D3d11InteropError> {
         if !gpu.is_dx12() {
             return Err(D3d11InteropError::NotDx12);
+        }
+
+        if !gpu
+            .device()
+            .features()
+            .contains(pixel_format.wgpu_format().required_features())
+        {
+            return Err(D3d11InteropError::StagingCopy(format!(
+                "device does not support shared {pixel_format:?} textures"
+            )));
         }
 
         if source_sizes.is_empty()
@@ -184,7 +217,7 @@ impl D3d11StagingPool {
 
         // Create event query for staging copy synchronization.
         let query_desc = D3D11_QUERY_DESC {
-            Query: D3D11_QUERY(0), // D3D11_QUERY_EVENT = 0
+            Query: D3D11_QUERY_EVENT,
             MiscFlags: 0,
         };
         let event_query: ID3D11Query = unsafe {
@@ -336,15 +369,26 @@ impl D3d11StagingPool {
         Ok(())
     }
 
+    pub(crate) fn matches_source_device(
+        &self,
+        frame: &crate::source::D3d11CameraFrame,
+    ) -> Result<bool, D3d11InteropError> {
+        let Some(state) = &self.state else {
+            return Ok(true);
+        };
+        let source = frame
+            .texture
+            .as_ref()
+            .ok_or_else(|| D3d11InteropError::StagingCopy("null source texture".into()))?;
+        Ok(unsafe { source.GetDevice()? } == state.device)
+    }
+
     /// Copy one complete frame set and await GPU completion before releasing its sources.
     ///
     /// All sources must belong to the same decode device. Source textures may be
     /// decoder-aligned, but only each camera's configured image extent is copied.
     ///
-    /// # Safety
-    /// Each non-null texture must be a live ID3D11Texture2D COM pointer retained
-    /// by the caller until this call returns.
-    pub unsafe fn stage_frames(
+    pub fn stage_frames(
         &mut self,
         frames: &[crate::source::D3d11CameraFrame],
         slot: usize,
@@ -354,27 +398,23 @@ impl D3d11StagingPool {
                 "invalid frame slot or camera count".into(),
             ));
         }
-        if frames.iter().any(|frame| frame.texture.is_null()) {
-            return Err(D3d11InteropError::StagingCopy("null source texture".into()));
-        }
+        let sources: Vec<_> = frames
+            .iter()
+            .map(|frame| {
+                frame
+                    .texture
+                    .as_ref()
+                    .ok_or_else(|| D3d11InteropError::StagingCopy("null source texture".into()))
+            })
+            .collect::<Result<_, _>>()?;
         unsafe {
-            let sources: Vec<ID3D11Texture2D> = frames
-                .iter()
-                .map(|frame| {
-                    // Borrow FFmpeg's reference; cast obtains our own AddRef.
-                    let unknown = std::mem::ManuallyDrop::new(windows::core::IUnknown::from_raw(
-                        frame.texture,
-                    ));
-                    unknown.cast()
-                })
-                .collect::<windows::core::Result<_>>()?;
             let device = if let Some(state) = &self.state {
                 state.device.clone()
             } else {
                 sources[0].GetDevice()?
             };
             // Validate the entire batch before allocating or issuing any GPU copies.
-            for (camera, (src, frame)) in sources.iter().zip(frames).enumerate() {
+            for (camera, (&src, frame)) in sources.iter().zip(frames).enumerate() {
                 if Interface::as_raw(&src.GetDevice()?) != Interface::as_raw(&device) {
                     return Err(D3d11InteropError::StagingCopy(
                         "source frame is on a different D3D11 device than the staging pool; the decoders must share one hw device".into()
@@ -391,7 +431,7 @@ impl D3d11StagingPool {
             }
             self.ensure_initialized(&sources[0])?;
             let state = self.state.as_ref().unwrap();
-            for (camera, (src, frame)) in sources.iter().zip(frames).enumerate() {
+            for (camera, (&src, frame)) in sources.iter().zip(frames).enumerate() {
                 let (width, height) = self.source_sizes[camera];
                 let region = D3D11_BOX {
                     left: 0,
@@ -414,33 +454,10 @@ impl D3d11StagingPool {
             }
             state.context.End(&state.event_query);
             state.context.Flush();
-            let mut spins: u32 = 0;
-            loop {
-                let mut done: i32 = 0;
-                let hr = (Interface::vtable(&state.context).GetData)(
-                    Interface::as_raw(&state.context),
-                    Interface::as_raw(&state.event_query),
-                    &mut done as *mut i32 as *mut c_void,
-                    std::mem::size_of::<i32>() as u32,
-                    0,
-                );
-                if hr == S_OK {
-                    break;
-                }
-                if hr.is_err() {
-                    return Err(D3d11InteropError::StagingCopy(format!(
-                        "GetData failed after {spins} polls: HRESULT {:#x}",
-                        hr.0
-                    )));
-                }
-                // S_FALSE: not ready yet
-                spins += 1;
-                if spins > 1_000_000 {
-                    return Err(D3d11InteropError::StagingCopy(
-                        "GetData timed out (>1M polls)".into(),
-                    ));
-                }
-                std::hint::spin_loop();
+            // Keep the decoded slices pinned while the query is pending.
+            // The caller publishes the slot only after the complete set is ready.
+            while !state.copy_ready()? {
+                std::thread::yield_now();
             }
         }
 
@@ -603,11 +620,9 @@ mod tests {
                         })
                         .collect();
                     // Null pointers are rejected before attempting to borrow a COM reference.
-                    unsafe {
-                        assert!(pool.stage_frames(&[], 0).is_err());
-                        assert!(pool.stage_frames(&null_frames, capacity).is_err());
-                        assert!(pool.stage_frames(&null_frames, 0).is_err());
-                    }
+                    assert!(pool.stage_frames(&[], 0).is_err());
+                    assert!(pool.stage_frames(&null_frames, capacity).is_err());
+                    assert!(pool.stage_frames(&null_frames, 0).is_err());
                     assert!(pool.state.is_none());
                     assert!(pool.views(0).is_none());
                 }

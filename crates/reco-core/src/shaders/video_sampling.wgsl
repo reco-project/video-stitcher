@@ -44,11 +44,13 @@ override extended_video_color: bool = false;
 ///       (source already sRGB-domain, skip YUV conversion).
 ///
 fn sample_video(uv: vec2<f32>, flags: vec4<u32>) -> vec4<f32> {
-    // Apply 180-degree rotation for the GPU zero-copy path.
-    // The CPU path reverses buffers in software; the GPU path flips UV coords instead.
+    // Native display rotation, mapped back from displayed to stored UVs.
     var sample_uv = uv;
-    if flags.z == 1u {
-        sample_uv = vec2<f32>(1.0 - uv.x, 1.0 - uv.y);
+    switch flags.z {
+        case 1u: { sample_uv = vec2<f32>(1.0 - uv.x, 1.0 - uv.y); }
+        case 2u: { sample_uv = vec2<f32>(uv.y, 1.0 - uv.x); }
+        case 3u: { sample_uv = vec2<f32>(1.0 - uv.y, uv.x); }
+        default: {}
     }
 
     // RGBA packed path: sample the full RGB triple in one fetch

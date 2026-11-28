@@ -337,9 +337,11 @@ impl GpuUndistort {
             params,
             false,
             0.0,
-            InputFormat::Yuv420p,
-            false,
-            Default::default(),
+            crate::render::renderer::VideoSampling {
+                format: InputFormat::Yuv420p,
+                orientation: 0,
+                color: Default::default(),
+            },
         );
         gpu.queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));

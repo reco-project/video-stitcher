@@ -248,12 +248,10 @@ impl Nv12Data {
 /// One camera's D3D11VA decoded frame: an array texture plus the slice
 /// index within the decode pool.
 ///
-/// Non-owning - the pointer is only valid while the source pins the
-/// underlying decode slice alive (until the session has staged the
-/// frame into shared textures).
+/// Retains the texture and pins the decode slice until staging completes.
 #[cfg(all(feature = "gpu", target_os = "windows"))]
 pub struct D3d11CameraFrame {
-    pub(crate) texture: *mut std::ffi::c_void,
+    pub(crate) texture: Option<windows::Win32::Graphics::Direct3D11::ID3D11Texture2D>,
     pub(crate) slice: usize,
     _owner: Box<dyn Send>,
 }
@@ -270,6 +268,14 @@ impl D3d11CameraFrame {
         slice: usize,
         owner: impl Send + 'static,
     ) -> Self {
+        use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
+        use windows::core::Interface;
+        let texture = (!texture.is_null()).then(|| {
+            // The caller lends its COM reference; retain a reference for this frame.
+            let borrowed =
+                std::mem::ManuallyDrop::new(unsafe { ID3D11Texture2D::from_raw(texture) });
+            ID3D11Texture2D::clone(&borrowed)
+        });
         Self {
             texture,
             slice,
@@ -414,7 +420,12 @@ impl FrameSet {
                         .ok_or_else(|| "retained image byte size overflow".to_string())
                 })
                 .map(Some)?,
-            _ => Some(0),
+            #[cfg(target_os = "linux")]
+            Self::NvmmResident(_) => Some(0),
+            #[cfg(all(feature = "gpu", target_os = "linux"))]
+            Self::GpuResident(_) => Some(0),
+            #[cfg(all(feature = "gpu", target_os = "windows"))]
+            Self::D3d11Resident(_) => Some(0),
         };
         bytes.ok_or_else(|| "retained image byte size overflow".into())
     }

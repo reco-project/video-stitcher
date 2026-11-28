@@ -21,7 +21,7 @@ struct Uniforms {
     // flags.x: is_right (0 or 1)
     // flags.y: input_format (0 = YUV420P: separate U,V textures; 1 = NV12: interleaved UV
     //          in t_u; 2 = RGBA: t_y holds packed 4-channel RGB, skip YUV conversion)
-    // flags.z: flip_180 (0 or 1) - flip UV coordinates for 180-degree rotation
+    // flags.z: native orientation (0 = upright, 1 = 180°, 2 = 90°, 3 = 270°)
     //          Used by the GPU zero-copy path where buffer reversal is not possible.
     // flags.w: YUV range, matrix and sample format (see video_sampling.wgsl)
     flags: vec4<u32>,

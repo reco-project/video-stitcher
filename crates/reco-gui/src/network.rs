@@ -260,12 +260,14 @@ pub fn poll(state: &mut AppState, weak: &slint::Weak<RecoApp>) {
         if cancelled || !current {
             return Err("Connection cancelled or calibration changed.".into());
         }
-        let playback = Playback::from_live(ready.source, ready.first, &state.decoder_cleanup);
-        let bridge = state.build_bridge(
+        let mut playback = Playback::from_live(ready.source, ready.first, &state.decoder_cleanup);
+        let mut bridge = state.build_bridge(
             &opening.calibration,
             playback.source_sizes().unwrap().to_vec(),
-            playback.yuv_color(),
         )?;
+        playback
+            .prepare_preview(bridge.engine_mut())
+            .map_err(|e| e.to_string())?;
         state.unload_pipeline();
         state.left_input = None;
         state.right_input = None;

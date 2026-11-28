@@ -12,12 +12,11 @@
 //! alias the same storage. Independent image ownership prevents overwriting a texture that the UI is still displaying.
 
 use reco_core::calibration::{Calibration, Lens};
-use reco_core::core::StitchCore;
 use reco_core::core::types::StitchCoreError;
+use reco_core::core::{PreviewFrame, StitchCore};
 use reco_core::gpu::GpuContext;
 use reco_core::lens::preview::LensPreviewRenderer;
-use reco_core::render::color::YuvColor;
-use reco_core::render::pipeline::{PipelineError, Yuv420pPlanes};
+use reco_core::render::pipeline::PipelineError;
 use reco_core::render::viewport::ViewportSize;
 use reco_core::stitch::{Executor, GpuExecutor, GpuExecutorConfig};
 use reco_core::wgpu;
@@ -84,11 +83,10 @@ impl PreviewBridge {
         })
     }
 
-    /// Render a CPU-resident frame set, return a Slint image backed by a
-    /// GPU texture on the shared device.
+    /// Render the prepared frame into a Slint image on the shared device.
     pub fn render_frame(
         &mut self,
-        frames: &reco_core::source::FrameSet,
+        frame: &PreviewFrame,
         pose: reco_core::geometry::RenderPose,
     ) -> Result<slint::Image, StitchCoreError> {
         let device = self.engine.gpu().device();
@@ -114,7 +112,7 @@ impl PreviewBridge {
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         // Submit to the shared queue before Slint samples the texture.
-        self.engine.render_to_view(frames, pose, &view)?;
+        self.engine.render_to_view(frame, pose, &view)?;
 
         // Hand the texture to Slint. ownership transfers; Slint releases
         // it when the Image is no longer referenced by any UI property.
@@ -152,10 +150,10 @@ impl PreviewBridge {
     /// Correction strength comes from the selected camera's lens.
     pub fn render_lens_preview(
         &mut self,
-        planes: &Yuv420pPlanes<'_>,
+        frame: &PreviewFrame,
+        camera: usize,
         size: (u32, u32),
         params: &Lens,
-        color: YuvColor,
     ) -> Result<slint::Image, PipelineError> {
         if self
             .lens_preview
@@ -167,9 +165,9 @@ impl PreviewBridge {
                 LensPreviewRenderer::new(self.engine.gpu(), size.0, size.1, self.texture_format),
             ));
         }
-        let (_, lp) = self.lens_preview.as_ref().expect("prepared lens preview");
+        let (_, lp) = self.lens_preview.as_mut().expect("prepared lens preview");
 
-        let texture = lp.render_yuv(self.engine.gpu(), planes, params, color);
+        let texture = lp.render(frame, camera, params)?;
 
         slint::Image::try_from(texture).map_err(|_| PipelineError::InvalidConfig {
             reason: "slint::Image::try_from(wgpu::Texture) failed".into(),

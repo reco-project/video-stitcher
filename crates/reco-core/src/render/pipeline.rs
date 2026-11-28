@@ -6,7 +6,7 @@
 //! consumers reach rendering through the engine or a
 //! [`StitchSession`](crate::session::StitchSession). This module also
 //! re-exports the public frame-plane value types
-//! ([`Yuv420pPlanes`], [`Nv12Planes`], [`RgbaPlanes`], ...) and
+//! ([`Yuv420pPlanes`], [`Nv12Planes`], ...) and
 //! [`PipelineError`], the pipeline half of the engine's error type.
 
 use super::renderer::{InputFormat, RenderError, Renderer};
@@ -24,9 +24,7 @@ use thiserror::Error;
 #[path = "pipeline/upload_tests.rs"]
 mod upload_tests;
 
-pub use super::planes::{
-    FramePlaneView, Nv12Planes, RgbaPlanes, StridedYuv420pPlanes, Yuv420pPlanes,
-};
+pub use super::planes::{FramePlaneView, Nv12Planes, StridedYuv420pPlanes, Yuv420pPlanes};
 
 /// Errors from the stitch pipeline. `Clone + Send + Sync` so consumers
 /// posting results to worker threads can carry the typed error.
@@ -83,6 +81,7 @@ pub(crate) struct StitchPipeline {
     source_sizes: Vec<(u32, u32)>,
     /// Weak identity keeps allocations distinct without retaining decoded pixels. `Arc::make_mut` dissociates weak references, so edited images upload again.
     uploaded: Vec<Option<UploadedImage>>,
+    preview: super::preview::PreviewStorage,
 }
 
 #[derive(Clone)]
@@ -186,6 +185,7 @@ impl StitchPipeline {
             viewport_size,
             renderer,
             uploaded: vec![None; source_sizes.len()],
+            preview: Default::default(),
             source_sizes,
         })
     }
@@ -287,15 +287,7 @@ impl StitchPipeline {
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
         self.check_inputs(groups.len(), InputFormat::Nv12)?;
-        for (camera, group) in groups.iter().enumerate() {
-            self.renderer.set_camera_bind_group(camera, group.clone());
-        }
-        self.render_to_target_gpu(pose)
-    }
-
-    /// Release imported textures before returning to host-backed input.
-    pub(crate) fn clear_imported_bind_groups(&mut self) {
-        self.renderer.clear_imported_bind_groups();
+        Ok(self.draw_batch(Some(groups), pose, self.renderer.source_color()))
     }
 
     /// Render camera-ordered Y/UV views without uploading or retaining input bindings for later frames.
@@ -304,24 +296,6 @@ impl StitchPipeline {
         cameras: &[(&wgpu::TextureView, &wgpu::TextureView)],
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
-        self.bind_imported_views(cameras)?;
-        use super::color::YuvSampleFormat;
-        use wgpu::TextureFormat;
-        let samples = match cameras[0].0.texture().format() {
-            TextureFormat::P010 | TextureFormat::R16Unorm => YuvSampleFormat::P010,
-            _ => YuvSampleFormat::Unorm8,
-        };
-        let previous_samples = self.renderer.set_sample_format(samples);
-        let result = self.render_to_target_gpu(pose);
-        self.renderer.set_sample_format(previous_samples);
-        self.clear_imported_bind_groups();
-        result
-    }
-
-    fn bind_imported_views(
-        &mut self,
-        cameras: &[(&wgpu::TextureView, &wgpu::TextureView)],
-    ) -> Result<(), PipelineError> {
         self.check_inputs(cameras.len(), InputFormat::Nv12)?;
         // Validate every backing allocation before changing any camera binding.
         for (camera, (&(y, uv), &(width, height))) in
@@ -354,13 +328,26 @@ impl StitchPipeline {
                 });
             }
         }
-        for (camera, &(y, uv)) in cameras.iter().enumerate() {
-            let group = self
-                .renderer
-                .create_bind_group_from_views(y, uv, "imported_camera");
-            self.renderer.set_camera_bind_group(camera, group);
-        }
-        Ok(())
+        let groups: Vec<_> = cameras
+            .iter()
+            .map(|&(y, uv)| {
+                self.renderer
+                    .create_bind_group_from_views(y, uv, "imported_camera")
+            })
+            .collect();
+        use super::color::{YuvColor, YuvSampleFormat};
+        let samples = match cameras[0].0.texture().format() {
+            wgpu::TextureFormat::P010 | wgpu::TextureFormat::R16Unorm => YuvSampleFormat::P010,
+            _ => YuvSampleFormat::Unorm8,
+        };
+        Ok(self.draw_batch(
+            Some(&groups),
+            pose,
+            YuvColor {
+                samples,
+                ..self.renderer.source_color()
+            },
+        ))
     }
 
     /// Process a CPU-resident frame set and return the render command buffer.
@@ -390,7 +377,6 @@ impl StitchPipeline {
         match frames {
             FrameSet::Yuv420p(cams) => {
                 self.check_inputs(cams.len(), InputFormat::Yuv420p)?;
-                self.renderer.clear_imported_bind_groups();
                 for (camera, data) in cams.iter().enumerate() {
                     let identity = Arc::downgrade(data);
                     if matches!(&self.uploaded[camera], Some(UploadedImage::Yuv420p(old)) if old.ptr_eq(&identity))
@@ -407,7 +393,6 @@ impl StitchPipeline {
             }
             FrameSet::Nv12(cams) => {
                 self.check_inputs(cams.len(), InputFormat::Nv12)?;
-                self.renderer.clear_imported_bind_groups();
                 for (camera, data) in cams.iter().enumerate() {
                     let identity = Arc::downgrade(data);
                     if matches!(&self.uploaded[camera], Some(UploadedImage::Nv12(old)) if old.ptr_eq(&identity))
@@ -448,26 +433,45 @@ impl StitchPipeline {
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
         self.check_inputs(cameras.len(), InputFormat::Nv12)?;
         self.uploaded.fill(None);
-        self.renderer.clear_imported_bind_groups();
         for (camera, data) in cameras.iter().enumerate() {
             self.renderer.upload_nv12(&self.gpu, camera, data)?;
         }
         self.render_to_target_gpu(pose)
     }
 
-    /// Render a frame directly to a texture view (for window display).
-    ///
-    /// Unlike the encode path, this does NOT read back to CPU — the result
-    /// stays on the GPU and is presented to the surface.
-    pub fn render_to_view(
+    pub(crate) fn prepare_preview_frame(
         &mut self,
-        frames: &crate::source::FrameSet,
+        frames: crate::source::FrameSet,
+        color: super::color::YuvColor,
+        rotations: [i32; 2],
+    ) -> Result<super::preview::PreviewFrame, PipelineError> {
+        self.preview
+            .prepare(&self.gpu, &self.source_sizes, frames, color, rotations)
+    }
+
+    #[cfg(test)]
+    pub(super) fn preview_plane_transfers(&self) -> usize {
+        self.preview.plane_transfers
+    }
+
+    pub(crate) fn draw_preview(
+        &self,
+        frame: &super::preview::PreviewFrame,
         pose: RenderPose,
-        target_view: &wgpu::TextureView,
-    ) -> Result<wgpu::SubmissionIndex, PipelineError> {
-        self.validate_target(target_view)?;
-        self.upload_frame_set(frames)?;
-        Ok(self.render_bound_to_view(pose, target_view))
+        target: Option<&wgpu::TextureView>,
+    ) -> Result<wgpu::CommandBuffer, PipelineError> {
+        frame.validate(self.gpu.device(), &self.source_sizes)?;
+        if let Some(view) = target {
+            self.validate_target(view)?;
+        }
+        Ok(self.renderer.draw_bound(
+            &self.gpu,
+            self.scene.as_ref(),
+            &self.calibration,
+            pose,
+            target,
+            |i| frame.camera(i),
+        ))
     }
 
     fn validate_target(&self, view: &wgpu::TextureView) -> Result<(), PipelineError> {
@@ -491,89 +495,6 @@ impl StitchPipeline {
         Ok(())
     }
 
-    fn render_bound_to_view(
-        &self,
-        pose: RenderPose,
-        target_view: &wgpu::TextureView,
-    ) -> wgpu::SubmissionIndex {
-        self.renderer.render_to_view(
-            &self.gpu,
-            self.scene.as_ref(),
-            &self.calibration,
-            pose,
-            self.viewport_size.aspect_ratio(),
-            self.calibration.projection.blend_width(),
-            target_view,
-        )
-    }
-
-    /// Render a frame to the internal render target without CPU readback.
-    ///
-    /// Uploads YUV planes and returns the render `CommandBuffer` without
-    /// submitting. The caller must submit it (typically together with NV12
-    /// conversion commands via the NV12 converter).
-    #[cfg_attr(
-        feature = "profiling",
-        tracing::instrument(skip_all, name = "render_to_target")
-    )]
-    pub fn render_to_target(
-        &mut self,
-        left: &Yuv420pPlanes<'_>,
-        right: &Yuv420pPlanes<'_>,
-        pose: RenderPose,
-    ) -> Result<wgpu::CommandBuffer, PipelineError> {
-        let Some(scene) = &self.scene else {
-            return Err(PipelineError::NoPlaneScene);
-        };
-        self.uploaded.fill(None);
-        self.renderer.clear_imported_bind_groups();
-        self.renderer
-            .upload_left_yuv(&self.gpu, left.y, left.u, left.v)?;
-        self.renderer
-            .upload_right_yuv(&self.gpu, right.y, right.u, right.v)?;
-
-        Ok(self.renderer.render_to_target(
-            &self.gpu,
-            Some(scene),
-            &self.calibration,
-            pose,
-            self.calibration.projection.blend_width(),
-        ))
-    }
-
-    /// Upload packed RGBA frames and render to the internal target.
-    ///
-    /// Expects each plane as `width * height * 4` bytes in (R, G, B, A) byte
-    /// order. Use [`RgbaPlanes::from_bgra_swizzle_into`] when the source
-    /// is BGRA. Requires the pipeline to be initialized with
-    /// [`InputFormat::Rgba`](crate::render::renderer::InputFormat#variant.Rgba).
-    #[cfg_attr(
-        feature = "profiling",
-        tracing::instrument(skip_all, name = "render_to_target_rgba")
-    )]
-    pub fn render_to_target_rgba(
-        &mut self,
-        left: &RgbaPlanes<'_>,
-        right: &RgbaPlanes<'_>,
-        pose: RenderPose,
-    ) -> Result<wgpu::CommandBuffer, PipelineError> {
-        let Some(scene) = &self.scene else {
-            return Err(PipelineError::NoPlaneScene);
-        };
-        self.uploaded.fill(None);
-        self.renderer.clear_imported_bind_groups();
-        self.renderer.upload_left_rgba(&self.gpu, left.rgba)?;
-        self.renderer.upload_right_rgba(&self.gpu, right.rgba)?;
-
-        Ok(self.renderer.render_to_target(
-            &self.gpu,
-            Some(scene),
-            &self.calibration,
-            pose,
-            self.calibration.projection.blend_width(),
-        ))
-    }
-
     /// Render from GPU-resident RGBA textures (e.g. Bayer demosaic output).
     ///
     /// Copies source textures into the input planes, then renders the
@@ -590,7 +511,6 @@ impl StitchPipeline {
             return Err(PipelineError::NoPlaneScene);
         }
         self.uploaded.fill(None);
-        self.renderer.clear_imported_bind_groups();
 
         // Copy demosaiced textures into stitch pipeline input planes
         let mut copy_encoder =
@@ -622,13 +542,25 @@ impl StitchPipeline {
         &self,
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
-        Ok(self.renderer.render_to_target(
+        Ok(self
+            .renderer
+            .render_to_target(&self.gpu, self.scene.as_ref(), &self.calibration, pose))
+    }
+
+    fn draw_batch(
+        &self,
+        groups: Option<&[wgpu::BindGroup]>,
+        pose: RenderPose,
+        color: super::color::YuvColor,
+    ) -> wgpu::CommandBuffer {
+        self.renderer.draw_batch(
             &self.gpu,
             self.scene.as_ref(),
             &self.calibration,
             pose,
-            self.calibration.projection.blend_width(),
-        ))
+            groups,
+            color,
+        )
     }
 
     /// Enable 180-degree UV flip for the GPU zero-copy path.

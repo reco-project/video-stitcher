@@ -9,6 +9,8 @@ pub mod nv12_cpu;
 pub mod pipeline;
 pub mod planes;
 #[cfg(feature = "gpu")]
+pub(crate) mod preview;
+#[cfg(feature = "gpu")]
 pub mod renderer;
 pub mod viewport;
 
@@ -74,7 +76,7 @@ mod tests {
     use super::strip_srgb;
 
     #[test]
-    fn shared_sampling_shader_runs_in_both_lens_consumers() {
+    fn shared_sampling_shader_runs_in_gpu_undistort() {
         let Some(gpu) = crate::stitch::test_support::gpu_or_skip() else {
             return;
         };
@@ -85,26 +87,6 @@ mod tests {
         let output = undistort.undistort(&gpu, &y, &chroma, &chroma, &lens);
         assert_eq!(output.len(), 32 * 16 * 4);
         assert!(output.chunks_exact(4).any(|p| p[0] > 100));
-        let preview = crate::lens::preview::LensPreviewRenderer::new(
-            &gpu,
-            32,
-            16,
-            wgpu::TextureFormat::Rgba8Unorm,
-        );
-        let texture = preview.render_yuv(
-            &gpu,
-            &super::planes::Yuv420pPlanes {
-                y: &y,
-                u: &chroma,
-                v: &chroma,
-            },
-            &lens,
-            Default::default(),
-        );
-        gpu.device
-            .poll(wgpu::PollType::wait_indefinitely())
-            .unwrap();
-        assert_eq!((texture.width(), texture.height()), (32, 16));
     }
 
     #[test]

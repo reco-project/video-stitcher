@@ -42,6 +42,9 @@ mod resize;
 mod submission_tests;
 pub mod types;
 
+#[cfg(feature = "gpu")]
+pub use crate::render::preview::PreviewFrame;
+
 use std::time::{Duration, Instant};
 
 use crate::calibration::Calibration;
@@ -1082,20 +1085,25 @@ mod tests {
             )))
             .unwrap()
         };
-        let frames = FrameSet::Nv12(
-            (0..2)
-                .map(|camera| {
-                    let (y, uv) = nv12(64, 32, camera * 30);
-                    Nv12Data {
-                        size: (64, 32),
-                        y,
-                        uv,
-                    }
-                    .into()
-                })
-                .collect(),
-        );
+        let frames = || {
+            FrameSet::Nv12(
+                (0..2)
+                    .map(|camera| {
+                        let (y, uv) = nv12(64, 32, camera * 30);
+                        Nv12Data {
+                            size: (64, 32),
+                            y,
+                            uv,
+                        }
+                        .into()
+                    })
+                    .collect(),
+            )
+        };
         let mut resized = create(80, 48);
+        let frame = resized
+            .prepare_preview_frame(frames(), Default::default(), [0; 2])
+            .unwrap();
         for (width, height) in [(80, 48), (81, 49), (48, 80), (256, 144), (80, 48)] {
             resized.resize_preview(width, height).unwrap();
             let mut fresh = create(width, height);
@@ -1105,8 +1113,8 @@ mod tests {
                     pitch: 0.05,
                     fov_degrees: 50.0,
                 };
-                let actual = resized.render_and_readback_nv12(&frames, pose).unwrap();
-                let expected = fresh.render_and_readback_nv12(&frames, pose).unwrap();
+                let actual = resized.render_and_readback_nv12(&frame, pose).unwrap();
+                let expected = fresh.render_and_readback_nv12(&frame, pose).unwrap();
                 assert!(actual == expected, "{width}x{height}, step {step}");
                 if let Some(bytes) = actual {
                     assert_eq!(bytes.len(), ((width & !3) * (height & !1) * 3 / 2) as usize);
@@ -1119,7 +1127,7 @@ mod tests {
         resized.resize_preview(80, 48).unwrap();
         assert!(
             resized
-                .render_and_readback_nv12(&frames, RenderPose::default())
+                .render_and_readback_nv12(&frame, RenderPose::default())
                 .unwrap()
                 .is_none()
         );
