@@ -860,3 +860,147 @@ fn network_form_edits_camera_rows_and_keeps_cancellation_visible() {
     key(&app, slint::platform::Key::Escape);
     assert!(!app.get_network_dialog_open());
 }
+
+#[test]
+fn update_release_url_validates_tags_and_version_ordering() {
+    assert_eq!(
+        super::update_release_url("v0.6.0").as_deref(),
+        Some("https://github.com/reco-project/video-stitcher/releases/tag/v0.6.0")
+    );
+    assert_eq!(
+        super::update_release_url(" 1.2.3-rc.1+build_4 ").as_deref(),
+        Some("https://github.com/reco-project/video-stitcher/releases/tag/1.2.3-rc.1+build_4")
+    );
+    for invalid in [
+        "",
+        "   ",
+        ".v1.0.0",
+        "-v1.0.0",
+        "../evil",
+        "v1.0.0/../evil",
+        "v1.0.0/extra",
+        "v1.0.0?foo=bar",
+        "v1.0.0#frag",
+        "v1.0.0 extra",
+    ] {
+        assert_eq!(
+            super::update_release_url(invalid),
+            None,
+            "expected invalid tag {invalid:?} to be rejected"
+        );
+    }
+
+    assert!(super::is_newer_release_tag("v0.6.0", "0.5.4"));
+    assert!(!super::is_newer_release_tag("v0.5.4", "0.5.4"));
+    assert!(!super::is_newer_release_tag("v0.5.3", "0.5.4"));
+    assert!(!super::is_newer_release_tag("v99.0.0-foo/../evil", "0.5.4"));
+}
+
+#[test]
+fn update_toolbar_button_replaces_auto_open_and_opens_release_on_click() {
+    use std::cell::RefCell;
+    use std::sync::Mutex;
+
+    let (app, window) = workspace();
+    app.set_files_loaded(true);
+
+    let opened: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+    let opened_ref = Rc::clone(&opened);
+    super::install_open_update_page_handler(&app, move |url| {
+        opened_ref.borrow_mut().push(url.to_string());
+    });
+
+    let exports = Rc::new(Cell::new(0));
+    let export_count = exports.clone();
+    app.on_open_export_dialog(move || export_count.set(export_count.get() + 1));
+
+    // Initial unavailable state: button hidden, callback is a no-op.
+    assert!(!app.get_update_available());
+    assert_eq!(app.get_update_tag(), "");
+    app.invoke_open_update_page();
+    assert!(opened.borrow().is_empty());
+
+    let mut toasts = super::toast::ToastManager::default();
+
+    // Malformed tag from background check is ignored without flipping UI state.
+    let invalid_pending = Mutex::new(Some("v9.0.0/../evil".to_string()));
+    assert!(!super::apply_pending_update(
+        &invalid_pending,
+        &mut toasts,
+        &app
+    ));
+    assert!(!app.get_update_available());
+    assert_eq!(app.get_toasts().row_count(), 0);
+    assert!(opened.borrow().is_empty());
+
+    // Valid newer release sets toolbar state and pushes a toast without auto-opening a browser.
+    let pending = Mutex::new(Some("v0.99.0".to_string()));
+    assert!(super::apply_pending_update(&pending, &mut toasts, &app));
+    assert!(
+        opened.borrow().is_empty(),
+        "detecting an update must not auto-open a browser"
+    );
+    assert!(app.get_update_available());
+    assert_eq!(app.get_update_tag(), "v0.99.0");
+    assert_eq!(app.get_toasts().row_count(), 1);
+    let toast = app.get_toasts().row_data(0).unwrap();
+    assert_eq!(toast.title, "Update available: v0.99.0");
+    assert!(toast.body.contains("Update available"));
+
+    // Subsequent poll ticks are idempotent once the pending tag is consumed.
+    assert!(!super::apply_pending_update(&pending, &mut toasts, &app));
+    assert_eq!(app.get_toasts().row_count(), 1);
+
+    // Dismissing the toast keeps the toolbar button available.
+    toasts.dismiss(toast.id);
+    super::toast::sync_to_ui(&toasts, &app);
+    assert_eq!(app.get_toasts().row_count(), 0);
+    assert!(app.get_update_available());
+
+    // Verify toolbar rendering and clickability at normal and minimum window widths.
+    for (i, (width, height, update_x)) in [(1280, 820, 1110.0), (720, 600, 560.0)]
+        .into_iter()
+        .enumerate()
+    {
+        app.set_update_available(false);
+        let without_button = draw(&window, width, height);
+        app.set_update_available(true);
+        let with_button = draw(&window, width, height);
+
+        let toolbar_pixels = (width * 62) as usize;
+        let changed = without_button[..toolbar_pixels]
+            .iter()
+            .zip(&with_button[..toolbar_pixels])
+            .filter(|(a, b)| a != b)
+            .count();
+        assert!(
+            changed > 500,
+            "update button did not render in toolbar at {width}x{height} (changed={changed})"
+        );
+
+        click(&app, update_x, 30.0);
+        assert_eq!(
+            opened.borrow().len(),
+            i + 1,
+            "clicking update button at ({update_x}, 30) did not open release page at {width}x{height}"
+        );
+        assert_eq!(
+            opened.borrow().last().unwrap(),
+            "https://github.com/reco-project/video-stitcher/releases/tag/v0.99.0"
+        );
+
+        // Export button stays reachable right after the update button.
+        click(&app, width as f32 - 55.0, 30.0);
+        assert_eq!(
+            exports.get(),
+            i + 1,
+            "Export button became unreachable with update button visible at {width}x{height}"
+        );
+    }
+
+    // Returning to unavailable state prevents opening even if tag remains populated.
+    app.set_update_available(false);
+    let before = opened.borrow().len();
+    app.invoke_open_update_page();
+    assert_eq!(opened.borrow().len(), before);
+}

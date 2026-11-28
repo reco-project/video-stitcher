@@ -171,6 +171,11 @@ export component RecoApp inherits Window {
     in-out property <bool> ai-available: false;
 
     in-out property <string> version: "";
+    // Set once the background update-check thread finds a newer GitHub
+    // release; drives the toolbar's "Update available" button instead of
+    // auto-opening a browser tab (see `open-update-page` below).
+    in-out property <bool> update-available: false;
+    in-out property <string> update-tag: "";
     in-out property <string> last-output-path: "";
 
     // Lens information from the latest fit or manual selection.
@@ -340,6 +345,7 @@ export component RecoApp inherits Window {
     callback pick-prefs-model();
     callback open-website();
     callback open-forum();
+    callback open-update-page();
     in-out property <bool> prefs-telemetry-enabled: false;
     in-out property <bool> prefs-dark-mode: true;
     // Export dialog actions.
@@ -582,6 +588,17 @@ export component RecoApp inherits Window {
                         quiet: true;
                         clicked => {
                             root.open-prefs-dialog();
+                        }
+                    }
+
+                    // Appears once the background version check finds a newer
+                    // release; clicking opens the download page instead of
+                    // auto-opening a browser tab unasked.
+                    if root.update-available && root.update-tag != "": Button {
+                        text: root.width > 860px ? "Update available (" + root.update-tag + ")" : "Update (" + root.update-tag + ")";
+                        description: "Open download page for update " + root.update-tag;
+                        clicked => {
+                            root.open-update-page();
                         }
                     }
 

@@ -1696,20 +1696,15 @@ fn main() -> anyhow::Result<()> {
                 && let Ok(body) = resp.body_mut().read_to_string()
                 && let Ok(json) = serde_json::from_str::<serde_json::Value>(&body)
                 && let Some(tag) = json["tag_name"].as_str()
+                && is_newer_release_tag(tag, current)
             {
-                let latest = tag.trim_start_matches('v');
-                let parse_ver = |s: &str| -> Option<Vec<u64>> {
-                    s.split(&['.', '-'][..])
-                        .take(3)
-                        .map(|p| p.parse().ok())
-                        .collect()
-                };
-                let is_newer = parse_ver(latest)
-                    .zip(parse_ver(current))
-                    .is_some_and(|(l, c)| l > c);
-                if is_newer {
-                    log::info!("Update available: {current} -> {latest}");
-                    *result.lock().unwrap() = Some(tag.to_string());
+                let tag = tag.trim();
+                log::info!(
+                    "Update available: {current} -> {}",
+                    tag.trim_start_matches('v')
+                );
+                if let Ok(mut guard) = result.lock() {
+                    *guard = Some(tag.to_string());
                 }
             }
         });
@@ -2431,6 +2426,15 @@ fn main() -> anyhow::Result<()> {
 
     app.on_open_forum(|| {
         let _ = open::that("https://forum.reco-project.org/");
+    });
+
+    // User-initiated via the toolbar button (`update-available` in main.slint)
+    // rather than auto-opening a browser tab when the background version check
+    // finds a newer release.
+    install_open_update_page_handler(&app, |url| {
+        if let Err(e) = open::that(url) {
+            log::warn!("Failed to open update page {url}: {e}");
+        }
     });
 
     let app_weak = app.as_weak();
@@ -3629,18 +3633,10 @@ fn main() -> anyhow::Result<()> {
             }
 
             // Check for update notification from the background thread.
-            if let Ok(mut guard) = update_check.try_lock()
-                && let Some(tag) = guard.take()
-                && let Some(app) = app_weak.upgrade()
-            {
-                s.toasts.push_with_ttl(
-                    Severity::Info,
-                    format!("Update available: {tag}"),
-                    "Download it from the project website under Help.",
-                    Duration::from_secs(30),
-                );
-                log::info!("Toast pushed for update {tag}");
-                crate::toast::sync_to_ui(&s.toasts, &app);
+            // Surfaced as a toolbar button (`update-available`/`update-tag`)
+            // and toast notification rather than auto-opening a browser tab.
+            if let Some(app) = app_weak.upgrade() {
+                apply_pending_update(&update_check, &mut s.toasts, &app);
             }
 
             // Poll for calibration results from the background thread.
@@ -4388,4 +4384,96 @@ fn handle_calibration_result(
             }
         }
     }
+}
+
+const RELEASES_TAG_BASE_URL: &str = "https://github.com/reco-project/video-stitcher/releases/tag";
+
+/// Validate a GitHub release tag and build its release page URL.
+///
+/// Rejects empty tags, path traversal, and characters outside the safe ASCII
+/// tag alphabet so user-initiated browser opens cannot navigate to unexpected
+/// URLs.
+fn update_release_url(tag: &str) -> Option<String> {
+    let tag = tag.trim();
+    let valid = !tag.is_empty()
+        && tag.as_bytes()[0].is_ascii_alphanumeric()
+        && !tag.contains("..")
+        && tag
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_' | b'+'));
+    valid.then(|| format!("{RELEASES_TAG_BASE_URL}/{tag}"))
+}
+
+/// Return `true` when `tag` is a valid release tag strictly newer than `current`.
+fn is_newer_release_tag(tag: &str, current: &str) -> bool {
+    if update_release_url(tag).is_none() {
+        return false;
+    }
+    let latest = tag.trim().trim_start_matches('v');
+    let parse_ver = |s: &str| -> Option<Vec<u64>> {
+        s.split(&['.', '-'][..])
+            .take(3)
+            .map(|p| p.parse().ok())
+            .collect()
+    };
+    parse_ver(latest)
+        .zip(parse_ver(current))
+        .is_some_and(|(l, c)| l > c)
+}
+
+/// Apply a pending update tag from the background checker to the toolbar button
+/// and toast stack without auto-opening a browser.
+fn apply_pending_update(
+    update_check: &Mutex<Option<String>>,
+    toasts: &mut ToastManager,
+    app: &RecoApp,
+) -> bool {
+    let Ok(mut guard) = update_check.try_lock() else {
+        return false;
+    };
+    let Some(tag) = guard.take() else {
+        return false;
+    };
+    let tag = tag.trim();
+    if update_release_url(tag).is_none() {
+        log::warn!("Ignoring invalid update release tag: {tag:?}");
+        return false;
+    }
+    toasts.push_with_ttl(
+        Severity::Info,
+        format!("Update available: {tag}"),
+        "Click \"Update available\" in the toolbar to open the download page.",
+        Duration::from_secs(30),
+    );
+    log::info!("Toast pushed for update {tag}");
+    crate::toast::sync_to_ui(toasts, app);
+    app.set_update_available(true);
+    app.set_update_tag(tag.into());
+    true
+}
+
+/// Wire the toolbar's `open-update-page` callback to open the validated release
+/// URL via `open_url` only while an update is marked available.
+fn install_open_update_page_handler<F>(app: &RecoApp, mut open_url: F)
+where
+    F: FnMut(&str) + 'static,
+{
+    let app_weak = app.as_weak();
+    app.on_open_update_page(move || {
+        let Some(app) = app_weak.upgrade() else {
+            return;
+        };
+        if !app.get_update_available() {
+            return;
+        }
+        let tag = app.get_update_tag();
+        let Some(url) = update_release_url(tag.as_str()) else {
+            log::warn!(
+                "Cannot open update page for invalid tag: {:?}",
+                tag.as_str()
+            );
+            return;
+        };
+        open_url(&url);
+    });
 }
