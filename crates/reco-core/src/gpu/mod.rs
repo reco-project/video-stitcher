@@ -113,9 +113,9 @@ pub struct LookaheadMemoryBudget {
 ///
 /// Headless consumers create this with [`GpuContext::new`]. Windowed
 /// consumers that need surface compatibility use [`GpuContext::for_surface`].
-/// Cloning a `GpuContext` shares the same GPU device and queue (wgpu types
-/// are internally reference-counted). No GPU resources are duplicated.
-/// Multiple pipelines on a cloned context share the same command queue.
+/// The context retains the instance and adapter that created its device so
+/// windowed renderers can use the same handles. Clones share those handles
+/// and the command queue without allocating GPU resources.
 #[derive(Clone)]
 pub struct GpuContext {
     /// The wgpu device handle.
@@ -124,26 +124,21 @@ pub struct GpuContext {
     pub(crate) queue: wgpu::Queue,
     /// Information about the selected adapter.
     pub(crate) adapter_info: wgpu::AdapterInfo,
-    /// The wgpu adapter, retained for backend-specific queries such as the
-    /// DXGI VRAM budget on Windows. `None` when the context is built from an
-    /// externally-owned device ([`Self::from_device_queue`]), which has no
-    /// adapter handle. Only read on Windows (DXGI budget query).
-    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
-    pub(crate) adapter: Option<wgpu::Adapter>,
+    instance: wgpu::Instance,
+    adapter: wgpu::Adapter,
 }
 
 impl GpuContext {
-    /// Initialize a GPU context, selecting the best available adapter.
+    /// Initialize a GPU context using the platform backend policy.
     ///
-    /// Requests a device with default limits and no required features beyond
-    /// what `wgpu` provides by default. This works on all target platforms
-    /// including headless environments (Jetson, CI).
+    /// Enables supported optional video texture formats and clamps device
+    /// limits to the adapter's capabilities.
     ///
     /// # Errors
     ///
-    /// Returns [`GpuError::NoAdapter`] if no compatible GPU is found.
+    /// Returns an error if adapter selection or device creation fails.
     pub async fn new() -> Result<Self, GpuError> {
-        Self::with_surface(None).await
+        Self::request(Self::create_instance(), None).await
     }
 
     /// Blocking convenience wrapper for [`Self::new`].
@@ -155,37 +150,49 @@ impl GpuContext {
     ///
     /// # Errors
     ///
-    /// Returns [`GpuError::NoAdapter`] if no compatible GPU is found.
+    /// Returns an error if adapter selection or device creation fails.
     pub fn new_blocking() -> Result<Self, GpuError> {
         pollster::block_on(Self::new())
     }
 
-    /// Initialize a GPU context with an optional compatible surface.
-    ///
-    /// When a surface is provided, the adapter selection will prefer GPUs
-    /// that can present to that surface (needed for windowed rendering).
-    ///
-    /// Respects `WGPU_BACKEND` environment variable for backend selection.
-    /// On Windows, tries DX12 first if no backend is specified (Vulkan
-    /// drivers on some AMD iGPUs crash during instance creation).
-    pub async fn with_surface(surface: Option<&wgpu::Surface<'_>>) -> Result<Self, GpuError> {
+    fn create_instance() -> wgpu::Instance {
         let backends = Self::select_backends();
-        log::debug!("wgpu backends: {:?}", backends);
-
-        let desc = wgpu::InstanceDescriptor {
+        log::debug!("wgpu backends: {backends:?}");
+        wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends,
             ..Default::default()
-        };
-        let instance = wgpu::Instance::new(&desc);
+        })
+    }
 
-        let adapter = instance
+    async fn request_adapter(
+        instance: &wgpu::Instance,
+        surface: Option<&wgpu::Surface<'_>>,
+    ) -> Result<wgpu::Adapter, GpuError> {
+        Ok(instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 force_fallback_adapter: false,
                 compatible_surface: surface,
             })
-            .await?;
+            .await?)
+    }
 
+    async fn request(
+        instance: wgpu::Instance,
+        surface: Option<&wgpu::Surface<'_>>,
+    ) -> Result<Self, GpuError> {
+        let adapter = Self::request_adapter(&instance, surface).await?;
+        let limits = wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits());
+        Self::from_adapter(instance, adapter, limits).await
+    }
+
+    /// Request a device with the supported video texture features and limits
+    /// capped at what the adapter exposes.
+    async fn from_adapter(
+        instance: wgpu::Instance,
+        adapter: wgpu::Adapter,
+        limits: wgpu::Limits,
+    ) -> Result<Self, GpuError> {
         let adapter_info = adapter.get_info();
         log::info!(
             "Selected GPU: {} ({:?})",
@@ -193,72 +200,39 @@ impl GpuContext {
             adapter_info.backend
         );
 
-        // Request 16-bit texture formats for 10-bit video (P010) if the
-        // adapter supports it. Not all backends do (e.g. GL on RPi5).
-        let mut features = wgpu::Features::empty();
-        if adapter
-            .features()
-            .contains(wgpu::Features::TEXTURE_FORMAT_16BIT_NORM)
-        {
-            features |= wgpu::Features::TEXTURE_FORMAT_16BIT_NORM;
-        } else {
+        let features = video_texture_features(adapter.features());
+        if !features.contains(wgpu::Features::TEXTURE_FORMAT_16BIT_NORM) {
             log::warn!(
                 "GPU does not support 16-bit texture formats (TEXTURE_FORMAT_16BIT_NORM). \
                  10-bit video input (P010/HEVC) will not be available."
             );
         }
-        if adapter
-            .features()
-            .contains(wgpu::Features::TEXTURE_FORMAT_NV12)
-        {
-            features |= wgpu::Features::TEXTURE_FORMAT_NV12;
-        }
-        // P010 is only needed on Windows (D3D11VA imports 10-bit as a single
-        // P010 texture). Metal uses per-plane R16Unorm/Rg16Unorm instead.
-        #[cfg(target_os = "windows")]
-        if adapter
-            .features()
-            .contains(wgpu::Features::TEXTURE_FORMAT_P010)
-        {
-            features |= wgpu::Features::TEXTURE_FORMAT_P010;
-        }
-
-        log::debug!("Requesting device with features: {:?}", features);
-        let (device, queue) = Self::request_device_with_fallback(&adapter, features).await?;
-        log::debug!("Device created successfully");
-
-        Ok(Self {
-            device,
-            queue,
-            adapter_info,
-            adapter: Some(adapter),
-        })
-    }
-
-    /// Request a device, clamping requested limits to what the adapter
-    /// actually supports.
-    ///
-    /// `downlevel_defaults()` can exceed what embedded GPUs report (e.g.
-    /// Some embedded GPUs support `max_compute_workgroup_size_y = 128`
-    /// but `downlevel_defaults` asks for 256). We take the minimum of
-    /// our desired defaults and the adapter's reported limits for each
-    /// field, ensuring we never ask for more than the hardware offers.
-    async fn request_device_with_fallback(
-        adapter: &wgpu::Adapter,
-        features: wgpu::Features,
-    ) -> Result<(wgpu::Device, wgpu::Queue), wgpu::RequestDeviceError> {
-        let supported = adapter.limits();
-        let desired = wgpu::Limits::downlevel_defaults().using_resolution(supported.clone());
-        let clamped = clamp_limits(&desired, &supported);
-
-        adapter
+        log::debug!("Requesting device with features: {features:?}");
+        let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("reco"),
                 required_features: features,
-                required_limits: clamped,
+                required_limits: clamp_limits(&limits, &adapter.limits()),
                 ..Default::default()
             })
-            .await
+            .await?;
+        log::debug!("Device created successfully");
+
+        Ok(Self {
+            instance,
+            adapter,
+            adapter_info,
+            device,
+            queue,
+        })
+    }
+
+    /// Create a context with reduced limits to exercise consumer validation.
+    #[cfg(test)]
+    pub(crate) async fn with_test_limits(limits: wgpu::Limits) -> Result<Self, GpuError> {
+        let instance = Self::create_instance();
+        let adapter = Self::request_adapter(&instance, None).await?;
+        Self::from_adapter(instance, adapter, limits).await
     }
 
     /// Select wgpu backends based on environment and platform.
@@ -267,11 +241,7 @@ impl GpuContext {
     /// platform defaults: DX12 on Windows, Vulkan on Linux, Metal
     /// on macOS.
     ///
-    /// Public so windowed consumers (reco-gui, rig-calib) that let Slint
-    /// create the shared `wgpu::Instance` can apply the same policy via
-    /// `WGPUConfiguration::Automatic::backends`, instead of falling back to
-    /// Slint's own default (which tries Vulkan first on Windows and can hit
-    /// driver/loader bugs this function's platform defaults are chosen to avoid).
+    /// Use this policy when creating an instance before a window surface.
     pub fn select_backends() -> wgpu::Backends {
         if let Ok(val) = std::env::var("WGPU_BACKEND") {
             match val.to_lowercase().as_str() {
@@ -312,13 +282,15 @@ impl GpuContext {
 
     /// Initialize a GPU context for a windowed surface.
     ///
-    /// Creates a device compatible with the given surface and returns
-    /// the surface's preferred format and alpha modes. The caller is
-    /// responsible for creating the `wgpu::Instance` and `wgpu::Surface`
-    /// (since surface creation requires a platform window handle).
+    /// Uses the same video texture features and device limits as [`Self::new`],
+    /// while selecting an adapter that can present to the given surface.
+    /// The surface must belong to the supplied instance.
     ///
     /// ```rust,ignore
-    /// let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+    /// let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+    ///     backends: GpuContext::select_backends(),
+    ///     ..Default::default()
+    /// });
     /// let surface = instance.create_surface(window)?;
     /// let (gpu, surface_info) = GpuContext::for_surface(&instance, &surface).await?;
     /// ```
@@ -326,94 +298,13 @@ impl GpuContext {
         instance: &wgpu::Instance,
         surface: &wgpu::Surface<'_>,
     ) -> Result<(Self, SurfaceInfo), GpuError> {
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                force_fallback_adapter: false,
-                compatible_surface: Some(surface),
-            })
-            .await?;
-
-        let adapter_info = adapter.get_info();
-        log::info!(
-            "Selected GPU: {} ({:?})",
-            adapter_info.name,
-            adapter_info.backend
-        );
-
-        let caps = surface.get_capabilities(&adapter);
+        let ctx = Self::request(instance.clone(), Some(surface)).await?;
+        let caps = surface.get_capabilities(ctx.adapter());
         let surface_info = SurfaceInfo {
-            format: caps.formats[0],
+            format: caps.formats.first().copied().ok_or(GpuError::NoAdapter)?,
             alpha_modes: caps.alpha_modes,
         };
-
-        let mut features = wgpu::Features::empty();
-        if adapter
-            .features()
-            .contains(wgpu::Features::TEXTURE_FORMAT_16BIT_NORM)
-        {
-            features |= wgpu::Features::TEXTURE_FORMAT_16BIT_NORM;
-        } else {
-            log::warn!(
-                "GPU does not support 16-bit texture formats. \
-                 10-bit video input (P010/HEVC) will not be available."
-            );
-        }
-        if adapter
-            .features()
-            .contains(wgpu::Features::TEXTURE_FORMAT_NV12)
-        {
-            features |= wgpu::Features::TEXTURE_FORMAT_NV12;
-        }
-
-        log::debug!("Requesting device with features: {:?}", features);
-        let (device, queue) = Self::request_device_with_fallback(&adapter, features).await?;
-        log::debug!("Device created successfully");
-
-        let ctx = Self {
-            device,
-            queue,
-            adapter_info,
-            adapter: Some(adapter),
-        };
         Ok((ctx, surface_info))
-    }
-
-    /// Create a GPU context from an existing wgpu device, queue, and adapter info.
-    ///
-    /// Use this when another framework (egui, bevy, etc.) already owns the
-    /// GPU device and you want to share it with reco's stitching pipeline
-    /// instead of creating a second device.
-    ///
-    /// The `adapter_info` must come from the same adapter that created the
-    /// device, since pipeline features like zero-copy decode depend on the
-    /// reported backend.
-    ///
-    /// ```rust,ignore
-    /// // egui integration:
-    /// let render_state = cc.egui_ctx.render_state().unwrap();
-    /// let gpu = GpuContext::from_device_queue(
-    ///     render_state.device.clone(),
-    ///     render_state.queue.clone(),
-    ///     render_state.adapter.get_info(),
-    /// );
-    /// ```
-    pub fn from_device_queue(
-        device: wgpu::Device,
-        queue: wgpu::Queue,
-        adapter_info: wgpu::AdapterInfo,
-    ) -> Self {
-        log::info!(
-            "GpuContext from external device: {} ({:?})",
-            adapter_info.name,
-            adapter_info.backend
-        );
-        Self {
-            device,
-            queue,
-            adapter_info,
-            adapter: None,
-        }
     }
 
     /// The name of the selected GPU adapter (e.g. "NVIDIA GeForce RTX 5070").
@@ -454,11 +345,10 @@ impl GpuContext {
             if self.adapter_info.backend != wgpu::Backend::Dx12 {
                 return None;
             }
-            let adapter = self.adapter.as_ref()?;
             // SAFETY: downcast to the DX12 HAL adapter; the returned guard
-            // borrows `adapter` and lives until the end of this scope, so the
+            // borrows the adapter and lives until the end of this scope, so the
             // `&DxgiAdapter` from raw_adapter() stays valid for the query.
-            let hal_adapter = unsafe { adapter.as_hal::<wgpu::hal::api::Dx12>()? };
+            let hal_adapter = unsafe { self.adapter().as_hal::<wgpu::hal::api::Dx12>()? };
             let dxgi = hal_adapter.raw_adapter();
             let query = |group: DXGI_MEMORY_SEGMENT_GROUP| -> Option<(u64, u64)> {
                 let info = dxgi.query_video_memory_info(group).ok()?;
@@ -680,6 +570,16 @@ impl GpuContext {
         }
     }
 
+    /// Access the wgpu instance that selected this context's adapter.
+    pub fn instance(&self) -> &wgpu::Instance {
+        &self.instance
+    }
+
+    /// Access the wgpu adapter that created this context's device.
+    pub fn adapter(&self) -> &wgpu::Adapter {
+        &self.adapter
+    }
+
     /// Access the wgpu device handle.
     ///
     /// Windowed consumers need this for surface configuration.
@@ -692,6 +592,15 @@ impl GpuContext {
     pub fn queue(&self) -> &wgpu::Queue {
         &self.queue
     }
+}
+
+/// Enable only video formats supported by the adapter. Native P010 is
+/// needed for Windows D3D11VA imports. Other backends use 16-bit planes.
+fn video_texture_features(supported: wgpu::Features) -> wgpu::Features {
+    let formats = wgpu::Features::TEXTURE_FORMAT_16BIT_NORM | wgpu::Features::TEXTURE_FORMAT_NV12;
+    #[cfg(target_os = "windows")]
+    let formats = formats | wgpu::Features::TEXTURE_FORMAT_P010;
+    supported & formats
 }
 
 /// Clamp each limit field to what the adapter actually supports.
@@ -869,46 +778,44 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gpu_context_initializes() {
-        // This test requires a GPU. In CI (headless), it is expected to fail
-        // with NoAdapter or AdapterRequest — skip gracefully.
-        let result = pollster::block_on(GpuContext::new());
-        match result {
-            Ok(ctx) => {
-                assert!(!ctx.adapter_info.name.is_empty());
-                log::info!("GPU test passed: {}", ctx.adapter_info.name);
-            }
-            Err(GpuError::NoAdapter | GpuError::AdapterRequest(_)) => {
-                eprintln!("Skipping GPU test: no adapter available");
-            }
-            Err(e) => panic!("Unexpected GPU error: {e}"),
-        }
+    fn gpu_context_retains_the_selected_adapter_and_device_features() {
+        let Some(ctx) = crate::stitch::test_support::gpu_or_skip() else {
+            return;
+        };
+        assert_eq!(ctx.adapter_info, ctx.adapter().get_info());
+        assert_eq!(
+            ctx.device().features(),
+            video_texture_features(ctx.adapter().features())
+        );
+
+        let shared = ctx.clone();
+        assert_eq!(shared.instance(), ctx.instance());
+        assert_eq!(shared.adapter(), ctx.adapter());
+        assert_eq!(shared.device(), ctx.device());
+        assert_eq!(shared.queue(), ctx.queue());
     }
 
     #[test]
-    fn gpu_context_from_device_queue() {
-        // Create a normal context, then reconstruct from its parts.
-        let result = pollster::block_on(GpuContext::new());
-        let original = match result {
-            Ok(ctx) => ctx,
-            Err(GpuError::NoAdapter | GpuError::AdapterRequest(_)) => {
-                eprintln!("Skipping GPU test: no adapter available");
-                return;
-            }
-            Err(e) => panic!("Unexpected GPU error: {e}"),
+    fn video_texture_features_are_optional_and_platform_specific() {
+        use wgpu::Features;
+
+        assert_eq!(video_texture_features(Features::empty()), Features::empty());
+        for format in [
+            Features::TEXTURE_FORMAT_16BIT_NORM,
+            Features::TEXTURE_FORMAT_NV12,
+        ] {
+            assert_eq!(video_texture_features(format), format);
+        }
+        let p010 = Features::TEXTURE_FORMAT_P010;
+        let expected = if cfg!(target_os = "windows") {
+            p010
+        } else {
+            Features::empty()
         };
-
-        let name = original.gpu_name().to_owned();
-        let backend = original.backend_name().to_owned();
-        let info = original.adapter_info;
-
-        let reconstructed = GpuContext::from_device_queue(original.device, original.queue, info);
-
-        assert_eq!(reconstructed.gpu_name(), name);
-        assert_eq!(reconstructed.backend_name(), backend);
-        // Device and queue are valid (moved, not cloned)
-        let _ = reconstructed.device();
-        let _ = reconstructed.queue();
+        assert_eq!(
+            video_texture_features(p010 | Features::TIMESTAMP_QUERY),
+            expected
+        );
     }
 }
 

@@ -370,23 +370,16 @@ mod tests {
             yuv_converter::{YuvConvertError, YuvConverter},
         };
 
-        let Some(original) = crate::stitch::test_support::gpu_or_skip() else {
+        let limits = wgpu::Limits {
+            max_texture_dimension_2d: 128,
+            max_buffer_size: 8192,
+            max_storage_buffer_binding_size: 4096,
+            ..wgpu::Limits::downlevel_defaults()
+        };
+        let result = pollster::block_on(GpuContext::with_test_limits(limits));
+        let Some(gpu) = crate::stitch::test_support::gpu_result_or_skip(result) else {
             return;
         };
-        let adapter = original.adapter.as_ref().unwrap();
-        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("consumer with smaller buffer limits"),
-            required_limits: wgpu::Limits {
-                max_texture_dimension_2d: 128,
-                max_buffer_size: 8192,
-                max_storage_buffer_binding_size: 4096,
-                ..original.device.limits()
-            },
-            required_features: original.device.features(),
-            ..Default::default()
-        }))
-        .unwrap();
-        let gpu = GpuContext::from_device_queue(device, queue, adapter.get_info());
         for (width, height) in [(0, 2), (2, 0), (u32::MAX, 2), (2, u32::MAX), (64, 64)] {
             assert!(
                 matches!(

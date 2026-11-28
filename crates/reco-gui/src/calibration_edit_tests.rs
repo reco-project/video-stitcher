@@ -540,18 +540,8 @@ fn export_bookmark_matches_the_document_and_every_source_segment() {
 }
 
 fn decoded_gpu_state() -> AppState {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: reco_core::gpu::GpuContext::select_backends(),
-        ..Default::default()
-    });
-    let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
-    let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
     let mut state = AppState::new(Default::default());
-    state.shared_gpu = Some(SharedGpu {
-        device,
-        queue,
-        adapter_info: adapter.get_info(),
-    });
+    state.shared_gpu = Some(GpuContext::new_blocking().unwrap());
     let input =
         reco_io::InputPath::Single(std::env::var("RECO_PLAYBACK_TEST_VIDEO").unwrap().into());
     state.left_input = Some(input.clone());
@@ -968,41 +958,23 @@ fn editor_rolls_back_invalid_controls_and_keeps_preview_and_document_together() 
     assert!(app.get_is_l_shape());
     exercise_editor(&mut state, &app);
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: reco_core::gpu::GpuContext::select_backends(),
-        ..Default::default()
-    });
-    let adapter =
-        match pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
-        {
-            Ok(adapter) => adapter,
-            Err(error) => {
-                assert!(
-                    std::env::var("RECO_REQUIRE_GPU").is_err(),
-                    "GPU required: {error}"
-                );
-                eprintln!("Skipping GPU editor checks: {error}");
-                return;
-            }
-        };
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        required_limits: wgpu::Limits::downlevel_defaults(),
-        ..Default::default()
-    }))
-    .unwrap();
+    let gpu = match GpuContext::new_blocking() {
+        Ok(gpu) => gpu,
+        Err(
+            error @ (reco_core::gpu::GpuError::NoAdapter
+            | reco_core::gpu::GpuError::AdapterRequest(_)),
+        ) => {
+            assert!(
+                std::env::var("RECO_REQUIRE_GPU").is_err(),
+                "GPU required: {error}"
+            );
+            eprintln!("Skipping GPU editor checks: {error}");
+            return;
+        }
+        Err(error) => panic!("GPU init: {error}"),
+    };
     state.calibration = Some(calibration());
-    state.bridge = Some(
-        PreviewBridge::new(
-            device,
-            queue,
-            adapter.get_info(),
-            calibration(),
-            vec![(64, 36); 2],
-            64,
-            36,
-        )
-        .unwrap(),
-    );
+    state.bridge = Some(PreviewBridge::new(gpu, calibration(), vec![(64, 36); 2], 64, 36).unwrap());
     exercise_editor(&mut state, &app);
     if state.bridge.is_some() {
         exercise_pending_framing(&mut state, &app);

@@ -164,7 +164,13 @@ pub(crate) mod test_support {
     /// agreement tests).
     #[cfg(feature = "gpu")]
     pub fn gpu_or_skip() -> Option<GpuContext> {
-        match pollster::block_on(GpuContext::new()) {
+        gpu_result_or_skip(GpuContext::new_blocking())
+    }
+
+    /// Apply the same adapter availability rule to custom test contexts.
+    #[cfg(feature = "gpu")]
+    pub fn gpu_result_or_skip(result: Result<GpuContext, GpuError>) -> Option<GpuContext> {
+        match result {
             Ok(g) => Some(g),
             Err(GpuError::NoAdapter | GpuError::AdapterRequest(_)) => {
                 assert!(
