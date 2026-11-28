@@ -18,7 +18,7 @@
 //!   warning while the others continue (a live stream dropping while
 //!   the recording carries on).
 
-use crate::sink::{OutputFrame, OutputSink, PixelFormat, SinkError, SinkInput};
+use crate::sink::{DeliveryFormat, OutputFrame, OutputSink, SinkError, SinkInput};
 use crate::sink_thread::SinkThread;
 
 /// How the session hands frames to a sink.
@@ -131,20 +131,7 @@ impl AttachedSink {
         }
     }
 
-    fn deliver(
-        &mut self,
-        data: &[u8],
-        width: u32,
-        height: u32,
-        pts_us: Option<i64>,
-    ) -> Result<(), SinkError> {
-        let frame = OutputFrame {
-            data,
-            width,
-            height,
-            format: PixelFormat::Nv12,
-            pts_us,
-        };
+    fn deliver(&mut self, frame: OutputFrame<'_>) -> Result<(), SinkError> {
         match &mut self.runner {
             SinkRunner::Threaded(t) => t.submit(frame),
             SinkRunner::Inline(sink) => sink.consume(frame),
@@ -159,32 +146,33 @@ impl AttachedSink {
     }
 }
 
-/// Both render backends deliver NV12 host bytes to session sinks.
-pub(crate) fn validate_sink_input(wants: SinkInput, name: &str) -> Result<(), String> {
-    match wants {
-        SinkInput::CpuBytes(PixelFormat::Nv12) => Ok(()),
-        other => Err(format!(
-            "sink '{name}' wants {other:?}, but the session delivers \
-             NV12 CPU bytes only"
-        )),
+pub(crate) fn validate_sink_input(
+    delivery: DeliveryFormat,
+    wants: SinkInput,
+    name: &str,
+) -> Result<(), String> {
+    let provided = SinkInput::CpuBytes(delivery.pixel_format());
+    if wants == provided {
+        Ok(())
+    } else {
+        Err(format!(
+            "sink '{name}' wants {wants:?}, but the session delivers {provided:?}"
+        ))
     }
 }
 
-/// Fan one NV12 frame out to every attached sink, in attach order.
+/// Fan one packed frame out to every attached sink, in attach order.
 ///
 /// `pts_us` belongs to this image, not the current render submission.
 /// A sink error either propagates (Abort) or
 /// detaches that sink with a warning and keeps going (Detach).
 pub(crate) fn deliver_frame(
     sinks: &mut Vec<AttachedSink>,
-    data: &[u8],
-    width: u32,
-    height: u32,
-    pts_us: Option<i64>,
+    frame: OutputFrame<'_>,
 ) -> Result<(), SinkError> {
     let mut i = 0;
     while i < sinks.len() {
-        match sinks[i].deliver(data, width, height, pts_us) {
+        match sinks[i].deliver(frame) {
             Ok(()) => i += 1,
             Err(e) => match sinks[i].on_error {
                 SinkErrorPolicy::Abort => return Err(e),
@@ -247,6 +235,7 @@ pub(crate) fn finish_all(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sink::PixelFormat;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
 
@@ -311,8 +300,14 @@ mod tests {
         AttachedSink::new(Box::new(sink), options, 16, 16)
     }
 
-    fn frame(byte: u8) -> Vec<u8> {
-        vec![byte; 16 * 16 * 3 / 2]
+    fn frame(data: &[u8], pts_us: i64) -> OutputFrame<'_> {
+        OutputFrame {
+            data,
+            width: 16,
+            height: 16,
+            format: PixelFormat::Nv12,
+            pts_us: Some(pts_us),
+        }
     }
 
     #[test]
@@ -334,7 +329,7 @@ mod tests {
         ];
 
         for i in 0..5u8 {
-            deliver_frame(&mut sinks, &frame(i), 16, 16, Some(i as i64)).unwrap();
+            deliver_frame(&mut sinks, frame(&[i; 16 * 16 * 3 / 2], i64::from(i))).unwrap();
         }
         finish_all(&mut sinks, |_| {}).unwrap();
 
@@ -363,7 +358,7 @@ mod tests {
         ];
 
         for i in 0..5u8 {
-            deliver_frame(&mut sinks, &frame(i), 16, 16, Some(i as i64)).unwrap();
+            deliver_frame(&mut sinks, frame(&[i; 16 * 16 * 3 / 2], i64::from(i))).unwrap();
         }
 
         assert_eq!(sinks.len(), 1, "failing sink was detached");
@@ -392,7 +387,7 @@ mod tests {
             },
         )];
 
-        let err = deliver_frame(&mut sinks, &frame(0), 16, 16, Some(0));
+        let err = deliver_frame(&mut sinks, frame(&[0; 16 * 16 * 3 / 2], 0));
         assert!(err.is_err(), "abort-policy sink error must propagate");
     }
 
@@ -460,6 +455,8 @@ mod tests {
                 Ok(())
             }
         }
-        assert!(validate_sink_input(RgbaSink.wants(), RgbaSink.name()).is_err());
+        assert!(
+            validate_sink_input(DeliveryFormat::Nv12, RgbaSink.wants(), RgbaSink.name()).is_err()
+        );
     }
 }

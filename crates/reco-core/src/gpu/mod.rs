@@ -29,11 +29,14 @@ pub enum OutputFormat {
     Rgba8UnormSrgb,
     /// 8-bit BGRA, sRGB (some surface formats on macOS/Windows).
     Bgra8UnormSrgb,
+    /// Packed 10-bit RGB with 2-bit alpha. A session delivers P010 with this target.
+    Rgb10a2Unorm,
 }
 
 impl From<OutputFormat> for wgpu::TextureFormat {
     fn from(fmt: OutputFormat) -> Self {
         match fmt {
+            OutputFormat::Rgb10a2Unorm => wgpu::TextureFormat::Rgb10a2Unorm,
             OutputFormat::Rgba8Unorm => wgpu::TextureFormat::Rgba8Unorm,
             OutputFormat::Rgba8UnormSrgb => wgpu::TextureFormat::Rgba8UnormSrgb,
             OutputFormat::Bgra8UnormSrgb => wgpu::TextureFormat::Bgra8UnormSrgb,
@@ -910,7 +913,7 @@ mod tests {
 }
 
 pub mod color_grade;
-pub mod nv12_converter;
 pub mod rgba_readback;
 pub mod vram_pool;
+pub mod yuv_converter;
 pub mod yuv_stack_packer;

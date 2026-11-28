@@ -1056,12 +1056,14 @@ impl Renderer {
 
                 // Draw 2: Right camera uncovered fill inside the fade band.
                 // Where dst.a == 0.0, writes R without modifying dst.a; where
-                // dst.a == 1.0, keeps L untouched.
+                // dst.a == 1.0, keeps L untouched. Rgb10a2Unorm represents
+                // both coverage values exactly in two alpha bits.
                 pass.set_pipeline(right_uncovered_pipeline);
                 bind_camera(&mut pass, &self.cameras[1]);
                 pass.draw(0..6, 0..1);
 
-                // Draw 3: Right camera standard smoothstep blend.
+                // Draw 3: Right camera standard smoothstep blend. Its weight
+                // comes from fragment alpha before attachment quantization.
                 // Over left-covered pixels (L): a * R + (1 - a) * L.
                 // Over right-only fade-band pixels (R): a * R + (1 - a) * R = R.
                 // Outside fade band (a = 1): R.
@@ -1121,7 +1123,7 @@ impl Renderer {
 
     /// Access the internal render target texture.
     ///
-    /// Used by [`Nv12Converter`](crate::gpu::nv12_converter::Nv12Converter) to read
+    /// Used by [`YuvConverter`](crate::gpu::yuv_converter::YuvConverter) to read
     /// the RGBA output without an intermediate CPU copy.
     pub fn render_target(&self) -> &wgpu::Texture {
         &self.output_target().0

@@ -338,36 +338,63 @@ impl super::StitchCore {
         Ok(gpu.pipeline.render_to_view(frames, pose, view)?)
     }
 
-    /// Render a CPU-resident frame set and read back NV12 bytes for encoding - the
-    /// preview-mode recording tap. Triple-buffered: `None` on the first
-    /// two calls, then data from two frames ago. Drain the tail with
-    /// [`Self::flush_nv12`] after the loop. The converter is created
-    /// lazily on first use (dimensions rounded to NV12-safe values).
+    /// Render a CPU-resident frame set on the GPU and queue it for packed delivery.
+    ///
+    /// Returns `None` for the first two submissions, then returns the oldest frame,
+    /// including its original timestamp. Drain the tail with [`Self::flush_delivery`].
+    #[cfg(feature = "gpu")]
+    pub fn render_and_readback_delivery(
+        &mut self,
+        frames: &crate::source::FrameSet,
+        pose: RenderPose,
+        pts_us: Option<i64>,
+    ) -> Result<Option<crate::sink::OutputFrame<'_>>, StitchCoreError> {
+        let Executor::Gpu(gpu) = &mut self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        let cmd = gpu.pipeline.render_frame_set(frames, pose)?;
+        Ok(gpu.convert_delivery(cmd, pts_us)?)
+    }
+
+    /// Drain the oldest packed delivery frame, or return `None` when none remain.
+    #[cfg(feature = "gpu")]
+    pub fn flush_delivery(
+        &mut self,
+    ) -> Result<Option<crate::sink::OutputFrame<'_>>, StitchCoreError> {
+        let Executor::Gpu(gpu) = &mut self.executor else {
+            return Err(StitchCoreError::RequiresGpu);
+        };
+        Ok(gpu.flush_delivery()?)
+    }
+
+    /// Render and read back NV12 for the preview-mode recording tap.
+    ///
+    /// Requires an NV12 delivery target. Drain the tail with [`Self::flush_nv12`].
     #[cfg(feature = "gpu")]
     pub fn render_and_readback_nv12(
         &mut self,
         frames: &crate::source::FrameSet,
         pose: RenderPose,
     ) -> Result<Option<&[u8]>, StitchCoreError> {
-        let Executor::Gpu(gpu) = &mut self.executor else {
-            return Err(StitchCoreError::RequiresGpu);
-        };
-        let cmd = gpu.pipeline.render_frame_set(frames, pose)?;
-        gpu.convert_nv12(cmd, None)
-            .map(|output| output.map(|frame| frame.data))
-            .map_err(|e| StitchCoreError::Config(format!("NV12 preview readback: {e}")))
+        if self.delivery_format() != crate::sink::DeliveryFormat::Nv12 {
+            return Err(StitchCoreError::Config(
+                "preview recording requires NV12 delivery".into(),
+            ));
+        }
+        Ok(self
+            .render_and_readback_delivery(frames, pose, None)?
+            .map(|frame| frame.data))
     }
 
     /// Drain one pending NV12 frame from the preview recording tap.
-    /// Returns `None` when nothing remains (or the tap was never used).
     #[cfg(feature = "gpu")]
     pub fn flush_nv12(&mut self) -> Result<Option<&[u8]>, StitchCoreError> {
-        let Executor::Gpu(gpu) = &mut self.executor else {
-            return Err(StitchCoreError::RequiresGpu);
-        };
-        gpu.flush_nv12()
-            .map(|output| output.map(|frame| frame.data))
-            .map_err(|e| StitchCoreError::Config(format!("NV12 preview flush: {e}")))
+        if self.delivery_format() != crate::sink::DeliveryFormat::Nv12 {
+            return Err(StitchCoreError::Config(
+                "preview recording requires NV12 delivery".into(),
+            ));
+        }
+        Ok(self.flush_delivery()?.map(|frame| frame.data))
     }
 
     // Session encoding combines a single frame's rendering and conversion in one submission.

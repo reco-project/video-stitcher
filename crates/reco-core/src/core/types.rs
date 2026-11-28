@@ -41,6 +41,10 @@ pub enum StitchCoreError {
     #[cfg(feature = "gpu")]
     #[error("readback: {0}")]
     Readback(#[from] RgbaReadbackError),
+    /// GPU packed delivery conversion or readback error.
+    #[cfg(feature = "gpu")]
+    #[error("delivery: {0}")]
+    Delivery(#[from] crate::gpu::yuv_converter::YuvConvertError),
     /// Caller-facing configuration error (e.g. unsupported combination).
     #[error("config: {0}")]
     Config(String),

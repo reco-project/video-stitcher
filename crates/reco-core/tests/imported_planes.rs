@@ -100,7 +100,7 @@ fn caller_owned_outputs_preserve_each_image_without_intermediate_waits() {
 
 #[test]
 fn caller_owned_output_composes_with_conversion_before_target_reuse() {
-    use reco_core::gpu::nv12_converter::Nv12Converter;
+    use reco_core::gpu::yuv_converter::YuvConverter;
 
     let Some(gpu) = gpu() else { return };
     for sizes in [vec![(64, 32)], vec![(64, 32), (128, 16)]] {
@@ -108,7 +108,7 @@ fn caller_owned_output_composes_with_conversion_before_target_reuse() {
         let (mut direct, _) = session(&gpu, &sizes, InputFormat::Nv12);
         let target = output_texture(&gpu, 128, 72);
         let view = target.create_view(&Default::default());
-        let mut converter = Nv12Converter::new(&gpu, 128, 72).unwrap();
+        let mut converter = YuvConverter::new(&gpu, 128, 72).unwrap();
         let mut actual = Vec::new();
         for index in 0..7 {
             let data: Vec<_> = sizes
@@ -264,15 +264,16 @@ fn caller_target_rejection_preserves_subsequent_host_rendering() {
         .unwrap();
     assert_eq!(read_pixels(&gpu, &surface), expected);
 }
-struct Capture(Captured);
+struct Capture(Captured, PixelFormat);
 impl OutputSink for Capture {
     fn name(&self) -> &str {
         "capture"
     }
     fn wants(&self) -> SinkInput {
-        SinkInput::CpuBytes(PixelFormat::Nv12)
+        SinkInput::CpuBytes(self.1)
     }
     fn consume(&mut self, frame: OutputFrame<'_>) -> Result<(), SinkError> {
+        assert_eq!(frame.format, self.1);
         self.0
             .lock()
             .unwrap()
@@ -334,7 +335,7 @@ fn session(
     let output = Captured::default();
     session
         .add_sink(
-            Box::new(Capture(output.clone())),
+            Box::new(Capture(output.clone(), PixelFormat::Nv12)),
             SinkOptions::inline_lossy(),
         )
         .unwrap();
@@ -512,6 +513,65 @@ fn imported_planes_match_host_pixels_and_timestamps_across_shape_and_residency_c
                 );
             }
         }
+    }
+}
+
+#[test]
+fn gpu_p010_import_preserves_adjacent_ten_bit_luma_codes() {
+    let Some(gpu) = gpu() else { return };
+    if !gpu
+        .device()
+        .features()
+        .contains(wgpu::Features::TEXTURE_FORMAT_16BIT_NORM)
+    {
+        return;
+    }
+    let (width, height) = (64, 32);
+    let mut config =
+        GpuExecutorConfig::new(calibration(1), vec![(width, height)], InputFormat::Nv12);
+    config.viewport_size = ViewportSize { width, height };
+    config.output_format = wgpu::TextureFormat::Rgb10a2Unorm;
+    let executor = GpuExecutor::new(gpu.clone(), config).unwrap();
+    let mut session = StitchSession::with_executor(Executor::Gpu(Box::new(executor))).unwrap();
+    let captured = Captured::default();
+    session
+        .add_sink(
+            Box::new(Capture(captured.clone(), PixelFormat::P010)),
+            SinkOptions::inline_lossy(),
+        )
+        .unwrap();
+
+    let gpu_format = GpuPixelFormat::P010;
+    let neutral = (512u16 << 6)
+        .to_le_bytes()
+        .repeat((width * height / 2) as usize);
+    let uv = texture(
+        &gpu,
+        width / 2,
+        height / 2,
+        gpu_format.uv_format(),
+        &neutral,
+        width * 2,
+    )
+    .create_view(&Default::default());
+    for code in [512u16, 513] {
+        let luma = (code << 6).to_le_bytes().repeat((width * height) as usize);
+        let y = texture(&gpu, width, height, gpu_format.y_format(), &luma, width * 2)
+            .create_view(&Default::default());
+        session
+            .render_frame_imported_nv12(&[(&y, &uv)], RenderPose::default(), Some(i64::from(code)))
+            .unwrap();
+    }
+    session.finish().unwrap();
+    let result = captured.lock().unwrap();
+    assert_eq!(result.len(), 2);
+    let center = ((height / 2 * width + width / 2) * 2) as usize;
+    for ((bytes, time), code) in result.iter().zip([512u16, 513]) {
+        assert_eq!(*time, Some(i64::from(code)));
+        assert_eq!(
+            u16::from_le_bytes(bytes[center..center + 2].try_into().unwrap()),
+            code << 6
+        );
     }
 }
 

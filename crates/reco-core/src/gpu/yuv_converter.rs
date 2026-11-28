@@ -1,39 +1,27 @@
-//! GPU RGBA→NV12 format converter.
+//! GPU conversion from the stitch render target to NV12 or P010.
 //!
-//! Converts the RGBA render target to NV12 on the GPU using a compute shader,
-//! then reads back the smaller NV12 buffer to the CPU. This eliminates
-//! CPU-side swscale (which was the main encode bottleneck) and reduces
-//! GPU→CPU readback bandwidth by 2.7x (NV12 is 1.5 bpp vs RGBA 4 bpp).
-//!
-//! ## Why not convert in the fragment shader?
-//!
-//! The render target must remain RGBA for post-stitch plugins (overlays,
-//! color grading). The NV12 conversion happens *after* plugins, at the
-//! encode boundary - invisible to plugin authors.
-//!
-//! ## Triple-buffered readback
-//!
-//! Uses three staging buffers to overlap GPU work with CPU readback.
-//! The CPU reads back from two frames ago. If that work has not completed,
-//! readback waits for it; triple buffering is not a nonblocking guarantee.
+//! Both formats share one triple-buffered readback ring. Readback overlaps
+//! the current submission with the frame from two submissions ago, and
+//! waits if that older GPU work has yet to finish.
 
 use super::GpuContext;
+use crate::{render::color::YuvColor, sink::DeliveryFormat};
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
-/// Uniform parameters for the RGBA→NV12 compute shader.
+/// Uniform dimensions shared by both compute shaders.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
-struct Nv12Params {
+struct ConvertParams {
     width: u32,
     height: u32,
 }
 
-/// GPU-accelerated RGBA → NV12 converter with triple-buffered readback.
+/// GPU-accelerated NV12 or P010 converter with triple-buffered readback.
 ///
 /// Created once per pipeline alongside the internal renderer.
 /// Call [`convert_and_readback`](Self::convert_and_readback) after rendering
-/// each frame to get NV12 data ready for the encoder.
+/// each frame to get YUV data ready for the encoder.
 ///
 /// Uses three staging buffers so the CPU reads from two frames ago.
 /// Readback can still block when GPU work has not completed.
@@ -44,13 +32,13 @@ struct Nv12Params {
 /// Note: returns `None` on the first two calls (2-frame latency). Call
 /// [`flush_pending`](Self::flush_pending) after the frame loop to get the
 /// last two frames.
-pub struct Nv12Converter {
+pub struct YuvConverter {
     pipeline: wgpu::ComputePipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     params_buffer: wgpu::Buffer,
-    nv12_gpu_buffer: wgpu::Buffer,
+    output_buffer: wgpu::Buffer,
     /// Triple-buffered staging buffers for pipelined readback.
-    nv12_staging_buffers: [wgpu::Buffer; 3],
+    staging_buffers: [wgpu::Buffer; 3],
     /// Which staging buffer to write to next (0, 1, or 2).
     current_slot: usize,
     /// Number of frames pending readback (0, 1, or 2).
@@ -61,23 +49,24 @@ pub struct Nv12Converter {
     /// Retain the texture handle and compare GPU resource identity, not the
     /// address of a caller-owned handle that can be moved or replaced.
     cached_bind_group: Option<(wgpu::Texture, wgpu::BindGroup)>,
-    /// Triple-buffered readback buffers (avoids 3 MB allocation per frame at 1080p).
+    /// Reuse host storage when staging buffers are mapped.
     readback_buffers: [Vec<u8>; 3],
     /// Reusable channel for map_async signaling (avoids per-frame channel alloc).
     map_tx: std::sync::mpsc::SyncSender<Result<(), wgpu::BufferAsyncError>>,
     map_rx: std::sync::mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>,
     width: u32,
     height: u32,
+    format: DeliveryFormat,
     /// Dispatch dimensions for the compute shader.
     dispatch_x: u32,
     dispatch_y: u32,
 }
 
-impl Nv12Converter {
+impl YuvConverter {
     /// Create a new NV12 converter for the given output dimensions.
     ///
     /// Dimensions must be nonzero, width divisible by four and height even. Image and buffer sizes must fit the device's texture, allocation and storage-binding limits.
-    pub fn new(gpu: &GpuContext, width: u32, height: u32) -> Result<Self, Nv12Error> {
+    pub fn new(gpu: &GpuContext, width: u32, height: u32) -> Result<Self, YuvConvertError> {
         Self::with_color(gpu, width, height, Default::default())
     }
 
@@ -87,46 +76,37 @@ impl Nv12Converter {
         width: u32,
         height: u32,
         color: crate::render::color::YuvColor,
-    ) -> Result<Self, Nv12Error> {
-        if width == 0 || !width.is_multiple_of(4) {
-            return Err(Nv12Error::InvalidDimensions(format!(
-                "width must be nonzero and divisible by 4, got {width}"
-            )));
-        }
-        if height == 0 || !height.is_multiple_of(2) {
-            return Err(Nv12Error::InvalidDimensions(format!(
-                "height must be nonzero and even, got {height}"
-            )));
-        }
+    ) -> Result<Self, YuvConvertError> {
+        Self::with_format(gpu, width, height, DeliveryFormat::Nv12, color)
+    }
 
+    /// Create a converter with the given delivery format, color matrix and range.
+    ///
+    /// P010 requires an even, nonzero viewport and an `Rgb10a2Unorm` source.
+    /// NV12 supports cropping an 8-bit source to a width divisible by four and an even height.
+    pub fn with_format(
+        gpu: &GpuContext,
+        width: u32,
+        height: u32,
+        format: DeliveryFormat,
+        color: YuvColor,
+    ) -> Result<Self, YuvConvertError> {
+        let frame_len = Self::validate_layout(gpu, width, height, format)?;
+        let frame_bytes = frame_len as u64;
         let device = &gpu.device;
-        let limits = device.limits();
-        let pixels = u64::from(width) * u64::from(height);
-        let Some(nv12_bytes) = pixels.checked_add(pixels / 2).filter(|&size| {
-            width <= limits.max_texture_dimension_2d
-                && height <= limits.max_texture_dimension_2d
-                && size <= limits.max_buffer_size
-                && size <= u64::from(limits.max_storage_buffer_binding_size)
-        }) else {
-            return Err(Nv12Error::InvalidDimensions(format!(
-                "NV12 layout {width}x{height} exceeds device texture or buffer limits"
-            )));
-        };
-        let nv12_len = usize::try_from(nv12_bytes).map_err(|_| {
-            Nv12Error::InvalidDimensions(format!(
-                "NV12 layout {width}x{height} exceeds host address space"
-            ))
-        })?;
 
-        // Compile compute shader
+        let (shader_name, source) = match format {
+            DeliveryFormat::Nv12 => ("rgba_to_nv12", include_str!("../shaders/rgba_to_nv12.wgsl")),
+            DeliveryFormat::P010 => ("rgba_to_p010", include_str!("../shaders/rgba_to_p010.wgsl")),
+        };
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("rgba_to_nv12"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/rgba_to_nv12.wgsl").into()),
+            label: Some(shader_name),
+            source: wgpu::ShaderSource::Wgsl(source.into()),
         });
 
         // Bind group layout: input texture + output buffer + params
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("nv12_bind_group_layout"),
+            label: Some("yuv_bind_group_layout"),
             entries: &[
                 // @binding(0): input RGBA texture
                 wgpu::BindGroupLayoutEntry {
@@ -139,7 +119,7 @@ impl Nv12Converter {
                     },
                     count: None,
                 },
-                // @binding(1): output NV12 storage buffer
+                // @binding(1): output YUV storage buffer
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStages::COMPUTE,
@@ -165,13 +145,17 @@ impl Nv12Converter {
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("nv12_pipeline_layout"),
+            label: Some("yuv_pipeline_layout"),
             bind_group_layouts: &[&bind_group_layout],
             immediate_size: 0,
         });
 
         let ([kr, kg, kb], [cb_r, cb_g, _], [_, cr_g, cr_b]) = color.encode_coefficients();
-        let (y_offset, y_scale, c_scale) = color.encode_range();
+        let (y_offset, y_scale, c_scale) = match format {
+            DeliveryFormat::Nv12 => color.encode_range(),
+            DeliveryFormat::P010 if color.full_range => (0.0, 1023.0, 1023.0),
+            DeliveryFormat::P010 => (64.0, 876.0, 896.0),
+        };
         let constants = [
             ("kr", f64::from(kr)),
             ("kg", f64::from(kg)),
@@ -185,7 +169,7 @@ impl Nv12Converter {
             ("c_scale", f64::from(c_scale)),
         ];
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("nv12_compute_pipeline"),
+            label: Some("yuv_compute_pipeline"),
             layout: Some(&pipeline_layout),
             module: &shader,
             entry_point: Some("main"),
@@ -197,55 +181,57 @@ impl Nv12Converter {
         });
 
         // GPU storage buffer for compute shader output
-        let nv12_gpu_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("nv12_gpu"),
-            size: nv12_bytes,
+        let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("yuv_gpu"),
+            size: frame_bytes,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
         // Triple-buffered CPU-readable staging buffers for pipelined readback.
         // Older submissions can finish while newer frames are being rendered.
-        let nv12_staging_buffers = [
+        let staging_buffers = [
             device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("nv12_staging_0"),
-                size: nv12_bytes,
+                label: Some("yuv_staging_0"),
+                size: frame_bytes,
                 usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
                 mapped_at_creation: false,
             }),
             device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("nv12_staging_1"),
-                size: nv12_bytes,
+                label: Some("yuv_staging_1"),
+                size: frame_bytes,
                 usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
                 mapped_at_creation: false,
             }),
             device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("nv12_staging_2"),
-                size: nv12_bytes,
+                label: Some("yuv_staging_2"),
+                size: frame_bytes,
                 usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
                 mapped_at_creation: false,
             }),
         ];
 
         // Uniform buffer with width/height
-        let params = Nv12Params { width, height };
+        let params = ConvertParams { width, height };
         let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("nv12_params"),
+            label: Some("yuv_params"),
             contents: bytemuck::bytes_of(&params),
             usage: wgpu::BufferUsages::UNIFORM,
         });
 
-        // Dispatch: one thread per 4 horizontal pixels, one thread per row
-        // Workgroup size is (16, 4), so dispatch groups are:
-        let dispatch_x = (width / 4).div_ceil(16);
-        let dispatch_y = height.div_ceil(4);
+        let (blocks_x, blocks_y) = match format {
+            DeliveryFormat::Nv12 => (width / 4, height),
+            DeliveryFormat::P010 => (width / 2, height / 2),
+        };
+        let dispatch_x = blocks_x.div_ceil(16);
+        let dispatch_y = blocks_y.div_ceil(4);
 
         log::debug!(
-            "NV12 converter: {}x{} → {} bytes ({:.1} MB), dispatch ({}, {}, 1)",
+            "{format:?} converter: {}x{} → {} bytes ({:.1} MB), dispatch ({}, {}, 1)",
             width,
             height,
-            nv12_bytes,
-            nv12_bytes as f64 / 1_048_576.0,
+            frame_bytes,
+            frame_bytes as f64 / 1_048_576.0,
             dispatch_x,
             dispatch_y,
         );
@@ -256,31 +242,51 @@ impl Nv12Converter {
             pipeline,
             bind_group_layout,
             params_buffer,
-            nv12_gpu_buffer,
-            nv12_staging_buffers,
+            output_buffer,
+            staging_buffers,
             current_slot: 0,
             pending_count: 0,
             cached_bind_group: None,
             readback_buffers: [
-                vec![0u8; nv12_len],
-                vec![0u8; nv12_len],
-                vec![0u8; nv12_len],
+                vec![0u8; frame_len],
+                vec![0u8; frame_len],
+                vec![0u8; frame_len],
             ],
             map_tx,
             map_rx,
             width,
             height,
+            format,
             dispatch_x,
             dispatch_y,
         })
     }
 
-    /// Convert the RGBA render target to NV12 and read back to CPU.
+    pub(crate) fn validate_layout(
+        gpu: &GpuContext,
+        width: u32,
+        height: u32,
+        format: DeliveryFormat,
+    ) -> Result<usize, YuvConvertError> {
+        let limits = gpu.device.limits();
+        format.frame_bytes(width, height)
+            .filter(|_| format != DeliveryFormat::Nv12 || width.is_multiple_of(4))
+            .filter(|&size| {
+                width <= limits.max_texture_dimension_2d
+                    && height <= limits.max_texture_dimension_2d
+                    && size as u64 <= limits.max_buffer_size
+                    && size as u64 <= u64::from(limits.max_storage_buffer_binding_size)
+            })
+            .ok_or_else(|| YuvConvertError::InvalidDimensions(format!(
+                "{format:?} layout {width}x{height} must have nonzero, even dimensions and fit device and host limits (NV12 width must be divisible by 4)"
+            )))
+    }
+
+    /// Convert the RGB render target and read back packed NV12 or P010 bytes.
     ///
     /// Uses triple-buffered staging: this frame's GPU work writes to the
-    /// current slot, while the CPU reads back from 2 frames ago (guaranteed
-    /// complete). A non-blocking `PollType::Poll` replaces the previous
-    /// blocking `wait_indefinitely()`.
+    /// current slot, while the CPU polls the slot from two frames ago.
+    /// It waits if that earlier submission is still in flight.
     ///
     /// `render_commands` is the command buffer from the preceding render pass.
     /// It is submitted together with the compute shader in a single
@@ -288,21 +294,20 @@ impl Nv12Converter {
     ///
     /// Returns `None` on the first two calls (GPU work is submitted but no
     /// frame from 2 frames ago is available yet). From the third call onward,
-    /// returns NV12 data from 2 frames ago as a borrowed slice:
-    /// `[Y plane: width*height bytes] [UV plane: width*height/2 bytes]`
+    /// returns data from 2 frames ago as a borrowed slice.
     ///
     /// Call [`flush_pending`](Self::flush_pending) after the frame loop
     /// to get the last frames' data.
     #[cfg_attr(
         feature = "profiling",
-        tracing::instrument(skip_all, name = "nv12_convert_readback")
+        tracing::instrument(skip_all, name = "yuv_convert_readback")
     )]
     pub fn convert_and_readback(
         &mut self,
         gpu: &GpuContext,
         render_target: &wgpu::Texture,
         render_commands: wgpu::CommandBuffer,
-    ) -> Result<Option<&[u8]>, Nv12Error> {
+    ) -> Result<Option<&[u8]>, YuvConvertError> {
         let write_slot = self.current_slot;
 
         // --- Submit this frame's GPU work FIRST ---
@@ -343,9 +348,9 @@ impl Nv12Converter {
     /// Uses blocking poll since no new GPU work follows to overlap with.
     #[cfg_attr(
         feature = "profiling",
-        tracing::instrument(skip_all, name = "nv12_flush")
+        tracing::instrument(skip_all, name = "yuv_flush")
     )]
-    pub fn flush_pending(&mut self, gpu: &GpuContext) -> Result<Option<&[u8]>, Nv12Error> {
+    pub fn flush_pending(&mut self, gpu: &GpuContext) -> Result<Option<&[u8]>, YuvConvertError> {
         if self.pending_count == 0 {
             return Ok(None);
         }
@@ -357,14 +362,14 @@ impl Nv12Converter {
         Ok(Some(&self.readback_buffers[read_slot]))
     }
 
-    /// Submit GPU render + NV12 compute + copy to a specific staging slot.
+    /// Submit GPU render + YUV compute + copy to a specific staging slot.
     fn submit_gpu_work(
         &mut self,
         gpu: &GpuContext,
         render_target: &wgpu::Texture,
         render_commands: wgpu::CommandBuffer,
         slot: usize,
-    ) -> Result<(), Nv12Error> {
+    ) -> Result<(), YuvConvertError> {
         // Cache the bind group to avoid per-frame descriptor pool allocation,
         // which causes OOM on the Vulkan backend (wgpu#7525). Rebuild only
         // if the render target texture changes.
@@ -374,10 +379,29 @@ impl Nv12Converter {
             .is_none_or(|(texture, _)| texture != render_target);
 
         if needs_rebuild {
+            let input = render_target.format();
+            let is_p010 = self.format == DeliveryFormat::P010;
+            if (input == wgpu::TextureFormat::Rgb10a2Unorm) != is_p010 {
+                return Err(YuvConvertError::InputFormat {
+                    input,
+                    output: self.format,
+                });
+            }
+            if is_p010
+                && (render_target.width(), render_target.height()) != (self.width, self.height)
+            {
+                return Err(YuvConvertError::InvalidDimensions(format!(
+                    "P010 source is {}x{}, expected {}x{}",
+                    render_target.width(),
+                    render_target.height(),
+                    self.width,
+                    self.height,
+                )));
+            }
             let render_target_view =
                 render_target.create_view(&wgpu::TextureViewDescriptor::default());
             let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("nv12_bind_group"),
+                label: Some("yuv_bind_group"),
                 layout: &self.bind_group_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
@@ -386,7 +410,7 @@ impl Nv12Converter {
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: self.nv12_gpu_buffer.as_entire_binding(),
+                        resource: self.output_buffer.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 2,
@@ -405,14 +429,14 @@ impl Nv12Converter {
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("nv12_encoder"),
+                label: Some("yuv_encoder"),
             });
 
         // Dispatch compute shader
         {
-            crate::profile_scope!("nv12_compute");
+            crate::profile_scope!("yuv_compute");
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("nv12_pass"),
+                label: Some("yuv_pass"),
                 timestamp_writes: None,
             });
             pass.set_pipeline(&self.pipeline);
@@ -422,15 +446,15 @@ impl Nv12Converter {
 
         // Copy GPU buffer to the target staging buffer
         encoder.copy_buffer_to_buffer(
-            &self.nv12_gpu_buffer,
+            &self.output_buffer,
             0,
-            &self.nv12_staging_buffers[slot],
+            &self.staging_buffers[slot],
             0,
-            self.nv12_gpu_buffer.size(),
+            self.output_buffer.size(),
         );
 
         {
-            crate::profile_scope!("nv12_submit");
+            crate::profile_scope!("yuv_submit");
             gpu.queue.submit([render_commands, encoder.finish()]);
         }
 
@@ -441,9 +465,9 @@ impl Nv12Converter {
     ///
     /// The buffer was submitted 2 frames ago, so it should already be complete.
     /// Falls back to blocking poll as a safety net if the GPU hasn't finished.
-    fn readback_staging(&mut self, gpu: &GpuContext, slot: usize) -> Result<(), Nv12Error> {
-        crate::profile_scope!("nv12_readback");
-        let buffer_slice = self.nv12_staging_buffers[slot].slice(..);
+    fn readback_staging(&mut self, gpu: &GpuContext, slot: usize) -> Result<(), YuvConvertError> {
+        crate::profile_scope!("yuv_readback");
+        let buffer_slice = self.staging_buffers[slot].slice(..);
         let tx = self.map_tx.clone();
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
             let _ = tx.send(result);
@@ -453,30 +477,30 @@ impl Nv12Converter {
         // frames ago, so it should be complete.
         gpu.device
             .poll(wgpu::PollType::Poll)
-            .map_err(|_| Nv12Error::BufferMapFailed)?;
+            .map_err(|_| YuvConvertError::BufferMapFailed)?;
 
         // Check if map completed. Fall back to blocking if needed.
         match self.map_rx.try_recv() {
-            Ok(result) => result.map_err(|_| Nv12Error::BufferMapFailed)?,
+            Ok(result) => result.map_err(|_| YuvConvertError::BufferMapFailed)?,
             Err(std::sync::mpsc::TryRecvError::Empty) => {
                 // Safety net: block if the GPU somehow hasn't finished.
                 gpu.device
                     .poll(wgpu::PollType::wait_indefinitely())
-                    .map_err(|_| Nv12Error::BufferMapFailed)?;
+                    .map_err(|_| YuvConvertError::BufferMapFailed)?;
                 self.map_rx
                     .recv()
-                    .map_err(|_| Nv12Error::BufferMapFailed)?
-                    .map_err(|_| Nv12Error::BufferMapFailed)?;
+                    .map_err(|_| YuvConvertError::BufferMapFailed)?
+                    .map_err(|_| YuvConvertError::BufferMapFailed)?;
             }
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                return Err(Nv12Error::BufferMapFailed);
+                return Err(YuvConvertError::BufferMapFailed);
             }
         }
 
         let mapped = buffer_slice.get_mapped_range();
         self.readback_buffers[slot].copy_from_slice(&mapped);
         drop(mapped);
-        self.nv12_staging_buffers[slot].unmap();
+        self.staging_buffers[slot].unmap();
         Ok(())
     }
 
@@ -488,25 +512,25 @@ impl Nv12Converter {
         &mut self,
         gpu: &GpuContext,
         slot: usize,
-    ) -> Result<(), Nv12Error> {
-        crate::profile_scope!("nv12_readback_blocking");
-        let buffer_slice = self.nv12_staging_buffers[slot].slice(..);
+    ) -> Result<(), YuvConvertError> {
+        crate::profile_scope!("yuv_readback_blocking");
+        let buffer_slice = self.staging_buffers[slot].slice(..);
         let tx = self.map_tx.clone();
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
             let _ = tx.send(result);
         });
         gpu.device
             .poll(wgpu::PollType::wait_indefinitely())
-            .map_err(|_| Nv12Error::BufferMapFailed)?;
+            .map_err(|_| YuvConvertError::BufferMapFailed)?;
         self.map_rx
             .recv()
-            .map_err(|_| Nv12Error::BufferMapFailed)?
-            .map_err(|_| Nv12Error::BufferMapFailed)?;
+            .map_err(|_| YuvConvertError::BufferMapFailed)?
+            .map_err(|_| YuvConvertError::BufferMapFailed)?;
 
         let mapped = buffer_slice.get_mapped_range();
         self.readback_buffers[slot].copy_from_slice(&mapped);
         drop(mapped);
-        self.nv12_staging_buffers[slot].unmap();
+        self.staging_buffers[slot].unmap();
         Ok(())
     }
 
@@ -521,16 +545,25 @@ impl Nv12Converter {
     }
 }
 
-/// Errors from the NV12 converter.
+/// Errors from the GPU delivery converter.
 #[derive(Debug, Clone, thiserror::Error)]
-pub enum Nv12Error {
+pub enum YuvConvertError {
     /// GPU buffer mapping failed.
-    #[error("NV12 buffer mapping failed")]
+    #[error("YUV buffer mapping failed")]
     BufferMapFailed,
 
     /// Invalid output dimensions.
-    #[error("invalid NV12 dimensions: {0}")]
+    #[error("invalid delivery dimensions: {0}")]
     InvalidDimensions(String),
+
+    /// The source format does not match the requested delivery format.
+    #[error("cannot convert {input:?} to {output:?}")]
+    InputFormat {
+        /// Input texture format.
+        input: wgpu::TextureFormat,
+        /// Requested delivery format.
+        output: DeliveryFormat,
+    },
 }
 
 #[cfg(test)]
@@ -570,7 +603,7 @@ mod tests {
             );
             texture
         };
-        let mut converter = Nv12Converter::new(&gpu, 4, 2).unwrap();
+        let mut converter = YuvConverter::new(&gpu, 4, 2).unwrap();
         // Replacing the handle in-place must not reuse its former texture's binding.
         let mut texture = Box::new(make_texture(0));
         for values in [&[0u8][..], &[255, 0][..], &[0, 255, 0, 255, 0][..]] {
@@ -600,3 +633,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "yuv_converter_tests.rs"]
+mod p010_tests;

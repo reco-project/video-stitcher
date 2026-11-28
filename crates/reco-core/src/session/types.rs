@@ -7,7 +7,7 @@
 use crate::calibration::Calibration;
 use crate::core::types::StitchCoreError;
 #[cfg(feature = "gpu")]
-use crate::gpu::nv12_converter::Nv12Error;
+use crate::gpu::yuv_converter::YuvConvertError;
 #[cfg(feature = "gpu")]
 use crate::gpu::{GpuContext, GpuError, OutputFormat};
 #[cfg(feature = "gpu")]
@@ -68,7 +68,8 @@ pub struct SessionConfig {
     pub viewport_size: ViewportSize,
     /// Fixed decoded `(width, height)` for each camera in projection order.
     pub source_sizes: Vec<(u32, u32)>,
-    /// GPU render target format (typically [`OutputFormat::Rgba8Unorm`] for encoding).
+    /// GPU render target. [`OutputFormat::Rgb10a2Unorm`] selects P010 delivery
+    /// and requires even dimensions. Other targets retain NV12 delivery.
     pub output_format: OutputFormat,
     /// Input pixel format (YUV420P or NV12).
     pub input_format: InputFormat,
@@ -132,10 +133,10 @@ pub enum SessionError {
     #[error("core: {0}")]
     Core(#[from] StitchCoreError),
 
-    /// NV12 conversion error (GPU converter).
-    #[error("NV12 converter: {0}")]
+    /// GPU delivery conversion error.
+    #[error("YUV converter: {0}")]
     #[cfg(feature = "gpu")]
-    Nv12(#[from] Nv12Error),
+    Delivery(#[from] YuvConvertError),
 
     /// NV12 conversion error (CPU kernel).
     #[error("CPU NV12 conversion: {0}")]
@@ -227,7 +228,8 @@ impl StitchSessionBuilder {
 
     /// Set the GPU render target format.
     ///
-    /// Defaults to [`OutputFormat::Rgba8Unorm`] (suitable for encoding).
+    /// Defaults to [`OutputFormat::Rgba8Unorm`] for NV12 delivery.
+    /// Select [`OutputFormat::Rgb10a2Unorm`] for P010 delivery.
     pub fn output_format(mut self, format: OutputFormat) -> Self {
         self.output_format = format;
         self

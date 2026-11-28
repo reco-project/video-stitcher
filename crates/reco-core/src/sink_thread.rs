@@ -2,13 +2,13 @@
 //!
 //! Wraps any [`OutputSink`] and runs it on a dedicated thread,
 //! decoupling the render loop from sink latency. The caller submits
-//! NV12 data via a bounded channel; the thread consumes frames in the
+//! packed NV12 or P010 frames via a bounded channel; the thread consumes frames in the
 //! background. Encoding remains independent of the rendering backend.
 //!
 //! ## Buffer pool
 //!
-//! To avoid allocating 3.1 MB (at 1080p) per frame for the channel
-//! send, the thread maintains a pool of pre-allocated buffers. After
+//! The thread keeps a pool of pre-allocated frame buffers for channel
+//! sends. After
 //! the sink consumes a frame, each buffer is returned to the pool for
 //! reuse.
 
@@ -18,11 +18,11 @@ use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::thread::{self, JoinHandle};
 use std::time::Instant;
 
-use crate::sink::{OutputFrame, OutputSink, PixelFormat, SinkError};
+use crate::sink::{DeliveryFormat, OutputFrame, OutputSink, PixelFormat, SinkError, SinkInput};
 
 /// A frame payload sent to the sink thread.
 struct SinkJob {
-    /// NV12 pixel data (borrowed from the buffer pool).
+    /// Packed pixel data (borrowed from the buffer pool).
     data: Vec<u8>,
     width: u32,
     height: u32,
@@ -60,33 +60,42 @@ pub struct SinkThread {
     error: Option<SinkError>,
     /// Sink-thread counters (shared with the worker).
     stats: Arc<SinkStats>,
+    delivery_format: Option<DeliveryFormat>,
 }
 
 impl SinkThread {
     /// Create a sink thread.
     ///
     /// Moves `sink` to a background thread and pre-allocates
-    /// `queue_depth + 1` NV12 buffers for zero-allocation submits.
+    /// `queue_depth + 1` buffers in the sink's declared delivery format for zero-allocation submits.
     /// The `queue_depth` parameter controls how many frames can be
     /// in-flight between the render thread and the sink thread
     /// (typically 2).
     /// Dimensions determine the initial buffer allocation, not later frame geometry.
     pub fn new(sink: Box<dyn OutputSink>, width: u32, height: u32, queue_depth: usize) -> Self {
-        let nv12_size = width as usize * height as usize * 3 / 2;
+        let SinkInput::CpuBytes(pixel_format) = sink.wants();
+        let delivery_format = match pixel_format {
+            PixelFormat::Nv12 => Some(DeliveryFormat::Nv12),
+            PixelFormat::P010 => Some(DeliveryFormat::P010),
+            PixelFormat::Rgba8 => None,
+        };
+        let frame_size = delivery_format
+            .and_then(|format| format.frame_bytes(width, height))
+            .unwrap_or(0);
         let (tx, rx) = mpsc::sync_channel::<SinkJob>(queue_depth);
         let (pool_tx, pool_rx) = mpsc::sync_channel::<Vec<u8>>(queue_depth + 1);
 
         // Pre-allocate buffer pool. queue_depth go into the pool channel,
         // +1 stays in reserve (the caller might hold one while sending).
         for _ in 0..queue_depth + 1 {
-            let _ = pool_tx.try_send(vec![0u8; nv12_size]);
+            let _ = pool_tx.try_send(vec![0u8; frame_size]);
         }
 
         let stats = Arc::new(SinkStats::default());
         let worker_stats = Arc::clone(&stats);
         let handle = thread::Builder::new()
             .name("sink".into())
-            .spawn(move || Self::consume_loop(rx, pool_tx, sink, worker_stats))
+            .spawn(move || Self::consume_loop(rx, pool_tx, sink, pixel_format, worker_stats))
             .expect("spawn sink thread");
 
         Self {
@@ -95,10 +104,11 @@ impl SinkThread {
             handle: Some(handle),
             error: None,
             stats,
+            delivery_format,
         }
     }
 
-    /// Submit NV12 data to the sink.
+    /// Submit a frame in the sink's declared delivery format.
     ///
     /// Copies the frame into a pooled buffer and sends it to the
     /// sink thread. Blocks if the channel is full (backpressure).
@@ -112,20 +122,13 @@ impl SinkThread {
             frame_index: None,
             reason: "sink already finished".into(),
         })?;
-        let expected_size = (frame.width as usize)
-            .checked_mul(frame.height as usize)
-            .and_then(|pixels| pixels.checked_mul(3))
-            .map(|bytes| bytes / 2);
-        if frame.format != PixelFormat::Nv12
-            || frame.width == 0
-            || frame.height == 0
-            || !frame.width.is_multiple_of(2)
-            || !frame.height.is_multiple_of(2)
-            || expected_size != Some(frame.data.len())
-        {
+        if !self.delivery_format.is_some_and(|format| {
+            frame.format == format.pixel_format()
+                && format.frame_bytes(frame.width, frame.height) == Some(frame.data.len())
+        }) {
             return Err(SinkError::Consume {
                 frame_index: None,
-                reason: "threaded delivery requires tightly packed, even-sized NV12 frames".into(),
+                reason: "threaded delivery requires tightly packed, even-sized frames in the sink's declared NV12 or P010 format".into(),
             });
         }
         let pool_rx = self.pool_rx.as_ref();
@@ -240,6 +243,7 @@ impl SinkThread {
         rx: Receiver<SinkJob>,
         pool_tx: SyncSender<Vec<u8>>,
         mut sink: Box<dyn OutputSink>,
+        format: PixelFormat,
         stats: Arc<SinkStats>,
     ) -> Result<(), SinkError> {
         while let Ok(job) = rx.recv() {
@@ -249,7 +253,7 @@ impl SinkThread {
                 data: &job.data,
                 width: job.width,
                 height: job.height,
-                format: PixelFormat::Nv12,
+                format,
                 pts_us: job.pts_us,
             }) {
                 // Finalize the recoverable prefix, preserving the original failure.

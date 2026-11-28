@@ -39,6 +39,49 @@ pub enum SinkError {
     },
 }
 
+/// Packed 4:2:0 delivery format used by a stitching session.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DeliveryFormat {
+    /// 8-bit Y followed by interleaved Cb/Cr bytes.
+    #[default]
+    Nv12,
+    /// Y followed by interleaved Cb/Cr, each sample in the high ten bits of a little-endian u16.
+    P010,
+}
+
+impl DeliveryFormat {
+    /// Pixel format advertised to output sinks.
+    pub const fn pixel_format(self) -> PixelFormat {
+        match self {
+            Self::Nv12 => PixelFormat::Nv12,
+            Self::P010 => PixelFormat::P010,
+        }
+    }
+
+    pub(crate) fn viewport_dims(self, width: u32, height: u32) -> (u32, u32) {
+        match self {
+            Self::Nv12 => crate::render::nv12_cpu::nv12_dims(width, height),
+            Self::P010 => (width, height),
+        }
+    }
+
+    /// Tightly packed frame size. Returns `None` for zero or odd dimensions or overflow.
+    ///
+    /// The GPU converter uses four buffers of this size (one compute output and
+    /// three staging buffers), three host vectors of this size, and a GPU
+    /// uniform containing two u32 dimensions. Sizes exclude allocator padding.
+    pub fn frame_bytes(self, width: u32, height: u32) -> Option<usize> {
+        if width == 0 || height == 0 || !width.is_multiple_of(2) || !height.is_multiple_of(2) {
+            return None;
+        }
+        let pixels = (width as usize).checked_mul(height as usize)?;
+        match self {
+            Self::Nv12 => (pixels / 2).checked_mul(3),
+            Self::P010 => pixels.checked_mul(3),
+        }
+    }
+}
+
 /// Pixel format of the frame data passed to a sink.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PixelFormat {
@@ -46,6 +89,8 @@ pub enum PixelFormat {
     Rgba8,
     /// NV12: Y plane followed by interleaved UV plane.
     Nv12,
+    /// Tightly packed P010LE, as described by [`DeliveryFormat::P010`].
+    P010,
 }
 
 /// What a sink consumes, declared up front so the delivery loop can
@@ -65,7 +110,7 @@ pub enum SinkInput {
 ///
 /// Borrows pixel data for the duration of the sink's consume call.
 /// A sink that retains the image must copy it into its own storage.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct OutputFrame<'a> {
     /// Borrowed, tightly packed pixel data.
     pub data: &'a [u8],

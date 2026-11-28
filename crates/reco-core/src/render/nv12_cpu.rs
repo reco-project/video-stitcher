@@ -229,7 +229,7 @@ mod tests {
 #[cfg(all(test, feature = "gpu"))]
 mod gpu_oracle {
     use super::rgba_to_nv12_with_color_into;
-    use crate::gpu::nv12_converter::Nv12Converter;
+    use crate::gpu::yuv_converter::YuvConverter;
     use crate::render::color::tests::vectors;
     use crate::stitch::test_support::gpu_or_skip;
 
@@ -288,7 +288,7 @@ mod gpu_oracle {
         );
 
         for (color, _) in vectors() {
-            let mut converter = Nv12Converter::with_color(&gpu, w, h, color).expect("converter");
+            let mut converter = YuvConverter::with_color(&gpu, w, h, color).expect("converter");
             let empty = gpu
                 .device()
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor::default())

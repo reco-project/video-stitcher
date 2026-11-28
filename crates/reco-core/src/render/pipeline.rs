@@ -119,6 +119,7 @@ impl StitchPipeline {
     ///
     /// Used by the preview window which needs a specific surface format
     /// and provides its own GPU context (selected with surface compatibility).
+    /// `Rgb10a2Unorm` retains 10-bit RGB for P010 delivery at four bytes per pixel.
     pub fn with_gpu(
         gpu: GpuContext,
         program: &crate::render::GpuProgram,
