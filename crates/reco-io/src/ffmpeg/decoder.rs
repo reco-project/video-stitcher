@@ -135,6 +135,30 @@ impl std::fmt::Display for DecodeBackend {
     }
 }
 
+fn decoder_threading(
+    backend: DecodeBackend,
+    codec: ffmpeg::codec::Id,
+    live: bool,
+) -> ffmpeg::threading::Config {
+    // Frame threading adds latency. Live inputs use slice threading instead.
+    let mut config = ffmpeg::threading::Config::kind(if live {
+        ffmpeg::threading::Type::Slice
+    } else {
+        ffmpeg::threading::Type::Frame
+    });
+    config.count = match (backend, codec) {
+        // FFmpeg adds a surface per active frame thread to the hardware
+        // pool. Disable frame threading to keep D3D11VA's fixed texture
+        // array at its base size.
+        (DecodeBackend::D3d11va, _) => 1,
+        // Leave room for the reference/reorder pool within NVDEC's
+        // 32-surface limit for H.264.
+        (DecodeBackend::Cuda, ffmpeg::codec::Id::H264) => 1,
+        _ => 0,
+    };
+    config
+}
+
 /// Video decoder that produces YUV420P frames from a video file.
 ///
 /// Automatically attempts hardware-accelerated decoding (NVDEC, VA-API)
@@ -338,21 +362,7 @@ impl VideoDecoder {
             try_hwaccel(&mut context)
         };
 
-        // Frame threading adds one frame of latency per thread. Live input
-        // uses slice parallelism without changing file decode throughput.
-        let mut threading = ffmpeg::threading::Config::kind(if live {
-            ffmpeg::threading::Type::Slice
-        } else {
-            ffmpeg::threading::Type::Frame
-        });
-        // FFmpeg reserves an extra decode surface per frame thread. NVDEC's H.264 32-surface limit must leave room for the stream's reference/reorder pool. Other codecs keep automatic threading.
-        threading.count =
-            if backend == DecodeBackend::Cuda && context.id() == ffmpeg::codec::Id::H264 {
-                1
-            } else {
-                0
-            };
-        context.set_threading(threading);
+        context.set_threading(decoder_threading(backend, context.id(), live));
         let decoder = context.decoder().video()?;
 
         let width = decoder.width();
@@ -1317,10 +1327,40 @@ fn extract_plane_into(buf: &mut Vec<u8>, data: &[u8], stride: usize, width: usiz
 
 #[cfg(test)]
 mod tests {
+    use super::{DecodeBackend, decoder_threading};
+    use ffmpeg::{codec::Id, threading::Type};
+
+    #[test]
+    fn file_decode_threading_caps_d3d11va_and_cuda_h264() {
+        for (backend, codec, count) in [
+            (DecodeBackend::D3d11va, Id::HEVC, 1),
+            (DecodeBackend::D3d11va, Id::H264, 1),
+            (DecodeBackend::Cuda, Id::H264, 1),
+            (DecodeBackend::Cuda, Id::HEVC, 0),
+            (DecodeBackend::Software, Id::H264, 0),
+            (DecodeBackend::Software, Id::HEVC, 0),
+        ] {
+            let config = decoder_threading(backend, codec, false);
+            assert_eq!((config.kind, config.count), (Type::Frame, count));
+        }
+    }
+
+    #[test]
+    fn live_decode_uses_slice_threading_with_the_same_backend_caps() {
+        for (backend, codec, count) in [
+            (DecodeBackend::D3d11va, Id::HEVC, 1),
+            (DecodeBackend::Cuda, Id::H264, 1),
+            (DecodeBackend::Software, Id::H264, 0),
+        ] {
+            let config = decoder_threading(backend, codec, true);
+            assert_eq!((config.kind, config.count), (Type::Slice, count));
+        }
+    }
+
     #[test]
     #[ignore = "requires NVIDIA NVENC/NVDEC; also runs without reco-io's gpu feature"]
     fn ffmpeg_hardware_codecs_preserve_host_frames() {
-        use super::{DecodeBackend, VideoDecoder};
+        use super::VideoDecoder;
         use crate::ffmpeg::encoder::{EncoderConfig, VideoEncoder};
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("hardware.mp4");
