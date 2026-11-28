@@ -604,7 +604,7 @@ impl StitchJob {
         self
     }
 
-    /// Hook called after frame processing ends and before encoder finalization.
+    /// Hook called after frame processing ends and before encoder finalization and source teardown.
     pub fn on_finalizing(mut self, cb: impl FnOnce() + Send + 'static) -> Self {
         self.on_finalizing = Some(Box::new(cb));
         self
@@ -762,8 +762,8 @@ impl StitchJob {
             interrupted,
             &self.audio,
         )?;
-        let source = opened.frames();
-        let info = source.info();
+        let frames = opened.frames();
+        let info = frames.info();
         let fps_rational = info.fps_rational.ok_or_else(|| StitchError::Other(
             "video frame rate is unknown for one or more inputs; cannot export with reliable timing".into()
         ))?;
@@ -833,6 +833,9 @@ impl StitchJob {
                 reco_core::stitch::Executor::Cpu(Box::new(executor)),
             )?)
         };
+        // Declare the owned source first so the session releases its sinks
+        // and pending GPU work before source teardown, including during unwind.
+        let mut source;
         let gpu_name;
         #[cfg(feature = "gpu")]
         let mut session = match gpu {
@@ -843,9 +846,9 @@ impl StitchJob {
                     viewport_size,
                     source_sizes: info.camera_sizes.clone(),
                     output_format: reco_core::gpu::OutputFormat::Rgba8Unorm,
-                    input_format: source.input_format(),
-                    left_rotation: source.left_rotation(),
-                    right_rotation: source.right_rotation(),
+                    input_format: frames.input_format(),
+                    left_rotation: frames.left_rotation(),
+                    right_rotation: frames.right_rotation(),
                 };
                 reco_core::session::StitchSession::with_gpu(gpu, session_config)?
             }
@@ -875,77 +878,77 @@ impl StitchJob {
         if !source_color.is_empty() {
             log::info!("Source colour metadata: {source_color}");
         }
-        let mut source = opened.into_frames();
+        source = opened.into_frames();
 
-        for hook in self.session_hooks.drain(..) {
-            hook(&mut session, source.as_ref())?;
-        }
-
-        if session.core().constrained_look() {
-            session
-                .core_mut()
-                .prepare_coverage()
-                .map_err(|error| StitchError::Other(error.to_string()))?;
-        }
-
-        // Start decode threads now that hooks (ORT/DML init) have completed.
-        source.start_decoding();
-
-        // Attach JSONL event sink if requested.
-        if let Some(ref events_path) = self.events_path {
-            let sink = crate::jsonl_sink::JsonlSink::create(events_path).map_err(|e| {
-                StitchError::Other(format!("could not create requested event file: {e}"))
-            })?;
-            session.set_event_sink(Box::new(sink));
-        }
-
-        // Create encoder with optional audio passthrough.
-        // File video synchronization skips the leading frames of one camera.
-        // Its passthrough audio must start at that same source moment.
-        let audio_sync_skip = match self.audio {
-            AudioMode::CopyFrom(0) if effective_sync < 0 => effective_sync.unsigned_abs(),
-            AudioMode::CopyFrom(1) if effective_sync > 0 => effective_sync as u64,
-            _ => 0,
-        };
-        let audio_start_time = start_secs + audio_sync_skip as f64 / fps;
-
-        let enc_config = crate::ffmpeg::encoder::EncoderConfig {
-            encoder_name: self.encoder_name.clone(),
-            device: self.encoder_device.clone(),
-            software_only: self.cpu_stitch,
-            codec: self.codec,
-            quality: self.quality,
-            preset: self.preset.clone(),
-            audio_source,
-            audio_start_time,
-            container,
-            gop_size: self
-                .stream_url
-                .as_ref()
-                .map(|_| (fps * 2.0).round().max(1.0) as u32),
-            stream_url: self.stream_url.take(),
-            interrupted: Some(interrupted.clone()),
-            network_timeout: None,
-            color_metadata: source_color,
-        };
-        let encoder = crate::adapters::FfmpegFileEncoder::with_live_audio(
-            &self.output,
-            out_w,
-            out_h,
-            (fps_rational.0, fps_rational.1),
-            &enc_config,
-            live_audio,
-        )?;
-        let enc_name = encoder.encoder_name().to_string();
-        let stream_monitor = encoder.stream_monitor();
-        if let Some(monitor) = &stream_monitor
-            && let Some(callback) = self.on_stream_ready.take()
-        {
-            callback(monitor.clone());
-        }
-        session.telemetry_mut().set_encoder_name(enc_name.clone());
         let skip_frames = (start_secs * fps).round() as u64;
         let setup_result = (|| -> Result<_, StitchError> {
+            for hook in self.session_hooks.drain(..) {
+                hook(&mut session, source.as_ref())?;
+            }
+
+            if session.core().constrained_look() {
+                session
+                    .core_mut()
+                    .prepare_coverage()
+                    .map_err(|error| StitchError::Other(error.to_string()))?;
+            }
+
+            // Start decode threads now that hooks (ORT/DML init) have completed.
+            source.start_decoding();
+
+            // Attach JSONL event sink if requested.
+            if let Some(ref events_path) = self.events_path {
+                let sink = crate::jsonl_sink::JsonlSink::create(events_path).map_err(|e| {
+                    StitchError::Other(format!("could not create requested event file: {e}"))
+                })?;
+                session.set_event_sink(Box::new(sink));
+            }
+
+            // Create encoder with optional audio passthrough.
+            // File video synchronization skips the leading frames of one camera.
+            // Its passthrough audio must start at that same source moment.
+            let audio_sync_skip = match self.audio {
+                AudioMode::CopyFrom(0) if effective_sync < 0 => effective_sync.unsigned_abs(),
+                AudioMode::CopyFrom(1) if effective_sync > 0 => effective_sync as u64,
+                _ => 0,
+            };
+            let audio_start_time = start_secs + audio_sync_skip as f64 / fps;
+
+            let enc_config = crate::ffmpeg::encoder::EncoderConfig {
+                encoder_name: self.encoder_name.clone(),
+                device: self.encoder_device.clone(),
+                software_only: self.cpu_stitch,
+                codec: self.codec,
+                quality: self.quality,
+                preset: self.preset.clone(),
+                audio_source,
+                audio_start_time,
+                container,
+                gop_size: self
+                    .stream_url
+                    .as_ref()
+                    .map(|_| (fps * 2.0).round().max(1.0) as u32),
+                stream_url: self.stream_url.take(),
+                interrupted: Some(interrupted.clone()),
+                network_timeout: None,
+                color_metadata: source_color,
+            };
+            let encoder = crate::adapters::FfmpegFileEncoder::with_live_audio(
+                &self.output,
+                out_w,
+                out_h,
+                (fps_rational.0, fps_rational.1),
+                &enc_config,
+                live_audio,
+            )?;
+            let enc_name = encoder.encoder_name().to_string();
+            let stream_monitor = encoder.stream_monitor();
+            if let Some(monitor) = &stream_monitor
+                && let Some(callback) = self.on_stream_ready.take()
+            {
+                callback(monitor.clone());
+            }
+            session.telemetry_mut().set_encoder_name(enc_name.clone());
             session.add_sink(
                 Box::new(encoder),
                 reco_core::session::SinkOptions::threaded(2),
@@ -1135,9 +1138,9 @@ impl StitchJob {
             } else {
                 None
             };
-            Ok((frame_limit, replay_encoder))
+            Ok((enc_name, stream_monitor, frame_limit, replay_encoder))
         })();
-        let (frame_limit, replay_encoder) = match setup_result {
+        let (enc_name, stream_monitor, frame_limit, replay_encoder) = match setup_result {
             Ok(setup) => setup,
             Err(error) => {
                 // Keep the source alive through sink shutdown, including a failed replay open.
@@ -1157,15 +1160,6 @@ impl StitchJob {
             self.on_progress.take(),
         );
 
-        // Native slots can still be referenced by pending GPU work. On failure,
-        // also keep host sources alive until output finalization releases the files.
-        let _source_during_finish = if source.is_gpu_resident() || run_result.is_err() {
-            Some(source)
-        } else {
-            drop(source);
-            None
-        };
-
         if let Some(cb) = self.on_finalizing.take() {
             cb();
         }
@@ -1178,6 +1172,8 @@ impl StitchJob {
         session.clear_stacked_gpu_recorder();
         let finish_result = session.finish();
         let telemetry_snap = session.telemetry_snapshot();
+        drop(session);
+        drop(source);
 
         // A failed run can still have rendered frames awaiting delivery. Finalize
         // them before returning, retaining the run failure as the primary error.

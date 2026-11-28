@@ -1044,6 +1044,26 @@ fn host_file_job_preserves_pixels_timing_and_lookahead_tail() {
 
 #[test]
 fn failed_job_releases_output_before_teardown() {
+    for (case, expected) in [
+        ("lookahead", "no lookahead image-memory allowance"),
+        ("replay", "stacked replay requires two cameras"),
+        ("run", "scripted source read failure"),
+    ] {
+        check_failed_job_teardown(case, expected);
+    }
+}
+
+#[test]
+fn session_hook_error_finishes_attached_sinks_before_source_drop() {
+    check_failed_job_teardown("hook", "scripted session hook failure");
+}
+
+#[test]
+fn source_read_panic_releases_output_before_source_drop() {
+    check_failed_job_teardown("panic", "scripted source read panic");
+}
+
+fn check_failed_job_teardown(case: &'static str, expected: &'static str) {
     use reco_core::calibration::{Calibration, Framing, Lens};
     use reco_core::detect::pipeline_event::{PipelineEvent, PipelineEventSink};
     use reco_core::projection::Cylinder;
@@ -1056,26 +1076,34 @@ fn failed_job_releases_output_before_teardown() {
     type Events = Arc<Mutex<Vec<&'static str>>>;
 
     struct TeardownProbe {
-        output: PathBuf,
+        output: Option<PathBuf>,
         events: Events,
         stage: &'static str,
+        panic_on_read: bool,
     }
     impl Drop for TeardownProbe {
         fn drop(&mut self) {
-            let mut open = std::fs::OpenOptions::new();
-            open.write(true);
-            #[cfg(windows)]
-            {
-                use std::os::windows::fs::OpenOptionsExt;
-                open.share_mode(0);
-            }
-            let stage = match open.open(&self.output) {
-                Ok(_) => self.stage,
-                Err(error) => {
-                    eprintln!("{} could not reopen the output: {error}", self.stage);
-                    "output unavailable during teardown"
+            let mut stage = self.stage;
+            if let Some(output) = &self.output {
+                let mut open = std::fs::OpenOptions::new();
+                open.write(true);
+                #[cfg(windows)]
+                {
+                    use std::os::windows::fs::OpenOptionsExt;
+                    open.share_mode(0);
                 }
-            };
+                if let Err(error) = open.open(output) {
+                    eprintln!("{stage} could not reopen the output: {error}");
+                    stage = "output unavailable during teardown";
+                }
+                #[cfg(target_os = "linux")]
+                if std::fs::read_dir("/proc/self/fd").is_ok_and(|fds| {
+                    fds.flatten()
+                        .any(|fd| std::fs::read_link(fd.path()).is_ok_and(|path| path == *output))
+                }) {
+                    stage = "output still open during teardown";
+                }
+            }
             self.events.lock().unwrap().push(stage);
         }
     }
@@ -1089,6 +1117,7 @@ fn failed_job_releases_output_before_teardown() {
             }
         }
         fn next_frame(&mut self) -> Result<Option<SourceFrame>, SourceError> {
+            assert!(!self.panic_on_read, "scripted source read panic");
             Err(SourceError::Read {
                 reason: "scripted source read failure".into(),
             })
@@ -1123,55 +1152,68 @@ fn failed_job_releases_output_before_teardown() {
     }
 
     let dir = tempfile::tempdir().unwrap();
-    for (case, expected) in [
-        ("lookahead", "no lookahead image-memory allowance"),
-        ("replay", "stacked replay requires two cameras"),
-        ("run", "scripted source read failure"),
-    ] {
-        let output = dir.path().join(format!("{case}.mp4"));
-        let events = Events::default();
-        let probe = |stage| TeardownProbe {
-            output: output.clone(),
-            events: events.clone(),
-            stage,
-        };
-        let core = probe("core");
-        let sink = FailingFinish(events.clone());
-        let calibration = Calibration::new(
-            vec![Lens::flat(WIDTH, HEIGHT)],
-            Cylinder {
-                radius: 32.0,
-                ..Default::default()
-            },
-            Framing {
-                axis_offset: 0.0,
-                tilt: 0.0,
-                roll: 0.0,
-            },
-        );
-        let job = reco_io::StitchJob::from_source(probe("source"), calibration, &output)
-            .cpu()
-            .resolution(64, 32)
-            .encoder_name("libx264")
-            .on_session(move |session, _| {
-                session.core_mut().set_constrained_look(false);
-                session.set_event_sink(Box::new(core));
-                session.add_sink(Box::new(sink), SinkOptions::threaded(1))?;
-                Ok(())
-            });
-        let job = match case {
-            "lookahead" => job.lookahead(0.1).lookahead_memory_limit(0),
-            "replay" => job.with_replay_recording(dir.path().join("replay.mkv")),
-            _ => job,
-        };
-        let error = job.run(&Arc::new(AtomicBool::new(false))).unwrap_err();
+    let output = dir
+        .path()
+        .canonicalize()
+        .unwrap()
+        .join(format!("{case}.mp4"));
+    let events = Events::default();
+    let probe = |stage| TeardownProbe {
+        output: (case != "hook").then(|| output.clone()),
+        events: events.clone(),
+        stage,
+        panic_on_read: case == "panic",
+    };
+    let core = probe("core");
+    let sink = FailingFinish(events.clone());
+    let calibration = Calibration::new(
+        vec![Lens::flat(WIDTH, HEIGHT)],
+        Cylinder {
+            radius: 32.0,
+            ..Default::default()
+        },
+        Framing {
+            axis_offset: 0.0,
+            tilt: 0.0,
+            roll: 0.0,
+        },
+    );
+    let job = reco_io::StitchJob::from_source(probe("source"), calibration, &output)
+        .cpu()
+        .resolution(64, 32)
+        .encoder_name("libx264")
+        .on_session(move |session, _| {
+            session.core_mut().set_constrained_look(false);
+            session.set_event_sink(Box::new(core));
+            let options = if case == "hook" {
+                // Inline sinks require explicit finish on a hook error.
+                SinkOptions::inline_lossy()
+            } else {
+                SinkOptions::threaded(1)
+            };
+            session.add_sink(Box::new(sink), options)?;
+            Ok(())
+        });
+    let job = match case {
+        "hook" => job
+            .on_session(move |_, _| Err(reco_io::stitch_job::StitchError::Other(expected.into()))),
+        "lookahead" => job.lookahead(0.1).lookahead_memory_limit(0),
+        "replay" => job.with_replay_recording(dir.path().join("replay.mkv")),
+        _ => job,
+    };
+    let run = || job.run(&Arc::new(AtomicBool::new(false)));
+    if case == "panic" {
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)).unwrap_err();
+        assert_eq!(panic.downcast_ref::<&str>(), Some(&expected));
+    } else {
+        let error = run().unwrap_err();
         assert!(error.to_string().contains(expected), "{case}: {error}");
-        assert_eq!(
-            *events.lock().unwrap(),
-            ["finish", "sink", "source", "core"],
-            "{case}"
-        );
     }
+    assert_eq!(
+        *events.lock().unwrap(),
+        ["finish", "sink", "core", "source"],
+        "{case}"
+    );
 }
 
 fn failed_job_finalizes_its_rendered_prefix(software: bool) {

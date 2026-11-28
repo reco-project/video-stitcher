@@ -166,10 +166,9 @@ fn lifecycle(gpu: bool) {
                         Ok(())
                     })
                     .on_finalizing(move || {
-                        assert_eq!(
-                            source_stopped.load(Ordering::SeqCst),
-                            !fail,
-                            "a failed run must finalize output before stopping capture"
+                        assert!(
+                            !source_stopped.load(Ordering::SeqCst),
+                            "the source must remain alive during output finalization"
                         );
                         finalizing.store(true, Ordering::SeqCst);
                     });
