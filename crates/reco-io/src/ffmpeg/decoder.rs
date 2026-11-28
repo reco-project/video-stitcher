@@ -169,6 +169,7 @@ pub struct VideoDecoder {
     is_full_range: bool,
     color_metadata: super::ColorMetadata,
     color_metadata_frozen: bool,
+    last_frame_color: super::ColorMetadata,
     require_timestamps: bool,
     live_audio: Option<super::live_audio::LiveAudio>,
     decoded_frame: VideoFrame,
@@ -447,6 +448,7 @@ impl VideoDecoder {
             is_full_range,
             color_metadata,
             color_metadata_frozen: !live,
+            last_frame_color: super::ColorMetadata::default(),
             require_timestamps: live,
             live_audio: None,
             decoded_frame: VideoFrame::empty(),
@@ -709,10 +711,9 @@ impl VideoDecoder {
                             self.decoded_frame.color_range(),
                         );
                     }
+                    let frame_color = super::ColorMetadata::from_frame(&self.decoded_frame);
                     if !self.color_metadata_frozen {
-                        self.color_metadata = self
-                            .color_metadata
-                            .or(super::ColorMetadata::from_frame(&self.decoded_frame));
+                        self.color_metadata = self.color_metadata.or(frame_color);
                         self.color_metadata_frozen = true;
                     }
                     if width != self.width || height != self.height {
@@ -730,16 +731,22 @@ impl VideoDecoder {
                             "decoded color range changed; the source requires a fixed range".into(),
                         ));
                     }
-                    let frame_color = super::ColorMetadata::from_frame(&self.decoded_frame)
-                        .or(self.color_metadata);
-                    if frame_color != self.color_metadata {
-                        let changed = || {
-                            format!(
-                                "decoded color metadata changed under a fixed source description (opening: {}; frame: {frame_color})",
-                                self.color_metadata,
-                            )
-                        };
-                        match self.color_metadata.matches_description(frame_color) {
+                    let changed = || {
+                        format!(
+                            "decoded color metadata changed under a fixed source description (opening: {}; previous frame: {}; frame: {frame_color})",
+                            self.color_metadata, self.last_frame_color,
+                        )
+                    };
+                    // Stream tags can fill in fields absent from decoded frames.
+                    // A field observed on a frame must stay present thereafter.
+                    if frame_color != self.last_frame_color
+                        && frame_color.or(self.last_frame_color) != frame_color
+                    {
+                        return Err(DecodeError::ConversionError(changed()));
+                    }
+                    let effective_color = frame_color.or(self.color_metadata);
+                    if effective_color != self.color_metadata {
+                        match self.color_metadata.matches_description(effective_color) {
                             Ok(true) => {}
                             Ok(false) => return Err(DecodeError::ConversionError(changed())),
                             Err(reason) => {
@@ -750,6 +757,7 @@ impl VideoDecoder {
                             }
                         }
                     }
+                    self.last_frame_color = frame_color;
                     #[cfg(target_os = "windows")]
                     {
                         self.pending_hw_init = None;

@@ -621,6 +621,8 @@ const HLG_TAGS: &[&str] = &[
     "tv",
 ];
 
+const UNSPECIFIED_H264_COLOR: &str = "h264_metadata=video_format=0:colour_primaries=2:transfer_characteristics=2:matrix_coefficients=2";
+
 #[test]
 fn concat_rejects_incompatible_segment_color_before_decoding() {
     use reco_io::{InputPath, SmartFileSource};
@@ -677,61 +679,111 @@ fn concat_rejects_incompatible_segment_color_before_decoding() {
 
 #[test]
 fn ordinary_and_stacked_files_reject_midstream_color_changes() {
+    assert_midstream_color_change(&[
+        "-colorspace",
+        "bt709",
+        "-color_primaries",
+        "bt709",
+        "-color_trc",
+        "bt709",
+        "-color_range",
+        "tv",
+    ]);
+}
+
+#[test]
+fn ordinary_and_stacked_files_reject_midstream_unspecified_color() {
+    // An SPS without colour description can leave the previous tags in FFmpeg.
+    // Write explicit H.264 "unspecified" values to clear all three tags.
+    assert_midstream_color_change(&["-bsf:v", UNSPECIFIED_H264_COLOR]);
+}
+
+fn assert_midstream_color_change(second_segment_args: &[&str]) {
     use reco_io::stacked_video::{GridLayout, source::StackedSource};
 
     let dir = tempfile::tempdir().unwrap();
     let hdr = dir.path().join("hdr.ts");
-    let sdr = dir.path().join("sdr.ts");
+    let second = dir.path().join("second.ts");
     let combined = dir.path().join("transition.ts");
     write_color_fixture(&hdr, HLG_TAGS);
-    write_color_fixture(
-        &sdr,
-        &[
-            "-colorspace",
-            "bt709",
-            "-color_primaries",
-            "bt709",
-            "-color_trc",
-            "bt709",
-            "-color_range",
-            "tv",
-            "-output_ts_offset",
-            "2",
-        ],
-    );
+    let mut args = second_segment_args.to_vec();
+    args.extend(["-output_ts_offset", "2"]);
+    write_color_fixture(&second, &args);
     let mut stream = std::fs::read(hdr).unwrap();
-    stream.extend(std::fs::read(sdr).unwrap());
+    stream.extend(std::fs::read(second).unwrap());
     std::fs::write(&combined, stream).unwrap();
 
     let mut decoder = VideoDecoder::open_software(&combined).unwrap();
     assert!(decoder.color_metadata().is_hdr());
-    assert!(decoder.next_frame().unwrap().is_some());
-    let error = loop {
-        match decoder.next_frame() {
-            Ok(Some(_)) => {}
-            Ok(None) => panic!("decoded the entire color transition"),
-            Err(error) => break error,
-        }
-    };
-    assert!(
-        error.to_string().contains("decoded color metadata changed"),
-        "{error}"
-    );
-
     let layout = GridLayout::vstack(64, 32, 2).unwrap();
     let mut stacked = StackedSource::open(layout, &combined).unwrap();
-    assert!(stacked.next_tuple().unwrap().is_some());
-    let error = loop {
-        match stacked.next_tuple() {
-            Ok(Some(_)) => {}
-            Ok(None) => panic!("decoded the entire stacked color transition"),
-            Err(error) => break error,
-        }
-    };
+    for _ in 0..60 {
+        assert!(decoder.next_frame().unwrap().is_some());
+        assert!(stacked.next_tuple().unwrap().is_some());
+    }
+
+    let decoder_error = decoder.next_frame().err();
+    let stacked_error = stacked.next_tuple().err();
     assert!(
-        error.to_string().contains("decoded color metadata changed"),
-        "{error}"
+        decoder_error
+            .as_ref()
+            .is_some_and(|error| error.to_string().contains("decoded color metadata changed"))
+            && stacked_error
+                .as_ref()
+                .is_some_and(|error| error.to_string().contains("decoded color metadata changed")),
+        "expected both readers to reject frame 61: decoder={decoder_error:?}, stacked={stacked_error:?}",
     );
+}
+
+#[test]
+fn container_only_color_tags_keep_decoding() {
+    use ffmpeg_next::color::{Primaries, Space, TransferCharacteristic};
+    use reco_io::ffmpeg::ColorMetadata;
+    use reco_io::stacked_video::{GridLayout, source::StackedSource};
+
+    let dir = tempfile::tempdir().unwrap();
+    let untagged = dir.path().join("untagged.mp4");
+    write_color_fixture(&untagged, &[]);
+    assert!(
+        VideoDecoder::open_software(&untagged)
+            .unwrap()
+            .color_metadata()
+            .is_empty()
+    );
+    let expected = ColorMetadata {
+        primaries: Some(Primaries::BT2020),
+        transfer: Some(TransferCharacteristic::ARIB_STD_B67),
+        space: Some(Space::BT2020NCL),
+    };
+
+    for extension in ["mp4", "mkv"] {
+        let path = dir.path().join(format!("container-only.{extension}"));
+        // Stream copy keeps the SPS untagged while the muxer writes colour tags.
+        let output = std::process::Command::new("ffmpeg")
+            .args(["-v", "error", "-nostdin", "-i"])
+            .arg(&untagged)
+            .args(["-c:v", "copy"])
+            .args(HLG_TAGS)
+            .arg(&path)
+            .output()
+            .expect("ffmpeg fixture remuxer");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let mut decoder = VideoDecoder::open_software(&path).unwrap();
+        assert_eq!(decoder.color_metadata(), expected, "{extension}");
+        let layout = GridLayout::vstack(64, 32, 2).unwrap();
+        let mut stacked = StackedSource::open(layout, &path).unwrap();
+        for _ in 0..60 {
+            assert!(decoder.next_frame().unwrap().is_some(), "{extension}");
+            assert!(stacked.next_tuple().unwrap().is_some(), "{extension}");
+        }
+        assert!(decoder.next_frame().unwrap().is_none(), "{extension}");
+        assert!(stacked.next_tuple().unwrap().is_none(), "{extension}");
+    }
 }
 
 #[test]
