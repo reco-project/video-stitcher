@@ -464,7 +464,7 @@ impl SurfaceMap for PlaneMap {
             lo: equi_lo(yn.lo, if yn.lo <= 0.0 { x_abs_min } else { x_abs_max }),
             hi: equi_hi(yn.hi, if yn.hi >= 0.0 { x_abs_min } else { x_abs_max }),
         };
-        let (du, dv) = if self.scaled_d == [0.0; 4] {
+        let (du, dv) = if self.optics.d == [0.0; 4] {
             (
                 ex.scale(self.optics.fx).shift(self.optics.cx),
                 ey.scale(self.optics.fy).shift(self.optics.cy),
@@ -474,20 +474,54 @@ impl SurfaceMap for PlaneMap {
             if !r.finite() {
                 return false;
             }
-            let t2 = I::new(r.lo.max(0.0).atan() - 1e-12, r.hi.atan() + 1e-12).square();
-            let mut polynomial = I::point(self.scaled_d[3]);
-            for &k in self.scaled_d[..3].iter().rev() {
-                polynomial = (polynomial * t2).shift(k);
+            let theta_hi = r.hi.atan() + 1e-12;
+            if r.hi >= 1e-10 {
+                // `kb4_forward_scale_with_correction` evaluates the unscaled
+                // KB4 polynomial before blending by `correction`, so an
+                // overflowing `d` produces `NaN` even when `correction == 0`.
+                let t2_hi = theta_hi * theta_hi;
+                let t4_hi = t2_hi * t2_hi;
+                let t6_hi = t4_hi * t2_hi;
+                let t8_hi = t4_hi * t4_hi;
+                let raw_mag = 1.0
+                    + self.optics.d[0].abs() * t2_hi
+                    + self.optics.d[1].abs() * t4_hi
+                    + self.optics.d[2].abs() * t6_hi
+                    + self.optics.d[3].abs() * t8_hi;
+                let max_theta_d = raw_mag * theta_hi;
+                let max_full = max_theta_d / r.lo.max(1e-10);
+                if !(2.0 * max_full + 2.0).is_finite() {
+                    return false;
+                }
             }
-            polynomial = (polynomial * t2).shift(1.0);
-            (
-                (ex * polynomial)
-                    .scale(self.optics.fx)
-                    .shift(self.optics.cx),
-                (ey * polynomial)
-                    .scale(self.optics.fy)
-                    .shift(self.optics.cy),
-            )
+            if self.scaled_d == [0.0; 4] {
+                (
+                    ex.scale(self.optics.fx).shift(self.optics.cx),
+                    ey.scale(self.optics.fy).shift(self.optics.cy),
+                )
+            } else {
+                let t2 = I::new(r.lo.max(0.0).atan() - 1e-12, theta_hi).square();
+                let mut polynomial = I::point(self.scaled_d[3]);
+                for &k in self.scaled_d[..3].iter().rev() {
+                    polynomial = (polynomial * t2).shift(k);
+                }
+                polynomial = (polynomial * t2).shift(1.0);
+                if r.lo < 1e-10 {
+                    // `kb4_forward_scale_with_correction` returns `1.0` for `r < 1e-10`.
+                    polynomial = I {
+                        lo: polynomial.lo.min(1.0),
+                        hi: polynomial.hi.max(1.0),
+                    };
+                }
+                (
+                    (ex * polynomial)
+                        .scale(self.optics.fx)
+                        .shift(self.optics.cx),
+                    (ey * polynomial)
+                        .scale(self.optics.fy)
+                        .shift(self.optics.cy),
+                )
+            }
         };
         du.inside(1e-7, 1.0 - 1e-7) && dv.inside(1e-7, 1.0 - 1e-7)
     }
@@ -1279,5 +1313,55 @@ mod tests {
         assert!(fresh_right.sample_uv(point).is_none());
         assert!(!prep_left.covers_ndc(point, point, 0.0123));
         assert!(!prep_right.covers_ndc(point, point, 0.0123));
+    }
+
+    #[test]
+    fn covers_ndc_rejects_unscaled_kb4_overflow_at_zero_correction() {
+        let cfg = ViewportSize {
+            width: 1920,
+            height: 1080,
+        };
+        let make_lens = |cx| Lens {
+            width: 1920,
+            height: 1080,
+            fx: 384.0,
+            fy: 216.0,
+            cx,
+            cy: 540.0,
+            distortion: [0.0, 0.0, 0.0, f64::MAX],
+            correction: 0.0,
+        };
+        let lenses = [make_lens(550.0), make_lens(1100.0)];
+        let framing = Framing {
+            axis_offset: 0.24,
+            tilt: 0.0,
+            roll: 0.0,
+        };
+        let projection = LShape {
+            intersect: 1.0,
+            x_ty: 0.0,
+            x_rz: 0.0,
+            z_rx: 0.0,
+            x_rx: 0.0,
+            z_rz: 0.0,
+            blend_width: DEFAULT_BLEND_WIDTH,
+        };
+        let pose = RenderPose {
+            yaw: 0.0,
+            pitch: 0.0,
+            fov_degrees: 75.0,
+        };
+
+        let (left, right) = l_shape_plane_maps(&projection, &lenses, &framing, &cfg, pose);
+        let a = [-0.3, 0.35];
+        let b = [0.3, 0.35];
+        let mid = [0.0, 0.35];
+
+        assert!(left.sample_uv(a).is_some() || right.sample_uv(a).is_some());
+        assert!(left.sample_uv(b).is_some() || right.sample_uv(b).is_some());
+        assert!(left.sample_uv(mid).is_none());
+        assert!(right.sample_uv(mid).is_none());
+        assert!(!left.covers_ndc(a, b, 0.0123));
+        assert!(!right.covers_ndc(a, b, 0.0123));
     }
 }
