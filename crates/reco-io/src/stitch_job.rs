@@ -352,7 +352,7 @@ impl StitchJob {
 
     /// Create a job from a caller-owned host-backed image source.
     ///
-    /// The job takes ownership of the source. On a successful run it drops the source before finalizing its output. If setup fails after attaching the output sink, or the run fails, it releases the output first. The source owns acquisition, timestamp mapping and cancellation; pass the same interruption flag to its opener and [`Self::run`]. Metadata and image layout must remain fixed. Native GPU sources require device-aware [`StitchSession`] setup and are rejected here.
+    /// The job takes ownership of the source. On success or error, the job attempts to finalize attached outputs before dropping the session and its sinks. The source is dropped last, including during unwinding. The source owns acquisition, timestamp mapping and cancellation; pass the same interruption flag to its opener and [`Self::run`]. Metadata and image layout must remain fixed. Native GPU sources require device-aware [`StitchSession`] setup and are rejected here.
     ///
     /// Audio is disabled because [`FrameSource`] delivers images only. File start-time and frame-offset settings are unavailable; [`Self::end_time`] converts duration to a frame limit using the source rate, and [`Self::max_frames`] limits the number of images processed.
     pub fn from_source(
