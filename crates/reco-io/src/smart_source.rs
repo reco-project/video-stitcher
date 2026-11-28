@@ -74,6 +74,7 @@ pub struct SmartFileSource {
     #[cfg(feature = "gpu")]
     pixel_format: GpuPixelFormat,
     full_range: bool,
+    matrix: reco_core::render::color::YuvMatrix,
     color_metadata: crate::ffmpeg::ColorMetadata,
     left_rotation: i32,
     right_rotation: i32,
@@ -116,12 +117,13 @@ impl SmartFileSource {
         };
         let left_probe_path = left.first_path();
 
-        let probe = crate::ffmpeg::decoder::VideoDecoder::open(left_probe_path).map_err(|e| {
-            SourceError::Init {
-                path: left_probe_path.display().to_string(),
-                reason: format!("{e}"),
-            }
-        })?;
+        let probe =
+            crate::ffmpeg::decoder::VideoDecoder::open_input_probe(left, false).map_err(|e| {
+                SourceError::Init {
+                    path: left_probe_path.display().to_string(),
+                    reason: format!("{e}"),
+                }
+            })?;
 
         let fps_r = probe.frame_rate();
         let mut info = SourceInfo {
@@ -141,12 +143,10 @@ impl SmartFileSource {
         let mut matching_layout = true;
         let mut camera_colors = vec![first_color];
         for (camera, input) in inputs.iter().enumerate().skip(1) {
-            let probe =
-                crate::ffmpeg::decoder::VideoDecoder::open(input.first_path()).map_err(|e| {
-                    SourceError::Init {
-                        path: input.first_path().display().to_string(),
-                        reason: e.to_string(),
-                    }
+            let probe = crate::ffmpeg::decoder::VideoDecoder::open_input_probe(input, false)
+                .map_err(|e| SourceError::Init {
+                    path: input.first_path().display().to_string(),
+                    reason: e.to_string(),
                 })?;
             if probe.is_full_range() != full_range {
                 return Err(SourceError::Init {
@@ -166,7 +166,11 @@ impl SmartFileSource {
             }
             camera_colors.push(probe.color_metadata());
         }
-        let color_metadata = crate::ffmpeg::ColorMetadata::reconcile(&camera_colors);
+        let (color_metadata, matrix) = crate::ffmpeg::ColorMetadata::reconcile(&camera_colors)
+            .map_err(|reason| SourceError::Init {
+                path: left_probe_path.display().to_string(),
+                reason,
+            })?;
         // Automatic Windows/Metal native selection is restricted to validated layouts.
         let native_input_count = platform::NativeSource::supports_input_count(inputs.len());
 
@@ -200,7 +204,7 @@ impl SmartFileSource {
                 info,
                 pixel_format,
                 full_range,
-                color_metadata,
+                (color_metadata, matrix),
                 left_rotation,
                 right_rotation,
             )
@@ -222,6 +226,7 @@ impl SmartFileSource {
         let pixel_format = source.pixel_format();
         let full_range = source.is_full_range();
         let color_metadata = source.color_metadata();
+        let matrix = source.yuv_matrix();
         log::info!(
             "SmartFileSource: host-backed frames ({} camera(s), {}x{}{})",
             inputs.len(),
@@ -237,6 +242,7 @@ impl SmartFileSource {
             #[cfg(feature = "gpu")]
             pixel_format,
             full_range,
+            matrix,
             color_metadata,
             left_rotation,
             right_rotation,
@@ -255,7 +261,10 @@ impl SmartFileSource {
         info: SourceInfo,
         pixel_format: GpuPixelFormat,
         full_range: bool,
-        color_metadata: crate::ffmpeg::ColorMetadata,
+        (color_metadata, matrix): (
+            crate::ffmpeg::ColorMetadata,
+            reco_core::render::color::YuvMatrix,
+        ),
         left_rotation: i32,
         right_rotation: i32,
     ) -> Result<Self, SourceError> {
@@ -276,6 +285,7 @@ impl SmartFileSource {
             info,
             pixel_format,
             full_range,
+            matrix,
             color_metadata,
             left_rotation,
             right_rotation,
@@ -305,6 +315,12 @@ impl SmartFileSource {
             SourceMode::Native(native) => Some(native.shared_texture_set()),
             SourceMode::Cpu(_) => None,
         }
+    }
+}
+
+impl crate::stacked_video::replay::ReplaySource for SmartFileSource {
+    fn replay_color_metadata(&self) -> crate::ffmpeg::ColorMetadata {
+        self.color_metadata()
     }
 }
 
@@ -381,6 +397,10 @@ impl FrameSource for SmartFileSource {
     #[cfg(feature = "gpu")]
     fn gpu_pixel_format(&self) -> GpuPixelFormat {
         self.pixel_format
+    }
+
+    fn yuv_matrix(&self) -> reco_core::render::color::YuvMatrix {
+        self.matrix
     }
 
     fn is_full_range(&self) -> bool {

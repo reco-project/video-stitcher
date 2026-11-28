@@ -722,7 +722,7 @@ fn container_policy_matrix_across_containers_codecs_and_color_modes() {
             space: Some(ffmpeg::color::Space::BT709),
         },
         full_range: Some(false),
-        rendered_rgba_scaler: true,
+        rgba_matrix: Some(reco_core::render::color::YuvMatrix::Bt709),
     };
     let hdr_pq = OutputColor {
         metadata: ColorMetadata {
@@ -731,7 +731,7 @@ fn container_policy_matrix_across_containers_codecs_and_color_modes() {
             space: Some(ffmpeg::color::Space::BT2020NCL),
         },
         full_range: Some(false),
-        rendered_rgba_scaler: true,
+        rgba_matrix: Some(reco_core::render::color::YuvMatrix::Bt709),
     };
 
     assert!(!sdr_untagged.has_tags());

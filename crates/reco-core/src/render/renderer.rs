@@ -188,14 +188,34 @@ impl GpuPixelFormat {
     }
 }
 
+struct VideoPipelines {
+    main: wgpu::RenderPipeline,
+    right_uncovered: Option<wgpu::RenderPipeline>,
+}
+
+pub(crate) fn video_compilation_options(
+    extended: bool,
+) -> wgpu::PipelineCompilationOptions<'static> {
+    wgpu::PipelineCompilationOptions {
+        constants: if extended {
+            &[("extended_video_color", 1.0)]
+        } else {
+            &[]
+        },
+        ..Default::default()
+    }
+}
+
 /// The GPU renderer for panoramic stitching.
 ///
 /// Holds all wgpu resources: pipelines, textures, bind groups, and buffers.
 /// Created once per pipeline and reused for every frame.
 pub(crate) struct Renderer {
-    pipeline: wgpu::RenderPipeline,
-    /// Planes-only helper: fills right-only fade-band pixels where `dst.a == 0`.
-    right_uncovered_pipeline: Option<wgpu::RenderPipeline>,
+    video: VideoPipelines,
+    extended_video: OnceLock<VideoPipelines>,
+    video_program: crate::render::GpuProgram,
+    video_shader: wgpu::ShaderModule,
+    video_layout: wgpu::PipelineLayout,
     /// Planes-only helper: restores opaque alpha (1.0) across the full target.
     opaque_alpha_pipeline: Option<wgpu::RenderPipeline>,
     vertex_buffer: Option<wgpu::Buffer>,
@@ -207,8 +227,7 @@ pub(crate) struct Renderer {
     output_height: u32,
     /// Input pixel format (YUV420P or NV12).
     input_format: InputFormat,
-    /// Full-range YUV (0-255) instead of limited (16-235).
-    is_full_range: bool,
+    color: super::color::YuvColor,
     /// Stored for creating bind groups from external textures (zero-copy).
     texture_layout: wgpu::BindGroupLayout,
     /// Shared sampler, stored for bind group creation.
@@ -326,87 +345,15 @@ impl Renderer {
             immediate_size: 0,
         });
 
-        // Render pipeline with alpha blending for seam transition
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("stitch_render_pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some(program.vs_entry),
-                compilation_options: Default::default(),
-                buffers: if program.pass == super::GpuPass::Planes {
-                    &[Vertex::LAYOUT]
-                } else {
-                    &[]
-                },
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some(program.fs_entry),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: output_format,
-                    blend: Some(program.blend),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None, // Both sides visible
-                ..Default::default()
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
-
-        let (right_uncovered_pipeline, opaque_alpha_pipeline) = if program.pass
-            == super::GpuPass::Planes
-        {
-            let right_uncovered = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("stitch_right_uncovered_pipeline"),
-                layout: Some(&pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &shader,
-                    entry_point: Some(program.vs_entry),
-                    compilation_options: Default::default(),
-                    buffers: &[Vertex::LAYOUT],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some("fs_right_uncovered"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: output_format,
-                        blend: Some(wgpu::BlendState {
-                            color: wgpu::BlendComponent {
-                                src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
-                                dst_factor: wgpu::BlendFactor::DstAlpha,
-                                operation: wgpu::BlendOperation::Add,
-                            },
-                            alpha: wgpu::BlendComponent {
-                                src_factor: wgpu::BlendFactor::Zero,
-                                dst_factor: wgpu::BlendFactor::One,
-                                operation: wgpu::BlendOperation::Add,
-                            },
-                        }),
-                        write_mask: wgpu::ColorWrites::COLOR,
-                    })],
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: None,
-                    ..Default::default()
-                },
-                depth_stencil: None,
-                multisample: wgpu::MultisampleState::default(),
-                multiview_mask: None,
-                cache: None,
-            });
-
+        let video = Self::create_video_pipelines(
+            device,
+            program,
+            &shader,
+            &pipeline_layout,
+            output_format,
+            false,
+        );
+        let opaque_alpha_pipeline = if program.pass == super::GpuPass::Planes {
             let empty_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("stitch_opaque_alpha_layout"),
                 bind_group_layouts: &[],
@@ -443,9 +390,9 @@ impl Renderer {
                 cache: None,
             });
 
-            (Some(right_uncovered), Some(opaque_alpha))
+            Some(opaque_alpha)
         } else {
-            (None, None)
+            None
         };
 
         // Sampler (shared by both planes)
@@ -483,8 +430,11 @@ impl Renderer {
             .collect();
 
         Self {
-            pipeline,
-            right_uncovered_pipeline,
+            video,
+            extended_video: OnceLock::new(),
+            video_program: *program,
+            video_shader: shader,
+            video_layout: pipeline_layout,
             opaque_alpha_pipeline,
             vertex_buffer,
             cameras,
@@ -493,12 +443,125 @@ impl Renderer {
             output_width,
             output_height,
             input_format,
-            is_full_range: false,
+            color: super::color::YuvColor::default(),
             texture_layout,
             sampler,
             device: device.clone(),
             flip_180: [false, false],
         }
+    }
+
+    fn create_video_pipelines(
+        device: &wgpu::Device,
+        program: &crate::render::GpuProgram,
+        shader: &wgpu::ShaderModule,
+        pipeline_layout: &wgpu::PipelineLayout,
+        output_format: wgpu::TextureFormat,
+        extended: bool,
+    ) -> VideoPipelines {
+        // Render pipeline with alpha blending for seam transition
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("stitch_render_pipeline"),
+            layout: Some(pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: shader,
+                entry_point: Some(program.vs_entry),
+                compilation_options: Default::default(),
+                buffers: if program.pass == super::GpuPass::Planes {
+                    &[Vertex::LAYOUT]
+                } else {
+                    &[]
+                },
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: shader,
+                entry_point: Some(program.fs_entry),
+                compilation_options: video_compilation_options(extended),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: output_format,
+                    blend: Some(program.blend),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None, // Both sides visible
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        let right_uncovered = if program.pass == super::GpuPass::Planes {
+            let right_uncovered = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("stitch_right_uncovered_pipeline"),
+                layout: Some(pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: shader,
+                    entry_point: Some(program.vs_entry),
+                    compilation_options: Default::default(),
+                    buffers: &[Vertex::LAYOUT],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: shader,
+                    entry_point: Some("fs_right_uncovered"),
+                    compilation_options: video_compilation_options(extended),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: output_format,
+                        blend: Some(wgpu::BlendState {
+                            color: wgpu::BlendComponent {
+                                src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
+                                dst_factor: wgpu::BlendFactor::DstAlpha,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                            alpha: wgpu::BlendComponent {
+                                src_factor: wgpu::BlendFactor::Zero,
+                                dst_factor: wgpu::BlendFactor::One,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                        }),
+                        write_mask: wgpu::ColorWrites::COLOR,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: None,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            });
+
+            Some(right_uncovered)
+        } else {
+            None
+        };
+        VideoPipelines {
+            main: pipeline,
+            right_uncovered,
+        }
+    }
+
+    fn video_pipelines(&self) -> &VideoPipelines {
+        if self.color.flags() == 0 || self.input_format == InputFormat::Rgba {
+            return &self.video;
+        }
+        self.extended_video.get_or_init(|| {
+            Self::create_video_pipelines(
+                &self.device,
+                &self.video_program,
+                &self.video_shader,
+                &self.video_layout,
+                self.output_format,
+                true,
+            )
+        })
     }
 
     fn create_plane_resources(
@@ -770,7 +833,22 @@ impl Renderer {
 
     /// Set full-range YUV mode for the shader.
     pub fn set_full_range(&mut self, full_range: bool) {
-        self.is_full_range = full_range;
+        self.color.full_range = full_range;
+    }
+
+    pub(crate) fn source_full_range(&self) -> bool {
+        self.color.full_range
+    }
+
+    pub(crate) fn set_source_color(&mut self, color: super::color::YuvColor) {
+        self.color = color;
+    }
+
+    pub(crate) fn set_sample_format(
+        &mut self,
+        samples: super::color::YuvSampleFormat,
+    ) -> super::color::YuvSampleFormat {
+        std::mem::replace(&mut self.color.samples, samples)
     }
 
     /// Create fresh `TextureView`s for the left plane's Y/U/V
@@ -859,7 +937,7 @@ impl Renderer {
                 blend_width,
                 self.input_format,
                 self.flip_180[0],
-                self.is_full_range,
+                self.color,
             );
             left_uniforms.lens_preview[0] = calibration.lenses[0].correction;
 
@@ -871,7 +949,7 @@ impl Renderer {
                 blend_width,
                 self.input_format,
                 self.flip_180[1],
-                self.is_full_range,
+                self.color,
             );
             right_uniforms.lens_preview[0] = calibration.lenses[1].correction;
 
@@ -890,12 +968,7 @@ impl Renderer {
                 &calibration.lenses,
                 &calibration.framing,
                 std::array::from_fn(|i| {
-                    [
-                        i as u32,
-                        self.input_format as u32,
-                        u32::from(self.flip_180[i]),
-                        u32::from(self.is_full_range),
-                    ]
+                    video_flags(i as u32, self.input_format, self.flip_180[i], self.color)
                 }),
             );
             for (camera, uniform) in self.cameras.iter().zip(&uniforms) {
@@ -908,12 +981,7 @@ impl Renderer {
                 f64::from(calibration.lenses[0].height),
                 aspect,
                 pose,
-                [
-                    0,
-                    self.input_format as u32,
-                    u32::from(self.flip_180[0]),
-                    u32::from(self.is_full_range),
-                ],
+                video_flags(0, self.input_format, self.flip_180[0], self.color),
             );
             gpu.queue.write_buffer(
                 &self.cameras[0].uniform_buffer,
@@ -927,8 +995,10 @@ impl Renderer {
                 label: Some(encoder_label),
             });
 
+        let pipelines = self.video_pipelines();
         let planes_blend_pipelines = if scene.is_some() && blend_width > 0.0 {
-            self.right_uncovered_pipeline
+            pipelines
+                .right_uncovered
                 .as_ref()
                 .zip(self.opaque_alpha_pipeline.as_ref())
         } else {
@@ -980,7 +1050,7 @@ impl Renderer {
 
                 // Draw 1: Left camera (base). Covered pixels become (L, 1.0);
                 // uncovered pixels stay (0, 0, 0, 0).
-                pass.set_pipeline(&self.pipeline);
+                pass.set_pipeline(&pipelines.main);
                 bind_camera(&mut pass, &self.cameras[0]);
                 pass.draw(0..6, 0..1);
 
@@ -995,7 +1065,7 @@ impl Renderer {
                 // Over left-covered pixels (L): a * R + (1 - a) * L.
                 // Over right-only fade-band pixels (R): a * R + (1 - a) * R = R.
                 // Outside fade band (a = 1): R.
-                pass.set_pipeline(&self.pipeline);
+                pass.set_pipeline(&pipelines.main);
                 pass.draw(0..6, 0..1);
 
                 // Draw 4: Restore dst.a = 1.0 across the full target without
@@ -1003,7 +1073,7 @@ impl Renderer {
                 pass.set_pipeline(opaque_alpha_pipeline);
                 pass.draw(0..3, 0..1);
             } else {
-                pass.set_pipeline(&self.pipeline);
+                pass.set_pipeline(&pipelines.main);
                 if let Some(vertices) = &self.vertex_buffer {
                     pass.set_vertex_buffer(0, vertices.slice(..));
                 }
@@ -1157,7 +1227,7 @@ impl Renderer {
             0.0,
             self.input_format,
             self.flip_180[camera],
-            self.is_full_range,
+            self.color,
         );
         uniforms.lens_preview[0] = calibration.lenses[camera].correction;
         gpu.queue.write_buffer(
@@ -1193,7 +1263,7 @@ impl Renderer {
                 .as_ref()
                 .expect("GpuPass::Planes always has a vertex buffer");
             let plane = &self.cameras[camera];
-            pass.set_pipeline(&self.pipeline);
+            pass.set_pipeline(&self.video_pipelines().main);
             pass.set_vertex_buffer(0, vertices.slice(..));
             pass.set_bind_group(
                 0,
@@ -1390,6 +1460,15 @@ fn upload_nv12(
     Ok(())
 }
 
+fn video_flags(
+    camera: u32,
+    input: InputFormat,
+    flip_180: bool,
+    color: super::color::YuvColor,
+) -> [u32; 4] {
+    [camera, input as u32, u32::from(flip_180), color.flags()]
+}
+
 /// Build the GPU uniform struct for one plane.
 ///
 /// `flip_180`: when true, the shader flips UV coordinates to apply
@@ -1402,7 +1481,7 @@ pub(crate) fn build_gpu_uniforms(
     blend_width: f32,
     input_format: InputFormat,
     flip_180: bool,
-    is_full_range: bool,
+    color: super::color::YuvColor,
 ) -> GpuUniforms {
     let w = camera.width as f32;
     let h = camera.height as f32;
@@ -1422,16 +1501,7 @@ pub(crate) fn build_gpu_uniforms(
         ],
         color_scale: [1.0, 1.0, 1.0, 0.0],
         color_offset_blend: [0.0, 0.0, 0.0, blend_width],
-        flags: [
-            is_right as u32,
-            match input_format {
-                InputFormat::Yuv420p => 0,
-                InputFormat::Nv12 => 1,
-                InputFormat::Rgba => 2,
-            },
-            flip_180 as u32,
-            is_full_range as u32,
-        ],
+        flags: video_flags(u32::from(is_right), input_format, flip_180, color),
         // Full correction for normal stitching. LensPreviewRenderer
         // overrides this field for the single-camera preview mode.
         lens_preview: [1.0, 0.0, 0.0, 0.0],
@@ -1486,6 +1556,14 @@ mod tests {
     #[test]
     fn uniforms_are_normalized() {
         assert_eq!(std::mem::size_of::<GpuUniforms>(), 160);
+        assert_eq!(
+            std::mem::size_of::<crate::projection::panorama::PanoramaUniforms>(),
+            224
+        );
+        assert_eq!(
+            std::mem::size_of::<crate::projection::cylinder::CylinderUniforms>(),
+            80
+        );
         let camera = Lens::fisheye(
             3840,
             2160,
@@ -1503,7 +1581,7 @@ mod tests {
             0.0,
             InputFormat::Yuv420p,
             false,
-            false,
+            Default::default(),
         );
 
         // fx/width ≈ 0.4678

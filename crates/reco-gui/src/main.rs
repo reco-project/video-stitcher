@@ -631,7 +631,7 @@ impl AppState {
         &self,
         cal: &Calibration,
         source_sizes: Vec<(u32, u32)>,
-        full_range: bool,
+        color: reco_core::render::color::YuvColor,
     ) -> Result<PreviewBridge, String> {
         let gpu = self
             .shared_gpu
@@ -648,7 +648,7 @@ impl AppState {
             PREVIEW_HEIGHT_DEFAULT,
         )
         .map_err(|e| format!("GPU init error: {e}"))?;
-        bridge.engine_mut().set_full_range(full_range);
+        bridge.engine_mut().set_source_color(color);
         Ok(bridge)
     }
 
@@ -836,7 +836,7 @@ impl AppState {
             if sizes.len() != cal.projection.camera_count() {
                 return Err("Disconnect live inputs before changing the camera count.".into());
             }
-            let bridge = self.build_bridge(cal, sizes, self.playback.is_full_range())?;
+            let bridge = self.build_bridge(cal, sizes, self.playback.yuv_color())?;
             self.bridge = Some(bridge);
             self.reset_view();
             return Ok(());
@@ -856,7 +856,7 @@ impl AppState {
             .ok_or("No input dimensions")?
             .to_vec();
 
-        let bridge = self.build_bridge(cal, source_sizes, playback.is_full_range())?;
+        let bridge = self.build_bridge(cal, source_sizes, playback.yuv_color())?;
 
         self.cancel_calibration();
         self.stop_recording();
@@ -911,6 +911,7 @@ impl AppState {
         let config = reco_io::ffmpeg::encoder::EncoderConfig {
             codec: Some(codec.parse::<reco_io::output::Codec>()?),
             quality: quality.parse()?,
+            color_metadata: self.playback.color_metadata(),
             ..Default::default()
         };
         let encoder =
@@ -987,7 +988,7 @@ impl AppState {
                 &planes,
                 cameras[camera].size,
                 &params,
-                self.playback.is_full_range(),
+                self.playback.yuv_color(),
             ) {
                 Ok(img) => Some(img),
                 Err(e) => {
@@ -1170,7 +1171,7 @@ impl AppState {
             if let Some(bridge) = &mut self.bridge {
                 bridge
                     .engine_mut()
-                    .set_full_range(self.playback.is_full_range());
+                    .set_source_color(self.playback.yuv_color());
             }
             self.preview_dirty = true;
         }

@@ -5,7 +5,7 @@
 
 use crate::calibration::Calibration;
 use crate::geometry::RenderPose;
-use crate::render::color::bt709_yuv_to_rgb;
+use crate::render::color::{YuvColor, YuvToRgb};
 use crate::render::planes::{Nv12Planes, Yuv420pPlanes};
 use crate::render::viewport::ViewportSize;
 
@@ -35,7 +35,7 @@ fn check_plane(plane: &[u8], expected: usize) -> Result<(), StitchError> {
 
 /// Render one tightly packed NV12 frame per calibrated camera into opaque RGBA on the CPU.
 ///
-/// Inputs use their own `sizes` and the same BT.709 `full_range` interpretation. Output dimensions come from `viewport_size`; `pose` supplies render-space yaw/pitch in radians and vertical FOV in degrees.
+/// Inputs use their own `sizes` and the same 8-bit YCbCr interpretation. Output dimensions come from `viewport_size`; `pose` supplies render-space yaw/pitch in radians and vertical FOV in degrees.
 /// Returns an error for invalid dimensions, a camera-count mismatch or incorrectly sized planes.
 pub(crate) fn stitch_rgba(
     planes: &[Nv12Planes<'_>],
@@ -43,7 +43,7 @@ pub(crate) fn stitch_rgba(
     calib: &Calibration,
     viewport_size: &ViewportSize,
     pose: RenderPose,
-    full_range: bool,
+    color: YuvColor,
 ) -> Result<Vec<u8>, StitchError> {
     check_camera_count(calib, planes.len())?;
     check_camera_count(calib, sizes.len())?;
@@ -53,10 +53,14 @@ pub(crate) fn stitch_rgba(
         check_plane(p.y, w * h)?;
         check_plane(p.uv, w * (h / 2))?;
     }
+    let conversion = YuvToRgb::new(YuvColor {
+        samples: Default::default(),
+        ..color
+    });
     let samplers: Vec<_> = planes
         .iter()
         .zip(sizes)
-        .map(|(p, &(cw, ch))| move |u, v| sample_nv12(p, cw, ch, u, v, full_range))
+        .map(|(p, &(cw, ch))| move |u, v| sample_nv12(p, cw, ch, u, v, conversion))
         .collect();
     Ok(stitch_with(calib, viewport_size, pose, &samplers))
 }
@@ -70,7 +74,7 @@ pub(crate) fn stitch_rgba_yuv420p(
     calib: &Calibration,
     viewport_size: &ViewportSize,
     pose: RenderPose,
-    full_range: bool,
+    color: YuvColor,
 ) -> Result<Vec<u8>, StitchError> {
     check_camera_count(calib, planes.len())?;
     check_camera_count(calib, sizes.len())?;
@@ -82,10 +86,14 @@ pub(crate) fn stitch_rgba_yuv420p(
         check_plane(p.u, chroma)?;
         check_plane(p.v, chroma)?;
     }
+    let conversion = YuvToRgb::new(YuvColor {
+        samples: Default::default(),
+        ..color
+    });
     let samplers: Vec<_> = planes
         .iter()
         .zip(sizes)
-        .map(|(p, &(cw, ch))| move |u, v| sample_yuv420p(p, cw, ch, u, v, full_range))
+        .map(|(p, &(cw, ch))| move |u, v| sample_yuv420p(p, cw, ch, u, v, conversion))
         .collect();
     Ok(stitch_with(calib, viewport_size, pose, &samplers))
 }
@@ -198,7 +206,7 @@ fn sample_nv12(
     cam_h: u32,
     u: f64,
     v: f64,
-    full_range: bool,
+    conversion: YuvToRgb,
 ) -> [f64; 3] {
     let (w, h) = (cam_w as usize, cam_h as usize);
     let (cw, ch) = (w / 2, h / 2);
@@ -211,7 +219,7 @@ fn sample_nv12(
         u * cw as f64 - 0.5,
         v * ch as f64 - 0.5,
     );
-    bt709_yuv_to_rgb(y_raw, u_raw / 255.0, v_raw / 255.0, full_range)
+    conversion.convert(y_raw, u_raw / 255.0, v_raw / 255.0)
 }
 
 /// Sample a YUV420p frame at normalised UV (bilinear Y + separate U, V planes).
@@ -222,14 +230,14 @@ fn sample_yuv420p(
     cam_h: u32,
     u: f64,
     v: f64,
-    full_range: bool,
+    conversion: YuvToRgb,
 ) -> [f64; 3] {
     let (w, h) = (cam_w as usize, cam_h as usize);
     let (cw, ch) = (w / 2, h / 2);
     let y_raw = bilinear_u8(planes.y, w, h, u * w as f64 - 0.5, v * h as f64 - 0.5) / 255.0;
     let u_raw = bilinear_u8(planes.u, cw, ch, u * cw as f64 - 0.5, v * ch as f64 - 0.5) / 255.0;
     let v_raw = bilinear_u8(planes.v, cw, ch, u * cw as f64 - 0.5, v * ch as f64 - 0.5) / 255.0;
-    bt709_yuv_to_rgb(y_raw, u_raw, v_raw, full_range)
+    conversion.convert(y_raw, u_raw, v_raw)
 }
 
 /// Bilinear sample of a tightly-packed single-byte plane (row stride = `w`),
@@ -322,10 +330,14 @@ mod tests {
             v: &v,
         };
         for full_range in [false, true] {
+            let conversion = YuvToRgb::new(YuvColor {
+                full_range,
+                ..Default::default()
+            });
             for x in [0.0, 0.13, 0.5, 0.81, 1.0] {
                 for y in [0.0, 0.19, 0.5, 0.93, 1.0] {
-                    let a = sample_nv12(&nv, 8, 8, x, y, full_range);
-                    let b = sample_yuv420p(&yuv, 8, 8, x, y, full_range);
+                    let a = sample_nv12(&nv, 8, 8, x, y, conversion);
+                    let b = sample_yuv420p(&yuv, 8, 8, x, y, conversion);
                     for k in 0..3 {
                         assert!(
                             (a[k] - b[k]).abs() < 1e-9,

@@ -879,6 +879,7 @@ impl StitchJob {
             log::info!("Source colour metadata: {source_color}");
         }
         source = opened.into_frames();
+        let output_color = reco_core::render::color::YuvColor::delivery(source.yuv_color().matrix);
 
         let skip_frames = (start_secs * fps).round() as u64;
         let setup_result = (|| -> Result<_, StitchError> {
@@ -940,6 +941,7 @@ impl StitchJob {
                 (fps_rational.0, fps_rational.1),
                 &enc_config,
                 live_audio,
+                output_color,
             )?;
             let enc_name = encoder.encoder_name().to_string();
             let stream_monitor = encoder.stream_monitor();
@@ -975,10 +977,12 @@ impl StitchJob {
                         crate::ffmpeg::encoder::VideoEncoder::replay_encoder_name(&enc_name)
                             .map(String::from);
                 }
-                cfg.encoder_config.full_range = source.is_full_range();
-                if cfg.encoder_config.inner.color_metadata.is_empty() {
-                    cfg.encoder_config.inner.color_metadata = source_color;
-                }
+                crate::stacked_video::replay::configure_replay_color(
+                    &mut cfg.encoder_config,
+                    source.as_ref(),
+                    source_color,
+                )
+                .map_err(|e| StitchError::Other(format!("replay recording color: {e}")))?;
                 if cfg.encoder_config.fps.is_none() {
                     cfg.encoder_config.fps = Some(fps_rational);
                     log::info!(

@@ -32,7 +32,10 @@ fn apply_color_transfer(rgb: vec3<f32>, scale: vec3<f32>, offset: vec3<f32>) -> 
 
 // ---- YUV → RGB conversion ----
 
-/// Sample the input plane(s) and return an sRGB-domain RGB triple.
+// The common SDR pipeline compiles out matrix, range and P010 selection.
+override extended_video_color: bool = false;
+
+/// Sample the input planes and return nonlinear R'G'B'.
 ///
 /// Supports three input layouts (selected by `flags.y`):
 ///   0 = YUV420P: separate R8 textures for Y, U, V (software decode).
@@ -40,9 +43,6 @@ fn apply_color_transfer(rgb: vec3<f32>, scale: vec3<f32>, offset: vec3<f32>) -> 
 ///   2 = RGBA: t_y is an `Rgba8Unorm` texture holding packed RGB
 ///       (source already sRGB-domain, skip YUV conversion).
 ///
-/// Source metadata selects limited or full range. The BT.709 matrix
-/// produces display-encoded RGB, written without another transfer
-/// function to the `Rgba8Unorm` render target.
 fn sample_video(uv: vec2<f32>, flags: vec4<u32>) -> vec4<f32> {
     // Apply 180-degree rotation for the GPU zero-copy path.
     // The CPU path reverses buffers in software; the GPU path flips UV coords instead.
@@ -76,28 +76,50 @@ fn sample_video(uv: vec2<f32>, flags: vec4<u32>) -> vec4<f32> {
         v_raw = textureSample(t_v, s_video, sample_uv).r;
     }
 
-    // BT.709 YCbCr -> R'G'B'. Range scaling depends on flags.w:
-    //   0 = limited range (Y: 16-235, Cb/Cr: 16-240)
-    //   1 = full range (Y: 0-255, Cb/Cr: 0-255)
-    var y: f32;
-    var cb: f32;
-    var cr: f32;
-    if flags.w == 1u {
-        y = y_raw;
-        cb = u_raw - 0.5;
-        cr = v_raw - 0.5;
-    } else {
-        y = (y_raw - 16.0 / 255.0) * (255.0 / 219.0);
-        cb = (u_raw - 128.0 / 255.0) * (255.0 / 224.0);
-        cr = (v_raw - 128.0 / 255.0) * (255.0 / 224.0);
+    if extended_video_color {
+        return vec4<f32>(clamp(extended_yuv_to_rgb(vec3(y_raw, u_raw, v_raw), flags.w),
+            vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
     }
 
+    let y = (y_raw - 16.0 / 255.0) * (255.0 / 219.0);
+    let cb = (u_raw - 128.0 / 255.0) * (255.0 / 224.0);
+    let cr = (v_raw - 128.0 / 255.0) * (255.0 / 224.0);
     let r = y + 1.5748 * cr;
     let g = y - 0.1873 * cb - 0.4681 * cr;
     let b = y + 1.8556 * cb;
-
     let rgb = clamp(vec3<f32>(r, g, b), vec3<f32>(0.0), vec3<f32>(1.0));
-    // BT.709 YCbCr->R'G'B' produces sRGB-domain values directly.
-    // Render target is Rgba8Unorm, so we write sRGB values as-is.
     return vec4<f32>(rgb, 1.0);
+}
+
+// flags.w: full range in bit 0, matrix in bits 1-2, P010 in bit 3.
+fn extended_yuv_to_rgb(raw: vec3<f32>, color: u32) -> vec3<f32> {
+    let full_range = (color & 1u) != 0u;
+    var yuv: vec3<f32>;
+    if (color & 8u) != 0u {
+        // R16Unorm stores (code << 6) / 65535, including interpolated samples.
+        let code = raw * (65535.0 / 64.0);
+        if full_range {
+            yuv = (code - vec3(0.0, 512.0, 512.0)) / 1023.0;
+        } else {
+            yuv = (code - vec3(64.0, 512.0, 512.0)) / vec3(876.0, 896.0, 896.0);
+        }
+    } else if full_range {
+        yuv = raw - vec3(0.0, 128.0 / 255.0, 128.0 / 255.0);
+    } else {
+        yuv = (raw - vec3(16.0, 128.0, 128.0) / 255.0)
+            * (255.0 / vec3(219.0, 224.0, 224.0));
+    }
+
+    let y = yuv.x;
+    let cb = yuv.y;
+    let cr = yuv.z;
+    switch (color >> 1u) & 3u {
+        case 1u: {
+            return vec3(y + 1.4746 * cr, y - 0.16455313 * cb - 0.57135313 * cr, y + 1.8814 * cb);
+        }
+        case 2u: {
+            return vec3(y + 1.402 * cr, y - 0.34413629 * cb - 0.71413629 * cr, y + 1.772 * cb);
+        }
+        default: { return yuv_to_rgb(yuv); }
+    }
 }

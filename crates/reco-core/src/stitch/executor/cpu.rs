@@ -13,7 +13,7 @@ pub struct CpuExecutor {
     pub(crate) calib: Calibration,
     pub(crate) viewport_size: ViewportSize,
     pub(crate) source_sizes: Vec<(u32, u32)>,
-    pub(crate) full_range: bool,
+    pub(crate) color: crate::render::color::YuvColor,
 }
 
 impl CpuExecutor {
@@ -44,7 +44,10 @@ impl CpuExecutor {
             calib,
             viewport_size,
             source_sizes,
-            full_range,
+            color: crate::render::color::YuvColor {
+                full_range,
+                ..Default::default()
+            },
         })
     }
 
@@ -68,7 +71,7 @@ impl CpuExecutor {
             &self.calib,
             &self.viewport_size,
             pose,
-            self.full_range,
+            self.color,
         )
     }
 
@@ -88,7 +91,7 @@ impl CpuExecutor {
             &self.calib,
             &self.viewport_size,
             pose,
-            self.full_range,
+            self.color,
         )
     }
 }

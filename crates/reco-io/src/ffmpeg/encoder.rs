@@ -249,7 +249,7 @@ impl VideoEncoder {
             OutputColor {
                 metadata: config.color_metadata.normalized(),
                 full_range: None,
-                rendered_rgba_scaler: false,
+                rgba_matrix: None,
             },
             None,
         )
@@ -262,8 +262,9 @@ impl VideoEncoder {
         fps: Rational,
         config: &EncoderConfig,
         live_audio: Option<LiveAudio>,
+        output_color: reco_core::render::color::YuvColor,
     ) -> Result<Self, EncodeError> {
-        let metadata = config.color_metadata.for_rendered_output();
+        let metadata = config.color_metadata.with_matrix(output_color.matrix);
         Self::new_with_color(
             path,
             width,
@@ -272,8 +273,8 @@ impl VideoEncoder {
             config,
             OutputColor {
                 metadata,
-                full_range: Some(false),
-                rendered_rgba_scaler: true,
+                full_range: Some(output_color.full_range),
+                rgba_matrix: Some(output_color.matrix),
             },
             live_audio,
         )
@@ -296,7 +297,7 @@ impl VideoEncoder {
             OutputColor {
                 metadata: config.color_metadata.normalized(),
                 full_range: Some(full_range),
-                rendered_rgba_scaler: false,
+                rgba_matrix: None,
             },
             None,
         )
@@ -589,8 +590,7 @@ impl VideoEncoder {
         ost.set_rate(fps);
         ost.set_avg_frame_rate(fps);
 
-        let scaler =
-            Self::build_rgba_scaler(width, height, candidate.staging, color.rendered_rgba_scaler)?;
+        let scaler = Self::build_rgba_scaler(width, height, candidate.staging, color)?;
 
         Ok(OpenedVideoEncoder {
             encoder,
@@ -605,7 +605,7 @@ impl VideoEncoder {
         width: u32,
         height: u32,
         staging: StagingMode,
-        rendered_rgba_scaler: bool,
+        color: OutputColor,
     ) -> Result<ScalingContext, EncodeError> {
         let mut scaler = ScalingContext::get(
             Pixel::RGBA,
@@ -616,16 +616,18 @@ impl VideoEncoder {
             height,
             ScalingFlags::BILINEAR,
         )?;
-        if rendered_rgba_scaler {
+        if let Some(matrix) = color.rgba_matrix {
+            use ffmpeg::sys as ffi;
+            let colorspace = super::color::swscale_matrix(matrix);
             // SAFETY: the scaler is live and uniquely borrowed; FFmpeg owns the static coefficient table.
             let result = unsafe {
-                let coefficients = ffmpeg::sys::sws_getCoefficients(ffmpeg::sys::SWS_CS_ITU709);
+                let coefficients = ffi::sws_getCoefficients(colorspace);
                 ffmpeg::sys::sws_setColorspaceDetails(
                     scaler.as_mut_ptr(),
                     coefficients,
                     1,
                     coefficients,
-                    0,
+                    i32::from(color.full_range.unwrap_or_default()),
                     0,
                     1 << 16,
                     1 << 16,
@@ -1958,8 +1960,16 @@ mod tests {
                     ..Default::default()
                 };
                 let mut enc = if rendered {
-                    VideoEncoder::new_rendered(&path, 64, 64, Rational(30, 1), &config, None)
-                        .unwrap()
+                    VideoEncoder::new_rendered(
+                        &path,
+                        64,
+                        64,
+                        Rational(30, 1),
+                        &config,
+                        None,
+                        Default::default(),
+                    )
+                    .unwrap()
                 } else {
                     VideoEncoder::new(&path, 64, 64, Rational(30, 1), &config).unwrap()
                 };

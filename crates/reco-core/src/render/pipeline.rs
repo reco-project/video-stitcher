@@ -363,7 +363,15 @@ impl StitchPipeline {
         pose: RenderPose,
     ) -> Result<wgpu::CommandBuffer, PipelineError> {
         self.bind_imported_views(cameras)?;
+        use super::color::YuvSampleFormat;
+        use wgpu::TextureFormat;
+        let samples = match cameras[0].0.texture().format() {
+            TextureFormat::P010 | TextureFormat::R16Unorm => YuvSampleFormat::P010,
+            _ => YuvSampleFormat::Unorm8,
+        };
+        let previous_samples = self.renderer.set_sample_format(samples);
         let result = self.render_to_target_gpu(pose);
+        self.renderer.set_sample_format(previous_samples);
         self.clear_imported_bind_groups();
         result
     }
@@ -692,6 +700,15 @@ impl StitchPipeline {
 
     pub fn set_full_range(&mut self, full_range: bool) {
         self.renderer.set_full_range(full_range);
+    }
+
+    pub(crate) fn source_full_range(&self) -> bool {
+        self.renderer.source_full_range()
+    }
+
+    /// Set the interpretation of source YUV samples for every camera.
+    pub fn set_source_color(&mut self, color: super::color::YuvColor) {
+        self.renderer.set_source_color(color);
     }
 
     /// Access the rendered RGBA texture for NV12 conversion.

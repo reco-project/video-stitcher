@@ -427,6 +427,11 @@ impl StitchCore {
         self.executor.set_full_range(full_range);
     }
 
+    /// Configure matrix, range and storage of the source YUV planes.
+    pub fn set_source_color(&mut self, color: crate::render::color::YuvColor) {
+        self.executor.set_source_color(color);
+    }
+
     /// Flip each camera's source 180 degrees at sample time (for
     /// rotated mounts). GPU sampling only; CPU sources reverse
     /// buffers at decode.

@@ -78,6 +78,16 @@ impl Nv12Converter {
     ///
     /// Dimensions must be nonzero, width divisible by four and height even. Image and buffer sizes must fit the device's texture, allocation and storage-binding limits.
     pub fn new(gpu: &GpuContext, width: u32, height: u32) -> Result<Self, Nv12Error> {
+        Self::with_color(gpu, width, height, Default::default())
+    }
+
+    /// Create an 8-bit NV12 converter with the specified matrix and range.
+    pub fn with_color(
+        gpu: &GpuContext,
+        width: u32,
+        height: u32,
+        color: crate::render::color::YuvColor,
+    ) -> Result<Self, Nv12Error> {
         if width == 0 || !width.is_multiple_of(4) {
             return Err(Nv12Error::InvalidDimensions(format!(
                 "width must be nonzero and divisible by 4, got {width}"
@@ -160,12 +170,29 @@ impl Nv12Converter {
             immediate_size: 0,
         });
 
+        let ([kr, kg, kb], [cb_r, cb_g, _], [_, cr_g, cr_b]) = color.encode_coefficients();
+        let (y_offset, y_scale, c_scale) = color.encode_range();
+        let constants = [
+            ("kr", f64::from(kr)),
+            ("kg", f64::from(kg)),
+            ("kb", f64::from(kb)),
+            ("cb_r", f64::from(-cb_r)),
+            ("cb_g", f64::from(-cb_g)),
+            ("cr_g", f64::from(-cr_g)),
+            ("cr_b", f64::from(-cr_b)),
+            ("y_offset", f64::from(y_offset)),
+            ("y_scale", f64::from(y_scale)),
+            ("c_scale", f64::from(c_scale)),
+        ];
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("nv12_compute_pipeline"),
             layout: Some(&pipeline_layout),
             module: &shader,
             entry_point: Some("main"),
-            compilation_options: Default::default(),
+            compilation_options: wgpu::PipelineCompilationOptions {
+                constants: &constants,
+                ..Default::default()
+            },
             cache: None,
         });
 

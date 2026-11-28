@@ -26,7 +26,7 @@ pub use hw_frame::{SharedHwDevice, create_shared_hw_device};
 use hw_frame::{attach_shared_hw_device, is_hw_frame, raw_i32_to_pix_fmt, try_hwaccel};
 
 pub(crate) use probe::probe_recording;
-use probe::{concat_seek_durations, is_plausible_rate, pick_frame_rate, stream_rotation};
+use probe::{is_plausible_rate, pick_frame_rate, probe_concat, stream_color, stream_rotation};
 
 use ffmpeg::Rescale;
 use ffmpeg::format::{Pixel, input};
@@ -169,6 +169,7 @@ pub struct VideoDecoder {
     is_full_range: bool,
     color_metadata: super::ColorMetadata,
     color_metadata_frozen: bool,
+    last_frame_color: Option<super::ColorMetadata>,
     require_timestamps: bool,
     live_audio: Option<super::live_audio::LiveAudio>,
     decoded_frame: VideoFrame,
@@ -241,6 +242,28 @@ impl VideoDecoder {
             crate::stitch_job::InputPath::Single(p) => Self::open(p),
             crate::stitch_job::InputPath::Chained(paths) => Self::open_chained(paths),
         }
+    }
+
+    /// Probe the first segment's stream properties and validate colour across the chain.
+    pub(crate) fn open_input_probe(
+        source: &crate::stitch_job::InputPath,
+        force_software: bool,
+    ) -> Result<Self, DecodeError> {
+        crate::init();
+        let path = source.first_path();
+        let context = input(path)?;
+        let probe = match source {
+            crate::stitch_job::InputPath::Chained(paths) if paths.len() > 1 => {
+                Some(probe_concat(path, &context, &paths[1..])?)
+            }
+            _ => None,
+        };
+        let mut decoder = Self::from_input_context_inner(context, None, force_software, false)?;
+        if let Some(probe) = probe {
+            decoder.is_full_range = probe.full_range;
+            decoder.color_metadata = probe.color;
+        }
+        Ok(decoder)
     }
 
     /// Open with a pre-created shared hw device.
@@ -388,26 +411,13 @@ impl VideoDecoder {
             }
         };
 
-        let (is_full_range, color_metadata) = {
-            let raw_codecpar = unsafe { &*stream.parameters().as_ptr() };
-            let format = Pixel::from(raw_i32_to_pix_fmt(raw_codecpar.format));
-            let full_range = is_full_range(format, raw_codecpar.color_range.into());
-            if full_range {
-                log::debug!(
-                    "Source is full-range YUV (format={format:?}, color_range={:?})",
-                    raw_codecpar.color_range
-                );
-            }
-            let color_metadata = super::ColorMetadata::from_raw(
-                raw_codecpar.color_primaries,
-                raw_codecpar.color_trc,
-                raw_codecpar.color_space,
-            );
-            if !color_metadata.is_empty() {
-                log::debug!("Source colour metadata: {color_metadata}");
-            }
-            (full_range, color_metadata)
-        };
+        let (is_full_range, color_metadata) = stream_color(&stream);
+        if is_full_range {
+            log::debug!("Source is full-range YUV");
+        }
+        if !color_metadata.is_empty() {
+            log::debug!("Source colour metadata: {color_metadata}");
+        }
 
         log::debug!(
             "Decoder: {}x{} {:?}, time_base={}/{}, backend={}",
@@ -438,6 +448,7 @@ impl VideoDecoder {
             is_full_range,
             color_metadata,
             color_metadata_frozen: !live,
+            last_frame_color: None,
             require_timestamps: live,
             live_audio: None,
             decoded_frame: VideoFrame::empty(),
@@ -491,19 +502,22 @@ impl VideoDecoder {
             };
         }
 
+        let probe = {
+            let first = input(&paths[0])?;
+            probe_concat(&paths[0], &first, &paths[1..])?
+        };
         let mut manifest = tempfile::Builder::new()
             .prefix("reco_concat_")
             .suffix(".txt")
             .tempfile()
             .map_err(|e| DecodeError::Ffmpeg(format!("concat manifest: {e}")))?;
-        let durations = concat_seek_durations(paths);
 
         writeln!(manifest, "ffconcat version 1.0")
             .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
         for (idx, p) in paths.iter().enumerate() {
             writeln!(manifest, "file '{}'", p.display())
                 .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
-            if let Some(durations) = durations.as_ref() {
+            if let Some(durations) = probe.durations.as_ref() {
                 writeln!(manifest, "duration {:.6}", durations[idx])
                     .map_err(|e| DecodeError::Ffmpeg(format!("write manifest: {e}")))?;
             }
@@ -536,6 +550,8 @@ impl VideoDecoder {
         };
 
         let mut dec = Self::from_input_context_inner(ictx, shared, force_software, false)?;
+        dec.is_full_range = probe.full_range;
+        dec.color_metadata = probe.color;
         dec._manifest = Some(manifest);
         Ok(dec)
     }
@@ -633,6 +649,7 @@ impl VideoDecoder {
         self.input.seek(ts, ..ts)?;
         self.decoder.flush();
         self.eof_sent = false;
+        self.last_frame_color = None;
         Ok(())
     }
 
@@ -650,6 +667,39 @@ impl VideoDecoder {
             ));
         }
         self.pts_to_us(ticks as i64)
+    }
+
+    fn validate_frame_color(
+        &mut self,
+        frame_color: super::ColorMetadata,
+    ) -> Result<(), DecodeError> {
+        let previous = self.last_frame_color.unwrap_or_default();
+        let changed = || {
+            format!(
+                "decoded color metadata changed under a fixed source description (opening: {}; previous frame: {previous}; frame: {frame_color})",
+                self.color_metadata,
+            )
+        };
+        // Stream tags can fill in fields absent from decoded frames.
+        // A field observed on a frame must stay present until the decoder seeks.
+        if frame_color != previous && frame_color.or(previous) != frame_color {
+            return Err(DecodeError::ConversionError(changed()));
+        }
+        let effective_color = frame_color.or(self.color_metadata);
+        if effective_color != self.color_metadata {
+            match self.color_metadata.matches_description(effective_color) {
+                Ok(true) => {}
+                Ok(false) => return Err(DecodeError::ConversionError(changed())),
+                Err(reason) => {
+                    return Err(DecodeError::ConversionError(format!(
+                        "{}: {reason}",
+                        changed()
+                    )));
+                }
+            }
+        }
+        self.last_frame_color = Some(frame_color);
+        Ok(())
     }
 
     /// Receive one frame, supplying input only when the decoder requests it.
@@ -695,10 +745,9 @@ impl VideoDecoder {
                             self.decoded_frame.color_range(),
                         );
                     }
+                    let frame_color = super::ColorMetadata::from_frame(&self.decoded_frame);
                     if !self.color_metadata_frozen {
-                        self.color_metadata = self
-                            .color_metadata
-                            .or(super::ColorMetadata::from_frame(&self.decoded_frame));
+                        self.color_metadata = self.color_metadata.or(frame_color);
                         self.color_metadata_frozen = true;
                     }
                     if width != self.width || height != self.height {
@@ -716,6 +765,7 @@ impl VideoDecoder {
                             "decoded color range changed; the source requires a fixed range".into(),
                         ));
                     }
+                    self.validate_frame_color(frame_color)?;
                     #[cfg(target_os = "windows")]
                     {
                         self.pending_hw_init = None;
@@ -1028,8 +1078,8 @@ impl VideoDecoder {
     /// Extract YUV420P planes from the current decoded frame.
     ///
     /// For hardware-decoded frames, transfers from GPU to CPU first.
-    /// If the frame format isn't YUV420P (e.g. NV12 from NVDEC),
-    /// swscale converts it (very cheap for NV12→YUV420P: just deinterleave UV).
+    /// Ten-bit 4:2:0 is quantized to 8-bit in the source range. Other layouts
+    /// use swscale (e.g. deinterleave UV for NV12).
     fn extract_yuv(&mut self) -> Result<Yuv420pFrame, DecodeError> {
         // If hardware-decoded, transfer GPU frame to CPU
         let cpu_frame = if is_hw_frame(&self.decoded_frame) {
@@ -1057,94 +1107,107 @@ impl VideoDecoder {
 
         let frame_format = cpu_frame.format();
 
-        // Get or create scaler if needed
-        let source = if frame_format != Pixel::YUV420P {
-            let needs_new_scaler = self.scaler.is_none()
-                || self
-                    .scaler
-                    .as_ref()
-                    .is_some_and(|_| self.converted_frame.format() != Pixel::YUV420P);
-
-            if needs_new_scaler {
-                log::debug!(
-                    "Creating scaler: {:?} → YUV420P ({}x{})",
-                    frame_format,
-                    self.width,
-                    self.height
-                );
-                let mut scaler = ScalingContext::get(
-                    frame_format,
-                    self.width,
-                    self.height,
-                    Pixel::YUV420P,
-                    self.width,
-                    self.height,
-                    ScalingFlags::POINT,
-                )
-                .map_err(|e| {
-                    DecodeError::ConversionError(format!(
-                        "cannot create scaler for {frame_format:?}: {e}"
-                    ))
-                })?;
-                // Preserve the source range when changing pixel layout; YUVJ defaults would compress it.
-                // SAFETY: the scaler is uniquely owned and FFmpeg owns the constant coefficient table.
-                let result = unsafe {
-                    let coefficients = ffi::sws_getCoefficients(ffi::SWS_CS_ITU709);
-                    ffi::sws_setColorspaceDetails(
-                        scaler.as_mut_ptr(),
-                        coefficients,
-                        i32::from(self.is_full_range),
-                        coefficients,
-                        i32::from(self.is_full_range),
-                        0,
-                        1 << 16,
-                        1 << 16,
-                    )
-                };
-                if result < 0 {
-                    return Err(DecodeError::ConversionError(format!(
-                        "cannot preserve decoded color range: {}",
-                        ffmpeg::Error::from(result)
-                    )));
-                }
-                self.scaler = Some(scaler);
-            }
-
-            if let Some(scaler) = &mut self.scaler {
-                profile_scope!("swscale");
-                scaler
-                    .run(cpu_frame, &mut self.converted_frame)
-                    .map_err(|e| DecodeError::ConversionError(format!("swscale failed: {e}")))?;
-                &self.converted_frame
-            } else {
-                cpu_frame
-            }
-        } else {
-            cpu_frame
-        };
-
         let timestamp_us = self.pts_to_us(unsafe { (*self.decoded_frame.as_ptr()).pts })?;
-
         let w = self.width as usize;
         let h = self.height as usize;
-        let uv_w = w / 2;
-        let uv_h = h / 2;
+        if matches!(
+            frame_format,
+            Pixel::P010LE | Pixel::P010BE | Pixel::YUV420P10LE | Pixel::YUV420P10BE
+        ) {
+            extract_10bit_yuv(
+                cpu_frame,
+                self.is_full_range,
+                [&mut self.y_buf, &mut self.u_buf, &mut self.v_buf],
+            );
+        } else {
+            // Get or create scaler if needed
+            let source = if frame_format != Pixel::YUV420P {
+                let needs_new_scaler = self
+                    .scaler
+                    .as_ref()
+                    .is_none_or(|scaler| scaler.input().format != frame_format);
 
-        extract_plane_into(&mut self.y_buf, source.data(0), source.stride(0), w, h);
-        extract_plane_into(
-            &mut self.u_buf,
-            source.data(1),
-            source.stride(1),
-            uv_w,
-            uv_h,
-        );
-        extract_plane_into(
-            &mut self.v_buf,
-            source.data(2),
-            source.stride(2),
-            uv_w,
-            uv_h,
-        );
+                if needs_new_scaler {
+                    log::debug!(
+                        "Creating scaler: {:?} → YUV420P ({}x{})",
+                        frame_format,
+                        self.width,
+                        self.height
+                    );
+                    let mut scaler = ScalingContext::get(
+                        frame_format,
+                        self.width,
+                        self.height,
+                        Pixel::YUV420P,
+                        self.width,
+                        self.height,
+                        ScalingFlags::POINT,
+                    )
+                    .map_err(|e| {
+                        DecodeError::ConversionError(format!(
+                            "cannot create scaler for {frame_format:?}: {e}"
+                        ))
+                    })?;
+                    // Preserve the source range when changing pixel layout; YUVJ defaults would compress it.
+                    // SAFETY: the scaler is uniquely owned and FFmpeg owns the constant coefficient table.
+                    let result = unsafe {
+                        let coefficients = ffi::sws_getCoefficients(super::color::swscale_matrix(
+                            self.color_metadata.matrix().unwrap_or_default(),
+                        ));
+                        ffi::sws_setColorspaceDetails(
+                            scaler.as_mut_ptr(),
+                            coefficients,
+                            i32::from(self.is_full_range),
+                            coefficients,
+                            i32::from(self.is_full_range),
+                            0,
+                            1 << 16,
+                            1 << 16,
+                        )
+                    };
+                    if result < 0 {
+                        return Err(DecodeError::ConversionError(format!(
+                            "cannot preserve decoded color range: {}",
+                            ffmpeg::Error::from(result)
+                        )));
+                    }
+                    self.scaler = Some(scaler);
+                }
+
+                if let Some(scaler) = &mut self.scaler {
+                    profile_scope!("swscale");
+                    scaler
+                        .run(cpu_frame, &mut self.converted_frame)
+                        .map_err(|e| {
+                            DecodeError::ConversionError(format!("swscale failed: {e}"))
+                        })?;
+                    &self.converted_frame
+                } else {
+                    cpu_frame
+                }
+            } else {
+                cpu_frame
+            };
+
+            let uv_w = w / 2;
+            let uv_h = h / 2;
+
+            extract_plane_into(&mut self.y_buf, source.data(0), source.stride(0), w, h);
+            extract_plane_into(
+                &mut self.u_buf,
+                source.data(1),
+                source.stride(1),
+                uv_w,
+                uv_h,
+            );
+            extract_plane_into(
+                &mut self.v_buf,
+                source.data(2),
+                source.stride(2),
+                uv_w,
+                uv_h,
+            );
+        }
 
         // Apply rotation from stream metadata.
         // 180 degrees: reverse each row and reverse row order (equivalent to
@@ -1163,6 +1226,49 @@ impl VideoDecoder {
             height: self.height,
             timestamp_us,
         })
+    }
+}
+
+fn extract_10bit_yuv(frame: &VideoFrame, full_range: bool, output: [&mut Vec<u8>; 3]) {
+    let packed = matches!(frame.format(), Pixel::P010LE | Pixel::P010BE);
+    let big_endian = matches!(frame.format(), Pixel::P010BE | Pixel::YUV420P10BE);
+    let read = if big_endian {
+        u16::from_be_bytes
+    } else {
+        u16::from_le_bytes
+    };
+
+    for (plane, buf) in output.into_iter().enumerate() {
+        let chroma = plane != 0;
+        let plane_index = if packed && chroma { 1 } else { plane };
+        let stride = frame.stride(plane_index);
+        let data = frame.data(plane_index);
+        let width = frame.width() as usize >> usize::from(chroma);
+        let height = frame.height() as usize >> usize::from(chroma);
+        let (start, step) = if packed && chroma {
+            ((plane - 1) * 2, 4)
+        } else {
+            (0, 2)
+        };
+        let shift = if packed { 6 } else { 0 };
+        buf.clear();
+        buf.reserve(width * height);
+        for row in data.chunks_exact(stride).take(height) {
+            buf.extend((0..width).map(|x| {
+                let i = start + x * step;
+                let code = i32::from((read([row[i], row[i + 1]]) >> shift) & 1023);
+                let sample = if !full_range {
+                    // The legal offsets and spans are exactly four times their 8-bit values.
+                    (code + 2) / 4
+                } else if chroma {
+                    // Scale about neutral so 512 maps exactly to 128.
+                    128 + ((code - 512) * 255 + 511).div_euclid(1023)
+                } else {
+                    (code * 255 + 511) / 1023
+                };
+                sample.clamp(0, 255) as u8
+            }));
+        }
     }
 }
 
@@ -1264,6 +1370,37 @@ mod tests {
 
     const R60: ffmpeg::Rational = ffmpeg::Rational(60, 1);
     const UNSET: ffmpeg::Rational = ffmpeg::Rational(0, 0);
+
+    #[test]
+    fn frame_color_validator_uses_stream_tags_until_frame_tags_appear() {
+        use crate::ffmpeg::ColorMetadata;
+        use ffmpeg::color::{Primaries, Space, TransferCharacteristic};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("stream-color.mov");
+        write_mjpeg_60fps(&path);
+        let mut decoder = super::VideoDecoder::open_software(&path).unwrap();
+        let tagged = ColorMetadata {
+            primaries: Some(Primaries::BT2020),
+            transfer: Some(TransferCharacteristic::ARIB_STD_B67),
+            space: Some(Space::BT2020NCL),
+        };
+        let unspecified = ColorMetadata::default();
+        decoder.color_metadata = tagged;
+
+        for _ in 0..3 {
+            decoder.validate_frame_color(unspecified).unwrap();
+        }
+        decoder.validate_frame_color(tagged).unwrap();
+        let error = decoder.validate_frame_color(unspecified).unwrap_err();
+        assert!(error.to_string().contains("decoded color metadata changed"));
+
+        decoder.seek_to_secs(0.0).unwrap();
+        assert_eq!(decoder.color_metadata(), tagged);
+        for _ in 0..3 {
+            decoder.validate_frame_color(unspecified).unwrap();
+        }
+    }
 
     #[test]
     fn seek_targets_use_decoded_timestamp_precision() {
@@ -1428,6 +1565,54 @@ mod tests {
         assert_eq!(decoder.frame_rate(), None);
         assert_eq!(decoder.fps(), None);
         assert!(decoder.next_frame().unwrap().is_some());
+    }
+
+    #[test]
+    fn p010_host_extraction_preserves_range_endpoints_and_neutral() {
+        use super::{Pixel, VideoFrame, extract_10bit_yuv};
+        for (full, y, cb, cr, expected) in [
+            (
+                false,
+                [64_u16, 940],
+                [64_u16, 960],
+                512_u16,
+                [[16, 235], [16, 240], [128, 128]],
+            ),
+            (
+                true,
+                [0, 1023],
+                [0, 1023],
+                512,
+                [[0, 255], [0, 255], [128, 128]],
+            ),
+        ] {
+            for (format, big_endian) in [(Pixel::P010LE, false), (Pixel::P010BE, true)] {
+                let mut frame = VideoFrame::new(format, 4, 2);
+                let bytes = |code| {
+                    let value: u16 = code << 6;
+                    if big_endian {
+                        value.to_be_bytes()
+                    } else {
+                        value.to_le_bytes()
+                    }
+                };
+                let stride = frame.stride(0);
+                for row in 0..2 {
+                    for (i, code) in y.into_iter().cycle().take(4).enumerate() {
+                        frame.data_mut(0)[row * stride + i * 2..row * stride + i * 2 + 2]
+                            .copy_from_slice(&bytes(code));
+                    }
+                }
+                for (i, code) in [cb[0], cr, cb[1], cr].into_iter().enumerate() {
+                    frame.data_mut(1)[i * 2..i * 2 + 2].copy_from_slice(&bytes(code));
+                }
+                let (mut y, mut cb, mut cr) = (Vec::new(), Vec::new(), Vec::new());
+                extract_10bit_yuv(&frame, full, [&mut y, &mut cb, &mut cr]);
+                assert_eq!(y, expected[0].repeat(4));
+                assert_eq!(cb, expected[1]);
+                assert_eq!(cr, expected[2]);
+            }
+        }
     }
 
     #[test]

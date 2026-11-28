@@ -309,7 +309,7 @@ impl GpuUndistort {
         }
     }
 
-    /// Undistort a YUV420P frame using the GPU.
+    /// Undistort a limited-range BT.709 YUV420P frame using the GPU.
     ///
     /// Uses `build_gpu_uniforms` from the stitching renderer for identical
     /// intrinsic computation. Returns RGBA (`width * height * 4` bytes).
@@ -332,8 +332,15 @@ impl GpuUndistort {
         let ortho = Orthographic3::new(-0.5, 0.5, -0.5, 0.5, -1.0, 1.0);
         let mvp = opengl_to_wgpu_matrix() * ortho.to_homogeneous();
 
-        let uniforms =
-            build_gpu_uniforms(&mvp, params, false, 0.0, InputFormat::Yuv420p, false, false);
+        let uniforms = build_gpu_uniforms(
+            &mvp,
+            params,
+            false,
+            0.0,
+            InputFormat::Yuv420p,
+            false,
+            Default::default(),
+        );
         gpu.queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
 

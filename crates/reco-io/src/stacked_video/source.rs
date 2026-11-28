@@ -54,6 +54,7 @@ pub enum StackedDecodeError {
 pub struct StackedSource {
     layout: GridLayout,
     decoder: VideoDecoder,
+    matrix: reco_core::render::color::YuvMatrix,
 }
 
 impl StackedSource {
@@ -76,7 +77,15 @@ impl StackedSource {
                 layout_h: layout.packed_height(),
             });
         }
-        Ok(Self { layout, decoder })
+        let matrix = decoder
+            .color_metadata()
+            .matrix()
+            .map_err(DecodeError::ConversionError)?;
+        Ok(Self {
+            layout,
+            decoder,
+            matrix,
+        })
     }
 
     /// Grid layout this source was opened with.
@@ -107,11 +116,21 @@ impl StackedSource {
     }
 }
 
+impl crate::stacked_video::replay::ReplaySource for StackedSource {
+    fn replay_color_metadata(&self) -> crate::ffmpeg::ColorMetadata {
+        self.color_metadata()
+    }
+}
+
 // Safety: VideoDecoder owns ffmpeg raw pointers but is bound to
 // one thread by its `!Sync` wrapping. StackedSource inherits
 // that; the Send impl is carried by VideoDecoder (which the
 // crate already marks Send).
 impl FrameSource for StackedSource {
+    fn yuv_matrix(&self) -> reco_core::render::color::YuvMatrix {
+        self.matrix
+    }
+
     fn is_full_range(&self) -> bool {
         self.decoder.is_full_range()
     }

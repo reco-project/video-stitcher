@@ -23,7 +23,7 @@ struct Uniforms {
     //          in t_u; 2 = RGBA: t_y holds packed 4-channel RGB, skip YUV conversion)
     // flags.z: flip_180 (0 or 1) - flip UV coordinates for 180-degree rotation
     //          Used by the GPU zero-copy path where buffer reversal is not possible.
-    // flags.w: is_full_range (0 = limited 16-235, 1 = full 0-255)
+    // flags.w: YUV range, matrix and sample format (see video_sampling.wgsl)
     flags: vec4<u32>,
     // lens_preview.x: 0.0 = equidistant, 1.0 = full KB4, negative = raw bypass
     // lens_preview.y: split_view (> 0.5 = left half uncorrected, right half corrected)

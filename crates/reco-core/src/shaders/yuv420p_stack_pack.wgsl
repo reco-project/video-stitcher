@@ -42,8 +42,8 @@ struct PackParams {
     y_plane_u32_offset: u32,
     u_plane_u32_offset: u32,
     v_plane_u32_offset: u32,
-    // Padding for std140 alignment on some backends.
-    _pad: u32,
+    // 0: 8-bit UNORM, 1: limited P010, 2: full P010.
+    sample_encoding: u32,
 }
 
 @group(0) @binding(0) var src_y: texture_2d<f32>;
@@ -53,16 +53,31 @@ struct PackParams {
 @group(0) @binding(4) var<storage, read_write> atlas: array<u32>;
 @group(0) @binding(5) var<uniform> params: PackParams;
 
-// Pack four normalized [0, 1] luma samples into one little-endian u32.
-// Rounds half-to-even to match CPU memcpy output byte-for-byte when the
-// inputs are already discrete R8Unorm (sampler returns the exact byte
-// value / 255.0 for aligned 1:1 reads).
-fn pack4(s0: f32, s1: f32, s2: f32, s3: f32) -> u32 {
-    let b0 = u32(clamp(s0, 0.0, 1.0) * 255.0 + 0.5);
-    let b1 = u32(clamp(s1, 0.0, 1.0) * 255.0 + 0.5);
-    let b2 = u32(clamp(s2, 0.0, 1.0) * 255.0 + 0.5);
-    let b3 = u32(clamp(s3, 0.0, 1.0) * 255.0 + 0.5);
-    return b0 | (b1 << 8u) | (b2 << 16u) | (b3 << 24u);
+fn quantize_p010(samples: vec4<f32>, chroma: bool) -> vec4<f32> {
+    var code = samples * (65535.0 / 64.0);
+    // Aligned samples are integer codes. Recover them before rounding
+    // halfway cases to bytes. Retain fractional codes when filtering.
+    if (all(textureDimensions(src_y) == vec2<u32>(params.out_tile_width, params.out_tile_height))) {
+        code = round(code);
+    }
+    if (params.sample_encoding == 1u) {
+        return code * 0.25;
+    }
+    if (chroma) {
+        // Scale about neutral to match host extraction.
+        return (code - 512.0) * (255.0 / 1023.0) + 128.0;
+    }
+    return code * (255.0 / 1023.0);
+}
+
+fn pack4(s0: f32, s1: f32, s2: f32, s3: f32, chroma: bool) -> u32 {
+    let samples = vec4<f32>(s0, s1, s2, s3);
+    var codes = samples * 255.0;
+    if (params.sample_encoding != 0u) {
+        codes = quantize_p010(samples, chroma);
+    }
+    let bytes = vec4<u32>(clamp(codes + 0.5, vec4<f32>(0.0), vec4<f32>(255.0)));
+    return bytes.x | (bytes.y << 8u) | (bytes.z << 16u) | (bytes.w << 24u);
 }
 
 // Sample one normalized UV from a single-channel R8 / R16 source.
@@ -98,7 +113,7 @@ fn pack_y(@builtin(global_invocation_id) gid: vec3<u32>) {
     let s1 = sample_y(vec2<f32>((f32(base_col + 1u) + 0.5) / tile_w, y_norm));
     let s2 = sample_y(vec2<f32>((f32(base_col + 2u) + 0.5) / tile_w, y_norm));
     let s3 = sample_y(vec2<f32>((f32(base_col + 3u) + 0.5) / tile_w, y_norm));
-    let packed = pack4(s0, s1, s2, s3);
+    let packed = pack4(s0, s1, s2, s3, false);
 
     // Atlas index: byte offset = (tile_y_row_offset + row) * atlas_y_stride
     //                           + (tile_y_col_offset + base_col)
@@ -131,7 +146,7 @@ fn pack_u(@builtin(global_invocation_id) gid: vec3<u32>) {
     let s1 = sample_u(vec2<f32>((f32(base_col + 1u) + 0.5) / uv_w_f, y_norm));
     let s2 = sample_u(vec2<f32>((f32(base_col + 2u) + 0.5) / uv_w_f, y_norm));
     let s3 = sample_u(vec2<f32>((f32(base_col + 3u) + 0.5) / uv_w_f, y_norm));
-    let packed = pack4(s0, s1, s2, s3);
+    let packed = pack4(s0, s1, s2, s3, true);
 
     let byte_offset =
           ((params.tile_y_row_offset / 2u) + row) * params.atlas_uv_stride
@@ -158,7 +173,7 @@ fn pack_v(@builtin(global_invocation_id) gid: vec3<u32>) {
     let s1 = sample_v(vec2<f32>((f32(base_col + 1u) + 0.5) / uv_w_f, y_norm));
     let s2 = sample_v(vec2<f32>((f32(base_col + 2u) + 0.5) / uv_w_f, y_norm));
     let s3 = sample_v(vec2<f32>((f32(base_col + 3u) + 0.5) / uv_w_f, y_norm));
-    let packed = pack4(s0, s1, s2, s3);
+    let packed = pack4(s0, s1, s2, s3, true);
 
     let byte_offset =
           ((params.tile_y_row_offset / 2u) + row) * params.atlas_uv_stride
@@ -203,8 +218,8 @@ fn pack_uv_from_nv12(@builtin(global_invocation_id) gid: vec3<u32>) {
     let s2 = sample_uv_nv12(vec2<f32>((f32(base_col + 2u) + 0.5) / uv_w_f, y_norm));
     let s3 = sample_uv_nv12(vec2<f32>((f32(base_col + 3u) + 0.5) / uv_w_f, y_norm));
 
-    let packed_u = pack4(s0.x, s1.x, s2.x, s3.x);
-    let packed_v = pack4(s0.y, s1.y, s2.y, s3.y);
+    let packed_u = pack4(s0.x, s1.x, s2.x, s3.x, true);
+    let packed_v = pack4(s0.y, s1.y, s2.y, s3.y, true);
 
     let byte_offset =
           ((params.tile_y_row_offset / 2u) + row) * params.atlas_uv_stride

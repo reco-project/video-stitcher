@@ -248,12 +248,13 @@ impl super::StitchCore {
         };
         // The packer can only be enabled on a GPU engine (see
         // enable_gpu_stacked_replay), so this expect is an invariant.
-        let gpu = self
+        let pipeline = &self
             .executor
             .gpu()
             .expect("stacked packer implies the GPU executor")
-            .pipeline
-            .gpu();
+            .pipeline;
+        packer.set_full_range(pipeline.source_full_range());
+        let gpu = pipeline.gpu();
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {

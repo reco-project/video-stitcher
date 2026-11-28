@@ -1,13 +1,14 @@
 //! CPU RGBA -> NV12 conversion for the software delivery path.
 //!
 //! Mirrors the GPU compute converter byte-for-byte (within float
-//! rounding): BT.709 sRGB to limited-range YCbCr, one chroma sample
+//! rounding): nonlinear RGB to YCbCr, one chroma sample
 //! per 2x2 block via plain averaging, `+0.5`-then-truncate rounding.
 //!
 //! SYNC_WITH: shaders/rgba_to_nv12.wgsl - the coefficient set, the
 //! chroma averaging order, and the rounding must match exactly; the
 //! GPU-vs-CPU oracle test pins the agreement to 1 LSB.
 
+use super::color::YuvColor;
 use thiserror::Error;
 
 /// Errors from the CPU NV12 conversion.
@@ -56,6 +57,20 @@ pub fn rgba_to_nv12_into(
     height: u32,
     out: &mut Vec<u8>,
 ) -> Result<(), Nv12CpuError> {
+    rgba_to_nv12_with_color_into(rgba, stride_px, width, height, YuvColor::default(), out)
+}
+
+/// Convert nonlinear RGBA bytes to 8-bit NV12 with the specified matrix and range.
+///
+/// The buffer and stride follow [`rgba_to_nv12_into`].
+pub fn rgba_to_nv12_with_color_into(
+    rgba: &[u8],
+    stride_px: u32,
+    width: u32,
+    height: u32,
+    color: YuvColor,
+    out: &mut Vec<u8>,
+) -> Result<(), Nv12CpuError> {
     if width == 0
         || height == 0
         || !width.is_multiple_of(2)
@@ -86,10 +101,12 @@ pub fn rgba_to_nv12_into(
         (f(rgba[i]), f(rgba[i + 1]), f(rgba[i + 2]))
     };
 
+    let ([kr, kg, kb], [cb_r, cb_g, _], [_, cr_g, cr_b]) = color.encode_coefficients();
+    let (y_offset, y_scale, c_scale) = color.encode_range();
     for row in 0..h {
         for col in 0..w {
             let (r, g, b) = px_rgb(col, row);
-            let y = 16.0 + 219.0 * (0.2126 * r + 0.7152 * g + 0.0722 * b);
+            let y = y_offset + y_scale * (kr * r + kg * g + kb * b);
             y_plane[row * w + col] = (y + 0.5).clamp(0.0, 255.0) as u8;
         }
 
@@ -106,8 +123,8 @@ pub fn rgba_to_nv12_into(
                 let g = (tl_g + tr_g + bl_g + br_g) * 0.25;
                 let b = (tl_b + tr_b + bl_b + br_b) * 0.25;
 
-                let cb = 128.0 + 224.0 * (-0.1146 * r - 0.3854 * g + 0.5 * b);
-                let cr = 128.0 + 224.0 * (0.5 * r - 0.4542 * g - 0.0458 * b);
+                let cb = 128.0 + c_scale * (cb_r * r + cb_g * g + 0.5 * b);
+                let cr = 128.0 + c_scale * (0.5 * r + cr_g * g + cr_b * b);
                 let uv_idx = (row / 2) * w + x;
                 uv_plane[uv_idx] = (cb + 0.5).clamp(0.0, 255.0) as u8;
                 uv_plane[uv_idx + 1] = (cr + 0.5).clamp(0.0, 255.0) as u8;
@@ -211,8 +228,9 @@ mod tests {
 
 #[cfg(all(test, feature = "gpu"))]
 mod gpu_oracle {
-    use super::rgba_to_nv12_into;
+    use super::rgba_to_nv12_with_color_into;
     use crate::gpu::nv12_converter::Nv12Converter;
+    use crate::render::color::tests::vectors;
     use crate::stitch::test_support::gpu_or_skip;
 
     /// The CPU kernel and the GPU compute shader run the same f32 math
@@ -269,43 +287,48 @@ mod gpu_oracle {
             },
         );
 
-        let mut converter = Nv12Converter::new(&gpu, w, h).expect("converter");
-        let empty = gpu
-            .device()
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default())
-            .finish();
-        assert!(
-            converter
-                .convert_and_readback(&gpu, &texture, empty)
-                .expect("convert")
-                .is_none(),
-            "first call is a warmup"
-        );
-        let gpu_nv12 = converter
-            .flush_pending(&gpu)
-            .expect("flush")
-            .expect("one pending frame")
-            .to_vec();
+        for (color, _) in vectors() {
+            let mut converter = Nv12Converter::with_color(&gpu, w, h, color).expect("converter");
+            let empty = gpu
+                .device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default())
+                .finish();
+            assert!(
+                converter
+                    .convert_and_readback(&gpu, &texture, empty)
+                    .expect("convert")
+                    .is_none(),
+                "first call is a warmup"
+            );
+            let gpu_nv12 = converter
+                .flush_pending(&gpu)
+                .expect("flush")
+                .expect("one pending frame")
+                .to_vec();
 
-        let mut cpu_nv12 = Vec::new();
-        rgba_to_nv12_into(&rgba, w, w, h, &mut cpu_nv12).expect("cpu kernel");
+            let mut cpu_nv12 = Vec::new();
+            rgba_to_nv12_with_color_into(&rgba, w, w, h, color, &mut cpu_nv12).expect("cpu kernel");
 
-        assert_eq!(gpu_nv12.len(), cpu_nv12.len(), "NV12 layout mismatch");
-        let max = gpu_nv12
-            .iter()
-            .zip(&cpu_nv12)
-            .map(|(g, c)| (*g as i32 - *c as i32).abs())
-            .max()
-            .unwrap();
-        let diff_count = gpu_nv12
-            .iter()
-            .zip(&cpu_nv12)
-            .filter(|(g, c)| g != c)
-            .count();
-        eprintln!(
-            "[nv12 oracle] {} bytes, {diff_count} differ, max diff {max}",
-            gpu_nv12.len()
-        );
-        assert!(max <= 1, "CPU/GPU NV12 divergence beyond 1 LSB: {max}");
+            assert_eq!(gpu_nv12.len(), cpu_nv12.len(), "NV12 layout mismatch");
+            let max = gpu_nv12
+                .iter()
+                .zip(&cpu_nv12)
+                .map(|(g, c)| (*g as i32 - *c as i32).abs())
+                .max()
+                .unwrap();
+            let diff_count = gpu_nv12
+                .iter()
+                .zip(&cpu_nv12)
+                .filter(|(g, c)| g != c)
+                .count();
+            eprintln!(
+                "[nv12 oracle] {} bytes, {diff_count} differ, max diff {max}",
+                gpu_nv12.len()
+            );
+            assert!(
+                max <= 1,
+                "CPU/GPU NV12 divergence beyond 1 LSB for {color:?}: {max}"
+            );
+        }
     }
 }

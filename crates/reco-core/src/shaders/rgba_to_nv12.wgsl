@@ -14,9 +14,8 @@
 // Dispatch: (ceil(width/4), height, 1)
 // Requires: width divisible by 4 (true for all standard video resolutions)
 //
-// Color space: BT.709 sRGB → limited-range YCbCr
-// This is the inverse of the sample_yuv() function in fisheye.wgsl.
-// Input texture is Rgba8Unorm (sRGB values stored as-is, no hardware decode).
+// Matrix and range are specialized at pipeline creation. The Rgba8Unorm
+// input holds nonlinear R'G'B' samples.
 //
 // SYNC_WITH: src/render/nv12_cpu.rs - the CPU delivery path mirrors the
 // coefficients, chroma averaging order, and rounding; an oracle test
@@ -31,21 +30,29 @@ struct Params {
 }
 @group(0) @binding(2) var<uniform> params: Params;
 
-// BT.709 sRGB [0,1] → limited-range Y [16,235]
+override kr: f32 = 0.2126;
+override kg: f32 = 0.7152;
+override kb: f32 = 0.0722;
+override cb_r: f32 = 0.1146;
+override cb_g: f32 = 0.3854;
+override cr_g: f32 = 0.4542;
+override cr_b: f32 = 0.0458;
+override y_offset: f32 = 16.0;
+override y_scale: f32 = 219.0;
+override c_scale: f32 = 224.0;
+
 fn srgb_to_y(srgb: vec3<f32>) -> u32 {
-    let y = 16.0 + 219.0 * (0.2126 * srgb.r + 0.7152 * srgb.g + 0.0722 * srgb.b);
+    let y = y_offset + y_scale * (kr * srgb.r + kg * srgb.g + kb * srgb.b);
     return u32(clamp(y + 0.5, 0.0, 255.0));
 }
 
-// BT.709 sRGB [0,1] → limited-range Cb [16,240]
 fn srgb_to_cb(srgb: vec3<f32>) -> u32 {
-    let cb = 128.0 + 224.0 * (-0.1146 * srgb.r - 0.3854 * srgb.g + 0.5 * srgb.b);
+    let cb = 128.0 + c_scale * (-cb_r * srgb.r - cb_g * srgb.g + 0.5 * srgb.b);
     return u32(clamp(cb + 0.5, 0.0, 255.0));
 }
 
-// BT.709 sRGB [0,1] → limited-range Cr [16,240]
 fn srgb_to_cr(srgb: vec3<f32>) -> u32 {
-    let cr = 128.0 + 224.0 * (0.5 * srgb.r - 0.4542 * srgb.g - 0.0458 * srgb.b);
+    let cr = 128.0 + c_scale * (0.5 * srgb.r - cr_g * srgb.g - cr_b * srgb.b);
     return u32(clamp(cr + 0.5, 0.0, 255.0));
 }
 

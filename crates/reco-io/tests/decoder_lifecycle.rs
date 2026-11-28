@@ -816,15 +816,6 @@ fn assert_file_counts(native: bool) {
         assert_eq!(decoded, expected);
     }
 
-    let incomplete = InputPath::Chained(vec![
-        single.first_path().to_path_buf(),
-        dir.path().join("missing.mp4"),
-    ]);
-    for inputs in [vec![incomplete.clone()], vec![single.clone(), incomplete]] {
-        let source = reco_io::SmartFileSource::open_cpu_only(&inputs, 0, true).unwrap();
-        assert_eq!(source.info().total_frames, None);
-        assert_eq!(source.total_frames(), None);
-    }
     let source = reco_io::SmartFileSource::open_cpu_only(&vec![single; 3], 7, true).unwrap();
     assert_eq!(source.total_frames(), Some(FRAMES as u64));
 }
@@ -1520,42 +1511,20 @@ fn wrong_backend_is_error_without_consuming_a_frame() {
 }
 
 #[test]
-fn missing_later_segment_is_a_read_error_not_successful_eof() {
+fn missing_segment_fails_color_preflight() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("reordered.mp4");
     fixture(&path);
     let input = InputPath::Chained(vec![path, dir.path().join("missing.mp4")]);
-    let mut decoder = VideoDecoder::open_input_software(&input).unwrap();
-    let mut received = 0;
-    loop {
-        match decoder.next_frame() {
-            Ok(Some(_)) => received += 1,
-            Ok(None) => panic!("missing segment reported as EOF"),
-            Err(DecodeError::Ffmpeg(_)) => break,
-            Err(error) => panic!("unexpected error: {error}"),
-        }
-    }
-    assert!(received > 0, "must exercise a mid-stream failure");
-    let mut source = FfmpegFileSource::open_inputs(std::slice::from_ref(&input), 0, true).unwrap();
-    let mut delivered = 0;
-    loop {
-        match source.next_frame() {
-            Ok(Some(_)) => delivered += 1,
-            Ok(None) => panic!("worker failure reported as EOF"),
-            Err(_) => break,
-        }
-    }
-    assert_eq!(delivered, received);
-    assert!(!source.is_exhausted());
-
-    // The absent segment prevents seeking into it. The respawned worker
-    // must expose that seek failure, not disconnect as successful EOF.
-    assert!(decoder.seek_to_secs(1000.0 / 30.0).is_err());
-    source.seek(1000).unwrap();
-    assert!(source.next_frame().is_err());
-    assert!(!source.is_exhausted());
-    source.seek(0).unwrap();
-    assert!(source.next_frame().unwrap().is_some());
+    let error = VideoDecoder::open_input_software(&input)
+        .err()
+        .expect("missing segment must fail preflight");
+    assert!(matches!(error, DecodeError::Ffmpeg(_)));
+    assert!(error.to_string().contains("missing.mp4"), "{error}");
+    let error = FfmpegFileSource::open_inputs(std::slice::from_ref(&input), 0, true)
+        .err()
+        .expect("missing segment must fail source initialization");
+    assert!(error.to_string().contains("missing.mp4"), "{error}");
 
     let lens =
         reco_core::calibration::Lens::fisheye(WIDTH, HEIGHT, 64.0, 64.0, 64.0, 48.0, [0.0; 4]);
@@ -1576,27 +1545,42 @@ fn missing_later_segment_is_a_read_error_not_successful_eof() {
             roll: 0.0,
         },
     );
-    let result = reco_io::StitchJob::with_calibration(
-        [input.clone(), input],
-        calibration,
-        dir.path().join("out.mp4"),
-    )
-    .cpu()
-    .resolution(64, 64)
-    .audio(reco_io::output::AudioMode::Disabled)
-    .encoder_name("libx264")
-    .run(&std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
-        false,
-    )));
+    let output = dir.path().join("out.mp4");
+    let result = reco_io::StitchJob::with_calibration([input.clone(), input], calibration, &output)
+        .cpu()
+        .resolution(64, 64)
+        .audio(reco_io::output::AudioMode::Disabled)
+        .encoder_name("libx264")
+        .run(&std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
+            false,
+        )));
     assert!(
-        matches!(
-            result,
-            Err(reco_io::stitch_job::StitchError::Session(
-                reco_core::session::types::SessionError::Source(_)
-            ))
-        ),
+        matches!(result, Err(reco_io::stitch_job::StitchError::Source(_))),
         "{result:?}"
     );
+    assert!(!output.exists());
+}
+
+#[test]
+fn segment_lost_after_open_is_a_read_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let first = dir.path().join("first.mp4");
+    let second = dir.path().join("second.mp4");
+    fixture(&first);
+    std::fs::copy(&first, &second).unwrap();
+    let input = InputPath::Chained(vec![first, second.clone()]);
+    let mut decoder = VideoDecoder::open_input_software(&input).unwrap();
+    std::fs::remove_file(second).unwrap();
+    assert!(decoder.next_frame().unwrap().is_some());
+    loop {
+        match decoder.next_frame() {
+            Ok(Some(_)) => {}
+            Ok(None) => panic!("missing segment reported as EOF"),
+            Err(DecodeError::Ffmpeg(_)) => break,
+            Err(error) => panic!("unexpected error: {error}"),
+        }
+    }
+    assert!(decoder.seek_to_secs(1000.0 / 30.0).is_err());
 }
 
 #[test]
@@ -1988,11 +1972,22 @@ fn check_segment_color_ranges(hardware: bool) {
     }
     for order in [[0, 1], [1, 0], [0, 0], [1, 1]] {
         let input = InputPath::Chained(order.map(|index| paths[index].clone()).to_vec());
-        let mut decoder = if hardware {
-            VideoDecoder::open_input(&input).unwrap()
+        let result = if hardware {
+            VideoDecoder::open_input(&input)
         } else {
-            VideoDecoder::open_input_software(&input).unwrap()
+            VideoDecoder::open_input_software(&input)
         };
+        if order[0] != order[1] {
+            let error = result
+                .err()
+                .expect("incompatible segment ranges must fail preflight");
+            assert!(
+                error.to_string().contains("segment color ranges differ"),
+                "{error}"
+            );
+            continue;
+        }
+        let mut decoder = result.unwrap();
         if hardware {
             assert_eq!(decoder.backend(), DecodeBackend::Cuda);
         }
@@ -2007,24 +2002,11 @@ fn check_segment_color_ranges(hardware: bool) {
             };
             #[cfg(not(feature = "gpu"))]
             let received = decoder.next_frame().map(|frame| frame.is_some());
-            match received {
-                Ok(true) => count += 1,
-                Ok(false) => {
-                    assert_eq!(order[0], order[1], "changed color range must be rejected");
-                    assert_eq!(count, FRAMES * 2);
-                    break;
-                }
-                Err(error) => {
-                    assert_ne!(order[0], order[1], "{error}");
-                    assert!(
-                        error.to_string().contains("decoded color range changed"),
-                        "{error}"
-                    );
-                    // FFmpeg can report new metadata on still-buffered B pictures.
-                    assert!((FRAMES - 3..=FRAMES).contains(&count), "count={count}");
-                    break;
-                }
+            if !received.unwrap() {
+                break;
             }
+            count += 1;
         }
+        assert_eq!(count, FRAMES * 2);
     }
 }

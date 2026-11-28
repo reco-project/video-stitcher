@@ -94,6 +94,7 @@ pub struct GpuExecutor {
     /// NV12 delivery: triple-buffered render-target -> NV12 readback
     /// for encoders and preview taps. Created on first use and invalidated on resize, even when the rounded delivery dimensions are unchanged.
     nv12: Option<Nv12Delivery>,
+    delivery_color: crate::render::color::YuvColor,
 }
 
 impl GpuExecutor {
@@ -133,7 +134,17 @@ impl GpuExecutor {
             residency: crate::stitch::residency::Residency::default(),
             sync_readback: None,
             nv12: None,
+            delivery_color: Default::default(),
         })
+    }
+
+    pub(super) fn set_source_color(&mut self, color: crate::render::color::YuvColor) {
+        self.pipeline.set_source_color(color);
+        let delivery = crate::render::color::YuvColor::delivery(color.matrix);
+        if self.delivery_color != delivery {
+            self.nv12 = None;
+            self.delivery_color = delivery;
+        }
     }
 
     /// Accept output dimensions and invalidate every delivery queue before another render.
@@ -550,8 +561,12 @@ impl GpuExecutor {
                     vp.height
                 );
             }
-            let converter =
-                crate::gpu::nv12_converter::Nv12Converter::new(self.pipeline.gpu(), w, h)?;
+            let converter = crate::gpu::nv12_converter::Nv12Converter::with_color(
+                self.pipeline.gpu(),
+                w,
+                h,
+                self.delivery_color,
+            )?;
             log::info!("GpuExecutor: NV12 delivery initialized ({w}x{h})");
             self.nv12 = Some(Nv12Delivery {
                 converter,

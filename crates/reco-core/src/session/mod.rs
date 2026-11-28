@@ -105,6 +105,7 @@ pub struct StitchSession {
     pub(crate) right_rotation: i32,
     /// Source quantization range used by CUDA detection.
     pub(crate) source_full_range: bool,
+    delivery_color: crate::render::color::YuvColor,
     /// GPU pixel format (NV12 or P010) for D3D11VA staging pool creation.
     #[cfg(feature = "gpu")]
     pub(crate) gpu_pixel_format: crate::render::renderer::GpuPixelFormat,
@@ -210,6 +211,7 @@ impl StitchSession {
             #[cfg(all(feature = "gpu", any(target_os = "linux", target_os = "windows")))]
             right_rotation: 0,
             source_full_range: false,
+            delivery_color: Default::default(),
             #[cfg(feature = "gpu")]
             gpu_pixel_format: crate::render::renderer::GpuPixelFormat::Nv12,
         })

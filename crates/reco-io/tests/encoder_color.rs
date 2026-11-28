@@ -466,7 +466,7 @@ fn hdr_hlg_and_pq_bt2020_metadata_roundtrips_for_h264_and_hevc() {
 }
 
 #[test]
-fn stitch_job_propagates_matching_hdr_metadata_and_falls_back_on_mismatch() {
+fn stitch_job_exports_bt2020_pixels_and_rejects_mixed_hdr_sdr() {
     use ffmpeg_next::color::{Primaries, Space, TransferCharacteristic};
     use reco_core::calibration::{Calibration, Framing, Lens};
     use reco_core::projection::LShape;
@@ -480,12 +480,6 @@ fn stitch_job_propagates_matching_hdr_metadata_and_falls_back_on_mismatch() {
         transfer: Some(TransferCharacteristic::ARIB_STD_B67),
         space: Some(Space::BT2020NCL),
     };
-    let sdr_fallback = ColorMetadata {
-        primaries: None,
-        transfer: None,
-        space: Some(Space::BT709),
-    };
-
     let write_fixture = |path: &std::path::Path, encoder_name: &str, color_metadata| {
         let config = EncoderConfig {
             encoder_name: Some(encoder_name.into()),
@@ -493,9 +487,13 @@ fn stitch_job_propagates_matching_hdr_metadata_and_falls_back_on_mismatch() {
             ..Default::default()
         };
         let mut sink = FfmpegFileEncoder::new(path, 64, 64, (30, 1), &config).unwrap();
+        // This YCbCr triplet maps outside RGB gamut. Clamping makes an incorrect
+        // input matrix observable even when the output repeats the same mistake.
+        let mut samples = vec![168; 64 * 64];
+        samples.extend([224, 16].repeat(32 * 32));
         for index in 0..5 {
             sink.consume(OutputFrame {
-                data: &[128; 64 * 64 * 3 / 2],
+                data: &samples,
                 width: 64,
                 height: 64,
                 format: PixelFormat::Nv12,
@@ -530,7 +528,7 @@ fn stitch_job_propagates_matching_hdr_metadata_and_falls_back_on_mismatch() {
     let dir = tempfile::tempdir().unwrap();
     let hdr_in = dir.path().join("hdr_hlg_in.mp4");
     let sdr_in = dir.path().join("sdr_in.mp4");
-    write_fixture(&hdr_in, "libx265", hlg_bt2020);
+    write_fixture(&hdr_in, "libx264", hlg_bt2020);
     write_fixture(&sdr_in, "libx264", ColorMetadata::default());
 
     for encoder_name in ["libx265", "libx264"] {
@@ -547,27 +545,290 @@ fn stitch_job_propagates_matching_hdr_metadata_and_falls_back_on_mismatch() {
             .run(&Arc::new(AtomicBool::new(false)))
             .unwrap();
         assert_color_metadata(&output, hlg_bt2020, false);
+        let mut decoder = VideoDecoder::open_software(&output).unwrap();
+        let frame = decoder.next_frame().unwrap().unwrap();
+        // BT.2020 NCL maps [168, 224, 16] to clamped 8-bit RGB [0, 232, 255].
+        // Re-encoding produces [164, 167, 25]. BT.709 on both legs yields Cr=32.
+        let actual = [
+            frame.y[32 * 64 + 32],
+            frame.u[16 * 32 + 16],
+            frame.v[16 * 32 + 16],
+        ];
+        let expected = [164, 167, 25];
+        assert!(
+            actual
+                .into_iter()
+                .zip(expected)
+                .all(|(a, b)| a.abs_diff(b) <= 2),
+            "{encoder_name}: {actual:?} vs {expected:?}"
+        );
     }
 
-    // Mismatched cameras (HDR HLG BT.2020 + SDR BT.709) fall back conservatively to SDR BT.709.
     let mismatched_out = dir.path().join("stitched-mismatch.mp4");
-    StitchJob::with_calibration([hdr_in, sdr_in], calibration(), &mismatched_out)
-        .cpu()
-        .resolution(64, 64)
-        .encoder_name("libx265")
-        .max_frames(4)
-        .on_session(|session, _| {
-            session.core_mut().set_constrained_look(false);
-            Ok(())
-        })
-        .run(&Arc::new(AtomicBool::new(false)))
-        .unwrap();
-    assert_color_metadata(&mismatched_out, sdr_fallback, false);
+    let error = StitchJob::with_calibration(
+        [hdr_in.clone(), sdr_in.clone()],
+        calibration(),
+        &mismatched_out,
+    )
+    .cpu()
+    .run(&Arc::new(AtomicBool::new(false)))
+    .unwrap_err();
+    assert!(
+        error.to_string().contains("camera color metadata differ"),
+        "{error}"
+    );
+    assert!(!mismatched_out.exists());
+}
+
+fn write_color_fixture(path: &std::path::Path, color_args: &[&str]) {
+    let output = std::process::Command::new("ffmpeg")
+        .args([
+            "-v",
+            "error",
+            "-nostdin",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=s=64x64:r=30",
+            "-t",
+            "2",
+            "-c:v",
+            "libx264",
+            "-threads",
+            "1",
+            "-bf",
+            "0",
+        ])
+        .args(color_args)
+        .arg(path)
+        .output()
+        .expect("ffmpeg fixture encoder");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+const HLG_TAGS: &[&str] = &[
+    "-colorspace",
+    "bt2020nc",
+    "-color_primaries",
+    "bt2020",
+    "-color_trc",
+    "arib-std-b67",
+    "-color_range",
+    "tv",
+];
+
+const BT709_TAGS: &[&str] = &[
+    "-colorspace",
+    "bt709",
+    "-color_primaries",
+    "bt709",
+    "-color_trc",
+    "bt709",
+    "-color_range",
+    "tv",
+];
+
+const UNSPECIFIED_H264_COLOR: &str = "h264_metadata=video_format=0:colour_primaries=2:transfer_characteristics=2:matrix_coefficients=2";
+
+#[test]
+fn concat_rejects_incompatible_segment_color_before_decoding() {
+    use reco_io::{InputPath, SmartFileSource};
+
+    let dir = tempfile::tempdir().unwrap();
+    let hdr = dir.path().join("hdr.mp4");
+    let untagged = dir.path().join("untagged.mp4");
+    let full_range = dir.path().join("full-range.mp4");
+    write_color_fixture(&hdr, HLG_TAGS);
+    write_color_fixture(&untagged, &[]);
+    write_color_fixture(&full_range, &["-color_range", "pc"]);
+
+    let untagged_probe = VideoDecoder::open_software(&untagged).unwrap();
+    assert!(untagged_probe.color_metadata().is_empty());
+    assert!(!untagged_probe.is_full_range());
+    assert!(
+        VideoDecoder::open_software(&full_range)
+            .unwrap()
+            .is_full_range()
+    );
+    #[cfg(feature = "gpu")]
+    let gpu = reco_core::gpu::GpuContext::new_blocking().ok();
+    for (paths, expected) in [
+        ([hdr, untagged.clone()], "segment color metadata differ"),
+        ([untagged, full_range], "segment color ranges differ"),
+    ] {
+        let input = InputPath::Chained(paths.to_vec());
+        let decoder_error = VideoDecoder::open_input_software(&input)
+            .err()
+            .expect("concat open");
+        assert!(
+            decoder_error.to_string().contains(expected),
+            "{decoder_error}"
+        );
+        #[cfg(feature = "gpu")]
+        if let Some(gpu) = &gpu {
+            let source_error = SmartFileSource::open(std::slice::from_ref(&input), gpu, 0)
+                .err()
+                .expect("smart source open");
+            assert!(
+                source_error.to_string().contains(expected),
+                "{source_error}"
+            );
+        }
+        let source_error = SmartFileSource::open_cpu_only(&[input], 0, true)
+            .err()
+            .expect("source open");
+        assert!(
+            source_error.to_string().contains(expected),
+            "{source_error}"
+        );
+    }
 }
 
 #[test]
-fn partial_hdr_metadata_does_not_fabricate_bt709_matrix() {
-    use ffmpeg_next::color::{Primaries, TransferCharacteristic};
+fn ordinary_and_stacked_files_reject_midstream_color_changes() {
+    assert_midstream_color_change(BT709_TAGS);
+}
+
+#[test]
+fn ordinary_and_stacked_files_reject_midstream_unspecified_color() {
+    // An SPS without colour description can leave the previous tags in FFmpeg.
+    // Write explicit H.264 "unspecified" values to clear all three tags.
+    assert_midstream_color_change(&["-bsf:v", UNSPECIFIED_H264_COLOR]);
+}
+
+fn assert_midstream_color_change(second_segment_args: &[&str]) {
+    use reco_io::stacked_video::{GridLayout, source::StackedSource};
+
+    let dir = tempfile::tempdir().unwrap();
+    let hdr = dir.path().join("hdr.ts");
+    let second = dir.path().join("second.ts");
+    let combined = dir.path().join("transition.ts");
+    write_color_fixture(&hdr, HLG_TAGS);
+    let mut args = second_segment_args.to_vec();
+    args.extend(["-output_ts_offset", "2"]);
+    write_color_fixture(&second, &args);
+    join_color_segments(&hdr, &second, &combined);
+
+    let mut decoder = VideoDecoder::open_software(&combined).unwrap();
+    assert!(decoder.color_metadata().is_hdr());
+    let layout = GridLayout::vstack(64, 32, 2).unwrap();
+    let mut stacked = StackedSource::open(layout, &combined).unwrap();
+    for _ in 0..60 {
+        assert!(decoder.next_frame().unwrap().is_some());
+        assert!(stacked.next_tuple().unwrap().is_some());
+    }
+
+    let decoder_error = decoder.next_frame().err();
+    let stacked_error = stacked.next_tuple().err();
+    assert!(
+        decoder_error
+            .as_ref()
+            .is_some_and(|error| error.to_string().contains("decoded color metadata changed"))
+            && stacked_error
+                .as_ref()
+                .is_some_and(|error| error.to_string().contains("decoded color metadata changed")),
+        "expected both readers to reject frame 61: decoder={decoder_error:?}, stacked={stacked_error:?}",
+    );
+}
+
+fn join_color_segments(
+    first: &std::path::Path,
+    second: &std::path::Path,
+    combined: &std::path::Path,
+) {
+    let mut stream = std::fs::read(first).unwrap();
+    stream.extend(std::fs::read(second).unwrap());
+    std::fs::write(combined, stream).unwrap();
+}
+
+#[test]
+fn seek_clears_frame_color_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let untagged = dir.path().join("untagged.ts");
+    let tagged = dir.path().join("bt709.ts");
+    let combined = dir.path().join("transition.ts");
+    write_color_fixture(
+        &untagged,
+        &["-bsf:v", UNSPECIFIED_H264_COLOR, "-muxdelay", "0"],
+    );
+    let mut args = BT709_TAGS.to_vec();
+    args.extend(["-muxdelay", "0", "-output_ts_offset", "2"]);
+    write_color_fixture(&tagged, &args);
+    join_color_segments(&untagged, &tagged, &combined);
+
+    let mut decoder = VideoDecoder::open_software(&combined).unwrap();
+    assert!(decoder.color_metadata().is_empty());
+    for _ in 0..120 {
+        assert!(decoder.next_frame().unwrap().is_some());
+    }
+    assert!(decoder.next_frame().unwrap().is_none());
+
+    decoder.seek_to_secs(0.0).unwrap();
+    let frame = decoder
+        .next_frame()
+        .unwrap()
+        .expect("first frame after seek");
+    assert_eq!(frame.timestamp_us, 0);
+}
+
+#[test]
+fn container_only_color_tags_keep_decoding() {
+    use ffmpeg_next::color::{Primaries, Space, TransferCharacteristic};
+    use reco_io::ffmpeg::ColorMetadata;
+    use reco_io::stacked_video::{GridLayout, source::StackedSource};
+
+    let dir = tempfile::tempdir().unwrap();
+    let untagged = dir.path().join("untagged.mp4");
+    write_color_fixture(&untagged, &[]);
+    assert!(
+        VideoDecoder::open_software(&untagged)
+            .unwrap()
+            .color_metadata()
+            .is_empty()
+    );
+    let expected = ColorMetadata {
+        primaries: Some(Primaries::BT2020),
+        transfer: Some(TransferCharacteristic::ARIB_STD_B67),
+        space: Some(Space::BT2020NCL),
+    };
+
+    for extension in ["mp4", "mkv"] {
+        let path = dir.path().join(format!("container-only.{extension}"));
+        // Stream copy keeps the SPS untagged while the muxer writes colour tags.
+        let output = std::process::Command::new("ffmpeg")
+            .args(["-v", "error", "-nostdin", "-i"])
+            .arg(&untagged)
+            .args(["-c:v", "copy"])
+            .args(HLG_TAGS)
+            .arg(&path)
+            .output()
+            .expect("ffmpeg fixture remuxer");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let mut decoder = VideoDecoder::open_software(&path).unwrap();
+        assert_eq!(decoder.color_metadata(), expected, "{extension}");
+        let layout = GridLayout::vstack(64, 32, 2).unwrap();
+        let mut stacked = StackedSource::open(layout, &path).unwrap();
+        for _ in 0..60 {
+            assert!(decoder.next_frame().unwrap().is_some(), "{extension}");
+            assert!(stacked.next_tuple().unwrap().is_some(), "{extension}");
+        }
+        assert!(decoder.next_frame().unwrap().is_none(), "{extension}");
+        assert!(stacked.next_tuple().unwrap().is_none(), "{extension}");
+    }
+}
+
+#[test]
+fn rendered_partial_hdr_uses_bt2020_matrix_when_primaries_are_bt2020() {
+    use ffmpeg_next::color::{Primaries, Space, TransferCharacteristic};
     use reco_io::ffmpeg::ColorMetadata;
 
     let partial_hdr = ColorMetadata {
@@ -599,6 +860,62 @@ fn partial_hdr_metadata_does_not_fabricate_bt709_matrix() {
         sink.finish().unwrap();
         drop(sink);
 
-        assert_color_metadata(&path, partial_hdr, false);
+        assert_color_metadata(
+            &path,
+            ColorMetadata {
+                space: Some(Space::BT2020NCL),
+                ..partial_hdr
+            },
+            false,
+        );
+    }
+}
+
+#[test]
+fn ffmpeg_rgba_scaler_uses_the_tagged_output_matrix() {
+    use ffmpeg_next::color::Space;
+    use reco_io::ffmpeg::ColorMetadata;
+    let dir = tempfile::tempdir().unwrap();
+    for (space, expected) in [
+        (Space::BT709, [63, 102, 240]),
+        (Space::BT2020NCL, [74, 97, 240]),
+        (Space::SMPTE170M, [81, 90, 240]),
+        (Space::BT470BG, [81, 90, 240]),
+    ] {
+        let path = dir.path().join(format!("{space:?}.mp4"));
+        let config = EncoderConfig {
+            encoder_name: Some("libx264".into()),
+            quality: reco_io::output::Quality::Value(100),
+            color_metadata: ColorMetadata {
+                space: Some(space),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut encoder = FfmpegFileEncoder::new(&path, 64, 64, (30, 1), &config).unwrap();
+        let rgba = [255, 0, 0, 255].repeat(64 * 64);
+        encoder
+            .consume(OutputFrame {
+                data: &rgba,
+                width: 64,
+                height: 64,
+                format: PixelFormat::Rgba8,
+                pts_us: Some(0),
+            })
+            .unwrap();
+        encoder.finish().unwrap();
+        drop(encoder);
+        let mut decoder = VideoDecoder::open_software(&path).unwrap();
+        assert_eq!(decoder.color_metadata().space, Some(space));
+        assert!(!decoder.is_full_range());
+        let frame = decoder.next_frame().unwrap().unwrap();
+        let actual = [frame.y[0], frame.u[0], frame.v[0]];
+        assert!(
+            actual
+                .into_iter()
+                .zip(expected)
+                .all(|(a, b)| a.abs_diff(b) <= 2),
+            "{space:?}: {actual:?} vs {expected:?}"
+        );
     }
 }

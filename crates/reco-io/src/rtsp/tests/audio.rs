@@ -122,6 +122,7 @@ fn selected_live_audio_survives_startup_trim_offsets_and_lookahead() {
                 ..Default::default()
             },
             Some(audio),
+            Default::default(),
         )
         .unwrap();
         let executor = CpuExecutor::new(
