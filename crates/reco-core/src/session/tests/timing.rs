@@ -366,3 +366,133 @@ fn gpu_output_times_stay_with_images_including_short_drain() {
         }
     }
 }
+
+#[test]
+#[cfg(feature = "gpu")]
+fn gpu_p010_session_preserves_format_and_timestamps_through_resize_and_finish() {
+    use crate::gpu::OutputFormat;
+    use crate::sink::{DeliveryFormat, PixelFormat};
+    use crate::stitch::test_support::gpu_or_skip;
+
+    type P010Image = (i64, u16, u32, u32);
+
+    struct P010Sink {
+        frames: Arc<Mutex<Vec<P010Image>>>,
+        finished: Arc<AtomicU64>,
+    }
+
+    impl OutputSink for P010Sink {
+        fn name(&self) -> &str {
+            "p010"
+        }
+        fn wants(&self) -> SinkInput {
+            SinkInput::CpuBytes(PixelFormat::P010)
+        }
+        fn consume(&mut self, frame: OutputFrame<'_>) -> Result<(), SinkError> {
+            assert_eq!(frame.format, PixelFormat::P010);
+            assert_eq!(frame.data.len(), (frame.width * frame.height * 3) as usize);
+            let center = ((frame.height / 2 * frame.width + frame.width / 2) * 2) as usize;
+            let sample = u16::from_le_bytes(frame.data[center..center + 2].try_into().unwrap());
+            assert_eq!(sample & 63, 0);
+            self.frames.lock().unwrap().push((
+                frame.pts_us.unwrap(),
+                sample >> 6,
+                frame.width,
+                frame.height,
+            ));
+            Ok(())
+        }
+        fn finish(&mut self) -> Result<(), SinkError> {
+            self.finished.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+    }
+
+    let Some(gpu) = gpu_or_skip() else {
+        return;
+    };
+    let builder = || {
+        StitchSession::builder()
+            .calibration(test_calibration())
+            .source_sizes(vec![(W, H); 2])
+            .gpu(gpu.clone())
+            .output_format(OutputFormat::Rgb10a2Unorm)
+    };
+    for (width, height) in [(W - 1, H), (W, H - 1)] {
+        assert!(
+            builder()
+                .viewport_size(ViewportSize { width, height })
+                .build()
+                .is_err()
+        );
+    }
+
+    for options in [
+        super::super::SinkOptions::threaded(1),
+        super::super::SinkOptions::inline_lossy(),
+    ] {
+        let mut session = builder()
+            .viewport_size(ViewportSize {
+                width: W,
+                height: H,
+            })
+            .build()
+            .unwrap();
+        assert_eq!(session.delivery_format(), DeliveryFormat::P010);
+        assert_eq!(session.delivery_dims(), (W, H));
+        let nv12 = Box::new(TimedImages(Arc::default()));
+        assert!(
+            matches!(session.add_sink(nv12, options), Err(SessionError::Config(message))
+            if message.contains("Nv12") && message.contains("P010"))
+        );
+
+        let frames = Arc::new(Mutex::new(Vec::new()));
+        let finished = Arc::new(AtomicU64::new(0));
+        session
+            .add_sink(
+                Box::new(P010Sink {
+                    frames: frames.clone(),
+                    finished: finished.clone(),
+                }),
+                options,
+            )
+            .unwrap();
+        let pose = crate::geometry::RenderPose::default();
+        session
+            .render_frame(&solid_frame(), pose, Some(10))
+            .unwrap();
+        session
+            .render_frame(&solid_frame(), pose, Some(20))
+            .unwrap();
+        assert!(frames.lock().unwrap().is_empty());
+        session.core_mut().resize_preview(W + 2, H + 4).unwrap();
+
+        for (pts, y) in [(100, 40), (111, 80), (207, 120), (256, 180)] {
+            let mut image = solid_frame();
+            let FrameSet::Yuv420p(cameras) = &mut image else {
+                unreachable!()
+            };
+            for camera in cameras {
+                Arc::make_mut(camera).y.fill(y);
+            }
+            session.render_frame(&image, pose, Some(pts)).unwrap();
+            if pts == 100 {
+                assert!(session.core_mut().resize_preview(W + 1, H + 4).is_err());
+                assert_eq!(session.delivery_dims(), (W + 2, H + 4));
+            }
+        }
+        session.finish().unwrap();
+        session.finish().unwrap();
+        assert_eq!(finished.load(Ordering::Relaxed), 1);
+        let frames = frames.lock().unwrap();
+        let expected = [(100, 160), (111, 320), (207, 480), (256, 720)];
+        assert_eq!(frames.len(), expected.len());
+        for (&(pts, code, w, h), (expected_pts, expected_code)) in frames.iter().zip(expected) {
+            assert_eq!((pts, w, h), (expected_pts, W + 2, H + 4));
+            assert!(
+                code.abs_diff(expected_code) <= 1,
+                "{code} vs {expected_code}"
+            );
+        }
+    }
+}

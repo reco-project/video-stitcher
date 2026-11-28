@@ -438,6 +438,11 @@ impl StitchSession {
             #[cfg(not(target_os = "windows"))]
             let needs_allocation = self.gpu_exec_ref().residency.pool.is_none();
             if needs_allocation {
+                // Include the larger P010 converter in the memory already committed
+                // when sampling the available lookahead budget.
+                if self.delivery_format() == crate::sink::DeliveryFormat::P010 {
+                    self.gpu_exec().prepare_delivery()?;
+                }
                 match self.gpu_exec_ref().pipeline.gpu().lookahead_memory_budget() {
                     Some(vram) => {
                         let budget = vram.usable_bytes;

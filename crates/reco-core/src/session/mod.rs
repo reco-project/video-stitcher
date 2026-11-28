@@ -141,7 +141,7 @@ impl StitchSession {
     /// for zero-copy decode where the GPU must match the CUDA device).
     #[cfg(feature = "gpu")]
     pub fn with_gpu(gpu: GpuContext, config: SessionConfig) -> Result<Self, SessionError> {
-        // The executor owns the pipeline + projection + NV12 delivery;
+        // The executor owns the pipeline + projection + packed delivery;
         // the core layers readback + coverage on top. The session
         // layers on sink delivery, lookahead, and the per-platform
         // frame dispatch.
@@ -158,10 +158,6 @@ impl StitchSession {
                 viewport_size: config.viewport_size,
                 source_sizes: config.source_sizes,
                 input_format: config.input_format,
-                // `OutputFormat` -> `wgpu::TextureFormat` via the
-                // `From` impl in `crate::gpu`; covers all three
-                // session-facing variants (Rgba8Unorm, Rgba8UnormSrgb,
-                // Bgra8UnormSrgb).
                 output_format: config.output_format.into(),
                 full_range: false,
             },
@@ -264,12 +260,20 @@ impl StitchSession {
         self.gpu_exec_ref().pipeline.gpu()
     }
 
-    /// NV12 delivery dimensions for the current output viewport:
-    /// the shared rounding rule over the executor-agnostic viewport,
-    /// so CPU and GPU sessions hand sinks identically-sized frames.
-    pub(crate) fn nv12_delivery_dims(&self) -> (u32, u32) {
+    /// Packed CPU format delivered to all attached sinks.
+    ///
+    /// Delivery uses limited range and the configured source matrix.
+    pub fn delivery_format(&self) -> crate::sink::DeliveryFormat {
+        self.core.delivery_format()
+    }
+
+    /// Dimensions of the packed frame delivered to sinks.
+    ///
+    /// NV12 rounds down to a width divisible by four and an even height.
+    /// P010 uses the configured even viewport dimensions.
+    pub fn delivery_dims(&self) -> (u32, u32) {
         let vp = self.core.executor.viewport_size();
-        crate::render::nv12_cpu::nv12_dims(vp.width, vp.height)
+        self.delivery_format().viewport_dims(vp.width, vp.height)
     }
 
     /// The name of the GPU this session is running on.
@@ -326,7 +330,7 @@ impl StitchSession {
 
     /// Flush any pending delivery frames and finalize every sink.
     ///
-    /// The GPU arm's NV12 delivery is triple-buffered, so its last two
+    /// The GPU arm's packed delivery is triple-buffered, so its last two
     /// frames are drained here and fanned out to the attached sinks;
     /// the CPU arm delivers synchronously and has nothing pending.
     /// Then calls
@@ -342,16 +346,10 @@ impl StitchSession {
                 exec.finish_nvmm_reads().map_err(SessionError::ZeroCopy)?;
             }
             while let Some(exec) = self.core.executor.gpu_mut() {
-                let Some(frame) = exec.flush_nv12()? else {
+                let Some(frame) = exec.flush_delivery()? else {
                     break;
                 };
-                sinks::deliver_frame(
-                    &mut self.sinks,
-                    frame.data,
-                    frame.width,
-                    frame.height,
-                    frame.pts_us,
-                )?;
+                sinks::deliver_frame(&mut self.sinks, frame)?;
             }
             Ok(())
         })();

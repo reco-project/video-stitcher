@@ -1609,6 +1609,117 @@ mod tests {
         }
     }
 
+    #[test]
+    #[cfg(feature = "gpu")]
+    fn gpu_p010_blend_retains_ten_bit_precision_and_boundary_ownership() {
+        use super::{Executor, GpuExecutor, GpuExecutorConfig};
+        use crate::core::StitchCore;
+        use crate::render::renderer::InputFormat;
+        use crate::sink::PixelFormat;
+        use crate::source::{FrameSet, Nv12Data};
+        use std::sync::Arc;
+
+        let Some(gpu) = gpu_or_skip() else {
+            return;
+        };
+        let viewport = ViewportSize {
+            width: 960,
+            height: 540,
+        };
+        let (cal, sizes, base_pose) = mixed_aspect_tilted_blend_calib();
+        let (ly, luv) = solid_nv12(sizes[0].0, sizes[0].1, 40);
+        let (ry, ruv) = solid_nv12(sizes[1].0, sizes[1].1, 255);
+        let planes = [
+            Nv12Planes { y: &ly, uv: &luv },
+            Nv12Planes { y: &ry, uv: &ruv },
+        ];
+        let images = FrameSet::Nv12(
+            sizes
+                .into_iter()
+                .zip(planes.iter())
+                .map(|(size, planes)| {
+                    Arc::new(Nv12Data {
+                        size,
+                        y: planes.y.to_vec(),
+                        uv: planes.uv.to_vec(),
+                    })
+                })
+                .collect(),
+        );
+        let mut config = GpuExecutorConfig::new(cal.clone(), sizes.to_vec(), InputFormat::Nv12);
+        config.viewport_size = viewport.clone();
+        config.output_format = wgpu::TextureFormat::Rgb10a2Unorm;
+        config.full_range = true;
+        let mut core = StitchCore::new(Executor::Gpu(Box::new(
+            GpuExecutor::new(gpu, config).unwrap(),
+        )))
+        .unwrap();
+        let luma_code = |gray: f64| -> u16 {
+            let rgb10 = (1023.0 * gray).round() / 1023.0;
+            (64.0 + 876.0 * rgb10).round() as u16
+        };
+        let mut eight_bit_codes = [false; 1024];
+        for gray8 in 0..=255 {
+            eight_bit_codes[usize::from(luma_code(f64::from(gray8) / 255.0))] = true;
+        }
+
+        for fov_degrees in [93.081, 91.659] {
+            let pose = RenderPose {
+                fov_degrees,
+                ..base_pose
+            };
+            let (_, left, right) =
+                render_gpu_nv12_with_isolated_oracles(&cal, &viewport, sizes, &planes, pose, true)
+                    .unwrap();
+            let maps = cal.surface_maps(&viewport, pose);
+            assert!(
+                core.render_and_readback_delivery(&images, pose, None)
+                    .unwrap()
+                    .is_none()
+            );
+            let frame = core.flush_delivery().unwrap().unwrap();
+            assert_eq!(frame.format, PixelFormat::P010);
+            let mut right_only_fade = 0;
+            let mut overlap_between_eight_bit_codes = 0;
+            for (i, word) in frame.data.chunks_exact(2).take(left.len() / 4).enumerate() {
+                let code = u16::from_le_bytes([word[0], word[1]]) >> 6;
+                let [x, y] = [i as u32 % viewport.width, i as u32 / viewport.width];
+                let offset = i * 4;
+                let weight = maps[1]
+                    .0
+                    .sample_uv(viewport.pixel_ndc(x, y))
+                    .map(|sample| maps[1].1.alpha(sample.edge));
+                let l = f64::from(left[offset]) / 255.0;
+                let r = f64::from(right[offset]) / 255.0;
+                let expected = match (left[offset + 3] != 0, right[offset + 3] != 0) {
+                    (false, false) => 64,
+                    (true, false) => luma_code(l),
+                    (false, true) => {
+                        right_only_fade += usize::from(weight.is_some_and(|a| a < 1.0));
+                        luma_code(r)
+                    }
+                    (true, true) => {
+                        let Some(alpha) = weight else {
+                            // The isolated GPU draw owns the outer lens edge.
+                            assert!((luma_code(l)..=luma_code(r)).contains(&code));
+                            continue;
+                        };
+                        if alpha > 0.0 && alpha < 1.0 && !eight_bit_codes[usize::from(code)] {
+                            overlap_between_eight_bit_codes += 1;
+                        }
+                        luma_code(l + (r - l) * alpha)
+                    }
+                };
+                assert!(
+                    code.abs_diff(expected) <= 2,
+                    "FOV {fov_degrees} ({x},{y}): {code} vs {expected}"
+                );
+            }
+            assert!(right_only_fade > 0);
+            assert!(overlap_between_eight_bit_codes > 100);
+        }
+    }
+
     /// Isolated-GPU-draw oracle regression for a calibration whose left (base)
     /// plane edge crosses the right plane's fade band nearly horizontally.
     /// Analytic reprojection errors amplify along a near-horizontal edge into

@@ -3,16 +3,20 @@
 use super::{StitchError, StitchExecutor};
 use crate::calibration::Calibration;
 use crate::geometry::RenderPose;
-use crate::gpu::{GpuContext, rgba_readback::RgbaReadback};
+use crate::gpu::{
+    GpuContext,
+    rgba_readback::RgbaReadback,
+    yuv_converter::{YuvConvertError, YuvConverter},
+};
 use crate::render::planes::Nv12Planes;
 use crate::render::viewport::ViewportSize;
 use crate::render::{pipeline::StitchPipeline, renderer::InputFormat};
-use crate::sink::{OutputFrame, PixelFormat};
+use crate::sink::{DeliveryFormat, OutputFrame};
 use std::collections::VecDeque;
 
 /// Image storage and its associated timestamps have one invalidation lifetime.
-struct Nv12Delivery {
-    converter: crate::gpu::nv12_converter::Nv12Converter,
+struct GpuDelivery {
+    converter: YuvConverter,
     pending_pts: VecDeque<Option<i64>>,
 }
 
@@ -36,7 +40,7 @@ pub struct GpuExecutorConfig {
     /// GPU render-target format. `Rgba8Unorm` suits every compositor
     /// consumer; `Bgra8Unorm` matches native Windows DirectX surfaces
     /// for consumers that prefer to swizzle on upload instead of on
-    /// readback.
+    /// readback. `Rgb10a2Unorm` selects P010 delivery and requires even viewport dimensions.
     ///
     /// Planar (L-shape) GPU compositing tracks base-surface coverage in
     /// destination alpha and requires a 4-channel color format with an alpha
@@ -91,9 +95,10 @@ pub struct GpuExecutor {
     /// read back through the engine's own pipelined ring) never
     /// allocate it. Invalidated when output dimensions change.
     sync_readback: Option<RgbaReadback>,
-    /// NV12 delivery: triple-buffered render-target -> NV12 readback
-    /// for encoders and preview taps. Created on first use and invalidated on resize, even when the rounded delivery dimensions are unchanged.
-    nv12: Option<Nv12Delivery>,
+    /// Triple-buffered delivery for encoders and preview taps.
+    /// Invalidated on resize, including when rounded NV12 dimensions are unchanged.
+    delivery: Option<GpuDelivery>,
+    delivery_format: DeliveryFormat,
     delivery_color: crate::render::color::YuvColor,
 }
 
@@ -118,6 +123,18 @@ impl GpuExecutor {
             "GpuExecutor: projection '{}' from the calibration projection supplies the GPU program and coverage",
             projection.name()
         );
+        let delivery_format = if config.output_format == wgpu::TextureFormat::Rgb10a2Unorm {
+            YuvConverter::validate_layout(
+                &gpu,
+                config.viewport_size.width,
+                config.viewport_size.height,
+                DeliveryFormat::P010,
+            )
+            .map_err(|error| StitchError::InvalidConfig(error.to_string()))?;
+            DeliveryFormat::P010
+        } else {
+            DeliveryFormat::Nv12
+        };
         // Calibration validation happens once, inside with_gpu.
         let mut pipeline = StitchPipeline::with_gpu(
             gpu,
@@ -133,7 +150,8 @@ impl GpuExecutor {
             pipeline,
             residency: crate::stitch::residency::Residency::default(),
             sync_readback: None,
-            nv12: None,
+            delivery: None,
+            delivery_format,
             delivery_color: Default::default(),
         })
     }
@@ -142,18 +160,22 @@ impl GpuExecutor {
         self.pipeline.set_source_color(color);
         let delivery = crate::render::color::YuvColor::delivery(color.matrix);
         if self.delivery_color != delivery {
-            self.nv12 = None;
+            self.delivery = None;
             self.delivery_color = delivery;
         }
     }
 
     /// Accept output dimensions and invalidate every delivery queue before another render.
     pub(super) fn resize(&mut self, width: u32, height: u32) -> Option<(u32, u32)> {
+        if self.delivery_format == DeliveryFormat::P010 {
+            YuvConverter::validate_layout(self.pipeline.gpu(), width, height, self.delivery_format)
+                .ok()?;
+        }
         let changed = self.output_dims() != (width, height);
         let accepted = self.pipeline.resize(width, height)?;
         if changed {
             self.sync_readback = None;
-            self.nv12 = None;
+            self.delivery = None;
         }
         Some(accepted)
     }
@@ -529,86 +551,94 @@ impl GpuExecutor {
     }
 
     // -----------------------------------------------------------------
-    // NV12 delivery (encoders, preview taps)
+    // Packed delivery (encoders, preview taps)
     // -----------------------------------------------------------------
 
-    /// NV12 output dimensions: the viewport rounded down to NV12-safe
-    /// values (shared rounding rule with the CPU delivery path).
-    pub(crate) fn nv12_dims(&self) -> (u32, u32) {
-        let vp = self.pipeline.viewport_size();
-        crate::render::nv12_cpu::nv12_dims(vp.width, vp.height)
+    /// Packed CPU format produced for encoding.
+    pub fn delivery_format(&self) -> DeliveryFormat {
+        self.delivery_format
     }
 
-    /// Submit `render_commands` and convert the render target to NV12.
-    ///
-    /// Triple-buffered: returns `None` on the first two calls, then
-    /// bytes from two frames ago. Drain the tail with
-    /// [`Self::flush_nv12`] after the loop. The converter is created
-    /// on first use at [`Self::nv12_dims`] and recreated on resize.
-    pub(crate) fn convert_nv12(
-        &mut self,
-        render_commands: wgpu::CommandBuffer,
-        pts_us: Option<i64>,
-    ) -> Result<Option<OutputFrame<'_>>, crate::gpu::nv12_converter::Nv12Error> {
-        let dims = self.nv12_dims();
-        if self.nv12.is_none() {
-            let (w, h) = dims;
+    fn delivery_dims(&self) -> (u32, u32) {
+        let vp = self.pipeline.viewport_size();
+        self.delivery_format.viewport_dims(vp.width, vp.height)
+    }
+
+    /// Allocate converter storage before the first submission if needed.
+    pub(crate) fn prepare_delivery(&mut self) -> Result<(), YuvConvertError> {
+        if self.delivery.is_none() {
+            let (w, h) = self.delivery_dims();
             let vp = self.pipeline.viewport_size();
-            if (vp.width, vp.height) != dims {
+            if (vp.width, vp.height) != (w, h) {
                 log::info!(
                     "GpuExecutor: NV12 delivery rounds {}x{} viewport to {w}x{h}",
                     vp.width,
                     vp.height
                 );
             }
-            let converter = crate::gpu::nv12_converter::Nv12Converter::with_color(
+            let converter = YuvConverter::with_format(
                 self.pipeline.gpu(),
                 w,
                 h,
+                self.delivery_format,
                 self.delivery_color,
             )?;
-            log::info!("GpuExecutor: NV12 delivery initialized ({w}x{h})");
-            self.nv12 = Some(Nv12Delivery {
+            log::info!(
+                "GpuExecutor: {:?} delivery initialized ({w}x{h})",
+                self.delivery_format
+            );
+            self.delivery = Some(GpuDelivery {
                 converter,
                 pending_pts: VecDeque::with_capacity(3),
             });
         }
-        let delivery = self.nv12.as_mut().expect("created above");
+        Ok(())
+    }
+
+    /// Submit the render and return the oldest frame once two frames are pending.
+    pub(crate) fn convert_delivery(
+        &mut self,
+        render_commands: wgpu::CommandBuffer,
+        pts_us: Option<i64>,
+    ) -> Result<Option<OutputFrame<'_>>, YuvConvertError> {
+        self.prepare_delivery()?;
+        let dims = self.delivery_dims();
+        let format = self.delivery_format;
+        let delivery = self.delivery.as_mut().expect("created above");
         let data = delivery.converter.convert_and_readback(
             self.pipeline.gpu(),
             self.pipeline.render_target(),
             render_commands,
         )?;
         delivery.pending_pts.push_back(pts_us);
-        Ok(data.map(|data| nv12_output(data, dims, &mut delivery.pending_pts)))
+        Ok(data.map(|data| delivery_frame(data, dims, format, &mut delivery.pending_pts)))
     }
 
-    /// Drain one pending NV12 frame from the triple buffer. `None`
-    /// when nothing remains (or NV12 delivery was never used).
-    pub(crate) fn flush_nv12(
-        &mut self,
-    ) -> Result<Option<OutputFrame<'_>>, crate::gpu::nv12_converter::Nv12Error> {
-        let dims = self.nv12_dims();
-        match self.nv12.as_mut() {
+    /// Drain one pending frame, or return `None` when the queue is empty.
+    pub(crate) fn flush_delivery(&mut self) -> Result<Option<OutputFrame<'_>>, YuvConvertError> {
+        let dims = self.delivery_dims();
+        let format = self.delivery_format;
+        match self.delivery.as_mut() {
             Some(delivery) => {
                 let data = delivery.converter.flush_pending(self.pipeline.gpu())?;
-                Ok(data.map(|data| nv12_output(data, dims, &mut delivery.pending_pts)))
+                Ok(data.map(|data| delivery_frame(data, dims, format, &mut delivery.pending_pts)))
             }
             None => Ok(None),
         }
     }
 }
 
-fn nv12_output<'a>(
+fn delivery_frame<'a>(
     data: &'a [u8],
     (width, height): (u32, u32),
+    format: DeliveryFormat,
     pending_pts: &mut VecDeque<Option<i64>>,
 ) -> OutputFrame<'a> {
     OutputFrame {
         data,
         width,
         height,
-        format: PixelFormat::Nv12,
+        format: format.pixel_format(),
         pts_us: pending_pts
             .pop_front()
             .expect("each converted image has a queued timestamp"),

@@ -454,7 +454,7 @@ fn upload_plane(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gpu::nv12_converter::Nv12Converter;
+    use crate::gpu::yuv_converter::YuvConverter;
 
     #[test]
     fn source_points_follow_rendered_landmarks_at_each_correction_strength() {
@@ -464,7 +464,7 @@ mod tests {
         let (width, height) = (256_u32, 144_u32);
         let preview =
             LensPreviewRenderer::new(&gpu, width, height, wgpu::TextureFormat::Rgba8Unorm);
-        let mut converter = Nv12Converter::new(&gpu, width, height).unwrap();
+        let mut converter = YuvConverter::new(&gpu, width, height).unwrap();
         let chroma = vec![128; (width * height / 4) as usize];
         let lens = Lens::fisheye(
             1024,

@@ -354,13 +354,22 @@ impl StitchCore {
         self.executor.calibration()
     }
 
+    /// Packed CPU delivery format selected by this core's executor.
+    pub fn delivery_format(&self) -> crate::sink::DeliveryFormat {
+        match &self.executor {
+            Executor::Cpu(_) => crate::sink::DeliveryFormat::Nv12,
+            #[cfg(feature = "gpu")]
+            Executor::Gpu(gpu) => gpu.delivery_format(),
+        }
+    }
+
     /// Resize the output viewport. Returns the accepted `(width, height)`,
     /// or `None` when dimensions or coverage preparation are rejected.
     ///
     /// A resize is a stream discontinuity for the delivery machinery:
     /// the GPU streaming readback ring is invalidated and recreated on use
     /// (frames in flight in the old ring are dropped) and the executor's
-    /// NV12 delivery discards pending images and their timestamps together.
+    /// packed delivery discards pending images and their timestamps together.
     /// Configured coverage motion is rebuilt before the resize is accepted. A failed
     /// map rebuild returns `None` without changing the viewport or motion state.
     pub fn resize(&mut self, width: u32, height: u32) -> Option<(u32, u32)> {

@@ -8,14 +8,14 @@
 //!
 //! ## Triple-buffered readback
 //!
-//! Uses the same pattern as [`Nv12Converter`](crate::gpu::nv12_converter::Nv12Converter):
+//! Uses the same pattern as [`YuvConverter`](crate::gpu::yuv_converter::YuvConverter):
 //! three staging buffers cycle so the CPU reads from two frames ago.
 //! This allows GPU work and CPU delivery to overlap. If the older frame
 //! is unfinished, readback still waits for it.
 //!
 //! ## Why a separate type
 //!
-//! [`Nv12Converter`](crate::gpu::nv12_converter::Nv12Converter) also runs a
+//! [`YuvConverter`](crate::gpu::yuv_converter::YuvConverter) also runs a
 //! compute shader to convert RGBA → NV12 before the readback. GUI and
 //! OBS consumers want the raw RGBA (or BGRA) pixels for display, not an
 //! encoded NV12 stream. Sharing the NV12 converter would force every
@@ -225,6 +225,9 @@ impl RgbaReadback {
         render_commands: wgpu::CommandBuffer,
         slot: usize,
     ) -> Result<(), RgbaReadbackError> {
+        if source.format() == wgpu::TextureFormat::Rgb10a2Unorm {
+            return Err(RgbaReadbackError::PackedRgb10a2);
+        }
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -351,6 +354,10 @@ pub enum RgbaReadbackError {
     /// Invalid output dimensions.
     #[error("invalid RGBA dimensions: {0}")]
     InvalidDimensions(String),
+
+    /// Packed ten-bit RGB cannot be interpreted as four 8-bit channels.
+    #[error("RGBA byte readback cannot read packed Rgb10a2Unorm")]
+    PackedRgb10a2,
 }
 
 #[cfg(test)]
@@ -360,7 +367,7 @@ mod tests {
         use super::{RgbaReadback, RgbaReadbackError};
         use crate::gpu::{
             GpuContext,
-            nv12_converter::{Nv12Converter, Nv12Error},
+            yuv_converter::{YuvConvertError, YuvConverter},
         };
 
         let Some(original) = crate::stitch::test_support::gpu_or_skip() else {
@@ -399,17 +406,17 @@ mod tests {
         ] {
             assert!(
                 matches!(
-                    Nv12Converter::new(&gpu, width, height),
-                    Err(Nv12Error::InvalidDimensions(_))
+                    YuvConverter::new(&gpu, width, height),
+                    Err(YuvConvertError::InvalidDimensions(_))
                 ),
                 "NV12 {width}x{height}"
             );
         }
         // RGBA row padding reaches the buffer limit exactly; NV12 stays below the binding limit.
         assert!(RgbaReadback::new(&gpu, 32, 32).is_ok());
-        assert!(Nv12Converter::new(&gpu, 32, 32).is_ok());
+        assert!(YuvConverter::new(&gpu, 32, 32).is_ok());
         assert!(RgbaReadback::new(&gpu, 1, 1).is_ok());
-        assert!(Nv12Converter::new(&gpu, 4, 2).is_ok());
+        assert!(YuvConverter::new(&gpu, 4, 2).is_ok());
     }
 
     #[test]

@@ -1095,6 +1095,12 @@ impl OutputSink for FfmpegFileEncoder {
         let result = match frame.format {
             PixelFormat::Nv12 => self.inner.write_nv12_frame(frame.data, frame.pts_us),
             PixelFormat::Rgba8 => self.inner.write_frame(frame.data, frame.pts_us),
+            PixelFormat::P010 => {
+                return Err(SinkError::Consume {
+                    frame_index: None,
+                    reason: "this encoder accepts NV12 or 8-bit RGBA frames".into(),
+                });
+            }
         };
         result.map_err(|e| match e {
             ffmpeg::encoder::EncodeError::Cancelled => SinkError::Cancelled,

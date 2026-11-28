@@ -17,7 +17,7 @@
 //!
 //! # Threading model
 //!
-//! Single-thread, mirrors `Nv12Converter`. The pipeline's owning
+//! Single-thread, mirrors `YuvConverter`. The pipeline's owning
 //! thread dispatches the compute kernels and polls readbacks.
 //! Triple-buffered staging so the CPU reads from 2-frames-old
 //! storage — guaranteed complete on the GPU and does not need a
@@ -126,7 +126,7 @@ struct PackParams {
     sample_encoding: u32,
 }
 
-/// Staging ring depth. Same 3-slot pipelining as [`Nv12Converter`]:
+/// Staging ring depth. Same 3-slot pipelining as [`YuvConverter`]:
 /// write slot 0 → 1 → 2 → 0; read always (write + 1) % 3 which is
 /// guaranteed-done on the GPU two frames later.
 const STAGING_SLOTS: usize = 3;
@@ -287,7 +287,7 @@ pub struct YuvStackPacker {
     /// per-frame allocation. Sized at `atlas_bytes` (Y + UV + UV).
     readback_buffers: [Vec<u8>; STAGING_SLOTS],
     /// Channel for `map_async` signaling. Reuses a SyncSender pair
-    /// the same way `Nv12Converter` does — avoids per-frame channel
+    /// the same way `YuvConverter` does — avoids per-frame channel
     /// alloc which shows up on Mac M4 profiles.
     map_tx: std::sync::mpsc::SyncSender<Result<(), wgpu::BufferAsyncError>>,
     map_rx: std::sync::mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>,

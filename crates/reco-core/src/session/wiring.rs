@@ -22,14 +22,15 @@ impl StitchSession {
     /// # Errors
     ///
     /// Rejects sinks whose [`wants`](OutputSink::wants) the session
-    /// cannot deliver (it produces NV12 CPU bytes only).
+    /// cannot provide (see [`Self::delivery_format`]).
     pub fn add_sink(
         &mut self,
         sink: Box<dyn OutputSink>,
         options: SinkOptions,
     ) -> Result<(), SessionError> {
-        validate_sink_input(sink.wants(), sink.name()).map_err(SessionError::Config)?;
-        let (width, height) = self.nv12_delivery_dims();
+        validate_sink_input(self.delivery_format(), sink.wants(), sink.name())
+            .map_err(SessionError::Config)?;
+        let (width, height) = self.delivery_dims();
         self.sinks
             .push(AttachedSink::new(sink, options, width, height));
         Ok(())

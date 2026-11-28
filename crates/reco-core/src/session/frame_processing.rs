@@ -276,7 +276,7 @@ impl StitchSession {
             return Ok(());
         }
 
-        let (width, height) = self.nv12_delivery_dims();
+        let (width, height) = self.delivery_dims();
         let render_width = self.core.executor.viewport_size().width;
         let crate::core::types::RenderOutcome::Rgba(rgba) =
             self.core.submit_frame_at_pose(frame, pose)?
@@ -294,7 +294,16 @@ impl StitchSession {
         )?;
         self.last_readback_time = convert_t0.elapsed();
         let submit_t0 = std::time::Instant::now();
-        super::sinks::deliver_frame(&mut self.sinks, &self.cpu_nv12, width, height, pts_us)?;
+        super::sinks::deliver_frame(
+            &mut self.sinks,
+            crate::sink::OutputFrame {
+                data: &self.cpu_nv12,
+                width,
+                height,
+                format: crate::sink::PixelFormat::Nv12,
+                pts_us,
+            },
+        )?;
         self.last_submit_time = submit_t0.elapsed();
         self.frame_count += 1;
         Ok(())
@@ -499,7 +508,7 @@ impl StitchSession {
         Ok(slot)
     }
 
-    /// Submit a recorded render and fan the NV12 result out to the
+    /// Submit a recorded render and fan the packed frame out to the
     /// attached sinks.
     ///
     /// Used with the zero-copy paths where decode threads write
@@ -524,20 +533,14 @@ impl StitchSession {
             .executor
             .gpu_mut()
             .expect("the streaming session runs on the GPU executor")
-            .convert_nv12(render_commands, pts_us)?;
+            .convert_delivery(render_commands, pts_us)?;
         self.last_readback_time = readback_t0.elapsed();
 
         // First two calls return None (triple-buffer warmup).
         // From the third call onward, we get data from 2 frames ago.
         let submit_t0 = std::time::Instant::now();
         if let Some(frame) = output {
-            super::sinks::deliver_frame(
-                &mut self.sinks,
-                frame.data,
-                frame.width,
-                frame.height,
-                frame.pts_us,
-            )?;
+            super::sinks::deliver_frame(&mut self.sinks, frame)?;
         }
         self.last_submit_time = submit_t0.elapsed();
 
