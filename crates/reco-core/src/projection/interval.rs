@@ -50,6 +50,25 @@ impl Interval {
     pub fn finite(self) -> bool {
         self.lo.is_finite() && self.hi.is_finite()
     }
+
+    pub fn scale(self, c: f64) -> Self {
+        if !c.is_finite() {
+            return Self {
+                lo: f64::NEG_INFINITY,
+                hi: f64::INFINITY,
+            };
+        }
+        let (a, b) = (self.lo * c, self.hi * c);
+        if c >= 0.0 {
+            Self::new(a, b)
+        } else {
+            Self::new(b, a)
+        }
+    }
+
+    pub fn shift(self, c: f64) -> Self {
+        Self::new(self.lo + c, self.hi + c)
+    }
 }
 
 impl Add for Interval {
@@ -137,6 +156,8 @@ mod tests {
                     contains(x + y, p + q);
                     contains(x - y, p - q);
                     contains(x * y, p * q);
+                    contains(x.scale(q), p * q);
+                    contains(x.shift(q), p + q);
                     if q != 0.0 {
                         contains(x / y, p / q);
                     }
@@ -153,6 +174,9 @@ mod tests {
             Interval::new(2.0, 1.0),
             Interval::point(f64::NAN),
             Interval::point(f64::MAX) * Interval::point(2.0),
+            Interval::point(f64::MAX).scale(2.0),
+            Interval::point(1.0).scale(f64::NAN),
+            Interval::point(f64::MAX).shift(f64::MAX),
             Interval::point(1.0) / Interval::new(-1.0, 1.0),
             Interval::point(-1.0).sqrt(),
         ] {

@@ -98,8 +98,44 @@ fn certify_rect(
     certify_regions(surfaces, &[(min, max)], rotation, budget)
 }
 
+trait SurfaceQuery {
+    fn covers_ndc(&self, min: [f64; 2], max: [f64; 2], rotation_bound: f64) -> bool;
+    fn sample_uv_some(&self, ndc: [f64; 2]) -> bool;
+}
+
+impl<S: SurfaceMap> SurfaceQuery for S {
+    #[inline]
+    fn covers_ndc(&self, min: [f64; 2], max: [f64; 2], rotation_bound: f64) -> bool {
+        SurfaceMap::covers_ndc(self, min, max, rotation_bound)
+    }
+    #[inline]
+    fn sample_uv_some(&self, ndc: [f64; 2]) -> bool {
+        SurfaceMap::sample_uv(self, ndc).is_some()
+    }
+}
+
+impl SurfaceQuery for (Box<dyn SurfaceMap>, BlendRule) {
+    #[inline]
+    fn covers_ndc(&self, min: [f64; 2], max: [f64; 2], rotation_bound: f64) -> bool {
+        self.0.covers_ndc(min, max, rotation_bound)
+    }
+    #[inline]
+    fn sample_uv_some(&self, ndc: [f64; 2]) -> bool {
+        self.0.sample_uv(ndc).is_some()
+    }
+}
+
 fn certify_regions(
     surfaces: &[(Box<dyn SurfaceMap>, BlendRule)],
+    regions: &[([f64; 2], [f64; 2])],
+    rotation: f64,
+    budget: usize,
+) -> Certificate {
+    certify_regions_with(surfaces, regions, rotation, budget)
+}
+
+fn certify_regions_with<S: SurfaceQuery>(
+    surfaces: &[S],
     regions: &[([f64; 2], [f64; 2])],
     rotation: f64,
     budget: usize,
@@ -114,28 +150,61 @@ fn certify_regions(
     {
         return Certificate::Unknown;
     }
-    let mut stack: Vec<_> = regions
-        .iter()
-        .map(|&(min, max)| (min, max, 0_u32))
-        .collect();
+    let is_uncovered = |p: [f64; 2]| surfaces.iter().all(|s| !s.sample_uv_some(p));
+    // Fast-fail on uncovered region endpoints before subdividing any side.
+    if regions.len() > 1 {
+        for &(min, max) in regions {
+            if is_uncovered(min) || (max != min && is_uncovered(max)) {
+                return Certificate::Uncovered;
+            }
+        }
+    }
+    let mut inline_stack = [([0.0; 2], [0.0; 2], 0_u32); 64];
+    let mut inline_len = 0_usize;
+    let mut overflow_stack = Vec::new();
+    let use_inline = regions.len() <= 20;
+    if use_inline {
+        for &(min, max) in regions {
+            inline_stack[inline_len] = (min, max, 0);
+            inline_len += 1;
+        }
+    } else {
+        overflow_stack.extend(regions.iter().map(|&(min, max)| (min, max, 0_u32)));
+    }
     let mut work = 0;
-    while let Some((lo, hi, depth)) = stack.pop() {
+    while let Some((lo, hi, depth)) = if use_inline {
+        if inline_len == 0 {
+            None
+        } else {
+            inline_len -= 1;
+            Some(inline_stack[inline_len])
+        }
+    } else {
+        overflow_stack.pop()
+    } {
         if work == budget {
             return Certificate::Unknown;
         }
         work += 1;
-        if surfaces.iter().any(|(s, _)| s.covers_ndc(lo, hi, rotation)) {
+        if surfaces.iter().any(|s| s.covers_ndc(lo, hi, rotation)) {
             continue;
         }
-        for p in [
-            lo,
-            hi,
-            [lo[0], hi[1]],
-            [hi[0], lo[1]],
-            [(lo[0] + hi[0]) * 0.5, (lo[1] + hi[1]) * 0.5],
-        ] {
-            if surfaces.iter().all(|(s, _)| s.sample_uv(p).is_none()) {
+        let mid = [(lo[0] + hi[0]) * 0.5, (lo[1] + hi[1]) * 0.5];
+        let is_segment = lo[0] == hi[0] || lo[1] == hi[1];
+        if is_segment {
+            // For a 1D segment, depth > 0 children already had both endpoints
+            // verified by their parent (and multi-region calls pre-checked depth 0).
+            let check_ends = depth == 0 && regions.len() == 1;
+            if is_uncovered(mid)
+                || (check_ends && (is_uncovered(lo) || (hi != lo && is_uncovered(hi))))
+            {
                 return Certificate::Uncovered;
+            }
+        } else {
+            for p in [lo, hi, [lo[0], hi[1]], [hi[0], lo[1]], mid] {
+                if is_uncovered(p) {
+                    return Certificate::Uncovered;
+                }
             }
         }
         if depth >= 40 {
@@ -147,10 +216,80 @@ fn certify_regions(
         end[axis] = middle;
         let mut start = lo;
         start[axis] = middle;
-        stack.push((start, hi, depth + 1));
-        stack.push((lo, end, depth + 1));
+        if use_inline {
+            inline_stack[inline_len] = (start, hi, depth + 1);
+            inline_stack[inline_len + 1] = (lo, end, depth + 1);
+            inline_len += 2;
+        } else {
+            overflow_stack.push((start, hi, depth + 1));
+            overflow_stack.push((lo, end, depth + 1));
+        }
     }
     Certificate::Covered
+}
+
+/// Certify whether the 4-segment rectangular outline `[lo, hi]` is covered.
+///
+/// Because `covers_ndc` is inclusion-monotonic (`[p, p] ⊆ [a, b]`), if no
+/// surface certifies a single point `p` with the given `rotation`, no leaf
+/// box containing `p` can ever certify it either. Checking corners and segment
+/// midpoints with `covers_ndc(p, p, rotation)` fails fast in O(1) instead of
+/// subdividing to `depth == 40` or `budget` along the rotation-margin boundary.
+fn certify_outline_covered<S: SurfaceQuery>(
+    surfaces: &[S],
+    lo: [f64; 2],
+    hi: [f64; 2],
+    rotation: f64,
+    budget: usize,
+) -> bool {
+    if budget == 0
+        || !rotation.is_finite()
+        || !(0.0..=std::f64::consts::PI).contains(&rotation)
+        || (0..2).any(|i| !lo[i].is_finite() || !hi[i].is_finite() || lo[i] > hi[i])
+    {
+        return false;
+    }
+    let is_uncovered = |p: [f64; 2]| surfaces.iter().all(|s| !s.sample_uv_some(p));
+    for c in [lo, [hi[0], lo[1]], hi, [lo[0], hi[1]]] {
+        if is_uncovered(c) {
+            return false;
+        }
+    }
+    let mut stack = [([0.0; 2], [0.0; 2], 0_u32); 64];
+    stack[0] = (lo, [hi[0], lo[1]], 0);
+    stack[1] = ([hi[0], lo[1]], hi, 0);
+    stack[2] = ([lo[0], hi[1]], hi, 0);
+    stack[3] = (lo, [lo[0], hi[1]], 0);
+    let mut len = 4_usize;
+    let mut work = 0;
+    while len > 0 {
+        len -= 1;
+        let (a, b, depth) = stack[len];
+        if work == budget {
+            return false;
+        }
+        work += 1;
+        if surfaces.iter().any(|s| s.covers_ndc(a, b, rotation)) {
+            continue;
+        }
+        let mid = [(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5];
+        if is_uncovered(mid) {
+            return false;
+        }
+        if depth >= 40 {
+            return false;
+        }
+        let axis = usize::from(b[1] - a[1] > b[0] - a[0]);
+        let middle = (a[axis] + b[axis]) * 0.5;
+        let mut end = b;
+        end[axis] = middle;
+        let mut start = a;
+        start[axis] = middle;
+        stack[len] = (start, b, depth + 1);
+        stack[len + 1] = (a, end, depth + 1);
+        len += 2;
+    }
+    true
 }
 
 #[cfg(test)]

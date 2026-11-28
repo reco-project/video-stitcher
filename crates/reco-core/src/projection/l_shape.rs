@@ -144,7 +144,7 @@ pub(crate) struct PlaneScene {
 }
 
 /// Lens operations shared by raster sampling and source correspondence.
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub(crate) struct NormalizedLens {
     fx: f64,
     fy: f64,
@@ -237,7 +237,7 @@ fn plane_uv_to_world(uv: (f64, f64), camera: CameraIndex, scene: &PlaneScene) ->
 /// [`sample_uv`] is a closed-form per-pixel evaluation with no allocation.
 ///
 /// [`sample_uv`]: SurfaceMap::sample_uv
-struct PlaneMap {
+pub(crate) struct PlaneMap {
     /// Inverse of the MVP's drop-z 3x3: maps `[ndc_x, ndc_y, 1]` (up to scale)
     /// to plane-local `[x, y, 1]`. `None` if the MVP is singular (e.g. an
     /// edge-on plane), in which case the plane covers nothing - like the GPU's
@@ -247,10 +247,14 @@ struct PlaneMap {
     /// `clip_z = z_row . [local_x, local_y, 1]`. The 3x3 inverse drops z, but the
     /// GPU rasterizer still depth-clips, so the z-row is kept to reconstruct it.
     z_row: (f64, f64, f64),
+    /// Precomputed `z_row . m3_inv` columns for linear depth evaluation in NDC.
+    depth_coeff: [f64; 3],
     clip_depth: bool,
     /// Normalised intrinsics: `fx/w`, `fy/h`, `cx/w`, `cy/h` (by calibration
     /// resolution, so they are independent of the actual frame size).
     optics: NormalizedLens,
+    /// Precomputed `d[k] * correction` polynomial coefficients.
+    scaled_d: [f64; 4],
     tan_half_h: f64,
     tan_half_v: f64,
 }
@@ -280,13 +284,22 @@ impl PlaneMap {
         let m3_inv = m3.try_inverse();
         // z-row of the MVP for the model-z=0 quad (x, y, translation columns).
         let z_row = (mvp[(2, 0)] as f64, mvp[(2, 1)] as f64, mvp[(2, 3)] as f64);
+        let depth_coeff = match m3_inv {
+            Some(m) => std::array::from_fn(|i| {
+                z_row.0 * m[(0, i)] + z_row.1 * m[(1, i)] + z_row.2 * m[(2, i)]
+            }),
+            None => [0.0; 3],
+        };
         let mut optics = NormalizedLens::new(cam);
         optics.correction = correction;
+        let scaled_d = optics.d.map(|k| k * correction);
         Self {
             m3_inv,
             z_row,
+            depth_coeff,
             clip_depth: true,
             optics,
+            scaled_d,
             tan_half_h: 1.0
                 / (view_projection[(0, 0)] as f64)
                     .hypot(view_projection[(0, 1)] as f64)
@@ -309,18 +322,12 @@ impl SurfaceMap for PlaneMap {
             return false;
         };
         let (x, y) = (I::new(min[0], max[0]), I::new(min[1], max[1]));
-        let row = |i| I::point(m[(i, 0)]) * x + I::point(m[(i, 1)]) * y + I::point(m[(i, 2)]);
-        let w = row(2);
+        let w = (x.scale(m[(2, 0)]) + y.scale(m[(2, 1)])).shift(m[(2, 2)]);
         if w.lo <= 1e-12 {
             return false;
         }
-        let lx = row(0) / w;
-        let ly = row(1) / w;
-        let depth_coefficient =
-            |i| self.z_row.0 * m[(0, i)] + self.z_row.1 * m[(1, i)] + self.z_row.2 * m[(2, i)];
-        let depth = I::point(depth_coefficient(0)) * x
-            + I::point(depth_coefficient(1)) * y
-            + I::point(depth_coefficient(2));
+        let depth = (x.scale(self.depth_coeff[0]) + y.scale(self.depth_coeff[1]))
+            .shift(self.depth_coeff[2]);
         if !depth.inside(1e-7, 1.0 - 1e-7) {
             return false;
         }
@@ -338,29 +345,139 @@ impl SurfaceMap for PlaneMap {
                 return false;
             }
         }
-        let u = lx + I::point(0.5);
+        // With positive homogeneous denominator `w > 0` across the whole
+        // rectangle, each rational coordinate `N(x, y) / W(x, y)` is a convex
+        // combination of its corner values (eliminating division wrapping while
+        // still enclosing rounding at every corner via point intervals).
+        let corner_local = |cx: f64, cy: f64| -> Option<(I, I)> {
+            let (px, py) = (I::point(cx), I::point(cy));
+            let wc = (px.scale(m[(2, 0)]) + py.scale(m[(2, 1)])).shift(m[(2, 2)]);
+            if wc.lo <= 1e-12 {
+                return None;
+            }
+            let lxc = (px.scale(m[(0, 0)]) + py.scale(m[(0, 1)])).shift(m[(0, 2)]) / wc;
+            let lyc = (px.scale(m[(1, 0)]) + py.scale(m[(1, 1)])).shift(m[(1, 2)]) / wc;
+            Some((lxc, lyc))
+        };
+        let corners: &[[f64; 2]] = if min[0] == max[0] {
+            &[min, [min[0], max[1]]]
+        } else if min[1] == max[1] {
+            &[min, [max[0], min[1]]]
+        } else {
+            &[min, [max[0], min[1]], [min[0], max[1]], max]
+        };
+        let mut lx_lo = f64::INFINITY;
+        let mut lx_hi = f64::NEG_INFINITY;
+        let mut ly_lo = f64::INFINITY;
+        let mut ly_hi = f64::NEG_INFINITY;
+        for &[cx, cy] in corners {
+            let Some((lxc, lyc)) = corner_local(cx, cy) else {
+                return false;
+            };
+            lx_lo = lx_lo.min(lxc.lo);
+            lx_hi = lx_hi.max(lxc.hi);
+            ly_lo = ly_lo.min(lyc.lo);
+            ly_hi = ly_hi.max(lyc.hi);
+        }
+        let lx = I {
+            lo: lx_lo,
+            hi: lx_hi,
+        };
+        let ly = I {
+            lo: ly_lo,
+            hi: ly_hi,
+        };
+        let u = lx.shift(0.5);
         let v = I::point(0.5) - ly;
         if !u.inside(1e-7, 1.0 - 1e-7) || !v.inside(1e-7, 1.0 - 1e-7) {
             return false;
         }
-        let xn = (u * I::point(2.0) - I::point(0.5 + self.optics.cx)) / I::point(self.optics.fx);
-        let yn = (v * I::point(2.0) - I::point(0.5 + self.optics.cy)) / I::point(self.optics.fy);
-        let r = (xn.square() + yn.square()).sqrt();
-        if !r.finite() {
+        let xn_num = u.scale(2.0).shift(-(0.5 + self.optics.cx));
+        let yn_num = v.scale(2.0).shift(-(0.5 + self.optics.cy));
+        let xn = if self.optics.fx > 0.0 {
+            I::new(xn_num.lo / self.optics.fx, xn_num.hi / self.optics.fx)
+        } else {
+            xn_num / I::point(self.optics.fx)
+        };
+        let yn = if self.optics.fy > 0.0 {
+            I::new(yn_num.lo / self.optics.fy, yn_num.hi / self.optics.fy)
+        } else {
+            yn_num / I::point(self.optics.fy)
+        };
+        if !xn.finite() || !yn.finite() {
             return false;
         }
-        // atan(r)/r decreases for nonnegative r. The shader blends only the polynomial coefficients.
-        let ratio = |r: f64| if r < 1e-10 { 1.0 } else { r.atan() / r };
-        let base = I::new(ratio(r.hi) - 1e-12, ratio(r.lo.max(0.0)) + 1e-12);
-        let t2 = I::new(r.lo.max(0.0).atan() - 1e-12, r.hi.atan() + 1e-12).square();
-        let mut polynomial = I::point(self.optics.d[3] * self.optics.correction);
-        for k in self.optics.d[..3].iter().rev() {
-            polynomial = polynomial * t2 + I::point(k * self.optics.correction);
-        }
-        polynomial = polynomial * t2 + I::point(1.0);
-        let scale = base * polynomial;
-        let du = I::point(self.optics.fx) * xn * scale + I::point(self.optics.cx);
-        let dv = I::point(self.optics.fy) * yn * scale + I::point(self.optics.cy);
+        // g(x, y) = x * atan(r)/r has dg/dx = y^2*atan(r)/r^3 + x^2/(r^2*(1+r^2)) > 0
+        // everywhere, and for x >= 0 (resp. x <= 0) is decreasing (resp. increasing) in |y|.
+        // Evaluating g at the exact extremal corners eliminates the xn * (atan(r)/r)
+        // interval dependency wrapping while preserving outward-rounded soundness.
+        let ratio = |radius: f64| {
+            if radius < 1e-10 {
+                1.0
+            } else {
+                radius.atan() / radius
+            }
+        };
+        let abs_min = |i: I| {
+            if i.lo <= 0.0 && i.hi >= 0.0 {
+                0.0
+            } else {
+                i.lo.abs().min(i.hi.abs())
+            }
+        };
+        let equi_lo = |a: f64, b_abs: f64| -> f64 {
+            let rad = (I::point(a).square() + I::point(b_abs).square()).sqrt();
+            let bound = if a >= 0.0 {
+                ratio(rad.hi) - 1e-12
+            } else {
+                ratio(rad.lo.max(0.0)) + 1e-12
+            };
+            I::point(bound).scale(a).lo
+        };
+        let equi_hi = |a: f64, b_abs: f64| -> f64 {
+            let rad = (I::point(a).square() + I::point(b_abs).square()).sqrt();
+            let bound = if a >= 0.0 {
+                ratio(rad.lo.max(0.0)) + 1e-12
+            } else {
+                ratio(rad.hi) - 1e-12
+            };
+            I::point(bound).scale(a).hi
+        };
+        let (x_abs_min, x_abs_max) = (abs_min(xn), xn.abs_max());
+        let (y_abs_min, y_abs_max) = (abs_min(yn), yn.abs_max());
+        let ex = I {
+            lo: equi_lo(xn.lo, if xn.lo <= 0.0 { y_abs_min } else { y_abs_max }),
+            hi: equi_hi(xn.hi, if xn.hi >= 0.0 { y_abs_min } else { y_abs_max }),
+        };
+        let ey = I {
+            lo: equi_lo(yn.lo, if yn.lo <= 0.0 { x_abs_min } else { x_abs_max }),
+            hi: equi_hi(yn.hi, if yn.hi >= 0.0 { x_abs_min } else { x_abs_max }),
+        };
+        let (du, dv) = if self.scaled_d == [0.0; 4] {
+            (
+                ex.scale(self.optics.fx).shift(self.optics.cx),
+                ey.scale(self.optics.fy).shift(self.optics.cy),
+            )
+        } else {
+            let r = (xn.square() + yn.square()).sqrt();
+            if !r.finite() {
+                return false;
+            }
+            let t2 = I::new(r.lo.max(0.0).atan() - 1e-12, r.hi.atan() + 1e-12).square();
+            let mut polynomial = I::point(self.scaled_d[3]);
+            for &k in self.scaled_d[..3].iter().rev() {
+                polynomial = (polynomial * t2).shift(k);
+            }
+            polynomial = (polynomial * t2).shift(1.0);
+            (
+                (ex * polynomial)
+                    .scale(self.optics.fx)
+                    .shift(self.optics.cx),
+                (ey * polynomial)
+                    .scale(self.optics.fy)
+                    .shift(self.optics.cy),
+            )
+        };
         du.inside(1e-7, 1.0 - 1e-7) && dv.inside(1e-7, 1.0 - 1e-7)
     }
 
@@ -391,6 +508,130 @@ impl SurfaceMap for PlaneMap {
         }
 
         self.optics.sample_plane([local_x, local_y])
+    }
+}
+
+/// Calibration-constant scene and lens state for allocation-free L-shape map sweeps.
+pub(crate) struct PreparedLShape {
+    scene: PlaneScene,
+    proj_unit: Matrix4<f32>,
+    optics: [NormalizedLens; 2],
+    scaled_d: [[f64; 4]; 2],
+    tilt: f32,
+    roll: f32,
+    out_aspect: f64,
+}
+
+/// Cell-constant (yaw, pitch) inverse projection state for FOV bisection.
+pub(crate) struct PreparedLShapeCell {
+    base_inv: [Option<Matrix3<f64>>; 2],
+    z_row: [(f64, f64, f64); 2],
+    base_depth_coeff: [[f64; 3]; 2],
+}
+
+impl PreparedLShape {
+    pub(crate) fn new(
+        projection: &LShape,
+        lenses: &[Lens],
+        framing: &Framing,
+        viewport_size: &ViewportSize,
+    ) -> Self {
+        let scene = projection.scene(
+            framing,
+            [lenses[0].aspect_ratio(), lenses[1].aspect_ratio()],
+        );
+        // Unit-tangent perspective (P00 = 1, P11 = 1) with the exact wgpu depth row.
+        let proj_unit = opengl_to_wgpu_matrix()
+            * Perspective3::new(1.0, std::f32::consts::FRAC_PI_2, NEAR_PLANE, FAR_PLANE)
+                .to_homogeneous();
+        let optics = [
+            NormalizedLens::new(&lenses[0]),
+            NormalizedLens::new(&lenses[1]),
+        ];
+        let scaled_d = [
+            optics[0].d.map(|k| k * optics[0].correction),
+            optics[1].d.map(|k| k * optics[1].correction),
+        ];
+        Self {
+            scene,
+            proj_unit,
+            optics,
+            scaled_d,
+            tilt: framing.tilt as f32,
+            roll: framing.roll as f32,
+            out_aspect: f64::from(viewport_size.aspect_ratio()),
+        }
+    }
+
+    pub(crate) fn prepare_cell(&self, yaw: f32, pitch: f32) -> PreparedLShapeCell {
+        let view = view_matrix(&self.scene.camera, yaw, pitch, self.tilt, self.roll);
+        let vp = self.proj_unit * view;
+        let mut base_inv = [None; 2];
+        let mut z_row = [(0.0, 0.0, 0.0); 2];
+        let mut base_depth_coeff = [[0.0; 3]; 2];
+        for i in 0..2 {
+            let mvp = vp * self.scene.models[i];
+            let m3 = Matrix3::new(
+                mvp[(0, 0)] as f64,
+                mvp[(0, 1)] as f64,
+                mvp[(0, 3)] as f64,
+                mvp[(1, 0)] as f64,
+                mvp[(1, 1)] as f64,
+                mvp[(1, 3)] as f64,
+                mvp[(3, 0)] as f64,
+                mvp[(3, 1)] as f64,
+                mvp[(3, 3)] as f64,
+            );
+            let inv = m3.try_inverse();
+            let zr = (mvp[(2, 0)] as f64, mvp[(2, 1)] as f64, mvp[(2, 3)] as f64);
+            base_depth_coeff[i] = match inv {
+                Some(m) => {
+                    std::array::from_fn(|c| zr.0 * m[(0, c)] + zr.1 * m[(1, c)] + zr.2 * m[(2, c)])
+                }
+                None => [0.0; 3],
+            };
+            base_inv[i] = inv;
+            z_row[i] = zr;
+        }
+        PreparedLShapeCell {
+            base_inv,
+            z_row,
+            base_depth_coeff,
+        }
+    }
+
+    pub(crate) fn plane_maps(&self, cell: &PreparedLShapeCell, fov_degrees: f32) -> [PlaneMap; 2] {
+        let fov = RenderPose {
+            yaw: 0.0,
+            pitch: 0.0,
+            fov_degrees,
+        }
+        .render_fov();
+        let tan_half_v = f64::from((fov.to_radians() * 0.5).tan());
+        let tan_half_h = tan_half_v * self.out_aspect;
+        let build = |i: usize| {
+            let m3_inv = cell.base_inv[i].map(|mut m| {
+                m[(0, 0)] *= tan_half_h;
+                m[(1, 0)] *= tan_half_h;
+                m[(2, 0)] *= tan_half_h;
+                m[(0, 1)] *= tan_half_v;
+                m[(1, 1)] *= tan_half_v;
+                m[(2, 1)] *= tan_half_v;
+                m
+            });
+            let dc = cell.base_depth_coeff[i];
+            PlaneMap {
+                m3_inv,
+                z_row: cell.z_row[i],
+                depth_coeff: [dc[0] * tan_half_h, dc[1] * tan_half_v, dc[2]],
+                clip_depth: true,
+                optics: self.optics[i],
+                scaled_d: self.scaled_d[i],
+                tan_half_h,
+                tan_half_v,
+            }
+        };
+        [build(0), build(1)]
     }
 }
 
@@ -944,5 +1185,69 @@ mod tests {
             covered > 0,
             "expected the planes to cover part of the output"
         );
+    }
+
+    #[test]
+    fn plane_map_covers_ndc_is_sound_across_random_boxes() {
+        let cfg = ViewportSize::default();
+        let mut cal = crate::stitch::test_support::calib(1920, 1080);
+        cal.framing.tilt = 0.27;
+        cal.framing.roll = -0.19;
+
+        let mut seed = 0x51a7_9b3c_2f10_4e81u64;
+        let mut next = || {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((seed >> 11) as f64) / ((1u64 << 53) as f64)
+        };
+
+        for correction in [0.0f32, 0.5, 1.0] {
+            for lens in &mut cal.lenses {
+                lens.correction = correction;
+            }
+            let projection = cal.projection.l_shape().unwrap();
+            let (left, right) = l_shape_plane_maps(
+                projection,
+                &cal.lenses,
+                &cal.framing,
+                &cfg,
+                RenderPose {
+                    yaw: 0.12,
+                    pitch: -0.08,
+                    fov_degrees: 75.0,
+                },
+            );
+            let mut certified = 0usize;
+            for m in [&left, &right] {
+                for _ in 0..300 {
+                    let x0 = next() * 2.0 - 1.0;
+                    let y0 = next() * 2.0 - 1.0;
+                    let dx = next() * 0.6;
+                    let dy = next() * 0.6;
+                    let min = [(x0 - dx).max(-1.0), (y0 - dy).max(-1.0)];
+                    let max = [(x0 + dx).min(1.0), (y0 + dy).min(1.0)];
+                    if m.covers_ndc(min, max, 0.0) {
+                        certified += 1;
+                        for ix in 0..=4 {
+                            let fx = ix as f64 / 4.0;
+                            let x = min[0] + (max[0] - min[0]) * fx;
+                            for iy in 0..=4 {
+                                let fy = iy as f64 / 4.0;
+                                let y = min[1] + (max[1] - min[1]) * fy;
+                                assert!(
+                                    m.sample_uv([x, y]).is_some(),
+                                    "covers_ndc certified uncovered point ({x}, {y}) in ({min:?}, {max:?}) (correction={correction})"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            assert!(
+                certified > 0,
+                "expected some random boxes to certify for correction={correction}"
+            );
+        }
     }
 }

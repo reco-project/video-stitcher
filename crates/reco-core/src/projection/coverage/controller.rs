@@ -126,6 +126,18 @@ impl Controller {
         self.state.map(|s| s.0)
     }
 
+    #[cfg(test)]
+    pub(crate) fn clone_reset(&self) -> Self {
+        Self {
+            config: self.config.clone(),
+            size: self.size.clone(),
+            roof: self.roof.clone(),
+            cap: self.cap,
+            state: None,
+            route: None,
+        }
+    }
+
     pub(crate) fn cap(&self) -> f32 {
         self.cap
     }

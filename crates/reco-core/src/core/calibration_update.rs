@@ -291,8 +291,21 @@ mod tests {
         }
     }
 
-    fn accepted_matches_fresh(make: impl Fn(Calibration) -> StitchCore, calibration: Calibration) {
+    fn accepted_matches_fresh(
+        make: impl Fn(Calibration) -> StitchCore,
+        calibration: Calibration,
+        map_config: Option<crate::projection::coverage::controller::MapConfig>,
+    ) {
         let mut core = make(calibration);
+        if let Some(config) = &map_config {
+            let controller = Controller::new(
+                core.calibration(),
+                core.executor.viewport_size(),
+                config.clone(),
+            )
+            .unwrap();
+            core.coverage_motion = Some(controller);
+        }
         // Exercise repeated edits, including correction and projection-specific geometry.
         for step in 0..4 {
             let mut draft = core.calibration().clone();
@@ -321,6 +334,15 @@ mod tests {
                 },
             }
             let mut fresh = make(draft.clone());
+            if let Some(config) = &map_config {
+                let controller = Controller::new(
+                    fresh.calibration(),
+                    fresh.executor.viewport_size(),
+                    config.clone(),
+                )
+                .unwrap();
+                fresh.coverage_motion = Some(controller);
+            }
             core.last_detections.push(detection());
             if step % 2 == 0 {
                 core.edit_calibration(|cal| *cal = draft).unwrap();
@@ -351,6 +373,13 @@ mod tests {
         }
     }
 
+    fn fast_map_config() -> crate::projection::coverage::controller::MapConfig {
+        crate::projection::coverage::controller::MapConfig {
+            cells: [64, 32],
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn cpu_rejected_edits_preserve_document_coverage_detections_and_render() {
         rejection_preserves_state(cpu);
@@ -377,6 +406,7 @@ mod tests {
     }
 
     fn blend_edits_preserve_tracking(make: impl Fn(Calibration) -> StitchCore) {
+        let mut cached_coverage: Option<Controller> = None;
         for slot in 0..3 {
             let mut core = make(calib(WIDTH, HEIGHT));
             match slot {
@@ -385,7 +415,13 @@ mod tests {
                 _ => core.set_panner(Box::new(NoopControl)),
             }
             core.last_detections.push(detection());
+            if let Some(prepared) = &cached_coverage {
+                core.coverage_motion = Some(prepared.clone_reset());
+            }
             let coverage = core.prepare_coverage().unwrap();
+            if cached_coverage.is_none() {
+                cached_coverage = core.coverage_motion.as_ref().map(Controller::clone_reset);
+            }
             let initial_pixels = render(&mut core);
             let mut changed_pixels = false;
             core.edit_calibration(|_| {}).unwrap();
@@ -415,11 +451,15 @@ mod tests {
 
     #[test]
     fn cpu_live_edits_match_fresh_engines() {
-        accepted_matches_fresh(cpu, calib(WIDTH, HEIGHT));
+        // Primary stereo fixture exercises the production default 512x256 coverage map.
+        accepted_matches_fresh(cpu, calib(WIDTH, HEIGHT), None);
+        // Secondary rescaled and cylinder fixtures verify live-edit rebuild and render
+        // parity with a coarser grid to avoid 24 redundant full-resolution map builds.
+        let fast = Some(fast_map_config());
         for camera in 0..2 {
             let mut mixed = calib(WIDTH, HEIGHT);
             mixed.lenses[camera] = mixed.lenses[camera].rescaled(WIDTH, HEIGHT * 2).unwrap();
-            accepted_matches_fresh(cpu, mixed);
+            accepted_matches_fresh(cpu, mixed, fast.clone());
         }
         accepted_matches_fresh(
             cpu,
@@ -431,6 +471,7 @@ mod tests {
                 },
                 calib(WIDTH, HEIGHT).framing,
             ),
+            fast,
         );
     }
 
@@ -461,11 +502,16 @@ mod tests {
             StitchCore::new(Executor::Gpu(Box::new(executor))).unwrap()
         };
         rejection_preserves_state(make);
-        accepted_matches_fresh(make, calib(WIDTH, HEIGHT));
+        // Coverage maps are executor-independent CPU geometry (exercised at 512x256
+        // in cpu_live_edits_match_fresh_engines, rejection_preserves_state, and
+        // blend_edits_preserve_tracking), so use the coarser grid for the GPU edit
+        // parity matrix while keeping every rebuild, pose, and pixel assertion intact.
+        let fast = Some(fast_map_config());
+        accepted_matches_fresh(make, calib(WIDTH, HEIGHT), fast.clone());
         for camera in 0..2 {
             let mut mixed = calib(WIDTH, HEIGHT);
             mixed.lenses[camera] = mixed.lenses[camera].rescaled(WIDTH, HEIGHT * 2).unwrap();
-            accepted_matches_fresh(make, mixed);
+            accepted_matches_fresh(make, mixed, fast.clone());
         }
         accepted_matches_fresh(
             make,
@@ -481,6 +527,7 @@ mod tests {
                     roll: 0.0,
                 },
             ),
+            fast,
         );
         blend_edits_preserve_tracking(make);
     }
