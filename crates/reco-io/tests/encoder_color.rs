@@ -531,12 +531,14 @@ fn stitch_job_exports_bt2020_pixels_and_rejects_mixed_hdr_sdr() {
     write_fixture(&hdr_in, "libx264", hlg_bt2020);
     write_fixture(&sdr_in, "libx264", ColorMetadata::default());
 
-    for encoder_name in ["libx265", "libx264"] {
-        let output = dir.path().join(format!("stitched-hdr-{encoder_name}.mp4"));
+    #[cfg(feature = "gpu")]
+    if reco_core::gpu::GpuContext::new_blocking().is_ok() {
+        let output = dir.path().join("stitched-hdr.mp4");
         StitchJob::with_calibration([hdr_in.clone(), hdr_in.clone()], calibration(), &output)
-            .cpu()
+            .force_cpu_decode()
             .resolution(64, 64)
-            .encoder_name(encoder_name)
+            .encoder_name("libx265")
+            .quality(reco_io::output::Quality::Value(100))
             .max_frames(4)
             .on_session(|session, _| {
                 session.core_mut().set_constrained_look(false);
@@ -560,7 +562,7 @@ fn stitch_job_exports_bt2020_pixels_and_rejects_mixed_hdr_sdr() {
                 .into_iter()
                 .zip(expected)
                 .all(|(a, b)| a.abs_diff(b) <= 2),
-            "{encoder_name}: {actual:?} vs {expected:?}"
+            "{actual:?} vs {expected:?}"
         );
     }
 

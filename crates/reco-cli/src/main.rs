@@ -162,7 +162,9 @@ enum Commands {
         #[arg(long, requires = "encoder")]
         encoder_device: Option<String>,
 
-        /// Output codec: h264, hevc, av1. Defaults to the named encoder's codec, or h264.
+        /// Output codec (h264, hevc, av1). With automatic encoder selection, SDR
+        /// defaults to 8-bit H.264 and HDR to 10-bit HEVC Main 10. HDR requires
+        /// GPU rendering and an HEVC Main 10 encoder.
         #[arg(long)]
         codec: Option<String>,
 
